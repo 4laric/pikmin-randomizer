@@ -278,8 +278,10 @@ refused. Subsequent review requests use the **new** handoff hash and revision.
 The controller waits for meaningful registry changes and configured receipt,
 mailbox, configuration, or WAKE-file changes rather than a fixed five-minute sleep.
 The bounded waiter observes change tokens at up to half-second intervals; the
-default fallback is 15 seconds. It is not an OS notification service and does not
-wake from its own read-only polling.
+default fallback is 15 seconds. The token is the registry's `wake_revision` (read
+from the meta document on documents-v1 storage), which every event advances, plus
+the watched files. It is not an OS notification service and does not wake from its
+own read-only polling.
 
 An integrator may use `wait-events` with this request:
 
@@ -389,12 +391,22 @@ receipts remain necessary.
 
 `throughput-status` accepts `window_seconds` (default 3600) and optional fresh
 `ram_percent`. The controller writes `throughput.json` and `throughput.html` in its
-configured controller directory; the HTML view refreshes every 15 seconds. Metrics
+configured controller directory; the HTML view refreshes every 15 seconds. Each
+publish takes one committed snapshot and passes it to every section. The published
+jobs, assignments, costs, batches, snapshots, dispositions and autofill items are
+bounded to active records plus at most 200 terminal records from the last six hours;
+`publication.maps` gives published/total counts, and the registry keeps every record
+(on the live data: 26.1 MB to 4.7 MB JSON, 24.0 MB to 3.8 MB HTML). Metrics
 include integrated implementation slices/hour, oldest ready/review/integrating
 handoff, dependency-ready waiting time, heavy-slot lease utilization, staffing
 recommendations, and reported cost per accepted slice. Acknowledged reviews are
 not counted as accepted implementation. Build utilization measures lease time,
-not CPU activity; missing history and prices remain unknown.
+not CPU activity, and never exceeds 100%; missing history and prices remain unknown.
+Every lease removal emits an event: release/reap as before, and `lease_reaped` with
+`reason` `launch_bound` or `recovery` when binding or recovery drops a stopped lane's
+leases. For older history without those events, an interval ends at the lane's
+`launch_bound` or completed recover action. Staffing process checks use the
+registry's dead-identity cache.
 
 Positive provider-reported `step_finish` cost estimates are ingested from known
 run logs when available. Manual `report-cost` uses:

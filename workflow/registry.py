@@ -50,27 +50,45 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             self.probe = DeadIdentityCache(process_probe, unknown_seconds=5)
         self._transaction_local = threading.local()
 
-    def snapshot(self, *, section=None):
-        """Read one committed registry version; never reserve the writer lock."""
+    def snapshot(self, *, section=None, sections=None):
+        """Read one committed registry version; never reserve the writer lock.
+
+        Rows are fetched inside the read transaction and decoded after it ends, so a
+        reader holds SQLite's SHARED lock only while copying bytes. sections=(...)
+        decodes just those partitions; every other partition is Sealed and refuses use."""
+        from . import storage
         require(self.path.is_file(), 'Registry missing; run init first')
-        db = sqlite3.connect(self.path, timeout=30)
-        try:
-            db.execute('PRAGMA query_only=ON')
-            db.execute('BEGIN')
-            from .storage import load
-            state, _ = load(db, section_path=section)
-        finally:
-            db.close()
+        require(section is None or sections is None, 'Pass section or sections, not both')
+        only = None
+        if sections is not None: only, _ = storage.declared(sections)
+        elif section: only = [p for p in storage.PARTS if p[:len(section)] == tuple(section)]
+        def read():
+            db = sqlite3.connect(self.path, timeout=storage.BUSY_TIMEOUT)
+            try:
+                db.execute('PRAGMA query_only=ON')
+                db.execute('BEGIN')
+                return storage.fetch(db, only)
+            finally:
+                db.close()
+        descriptor, raw = storage.retry(read, 'registry read')
+        state = storage.decode(descriptor, raw, only)
         require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
-        if section:
+        if sections is not None:
+            storage.seal(state, raw, only)
+        elif section:
             for key in section:state=state.get(key,{})
         return state
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, sections=None, append=()):
+        """Serialized write. sections=(path, ...) loads and saves only those documents-v1
+        partitions plus the meta row; append=(list path, ...) exposes a history as
+        append-only. Touching any other partition refuses and rolls back."""
+        from . import storage
         require(not getattr(self._transaction_local, 'active', False), 'Nested registry write transaction')
         require(self.path.is_file(), 'Registry missing; run init first')
-        db = sqlite3.connect(self.path, timeout=30)
+        if sections is not None: sections, append = storage.declared(sections, append)
+        db = sqlite3.connect(self.path, timeout=storage.BUSY_TIMEOUT)
         started = time.monotonic()
         acquired = None
         self._transaction_local.active = True
@@ -79,14 +97,17 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         entered = False
         try:
             writer.acquire(); entered = True
-            db.execute('BEGIN IMMEDIATE')
+            storage.begin(db)
             acquired = time.monotonic()
-            from .storage import load, save
-            state, previous = load(db)
+            if sections is None:
+                state, previous = storage.load(db)
+            else:
+                state, previous, marks = storage.open_sections(db, sections, append)
             require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
             yield state
-            save(db, state, previous)
-            db.commit()
+            if sections is None: storage.save(db, state, previous)
+            else: storage.save_sections(db, state, previous, sections, marks)
+            storage.commit(db)
         except BaseException:
             db.rollback()
             raise
@@ -99,6 +120,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                 try:
                     record = dict(at=self.clock(), thread=threading.current_thread().name,
                         elapsed_seconds=elapsed, wait_seconds=(acquired-started) if acquired else elapsed,
+                        sections=None if sections is None else ['.'.join(p) for p in sections],
                         stack=traceback.format_stack(limit=8))
                     with self.path.with_name('slow-transactions.jsonl').open('a', encoding='utf-8') as log:
                         log.write(json.dumps(record) + '\n')
@@ -127,12 +149,14 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         state['wake_revision'] = state.get('wake_revision', len(state['events'])) + 1
         state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
 
-    def throughput_status(self, window_seconds=3600, ram_percent=None):
+    def throughput_status(self, window_seconds=3600, ram_percent=None, state=None):
+        """Reads the caller's snapshot when given; process checks use the dead-identity cache."""
         from .analytics import throughput_metrics, staffing_recommendations
-        with nullcontext(self.snapshot()) as state:
+        with nullcontext(self.snapshot() if state is None else state) as state:
             return dict(at=self.clock(), throughput=state.get('throughput', {}),
                         metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
-                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent))
+                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent,
+                                                          process_probe=self.probe))
 
     def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
         """Attach local launch paths to an issue-backed pool lane without restarting service."""
@@ -329,6 +353,14 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             remaining=sum(self.heavy(k) for k in state['leases']))
         return released
 
+    def drop_leases(self, state, key, reason):
+        """Caller proved the owners stopped; every dropped lease still closes its interval."""
+        for resource, lease in list(state['leases'].items()):
+            if lease['lane'] != key: continue
+            del state['leases'][resource]
+            self.event(state, 'lease_reaped', key, resource=resource, reason=reason,
+                       process=lease.get('process'), generation=lease.get('generation'))
+
     def acquire(self, key, generation, resource, pid, ttl=300):
         resource = self.resource(resource)
         require(type(ttl) is int and 1 <= ttl <= 3600, 'Lease TTL must be 1–3600 seconds')
@@ -512,7 +544,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                             progress_detail='Recovered from checkpoint: ' + outcome)
                 lane.pop('handoff_code_revision', None)
                 # Only confirmed-dead old leases can reach here.
-                state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
+                self.drop_leases(state, lane['lane'], 'recovery')
                 state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}
             else:
                 require(replacement is None, 'Only recover actions may replace execution')

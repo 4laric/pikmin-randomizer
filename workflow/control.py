@@ -31,6 +31,11 @@ class ControlMixin:
         control=self.snapshot(section=('control',))
         return self.control({'control':control} if control else {})
 
+    def control_meta(self):
+        """Control scalars (RAM, providers, model limits) from the meta row alone; never its partitions."""
+        from .storage import read_record
+        return self.control(read_record(self, (), '') or {})
+
     def evidence(self, value):
         require(isinstance(value, dict), 'Hashed evidence required')
         path = local_path(self.root, value.get('path'))
@@ -419,7 +424,7 @@ class ControlMixin:
             self._rebind_pool_recovery(state, item, lane)
             if item['version']:
                 c['consumed'][item['lane']] = item['version']
-            state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
+            self.drop_leases(state, lane['lane'], 'launch_bound')
             state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}
             self.event(state, 'launch_bound', lane['lane'], action=action_id)
             return lane
@@ -442,7 +447,7 @@ class ControlMixin:
             c['providers'][provider] = max(c['providers'].get(provider, 0), self.clock() + seconds)
 
     def select_model(self, models):
-        c = self.control_status()
+        c = self.control_meta()
         now = self.clock()
         return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= now
                      and c.get('model_limits', {}).get(m, {}).get('until', 0) <= now

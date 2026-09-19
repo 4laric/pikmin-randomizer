@@ -79,6 +79,9 @@ tests/test_provider_recovery.py
 tests/test_queue_pressure.py
 tests/test_registry_reads.py
 tests/test_registry_storage.py
+tests/test_registry_sections.py
+tests/test_registry_contention.py
+tests/test_registry_maintenance.py
 tests/test_remote_worker.py
 tests/test_resource_wakeup.py
 tests/test_review_decisions.py

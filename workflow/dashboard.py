@@ -4,6 +4,48 @@ import json
 import math
 from datetime import datetime, timezone
 
+TERMINAL = {'completed', 'superseded', 'released', 'cancelled', 'closed', 'integrated', 'rejected',
+            'expired', 'exited', 'failed', 'resolved', 'done'}
+STAMPS = ('at', 'created_at', 'requested_at', 'assigned_at', 'dispatched_at', 'parked_at',
+          'completed_at', 'closed_at', 'updated_at')
+RECENT_SECONDS, RECENT_LIMIT = 6 * 3600, 200
+
+
+def bounded(items, now, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
+    """Every active record plus at most `limit` terminal/unstatused records newer than `seconds`.
+
+    Publication only: the registry keeps every record; (published, total) says what was left out."""
+    if not isinstance(items, dict):
+        return items, None
+    def stamp(value):
+        found = [value.get(k) for k in STAMPS if type(value.get(k)) in (int, float) and math.isfinite(value.get(k))]
+        return max(found) if found else None
+    def active(value):
+        status = value.get('status', value.get('state')) if isinstance(value, dict) else None
+        return isinstance(status, str) and status not in TERMINAL
+    recent = sorted(((stamp(v), k) for k, v in items.items() if isinstance(v, dict) and not active(v)
+                     and stamp(v) is not None and stamp(v) >= now - seconds), reverse=True)[:limit]
+    keep = {k for _, k in recent} | {k for k, v in items.items() if active(v)}
+    return {k: v for k, v in items.items() if k in keep}, dict(published=len(keep), total=len(items))
+
+
+def publishable(report, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
+    """Bound the historical maps of a status report (jobs, assignments, costs, batches, snapshots,
+    dispositions, autofill items) to active and recent records; counts record the omission."""
+    now = report.get('at', 0)
+    omitted = {}
+    throughput = dict(report.get('throughput') or {})
+    for name in ('jobs', 'assignments', 'costs', 'batches', 'snapshots', 'dispositions'):
+        throughput[name], counts = bounded(throughput.get(name, {}), now, seconds=seconds, limit=limit)
+        if counts: omitted['throughput.' + name] = counts
+    autofill = dict(report.get('autofill') or {})
+    if 'items' in autofill:
+        autofill['items'], counts = bounded(autofill['items'], now, seconds=seconds, limit=limit)
+        if counts: omitted['autofill.items'] = counts
+    return dict(report, throughput=throughput, autofill=autofill,
+                publication=dict(recent_seconds=seconds, recent_limit=limit, maps=omitted,
+                                 basis='Active records plus recent terminal ones; the registry keeps every record.'))
+
 
 def render_dashboard(report):
     def table(items):

@@ -14,12 +14,13 @@ def pins(lane):
                 native=(lane.get('native') or {}).get('head'))
 
 
-def audit(reg, admission, settings):
+def audit(reg, admission, settings, snapshot=None):
+    """Rows come from one committed read; the write (meta row plus the touched lanes) runs only on change."""
     if admission.get('status') != 'observed':
         return []
     accepted = set(admission.get('ids', []))
     families = settings.get('lane_families', {})
-    snapshot = reg.snapshot()
+    if snapshot is None: snapshot = reg.snapshot(sections=[('lanes',)])
     rows = {}
     for key, lane in snapshot['lanes'].items():
         family = families.get(key, lane.get('admission_family'))
@@ -43,13 +44,22 @@ def audit(reg, admission, settings):
             status='pending', source=admission.get('source'),
             reason='Family admitted; reconcile remaining acceptance scope and source delivery',
             at=reg.clock())
-    with reg.transaction() as state:
-        table = state.setdefault('admission_reconciliation', {})
-        for key, row in rows.items():
-            if pins(state['lanes'][key]) == row['pins'] and state['lanes'][key]['state'] != 'done':
+    known = snapshot.get('admission_reconciliation', {})
+    changed = {key: row for key, row in rows.items() if known.get(key) != row}
+    finished = [key for key, row in known.items() if row.get('status') == 'pending' and
+                snapshot['lanes'].get(key, {}).get('state') == 'done']
+    if not changed and not finished:
+        return list(rows.values())
+    from .storage import selected
+    with selected(reg, [((), '')] + [(('lanes',), key) for key in sorted(set(changed) | set(finished))]) as records:
+        table = records[((), '')].setdefault('admission_reconciliation', {})
+        for key, row in changed.items():
+            lane = records[(('lanes',), key)]
+            if lane is not None and pins(lane) == row['pins'] and lane['state'] != 'done':
                 table[key] = row
-        for key, row in table.items():
-            if state['lanes'].get(key, {}).get('state') == 'done' and row['status'] == 'pending':
+        for key in finished:
+            lane, row = records[(('lanes',), key)], table.get(key)
+            if row and lane is not None and lane.get('state') == 'done' and row['status'] == 'pending':
                 row.update(status='completed', completed_at=reg.clock())
     return list(rows.values())
 

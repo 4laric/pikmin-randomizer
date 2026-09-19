@@ -21,18 +21,26 @@ def _heavy(resource):
 def _build_utilization(state, now, start):
     # A renewal/expiry is not release. Live leases remain counted until release/reap.
     events = sorted((e for e in state.get('events', []) if _number(e.get('at')) and e['at'] <= now), key=lambda e: e['at'])
-    opened, intervals = {}, []
+    opened, owners, intervals = {}, {}, []
+    actions = state.get('actions', {})
     for event in events:
+        kind = event.get('kind')
+        # Older bind/recovery code dropped a lane's leases with no release event; its
+        # launch_bound or completed recover action is where those intervals ended.
+        if kind == 'launch_bound' or (kind == 'action_completed' and
+                actions.get(event.get('action'), {}).get('kind') == 'recover'):
+            for resource in [r for r, lane in owners.items() if lane == event.get('lane')]:
+                intervals.append((opened.pop(resource), event['at'])); owners.pop(resource)
+            continue
         resource = event.get('resource')
         if not _heavy(resource):
             continue
-        kind = event.get('kind')
         if kind == 'lease_acquired':
             if resource in opened:
                 intervals.append((opened[resource], event['at']))
-            opened[resource] = event['at']
+            opened[resource], owners[resource] = event['at'], event.get('lane')
         elif kind in ('lease_released', 'lease_reaped'):
-            acquired = opened.pop(resource, None)
+            acquired = opened.pop(resource, None); owners.pop(resource, None)
             if acquired is not None:
                 intervals.append((acquired, event['at']))
     # Sparse event history can still account for actual current lease starts.
@@ -53,7 +61,7 @@ def _build_utilization(state, now, start):
             current = event['capacity']
         denominator += (now - cursor) * current
     return dict(leased_seconds=seconds, capacity_slots=cap,
-                utilization_percent=100 * seconds / denominator if denominator else None,
+                utilization_percent=min(100, 100 * seconds / denominator) if denominator else None,
                 basis='recorded lease intervals; reservation time, not CPU use')
 
 

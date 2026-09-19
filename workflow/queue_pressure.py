@@ -69,7 +69,7 @@ def support_allocations(reg, helpers, records, dynamic=False, actionable=False):
 def update(controller):
     if not controller.config.get('queue_pressure',{}).get('enabled'):return
     reg=controller.reg;now=reg.clock()
-    s=reg.snapshot()
+    s=reg.snapshot(sections=[('lanes',),('throughput','batches')])
     lanes=s['lanes']
     prior=s.get('queue_pressure',{})
     batches=s.get('throughput',{}).get('batches',{})
@@ -113,7 +113,10 @@ def update(controller):
             **{k+'_per_hour':v*3600/duration for k,v in counts.items()},
             pressure=len(items)+min(age/300,12)+fanout+2*max(0,counts['arrivals']-counts['departures']))
     result=dict(at=now,observed_seconds=duration,warming_up=duration<300,stages=metrics,history=history)
-    with reg.transaction() as s:s['queue_pressure']=result
+    # Meta row only; an observation never replaces a newer one.
+    with reg.transaction(sections=()) as s:
+        if s.get('queue_pressure',{}).get('at',0)>now:return
+        s['queue_pressure']=result
     from .runner import write
     write(controller.base/'queue-pressure.json',{k:v for k,v in result.items() if k!='history'})
 

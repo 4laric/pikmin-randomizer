@@ -676,9 +676,13 @@ Prepared implementation admission has one independent bounded pass (live: up to
 four per pass), using the same immutable manifest, issue/source proof, worker
 reservation and ownership validation. Main maintenance still audits readiness
 but does not compete for admission. Completed history is skipped before writer
-transactions; controller/scheduler status reads use snapshots. Slow transactions
-are recorded locally in slow-transactions.jsonl for contention diagnosis; nested
-write transactions fail immediately instead of waiting on their own SQLite lock.
+transactions; controller/scheduler status reads use snapshots. Periodic monitors
+write through section-scoped transactions or only when their result changed (see
+docs/PIKMIN2_WORKFLOW_OPERATOR.md, Incremental registry storage). Slow transactions
+are recorded locally in slow-transactions.jsonl, with the declared sections, for
+contention diagnosis; nested write transactions fail immediately instead of waiting
+on their own SQLite lock. A registry still locked after the bounded retry raises
+RegistryBusy; the workflow CLI exits 75 and nothing was committed.
 Concrete prerequisite recovery outranks general discovery, with live referral
 age five minutes; one-attempt-per-input and producer ownership fences remain.
 

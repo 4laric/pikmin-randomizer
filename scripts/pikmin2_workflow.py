@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from workflow.handoff import Rejected, local_path, validate_handoff
 from workflow.processes import identify
 from workflow.registry import Registry
+from workflow.storage import RegistryBusy
 
 
 def main(argv=None):
@@ -49,6 +50,9 @@ def main(argv=None):
             result = getattr(registry, method)(**data)
         print(json.dumps(result, indent=2))
         return 0
+    except RegistryBusy as error:  # Nothing was committed: rerun the same command later; no retry loop needed.
+        print(json.dumps({'error': str(error), 'busy': True}), file=sys.stderr)
+        return 75
     except (Rejected, OSError, ValueError, KeyError, TypeError, sqlite3.Error) as error:
         print(json.dumps({'error': str(error)}), file=sys.stderr)
         return 2

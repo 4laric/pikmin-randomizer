@@ -24,15 +24,20 @@ def admission_paused(state, now):
         now - policy.get('observed_at', 0) > policy.get('sample_ttl', 60)))
 
 
-def refresh_observation(controller):
-    """Short independent heartbeat: no scheduling, process probes or dispatch."""
-    if not controller.config.get('build_capacity', {}).get('enabled'): return
-    high, low, growth, ceiling = thresholds(controller)
+def sample(controller):
     ram = controller.memory()
     require(type(ram) in (int, float) and math.isfinite(ram) and 0 <= ram <= 100,
             'Fresh RAM observation required')
-    observed_at = controller.reg.clock()
-    with controller.reg.transaction() as state:
+    return ram
+
+
+def refresh_observation(controller):
+    """Short independent heartbeat: no scheduling, process probes or dispatch; meta row only."""
+    if not controller.config.get('build_capacity', {}).get('enabled'): return
+    high, low, growth, ceiling = thresholds(controller)
+    with controller.reg.transaction(sections=()) as state:
+        ram = sample(controller)  # Sampled under the writer lock, so commits are in sample order.
+        observed_at = controller.reg.clock()
         policy = state.setdefault('build_capacity', {})
         if policy.get('observed_at', 0) > observed_at: return
         paused = policy.get('paused', False)
@@ -65,6 +70,7 @@ def start_monitor(controller):
 
 
 def update(controller):
+    """Pool occupancy is read outside the writer; RAM is sampled and leases/queue reread under it."""
     config = controller.config.get('build_capacity', {})
     if not config.get('enabled'):
         return
@@ -72,25 +78,36 @@ def update(controller):
     base, maximum = config.get('base', 2), config.get('maximum', 4)
     require(type(base) is int and type(maximum) is int and 1 <= base <= maximum <= 8,
             'Invalid build capacity bounds')
-    ram = controller.memory()
-    require(type(ram) in (int, float) and math.isfinite(ram) and 0 <= ram <= 100,
-            'Fresh RAM observation required')
+    sample(controller)  # Fail before any registry work when RAM cannot be read.
     reg = controller.reg
-    with reg.transaction() as state:
+    seen = reg.snapshot(sections=[('lanes',), ('leases',), ('queue',), ('throughput', 'assignments'),
+                                  ('throughput', 'workers')])
+    pool = seen.get('throughput', {})
+    assignments = [a for a in pool.get('assignments', {}).values()
+                   if a['status'] in ('assigned', 'dispatched')]
+    busy = {a['worker_id'] for a in assignments}
+    idle = any(w not in busy for w in pool.get('workers', {}))
+    preparing = sum(a.get('heavy', False) and
+                    seen['lanes'][a['lane']]['state'] not in ('blocked', 'done', 'handoff_ready', 'review_ready')
+                    for a in assignments)
+    def waiters(queue):
+        return any(reg.heavy(q['resource']) and reg.probe(q['process']) != 'dead' for q in queue.values())
+    waiting = waiters(seen['queue'])
+    dead = any(reg.heavy(r) and reg.probe(l['process']) == 'dead' for r, l in seen['leases'].items())
+    with reg.transaction(sections=[('leases',), ('queue',)], append=[('events',)]) as state:
+        # Sampled under the writer lock: a slower writer can never commit an older sample.
+        ram = sample(controller)
         now = reg.clock()
-        reg.reap_dead_build_leases(state)
         policy = state.setdefault('build_capacity', {})
+        if policy.get('observed_at', 0) > now: return
+        if dead or state['leases'] != seen['leases']:
+            reg.reap_dead_build_leases(state)
+        else:
+            state['build_lease_recovery'] = dict(at=now, released=[],
+                remaining=sum(reg.heavy(k) for k in state['leases']))
+        if state['queue'] != seen['queue']:
+            waiting = waiters(state['queue'])
         old = state['settings']['max_heavy_builds']
-        pool = state.get('throughput', {})
-        assignments = [a for a in pool.get('assignments', {}).values()
-                       if a['status'] in ('assigned', 'dispatched')]
-        busy = {a['worker_id'] for a in assignments}
-        idle = any(w not in busy for w in pool.get('workers', {}))
-        waiting = any(reg.heavy(q['resource']) and reg.probe(q['process']) != 'dead'
-                      for q in state['queue'].values())
-        preparing = sum(a.get('heavy', False) and
-                        state['lanes'][a['lane']]['state'] not in ('blocked', 'done', 'handoff_ready', 'review_ready')
-                        for a in assignments)
         paused = policy.get('paused', False)
         if ram >= high: paused = True
         elif ram <= low: paused = False

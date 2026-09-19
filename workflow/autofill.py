@@ -182,9 +182,9 @@ def _adapt_worker(controller, state, spec, reserved, eligible=None):
     return []
 
 
-def autofill_status(reg):
+def autofill_status(reg, state=None):
     from contextlib import nullcontext
-    with nullcontext(reg.snapshot()) as state:
+    with nullcontext(reg.snapshot() if state is None else state) as state:
         data = copy.deepcopy(_state(state))
         data['idle_workers_count'] = len(_workers(reg, state))
         data['ready_count'] = sum(i.get('ready', False) and

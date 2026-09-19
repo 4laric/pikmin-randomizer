@@ -30,15 +30,25 @@ def stages(state):
     return result
 
 
-def observe(reg):
-    snapshot = reg.snapshot()
+SECTIONS = [('lanes',), ('control', 'launches'), ('leases',), ('consumer_verifications',),
+            ('throughput_runtime', 'autofill', 'items')]
+TRIM_SECONDS = 3600
+
+
+def observe(reg, snapshot=None):
+    """Stages come from one committed read (the caller's, when given). The write holds only the
+    meta row and an append-only history tail; the 24 h trim rewrites history at most hourly."""
+    now = reg.clock()
+    if snapshot is None: snapshot = reg.snapshot(sections=SECTIONS)
     current = stages(snapshot)
     signature = fingerprint(current)
-    if snapshot.get('stage_timing', {}).get('signature') == signature: return
-    with reg.transaction() as state:
-        current = stages(state)
+    seen = snapshot.get('stage_timing', {})
+    trim = seen.get('trimmed_at') is None or now - seen['trimmed_at'] >= TRIM_SECONDS  # Also creates the ledger.
+    if seen.get('signature') == signature and not trim: return
+    history = [('stage_timing', 'history')]
+    with reg.transaction(sections=history if trim else (), append=() if trim else history) as state:
         ledger = state.setdefault('stage_timing', dict(current={}, history=[]))
-        now = reg.clock()
+        if ledger.get('observed_at', 0) > now: return  # Never replace a newer observation.
         for key, old in list(ledger['current'].items()):
             new = current.get(key)
             if new is None or (new['stage'],new['generation']) != (old['stage'],old['generation']):
@@ -47,8 +57,10 @@ def observe(reg):
                 del ledger['current'][key]
         for key, value in current.items():
             ledger['current'].setdefault(key, dict(value, observed_since=now)).update(value)
-        ledger['history'] = [h for h in ledger['history'] if h['ended_at'] >= now-86400]
-        ledger.update(signature=fingerprint(current), observed_at=now)
+        if trim:
+            ledger['history'] = [h for h in ledger['history'] if h['ended_at'] >= now-86400]
+            ledger['trimmed_at'] = now
+        ledger.update(signature=signature, observed_at=now)
 
 
 def metrics(state, now):
@@ -72,10 +84,11 @@ def metrics(state, now):
                                      for k,v in durations.items()})
 
 
-def alert(reg):
+def alert(reg, snapshot=None):
     sent = getattr(reg, '_stage_alerts', set())
     reg._stage_alerts = sent
-    for row in metrics(reg.snapshot(), reg.clock())['current']:
+    if snapshot is None: snapshot = reg.snapshot(sections=SECTIONS + [('stage_timing', 'history')])
+    for row in metrics(snapshot, reg.clock())['current']:
         if not row['needs_attention'] or row['stage'] in ('execution','build','dependency','resource wait'): continue
         identity = (row['lane'],row['generation'],row['stage'],row['observed_since'])
         if identity in sent: continue

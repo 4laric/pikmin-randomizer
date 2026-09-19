@@ -20,13 +20,17 @@ def finished_loop(log, session, now, grace):
     return now-at>=grace and all('message=cleanup ' in line or not line.strip() for line in lines[last+1:])
 
 
-def process_inventory():
+INVENTORY=('[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); '
+    'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress')
+
+
+def process_inventory(run=subprocess.run):
+    """PowerShell writes UTF-8 (not the OEM code page), so any command line decodes; a stray byte is replaced."""
     if os.name!='nt':return None
-    result=subprocess.run(['powershell.exe','-NoProfile','-Command',
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress'],
-        capture_output=True,text=True,timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
+    result=run(['powershell.exe','-NoProfile','-Command',INVENTORY],capture_output=True,timeout=20,
+               creationflags=subprocess.CREATE_NO_WINDOW)
     if result.returncode:return None
-    return json.loads(result.stdout)
+    return json.loads(result.stdout.decode('utf-8',errors='replace'))
 
 
 def idle_tree(rows, runner, child):

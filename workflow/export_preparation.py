@@ -2,8 +2,8 @@
 from .support_actions import extra_targets, same
 
 
-def status(reg):
-    state=reg.snapshot()
+def status(reg, state=None):
+    state=reg.snapshot() if state is None else state
     scopes=state.get('throughput_runtime',{}).get('autofill',{}).get('planner_pool',{}).get('scopes',{})
     rows=[]
     for target in extra_targets(reg,state):

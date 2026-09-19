@@ -17,8 +17,15 @@ class EventWaiter:
     def token(self):
         # Read-only connection: waiting must not contend for a writer lease or wake itself.
         with closing(sqlite3.connect(self.database.as_uri() + '?mode=ro', uri=True, timeout=2)) as db:
-            row = db.execute("SELECT coalesce(json_extract(body,'$.wake_revision'),"
-                             "json_array_length(body,'$.events')) FROM registry WHERE id=1").fetchone()
+            db.execute('BEGIN')
+            schema = db.execute("SELECT json_extract(body,'$.schema') FROM registry WHERE id=1").fetchone()
+            if schema and schema[0] == 2:  # documents-v1: wake_revision lives in the meta document.
+                row = db.execute("SELECT coalesce(json_extract(body,'$.wake_revision'),(SELECT sum(json_array_length(body)) "
+                                 "FROM registry_documents WHERE section='[\"events\"]')) FROM registry_documents "
+                                 "WHERE section='' AND key=''").fetchone()
+            else:
+                row = db.execute("SELECT coalesce(json_extract(body,'$.wake_revision'),"
+                                 "json_array_length(body,'$.events')) FROM registry WHERE id=1").fetchone()
         files = []
         for path in self.paths:
             children = sorted(path.iterdir()) if path.is_dir() else [path]

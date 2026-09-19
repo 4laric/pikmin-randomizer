@@ -172,8 +172,8 @@ def complete_pool_assignments(controller):
 def pool_tick(controller, *, publish=True):
     reg = controller.reg
     settings = controller.config.get('throughput', {})
-    with reg.transaction() as state:
-        specs = dict(state.get('throughput_runtime', {}).get('launch_specs', {}))
+    state = reg.snapshot(sections=[('throughput_runtime', 'launch_specs')])
+    specs = dict(state.get('throughput_runtime', {}).get('launch_specs', {}))
     controller.config['lanes'].update(specs)
     if not settings.get('enabled', False):
         return
@@ -248,14 +248,17 @@ def pool_tick(controller, *, publish=True):
 
 
 def publish_status(controller):
-    """Publish after dispatch so the dashboard includes this tick's starts."""
+    """Publish after dispatch so the dashboard includes this tick's starts.
+
+    One committed snapshot feeds every section; historical maps are bounded before writing."""
     reg = controller.reg
+    state = reg.snapshot()
     from .stage_timing import observe, alert
-    observe(reg)
-    alert(reg)
+    observe(reg, state)
+    alert(reg, state)
     from .autofill import autofill_status
-    status = reg.throughput_status(ram_percent=controller.memory())
-    status['autofill'] = autofill_status(reg)
+    status = reg.throughput_status(ram_percent=controller.memory(), state=state)
+    status['autofill'] = autofill_status(reg, state=state)
     error_path = controller.base / 'error.json'
     if error_path.is_file():
         try:
@@ -267,31 +270,29 @@ def publish_status(controller):
             status['controller_health'] = {'status': 'error record unreadable'}
     else:
         status['controller_health'] = {'status': 'healthy'}
-    from contextlib import nullcontext
-    with nullcontext(reg.snapshot()) as state:
-        status['queue_pressure']={k:v for k,v in state.get('queue_pressure',{}).items() if k!='history'}
+    status['queue_pressure']={k:v for k,v in state.get('queue_pressure',{}).items() if k!='history'}
     from .activity_health import snapshot
-    status['worker_activity'] = snapshot(controller)
+    status['worker_activity'] = snapshot(controller, state=state)
     from .worker_roster import roster
     from .spend import hourly_spend
     from .autofill import _workers
-    with nullcontext(reg.snapshot()) as state:
-        from .delivery_contracts import audit as delivery_audit
-        status['delivery_audit'] = delivery_audit(state)
-        status['worker_roster'] = roster(state, {w['worker_id'] for w in _workers(reg, state)},
-                                         status['worker_activity'])
-        spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
-                           control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))
+    from .delivery_contracts import audit as delivery_audit
+    status['delivery_audit'] = delivery_audit(state)
+    status['worker_roster'] = roster(state, {w['worker_id'] for w in _workers(reg, state)},
+                                     status['worker_activity'])
+    spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
+                       control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))
     status['hourly_spend'] = hourly_spend(spend_state, status['at'])
     from .admission_progress import snapshot as admission_snapshot
     status['monster_admission'] = admission_snapshot(reg.root, controller.config.get('monster_admission', {}))
     from .admission_reconciliation import audit as admission_audit
     status['admission_reconciliation'] = admission_audit(reg, status['monster_admission'],
-        controller.config.get('monster_admission', {}))
+        controller.config.get('monster_admission', {}), snapshot=state)
     from .export_preparation import status as export_status
-    status['export_preparation'] = export_status(reg)
+    status['export_preparation'] = export_status(reg, state=state)
+    from .dashboard import render_dashboard, publishable
+    status = publishable(status)
     write(controller.base / 'throughput.json', status)
-    from .dashboard import render_dashboard
     target = controller.base / 'throughput.html'
     temporary = target.with_suffix('.tmp')
     temporary.write_text(render_dashboard(status), encoding='utf-8')

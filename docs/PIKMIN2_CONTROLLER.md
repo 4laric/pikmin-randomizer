@@ -329,11 +329,16 @@ The controller raises the cap one slot per minute, up to four, when RAM is below
 80% and builds are queued, or idle workers coexist with enough active heavy lanes.
 At 87% RAM it pauses new build grants and lowers the target to two; grants resume
 below or at 82%. Existing leases are never revoked. Samples older than 60 seconds
-pause new heavy grants until the controller refreshes them. Lane dispatch retains
-the separate 90% RAM ceiling. Low demand returns the target to two.
+pause new heavy grants until the controller refreshes them. RAM is sampled while
+the registry writer is held, and a write never replaces a newer stored observation,
+so the 15-second monitor and the main tick cannot commit a stale clear over a
+newer pause. Pool occupancy is read from a committed snapshot outside the writer;
+only leases, queue, the meta row and the event tail are loaded under it. Lane
+dispatch retains the separate 90% RAM ceiling. Low demand returns the target to two.
 
 The dashboard separates leases held, preparing lanes, concurrency limit and
-currently available grants. Historical utilization uses capacity-change events.
+currently available grants. Historical utilization uses capacity-change events
+and is capped at 100%.
 The policy and lease-only mode persist in the registry; removing configuration
 does not silently disable the stale-sample guard. Reconfiguration needs an explicit
 reviewed migration. The cap is a cooperative limit, not an OS memory guarantee.

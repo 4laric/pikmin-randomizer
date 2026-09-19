@@ -2,11 +2,15 @@
 
 Format 2 is opt-in. Its header fails closed in old Registry implementations.
 The original JSON is retained inside the migration transaction for recovery.
+Sectioned reads/writes decode only declared partitions plus the meta row; every
+undeclared partition is a Sealed placeholder that refuses any use.
 """
 import json
+import random
 import sqlite3
+import time
 from contextlib import contextmanager
-from .handoff import require
+from .handoff import Rejected, require
 
 MAPS = [('lanes',), ('leases',), ('queue',), ('actions',),
         ('control', 'launches'), ('throughput', 'jobs'), ('throughput', 'workers'),
@@ -61,47 +65,236 @@ def documents(state):
     return rows
 
 
-def load(db, section_path=None):
+PARTS = MAPS + LISTS
+BUSY_TIMEOUT, BUSY_ATTEMPTS = 20, 3
+
+
+class RegistryBusy(sqlite3.OperationalError):
+    """The lock stayed busy for the whole retry budget; nothing was committed."""
+
+
+def busy(exc):
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        word in str(exc).lower() for word in ('database is locked', 'database is busy', 'database table is locked'))
+
+
+def retry(step, what, *, attempts=None, sleep=time.sleep, jitter=random.random):
+    """Bounded jittered retry of one step that is safe to repeat (BEGIN, COMMIT or a whole read)."""
+    attempts = attempts or BUSY_ATTEMPTS
+    started = time.monotonic()
+    for attempt in range(attempts):
+        try:
+            return step()
+        except sqlite3.OperationalError as exc:
+            if not busy(exc): raise
+            if attempt + 1 == attempts:
+                raise RegistryBusy('Registry busy: %s still locked after %d attempts over %.0f s (%s); nothing was '
+                                   'committed, retry later' % (what, attempts, time.monotonic() - started, exc)) from exc
+            sleep(min(2.0, .2 * 2 ** attempt) * (.5 + jitter()))
+
+
+def begin(db, statement='BEGIN IMMEDIATE'):
+    """A busy BEGIN has read and written nothing, so repeating it cannot double-apply."""
+    retry(lambda: db.execute(statement), 'writer lock')
+
+
+def commit(db):
+    """A busy COMMIT leaves the transaction open; only a still-open transaction is retried."""
+    def step():
+        require(db.in_transaction, 'Registry transaction ended before commit; outcome unknown')
+        db.commit()
+    retry(step, 'commit')
+
+
+class Sealed:
+    """A partition the transaction did not declare: any read, write or copy refuses."""
+    __slots__ = ('path',)
+    def __init__(self, path): object.__setattr__(self, 'path', path)
+    def refuse(self, *args, **kwargs):
+        raise Rejected('Registry section not declared for this transaction: ' + '.'.join(self.path))
+    __getitem__ = __setitem__ = __delitem__ = __iter__ = __len__ = __contains__ = __bool__ = refuse
+    __eq__ = __ne__ = __copy__ = __deepcopy__ = __reduce_ex__ = refuse
+    __hash__ = None
+    def __getattr__(self, name): self.refuse()
+    def __setattr__(self, name, value): self.refuse()
+    def __repr__(self): return '<undeclared registry section %s>' % '.'.join(self.path)
+
+
+class Tail:
+    """Append-only history partition: earlier items stay unread and cannot change."""
+    __slots__ = ('path', 'base', 'added')
+    def __init__(self, path, base): self.path, self.base, self.added = path, base, []
+    def append(self, value): self.added.append(value)
+    def extend(self, values): self.added.extend(values)
+    def __len__(self): return self.base + len(self.added)
+    def refuse(self, *args, **kwargs):
+        raise Rejected('Registry history is append-only in this transaction: ' + '.'.join(self.path))
+    __getitem__ = __setitem__ = __delitem__ = __iter__ = __contains__ = __reversed__ = refuse
+    __eq__ = __ne__ = __copy__ = __deepcopy__ = __reduce_ex__ = __iadd__ = refuse
+    __hash__ = None
+    def __getattr__(self, name): self.refuse()
+    def __repr__(self): return '<append-only registry history %s>' % '.'.join(self.path)
+
+
+def parent_of(state, path):
+    """The existing dict holding path[-1], or None; never creates containers."""
+    node = state
+    for key in path[:-1]:
+        node = node.get(key) if isinstance(node, dict) else None
+    return node if isinstance(node, dict) else None
+
+
+def fetch(db, only=None, append=()):
+    """Raw rows inside the caller's transaction; decode() may run after it ends.
+
+only=None fetches every partition, otherwise just those (plus the meta and order
+rows); each append path fetches only its last history chunk."""
     header = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
     require(header is not None, 'Registry not initialized')
     descriptor = json.loads(header[0])
     if descriptor.get('schema') != 2:
         return descriptor, header[0]
     require(descriptor.get('storage') == 'documents-v1', 'Unknown registry storage')
-    if section_path is None:
-        records=db.execute('SELECT section, key, body FROM registry_documents')
+    if only is None:
+        records = db.execute('SELECT section, key, body FROM registry_documents')
     else:
-        wanted=['']+[json.dumps(path) for path in MAPS+LISTS if path[:len(section_path)]==section_path]
-        records=db.execute('SELECT section,key,body FROM registry_documents WHERE section IN ('+
-                           ','.join('?' for _ in wanted)+')',wanted)
+        wanted = [''] + [json.dumps(path) for path in only]
+        records = db.execute('SELECT section,key,body FROM registry_documents WHERE section IN (' +
+                             ','.join('?' for _ in wanted) + ')', wanted)
     raw = {(section, key): body for section, key, body in records}
+    for path in append:
+        section = json.dumps(path)
+        offsets = [int(k) for (k,) in db.execute('SELECT key FROM registry_documents WHERE section=?', (section,))]
+        if offsets:
+            raw[('tail:' + section, str(max(offsets)))] = db.execute(
+                'SELECT body FROM registry_documents WHERE section=? AND key=?', (section, str(max(offsets)))).fetchone()[0]
+    return descriptor, raw
+
+
+def decode(descriptor, raw, only=None):
+    """Assemble a state from fetched rows; every fetched map must match its recorded order."""
+    if isinstance(raw, str):
+        return descriptor
     state = json.loads(raw[('', '')])
-    order = json.loads(raw[('', 'order')])
-    paths = {section:tuple(json.loads(section)) for section in {s for s,k in raw if s}}
     lists = {}
     for (section, key), body in raw.items():
-        if not section: continue
-        path = paths[section]
+        if not section or section.startswith('tail:'): continue
+        path = tuple(json.loads(section))
+        require(path in PARTS, 'Unknown registry document section')
         parent = container(state, path)
         if path in MAPS:
             parent[path[-1]][key] = json.loads(body)
         else:
-            require(path in LISTS, 'Unknown registry document section')
             lists.setdefault(path, []).append((int(key), json.loads(body)))
     for path, chunks in lists.items():
         value = container(state, path)[path[-1]]
         for offset, chunk in sorted(chunks):
             require(offset == len(value), 'Incomplete registry history')
             value.extend(chunk)
+    order = json.loads(raw[('', 'order')]) if only is None or any(p in MAPS for p in only) else {}
     for section, keys in order.items():
         path = tuple(json.loads(section))
-        if section_path is not None and path[:len(section_path)]!=section_path:continue
+        if only is not None and path not in only: continue
         parent = container(state, path)
         values = parent[path[-1]]
         require(set(values) == set(keys), 'Incomplete registry map')
         parent[path[-1]] = {key: values[key] for key in keys}
     require(state.get('root') == descriptor.get('root'), 'Registry storage workspace mismatch')
-    return state, raw
+    return state
+
+
+def load(db, section_path=None):
+    only = None if section_path is None else [p for p in PARTS if p[:len(section_path)] == section_path]
+    descriptor, raw = fetch(db, only)
+    return decode(descriptor, raw, only), raw
+
+
+def declared(sections, append=()):
+    sections = tuple(dict.fromkeys(tuple(p) for p in sections))
+    append = tuple(dict.fromkeys(tuple(p) for p in append))
+    require(all(p in PARTS for p in sections) and all(p in LISTS for p in append) and not set(sections) & set(append),
+            'Unknown registry section declaration; declare documents-v1 partitions (storage.MAPS/LISTS)')
+    return sections, append
+
+
+def seal(state, raw, sections, append=()):
+    """Replace every undeclared partition with a placeholder; remember what it stood for."""
+    marks = {}
+    for path in PARTS:
+        if path in sections: continue
+        parent = parent_of(state, path)
+        if parent is None or parent.get(path[-1]) is None:
+            marks[path] = ('absent',)
+            continue
+        value = parent[path[-1]]
+        if path in append:
+            require(isinstance(value, list), 'Registry history shape changed: ' + '.'.join(path))
+            if isinstance(raw, str): chunk, base = None, len(value)
+            else:
+                tail = [(int(k), json.loads(b)) for (s, k), b in raw.items() if s == 'tail:' + json.dumps(path)]
+                chunk = tail[0] if tail else (0, [])
+                base = chunk[0] + len(chunk[1])
+            placeholder = Tail(path, base); marks[path] = ('tail', placeholder, value, chunk)
+        else:
+            placeholder = Sealed(path); marks[path] = ('sealed', placeholder, value)
+        parent[path[-1]] = placeholder
+    return marks
+
+
+def unseal(state, marks):
+    """Refuse if an undeclared partition was replaced, created or removed; restore the originals."""
+    appended = {}
+    for path, mark in marks.items():
+        parent = parent_of(state, path)
+        changed = 'Undeclared registry section changed in a sectioned transaction: ' + '.'.join(path)
+        if mark[0] == 'absent':  # Creating the parent container is fine; filling the partition is not.
+            require(parent is None or parent.get(path[-1]) is None, changed)
+            continue
+        require(parent is not None and parent.get(path[-1]) is mark[1], changed)
+        parent[path[-1]] = mark[2]
+        if mark[0] == 'tail' and mark[1].added:
+            appended[path] = (mark[1].added, mark[3])
+    return appended
+
+
+def open_sections(db, sections, append=()):
+    """Inside the caller's transaction: (state, raw, marks) for save_sections()."""
+    descriptor, raw = fetch(db, sections, append)
+    state = decode(descriptor, raw, sections)
+    return state, raw, seal(state, raw, sections, append)
+
+
+def save_sections(db, state, raw, sections, marks):
+    """Write back only the meta row, declared partitions, their order entries and appended chunks."""
+    appended = unseal(state, marks)
+    if isinstance(raw, str):
+        for path, (added, _) in appended.items():
+            container(state, path)[path[-1]].extend(added)
+        return save(db, state, raw)
+    current = documents(state)
+    writes, deletes = [], []
+    if current[('', '')] != raw[('', '')]: writes.append(('', '', current[('', '')]))
+    for path in sections:
+        section = json.dumps(path)
+        before = {k: b for (s, k), b in raw.items() if s == section}
+        after = {k: b for (s, k), b in current.items() if s == section}
+        deletes += [(section, k) for k in before.keys() - after.keys()]
+        writes += [(section, k, b) for k, b in after.items() if before.get(k) != b]
+    if any(path in MAPS for path in sections):
+        order, new = json.loads(raw[('', 'order')]), json.loads(current[('', 'order')])
+        for path in sections:
+            if path not in MAPS: continue
+            if json.dumps(path) in new: order[json.dumps(path)] = new[json.dumps(path)]
+            else: order.pop(json.dumps(path), None)
+        order = json.dumps({json.dumps(p): order[json.dumps(p)] for p in MAPS if json.dumps(p) in order})
+        if order != raw[('', 'order')]: writes.append(('', 'order', order))
+    for path, (added, (offset, chunk)) in appended.items():
+        items = chunk + added  # A full last chunk stays as stored; appends start the next one.
+        writes += [(json.dumps(path), str(offset + i), json.dumps(items[i:i+CHUNK]))
+                   for i in range(0, len(items), CHUNK) if i + CHUNK > len(chunk)]
+    db.executemany('DELETE FROM registry_documents WHERE section=? AND key=?', deletes)
+    db.executemany('INSERT INTO registry_documents VALUES (?,?,?) '
+                   'ON CONFLICT(section,key) DO UPDATE SET body=excluded.body', writes)
 
 
 @contextmanager
@@ -112,13 +305,13 @@ The callback gets {(path_tuple, key): value}. Missing records stay None and
 cannot be inserted here: creation must also update ordered membership.
 """
     require(not getattr(reg._transaction_local, 'active', False), 'Nested registry write transaction')
-    db = sqlite3.connect(reg.path, timeout=30)
+    db = sqlite3.connect(reg.path, timeout=BUSY_TIMEOUT)
     reg._transaction_local.active = True
     from .write_gate import gate
     writer=gate(reg.path);entered=False
     try:
         writer.acquire();entered=True
-        db.execute('BEGIN IMMEDIATE')
+        begin(db)
         raw_header = db.execute('SELECT body FROM registry WHERE id=1').fetchone()[0]
         header = json.loads(raw_header)
         require(header['root'] == str(reg.root) and header['schema'] in (1,2), 'Registry workspace/schema mismatch')
@@ -162,7 +355,7 @@ cannot be inserted here: creation must also update ordered membership.
                 if after!=before:
                     db.execute('UPDATE registry_documents SET body=? WHERE section=? AND key=?',
                                (after,json.dumps(path) if path else '',key))
-        db.commit()
+        commit(db)
     except BaseException:
         db.rollback();raise
     finally:
@@ -173,18 +366,20 @@ cannot be inserted here: creation must also update ordered membership.
 
 def read_record(reg, path, key):
     """Read one committed record without decoding historical unrelated rows."""
-    db=sqlite3.connect(reg.path,timeout=30)
-    try:
-        db.execute('PRAGMA query_only=ON');db.execute('BEGIN')
-        header=json.loads(db.execute('SELECT body FROM registry WHERE id=1').fetchone()[0])
-        require(header['root']==str(reg.root) and header['schema'] in (1,2),'Registry workspace/schema mismatch')
-        if header['schema']==1:
-            return header if path==() and key=='' else container(header,path).get(path[-1],{}).get(key)
-        require(header.get('storage')=='documents-v1','Unknown registry storage')
-        row=db.execute('SELECT body FROM registry_documents WHERE section=? AND key=?',
-                       (json.dumps(path) if path else '',key)).fetchone()
-        return json.loads(row[0]) if row else None
-    finally:db.close()
+    def read():
+        db=sqlite3.connect(reg.path,timeout=BUSY_TIMEOUT)
+        try:
+            db.execute('PRAGMA query_only=ON');db.execute('BEGIN')
+            header=json.loads(db.execute('SELECT body FROM registry WHERE id=1').fetchone()[0])
+            require(header['root']==str(reg.root) and header['schema'] in (1,2),'Registry workspace/schema mismatch')
+            if header['schema']==1:
+                return header if path==() and key=='' else container(header,path).get(path[-1],{}).get(key)
+            require(header.get('storage')=='documents-v1','Unknown registry storage')
+            row=db.execute('SELECT body FROM registry_documents WHERE section=? AND key=?',
+                           (json.dumps(path) if path else '',key)).fetchone()
+            return json.loads(row[0]) if row else None
+        finally:db.close()
+    return retry(read,'registry read')
 
 
 def save(db, state, previous):

@@ -5,11 +5,12 @@ import re
 from .provider_recovery import _CLEANUP, idle_terminal
 
 
-def snapshot(controller, *, notices=True):
+def snapshot(controller, *, notices=True, state=None):
     reg = controller.reg
     now = reg.clock()
     result = {}
-    for launch in reg.snapshot().get('control', {}).get('launches', {}).values():
+    state = reg.snapshot(sections=[('control', 'launches')]) if state is None else state
+    for launch in state.get('control', {}).get('launches', {}).values():
         if launch.get('status') != 'running':
             continue
         directory = controller.launch_directory(launch['id'])

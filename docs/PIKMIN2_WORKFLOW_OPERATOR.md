@@ -472,9 +472,27 @@ format. The latter keeps lanes, launches, assignments, costs and other keyed dat
 in indexed SQLite rows, with chunked event/stage histories. Transactions remain
 atomic across all rows and snapshots read a single committed version. Map insertion
 order and all evidence/ownership/generation records are preserved. Heartbeats,
-controller heartbeat batches and launch completion use narrow fenced updates;
-control-status reads only the control section. Other full-state operations still
-decode/encode their snapshot and need further profiling.
+controller heartbeat batches and launch completion use narrow fenced updates.
+`transaction(sections=[...], append=[...])` loads and saves only the named
+documents-v1 partitions (storage.MAPS/LISTS) plus the meta row; an `append` history
+(events, stage_timing.history) exposes only its last chunk and accepts appends.
+Every other partition is a sealed placeholder: reading, copying or replacing it
+refuses with `Registry section not declared for this transaction` and rolls back,
+on both storage formats. `snapshot(sections=[...])` is the matching read. The
+controller's monitors use these: build capacity (meta + leases/queue + event tail),
+queue pressure and helper-preparation timing (meta only), stage timing (meta +
+history tail; the 24 h trim loads history at most hourly), controller RAM scalars
+and model selection (`control_meta()`, the meta row alone). Admission
+reconciliation, worker parking and helper reservation counts compute from a
+committed read and write only when something changed. On the live registry a
+meta-only write holds the writer about 0.04 s against 0.6 s for a full transaction.
+Snapshots copy rows inside the read transaction and decode after it ends, so a
+reader holds SQLite's SHARED lock about 0.1 s instead of 0.45 s.
+Every BEGIN, COMMIT and snapshot read that meets `database is locked` retries up
+to three times (20 s SQLite timeout each, jittered backoff). After the budget it
+raises `RegistryBusy` (`Registry busy: ... nothing was committed, retry later`);
+`scripts/pikmin2_workflow.py` exits 75 with `"busy": true`, so callers rerun the
+same command instead of writing their own retry loops.
 Controller threads share a FIFO writer gate before SQLite acquisition, preventing
 fast maintenance loops from repeatedly overtaking refill. SQLite still provides
 the cross-process transaction fence. Unchanged published artifacts are verified
@@ -495,6 +513,33 @@ direct UPDATE scripts: schema-2 headers and write guards reject legacy writers.
 The backup is migration-time history, not a current rollback image; restoring it
 after new progress would lose updates. Any downgrade must export the current state
 under the same single-writer maintenance fence.
+
+WAL journal (operator-run, never automatic). Stop the controller and its restart
+wrapper and let worker CLIs finish, then run
+`py -3.12 <checkout>/scripts/workflow_module.py registry_wal --root <root>` to see
+the current mode and whether the registry is quiesced, and add `--apply` to switch.
+It refuses unless the recorded controller is confirmed stopped and no connection
+holds the file, then sets `journal_mode=WAL` and verifies that a full snapshot is
+unchanged, a `mode=ro` reader and the wake-up waiter still read it, and
+`quick_check` passes; a failed check restores the previous mode. WAL keeps the
+BEGIN IMMEDIATE writer fence and stops readers blocking commits. The mode is stored
+in the file, so older releases use it too. `--mode delete --apply` switches back.
+
+Archive (operator-run, never automatic): `py -3.12 <checkout>/scripts/workflow_module.py
+registry_archive --root <root> --done-days N` reports what would move; `--apply`
+(quiesced registry required) moves events, control.launches and actions of lanes done
+for more than N >= 1 days into output/workflow/registry-archive.sqlite3 and VACUUMs.
+Each record is copied with its sha256 and re-read before one registry transaction
+removes it, and that transaction refuses unless every record is still identical.
+Lanes with an in-flight launch, claimed action, lease/queue entry, open assignment
+or pending consumer verification are skipped. Archived lanes carry `archived`
+tombstones naming the run; an interrupted run is settled on the next run (tombstoned:
+moved; otherwise discarded, its records never left the registry).
+`registry_archive.history()` and `merged()` give readers the full history. Lanes
+themselves never move, so landing_audit and the no-progress report read them as
+before; review-packet lander attribution uses running launches only; analytics and
+the dashboard look back at most a day. Anything that needs older events, launches
+or actions of done lanes reads `merged(root, snapshot)`.
 
 Every later recovery generation of an unresolved consumer now gets its own pending
 verification record and current ID in the launch instructions, pinned to unchanged

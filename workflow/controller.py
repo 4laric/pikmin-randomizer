@@ -81,7 +81,7 @@ class Controller:
             if used<=self.config.get('ram_low',72):value=False
             return value
         used=self.memory()
-        observed=self.reg.control_status()
+        observed=self.reg.control_meta()
         desired=paused(observed,used)
         if (desired==observed.get('ram_paused',False) and
                 self.reg.clock()-observed.get('ram_observed_at',0)<15):
@@ -768,8 +768,8 @@ class Controller:
         update_build_capacity(self)
         # Existing pooled runs must remain replayable even after pool scheduling
         # is disabled, including recovery/dependency work earlier in this tick.
-        with self.reg.transaction() as state:
-            self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
+        state = self.reg.snapshot(sections=[('throughput_runtime', 'launch_specs')])
+        self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
         burst = min(4, max(1, int(self.config.get('launches_per_tick', 1))))
         early_launches = 0
         if not getattr(self, '_dispatch_monitor', None):
