@@ -24,14 +24,23 @@ Commands below run from the canonical root, `C:/Users/alari/pikmin-randomizer`.
 | Evaluate a committed review packet | `py -3.12 scripts/workflow_module.py review_packet verify --root <root> --packet <path>` |
 
 `inspect` defaults to `--root .`, reads with SQLite `mode=ro` and `PRAGMA query_only`,
-decodes only the sections a verb needs, never imports the registry's write path and
-works on the live WAL registry while the writer is contended. `--db <file>` reads a
-backup copy without the workspace check, `--config` another config, `--json` gives
-everything. `stuck` probes worker processes for the available-worker count (several
-seconds); `needs-you` does not. `workflow.operator` prints the same Needs-you and
-blocker sections above its receipt actions and folds done-lane export-evidence audit
-rows into one count line. The dashboard, output/workflow/controller/throughput.html,
-shows Needs you and the blocker groups at the top, bounded to 20 asks and 12 groups.
+decodes only the sections a verb needs, never imports `workflow.registry` and never
+calls a write path (it shares pure helpers with modules that also write; its registry
+view refuses every write), and works on the live WAL registry while the writer is
+contended. `--db <file>` reads a backup copy without the workspace check, with the
+config of the copy's own root unless `--root` or `--config` is given; when no config
+is found, a machine-wide `config_unread` item says so and nothing config-derived is
+claimed. `--json` gives everything; text output is UTF-8 whatever the console code
+page. `lane`, `launches` and `assignment` refuse an unknown lane key; `lane` and
+`launches` include launches moved to the registry archive (`archived`). `stuck`
+probes worker processes for the available-worker count (several seconds);
+`needs-you` does not. `workflow.operator` prints the same Needs-you and blocker
+sections above its receipt actions and folds done-lane export-evidence audit rows
+into one count line. The dashboard, output/workflow/controller/throughput.html, shows
+Needs you and the blocker groups at the top with every list capped (20 items, 12
+groups, 10 lanes per item, 400 characters of text). If the view cannot be built, the
+dashboard and `workflow.operator` say "Needs you unavailable" with the error, never
+an empty list.
 Workers are told to read state with the same `inspect` command (the release's
 absolute path) instead of writing Registry or sqlite scripts.
 
@@ -41,25 +50,32 @@ absolute path) instead of writing Registry or sqlite scripts.
 
 | Kind | Meaning | What to do |
 |---|---|---|
-| `user_decision` | A lane recorded a user-owned decision (support_actions `external`), grouped per lane and kind with how often it was asked, first-ask age and how many blocked lanes wait on it (transitively) | Decide. There is no operator write command yet: give the answer as hashed evidence the lane or a reviewer lane can cite, or retire the lane if the answer is no |
-| `user_asset` | A lane needs an asset only you can supply | Put it at a stable path and record its path and sha256 where the lane can cite it |
-| `toolchain` | An ask about the compiler/toolchain (listed for 72 h after the last ask, whatever the asking lane's state) | Fix the machine; native builds and fixture reruns fail until then |
+| `user_decision` | A lane recorded a user-owned decision (support_actions `external`) and still waits at the generation it was asked about (a relaunched lane's older asks drop out). One row per lane and kind with how often it was asked, first-ask age, up to three distinct wordings and how many blocked lanes wait on it (transitively) | Decide. There is no operator write command yet: give the answer as hashed evidence the lane or a reviewer lane can cite, or retire the lane if the answer is no |
+| `user_asset` | A lane needs an asset only you can supply (same openness rule) | Put it at a stable path and record its path and sha256 where the lane can cite it |
+| `toolchain` | A `user_asset` ask naming the compiler/toolchain (decisions never count): listed while its lane still waits on it, and for 72 h after the ask once that lane moved on | Fix the machine; native builds and fixture reruns fail until then |
 | `prerequisite_needs_human` | A prerequisite request was offered to the coordinator twice without a disposition | Link a producer (`prerequisite_queue` resolve) or record the user-owned `external_input` |
-| `unsupervised_lane` | A stopped lane has no launch config, so nothing wakes it | `configure-lane-launch`, or retire it |
-| `shared_review_target_dead` | A routed shared-review owner is stopped and unsupervised; its packet is held | Supervise the owner or fix `shared_review_routing.files` |
+| `unsupervised_lane` | A stopped lane has no launch config, so nothing wakes it (dropped once the lane is launch-configured or done) | `configure-lane-launch`, or retire it |
+| `shared_review_target_dead` | A routed shared-review owner is stopped and unsupervised; its packet is held (dropped once the owner is configured, alive or done) | Supervise the owner or fix `shared_review_routing.files` |
 | `shepherd_escalation` | Three failed shepherd calls for one packet, or an uncertain shepherd launch | Read output/workflow/controller/shepherd-attention.json and the escalated notices |
-| `packet_refused` | A review packet request was refused for lack of `integration_lines.root` | Declare the line, land the packet there, re-request |
+| `packet_refused` | A recorded review packet request was refused for lack of `integration_lines.root` (only when the line was removed between request and decision) | Declare the line, land the packet there, re-request |
 
 **Machine-wide** lists the controller down (or no claim), a RAM launch pause, a
-build-admission pause, and `integration_lines_undeclared` (review packets cannot be
-re-pinned, requested or decided; landings are checked against any branch).
+build-admission pause, `config_unread`, and `integration_lines_undeclared` (review
+packets cannot be re-pinned, requested or decided; landings are checked against any
+branch; the item counts open lanes holding shared hooks). `review_packet request`
+refuses before recording anything while the line is undeclared, so that item, not
+`packet_refused`, is where those refusals show.
 
 **Blocked lanes by structured blocker.** Each blocked or waiting lane's references
-come from its dependency text (`#N` and `owner/repo#N` both become `#N`; lane names
-become lanes), its producer link at current pins, the classification of its current
-snapshot, its structured `shared_hooks`, and open user asks. A lane's own issue and
-name are dropped; `#632` (captain safety policy) is never a blocker. A lane with
-several references appears in each group. Each reference resolves to its owner:
+come from its dependency text (`#N` and `4laric/pikmin-randomizer#N` become `#N`;
+another repository's `owner/repo#N` stays external and no local lane owns it; lane
+names become lanes), its producer link at current pins, the classification of its
+current snapshot, its structured `shared_hooks`, and open user asks. A lane's own
+issue and name are dropped; `#632` (captain safety policy) is never a blocker. Each
+reference resolves to its owner lane, and groups key on that owner: `#730` and
+`challenge-stage-table-extension-native` form one group labelled with both. References
+no lane owns (a decision issue, a user ask, an unowned or external issue) group on
+the reference. A lane with several owners appears in each group. Owner states:
 
 | Owner state | Meaning | Accountable / next action |
 |---|---|---|
@@ -83,7 +99,10 @@ them on the autofill item as `acceptance_lint`.
 
 `throughput_runtime.autofill.clustered_blockers` is the same grouping restricted to
 two or more lanes (field `covered` when the owner is live or holds a handoff); lanes
-with no structured reference still cluster on identical normalized text.
+with no structured reference still cluster on identical normalized text. An empty
+`consumer_wakeup.umbrella_issues` means no decision issues here, in `inspect` and in
+the wake gate alike. On the live registry of 2026-09-19 it found 10 clusters: the
+`#186` decision (15 lanes) and nine owner lanes.
 
 ## Lane states
 
@@ -213,8 +232,9 @@ Nothing writes this for you; add it to a settings file yourself if you want thes
 reads to run without prompts. Every entry below is read-only for all arguments.
 Do not allowlist `scripts/pikmin2_workflow.py`, `workflow_module.py` as a whole,
 `registry_wal`, `registry_archive`, `landing_audit` (its `--out` writes a file),
-`review_packet` beyond `verify`, `delivery_contracts` (`--request` writes) or
-`Deploy-WorkflowRelease.ps1`.
+`review_packet` beyond `verify`, `delivery_contracts` (`--request` writes),
+`Deploy-WorkflowRelease.ps1`, or `git diff`/`git log` (`--output=<file>` writes;
+Claude Code already treats their plain forms as read-only).
 
 ```json
 {
@@ -226,9 +246,6 @@ Do not allowlist `scripts/pikmin2_workflow.py`, `workflow_module.py` as a whole,
       "Bash(py -3.12 scripts/workflow_module.py service status:*)",
       "Bash(py -3.12 scripts/workflow_module.py no_progress:*)",
       "Bash(py -3.12 scripts/workflow_module.py review_packet verify:*)",
-      "Bash(git status:*)",
-      "Bash(git log:*)",
-      "Bash(git diff:*)",
       "Bash(git worktree list:*)",
       "Bash(git rev-parse:*)"
     ]

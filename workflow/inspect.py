@@ -4,9 +4,10 @@
   verbs: stuck (default) | needs-you | lane <key> | launches <key> | assignment <lane> | config
 
 The registry is opened with SQLite URI mode=ro plus PRAGMA query_only, decoding only the sections a
-verb needs; this module never imports workflow.registry or the writer gate and has no write path, so
-it works on a live WAL registry, a backup copy, and while the writer lock is contended. --db reads
-any registry file (a copy) without the workspace check."""
+verb needs; this module never imports workflow.registry or the writer gate and never calls a write
+path (it shares pure helpers with modules that also hold writers; View refuses every write), so it
+works on a live WAL registry, a backup copy, and while the writer lock is contended. --db reads any
+registry file (a copy) without the workspace check, with the config of the registry's own root."""
 import argparse
 import json
 from pathlib import Path
@@ -22,12 +23,13 @@ from .handoff import Rejected, digest, local_path, require
 CONFIG = 'output/workflow/controller/config.json'
 REGISTRY = 'output/workflow/registry.sqlite3'
 IN_FLIGHT = ('intent', 'spawned', 'running', 'exiting')
-TOOLCHAIN = re.compile(r'\b(toolchain|compiler|g\+\+|gcc|cc1(plus)?|mingw\w*|msys\w*|cmake|ninja|linker)\b', re.I)
-MACHINE_SECONDS = 72 * 3600  # A machine-wide ask stays listed this long after it was last raised.
+TOOLCHAIN = re.compile(r'\b(toolchain|compiler|g\+\+(?!\w)|gcc|cc1(plus)?|mingw\w*|msys\w*|cmake|ninja|linker)(?!\w)', re.I)
+MACHINE_SECONDS = 72 * 3600  # A toolchain asset ask whose lane moved on stays listed this long after it was raised.
 NOTICES = ('unsupervised_lane', 'shared_review_target_dead')
 STUCK = [('lanes',), ('leases',), ('queue',), ('control', 'launches'), ('control', 'notices'), ('control', 'shepherd'), ('support_actions',),
-         ('delivery_contracts',), ('throughput', 'workstreams'), ('throughput', 'workers'), ('throughput', 'assignments')]
-LANE = STUCK + [('consumer_verifications',), ('throughput_runtime', 'launch_specs')]
+         ('delivery_contracts',), ('throughput', 'workstreams'), ('throughput', 'workers'), ('throughput', 'assignments'),
+         ('throughput_runtime', 'launch_specs')]
+LANE = STUCK + [('consumer_verifications',)]
 
 
 def read(path, sections=None, root=None):
@@ -82,10 +84,22 @@ class View:
 
 
 def config(root, path=None):
-    """The controller config, read-only; {} when absent."""
+    """The controller config, read-only; None when absent (callers say so rather than read it as empty)."""
     path = Path(path) if path else Path(root) / CONFIG
-    if not path.is_file(): return {}
+    if not path.is_file(): return None
     return json.loads(path.read_text(encoding='utf-8-sig'))
+
+
+def umbrella(cfg):
+    """Decision issues no producer owns: consumer_wakeup.umbrella_issues when set (even []), else the default."""
+    from .blockers import DECISIONS
+    settings = (cfg or {}).get('consumer_wakeup', {})
+    return tuple(settings['umbrella_issues']) if 'umbrella_issues' in settings else DECISIONS
+
+
+def configured(cfg, state):
+    """Lanes the controller can launch: config lanes plus autofill launch specs (as lane() and the wake gate see them)."""
+    return dict((cfg or {}).get('lanes') or {}, **state.get('throughput_runtime', {}).get('launch_specs', {}))
 
 
 def age(now, at):
@@ -106,39 +120,53 @@ def downstream(found, state, key):
 
 
 def asks(state, now, found, table):
-    """Open user_decision/user_asset asks, one per lane and kind, plus machine-wide (toolchain) asks."""
+    """Open user_decision/user_asset asks, one per lane and kind, plus machine-wide (toolchain) asset asks.
+
+    An ask is open while its lane still waits at the generation it was asked about (blockers.asked);
+    a relaunched lane's older asks are superseded. Rewordings of one lane's ask merge into one row
+    that keeps its distinct wordings. A toolchain user_asset ask is machine-wide: listed while its
+    lane waits on it, and for MACHINE_SECONDS after it was raised once that lane moved on."""
+    from .blockers import asked
     rows, machine = {}, {}
+    def note(row, at, required, identity):
+        if type(at) in (int, float):
+            row['first_at'] = at if row.get('first_at') is None else min(row['first_at'], at)
+        row['asked'] += 1
+        wording = ' '.join(required.casefold().split())
+        if (at or 0) >= row['wordings'].get(wording, (-1,))[0]: row['wordings'][wording] = (at or 0, required)
+        if (at or 0) >= (row.get('last_at') or 0): row.update(last_at=at, required=required, action=identity)
     for identity, action in state.get('support_actions', {}).items():
         details = action.get('details') or {}
         if action.get('action') != 'external' or details.get('owner') != 'user': continue
         key, required = action.get('key'), str(details.get('required') or action.get('reason') or '')
-        lane = state['lanes'].get(key) or {}
-        if TOOLCHAIN.search(required):
-            if age(now, action.get('at')) is not None and age(now, action['at']) <= MACHINE_SECONDS:
-                row = machine.setdefault('toolchain', dict(kind='toolchain', lanes=set(), asked=0, first_at=action['at']))
-                row.update(asked=row['asked'] + 1, last_at=max(row.get('last_at', 0), action['at']), required=required)
+        current = asked(action, state['lanes'].get(key))
+        if details.get('kind') == 'user_asset' and TOOLCHAIN.search(required):
+            recent = age(now, action.get('at')) is not None and age(now, action['at']) <= MACHINE_SECONDS
+            if current or recent:
+                row = machine.setdefault('toolchain', dict(lanes=set(), waiting=set(), asked=0, wordings={}))
+                note(row, action.get('at'), required, identity)
                 row['lanes'].add(key)
+                if current: row['waiting'].add(key)
             continue
-        if lane.get('state') == 'done': continue
-        row = rows.setdefault((key, details.get('kind')), dict(kind=details.get('kind'), lane=key, asked=0,
-                                                                  first_at=action.get('at'), wordings=set()))
-        row['asked'] += 1
-        row['wordings'].add(' '.join(required.casefold().split()))
-        if (action.get('at') or 0) >= (row.get('last_at') or 0):
-            row.update(last_at=action.get('at'), required=required, action=identity)
+        if not current: continue
+        row = rows.setdefault((key, details.get('kind')), dict(kind=details.get('kind'), lane=key, asked=0, wordings={}))
+        note(row, action.get('at'), required, identity)
+    def wordings(row):  # Distinct wordings, newest first, bounded.
+        return [w for _, w in sorted(row['wordings'].values(), key=lambda p: -p[0])][:3]
     result = []
     for row in rows.values():
         waiting = downstream(found, state, row['lane'])
         result.append(dict(kind=row['kind'], lane=row['lane'], what=row['required'], asked=row['asked'],
-            distinct_wordings=len(row['wordings']), age_seconds=age(now, row['first_at']),
+            distinct_wordings=len(row['wordings']), wordings=wordings(row), age_seconds=age(now, row.get('first_at')),
             last_asked_seconds=age(now, row['last_at']), downstream=len(waiting), downstream_lanes=waiting[:10],
             next=('Decide, then give the answer to the lane as hashed evidence it can cite (a reviewer lane records '
                   'approvals; there is no operator write command); retire the lane if the answer is no'
                   if row['kind'] == 'user_decision' else
                   'Supply the asset at a stable path, then record its path and sha256 where the lane can cite it')))
     for row in machine.values():
-        result.append(dict(kind='toolchain', lane=None, lanes=sorted(row['lanes']), what=row['required'], asked=row['asked'],
-            age_seconds=age(now, row['first_at']), last_asked_seconds=age(now, row['last_at']), machine=True,
+        result.append(dict(kind='toolchain', lane=None, lanes=sorted(row['lanes']), waiting_lanes=sorted(row['waiting']),
+            what=row['required'], asked=row['asked'], distinct_wordings=len(row['wordings']), wordings=wordings(row),
+            age_seconds=age(now, row.get('first_at')), last_asked_seconds=age(now, row['last_at']), machine=True,
             next='Check the toolchain on this machine; native builds and fixture reruns fail until it works'))
     return sorted(result, key=lambda r: (-r.get('downstream', 0), -(r['age_seconds'] or 0)))
 
@@ -155,9 +183,17 @@ def needs_you(state, now, *, cfg=None, base=None, probe=None, found=None, table=
             what=request['needs_human'].get('reason'), age_seconds=age(now, request['needs_human'].get('at')), request=identity,
             next='Link a producer through prerequisite_queue resolve, or record the user-owned external_input'))
     notices = state.get('control', {}).get('notices', {})
+    launchable = configured(cfg, state) if cfg is not None else None  # Unknown without a config: keep the notice.
+    def settled(notice):
+        """The condition the notice reported is gone: the lane is done, launch-configured, or (owner) alive."""
+        subject = state['lanes'].get(notice.get('lane')) or {}
+        if subject.get('state') == 'done': return True
+        if launchable is not None and notice.get('lane') in launchable: return True
+        return (notice['kind'] == 'shared_review_target_dead' and probe is not None and bool(subject.get('process'))
+                and probe(subject['process']) == 'alive')
     seen = {}
     for notice in notices.values():
-        if notice.get('status') != 'pending' or notice.get('kind') not in NOTICES: continue
+        if notice.get('status') != 'pending' or notice.get('kind') not in NOTICES or settled(notice): continue
         row = seen.setdefault((notice.get('lane'), notice['kind']), dict(kind=notice['kind'], lane=notice.get('lane'), count=0,
                                                                         first_at=notice.get('at'), detail=notice.get('detail')))
         row['count'] += 1
@@ -171,9 +207,9 @@ def needs_you(state, now, *, cfg=None, base=None, probe=None, found=None, table=
     attention = None
     if base is not None and (Path(base) / 'shepherd-attention.json').is_file():
         path = Path(base) / 'shepherd-attention.json'
-        try: attention = json.loads(path.read_text(encoding='utf-8-sig'))
-        except (OSError, ValueError): attention = dict(reason='shepherd-attention.json unreadable')
-        attention = dict(attention if isinstance(attention, dict) else {}, written_at=path.stat().st_mtime)
+        try: attention, written = json.loads(path.read_text(encoding='utf-8-sig')), path.stat().st_mtime
+        except (OSError, ValueError): attention, written = dict(reason='shepherd-attention.json unreadable'), None
+        attention = dict(attention if isinstance(attention, dict) else {}, written_at=written)
         active = (state.get('control') or {}).get('shepherd') or {}
         if attention.get('action') and attention['action'] != active.get('id'):
             attention = None  # An uncertain shepherd launch that has since finished or been replaced.
@@ -184,6 +220,9 @@ def needs_you(state, now, *, cfg=None, base=None, probe=None, found=None, table=
             '%d notices escalated after repeated shepherd failures' % len(escalated), escalated_notices=len(escalated),
             escalated_kinds=sorted({n['kind'] for n in escalated}), age_seconds=age(now, (attention or {}).get('written_at')),
             next='Read output/workflow/controller/shepherd-attention.json and the escalated notices; resolve or retire them'))
+    # review_packet.request refuses before recording anything while integration_lines.root is undeclared, so
+    # that case is machine()'s integration_lines_undeclared item; a refused row appears only when the line was
+    # removed between request and decision.
     for identity, row in state.get('packet_requests', {}).items():
         if row.get('status') == 'refused' and 'integration_lines' in str(row.get('error')):
             items.append(dict(kind='packet_refused', lane=(row.get('requested_by') or {}).get('lane'), request=identity,
@@ -192,9 +231,14 @@ def needs_you(state, now, *, cfg=None, base=None, probe=None, found=None, table=
     return sorted(items, key=lambda r: (r['kind'] in ('shepherd_escalation',), -(r.get('downstream') or 0), -(r['age_seconds'] or 0)))
 
 
-def machine(state, now, *, cfg=None, probe=None):
-    """Machine-wide blockers: controller down, RAM or build pause, undeclared integration lines."""
+def machine(state, now, *, cfg=None, probe=None, config_path=None):
+    """Machine-wide blockers: controller down, RAM or build pause, undeclared integration lines; cfg None
+    (no config read) is itself an item, and nothing config-derived is claimed."""
     result = []
+    if cfg is None:
+        result.append(dict(kind='config_unread', what='Controller config not found%s: integration lines, launch configs '
+            'and umbrella issues are unknown to this view' % (' at %s' % config_path if config_path else ''),
+            next='Pass --root <canonical root> or --config <path>'))
     control = state.get('control', {})
     identity = control.get('controller')
     if probe is not None and identity:
@@ -220,19 +264,21 @@ def machine(state, now, *, cfg=None, probe=None):
     return result
 
 
-def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None):
-    """Needs-you first, then blocked lanes grouped by structured blocker, parked lanes, and circular waits."""
+def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None, config_path=None):
+    """Needs-you first, then blocked lanes grouped by structured blocker, parked lanes, and circular waits.
+
+    cfg None means no controller config was read (a machine item says so)."""
     from . import blockers
     from .no_progress import parked
     from .producer_contract import acceptance_lint
-    decisions = tuple((cfg or {}).get('consumer_wakeup', {}).get('umbrella_issues') or blockers.DECISIONS)
+    decisions = umbrella(cfg)
     found, table = blockers.index(state, decisions)
     grouped = blockers.groups(state, decisions, limit=limit)
     waiting = sorted(k for k, l in state['lanes'].items() if l.get('state') in blockers.WAITING)
     rest = [dict(p, refs=[blockers.label(r) for r in found.get(p['lane'], [])]) for p in parked(state, now)]
     lint = [dict(lane=k, findings=f) for k in waiting for f in [acceptance_lint(state['lanes'][k].get('acceptance'))] if f]
     result = dict(at=now, needs_you=needs_you(state, now, cfg=cfg, base=base, probe=probe, found=found, table=table),
-                  machine=machine(state, now, cfg=cfg, probe=probe), blocked=len(waiting), groups=grouped['groups'],
+                  machine=machine(state, now, cfg=cfg, probe=probe, config_path=config_path), blocked=len(waiting), groups=grouped['groups'],
                   total_groups=grouped['total_groups'], cycles=grouped['cycles'], unstructured=grouped['unstructured'],
                   parked=rest, catch22=lint)
     if view is not None:
@@ -241,13 +287,22 @@ def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None)
     return result
 
 
-def bounded(report, items=20, groups=12, lanes=10):
-    """A stuck report cut to a fixed size for the dashboard; counts say what was left out."""
-    cut = [dict(g, lanes=g['lanes'][:lanes]) for g in report['groups'][:groups]]
-    return dict(report, needs_you=[{k: v for k, v in r.items() if k != 'downstream_lanes'} for r in report['needs_you'][:items]],
-                groups=cut, parked=report['parked'][:items], catch22=report['catch22'][:items],
-                omitted=dict(needs_you=max(0, len(report['needs_you']) - items), groups=max(0, report['total_groups'] - len(cut)),
-                             parked=max(0, len(report['parked']) - items), catch22=max(0, len(report['catch22']) - items)))
+def bounded(report, items=20, groups=12, lanes=10, chars=400):
+    """A stuck report cut to a fixed size for the dashboard: every list and text is capped; counts say what was left out."""
+    def small(row):
+        return {k: (v[:lanes] if isinstance(v, list) else v[:chars] if isinstance(v, str) else v)
+                for k, v in row.items() if k != 'downstream_lanes'}
+    def cut(name):
+        return [small(r) for r in report.get(name, [])[:items]], max(0, len(report.get(name, [])) - items)
+    result, omitted = dict(report), {}
+    for name in ('needs_you', 'machine', 'parked', 'catch22'):
+        result[name], omitted[name] = cut(name)
+    result['groups'] = [small(g) for g in report['groups'][:groups]]
+    omitted['groups'] = max(0, report['total_groups'] - len(result['groups']))
+    for name in ('unstructured', 'cycles'):
+        result[name] = [c[:lanes] if isinstance(c, list) else c for c in report.get(name, [])[:items]]
+        omitted[name] = max(0, len(report.get(name, [])) - items)
+    return dict(result, omitted=omitted)
 
 
 def lane(state, key, view, cfg, now=None):
@@ -260,19 +315,19 @@ def lane(state, key, view, cfg, now=None):
     require(key in state['lanes'], 'Unknown lane: ' + key)
     row = state['lanes'][key]
     table = blockers.owners(state)
-    decisions = tuple(cfg.get('consumer_wakeup', {}).get('umbrella_issues') or blockers.DECISIONS)
+    decisions = umbrella(cfg)
     refs = []
     for ref in blockers.refs(state, key, table, decisions):
         owner, how = blockers.owner(state, ref, table, decisions)
         refs.append(dict(ref=blockers.label(ref), owner=owner, owner_state=how))
-    configured = dict(cfg.get('lanes') or {}, **state.get('throughput_runtime', {}).get('launch_specs', {}))
+    launchable = configured(cfg, state)
     def available(name):
-        entry = configured[name]
+        entry = launchable[name]
         if entry.get('autofill_proof'):
             from .autofill import launch_files_unchanged
             if not launch_files_unchanged(view, entry): return False
         return all(view.probe(o) == 'dead' for o in entry.get('legacy_supervisors', []))
-    launches = sorted((x for x in state.get('control', {}).get('launches', {}).values() if x['lane'] == key), key=lambda x: x['created_at'])
+    launches, archived = history(view.root, state, key)
     notices = [dict(kind=n['kind'], status=n['status'], age_seconds=age(now, n.get('at')), repeats=n.get('repeats'),
                     detail=n.get('detail')) for n in state.get('control', {}).get('notices', {}).values()
                if n.get('lane') == key and n.get('status') == 'pending']
@@ -283,11 +338,21 @@ def lane(state, key, view, cfg, now=None):
         next_action=row.get('next_action'), dependencies=row.get('dependencies', []), refs=refs,
         parked=row.get('parked'), wake_after=row.get('wake_after'), stall_streak=row.get('stall_streak'),
         capacity_parked=row.get('capacity_parked'), acceptance_lint=acceptance_lint(row.get('acceptance')),
-        launches=[compact(x, now) for x in launches[-5:]], launch_count=len(launches), notices=notices[-10:],
-        worktrees=worktrees(view.root, row))
+        launches=[compact(x, now) for x in launches[-5:]], launch_count=len(launches), archived_launches=archived,
+        notices=notices[-10:], worktrees=worktrees(view.root, row))
     if row.get('state') == 'blocked':
-        result['wake'] = explain(view, state, key, configured, available, cfg)
+        result['wake'] = (explain(view, state, key, launchable, available, cfg) if cfg is not None else
+                          dict(gate='config_unread', detail='No controller config read; pass --root or --config'))
     return result
+
+
+def history(root, state, key):
+    """(the lane's launches, hot and archived, oldest first; how many came from the registry archive)."""
+    from . import registry_archive  # Opens the archive mode=ro; empty without one.
+    hot = {i: x for i, x in state.get('control', {}).get('launches', {}).items() if x['lane'] == key}
+    old = {i: x for i, x in registry_archive.history(root, lane=key, state=state)['launches'].items()
+           if i not in hot and x.get('lane') == key}
+    return sorted([*hot.values(), *old.values()], key=lambda x: x.get('created_at') or 0), len(old)
 
 
 def compact(x, now):
@@ -324,10 +389,11 @@ def topology(root, state, cfg):
 
 
 def settings(cfg, root, state):
-    """Config keys an operator reads most, without the per-lane launch table."""
+    """Config keys an operator reads most, without the per-lane launch table; config_read false when none was found."""
     keep = ('interval', 'ram_low', 'ram_high', 'launches_per_tick', 'models', 'integration_lines', 'consumer_wakeup',
             'build_capacity', 'shepherd', 'queue_pressure', 'terminal_idle_recovery', 'shared_review_routing')
-    return dict(topology=topology(root, state, cfg), lanes_configured=len(cfg.get('lanes') or {}),
+    read, cfg = cfg is not None, cfg or {}
+    return dict(config_read=read, topology=topology(root, state, cfg), lanes_configured=len(cfg.get('lanes') or {}),
                 launch_specs=len(state.get('throughput_runtime', {}).get('launch_specs', {})),
                 settings=state.get('settings'), config={k: cfg[k] for k in keep if k in cfg},
                 autofill={k: v for k, v in (cfg.get('throughput', {}).get('autofill') or {}).items() if k != 'lanes'})
@@ -344,6 +410,7 @@ def text(verb, data):
             extra = ''.join(s for s in (' asked %dx' % r['asked'] if r.get('asked') else '',
                                          ' %d downstream' % r['downstream'] if r.get('downstream') else '') if s)
             out.append('- [%s] %s (%s old%s): %s' % (r['kind'], who, mins(r.get('age_seconds')), extra, str(r['what'])[:220]))
+            out += ['    Also worded: ' + w[:160] for w in (r.get('wordings') or [])[1:]]
             out.append('    Next: ' + r['next'])
         if data.get('machine'):
             out.append('== Machine-wide ==')
@@ -381,7 +448,8 @@ def text(verb, data):
         if 'wake' in d: out.append('Prerequisite wake: %s - %s' % (d['wake']['gate'], d['wake']['detail']))
         for name, why in (d.get('wake') or {}).get('skipped', {}).items(): out.append('    %s: %s' % (name, why))
         out += ['Criterion %d needs another owner (%s): %s' % (f['index'], f['move_to'], f['match']) for f in d['acceptance_lint']]
-        out.append('Launches (%d, last %d):' % (d['launch_count'], len(d['launches'])))
+        out.append('Launches (%d%s, last %d):' % (d['launch_count'], ', %d archived' % d['archived_launches'] if d.get('archived_launches') else '',
+                                                  len(d['launches'])))
         out += ['  %s %s %s ago gen %s exit %s tools %s: %s' % (x['id'], x['status'], mins(x['age_seconds']), x['generation'],
                 x['exit_code'], x['tools_started'], x['reason']) for x in d['launches']]
         out += ['Notice %s (%s ago, %s repeats)' % (n['kind'], mins(n['age_seconds']), n['repeats'] or 0) for n in d['notices']]
@@ -401,27 +469,32 @@ def main(argv=None):
     parser.add_argument('--limit', type=int, default=20, help='launches shown by launches; groups shown by stuck')
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args(argv)
-    root = (args.root or Path.cwd()).resolve()
+    if hasattr(sys.stdout, 'reconfigure'):  # Registry prose is not cp1252-safe; a piped Windows stdout would raise.
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     try:
         require(args.verb not in ('lane', 'launches', 'assignment') or args.key, args.verb + ' needs a lane key')
-        cfg = config(root, args.config)
+        root = (args.root or Path.cwd()).resolve()
         sections = {'stuck': STUCK, 'needs-you': STUCK, 'lane': LANE, 'launches': [('lanes',), ('control', 'launches')],
                     'assignment': [('lanes',)], 'config': [('throughput_runtime', 'launch_specs')]}[args.verb]
         state = read(args.db or root / REGISTRY, sections, None if args.db else root)
+        if args.db and not args.root: root = Path(state['root'])  # A copy's own workspace, not the caller's directory.
         view = View(Path(state['root']) if args.db else root)
+        path = args.config or root / CONFIG
+        cfg = config(root, path)
         now = view.clock()
-        base = local_path(view.root, cfg.get('output', 'output/workflow/controller'))
+        base = local_path(view.root, (cfg or {}).get('output', 'output/workflow/controller'))
         if args.verb in ('stuck', 'needs-you'):
-            data = stuck(state, now, cfg=cfg, base=base, probe=view.probe, limit=args.limit,
+            data = stuck(state, now, cfg=cfg, base=base, probe=view.probe, limit=args.limit, config_path=path,
                          view=view if args.verb == 'stuck' else None)  # Worker availability probes processes.
         elif args.verb == 'lane':
             data = lane(state, args.key, view, cfg, now)
         elif args.verb == 'launches':
             require(args.key in state['lanes'], 'Unknown lane: ' + args.key)
-            rows = sorted((x for x in state.get('control', {}).get('launches', {}).values() if x['lane'] == args.key), key=lambda x: x['created_at'])
-            data = dict(lane=args.key, total=len(rows), launches=[compact(x, now) for x in rows[-args.limit:]])
+            rows, archived = history(view.root, state, args.key)
+            data = dict(lane=args.key, total=len(rows), archived=archived, launches=[compact(x, now) for x in rows[-args.limit:]])
         elif args.verb == 'assignment':
             from .support_actions import assignment
+            require(args.key in state['lanes'], 'Unknown lane: ' + args.key)
             row = assignment(state, args.key)
             data = dict(lane=args.key, open=bool(row), assignment={k: v for k, v in row.items() if k != 'spec'},
                         spec_lane=(row.get('spec') or {}).get('lane'))

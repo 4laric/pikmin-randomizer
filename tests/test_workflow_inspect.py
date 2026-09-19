@@ -37,6 +37,7 @@ class ReadOnlyTests(unittest.TestCase):
         from workflow import storage
         storage.migrate(self.f.reg)
         self.f.reg.finish('consumer', 1, 'blocked', 'Needs provider', self.f.ev, ['provider', '#186 review'])
+        with self.f.reg.transaction() as s: s['lanes']['consumer']['progress_detail'] = 'Needs provider \u2192 integration'
         db = sqlite3.connect(self.f.reg.path); db.execute('PRAGMA journal_mode=WAL'); db.close()
         self.copy = Path(temp.name) / 'copy.sqlite3'
         src, dst = sqlite3.connect(self.f.reg.path), sqlite3.connect(self.copy)
@@ -58,6 +59,56 @@ class ReadOnlyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout.strip().splitlines()[-1]), [])
         self.assertEqual(hashlib.sha256(self.copy.read_bytes()).hexdigest(), before)
+
+    def run_inspect(self, *argv, env=None, cwd=CHECKOUT):
+        return subprocess.run([sys.executable, '-m', 'workflow.inspect', *argv], cwd=cwd, capture_output=True, timeout=120,
+                              env=dict(os.environ, PYTHONPATH=str(CHECKOUT), **(env or {})))
+
+    def test_write_paths_are_never_called_and_uncheckpointed_wal_frames_are_read(self):
+        writer = sqlite3.connect(self.copy)  # A live-shaped WAL: a committed, uncheckpointed frame beside an open writer.
+        writer.execute('PRAGMA wal_autocheckpoint=0')
+        body = json.loads(writer.execute('SELECT body FROM registry_documents WHERE section=? AND key=?',
+                                         (json.dumps(['lanes']), 'consumer')).fetchone()[0])
+        body['progress_detail'] = 'wal-frame-marker'
+        with writer: writer.execute('UPDATE registry_documents SET body=? WHERE section=? AND key=?',
+                                    (json.dumps(body), json.dumps(['lanes']), 'consumer'))
+        self.addCleanup(writer.close)
+        self.assertGreater(Path(str(self.copy) + '-wal').stat().st_size, 0)
+        script = ('import sys, json; from workflow import inspect, storage\n'
+                  'def boom(*a, **k): raise AssertionError("write path called")\n'
+                  'for name in ("selected", "begin", "save_sections", "read_record", "save", "commit"): setattr(storage, name, boom)\n'
+                  'for verb in (["stuck"], ["needs-you"], ["lane", "consumer"], ["launches", "consumer"], '
+                  '["assignment", "consumer"], ["config"]):\n'
+                  '    assert inspect.main(["--db", sys.argv[1], "--root", sys.argv[2], *verb, "--json"]) == 0, verb\n'
+                  'state = inspect.read(sys.argv[1], [("lanes",)])\n'
+                  'print(json.dumps(state["lanes"]["consumer"]["progress_detail"]))')
+        result = subprocess.run([sys.executable, '-c', script, str(self.copy), str(self.f.root)], cwd=CHECKOUT,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout.strip().splitlines()[-1]), 'wal-frame-marker')
+
+    def test_text_output_survives_a_cp1252_pipe(self):
+        result = self.run_inspect('--db', str(self.copy), 'lane', 'consumer', env=dict(PYTHONIOENCODING='cp1252', PYTHONUTF8='0'))
+        self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', 'replace'))
+        self.assertIn('Needs provider \u2192 integration', result.stdout.decode('utf-8'))
+
+    def test_db_reads_its_own_roots_config_and_says_when_none_was_read(self):
+        path = self.f.root / inspect.CONFIG
+        result = json.loads(self.run_inspect('--db', str(self.copy), 'config').stdout)
+        self.assertFalse(result['config_read'])
+        data = json.loads(self.run_inspect('--db', str(self.copy), 'needs-you', '--json').stdout)
+        kinds = [m['kind'] for m in data['machine']]
+        self.assertIn('config_unread', kinds)
+        self.assertNotIn('integration_lines_undeclared', kinds)  # Not claimed for a config that was never read.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(dict(lanes={'consumer': {}}, integration_lines=dict(root='main'))), encoding='utf-8')
+        result = json.loads(self.run_inspect('--db', str(self.copy), 'config').stdout)  # cwd is the checkout, not the root.
+        self.assertEqual((result['config_read'], result['lanes_configured']), (True, 1))
+
+    def test_assignment_refuses_an_unknown_lane(self):
+        result = self.run_inspect('--db', str(self.copy), 'assignment', 'no-such-lane')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('Unknown lane', result.stderr.decode())
 
     def test_source_has_no_write_path(self):
         text = (CHECKOUT / 'workflow/inspect.py').read_text(encoding='utf-8')
@@ -85,17 +136,30 @@ class StuckTests(unittest.TestCase):
         self.assertEqual(blockers.refs(state, 'b', blockers.owners(state)), ['issue:186', 'lane:producer-lane'])
         grouped = {g['ref']: g for g in blockers.groups(state)['groups']}
         self.assertEqual((grouped['issue:186']['count'], grouped['issue:186']['owner_state']), (2, 'decision'))
-        self.assertEqual((grouped['issue:50']['owner'], grouped['issue:50']['owner_state']), ('producer-lane', 'done_unlanded'))
-        self.assertIn('Integrator', grouped['issue:50']['next_action'])
+        # '#50' and the name of the lane owning #50 are one owner: one group with both lanes.
+        producer = grouped['lane:producer-lane']
+        self.assertEqual((producer['owner'], producer['owner_state'], producer['lanes']), ('producer-lane', 'done_unlanded', ['a', 'b']))
+        self.assertEqual((producer['refs'], producer['label']), (['issue:50', 'lane:producer-lane'], '#50, producer-lane'))
+        self.assertNotIn('issue:50', grouped)
+        self.assertIn('Integrator', producer['next_action'])
         self.assertEqual(grouped['issue:77']['owner_state'], 'missing')
         self.assertNotIn('issue:632', grouped)
+
+    def test_other_repositories_issues_are_external_refs(self):
+        state = world(lane('a', deps=['projectpiki/pikmin2#45 upstream decomp', '4laric/pikmin-randomizer#45 local']),
+                      lane('owner-45', state='running', issue=45))
+        self.assertEqual(blockers.refs(state, 'a', blockers.owners(state)), ['external:projectpiki/pikmin2#45', 'issue:45'])
+        grouped = {g['ref']: g for g in blockers.groups(state)['groups']}
+        self.assertEqual((grouped['external:projectpiki/pikmin2#45']['owner'], grouped['external:projectpiki/pikmin2#45']['label'],
+                          grouped['external:projectpiki/pikmin2#45']['owner_state']), (None, 'projectpiki/pikmin2#45', 'missing'))
+        self.assertEqual(grouped['lane:owner-45']['owner_state'], 'live')
 
     def test_blocked_owner_chain_roots_and_cycles(self):
         state = world(lane('x', issue=10, deps=['#11 landing']), lane('y', issue=11, deps=['x must land first']),
                       lane('z', issue=12, deps=['#11']), lane('w', issue=13, deps=['#11']))
         result = blockers.groups(state)
         self.assertEqual(result['cycles'], [['x', 'y', 'x']])
-        group = next(g for g in result['groups'] if g['ref'] == 'issue:11')
+        group = next(g for g in result['groups'] if g['ref'] == 'lane:y')
         self.assertEqual((group['count'], group['owner'], group['owner_state']), (3, 'y', 'blocked'))
         self.assertIn('circular', group['next_action'])
 
@@ -143,6 +207,78 @@ class NeedsYouTests(unittest.TestCase):
                                                             'user_asset', 'user_decision'])
         self.assertEqual(next(i for i in items if i['kind'] == 'unsupervised_lane')['count'], 2)
         self.assertEqual(next(i for i in items if i['kind'] == 'toolchain')['lanes'], ['t'])
+        self.assertEqual(decision['wordings'], ['Authorize rebasing onto the wave line', 'Coordinator decision: authorize the rebase'])
+
+    def test_toolchain_words_never_expire_a_lane_decision_or_a_still_waiting_asset(self):
+        day = 24 * 3600
+        actions = {'1': self.ask('a', 'user_decision', 'Decide whether lane a may change the compiler flags in CMakeLists', 0),
+                   '2': self.ask('t', 'user_asset', 'Working g++ required', 0),
+                   '3': self.ask('old', 'user_asset', 'Functional cmake', 0)}
+        state = world(lane('a', issue=1), lane('b', issue=2, deps=['#1']), lane('t', issue=3),
+                      lane('old', state='done', issue=4), support_actions=actions)
+        items = {i['kind']: i for i in inspect.needs_you(state, 80 * 3600)}
+        self.assertEqual((items['user_decision']['lane'], items['user_decision']['downstream']), ('a', 1))
+        self.assertEqual((items['toolchain']['lanes'], items['toolchain']['waiting_lanes']), (['t'], ['t']))
+        early = {i['kind']: i for i in inspect.needs_you(state, 2 * day)}
+        self.assertEqual(early['toolchain']['lanes'], ['old', 't'])  # A finished lane's ask stays 72 h.
+
+    def test_asks_of_a_relaunched_lane_are_superseded(self):
+        ask = dict(self.ask('p', 'user_asset', 'Stock chal0 default.gen', 10), target=dict(lane='p', generation=4))
+        for status in ('running', 'blocked'):
+            state = world(lane('p', state=status, issue=1, generation=5), lane('q', issue=2, deps=['#1']),
+                          support_actions={'1': ask})
+            self.assertEqual(inspect.needs_you(state, 1000), [], status)
+            self.assertNotIn('user:p', blockers.refs(state, 'p', blockers.owners(state)))
+        state['lanes']['p']['generation'] = 4
+        self.assertEqual([i['lane'] for i in inspect.needs_you(state, 1000)], ['p'])
+        self.assertIn('user:p', blockers.refs(state, 'p', blockers.owners(state)))
+
+    def test_settled_notices_leave_needs_you(self):
+        notice = lambda key, kind: dict(lane=key, kind=kind, status='pending', at=1, detail=dict(error='x'))
+        state = world(lane('cfg', state='ready', issue=1), lane('spec', state='ready', issue=2), lane('gone', state='done', issue=3),
+                      lane('open', state='ready', issue=4), lane('owner', state='ready', issue=5, process={'pid': 7}),
+                      throughput_runtime=dict(launch_specs={'spec': {}}))
+        state['control']['notices'] = {k: notice(k, 'unsupervised_lane') for k in ('cfg', 'spec', 'gone', 'open')}
+        state['control']['notices']['o'] = notice('owner', 'shared_review_target_dead')
+        cfg = dict(lanes={'cfg': {}})
+        alive = lambda p: 'alive' if p.get('pid') == 7 else 'dead'
+        self.assertEqual([i['lane'] for i in inspect.needs_you(state, 100, cfg=cfg, probe=alive)], ['open'])
+        self.assertEqual(sorted(i['lane'] for i in inspect.needs_you(state, 100, probe=lambda p: 'dead')),
+                         ['cfg', 'open', 'owner', 'spec'])  # No config read: only done is known settled.
+
+
+class ViewTests(unittest.TestCase):
+    def test_empty_umbrella_list_means_no_decision_issues_everywhere(self):
+        state = world(lane('a', deps=['#186']), lane('b', issue=2, deps=['#186']))
+        grouped = inspect.stuck(state, 1000, cfg=dict(consumer_wakeup=dict(umbrella_issues=[])))
+        self.assertEqual(grouped['groups'][0]['owner_state'], 'missing')
+        self.assertEqual(clustered_blockers(state, [])[0]['owner_state'], 'missing')
+        self.assertEqual(inspect.stuck(state, 1000, cfg={})['groups'][0]['owner_state'], 'decision')
+
+    def test_bounded_caps_every_list(self):
+        lanes = [lane('u%02d' % i, issue=100 + i, deps=['prose only']) for i in range(30)]
+        report = inspect.stuck(world(*lanes), 1000, cfg={})
+        report['needs_you'] = [dict(kind='user_asset', lane='u00', what='w' * 5000, next='n', lanes=list(range(50)))]
+        small = inspect.bounded(report, items=5, lanes=3)
+        self.assertEqual((len(small['unstructured']), small['omitted']['unstructured']), (5, 25))
+        self.assertEqual((len(small['needs_you'][0]['what']), small['needs_you'][0]['lanes']), (400, [0, 1, 2]))
+
+    def test_launch_history_includes_the_registry_archive(self):
+        from workflow import registry_archive
+        temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        path = registry_archive.default_path(root); path.parent.mkdir(parents=True)
+        db = sqlite3.connect(path)
+        for statement in registry_archive.SCHEMA: db.execute(statement)
+        body = json.dumps(dict(id='old1', lane='a', status='exited', created_at=5, reason='r'))
+        db.execute('INSERT INTO archive VALUES (?,?,?,?,?,?,?)', ('control.launches', 'old1', 'a', 'run1', body,
+                                                                  registry_archive.sha(body), None))
+        db.execute('INSERT INTO archive_runs VALUES (?,?,?,?,?,?,?)', ('run1', 1, str(root), 1, '[]', '{}', 'moved'))
+        db.commit(); db.close()
+        state = world(lane('a', state='done'))
+        state['control']['launches'] = {'new1': dict(id='new1', lane='a', status='exited', created_at=9, reason='r')}
+        rows, archived = inspect.history(root, state, 'a')
+        self.assertEqual(([x['id'] for x in rows], archived), (['old1', 'new1'], 1))
 
 
 class ClusterTests(unittest.TestCase):
@@ -160,9 +296,11 @@ class ClusterTests(unittest.TestCase):
             lane('diag', issue=787, state='done', integration=dict(root_commit='a' * 40)))
         clusters = {c['signature']: c for c in clustered_blockers(state)}
         self.assertEqual(clusters['#186']['count'], 3)
-        self.assertEqual((clusters['#748']['count'], clusters['#748']['owner_state']), (3, 'blocked'))
-        self.assertIn('Unblock muki-rows', clusters['#748']['next_action'])
-        self.assertEqual((clusters['#730']['owner'], clusters['#730']['owner_state']), ('ext', 'done_unlanded'))
+        rows = clusters['#748, muki-rows']  # damagumo cites both forms: one owner, one cluster.
+        self.assertEqual((rows['count'], rows['owner_state'], rows['ref']), (3, 'blocked', 'lane:muki-rows'))
+        self.assertNotIn('#748', clusters)
+        self.assertIn('Unblock muki-rows', rows['next_action'])
+        self.assertEqual((clusters['#730, ext']['owner'], clusters['#730, ext']['owner_state']), ('ext', 'done_unlanded'))
         self.assertEqual(clusters['#787']['lanes'], ['kusachi-a', 'kusachi-b'])
         self.assertFalse(any(c['covered'] for c in clusters.values()))
 
@@ -177,6 +315,19 @@ class PublicationTests(unittest.TestCase):
         result = staffing_recommendations(state, 1000, 60, process_probe=lambda p: 'dead', available={'a'})
         self.assertEqual((result['available_workers'], result['idle_workers']), (1, 1))
         self.assertEqual(result['workers_matching_ready_work'], result['compatible_idle_workers'])
+
+    def test_a_failed_stuck_view_is_never_shown_as_all_clear(self):
+        from workflow import operator
+        from workflow.dashboard import render_stuck
+        html = render_stuck(dict(error='Stuck view unavailable: boom'))
+        self.assertIn('Needs you unavailable: Stuck view unavailable: boom', html)
+        self.assertNotIn('Nothing waits on you', html)
+        original = inspect.stuck
+        def broken(*a, **k): raise KeyError('lanes')
+        inspect.stuck = broken
+        try: data = operator.report(world(lane('a')), 50)
+        finally: inspect.stuck = original
+        self.assertIn('Stuck view unavailable', data['stuck']['error'])
 
     def test_dashboard_renders_needs_you_first_and_escaped(self):
         from workflow.dashboard import render_dashboard
@@ -256,6 +407,21 @@ class WakeExplanationTests(unittest.TestCase):
         launch = next(iter(self.r.control_status()['launches'].values()))
         self.assertEqual(launch['reason'], found['token'])
         self.assertEqual(self.explain()['gate'], 'launch_in_flight')
+
+    def test_a_busy_writer_lock_during_reservation_does_not_abort_the_tick(self):
+        from workflow import consumer_wakeup, storage
+        self.r.register_pool_worker('consumer', ['implementation'], ['python'], 'test')
+        with self.r.transaction() as s:
+            lane = s['lanes']['consumer']
+            lane['capacity_parked'] = dict(generation=lane['generation'], at=1, evidence=self.f.ev)
+        self.assertEqual(self.explain()['gate'], 'worker_busy')
+        original = consumer_wakeup.reserve
+        def busy(*a, **k): raise storage.RegistryBusy('Registry busy')
+        consumer_wakeup.reserve = busy
+        try: tick(self.c)
+        finally: consumer_wakeup.reserve = original
+        self.assertFalse([n for n in self.r.control_status()['notices'].values()
+                          if n['kind'] == 'consumer_prerequisite_wakeup_blocked'])
 
     def test_inspect_lane_reports_the_gate_and_skipped_producers(self):
         with self.r.transaction() as s: s['lanes']['helper-slice']['state'] = 'done'

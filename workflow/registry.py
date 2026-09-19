@@ -149,8 +149,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         state['wake_revision'] = state.get('wake_revision', len(state['events'])) + 1
         state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
 
-    def throughput_status(self, window_seconds=3600, ram_percent=None, state=None):
-        """Reads the caller's snapshot when given; process checks use the dead-identity cache."""
+    def throughput_status(self, window_seconds=3600, ram_percent=None, state=None, idle=None):
+        """Reads the caller's snapshot when given; process checks use the dead-identity cache. idle is the
+        caller's autofill._workers result for that snapshot (computed here when not given)."""
         from .analytics import throughput_metrics, staffing_recommendations
         from .autofill import _workers
         with nullcontext(self.snapshot() if state is None else state) as state:
@@ -158,7 +159,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                         metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
                         staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent,
                                                           process_probe=self.probe,
-                                                          available={l['worker_id'] for l in _workers(self, state)}))
+                                                          available={l['worker_id'] for l in (
+                                                              _workers(self, state) if idle is None else idle)}))
 
     def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
         """Attach local launch paths to an issue-backed pool lane without restarting service."""

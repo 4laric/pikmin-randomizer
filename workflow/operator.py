@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .integration_wakeup import receipt_gaps
 from .registry import Registry
-from .handoff import local_path, digest
+from .handoff import Rejected, local_path, digest
 
 
 def report(state, now, root=None, on_disk=None, cfg=None, base=None, probe=None):
@@ -78,7 +78,11 @@ def report(state, now, root=None, on_disk=None, cfg=None, base=None, probe=None)
     else:
         running = claimed(control)
         code = dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk))
-    return dict(at=now, code=code, stuck=stuck(state, now, cfg=cfg, base=base, probe=probe),
+    try:  # A view only: a malformed record must not hide the receipt and admission actions below.
+        view = stuck(state, now, cfg=cfg, base=base, probe=probe)
+    except (Rejected, KeyError, TypeError, ValueError, AttributeError, OSError) as exc:
+        view = dict(error='Stuck view unavailable: %s' % (str(exc) or type(exc).__name__))
+    return dict(at=now, code=code, stuck=view,
                 delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
                 handoffs=handoffs, blocked=blocked,
                 planning={k:pool.get(k) for k in ('active','target','target_reason','recovery_active','recovery_candidates','sleeping_scopes','cooling_scopes')},
@@ -104,7 +108,7 @@ def main():
     cfg = config(root)
     reg = Registry(root/'output/workflow/registry.sqlite3', root)
     data = report(reg.snapshot(), time.time(), root, cfg=cfg,
-                  base=local_path(root, cfg.get('output', 'output/workflow/controller')), probe=reg.probe)
+                  base=local_path(root, (cfg or {}).get('output', 'output/workflow/controller')), probe=reg.probe)
     if args.json:
         print(json.dumps(data, indent=2, default=sorted))
         return
@@ -112,7 +116,8 @@ def main():
     print(f"Workers: {data['worker_count']} | Handoffs: {len(data['handoffs'])} | Blocked lanes: {len(data['blocked'])}")
     p = data['planning']
     print(f"Planning: {p['active']}/{p['target']} — {p['target_reason']}")
-    print(text('stuck', dict(data['stuck'], groups=data['stuck']['groups'][:10])))
+    if data['stuck'].get('error'): print('!!! Needs you unavailable: %s; run workflow_module.py inspect stuck' % data['stuck']['error'])
+    else: print(text('stuck', dict(data['stuck'], groups=data['stuck']['groups'][:10])))
     audits = [a for a in data['actions'] if str(a['reason']).startswith('Recorded export evidence')]
     for action in data['actions']:
         if action not in audits:

@@ -1,22 +1,38 @@
 """Structured blocker references: dependency prose, producer links and classifications as issue/lane refs.
 
-Pure over one registry state and read-only: a ref is 'issue:N' ('#N' and 'owner/repo#N' alike),
-'lane:<key>' or 'user:<lane>' (an open user-owned external ask). Each ref resolves to its owning
-lane and that lane's state; groups cluster blocked lanes on a shared ref and follow blocked owners
-to their roots. Nothing here clears, links or wakes anything; the prose stays the record."""
+Pure over one registry state and read-only: a ref is 'issue:N' ('#N' and REPO#N alike),
+'external:<owner/repo>#N' (another repository's issue), 'lane:<key>' or 'user:<lane>' (an open
+user-owned external ask). Each ref resolves to its owning lane and that lane's state; groups cluster
+blocked lanes on their resolved owner and follow blocked owners to their roots. Nothing here clears,
+links or wakes anything; the prose stays the record."""
 import re
 
-ISSUE = re.compile(r'(?<!\w)(?:[\w.-]+/[\w.-]+)?#(\d+)\b')
+ISSUE = re.compile(r'(?<!\w)(?:([\w.-]+/[\w.-]+))?#(\d+)\b')
+REPO = '4laric/pikmin-randomizer'  # Qualified refs to this repository are local issues.
 TOKEN = re.compile(r'[A-Za-z0-9][\w-]*')
 WAITING = ('blocked', 'waiting_resource')
 LIVE = ('ready', 'running', 'waiting_resource', 'reconciling')
 HANDOFF = ('handoff_ready', 'integrating', 'review_ready')
+ASKED = WAITING + ('handoff_ready', 'integrating')  # States a support worker may record a user ask against.
 DECISIONS = (186,)  # Shared-hook decision issues: no producer lane owns them, a reviewer decides.
 POLICY = (632,)  # Standing policy cited by many lanes (captain safety); never a blocker.
 
 
 def issues(text):
-    return sorted({int(n) for n in ISSUE.findall(str(text))})
+    """Local issue numbers: '#N' and REPO#N, never another repository's."""
+    return sorted({int(n) for repo, n in ISSUE.findall(str(text)) if not repo or repo.casefold() == REPO})
+
+
+def external(text):
+    """'owner/repo#N' refs to other repositories; no local lane owns them."""
+    return sorted({'%s#%s' % (repo, n) for repo, n in ISSUE.findall(str(text)) if repo and repo.casefold() != REPO})
+
+
+def asked(action, lane):
+    """A user ask the lane still waits on: it waits now, at the generation the ask targeted (legacy rows
+    without a target generation count as current). A relaunched lane's older asks are superseded."""
+    generation = (action.get('target') or {}).get('generation', (lane or {}).get('generation'))
+    return bool(lane) and lane.get('state') in ASKED and generation == lane.get('generation')
 
 
 def owners(state):
@@ -51,6 +67,7 @@ def refs(state, key, table=None, decisions=DECISIONS):
     found = set()
     for text in lane.get('dependencies') or []:
         found.update('issue:%d' % n for n in issues(text) if n not in POLICY)
+        found.update('external:' + r for r in external(text))
         found.update('lane:' + t for t in TOKEN.findall(str(text)) if t in lanes)
     link = state.get('blocked_producer_links', {}).get(key) or {}
     if link.get('source_pins') == {k: (lane.get(k) or {}).get('head') for k in ('root', 'native')}:
@@ -67,7 +84,7 @@ def refs(state, key, table=None, decisions=DECISIONS):
         if internal.get('owner_lane') in lanes: found.add('lane:' + internal['owner_lane'])
         if action.get('action') == 'producer' and (action.get('details') or {}).get('lane') in lanes:
             found.add('lane:' + action['details']['lane'])
-    if any(a.get('action') == 'external' and a.get('key') == key for a in actions.values()):
+    if any(a.get('action') == 'external' and a.get('key') == key and asked(a, lane) for a in actions.values()):
         found.add('user:' + key)
     own = {'lane:' + key} | ({'issue:%d' % lane['issue']} if type(lane.get('issue')) is int else set())
     return sorted(found - own)
@@ -86,9 +103,11 @@ def classification(state, key):
 
 
 def owner(state, ref, table, decisions=DECISIONS):
-    """(owning lane key or None, standing) of one ref; decision issues and user asks have no lane owner."""
+    """(owning lane key or None, standing) of one ref; decision issues and user asks have no lane owner,
+    and no local lane owns another repository's issue ('missing')."""
     kind, _, name = ref.partition(':')
     if kind == 'user': return None, 'user'
+    if kind == 'external': return None, 'missing'
     if kind == 'lane': return name, standing(state['lanes'].get(name))
     if int(name) in decisions: return None, 'decision'
     keys = table.get(int(name)) or []
@@ -147,22 +166,28 @@ def roots(state, key, found, table, decisions=DECISIONS, seen=None):
 
 
 def groups(state, decisions=DECISIONS, limit=None):
-    """Blocked/waiting lanes grouped on each shared structured ref, with owner, root and one next action.
+    """Blocked/waiting lanes grouped on each resolved owner lane, with root and one next action; refs
+    no lane owns (a decision issue, a user ask, an unowned or external issue) group on the ref.
 
-    A lane with several refs appears in each of their groups; `unstructured` lists lanes with none."""
+    '#N' and the name of the lane owning issue N form one group, and `refs` keeps every ref that
+    pointed there. A lane with several owners appears in each group; `unstructured` lists lanes with none."""
     found, table = index(state, decisions)
     members = {}
     for key, value in found.items():
-        for ref in value: members.setdefault(ref, []).append(key)
+        for ref in value:
+            lane = owner(state, ref, table, decisions)[0]
+            row = members.setdefault('lane:' + lane if lane else ref, (set(), set()))
+            row[0].add(key); row[1].add(ref)
     result, cycles = [], []
-    for ref, keys in members.items():
+    for ref, (keys, cited) in members.items():
         lane, how = owner(state, ref, table, decisions)
         waits = found.get(lane) if lane in found else refs(state, lane, table, decisions) if how == 'blocked' else []
         rooted, loop = roots(state, lane, dict(found, **{lane: waits}), table, decisions) if how == 'blocked' else (set(), [])
         cycles += loop
         who, next_action = action(ref, lane, how, waits, len(keys))
         if loop: who, next_action = 'owner', 'Break the circular wait ' + ' -> '.join(loop[0])
-        result.append(dict(ref=ref, label=label(ref), count=len(keys), lanes=sorted(keys), owner=lane, owner_state=how,
+        result.append(dict(ref=ref, refs=sorted(cited), label=', '.join(map(label, sorted(cited))), count=len(keys),
+                           lanes=sorted(keys), owner=lane, owner_state=how,
                            owner_waits_on=waits, roots=sorted(rooted), accountable=who, next_action=next_action))
     result.sort(key=lambda g: (-g['count'], g['ref']))
     unique = {tuple(c[:-1]) for c in cycles}

@@ -8,6 +8,7 @@ for one. Consumed only suppresses re-waking; it never clears a dependency."""
 import copy
 import json
 import re
+import sqlite3
 
 from .control import fingerprint
 from .provenance import cli
@@ -189,6 +190,8 @@ def tick(controller):
                     invalid=lambda p, key=key: reg.notice(key, 'consumer_prerequisite_evidence_invalid', dict(producer=p)))
         if plan['gate'] == 'worker_busy':
             try: reserve(reg, state, key, plan['token'])
+            except sqlite3.OperationalError:
+                pass  # Writer lock busy past the retry budget (RegistryBusy): the next tick retries; check_wip still refuses.
             except (Rejected, OSError, ValueError) as exc:
                 reg.notice(key, 'consumer_prerequisite_wakeup_blocked', dict(error='Worker reservation failed: ' + str(exc)))
         if plan['gate'] != 'wake': continue

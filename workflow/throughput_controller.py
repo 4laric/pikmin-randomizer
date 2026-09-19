@@ -258,9 +258,10 @@ def publish_status(controller):
     from .stage_timing import observe, alert
     observe(reg, state, now=observed)
     alert(reg, state)
-    from .autofill import autofill_status
-    status = reg.throughput_status(ram_percent=controller.memory(), state=state)
-    status['autofill'] = autofill_status(reg, state=state)
+    from .autofill import autofill_status, _workers
+    idle = _workers(reg, state)  # One available-worker set feeds staffing, autofill and the roster.
+    status = reg.throughput_status(ram_percent=controller.memory(), state=state, idle=idle)
+    status['autofill'] = autofill_status(reg, state=state, idle=idle)
     error_path = controller.base / 'error.json'
     if error_path.is_file():
         try:
@@ -277,16 +278,14 @@ def publish_status(controller):
     status['worker_activity'] = snapshot(controller, state=state)
     from .worker_roster import roster
     from .spend import hourly_spend
-    from .autofill import _workers
     from .delivery_contracts import audit as delivery_audit
     status['delivery_audit'] = delivery_audit(state)
-    status['worker_roster'] = roster(state, {w['worker_id'] for w in _workers(reg, state)},
-                                     status['worker_activity'])
+    status['worker_roster'] = roster(state, {w['worker_id'] for w in idle}, status['worker_activity'])
     from .inspect import stuck, bounded as bounded_stuck
     try:  # A view only: a malformed record must not stop the dashboard publishing.
         status['stuck'] = bounded_stuck(dict(stuck(state, status['at'], cfg=controller.config, base=controller.base,
             probe=reg.probe), available_workers=status['worker_roster']['available_workers']))
-    except (Rejected, KeyError, TypeError, ValueError, AttributeError) as exc:
+    except (Rejected, KeyError, TypeError, ValueError, AttributeError, OSError) as exc:
         status['stuck'] = dict(error='Stuck view unavailable: %s' % (str(exc) or type(exc).__name__))
     spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
                        control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))

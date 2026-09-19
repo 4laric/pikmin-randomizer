@@ -61,6 +61,10 @@ def publishable(report, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
 def render_stuck(stuck):
     """Needs you and the blocked-lane groups from workflow.inspect (already bounded by the publisher)."""
     if not isinstance(stuck, dict): return ''
+    if stuck.get('error') or 'needs_you' not in stuck:  # A failed view is never shown as all-clear.
+        return ('<section class="needs-you"><h2>Needs you <span>?</span></h2><p class="warning">Needs you unavailable: ' +
+                escape(str(stuck.get('error') or 'no stuck view published')[:400]) +
+                '; run <code>workflow_module.py inspect stuck</code>.</p></section>')
     def minutes(value):
         return '?' if type(value) not in (int, float) else '%d min' % (value // 60) if value < 7200 else '%.1f h' % (value / 3600)
     items = list(stuck.get('needs_you') or []) + [dict(r, machine=True) for r in stuck.get('machine') or []]
@@ -73,8 +77,8 @@ def render_stuck(stuck):
         html += ('<article><div class="item-heading"><strong>' + escape(str(who)) + '</strong><span>' + escape(str(r.get('kind'))) +
                  (' · ' + escape(facts) if facts else '') + '</span></div><p>' + escape(str(r.get('what'))[:400]) +
                  '</p><p class="note">Next: ' + escape(str(r.get('next'))) + '</p></article>')
-    omitted = (stuck.get('omitted') or {}).get('needs_you')
-    if omitted: html += '<p class="note">' + str(omitted) + ' more in throughput.json and `inspect needs-you`.</p>'
+    omitted = sum((stuck.get('omitted') or {}).get(k) or 0 for k in ('needs_you', 'machine'))
+    if omitted: html += '<p class="note">' + str(omitted) + ' more: run <code>workflow_module.py inspect needs-you</code>.</p>'
     groups = stuck.get('groups') or []
     html += ('<details id="stuck-groups"><summary>Blocked lanes by blocker <span>' + escape(str(stuck.get('blocked', '?'))) +
              ' lanes · ' + escape(str(stuck.get('total_groups', len(groups)))) + ' blockers · ' +

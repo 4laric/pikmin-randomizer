@@ -186,16 +186,17 @@ def _adapt_worker(controller, state, spec, reserved, eligible=None):
     return []
 
 
-def autofill_status(reg, state=None):
+def autofill_status(reg, state=None, idle=None):
+    """idle: the caller's _workers(reg, state) for this snapshot, computed here when not given."""
     from contextlib import nullcontext
     with nullcontext(reg.snapshot() if state is None else state) as state:
         data = copy.deepcopy(_state(state))
-        data['idle_workers_count'] = data['available_workers'] = len(_workers(reg, state))
+        idle = _workers(reg, state) if idle is None else idle
+        data['idle_workers_count'] = data['available_workers'] = len(idle)
         data['ready_count'] = sum(i.get('ready', False) and
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
         data['awaiting_worker_count'] = sum(bool(i.get('ready') and i.get('awaiting_worker')) for i in data['items'].values())
-        idle = _workers(reg, state)
         pool = reg.scheduling(state)
         idle_by_id = {lane['worker_id']: lane for lane in idle}
         compatible_ids = set()
