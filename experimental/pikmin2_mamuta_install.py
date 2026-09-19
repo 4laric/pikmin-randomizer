@@ -13,7 +13,8 @@ SPECIES = 'Miulin'
 # bank (`miulin_<clip>_<i>.mod`). The native observer plays the bank by the P1
 # animator frame, so the ground strike (attack1, whose KEYEVENT_2 at frame 0 is
 # the bury/plant) is animated instead of a single frozen pose.
-BANK_CLIPS = ('wait', 'dead', 'attack1')
+BANK_CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4',
+              'flick', 'dead', 'type5')
 MAX_POSES = 8
 # The approved native baseline (static anchors, pc_p2_mamuta_policy.h) loads
 # three single `miulin_<clip>.mod` files: wait pose 0, the last dead pose, and
