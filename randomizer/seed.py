@@ -81,7 +81,14 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None):
+# Admitted P2 species the current launcher and native campaign path can actually run:
+# each has a family installer (experimental/pikmin2_family_install.IDENTITY_FAMILY) and
+# a bridge-mode campaign setup. Excluded until fixed: 9 Kogane, 79 Sokkuri, 57 Kurage,
+# 78 MiniHoudai (no installer) and 23 Sarai (campaign setup needs a fixed generator).
+PLAYABLE_P2_SPECIES = (44, 54, 59, 60, 61, 62)
+
+
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -113,6 +120,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if type(combined_captain) is not bool: raise ValueError("invalid combined_captain")
     if combined_captain: collection_checks = True
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
+    if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
+    if p2_species == "playable": p2_species = PLAYABLE_P2_SPECIES
+    if p2_species is not None and (not isinstance(p2_species, (list, tuple, set, frozenset)) or not p2_species
+                                   or any(type(i) is not int for i in p2_species)):
+        raise ValueError("p2_species must be 'playable' or a nonempty list of admitted source ids")
     if p2_placement is not None and type(p2_placement) is not dict:
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
@@ -248,7 +260,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             # option; the committed accepted-placement document supplies the legal
             # targets and resolve_placement_layout still fails closed.
             p2_placement = _default_admitted_placement()
-        result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate())
+        result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate(),
+                                                       species=None if p2_species is None else sorted(set(p2_species)))
         result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)
     return result

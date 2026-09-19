@@ -143,16 +143,24 @@ def binding_targets_from_placement(document, roster: list[RosterEntry] | None = 
     return targets
 
 
-def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None) -> dict:
+def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *, species=None) -> dict:
     """Bind lane 04 targets to admitted identities that the document *accepts*.
 
     Targets come from lane 04's constraint catalog; each is then bound only to an
     identity with accepted placement evidence for it. Every admitted identity must
     have an accepted target, and each is guaranteed at least one binding. Fails
     closed while the admission set is empty or no pair is accepted.
+
+    ``species`` optionally narrows the pool to a subset of the admitted ids;
+    targets only those excluded species could fill stay vanilla (unbound).
     """
     roster = roster if roster is not None else load_roster()
     admitted = list(admitted_ids(roster))
+    if species is not None:
+        wanted = set(species)
+        if not wanted or not wanted <= set(admitted):
+            raise SeedBridgeError(f"P2 species subset must be a nonempty subset of the admitted ids {sorted(admitted)}: {sorted(wanted)}")
+        admitted = [source_id for source_id in admitted if source_id in wanted]
     if not admitted:
         raise SeedBridgeError(
             "no admitted P2 identities; refusing to seed an unadmitted pool (lane 02 admission set is empty)"

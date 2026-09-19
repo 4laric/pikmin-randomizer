@@ -49,6 +49,16 @@ class P2EnemyRandomizer(Toggle):
     default = 0
 
 
+class P2EnemyPool(Choice):
+    """Which admitted Pikmin 2 enemies the bridge may place. playable: only species the
+    launcher can stage and run today (Blue Kochappy, Mamuta, the four elemental Otakara);
+    slots only other species could fill stay vanilla. all: every admitted species."""
+    display_name = 'Pikmin 2 enemy pool'
+    option_playable = 0
+    option_all = 1
+    default = 0
+
+
 class P2Placement(OptionDict):
     """Experimental lane-04 p2-placement-v1 document. Required when enabling
     P2 enemies. Supply reviewed placement evidence; empty or denied placements
@@ -219,6 +229,7 @@ class PikminOptions(PerGameCommonOptions):
     carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
     p2_enemy_randomizer: P2EnemyRandomizer
+    p2_enemy_pool: P2EnemyPool
     p2_placement: P2Placement
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies

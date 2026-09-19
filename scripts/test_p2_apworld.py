@@ -49,7 +49,10 @@ def main(ap, archive):
                 pass
             else:
                 raise AssertionError('Missing, invalid or denied placement was accepted')
-        options = {'p2_enemy_randomizer': True}
+        from pikmin_randomizer.core.seed import PLAYABLE_P2_SPECIES
+        playable = make({'p2_enemy_randomizer': True}).worlds[1].manifest()  # default pool: playable
+        assert {b['source_id'] for b in playable['p2_layout']['bindings']} == set(PLAYABLE_P2_SPECIES)
+        options = {'p2_enemy_randomizer': True, 'p2_enemy_pool': 'all'}
         # Real packaged admitted placement, not the synthetic denial fixture.
         mw = make(options)
         m = mw.worlds[1].manifest()
