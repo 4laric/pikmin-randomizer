@@ -48,11 +48,17 @@ class Base(unittest.TestCase):
         git(self.root, 'checkout', '-q', '-b', 'land-' + os.urandom(3).hex(), lane['root']['base'])
         return commit(self.root, files, 'land')
 
-    def port(self, file, reviewed, landed, repo='root'):
+    def port(self, file, reviewed, landed, repo='root', interdiff=None):
         evidence = self.root / 'output/port.md'; evidence.write_text('interdiff reviewed by lander\n')
         return dict(repo=repo, file=file, reviewed_blob=reviewed, landed_blob=landed,
-                    interdiff_sha256=hashlib.sha256(b'interdiff').hexdigest(), reason='Adapted to moved line',
+                    interdiff_sha256=interdiff or hashlib.sha256(b'interdiff').hexdigest(), reason='Adapted to moved line',
                     evidence=dict(path=str(evidence), sha256=digest(evidence)))
+
+    def interdiff(self, reviewed_commit, landed_commit, file):
+        """What the documented command prints, hashed exactly as a worker would."""
+        out = subprocess.run(['git', '-C', str(self.root), '--literal-pathspecs', *landing.INTERDIFF,
+                              reviewed_commit, landed_commit, '--', file], capture_output=True, check=True).stdout
+        return hashlib.sha256(out).hexdigest()
 
     def blob(self, sha, path):
         return git(self.root, 'rev-parse', f'{sha}:{path}')
@@ -76,7 +82,7 @@ class LandingTests(Base):
         proof = self.integrate(lane, self.record(later))['integration_landing']
         self.assertTrue(proof['root']['head_is_ancestor'])
         self.assertEqual(proof['root']['files'][0][4], 'ancestor')
-        self.assertIsNone(proof['lander'])
+        self.assertIsNone(proof['claimed_lander'])
 
     def test_missing_absent_different_and_deleted_files_refuse_per_file(self):
         commit(self.root, {'workflow/doomed.py': 'old\n'})
@@ -97,8 +103,15 @@ class LandingTests(Base):
         lane = self.integrating({'workflow/one.py': 'X = 1\n', 'workflow/two.py': 'Y\n'})
         landed = self.landing_branch({'workflow/one.py': 'X = 1  # adapted\n', 'workflow/two.py': 'Y\n'})
         port = self.port('workflow/one.py', self.blob(lane['root']['head'], 'workflow/one.py'),
-                         self.blob(landed, 'workflow/one.py'))
+                         self.blob(landed, 'workflow/one.py'),
+                         interdiff=self.interdiff(lane['root']['head'], landed, 'workflow/one.py'))
         self.f.register('two', worker='two')
+        with self.assertRaisesRegex(Rejected, 'port interdiff_sha256 must be ' + port['interdiff_sha256']):
+            self.integrate(lane, self.record(landed, ports=[dict(port, interdiff_sha256='e' * 64)]))
+        with self.assertRaisesRegex(Rejected, 'Port needs repo'):  # Malformed shapes refuse, never TypeError.
+            self.integrate(lane, self.record(landed, ports=[dict(port, repo=['root'])]))
+        with self.assertRaisesRegex(Rejected, 'evidence missing'):
+            self.integrate(lane, self.record(landed, ports=[dict(port, evidence=dict(path=['x'], sha256='0'))]))
         with self.assertRaisesRegex(Rejected, 'port blobs differ from git'):
             self.integrate(lane, self.record(landed, ports=[dict(port, landed_blob='c' * 40)]))
         with self.assertRaisesRegex(Rejected, 'Stale ownership generation'):
@@ -108,7 +121,7 @@ class LandingTests(Base):
         done = self.integrate(lane, self.record(landed, ports=[port]), dict(lane='two', generation=1))
         proof = done['integration_landing']
         self.assertEqual(proof['ports'], [port])
-        self.assertEqual(proof['lander'], dict(lane='two', generation=1))
+        self.assertEqual(proof['claimed_lander'], dict(lane='two', generation=1))  # A claim, not an identity.
         self.assertEqual({f[0]: f[4] for f in proof['root']['files']}, {'workflow/one.py': 'port', 'workflow/two.py': 'blob'})
 
     def test_needless_or_foreign_ports_refuse(self):
@@ -207,6 +220,41 @@ class LandingTests(Base):
         proof = self.integrate(lane, self.native_record(lane['root']['head'], lane['native']['head']))['integration_landing']
         self.assertEqual(proof['native']['files'][0][0], 'pc_port/pc_p2_x.cpp')
 
+    def test_undeclared_line_refuses_the_lanes_own_worktree_branch(self):
+        self.f.running()
+        commit(self.root, {'workflow/base.py': '\n'})
+        tree = self.root / 'output/lane-one'
+        git(self.root, 'worktree', 'add', '-q', '-b', 'lane-one', str(tree))
+        base = head(tree); sha = commit(tree, {'workflow/one.py': 'X = 1\n'})
+        with self.reg.transaction() as state:
+            state['lanes']['one']['root'] = dict(base=base, head=sha, commits=[sha], dirty='', worktree='output/lane-one')
+        lane = self.reg.snapshot()['lanes']['one']
+        lane = self.reg.submit_handoff('one', 1, lane['revision'], self.f.save_handoff(self.f.handoff(lane)))
+        lane = self.reg.checkpoint('one', 1, lane['revision'], {'state': 'integrating'})
+        for kind in ('landed', 'already_landed'):  # The lane head holds its own blobs; that is not a landing.
+            with self.assertRaisesRegex(Rejected, "is on no branch outside the lane's own worktree"):
+                self.integrate(lane, self.record(sha, kind=kind))
+        git(self.root, 'merge', '-q', '--ff-only', 'lane-one')
+        proof = self.integrate(lane, self.record(sha))['integration_landing']
+        self.assertEqual(proof['root']['line_check'], 'undeclared')
+        self.assertTrue(proof['root']['landed_refs'])
+        self.assertNotIn('refs/heads/lane-one', proof['root']['landed_refs'])
+
+    def test_missing_commits_are_named_even_with_ports(self):
+        lane = self.integrating({'workflow/one.py': 'X = 1\n'})
+        port = self.port('workflow/one.py', self.blob(lane['root']['head'], 'workflow/one.py'), None)
+        with self.assertRaisesRegex(Rejected, 'root_commit b{40} does not exist'):
+            self.integrate(lane, self.record('b' * 40, ports=[port]))
+        for field in ('base', 'head'):
+            moved = dict(lane, root=dict(lane['root'], **{field: 'c' * 40}))
+            with self.assertRaisesRegex(Rejected, f'reviewed {field} c{{40}} missing'):
+                landing.inspect(self.root, moved, self.record(lane['root']['head']))
+
+    def test_non_utf8_paths_reach_git_as_bytes(self):
+        sha = commit(self.root, {'workflow/a.py': '\n'})
+        name = sha + ':caf\udce9.py'  # A Latin-1 name as git -z output decodes it.
+        self.assertEqual(landing.objects(self.root, [name]), {name: None})
+
     def test_nested_non_repository_never_falls_back_to_the_parent(self):
         commit(self.root, {'workflow/base.py': '\n'})
         (self.root / 'native').mkdir()
@@ -241,7 +289,7 @@ class LandingTests(Base):
             self.reg.receipt('one', 1, self.record(landed), str(self.root))
         record = self.record(lane['root']['head'])
         done = self.reg.receipt('one', 1, record, str(self.root), lander=dict(lane='one', generation=1))
-        self.assertEqual(done['integration_landing']['lander'], dict(lane='one', generation=1))
+        self.assertEqual(done['integration_landing']['claimed_lander'], dict(lane='one', generation=1))
         self.assertEqual(self.reg.receipt('one', 1, record, str(self.root))['integration'], record)
 
 
@@ -264,6 +312,9 @@ class AuditTests(Base):
         found = {r['lane']: [p['kind'] for p in r['problems']] for r in report['receipts']}
         self.assertEqual(found, dict(one=[], two=['absent'], three=['missing_commit']))
         self.assertEqual(landing_audit.main(['--root', str(self.root), '--db', str(self.f.db), '--lane', 'one']), 0)
+        with patch.object(landing_audit, 'inspect', side_effect=ValueError('bad path bytes')):
+            report = landing_audit.audit(self.root, self.reg.snapshot()['lanes'], {})
+        self.assertEqual(report['summary'], dict(mismatched=3, no_changes=0, receipts=3, unverifiable=3))
 
     def test_audit_runs_through_the_pinned_entry(self):
         entry = Path(__file__).resolve().parents[1] / 'scripts/workflow_module.py'
@@ -290,10 +341,20 @@ class IntegratorGuardTests(Base):
         self.assertEqual(set(bash), set(INTEGRATOR_GIT_DENY))  # Unmatched commands keep OpenCode's default.
         for pattern in INTEGRATOR_GIT_DENY:
             self.assertEqual(bash[pattern], 'deny')
-        text = ' '.join(bash)
-        for command in ('merge*-X*ours', 'merge*-X*theirs', 'merge*-s*ours', 'reset*--hard', 'clean*-*f',
-                        'checkout -- ', 'push*--force'):
-            self.assertIn(command, text)
+        from fnmatch import fnmatchcase
+        denied = lambda command: any(fnmatchcase(command, p) for p in bash if bash[p] == 'deny')
+        for command in ('git merge -X ours x', 'git merge -Xtheirs x', 'git merge -s ours x', 'git merge --strategy=ours x',
+                        'git pull -X theirs', 'git pull -s ours origin', 'git pull --strategy-option=theirs',
+                        'git reset --hard HEAD', 'git clean -fdx', 'git checkout -- a.cpp', 'git checkout HEAD -- a.cpp',
+                        'git checkout --theirs -- CMakeLists.txt', 'git checkout --ours .', 'git checkout .',
+                        'git restore a.cpp', 'git restore --source=main -- a.cpp', 'git -C tree restore a.cpp',
+                        'git push --force', 'git -C tree push -f origin main'):
+            self.assertTrue(denied(command), command)
+        for command in ('git checkout -b feature', 'git merge feature', 'git pull', 'git push origin main', 'git status'):
+            self.assertFalse(denied(command), command)
+        for section in ('agent', 'mode'):  # An agent-level permission would replace the guarded map.
+            self.assertIsNone(integrator_guard({section: {'build': {'permission': {'bash': 'allow'}}}}))
+        self.assertIsNotNone(integrator_guard(dict(agent={'build': {'model': 'p/m'}})))
         self.assertIsNone(self.controller().integrator_config(dict(lane='producer', reason='manual'), str(config)))
         demand = self.controller().integrator_config(dict(lane='producer', reason='integration-demand:x'),
                                                      dict(permission=dict(bash={'*': 'allow', 'git push *': 'deny'})))

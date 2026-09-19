@@ -52,7 +52,11 @@ provably contain the lane's reviewed bytes (identical blobs, ancestry, or a decl
 non-shared port; `already_landed` names the commit that already holds them). Check
 the exact current generation, revision, candidate/landed source pins and hashed
 validation first. Audit existing receipts read-only with
-`py -3.12 scripts/workflow_module.py landing_audit --root C:/Users/alari/pikmin-randomizer --out <file>`. Native lanes
+`py -3.12 scripts/workflow_module.py landing_audit --root C:/Users/alari/pikmin-randomizer --out <file>`.
+The proof and the integrator git guard take effect only once the controller restarts
+on this code. Declare `integration_lines` in `output/workflow/controller/config.json`
+as a deploy step; until then a receipt only has to be on some branch outside the
+lane's own worktree. Native lanes
 also need actual export evidence and native dirty state. A file saying no export
 was performed is not export evidence. Only the integration lead performs the
 maintained export; the expected dirty baseline is not a blocker.

@@ -4,7 +4,8 @@
 
 Reads one committed registry snapshot (no transaction, never writes the registry) and
 runs the same per-file git checks: missing commits, files absent or different at the
-receipt commit, deleted files still present, commits not on a declared integration line.
+receipt commit, deleted files still present, commits not on a declared integration line (or,
+undeclared, on no branch outside the lane's own worktree).
 Exit 1 when any receipt has a mismatch, 2 when the audit itself cannot run.
 """
 import argparse
@@ -37,8 +38,8 @@ def audit(root, lanes, declared=None, only=None):
                         line_check={k: (attestation[k] or {}).get('line_check') for k in ('root', 'native')})
             if not attestation['files_changed'] and not any(p['kind'] == 'missing_commit' for p in problems):
                 item['no_changes'] = True  # Legacy no-op receipt; new ones must say already_landed.
-        except Rejected as exc:
-            problems = [dict(kind='unverifiable', detail=str(exc))]
+        except (Rejected, OSError, ValueError) as exc:  # One unreadable lane never aborts the audit.
+            problems = [dict(kind='unverifiable', detail=str(exc) or type(exc).__name__)]
         item['problems'] = problems
         counts.update(p['kind'] for p in problems)
         counts['receipts'] += 1

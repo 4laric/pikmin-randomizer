@@ -5,6 +5,7 @@ and head must be blob-identical at the receipt commit, reachable through ancestr
 covered by an explicit per-file port declaration. Git never fetches here, and any git
 error refuses the receipt.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,16 +20,26 @@ CONFIG = 'output/workflow/controller/config.json'  # Controller config; integrat
 DEFAULT_REPOS = {'root': '.', 'native': 'native'}
 ENGINE = {'root': ('engine/', 'include/'), 'native': ('pc_port/', 'src/', 'include/', 'cmake/', 'CMakeLists.txt')}
 PORT_FIELDS = {'repo', 'file', 'reviewed_blob', 'landed_blob', 'interdiff_sha256', 'reason', 'evidence'}
+# interdiff_sha256 is the sha256 of the stdout of:
+#   git --literal-pathspecs <INTERDIFF> <lane head> <receipt commit> -- <file>
+INTERDIFF = ('diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-relative', '--full-index',
+             '-U3', '--inter-hunk-context=0', '--indent-heuristic', '--diff-algorithm=myers',
+             '--src-prefix=a/', '--dst-prefix=b/')
 TIMEOUT = 120
 _REDIRECTS = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_COMMON_DIR',
               'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG_PARAMETERS')
 INSTRUCTION = (' Landing proof: integrate verifies, per repository, that every file the lane changed base..head is '
-    'blob-identical at root_commit/native_commit or that the lane head is an ancestor of it. Pass lander {lane, generation} '
-    '(your lane). For a file you had to adapt, add record.ports entries {repo root|native, file, reviewed_blob, landed_blob, '
-    'interdiff_sha256, reason, evidence {path,sha256}}; ports of #186 shared-review or engine files are refused until a '
-    'landing review exists, so hand those back instead of adapting them. When the bytes were already landed or the lane '
-    'changed nothing, set record.kind "already_landed" and name the commit that actually contains them. Never merge with '
-    '-X ours/theirs or -s ours, reset --hard, clean -f, checkout -- or force-push in maintained worktrees.')
+    'blob-identical at root_commit/native_commit or that the lane head is an ancestor of it, and that the commit is on the '
+    'declared integration line (or, if none is declared, on a branch other than the lane\'s own worktree branch). Pass '
+    'lander {lane, generation} (your lane; stored as an unauthenticated claim). For a file you had to adapt or leave out, '
+    'add record.ports entries {repo root|native, file, reviewed_blob, landed_blob (null if left out), interdiff_sha256 '
+    '(sha256 of the stdout of: git --literal-pathspecs ' + ' '.join(INTERDIFF) +
+    ' <lane head> <receipt commit> -- <file>), reason, '
+    'evidence {path,sha256}}; ports of #186 shared-review or engine files (root engine/, include/; native pc_port/, src/, '
+    'include/, cmake/, CMakeLists.txt) are refused until a landing review exists, so hand those back instead of adapting '
+    'or excluding them. When the bytes were already landed or the lane changed nothing, set record.kind "already_landed" '
+    'and name the commit that actually contains them. Never merge or pull with -X ours/theirs or -s ours, reset --hard, '
+    'clean -f, checkout --ours/--theirs or <ref> -- <path>, restore, or force-push in maintained worktrees.')
 
 
 def git(repo, *args, stdin=None, codes=(0,)):
@@ -80,7 +91,8 @@ def objects(repo, names):
         return {}
     require(all('\n' not in n and '\r' not in n for n in names), 'Path with a line break cannot be verified')
     out = git(repo, 'cat-file', '--batch-check=%(objectname) %(objecttype)',
-              stdin=''.join(n + '\n' for n in names).encode('utf-8'))[1].decode('utf-8', 'replace').splitlines()
+              stdin=''.join(n + '\n' for n in names).encode('utf-8', 'surrogateescape')  # Git's own path bytes.
+              )[1].decode('utf-8', 'surrogateescape').splitlines()
     require(len(out) == len(names), 'Unexpected cat-file output in ' + str(repo))
     result = {}
     for name, line in zip(names, out):
@@ -122,15 +134,16 @@ def check_ports(root, ports):
     for port in ports:
         require(isinstance(port, dict) and set(port) == PORT_FIELDS,
                 'Port declaration needs exactly: ' + ', '.join(sorted(PORT_FIELDS)))
-        require(port['repo'] in DEFAULT_REPOS and nonempty(port['file']) and nonempty(port['reason']),
-                'Port needs repo root|native, file and reason')
+        require(isinstance(port['repo'], str) and port['repo'] in DEFAULT_REPOS and nonempty(port['file']) and
+                nonempty(port['reason']), 'Port needs repo root|native, file and reason')
         for field in ('reviewed_blob', 'landed_blob'):
             require(port[field] is None or (isinstance(port[field], str) and SHA.fullmatch(port[field])),
                     f"Port {field} must be a full blob id or null: {port['file']}")
         require(isinstance(port['interdiff_sha256'], str) and HEX64.fullmatch(port['interdiff_sha256']),
                 'Port interdiff_sha256 required: ' + port['file'])
         evidence = port['evidence']
-        require(isinstance(evidence, dict) and local_path(root, evidence.get('path')).is_file() and
+        require(isinstance(evidence, dict) and nonempty(evidence.get('path')) and
+                local_path(root, evidence['path']).is_file() and
                 digest(local_path(root, evidence['path'])) == evidence.get('sha256'),
                 'Port evidence missing or changed: ' + port['file'])
         key = (port['repo'], port['file'])
@@ -149,8 +162,8 @@ def side(root, name, source, commit, declared, ports=None, shared=()):
     if found[commit + '^{commit}'] is None:
         return report, [dict(kind='missing_commit', repo=name, commit=commit,
                              detail=f'{name}: {name}_commit {commit} does not exist in {repo}')]
-    require(found[base + '^{commit}'] and found[head + '^{commit}'],
-            f'{name}: reviewed base/head {base[:12]}..{head[:12]} missing from {repo}')
+    for label, sha in (('base', base), ('head', head)):
+        require(found[sha + '^{commit}'], f'{name}: reviewed {label} {sha} missing from {repo}')
     changed = changes(repo, base, head)
     report['head_is_ancestor'] = git(repo, 'merge-base', '--is-ancestor', head, commit, codes=(0, 1))[0] == 0
     blobs = objects(repo, [c + ':' + p for _, p in changed for c in (head, commit)])
@@ -164,6 +177,9 @@ def side(root, name, source, commit, declared, ports=None, shared=()):
             require((port['reviewed_blob'], port['landed_blob']) == (reviewed, landed),
                     f"{name}:{path} port blobs differ from git (reviewed {reviewed}, landed {landed})")
             require_landing_review(name, port, shared)
+            actual = hashlib.sha256(git(repo, '--literal-pathspecs', *INTERDIFF, head, commit, '--', path)[1]).hexdigest()
+            require(port['interdiff_sha256'] == actual, f'{name}:{path} port interdiff_sha256 must be {actual} '
+                    f"(sha256 of git --literal-pathspecs {' '.join(INTERDIFF)} {head} {commit} -- {path})")
             via = 'port'
         elif reviewed == landed:
             via = 'blob' if reviewed else 'absent'
@@ -187,8 +203,23 @@ def side(root, name, source, commit, declared, ports=None, shared=()):
             problems.append(dict(kind='not_on_line', repo=name, commit=commit, detail=(
                 f"{name}: {commit[:12]} is not reachable from declared line {line['ref']} ({tip[:12]})")))
     else:
+        # Undeclared: lines are never guessed, but the lane's own worktree branch is not a landing.
         report['line_check'] = 'undeclared'
+        own = _norm(Path(root, source['worktree'])) if nonempty(source.get('worktree')) else None
+        own = None if own == _norm(repo) else own  # A lane working in the maintained checkout lands on its branch.
+        out = git(repo, 'for-each-ref', '--contains', commit, '--format=%(refname)%00%(worktreepath)',
+                  'refs/heads', 'refs/remotes')[1].decode('utf-8', 'surrogateescape').splitlines()
+        refs = [r for r, _, tree in (o.partition('\0') for o in out) if not own or not tree or _norm(tree) != own]
+        report['landed_refs'] = refs[:5]
+        if not refs:
+            problems.append(dict(kind='not_landed', repo=name, commit=commit, detail=(
+                f"{name}: {commit[:12]} is on no branch outside the lane's own worktree; land it on a maintained "
+                'branch (declare integration_lines to name it)')))
     return report, problems
+
+
+def _norm(path):
+    return os.path.normcase(str(Path(path).resolve()))
 
 
 def shared_files(root, lane):
@@ -227,6 +258,8 @@ def inspect(root, lane, record, declared=None, ports=None, shared=()):
             continue
         reports[name], found = side(root, name, source, commit, declared, ports, shared)
         problems += found
+    missing = {p['repo'] for p in problems if p['kind'] == 'missing_commit'}  # Their ports were never examined.
+    ports = {k: v for k, v in ports.items() if k[0] not in missing}
     require(not ports, 'Port declared for a file the lane did not change: ' +
             ', '.join(':'.join(k) for k in ports))
     return dict(schema=1, kind=kind, root=reports['root'], native=reports['native'],
@@ -248,5 +281,6 @@ def prove(root, lane, record, lander=None):
         raise Rejected('Receipt does not contain the reviewed bytes: ' + '; '.join(details[:20]) +
                        (f' (+{len(details) - 20} more)' if len(details) > 20 else '') +
                        '. Land the reviewed bytes, name the commit that contains them, or declare a port.')
-    attestation.update(ports=list(record.get('ports', [])), lander=lander)
+    # Nothing authenticates the request's lander yet (item 3), so it is stored as a claim that confers nothing.
+    attestation.update(ports=list(record.get('ports', [])), claimed_lander=lander)
     return attestation

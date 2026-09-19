@@ -196,14 +196,18 @@ class Controller:
         if probe(identity) != 'alive':
             self.reg.notice(item['lane'], 'runner_stopped_before_binding', {'action': item['id']})
             return
-        lane = self.reg.bind_launch(item['id'], identity)
-        item = self.reg.control_status()['launches'][item['id']]
         entry = dict(self.config['lanes'][item['lane']])
         for field in ('root', 'output', 'brief', 'config'):
             entry[field] = str(local_path(self.reg.root, entry[field]))
         from .managed_config import output_access
         managed = output_access(entry['config'], entry['output'], self.reg.root, entry['brief'])
-        guarded = self.integrator_config(item, managed or entry['config'])
+        try:  # Decide the guard before binding; a refused integrator never gets start.json and its runner times out.
+            guarded = self.integrator_config(item, managed or entry['config'])
+        except Rejected as exc:
+            self.reg.notice(item['lane'], 'integrator_guard_refused', {'action': item['id'], 'error': str(exc)})
+            return
+        lane = self.reg.bind_launch(item['id'], identity)
+        item = self.reg.control_status()['launches'][item['id']]
         if guarded is not None:
             write(directory / 'opencode.json', guarded)
             entry['config'] = str(directory / 'opencode.json')
@@ -429,11 +433,13 @@ class Controller:
         for path in self.config.get('receipts', []):
             file = local_path(self.reg.root, path)
             if not file.exists(): continue
-            data = json.loads(file.read_text(encoding='utf-8-sig'))
-            try:
+            data = {}
+            try:  # One malformed receipt file never stalls the rest of the tick.
+                data = json.loads(file.read_text(encoding='utf-8-sig'))
                 self.reg.receipt(**data)
-            except (Rejected, KeyError) as error:
-                self.reg.notice(data.get('key', 'integration'), 'receipt_rejected', {'path': path, 'error': str(error)})
+            except (Rejected, KeyError, TypeError, ValueError, OSError) as error:
+                key = data.get('key') if isinstance(data, dict) and isinstance(data.get('key'), str) else 'integration'
+                self.reg.notice(key, 'receipt_rejected', {'path': path, 'error': str(error) or type(error).__name__})
         publication_state=self.reg.snapshot()
         artifacts=publication_state.get('control',{}).get('artifacts',{})
         for item in self.config.get('publications', []):
@@ -708,7 +714,10 @@ class Controller:
         # Complete a previously bound launch after a crash before writing start.json.
         for item in self.reg.control_status()['launches'].values():
             if item['status'] == 'running' and not (self.launch_directory(item['id']) / 'start.json').exists():
-                self.dispatch(item)
+                try:  # One refused recovery never blocks the pending launches below.
+                    self.dispatch(item)
+                except Rejected as exc:
+                    self.reg.notice(item['lane'], 'bound_dispatch_deferred', {'action': item['id'], 'error': str(exc)})
         if budget > 0 and self.capacity():
             lanes = self.reg.snapshot()['lanes']
             from .planner_demand import dispatch_priority

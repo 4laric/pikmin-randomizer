@@ -161,10 +161,15 @@ Configure the path in `receipts`. It contains the arguments to `workflow receipt
 The controller verifies accepted candidate ancestry with Git in the given worktrees,
 then `integrate` proves the landed bytes (docs/PIKMIN2_WORKFLOW.md section 5), the
 existing handoff and validation/export hashes before marking completion. A receipt
-may add `"lander":{"lane":...,"generation":...}`. Replaying the same receipt
-does not increment completion twice. Conflicting receipts fail closed. A root-only
-accepted handoff can exclude an auxiliary native fixture; record that exclusion
-explicitly in validation evidence. Receipt submission does not run a merge/export.
+may add `"lander":{"lane":...,"generation":...}`, stored as an unauthenticated claim.
+Replaying the same receipt does not increment completion twice. Conflicting receipts
+fail closed; a malformed receipt file is refused with a `receipt_rejected` notice and
+never stalls the tick. Every native file the lane changed must be at `native_commit`:
+leaving an auxiliary native fixture out needs a per-file port with `landed_blob` null,
+a reason and hashed evidence, and leaving out an engine-path file (native `pc_port/`,
+`src/`, `include/`, `cmake/`, `CMakeLists.txt`) is refused until a landing review
+exists. Validation evidence alone no longer excludes a file. Receipt submission does
+not run a merge/export.
 
 Configure `publications` with `{producer,path,description}` for completed provider
 contracts. The controller snapshots the evidence into immutable files, versions it
@@ -300,7 +305,7 @@ Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the l
 
 Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.
 
-Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. Launches of an integration owner (a workstream `owner_lane`, or any `integration-demand:` wakeup) get per-launch OpenCode `permission.bash` deny rules after any catch-all (last match wins) for `git merge -X ours|theirs`, `-s ours`, `--strategy-option`, `cherry-pick`/`rebase -X`, `reset --hard`, `clean -f*`, `checkout -- <path>` and force, mirror or `+refspec` pushes (`managed_config.INTEGRATOR_GIT_DENY`); an integrator config that cannot carry them is refused before spawning with an `integrator_guard_refused` notice. Wildcards match the command text, so this is a guard against accidents, not a sandbox. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
+Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. Launches of an integration owner (a workstream `owner_lane`, or any `integration-demand:` wakeup) get per-launch OpenCode `permission.bash` deny rules after any catch-all (last match wins) for `git merge`/`pull` with `-X ours|theirs`, `-s ours` or a strategy option, `cherry-pick`/`rebase -X`, `reset --hard`, `clean -f*`, `checkout --ours|--theirs`, `checkout [<ref>] -- <path>`, `checkout .`, `restore` of the worktree or from a source, and force, mirror or `+refspec` pushes (`managed_config.INTEGRATOR_GIT_DENY`). An integrator config that cannot carry them (unparseable, a non-map `permission.bash`, or any `agent`/`mode` entry with its own `permission`, which OpenCode would apply instead) is refused with an `integrator_guard_refused` notice: before spawning, or, when ownership changed after spawning, before binding, so the runner is never started and times out through the normal no-start path while other launches keep dispatching. Wildcards match the command text, so this is a guard against accidents, not a sandbox. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
 
 
 Heavy assignment reservations pause only when a lane is `blocked`, `review_ready`, `handoff_ready`, or `done` and its worker and every protected lease process are confirmed stopped. This frees prospective build capacity for dependency producers; it does not release any actual resource lease, change worker ownership, complete an assignment, or accept evidence. Live or unknown workers and protected children retain their reservations. Actual build leases always count separately toward the shared cap, including multiple leases held by one lane, and resuming a heavy assignment must reserve capacity again.

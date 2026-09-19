@@ -22,6 +22,9 @@ def main():
     parser.add_argument('--once', action='store_true', help='One real reconciliation/dispatch tick')
     args = parser.parse_args()
     config = json.loads(args.config.read_text(encoding='utf-8-sig'))
+    from workflow.landing import CONFIG
+    if 'integration_lines' in config and args.config.resolve() != (args.root / CONFIG).resolve():
+        parser.error(f'integration_lines is read only from <root>/{CONFIG}; declare it there')  # Never silently unchecked.
     registry = Registry(args.root / 'output/workflow/registry.sqlite3', args.root)
     registry.controller_claim(identify(os.getpid()))
     controller = Controller(registry, config)

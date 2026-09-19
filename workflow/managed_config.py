@@ -36,11 +36,15 @@ def output_access(config, output, root, brief=None):
 
 
 # OpenCode matches each parsed bash command against these wildcards; the last match wins,
-# so they follow any existing catch-all. `git *` also covers `git -C <tree> ...`.
+# so they follow any existing catch-all. `git *` also covers `git -C <tree> ...`. Per-file
+# conflict shortcuts (checkout --ours/--theirs, <ref> -- <path>, restore) count as -X ours/theirs.
 INTEGRATOR_GIT_DENY = (
     'git *merge*-X*ours*', 'git *merge*-X*theirs*', 'git *merge*--strategy-option*', 'git *merge*-s*ours*',
+    'git *pull*-X*', 'git *pull*--strategy*', 'git *pull*-s*ours*',
     'git *cherry-pick*-X*', 'git *rebase*-X*', 'git *reset*--hard*', 'git *clean*-*f*',
-    'git *checkout -- *', 'git *push*--force*', 'git *push* -f*', 'git *push*--mirror*', 'git *push* +*')
+    'git *checkout*--ours*', 'git *checkout*--theirs*', 'git *checkout*-- *', 'git *checkout* .',
+    'git *restore*--source*', 'git *restore*--worktree*', 'git restore *', 'git -C * restore *',
+    'git *push*--force*', 'git *push* -f*', 'git *push*--mirror*', 'git *push* +*')
 
 
 def load_config(path):
@@ -62,6 +66,9 @@ def load_config(path):
 def integrator_guard(data):
     """Deny destructive git in maintained worktrees for an integrator launch; None refuses the launch."""
     data = dict(data)
+    if any(isinstance(section, dict) and any(isinstance(v, dict) and 'permission' in v for v in section.values())
+           for section in (data.get('agent'), data.get('mode'))):
+        return None  # An agent-level permission replaces the top-level one and would drop the guard.
     permissions = data.get('permission', {})
     if isinstance(permissions, str):
         permissions = {'*': permissions}

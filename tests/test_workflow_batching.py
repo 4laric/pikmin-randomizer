@@ -105,13 +105,16 @@ class BatchTests(unittest.TestCase):
         lane=self.reg.checkpoint('two',1,lane['revision'],{'state':'integrating'})
         self.reg.integrate('two',1,lane['revision'],dict(root_commit=source['head'],
             validation_path=self.fixture.evidence['path'],validation_sha256=self.fixture.evidence['sha256']))
-        with self.reg.transaction() as state:
-            proof = state['lanes']['two'].pop('integration_landing')
-        with self.assertRaisesRegex(Rejected, 'lack a verified landing proof: two'):
+        with self.reg.transaction() as state:  # A receipt written before the proof existed, naming the wrong commit.
+            state['lanes']['two'].pop('integration_landing')
+            state['lanes']['two']['integration']['root_commit'] = source['base']
+        with self.assertRaisesRegex(Rejected, r'lack a verified landing proof .*: two: root:workflow/two.py is absent'):
             self.reg.batch_close('batch', 'three', 1, 3)
-        with self.reg.transaction() as state:
-            state['lanes']['two']['integration_landing'] = proof
-        self.reg.batch_close('batch', 'three', 1, 3)
+        with self.reg.transaction() as state:  # Pre-upgrade but correct: re-proven read-only, no isolation needed.
+            state['lanes']['two']['integration']['root_commit'] = source['head']
+            state['lanes']['two']['integration_landing'] = dict(root=None)  # Malformed proofs never raise.
+        closed = self.reg.batch_close('batch', 'three', 1, 3)
+        self.assertEqual(closed['reproved']['two']['root_commit'], source['head'])
 
     def test_source_file_overlap_rejected(self):
         # Simulate two otherwise-valid handoffs containing a shared approved path.

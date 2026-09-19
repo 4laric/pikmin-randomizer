@@ -12,6 +12,12 @@ def _store(state):
     return state.setdefault('throughput', {}).setdefault('batches', {})
 
 
+def _proven(lane):
+    """The lane's receipt carries the landing proof integrate() wrote for that exact root commit."""
+    landing = lane.get('integration_landing') if isinstance(lane.get('integration_landing'), dict) else {}
+    return (landing.get('root') or {}).get('commit') == (lane.get('integration') or {}).get('root_commit')
+
+
 def isolated_handoff(batches, key, lane):
     """Return the recorded rejection of these exact handoff ownership pins."""
     review = lane.get('review_repair')
@@ -244,7 +250,26 @@ class BatchingMixin:
             self.event(state, 'batch_candidate_isolated', integrator, batch_id=batch_id, candidate=candidate)
             return copy.deepcopy(batch)
 
+    def _reprove(self, batch_id):
+        """{lane: (lane record, problems)} for done candidates whose receipt predates the landing proof.
+
+        Git runs here, outside the writer lock, over committed records read one by one."""
+        from .landing import inspect
+        from .storage import read_record
+        batch, result = read_record(self, ('throughput', 'batches'), batch_id) or {}, {}
+        for key in batch.get('candidates', {}):
+            lane = read_record(self, ('lanes',), key)
+            if (key in batch.get('isolated', {}) or not isinstance(lane, dict) or lane.get('state') != 'done' or
+                    not isinstance(lane.get('integration'), dict) or _proven(lane)):
+                continue
+            try:
+                result[key] = (lane, inspect(self.root, lane, lane['integration'])[1])
+            except (Rejected, OSError, ValueError) as exc:
+                result[key] = (lane, [dict(kind='unverifiable', detail=str(exc) or type(exc).__name__)])
+        return result
+
     def batch_close(self, batch_id, integrator, generation, revision):
+        reproved = self._reprove(batch_id)
         with self.transaction() as state:
             batch = self._batch(state, batch_id, integrator, generation, revision)
             unfinished = [key for key, pin in batch['candidates'].items()
@@ -253,11 +278,24 @@ class BatchingMixin:
                               state['lanes'][key]['state'] == 'done' and
                               state['lanes'][key].get('integration'))]
             require(not unfinished, 'Record per-lane integration receipts or explicitly isolate before closing: ' + ', '.join(unfinished))
-            # Every receipt goes through integrate(); a receipt without its landing proof was not verified.
-            unproven = [key for key in batch['candidates'] if key not in batch['isolated'] and
-                        (state['lanes'][key].get('integration_landing') or {}).get('root', {}).get('commit') !=
-                        state['lanes'][key]['integration'].get('root_commit')]
-            require(not unproven, 'Candidate receipts lack a verified landing proof: ' + ', '.join(unproven))
+            # A receipt written before the landing proof existed is re-proven read-only; it must
+            # be clean against the same committed lane record, or the close refuses.
+            unproven, legacy = [], {}
+            for key in batch['candidates']:
+                lane = state['lanes'][key]
+                if key in batch['isolated'] or _proven(lane):
+                    continue
+                prior, problems = reproved.get(key, (None, None))
+                if prior is None or problems or any(prior.get(k) != lane.get(k) for k in
+                                                    ('generation', 'revision', 'root', 'native', 'integration')):
+                    unproven.append(key + (': ' + '; '.join(p['detail'] for p in problems[:3]) if problems else ''))
+                else:
+                    legacy[key] = dict(root_commit=lane['integration'].get('root_commit'),
+                                       native_commit=lane['integration'].get('native_commit'), at=self.clock())
+            require(not unproven, 'Candidate receipts lack a verified landing proof (see landing_audit --lane KEY; '
+                    'isolate a candidate whose commits do not contain its reviewed bytes): ' + ' | '.join(unproven))
+            if legacy:
+                batch.setdefault('reproved', {}).update(legacy)
             batch.update(state='closed', closed_at=self.clock(), revision=revision + 1)
             self.event(state, 'batch_closed', integrator, batch_id=batch_id)
             return copy.deepcopy(batch)

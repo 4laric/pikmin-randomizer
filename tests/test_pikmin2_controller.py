@@ -480,6 +480,47 @@ class ControllerTests(unittest.TestCase):
         self.controller.tick()
         self.assertTrue((directory/'start.json').exists());self.assertFalse(self.spawns)
 
+    def test_integrator_guard_refusal_after_spawn_never_binds_or_blocks_dispatch(self):
+        # The lane became an integration owner after spawn.json; its config (review.txt) cannot carry the guard.
+        self.config['lanes']['provider'] = dict(self.config['lanes']['consumer'])
+        def spawned(item):
+            directory = self.controller.launch_directory(item['id']); directory.mkdir(parents=True)
+            write(directory/'spawn.json', {'at': self.now}); write(directory/'runner.json', self.identity)
+        bound = self.plan(); spawned(bound)
+        self.reg.bind_launch(bound['id'], self.identity)  # Bound by a pre-guard controller before start.json.
+        with self.reg.transaction() as state:
+            state.setdefault('throughput', {})['workstreams'] = {'w': dict(owner_lane='consumer')}
+        other = self.reg.plan_launch('provider', 'test', 'Other lane', self.config['models'])
+        for _ in range(2):  # Later passes still reach and dispatch other pending launches.
+            self.controller.dispatch_pending(4)
+        self.assertTrue((self.controller.launch_directory(other['id'])/'start.json').exists())
+        self.controller.mark_exited(bound['id'])
+        with self.reg.transaction() as state:  # That runner timed out and stopped.
+            state['lanes']['consumer']['process'] = {'pid': -1, 'created': 'timed-out'}
+        unbound = self.reg.plan_launch('consumer', 'second', 'Again', self.config['models']); spawned(unbound)
+        self.controller.dispatch_pending(4)
+        self.assertEqual(self.reg.control_status()['launches'][unbound['id']]['status'], 'intent')  # Never bound.
+        for item in (bound, unbound):
+            self.assertFalse((self.controller.launch_directory(item['id'])/'start.json').exists())
+        refused = [n for n in self.reg.control_status()['notices'].values() if n['kind'] == 'integrator_guard_refused']
+        self.assertEqual({n['detail']['action'] for n in refused}, {bound['id'], unbound['id']})
+
+    def test_malformed_receipt_files_are_noticed_not_raised(self):
+        (self.out/'broken.json').write_text('{nope')
+        (self.out/'shape.json').write_text(json.dumps({'key': 'consumer', 'unexpected': 1}))
+        self.config['receipts'] = ['output/lane/broken.json', 'output/lane/shape.json']
+        self.controller.receipts()
+        rejected = [n for n in self.reg.control_status()['notices'].values() if n['kind'] == 'receipt_rejected']
+        self.assertEqual({n['detail']['path'] for n in rejected}, set(self.config['receipts']))
+
+    def test_integration_lines_only_from_the_canonical_config(self):
+        config = self.root/'other.json'; config.write_text(json.dumps(dict(integration_lines={})))
+        script = Path(__file__).resolve().parents[1]/'scripts/pikmin2_controller.py'
+        p = subprocess.run([sys.executable, str(script), '--root', str(self.root), '--config', str(config), '--once'],
+                           capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn('integration_lines is read only from', p.stderr)
+
     def test_live_owner_prevents_resume(self):
         with self.reg.transaction() as state:state['lanes']['consumer']['process']=self.identity
         with self.assertRaises(Rejected):self.plan()

@@ -366,26 +366,39 @@ one of these must hold:
 - the lane head is an ancestor of the receipt commit;
 - the record carries an explicit port declaration for that file (below).
 
-Anything else, a git error or timeout included, refuses with one line per file
-(`differs`, `is absent`, `was deleted by the lane but is present`, missing commit).
-Inside the transaction it refuses again if the lane's source pins or handoff moved
-while git ran. The proof is stored beside the unchanged receipt as
+The receipt commit must also be on a maintained line (below). Anything else, a git
+error or timeout included, refuses with one line per file (`differs`, `is absent`,
+`was deleted by the lane but is present`, missing commit, missing reviewed base or
+head, not landed). Inside the transaction it refuses again if the lane's source pins
+or handoff moved while git ran. The proof is stored beside the unchanged receipt as
 `integration_landing` {kind, root, native (repo, commit, base, head,
 head_is_ancestor, per-file `[path, status, reviewed_blob, landed_blob, via]`,
-line_check), ports, lander, verified_at}. `lander` is the verified calling lane
-and generation when the request names one. `batch-close` refuses a candidate
-whose receipt carries no such proof.
+line_check, landed_refs), ports, claimed_lander, verified_at}. `claimed_lander` is
+the `lander` {lane, generation} the request names, checked only to be a current,
+not-done lane; nothing authenticates the caller yet (item 3), so it confers nothing.
+`batch-close` accepts a candidate whose receipt carries that proof; a receipt written
+before the proof existed is re-proven read-only outside the writer lock and recorded
+in the batch's `reproved`, and a mismatch refuses with the per-file details (isolate
+that candidate). A controller keeps its loaded code: receipts, the proof and the
+integrator guard apply only after the controller restarts on this code.
 
 **Ports.** When an integrator had to adapt a file, it declares it in
 `record.ports`: `{"repo":"root|native","file":...,"reviewed_blob":BLOB_AT_LANE_HEAD,
 "landed_blob":BLOB_AT_RECEIPT_COMMIT,"interdiff_sha256":...,"reason":...,
-"evidence":{"path":...,"sha256":...}}` (`null` blob for an absent file). Both blobs
-must match git, the evidence must hash, and a port for a file that needs none is
-refused. Ports of files the lane routed through shared review (#186
+"evidence":{"path":...,"sha256":...}}` (`null` blob for an absent file, so a file
+left out of the landing is a port with `landed_blob` null). `repo` is an addition to
+the per-file shape so root and native files with the same path stay distinct. Both
+blobs must match git, the evidence must hash, and a port for a file that needs none
+is refused. `interdiff_sha256` is the sha256 of the stdout of
+`git --literal-pathspecs diff --no-color --no-ext-diff --no-textconv --no-renames
+--no-relative --full-index -U3 --inter-hunk-context=0 --indent-heuristic
+--diff-algorithm=myers --src-prefix=a/ --dst-prefix=b/ <lane head> <receipt commit>
+-- <file>` (`landing.INTERDIFF`); integrate recomputes it and a mismatch refuses with
+the expected value. Ports of files the lane routed through shared review (#186
 `shared_reviews`) or of engine paths (root `engine/`, `include/`; native
 `pc_port/`, `src/`, `include/`, `cmake/`, `CMakeLists.txt`) are refused with
 `shared-file port requires a landing review`: hand those back for a re-reviewed
-handoff instead of adapting them.
+handoff instead of adapting or leaving them out.
 
 **Already landed.** A lane that changed nothing, or whose bytes an earlier commit
 already carries, is recorded with `"kind":"already_landed"` naming the commit that
@@ -396,12 +409,21 @@ allowed. A lane without changes is refused unless it says `already_landed`.
 (`output/workflow/controller/config.json`) declares
 `"integration_lines":{"root":{"repo":".","ref":"<branch>"},"native":{"repo":"native","ref":"<branch>"}}`,
 the receipt commit must be reachable from that ref (`merge-base --is-ancestor`).
-Otherwise the proof records `line_check: "undeclared"`; lines are never guessed.
+Only that path is read; the controller refuses to start with another `--config`
+that declares `integration_lines`. Otherwise the proof records
+`line_check: "undeclared"` and lines are never guessed, but the commit must still be
+contained in some local or remote-tracking branch other than the one checked out in
+the lane's own recorded worktree (`landed_refs` lists up to five); a receipt naming
+the lane's unmerged head refuses as not landed. A lane working directly in the
+maintained checkout has no such exclusion. This is weaker than a declared line (an
+integrator's own branch counts), so declaring the lines is the recommended deploy
+step.
 
 **Audit.** `<python> <checkout>/scripts/workflow_module.py landing_audit --root <root>
 [--out report.json] [--lane KEY]` runs the same checks over every existing receipt
 from one read-only snapshot and prints the mismatches (missing commits, files absent
-or different, deleted files present, not on a declared line, unverifiable pins). It
+or different, deleted files present, not on a declared line or not landed on any
+branch outside the lane's worktree, unverifiable pins or paths). It
 never writes the registry; exit 1 means at least one receipt does not contain its
 reviewed bytes. Historical receipts are reported, never rewritten.
 
