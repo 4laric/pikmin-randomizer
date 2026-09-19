@@ -20,6 +20,28 @@ import time
 from .processes import boot_id, busy_descendants, identify, process_rows
 
 
+# MinGW runtime DLLs (libstdc++-6, libgcc_s_seh-1) live beside g++; without them on PATH a worker's
+# freshly built test .exe cannot start and Windows raises a modal dialog nobody dismisses.
+TOOLCHAIN_DIRS = (r'C:\msys64\mingw64\bin', r'C:\msys64\usr\bin')
+
+
+def worker_env(base, config, toolchain_dirs=TOOLCHAIN_DIRS):
+    env = dict(base, PYTHONUTF8='1', OPENCODE_CONFIG=config)
+    path = env.get('PATH', '')
+    have = {p.rstrip('\\/').lower() for p in path.split(os.pathsep) if p}
+    extra = [d for d in toolchain_dirs if os.path.isdir(d) and d.rstrip('\\/').lower() not in have]
+    if extra:
+        env['PATH'] = os.pathsep.join(extra + ([path] if path else []))
+    return env
+
+
+def quiet_error_dialogs():
+    """Children inherit the error mode: a missing DLL fails the process instead of popping a dialog."""
+    if os.name == 'nt':
+        import ctypes
+        ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)  # FAILCRITICALERRORS|NOGPFAULTERRORBOX|NOOPENFILEERRORBOX
+
+
 def write(path, value, durable=True):
     """Atomic; durable by default, so a crash after os.replace cannot leave a NUL-filled record."""
     path = Path(path)
@@ -184,7 +206,8 @@ def main(directory, *, clock=time.monotonic, inventory=process_rows):
             return
         time.sleep(.2)
     data = json.loads((out / 'start.json').read_text(encoding='utf-8'))
-    env = dict(os.environ, PYTHONUTF8='1', OPENCODE_CONFIG=data['config'])
+    env = worker_env(os.environ, data['config'])
+    quiet_error_dialogs()
     command = [data['executable'], 'run', '--dir', data['worktree'], '-m', data['model'],
                '--auto', '--format', 'json', '--print-logs', '--log-level', 'INFO']
     fresh = bool(data.get('fresh_session')) or not data.get('session')
