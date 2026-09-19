@@ -344,3 +344,238 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
+# ---------------------------------------------------------------------------
+# P1 runtime import path (floor-1, ch_MAT_route_rover).
+#
+# Added by the P1 slice; all P0 code above is unchanged. This path stages the
+# decoded floor manifest into a private run layout (p2-cave-generate.txt,
+# p2-cave-entry.txt, markers template, run-config.json) for the accepted
+# cave generator (#129) and the room-preview cave entry. It invents no
+# placements: spawns are roster-minimum intents from the decoded caveinfo,
+# and observed actors are correlated from real native markers, never assumed.
+# ---------------------------------------------------------------------------
+
+# Framework contract COLORS order (Blue, Red, Yellow, Purple, White, Bulbmin,
+# Carrot); rows 0-2 map 1:1 onto P2SpeciesBlue/Red/Yellow. Rows 3+ need
+# asset-gated handling and are refused here (route_rover carries none).
+P1_NATIVE_COLOR_NAMES = ("Blue", "Red", "Yellow", "Purple", "White",
+                         "Bulbmin", "Carrot")
+P1_ENTRY_VERSION = "P2_CAVE_ENTRY_1"
+P1_GENERATE_VERSION = "P2_CAVE_GENERATE_1"
+
+
+def p1_species_for_row(row):
+    """Map a native-color roster row to a P2Species id, fail-closed."""
+    _require(isinstance(row, int) and not isinstance(row, bool),
+             "Roster row index must be an integer")
+    _require(row in (0, 1, 2),
+             "Only Blue/Red/Yellow rows stage without asset-gated handling")
+    return row
+
+
+def p1_stage_squad(matrix=None):
+    """Starting squad as (species, maturity, count) from the pinned matrix."""
+    matrix = PIKMIN_MATRIX if matrix is None else matrix
+    squad = []
+    for row_index, row in enumerate(matrix):
+        for maturity, count in enumerate(row):
+            if count:
+                squad.append((p1_species_for_row(row_index), maturity, count))
+    _require(squad, "Empty starting squad")
+    return squad
+
+
+def p1_squad_total(squad):
+    return sum(count for _, _, count in squad)
+
+
+def p1_write_cave_entry(path, token, floor, health, squad):
+    """Write a grammar-checked P2_CAVE_ENTRY_1 checkpoint (mirrors the native
+    reader: version token floor health count, then species/maturity pairs)."""
+    _require(isinstance(token, str) and re.fullmatch(r"[0-9a-f]{32}", token or ""),
+             "Bad entry token (Tutorial profile needs 32 lowercase hex)")
+    _require(floor == 1, "Only floor 1 is staged by this P1")
+    _require(isinstance(health, float) and 0 < health <= 1,
+             "Entry health must be in (0, 1]")
+    total = 0
+    lines = []
+    for species, maturity, count in squad:
+        _require(isinstance(species, int) and 0 <= species <= 2,
+                 "Entry species out of staged range")
+        _require(maturity == 2, "Only flower maturity is staged")
+        _require(isinstance(count, int) and count >= 1, "Bad squad count")
+        total += count
+        lines.extend(["%d %d" % (species, maturity)] * count)
+    _require(1 <= total <= 100, "Squad size outside entry bounds")
+    text = "%s %s %d %r %d\n%s\n" % (P1_ENTRY_VERSION, token, floor,
+                                     health, total, "\n".join(lines))
+    Path(path).write_text(text, encoding="utf-8")
+    return {"path": str(path), "squad_total": total,
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+
+
+def _p1_name(value, what):
+    _require(isinstance(value, str) and value and len(value) <= 128
+             and all(c.isalnum() or c in "_-.$" for c in value),
+             "Bad %s" % what)
+    return value
+
+
+def p1_write_generate_manifest(path, pool, units, rooms, doors, links,
+                               spawns, anchor):
+    """Write a grammar-checked P2_CAVE_GENERATE_1 manifest mirroring the
+    native reader (pool/units/rooms/doors/links/spawns/anchor, no trailing
+    data). Raises ValueError on any contract violation."""
+    _p1_name(pool, "pool")
+    _require(1 <= len(units) <= 64, "Unit count out of bounds")
+    for idx, unit in enumerate(units):
+        _require(unit["idx"] == idx, "Unit index must ascend from 0")
+        _p1_name(unit["name"], "unit name")
+        _require(unit["w"] > 0 and unit["d"] > 0, "Unit extent invalid")
+        _require(0 <= unit["kind"] <= 255, "Unit kind out of bounds")
+    _require(1 <= len(rooms) <= 256, "Room count out of bounds")
+    for idx, room in enumerate(rooms):
+        _require(room["idx"] == idx, "Room index must ascend from 0")
+        _require(0 <= room["unit"] < len(units), "Room unit out of bounds")
+        _require(room["turn"] in (0, 1, 2, 3), "Room turn out of bounds")
+    for door in doors:
+        _require(0 <= door["unit"] < len(units), "Door unit out of bounds")
+        _require(0 <= door["dir"] <= 3, "Door dir out of bounds")
+    for link in links:
+        _require(0 <= link["unit"] < len(units)
+                 and 0 <= link["peer_unit"] < len(units),
+                 "Link unit out of bounds")
+        _require(link["dist"] >= 0, "Link distance invalid")
+    _require(1 <= len(spawns) <= 256, "Spawn count out of bounds")
+    for spawn in spawns:
+        _p1_name(spawn["id"], "spawn id")
+        _require(1 <= spawn["count"] <= 10000, "Spawn count out of bounds")
+    _require(anchor in ("hole", "geyser"), "Anchor must be hole|geyser")
+    lines = [P1_GENERATE_VERSION, "pool %s %d" % (pool, len(units))]
+    lines += ["unit %d %s %s %s %d" % (u["idx"], u["name"], u["w"], u["d"],
+                                       u["kind"]) for u in units]
+    lines += ["rooms %d" % len(rooms)]
+    lines += ["room %d %d %d %s %s %s" % (r["idx"], r["unit"], r["turn"],
+                                          r["ox"], r["oy"], r["oz"])
+              for r in rooms]
+    lines += ["doors %d" % len(doors)]
+    lines += ["door %d %d %d" % (d["unit"], d["id"], d["dir"]) for d in doors]
+    lines += ["links %d" % len(links)]
+    lines += ["link %d %d %d %d %s" % (l["unit"], l["door"], l["peer_unit"],
+                                       l["peer_door"], l["dist"])
+              for l in links]
+    lines += ["spawns %d" % len(spawns)]
+    lines += ["spawn %s %d" % (s["id"], s["count"]) for s in spawns]
+    lines += ["anchor %s" % anchor]
+    text = "\n".join(lines) + "\n"
+    Path(path).write_text(text, encoding="utf-8")
+    return {"path": str(path),
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+
+
+def p1_route_rover_layout(cave_packet, units_packet, anchor="hole"):
+    """Deterministic single-room layout from the decoded packets.
+
+    Declares every decoded pool unit, stages one room (the 7x7 room unit,
+    turn 0 at origin) with zero doors/links, and emits roster-minimum spawn
+    intents aggregated per enemy id. The anchor kind is a staged marker-only
+    choice recorded in the layout, never a source claim."""
+    _require(cave_packet.get("floor_count") == 1, "Layout needs 1 floor")
+    _require(units_packet.get("pool", "").endswith(".txt"), "Bad unit pool")
+    units = [{"idx": idx, "name": unit["name"], "w": unit["cells"][0],
+              "d": unit["cells"][1], "kind": unit["kind"]}
+             for idx, unit in enumerate(units_packet["units"])]
+    room_unit = next(i for i, unit in enumerate(units)
+                     if unit["name"] == "room_bunki7x7_8_tile")
+    totals = {}
+    for floor in cave_packet["floors"]:
+        for row in floor["enemies"]:
+            minimum = row["source_weight"] // 10
+            _require(minimum >= 1, "Roster minimum below one")
+            totals[row["enemy_id"]] = totals.get(row["enemy_id"], 0) + minimum
+    return {
+        "pool": units_packet["pool"].split("/")[-1],
+        "units": units,
+        "rooms": [{"idx": 0, "unit": room_unit, "turn": 0,
+                   "ox": 0, "oy": 0, "oz": 0}],
+        "doors": [],
+        "links": [],
+        "spawns": [{"id": enemy_id, "count": count}
+                   for enemy_id, count in sorted(totals.items())],
+        "anchor": anchor,
+        "anchor_note": "staged marker-only choice, not a source claim",
+    }
+
+
+def p1_stage_run_layout(out_dir, token, cave_packet, units_packet,
+                        guard_sha256=None):
+    """Stage the full private run layout; returns paths and hashes."""
+    out = Path(out_dir)
+    _require(out.is_dir(), "Missing run layout directory: %s" % out)
+    squad = p1_stage_squad()
+    entry = p1_write_cave_entry(out / "p2-cave-entry.txt", token, 1, 1.0,
+                                squad)
+    layout = p1_route_rover_layout(cave_packet, units_packet)
+    manifest = p1_write_generate_manifest(
+        out / "p2-cave-generate.txt", layout["pool"], layout["units"],
+        layout["rooms"], layout["doors"], layout["links"], layout["spawns"],
+        layout["anchor"])
+    markers = "\n".join([
+        "P2_ROUTE_ROVER_WINDOW size=960x540",
+        "P2_ROUTE_ROVER_SQUAD count=%d" % p1_squad_total(squad),
+        "P2_ROUTE_ROVER_FLOOR_READY floor=",
+        "P2_ROUTE_ROVER_ACTOR id= x= z=",
+        "P2_ROUTE_ROVER_PASS floors=1 actors=",
+    ]) + "\n"
+    (out / "markers.txt").write_text(markers, encoding="utf-8")
+    config = {"lane": LANE, "source_id": SOURCE_ID, "floor": 1,
+              "squad": [{"species": s, "maturity": m, "count": c}
+                        for s, m, c in squad],
+              "squad_total": p1_squad_total(squad),
+              "floor_seconds": list(FLOOR_SECONDS),
+              "spawns": layout["spawns"], "anchor": layout["anchor"],
+              "guard_sha256": guard_sha256}
+    (out / "run-config.json").write_text(json.dumps(config, indent=2) + "\n",
+                                         encoding="utf-8")
+    return {"entry": entry, "manifest": manifest,
+            "markers": str(out / "markers.txt"),
+            "config": str(out / "run-config.json")}
+
+
+def p1_parse_markers(log_text):
+    """Extract observed run facts from a native log; absent markers stay
+    absent (never defaulted to pass)."""
+    import re
+    facts = {"window": None, "fps": 0, "generate_markers": [],
+             "restores": [], "nav_lines": 0, "aborts": [], "captain": []}
+    match = re.search(r"Experimental preview window set to (\d+x\d+)", log_text)
+    if match:
+        facts["window"] = match.group(1)
+    facts["fps"] = log_text.count("[PC Port] FPS:")
+    for line in log_text.splitlines():
+        if "P2_CAVE_GENERATE_" in line:
+            facts["generate_markers"].append(line.strip()[:160])
+        elif "P2_CAVE_RESTORE species=" in line:
+            facts["restores"].append(line.strip()[:80])
+        elif line.startswith("P2_CAVE_NAV "):
+            facts["nav_lines"] += 1
+        elif "P2 preview: duplicate treasure" in line or "Invalid P2 cave" in line:
+            facts["aborts"].append(line.strip()[:160])
+        elif "mHealth" in line and ("Navi" in line or "Olimar" in line):
+            facts["captain"].append(line.strip()[:160])
+    return facts
+
+
+def p1_captain_guard_record(guard_path):
+    """Record the adopted captain guard header hash (fail-closed on drift)."""
+    data = Path(guard_path).read_bytes()
+    _require(b"orimaDead" in data and b"deadState" in data
+             and b"hp <= 1.0f" in data and b"CAPTAIN_DOWN" in data
+             and b"BLOCKED" in data,
+             "Guard lacks required dead checks")
+    return {"path": str(guard_path),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "policy": "orimaDead/NaviDead/HP<=1 before pause/movie/observed "
+                      "ticks; CAPTAIN_DOWN exits BLOCKED; parked captain; no "
+                      "blanket invincibility"}

@@ -1,4 +1,4 @@
-"""Focused P0 contract tests for the ch_MAT_route_rover adapter (#561).
+﻿"""Focused P0 contract tests for the ch_MAT_route_rover adapter (#561).
 
 The adapter module is loaded from its file path (no package init is owned by
 this lane) and exercised against the real pinned sources: the lane-plan
@@ -229,3 +229,131 @@ class MatRouteRoverContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class MatRouteRoverP1ImportTests(unittest.TestCase):
+    """P1 import-path tests: squad/entry/manifest writers, marker parser,
+    guard record. Pure-Python boundaries; runtime evidence is validated from
+    real native logs, never synthesized here."""
+
+    def test_species_rows_map_positionally(self):
+        self.assertEqual(
+            [ADAPTER.p1_species_for_row(r) for r in (0, 1, 2)], [0, 1, 2])
+        for bad in (3, 6, -1, True, "0", None):
+            with self.assertRaises(ValueError):
+                ADAPTER.p1_species_for_row(bad)
+
+    def test_stage_squad_totals(self):
+        squad = ADAPTER.p1_stage_squad()
+        self.assertEqual(squad, [(0, 2, 20), (1, 2, 20), (2, 2, 20)])
+        self.assertEqual(ADAPTER.p1_squad_total(squad), 60)
+
+    def test_entry_writer_grammar(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "p2-cave-entry.txt"
+            result = ADAPTER.p1_write_cave_entry(
+                str(path), "767135fd1617a1e9c67520f455e7f369", 1, 1.0,
+                ADAPTER.p1_stage_squad())
+            self.assertEqual(result["squad_total"], 60)
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(lines[0],
+                             "P2_CAVE_ENTRY_1 767135fd1617a1e9c67520f455e7f369 1 1.0 60")
+            self.assertEqual(len(lines), 61)
+            self.assertEqual(lines[1:21], ["0 2"] * 20)
+            self.assertEqual(lines[21:41], ["1 2"] * 20)
+            self.assertEqual(lines[41:61], ["2 2"] * 20)
+            for token, floor, health, squad in (
+                    ("", 1, 1.0, ADAPTER.p1_stage_squad()),
+                    ("t", 2, 1.0, ADAPTER.p1_stage_squad()),
+                    ("t", 1, 0.0, ADAPTER.p1_stage_squad()),
+                    ("t", 1, 1.0, [(0, 2, 0)]),
+                    ("t", 1, 1.0, [(9, 2, 1)]),
+                    ("t", 1, 1.0, [(0, 1, 1)])):
+                with self.assertRaises(ValueError):
+                    ADAPTER.p1_write_cave_entry(
+                        str(path), token, floor, health, squad)
+
+    def test_generate_writer_grammar(self):
+        import tempfile
+        units = [{"idx": 0, "name": "room_bunki7x7_8_tile", "w": 7, "d": 7,
+                  "kind": 1}]
+        rooms = [{"idx": 0, "unit": 0, "turn": 0, "ox": 0, "oy": 0, "oz": 0}]
+        spawns = [{"id": "KumaChappy", "count": 3}]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "p2-cave-generate.txt"
+            ADAPTER.p1_write_generate_manifest(
+                str(path), "1_units_bunki_2_tile.txt", units, rooms, [], [],
+                spawns, "hole")
+            text = path.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("P2_CAVE_GENERATE_1\n"))
+            self.assertIn("spawn KumaChappy 3", text)
+            self.assertTrue(text.endswith("anchor hole\n"))
+            for kw in ("pool", "rooms 1", "doors 0", "links 0", "spawns 1"):
+                self.assertIn(kw, text)
+            with self.assertRaises(ValueError):
+                ADAPTER.p1_write_generate_manifest(
+                    str(path), "pool.txt", [], rooms, [], [], spawns, "hole")
+            with self.assertRaises(ValueError):
+                ADAPTER.p1_write_generate_manifest(
+                    str(path), "pool.txt", units, rooms, [], [], spawns,
+                    "stairs")
+            with self.assertRaises(ValueError):
+                ADAPTER.p1_write_generate_manifest(
+                    str(path), "pool.txt", units, rooms, [], [],
+                    [{"id": "KumaChappy", "count": 0}], "hole")
+
+    def test_layout_builder_from_decoded_packets(self):
+        cave = {"floor_count": 1, "floors": [{"enemies": [
+            {"enemy_id": "KumaChappy", "source_weight": 10},
+            {"enemy_id": "KumaChappy", "source_weight": 10},
+            {"enemy_id": "KumaChappy", "source_weight": 10},
+            {"enemy_id": "KumaKochappy", "source_weight": 20},
+            {"enemy_id": "KumaKochappy", "source_weight": 20}]}]}
+        units = {"pool": "user/Mukki/mapunits/units/1_units_bunki_2_tile.txt",
+                 "units": [
+                     {"name": "item_cap_pipe", "cells": [1, 1], "kind": 0},
+                     {"name": "way3_pipe", "cells": [1, 1], "kind": 2},
+                     {"name": "way4_pipe", "cells": [1, 1], "kind": 2},
+                     {"name": "wayl_pipe", "cells": [1, 1], "kind": 2},
+                     {"name": "way2_pipe", "cells": [1, 1], "kind": 2},
+                     {"name": "way2x2_pipe", "cells": [1, 2], "kind": 2},
+                     {"name": "room_bunki7x7_8_tile", "cells": [7, 7],
+                      "kind": 1}]}
+        layout = ADAPTER.p1_route_rover_layout(cave, units)
+        self.assertEqual(layout["pool"], "1_units_bunki_2_tile.txt")
+        self.assertEqual(len(layout["units"]), 7)
+        self.assertEqual(layout["rooms"][0]["unit"], 6)
+        self.assertEqual(layout["spawns"], [
+            {"id": "KumaChappy", "count": 3},
+            {"id": "KumaKochappy", "count": 4}])
+        self.assertEqual(layout["anchor"], "hole")
+
+    def test_marker_parser_absent_stays_absent(self):
+        facts = ADAPTER.p1_parse_markers("nothing here\n")
+        self.assertIsNone(facts["window"])
+        self.assertEqual(facts["fps"], 0)
+        self.assertEqual(facts["generate_markers"], [])
+        self.assertEqual(facts["restores"], [])
+        log = ("Experimental preview window set to 960x540 windowed and centered\n"
+               "[PC Port] FPS: 60\n[PC Port] FPS: 61\n"
+               "P2_CAVE_GENERATE_PASS rooms=1 spawns=2 links=0 anchor=hole\n"
+               "P2_CAVE_RESTORE species=0 maturity=2\n"
+               "P2_CAVE_NAV seq=1 floor=1 captain=1 x=0 y=0 z=0 heading_rad=0 "
+               "anchor_x=0 anchor_y=0 anchor_z=0 dx=0 dz=0 horizontal=0 "
+               "vertical=0 radius=20 inside=1 state=7 walk=0 safe=1 pause=0 "
+               "ui=0 movie=0 day_end=0 completed=0 pod=0 "
+               "interaction_eligible=1 marker=ok draws=1\n")
+        facts = ADAPTER.p1_parse_markers(log)
+        self.assertEqual(facts["window"], "960x540")
+        self.assertEqual(facts["fps"], 2)
+        self.assertEqual(len(facts["generate_markers"]), 1)
+        self.assertEqual(len(facts["restores"]), 1)
+        self.assertEqual(facts["nav_lines"], 1)
+
+    def test_guard_record_fail_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            bad = Path(directory) / "noguard.h"
+            bad.write_text("int x = 1;\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                ADAPTER.p1_captain_guard_record(str(bad))
