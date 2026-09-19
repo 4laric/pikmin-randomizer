@@ -77,11 +77,17 @@ authenticated reviewer lane from inside its own launch session; a handoff's own
 row. There is no operator/human approval command yet: agents share this machine and
 GitHub account, so an agent-reachable flag cannot authenticate a person. A reviewer
 lane records its own decision and may cite a person's statement as hashed evidence;
-the ledger attributes the decision to that lane. Out-of-band
+the ledger attributes the decision to that lane (see the deferred human writer in
+PIKMIN2_WORKFLOW.md). Out-of-band
 #186 decisions on files a blocked lane does not own go through
 `workflow_module.py approvals shared-hook` against the lane's structured
 `shared_hooks` dependency; decisions on ported landed bytes through
-`approvals landing-review`.
+`approvals landing-review`. Every file in `shared_review_routing.files` must name a
+lane that can record the decision: the owner of the producer's workstream (today
+`species-integration-replacement`) run as a controller launch. A routed owner that
+fails that authority check gets no packet; the route is stored as
+`owner_cannot_decide` with a `shared_review_owner_cannot_decide` notice naming the
+producer and file, and packets resume once the config or ownership is fixed.
 
 ## Check progress, not just occupancy
 
@@ -372,7 +378,8 @@ process, packet, batch and WIP fences remain in force.
 
 Approved blocked source deliveries without historical export repair now receive
 one bounded handoff re-presentation when all owned files have exact-source
-approvals and a current validated integration preparation packet exists. Approval
+approvals backed by the approvals ledger (older unauthenticated preflight rows do
+not count) and a current validated integration preparation packet exists. Approval
 from a prior producer generation remains valid only for identical clean source
 pins. Normal handoff validation, process fencing, WIP and integration gates remain.
 Explicit #186 landing-decision/approval requests in either next_action or

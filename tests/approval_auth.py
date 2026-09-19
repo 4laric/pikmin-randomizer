@@ -39,8 +39,14 @@ def reviewer(case, reg, key, owns=(), fake_diff=False):
     return process
 
 
+def caller(case, *processes):
+    """The caller's launch ancestry is exactly these processes, nearest first."""
+    calling(case)
+    case._approval_chain[:] = list(processes)
+
+
 def calling(case, *processes):
-    """The caller now descends from these processes (in addition to earlier ones in this test)."""
+    """The caller now descends from these processes (outside earlier ones in this test: the first stays nearest)."""
     chain = getattr(case, '_approval_chain', [])
     chain.extend(processes)
     case._approval_chain = chain

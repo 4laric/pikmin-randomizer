@@ -253,6 +253,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                         source_record(changes[repo], repo)
             if 'next_action' in changes:
                 require(nonempty(changes['next_action']), 'Next action cannot be empty')
+            require('shared_hooks' not in changes or target == 'blocked', 'shared_hooks belong to a blocked lane')
+            if target == 'blocked' and lane['state'] != 'blocked' and 'shared_hooks' not in changes:
+                lane.pop('shared_hooks', None)  # A new blocked state declares its own structured hooks.
             lane.update(changes)
             if target == 'blocked':
                 require(lane['dependencies'], 'Blocked lane needs dependency/issue reference')
@@ -644,7 +647,10 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]
             leads = [e['lead_seconds'] for e in state['events'] if e['kind'] == 'integrated']
             milestones = {}
+            from .approvals import hook_status
             for lane in state['lanes'].values():
+                if lane.get('shared_hooks'):  # Satisfied only at the pins a ledger decision recorded.
+                    lane['shared_hook_status'] = hook_status(state.get('approvals', {}), lane)
                 result = lane['handoff']['result'] if lane['handoff'] else None
                 milestones.setdefault(lane['milestone'], []).append(dict(lane=lane['lane'],
                     state=lane['state'], outstanding_gates=result['outstanding_gates'] if result else 'not_reported'))

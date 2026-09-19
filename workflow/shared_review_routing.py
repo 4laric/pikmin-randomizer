@@ -1,11 +1,14 @@
-"""Deliver owner decision tasks; only recorded dispositions satisfy the queue."""
+"""Deliver owner decision tasks; only an authenticated ledger decision satisfies the queue.
+
+A routed owner must pass approvals.authorize for the producer (own its workstream or hold its
+exact delegation); otherwise no packet is sent and an owner notice names the misrouting."""
 import copy
 import json
 from .control import fingerprint
-from .handoff import local_path,require
+from .handoff import local_path,require,Rejected
 from .runner import write
 from .review_decisions import INSTRUCTION
-from .approvals import decision
+from .approvals import authorize,decision
 
 
 def tick(controller):
@@ -15,6 +18,10 @@ def tick(controller):
     with reg.transaction() as s:
         lanes=copy.deepcopy(s['lanes']);ledger=copy.deepcopy(s.get('shared_review_routes',{}))
         rows=copy.deepcopy(s.get('approvals',{}))
+        # Authority inputs only: the routed owner must be able to record the decision it is sent.
+        auth=dict(throughput={k:copy.deepcopy(s.get('throughput',{}).get(k,{})) for k in ('workstreams','dispositions')},
+                  throughput_runtime=dict(autofill=dict(planner_pool=dict(scopes=copy.deepcopy(
+                      s.get('throughput_runtime',{}).get('autofill',{}).get('planner_pool',{}).get('scopes',{}))))))
     active=set()
     for key,lane in lanes.items():
         if lane['state'] not in ('handoff_ready','integrating'):continue
@@ -29,6 +36,17 @@ def tick(controller):
             require(owner in lanes,'Shared-review owner not registered')
             identity=fingerprint([key,lane['generation'],review['file'],lane.get('root'),lane.get('native')])
             active.add(identity);old=ledger.get(identity,{})
+            try:authorize(auth,owner,lane)
+            except Rejected as exc:
+                # Never send a packet the owner cannot decide; surface the misrouted config instead.
+                detail=dict(producer=key,generation=lane['generation'],file=review['file'],
+                            error='routed owner cannot record authenticated decisions: '+str(exc))
+                reg.notice(owner,'shared_review_owner_cannot_decide',detail)
+                if old.get('status')!='owner_cannot_decide':
+                    with reg.transaction() as s:
+                        s.setdefault('shared_review_routes',{})[identity]=dict(detail,owner=owner,status='owner_cannot_decide',at=now,
+                            attempts=old.get('attempts',0))
+                continue
             inbox=local_path(reg.root,controller.config['integrator_inbox'])
             require(inbox.is_relative_to(reg.root/'output'),'Review inbox must be private')
             inbox.mkdir(parents=True,exist_ok=True)
@@ -47,9 +65,11 @@ def tick(controller):
                 'revision,unique version,handoff_sha256,file,status approved/rejected,reviewer (your registered lane),'
                 'reviewer_generation (your generation),evidence={path,sha256}; free-text reviewers are refused. '
                 'Its stopped-producer/child fences must pass; if producer still live, retain decision and apply after stop. '
-                'Apply separate dispositions sequentially using the refreshed hash/revision. Approval then follows normal '
+                'Prefer review_decisions (every file in one call); separate dispositions apply sequentially using the '
+                'refreshed hash/revision. Approval then follows normal '
                 'integration/receipt checks; rejection needs explicit owner repair instructions. No ADMIT or semantic approval '
-                'outside this named file. Task remains outstanding until shared_reviews status changes, even if inbox consumed.\n'+INSTRUCTION,encoding='utf-8')
+                'outside this named file. Task remains outstanding until an authenticated approvals-ledger decision '
+                'exists at these pins, even if inbox consumed.\n'+INSTRUCTION,encoding='utf-8')
             with reg.transaction() as s:
                 s.setdefault('shared_review_routes',{})[identity]=dict(**payload,path=str(packet),
                     delivered_at=now,attempts=old.get('attempts',0)+1,status='awaiting_owner_decision',protocol=2)

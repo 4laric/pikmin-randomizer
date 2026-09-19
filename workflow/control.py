@@ -58,9 +58,9 @@ class ControlMixin:
             require(lane['state'] != 'done', 'Completed slice cannot be reopened')
             value = dict(outcome=outcome, summary=summary, evidence=evidence,
                          dependencies=dependencies or [])
-            if shared_hooks is not None:
+            if shared_hooks:
                 value['shared_hooks'] = shared_hooks
-            if lane.get('outcome') == value:
+            if lane.get('outcome') == value and lane.get('shared_hooks', []) == (shared_hooks or []):
                 return lane
             if outcome == 'blocked':
                 require(dependencies and all(nonempty(d) for d in dependencies), 'Blocked needs explicit dependencies')
@@ -74,8 +74,10 @@ class ControlMixin:
                         next_action=summary, revision=lane['revision'] + 1,
                         dependencies=dependencies or [], progress_at=self.clock(),
                         progress_detail=summary, progress_evidence=evidence)
-            if shared_hooks is not None:
-                lane['shared_hooks'] = shared_hooks
+            if outcome == 'blocked' and (shared_hooks or 'shared_hooks' in lane):
+                lane['shared_hooks'] = shared_hooks or []  # Each blocked finish replaces the structured hooks.
+            elif outcome != 'blocked':
+                lane.pop('shared_hooks', None)
             if outcome == 'review-ready':
                 # Review is a terminal worker outcome, not runtime acceptance or source integration.
                 lane['handoff_at'] = lane['handoff_at'] or self.clock()

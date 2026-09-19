@@ -54,8 +54,9 @@ def tick(controller):
             reg.plan_launch(key,token,
                 'PRODUCER HANDOFF RE-PRESENTATION: integration is waiting for your missing current handoff. '
                 'Resume your existing issue, private source and preserved repair evidence. Inspect repair_history '
-                'when present. Exact-source approvals may already resolve your review dependency; inspect '
-                'all shared_preflight_decisions for your current root/native heads, across prior generations. '
+                'when present. Authenticated exact-source approvals may already resolve your review dependency: '
+                'only shared_preflight_decisions for your current root/native heads (across prior generations) '
+                'whose approval id is in the approvals ledger count; older rows are unauthenticated-legacy. '
                 'An unchanged approved source diff does not need another approval because your generation changed. '
                 'and this exact preparation packet: '+json.dumps(packet)+'. '
                 'Revalidate your source pins and original acceptance evidence, then reconstruct a truthful '

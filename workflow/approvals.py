@@ -11,6 +11,7 @@ assignment. Rows stamp that launch, its models and the code revision.
 Handoff and preflight rows pin one file at the producer's root/native base/head plus the
 sha256 of that file's base..head diff; a row counts only while the lane holds exactly those
 pins. Landing reviews pin reviewed head, landed commit and a git-verified interdiff.
+The latest row per subject decides; a repeated decision after a different one is a new row.
 Decisions derived from review packets are not accepted here (see packet_decision).
 
   <python> <checkout>/scripts/workflow_module.py approvals landing-review --root <root> --request <json>
@@ -46,6 +47,10 @@ INSTRUCTION = (' Approvals are registry rows, never handoff fields: a shared_rev
     'port. Decision on a structured shared_hook dependency: ' + cli('approvals') + ' shared-hook --root <root> '
     '--request <json> with reviewer, reviewer_generation, hook {kind:shared_hook, issue, files|item_id}, '
     'lanes [{key, generation}], commit (for files), status, conditions, evidence. ')
+PRODUCER = ('; for a #186 decision on files you do not own, blocked also takes shared_hooks '
+    '[{kind:"shared_hook",issue:<number>,files:[repository-relative paths]} or {kind:"shared_hook",issue,item_id}] '
+    'so a reviewer can record an authenticated decision against it (it holds only at your current pins; '
+    'a later blocked finish replaces the list)')
 
 
 def packet_decision(*_, **__):
@@ -129,6 +134,17 @@ def launch_of(state, lane):
                  x.get('bound_generation') == lane['generation'] and x.get('process') == lane['process']), None)
 
 
+def nearest(launches, chain):
+    """(ancestor process, running launches it runs) for the caller's nearest ancestor that runs any launch.
+
+    A process started under another launch's session belongs to the nearer launch, never to an outer one."""
+    for process in chain:
+        found = [x for x in launches.values() if x.get('status') == 'running' and x.get('process') == process]
+        if found:
+            return process, found
+    return None, []
+
+
 def _identity(lane, launch):
     return dict(lane=lane['lane'], generation=lane['generation'], launch=launch['id'],
                 models=list(launch.get('models') or []), model=launch.get('model'), session=launch.get('session'))
@@ -144,21 +160,26 @@ def authenticate(reg, state, reviewer, generation, chain):
     require(launch is not None, 'Reviewer has no running controller launch bound to generation ' + str(generation))
     require(owner['process'] in chain, "Caller is not running inside the reviewer lane's live launch session; "
             'record decisions from your own session')
+    process, found = nearest(state.get('control', {}).get('launches', {}), chain)
+    require(process == owner['process'], 'Caller runs inside a nearer live launch session (' +
+            ', '.join(sorted({str(x.get('lane')) for x in found})) + ') than the reviewer lane; record decisions from '
+            'your own session')
     return _identity(owner, launch)
 
 
 def session(reg, chain):
-    """Authenticated identity of the live launch the caller runs inside, else None; reads committed records."""
+    """Authenticated identity of the nearest live launch the caller runs inside, else None; reads committed records."""
     if not chain:
         return None
     from .storage import read_record
-    for item in reg.snapshot(section=('control', 'launches')).values():
-        if item.get('status') != 'running' or item.get('process') not in chain:
-            continue
-        lane = read_record(reg, ('lanes',), item.get('lane'))
-        if (isinstance(lane, dict) and lane.get('state') == 'running' and lane.get('generation') == item.get('bound_generation')
-                and lane.get('process') == item['process'] and reg.probe(lane['process']) == 'alive'):
-            return _identity(lane, item)
+    _, found = nearest(reg.snapshot(section=('control', 'launches')), chain)
+    if len(found) != 1:
+        return None
+    item = found[0]
+    lane = read_record(reg, ('lanes',), item.get('lane'))
+    if (isinstance(lane, dict) and lane.get('state') == 'running' and lane.get('generation') == item.get('bound_generation')
+            and lane.get('process') == item['process'] and reg.probe(lane['process']) == 'alive'):
+        return _identity(lane, item)
     return None
 
 
@@ -169,8 +190,25 @@ def still(state, identity):
     return bool(launch and launch['id'] == identity['launch'] and lane.get('state') == 'running')
 
 
+def descends(state, handoff, target):
+    """handoff is the delegated one, or was reached from it only through recorded dispositions."""
+    if handoff == target:
+        return True
+    if not handoff or not target:
+        return False
+    parents = {(d.get('snapshot') or {}).get('handoff', {}).get('sha256'): (d.get('request') or {}).get('handoff_sha256')
+               for d in state.get('throughput', {}).get('dispositions', {}).values()}
+    sha, seen = handoff.get('sha256'), set()
+    while sha in parents and sha not in seen:
+        seen.add(sha); sha = parents[sha]
+        if sha == target.get('sha256'):
+            return True
+    return False
+
+
 def delegated(state, reviewer, lane):
-    """Only the live cycle's exact frozen assignment grants decision authority."""
+    """Only the live cycle's exact frozen assignment grants decision authority; the handoff may have
+    moved since only through recorded dispositions (sequential per-file decisions)."""
     if reviewer == lane['lane']:return False
     scopes=state.get('throughput_runtime',{}).get('autofill',{}).get('planner_pool',{}).get('scopes',{})
     for row in scopes.values():
@@ -178,7 +216,7 @@ def delegated(state, reviewer, lane):
         if row.get('spec',{}).get('lane',{}).get('lane') != reviewer:continue
         for target in row.get('support_targets',[]):
             if (target.get('lane')==lane['lane'] and target.get('generation')==lane['generation'] and
-                    target.get('handoff')==lane.get('handoff') and target.get('root')==lane.get('root') and
+                    descends(state,lane.get('handoff'),target.get('handoff')) and target.get('root')==lane.get('root') and
                     target.get('native')==lane.get('native')):return True
     return False
 
@@ -215,14 +253,36 @@ def ledger(state):
     return state.setdefault('approvals', {})
 
 
+META = ('id', 'at', 'seq', 'code_revision', 'supersedes')
+
+
+def _subject(rows, value):
+    """Latest rows deciding what this value decides (one per file for landing reviews)."""
+    if value['kind'] in REVIEW_KINDS:
+        found = [_review(rows, value['lane'], value['file'], value['pins'])]
+    elif value['kind'] == 'landing_review':
+        found = [_landing(rows, value['lane'], value['repo'], value['reviewed_head'], value['landed_sha'], f)
+                 for f in value['files']]
+    else:
+        found = [_hook(rows, value['lane'], value['hook_id'])]
+    return list({r['id']: r for r in found if r}.values())
+
+
 def write(reg, state, value, code):
-    """Insert one immutable row; an identical decision replays to the same row."""
-    identity = fingerprint(value)
+    """Insert one immutable row. An identical decision replays only while it is still the latest for its
+    subject; after a different decision it is a new row naming the rows it supersedes."""
     rows = ledger(state)
-    if identity not in rows:
-        rows[identity] = dict(copy.deepcopy(value), id=identity, at=reg.clock(), code_revision=code)
-        reg.event(state, 'approval_recorded', value['lane'], approval=identity, approval_kind=value['kind'],
-                  status=value['status'])
+    latest = _subject(rows, value)
+    if len(latest) == 1 and {k: v for k, v in latest[0].items() if k not in META} == value:
+        return latest[0]
+    identity = fingerprint(value)
+    if identity in rows:
+        value = dict(value, supersedes=sorted(r['id'] for r in latest))
+        identity = fingerprint(value)
+        require(identity not in rows, 'Approval row already superseded; record fresh evidence')
+    rows[identity] = dict(copy.deepcopy(value), id=identity, at=reg.clock(), seq=len(rows) + 1, code_revision=code)
+    reg.event(state, 'approval_recorded', value['lane'], approval=identity, approval_kind=value['kind'],
+              status=value['status'])
     return rows[identity]
 
 
@@ -236,14 +296,29 @@ def review_row(reg, state, source, lane, file, digest, status, evidence, reviewe
 
 
 def _latest(rows):
-    return max(rows, key=lambda r: (r.get('at', 0), r['id']), default=None)
+    """Recording order: clock, then the ledger sequence (rows written in one tick), then id."""
+    return max(rows, key=lambda r: (r.get('at', 0), r.get('seq', 0), r['id']), default=None)
+
+
+def _review(rows, key, file, current):
+    return _latest([r for r in rows.values() if r.get('kind') in REVIEW_KINDS and r.get('lane') == key
+                    and r.get('file') == file and r.get('pins') == current])
+
+
+def _landing(rows, key, repo, head, commit, file):
+    return _latest([r for r in rows.values() if r.get('kind') == 'landing_review' and r.get('lane') == key and
+                    r.get('repo') == repo and r.get('reviewed_head') == head and r.get('landed_sha') == commit and
+                    file in r.get('files', [])])
+
+
+def _hook(rows, key, hook_id):
+    return _latest([r for r in rows.values() if r.get('kind') == 'shared_hook' and r.get('lane') == key
+                    and r.get('hook_id') == hook_id])
 
 
 def decision(rows, lane, file):
     """Latest handoff/preflight decision on this file at the lane's exact pins, else None."""
-    current = pins(lane)
-    return _latest([r for r in rows.values() if r.get('kind') in REVIEW_KINDS and r.get('lane') == lane['lane']
-                    and r.get('file') == file and r.get('pins') == current])
+    return _review(rows, lane['lane'], file, pins(lane))
 
 
 def statuses(rows, lane, reviews):
@@ -275,9 +350,7 @@ def apply(rows, lane, data, result, strict=False):
 
 def landing_approval(rows, key, repo, head, commit, file, interdiff):
     """The latest landing review naming this file at these pins, if it is approved at this interdiff."""
-    row = _latest([r for r in rows.values() if r.get('kind') == 'landing_review' and r.get('lane') == key and
-                   r.get('repo') == repo and r.get('reviewed_head') == head and r.get('landed_sha') == commit and
-                   file in r.get('files', [])])
+    row = _landing(rows, key, repo, head, commit, file)
     return row if row and row['status'] == 'approved' and row['file_interdiffs'].get(file) == interdiff else None
 
 
@@ -356,9 +429,18 @@ def hooks(value):
 
 def hook_state(rows, lane, hook):
     """(satisfied, latest decision); satisfied only while the lane holds the pins the decision recorded."""
-    row = _latest([r for r in rows.values() if r.get('kind') == 'shared_hook' and r.get('lane') == lane['lane']
-                   and r.get('hook_id') == hook['id']])
+    row = _hook(rows, lane['lane'], hook['id'])
     return bool(row and row['status'] == 'approved' and row['pins'] == pins(lane)), row
+
+
+def hook_status(rows, lane):
+    """[{id, hook, satisfied, decision, status}] for the lane's structured shared_hooks, from the ledger."""
+    result = []
+    for hook in lane.get('shared_hooks') or []:
+        satisfied, row = hook_state(rows, lane, hook)
+        result.append(dict(id=hook['id'], hook=hook, satisfied=satisfied, decision=row and row['id'],
+                           status=row and row['status']))
+    return result
 
 
 def shared_hook_decision(reg, reviewer, reviewer_generation, hook, lanes, status, evidence, conditions=(), commit=None):
@@ -402,27 +484,48 @@ def shared_hook_decision(reg, reviewer, reviewer_generation, hook, lanes, status
         return result
 
 
+RETRY_SECONDS = 60
+
+
 def tick(controller):
     """Wake each blocked lane once per shared_hook decision recorded at its current pins.
 
-    Reads only the ledger and one lane record per unwoken decision; a full snapshot is
-    taken only when some lane is actually waiting at the decided pins."""
+    Never writes except through plan_launch, whose reason token is the durable wake marker.
+    Reads the ledger, one lane record per lane with an open decision and, only when a lane
+    is waiting at decided pins, the launches, leases and queue sections. Decisions that can
+    never wake (lane done or past that generation, or already woken) are remembered in
+    memory; a lane refused as not recovery-safe is retried after RETRY_SECONDS."""
     from .storage import read_record
-    reg = controller.reg
-    fresh = [r for r in reg.snapshot(section=('approvals',)).values()
-             if r.get('kind') == 'shared_hook' and r['lane'] in controller.config['lanes']]
-    woken = reg.snapshot(section=('shared_hook_wakes',)) if fresh else {}
-    fresh, state = [r for r in fresh if r['id'] not in woken], None
-    for row in sorted(fresh, key=lambda r: r['at']):
-        key, lane = row['lane'], read_record(reg, ('lanes',), row['lane']) or {}
+    reg, now = controller.reg, controller.reg.clock()
+    closed = getattr(controller, '_shared_hook_closed', None)
+    if closed is None:
+        closed = set(); controller._shared_hook_closed = closed
+    retry = getattr(controller, '_shared_hook_retry', None)
+    if retry is None:
+        retry = {}; controller._shared_hook_retry = retry
+    rows = [r for r in reg.snapshot(section=('approvals',)).values() if r.get('kind') == 'shared_hook' and
+            r['id'] not in closed and retry.get(r['id'], 0) <= now and r['lane'] in controller.config['lanes']]
+    lanes, launches, safety = {}, None, None
+    for row in sorted(rows, key=lambda r: (r['at'], r.get('seq', 0))):
+        key = row['lane']
+        if key not in lanes:
+            lanes[key] = read_record(reg, ('lanes',), key) or {}
+        lane = lanes[key]
+        if not lane or lane.get('state') == 'done' or lane.get('generation', 0) > row['generation']:
+            closed.add(row['id']); continue
         if lane.get('state') != 'blocked' or lane.get('generation') != row['generation'] or pins(lane) != row['pins']:
             continue  # Not waiting at the decided pins; the row stays a ledger fact.
-        state = state or reg.snapshot()
-        if not reg.recovery_safe(state, lane) or not controller.available(key):
-            continue
+        if launches is None:
+            launches = reg.snapshot(section=('control', 'launches'))
         token = 'shared-hook-decision:' + row['id']
-        if any(x['lane'] == key and x['reason'] == token for x in state.get('control', {}).get('launches', {}).values()):
-            continue
+        if any(x['lane'] == key and x.get('reason') == token for x in launches.values()):
+            closed.add(row['id']); continue
+        if any(x['lane'] == key and x.get('status') in ('intent', 'spawned', 'running', 'exiting') for x in launches.values()):
+            retry[row['id']] = now + RETRY_SECONDS; continue
+        if safety is None:
+            safety = dict(leases=reg.snapshot(section=('leases',)), queue=reg.snapshot(section=('queue',)))
+        if not reg.recovery_safe(safety, lane) or not controller.available(key):
+            retry[row['id']] = now + RETRY_SECONDS; continue
         try:
             reg.evidence(row['evidence'])
             reg.plan_launch(key, token,
@@ -430,9 +533,9 @@ def tick(controller):
                 'your current root/native pins and only for its exact hook scope; it is not source integration, '
                 'runtime acceptance or ADMIT. Read its hashed evidence and conditions, keep every unrelated blocker, '
                 'and continue or apply the requested correction. Decision: ' + json.dumps(row), controller.config['models'])
-            with reg.transaction() as write_state:
-                write_state.setdefault('shared_hook_wakes', {})[row['id']] = dict(lane=key, at=reg.clock())
+            closed.add(row['id'])
         except (Rejected, OSError, ValueError) as exc:
+            retry[row['id']] = now + RETRY_SECONDS
             reg.notice(key, 'shared_hook_decision_blocked', dict(id=row['id'], error=str(exc)))
 
 
@@ -460,7 +563,10 @@ def legacy(state, root):
                     id=identity, decision_status=item.get('status'))
     for identity, item in sorted(state.get('shared_preflight_decisions', {}).items()):
         if item.get('approval') not in rows:
-            add('preflight', item.get('lane'), item.get('file'), item.get('reviewer'), status=item.get('status'), id=identity)
+            lane = state.get('lanes', {}).get(item.get('lane'), {})
+            current = {k: (lane.get(k) or {}).get('head') for k in ('root', 'native')}
+            add('preflight', item.get('lane'), item.get('file'), item.get('reviewer'), status=item.get('status'),
+                id=identity, at_current_pins=bool(lane) and item.get('source_pins') == current)
     for key, lane in sorted(state.get('lanes', {}).items()):
         handoff = lane.get('handoff')
         if not handoff:
@@ -482,8 +588,8 @@ def legacy(state, root):
         summary[item['category']] = summary.get(item['category'], 0) + 1
     done = {i['lane'] for i in items if i['category'] == 'handoff_status' and i['lane_state'] == 'done'}
     free = sum(i['category'] == 'disposition' and i['reviewer_kind'] == 'free-text' for i in items)
-    mid = sorted({i['lane'] for i in items if i['category'].startswith('handoff_status') and
-                  i['lane_state'] in ('handoff_ready', 'integrating', 'blocked')})
+    mid = sorted({i['lane'] for i in items if i['lane_state'] in ('handoff_ready', 'integrating', 'blocked') and (
+        i['category'].startswith('handoff_status') or (i['category'] == 'preflight' and i['at_current_pins'] and i['status'] == 'approved'))})
     return dict(summary=dict(summary, done_lanes_producer_written=len(done), free_text_dispositions=free,
                              mid_flight_lanes=len(mid)), mid_flight=mid, items=items)
 

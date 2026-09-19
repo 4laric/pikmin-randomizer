@@ -45,9 +45,12 @@ def record(reg, reviewer, generation, key, producer_generation, handoff_sha256, 
                    handoff_sha256=handoff_sha256,root=lane['root'],native=lane.get('native'),decisions=copy.deepcopy(decisions))
         identity_key=fingerprint(value)
         ledger=state.setdefault('shared_review_decisions',{})
+        # Ledger rows replay only while each is still the latest decision on its file; otherwise they are new rows.
+        rows=[approvals.review_row(reg,state,'review_decisions',lane,d['file'],digests[d['file']],d['status'],
+                                   d['evidence'],identity,code,handoff_sha256=handoff_sha256)['id'] for d in decisions]
+        if identity_key in ledger and ledger[identity_key].get('approvals')!=rows:
+            identity_key=fingerprint(dict(value,approvals=rows))
         if identity_key not in ledger:
-            rows=[approvals.review_row(reg,state,'review_decisions',lane,d['file'],digests[d['file']],d['status'],
-                                       d['evidence'],identity,code,handoff_sha256=handoff_sha256)['id'] for d in decisions]
             ledger[identity_key]=dict(value,id=identity_key,status='pending',applied=0,current_handoff=handoff_sha256,at=reg.clock(),
                                       code_revision=code,approvals=rows,reviewer_identity=identity)
             reg.event(state,'shared_review_decision_queued',key,decision=identity_key)

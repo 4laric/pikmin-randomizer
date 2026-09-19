@@ -10,6 +10,8 @@ class RoutingTests(unittest.TestCase):
         self.c=self.f.controller;self.r=self.f.reg
         self.inbox=self.f.root/'output/inbox';self.c.config['integrator_inbox']=str(self.inbox)
         self.c.config['shared_review_routing']={'enabled':True,'files':{'native/shared.cpp':'provider'}}
+        with self.r.transaction() as s:  # Routing sends packets only to an owner that can record the decision.
+            s.setdefault('throughput',{}).setdefault('workstreams',{})['routed']=dict(owner_lane='provider',lanes=['consumer'])
         self.path=self.f.out/'handoff.json';self.data={'shared_reviews':[{'file':'native/shared.cpp','status':'requested'}]}
         self.save()
     def save(self):
@@ -29,6 +31,16 @@ class RoutingTests(unittest.TestCase):
                 pins=pins(s['lanes']['consumer']),status='approved',reviewer=dict(lane='provider'))}
         tick(self.c)
         with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'resolved_or_superseded')
+    def test_owner_without_decision_authority_gets_no_packet(self):
+        with self.r.transaction() as s:s['throughput']['workstreams']['routed']['owner_lane']='other-owner'
+        tick(self.c);tick(self.c)
+        self.assertFalse(list(self.inbox.glob('*.md')) if self.inbox.exists() else [])
+        state=self.r.snapshot();route=next(iter(state['shared_review_routes'].values()))
+        self.assertEqual((route['status'],route['owner']),('owner_cannot_decide','provider'))
+        notices=[n for n in state['control']['notices'].values() if n['kind']=='shared_review_owner_cannot_decide']
+        self.assertEqual(len(notices),1);self.assertIn('own producer workstream',notices[0]['detail']['error'])
+        with self.r.transaction() as s:s['throughput']['workstreams']['routed']['owner_lane']='provider'
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
     def test_unrouted_file_never_receives_invented_owner(self):
         self.c.config['shared_review_routing']['files']={};tick(self.c)
         self.assertFalse(self.inbox.exists())

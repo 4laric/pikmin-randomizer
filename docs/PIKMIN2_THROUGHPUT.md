@@ -684,11 +684,15 @@ proposal bytes or family admission. Queued/blocked/done lanes are not counted.
 Pending handoff reviews produce durable decision packets in the existing integrator
 inbox; packet consumption is not approval. Unresolved consumed packets are reissued
 after ten minutes, deduplicated by producer generation/file/source pins. Tasks resolve
-only when the request disappears through disposition or source supersession. Unknown
-files receive no invented owner. For #129/#132, #186 delegates focused file review to
-the existing species integration lead; the reviewer must inspect pins/tests and record
-approve/request-changes evidence through dispose_review (authenticated, from its own
-launch session), retaining stopped-producer fences. The healthy coordinator/integrator is not restarted or duplicated.
+only when an authenticated approvals-ledger decision exists at the producer's pins, or
+the source is superseded. Unknown files receive no invented owner, and an owner that
+cannot record the decision (does not own the producer's workstream or hold its exact
+delegation) receives no packet: the route becomes `owner_cannot_decide` with an owner
+notice. For #129/#132, #186 delegates focused file review to the existing species
+integration lead, which must be the workstream owner; the reviewer must inspect
+pins/tests and record approve/request-changes evidence through review_decisions or
+dispose_review (authenticated, from its own launch session), retaining stopped-producer
+fences. The healthy coordinator/integrator is not restarted or duplicated.
 # Managed-session recovery and activity evidence
 
 The controller checks process identity (PID, host and creation time), not PID

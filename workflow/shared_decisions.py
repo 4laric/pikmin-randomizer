@@ -23,12 +23,17 @@ def semantic(decision):
                         decision.get('reason') if decision['status']=='rejected' else None])
 
 
+def backed(state,decision):
+    """Only a decision with an authenticated approvals-ledger row counts; older rows are unauthenticated-legacy."""
+    return decision.get('approval') is not None and decision['approval'] in state.get('approvals',{})
+
+
 def approved_scope(state,lane):
     files=set(lane.get('owned_files',[]))
     if not files or any((lane.get(k) or {}).get('dirty') for k in ('root','native')):return False
     latest={}
     for decision in state.get('shared_preflight_decisions',{}).values():
-        if decision['lane']!=lane['lane'] or decision['source_pins']!=pins(lane):continue
+        if decision['lane']!=lane['lane'] or decision['source_pins']!=pins(lane) or not backed(state,decision):continue
         old=latest.get(decision['file'])
         if old is None or decision.get('at',0)>=old.get('at',0):latest[decision['file']]=decision
     return all(latest.get(file,{}).get('status')=='approved' for file in files)
@@ -60,10 +65,13 @@ def record(reg, key, generation, source_pins, file, status, reviewer, reason, ev
                       reviewer=reviewer,reason=reason,evidence=evidence)
         identity_key=fingerprint(decision)
         rows=state.setdefault('shared_preflight_decisions',{})
+        # The ledger row replays only while it is the latest decision on this file; otherwise it is recorded afresh.
+        approval=approvals.review_row(reg,state,'shared_decisions',lane,file,digest,status,evidence,identity,code,reason=reason)['id']
+        if identity_key in rows and rows[identity_key].get('approval')!=approval:
+            identity_key=fingerprint(dict(decision,approval=approval))
         if identity_key not in rows:
-            row=approvals.review_row(reg,state,'shared_decisions',lane,file,digest,status,evidence,identity,code,reason=reason)
             rows[identity_key]=dict(decision,at=reg.clock(),code_revision=code,reviewer_generation=reviewer_generation,
-                                    reviewer_identity=identity,approval=row['id'])
+                                    reviewer_identity=identity,approval=approval)
         row=rows[identity_key]
         return dict(id=identity_key,**decision,code_revision=row.get('code_revision'),approval=row.get('approval'))
 
@@ -82,7 +90,7 @@ def tick(controller):
             consumed[key]=max(consumed.get(key,0),d.get('at',0))
     for identity,d in state.get('shared_preflight_decisions',{}).items():
         key=d['lane'];lane=state['lanes'].get(key,{})
-        if (key not in controller.config['lanes'] or lane.get('state')!='blocked' or
+        if (key not in controller.config['lanes'] or not backed(state,d) or lane.get('state')!='blocked' or
                 lane.get('generation')!=d['generation'] or pins(lane)!=d['source_pins']):continue
         token='shared-preflight-decision:'+identity
         prior=consumed.get(semantic(d))

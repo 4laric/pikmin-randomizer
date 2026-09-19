@@ -12,6 +12,7 @@ from .control import fingerprint
 from .handoff import digest, local_path, require, Rejected
 from .processes import identify, probe
 from .runner import write, decisions_from_text
+from .approvals import PRODUCER as SHARED_HOOKS
 
 
 def ram_percent():
@@ -233,8 +234,8 @@ class Controller:
             'Do not spawn agents. Before exiting use workflow finish with blocked, review-ready, or implementation-ready. '
             f"CLI: {sys.executable} {Path(__file__).resolve().parents[1] / 'scripts/pikmin2_workflow.py'} "
             f"--root {self.reg.root} --request <json> finish. Required JSON: key, generation, outcome, summary, "
-            'evidence {path,sha256}; blocked also dependencies; implementation-ready also path to full handoff. '
-            'Review-ready records review of existing evidence without claiming a new runtime run.')
+            'evidence {path,sha256}; blocked also dependencies' + SHARED_HOOKS + '; implementation-ready also path '
+            'to full handoff. Review-ready records review of existing evidence without claiming a new runtime run.')
         from .producer_contract import INSTRUCTION
         prompt += INSTRUCTION
         from .review_decisions import INSTRUCTION as REVIEW_INSTRUCTION
@@ -505,6 +506,20 @@ class Controller:
                     self.reg.notice(key, 'progress_stale', {'generation': lane['generation'], 'progress_at': lane['progress_at'],
                         'progress': lane['progress_detail'], 'output': entry['output']})
 
+    def _pending_reviews(self, state, lane):
+        """Shared reviews without an approved ledger row at the lane's pins; a stored result may predate the
+        ledger (producer-written statuses), so it is used only when the handoff cannot be read."""
+        from .approvals import statuses
+        handoff = lane.get('handoff') or {}
+        try:
+            data = json.loads(local_path(self.reg.root, handoff['path']).read_text(encoding='utf-8-sig'))
+            reviews = data.get('shared_reviews', []) if isinstance(data, dict) else []
+        except (Rejected, OSError, ValueError, KeyError, TypeError):
+            return (handoff.get('result') or {}).get('pending_reviews') or []
+        if 'approvals' not in state:
+            state['approvals'] = self.reg.snapshot(section=('approvals',))
+        return [f for f, v in statuses(state['approvals'], lane, reviews).items() if v['status'] != 'approved']
+
     def _integration_attention(self, state, lane):
         """Describe who can consume a handoff and why it may be waiting.
 
@@ -542,8 +557,7 @@ class Controller:
             members = stream.get('lanes', [])
             if lane.get('lane') not in members:
                 blockers.append('producer_not_registered')
-        result = (lane.get('handoff') or {}).get('result') or {}
-        if result.get('pending_reviews'):
+        if self._pending_reviews(state, lane):
             blockers.append('shared_reviews_pending')
         return dict(handoff=lane.get('handoff'), age_seconds=age,
                     workstream=workstream, integration_owner=owner_lane,

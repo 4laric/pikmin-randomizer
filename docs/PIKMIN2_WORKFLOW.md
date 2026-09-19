@@ -346,17 +346,27 @@ An approval is a registry row in `approvals`, never a handoff field. The writers
 (`landing_review`) and `approvals shared-hook` (`shared_hook`). Every writer
 authenticates its reviewer the same way: `reviewer` and `reviewer_generation` name a
 registered lane that is `running` and alive, has a running controller launch bound
-to that generation, and whose recorded runner process is an ancestor of the calling
-process (so the command must run inside that lane's own launch session); the lane
-must own the producer's workstream or hold its exact delegated assignment. Free-text
-reviewers are refused. Rows stamp the reviewer's launch id, models and session and
-the code revision.
+to that generation, and whose recorded runner process is the nearest ancestor of the
+calling process that runs any live launch (so the command must run inside that lane's
+own launch session, and a launch started inside it cannot borrow its authority); the
+lane must own the producer's workstream or hold its exact delegated assignment (a
+delegation survives the handoff changes made by recorded dispositions, so a delegated
+reviewer can dispose files one by one). Free-text reviewers are refused. Rows stamp
+the reviewer's launch id, models and session and the code revision. Process ancestry
+binds honest callers to their own session; it is not proof against forgery, since
+every agent runs as the same Windows user and a process can be created with a
+chosen parent (`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`).
 
 Handoff and preflight rows cover one file at the producer's root/native `base` and
 `head` (`pins`) and carry `diff_sha256`, the sha256 of that file's `base..head` diff
 (`landing.INTERDIFF` options), computed by the writer from git; git failure refuses.
 A row counts only while the lane holds exactly those pins, and the latest row per
-file wins. `submit_handoff` refuses a `shared_reviews` status of `approved` or
+file wins (recording order: clock, then the ledger's `seq`). Repeating a decision
+replays its row only while that row is still the latest for its subject (file and
+pins; file, reviewed head and landed commit for landing reviews; lane and hook for
+shared hooks); after a different decision the same decision is a new row whose
+`supersedes` names the rows it replaces, so approve, reject, approve ends approved.
+`submit_handoff` refuses a `shared_reviews` status of `approved` or
 `rejected` unless the latest matching row has that status ("submit it as
 requested"); for every entry the stored `handoff.result.reviews` and
 `pending_reviews` come from the ledger, so an honest producer's `requested` entry is
@@ -365,13 +375,25 @@ the ledger at the lane's current pins, so a status written into a handoff before
 ledger existed counts as `requested` until an authenticated decision is recorded
 (nothing is rewritten). Decisions derived from review packets are not accepted yet
 (`approvals.packet_decision` is the hook point for controller-verified packets).
-There is no human writer: agents share this machine and the GitHub account, so no
-agent-reachable flag can authenticate a person.
+
+Deferred: a human writer. Agents share this machine, its Windows user and the GitHub
+account, so no agent-reachable flag or command can authenticate a person. Proposal: a
+`human_review` row written only by a console-attended confirmation that no agent
+session can drive, for example a separate Windows user or local service that shows
+the exact pins and interdiff and requires an interactive credential or hardware-key
+touch, refusing any caller inside a launch ancestry. The four gates would accept that
+row kind like any other decision. Until then a reviewer lane records the decision and
+cites the person's statement as hashed evidence.
 
 `landing_audit --approvals` lists, read-only, every older approval without a ledger
 row (producer-written handoff statuses, free-text and queued dispositions, preflight
-decisions), each marked `unauthenticated-legacy`. Older preflight rows still
-suppress repeat `blocked_review` assignments but never satisfy a shared review.
+decisions), each marked `unauthenticated-legacy`. Only `shared_preflight_decisions`
+whose `approval` id is in the ledger count toward `approved_scope` (suppressing
+repeat `blocked_review` routing, shared-review wakeups and handoff re-presentation)
+or wake a producer; older rows count for nothing, so those lanes go back to
+`blocked_review` routing for an authenticated decision. The report's `mid_flight`
+lists `handoff_ready`, `integrating` and `blocked` lanes that hold a producer-written
+status or an unbacked preflight approval at their current pins.
 
 Submitted handoff/evidence hashes are rechecked when beginning and completing
 integration. To add review evidence, submit a new handoff file from `handoff_ready`
@@ -464,9 +486,18 @@ does not own may carry `shared_hooks` next to its text dependencies (via `finish
 [{key, generation}], status, conditions, evidence, commit}` against every named lane
 holding that hook, in any producer state; for a files hook, `commit` pins the
 reviewed blobs. The dependency is satisfied only while the lane still holds the pins
-the decision recorded (`approvals.hook_state`). A `shared_hook_decided` event is
-emitted, and the controller wakes a blocked lane once per decision at those pins.
-Text dependencies are never cleared automatically.
+the decision recorded (`approvals.hook_state`); `status` shows each lane's
+`shared_hook_status` `[{id, hook, satisfied, decision, status}]`. The producer finish
+instruction tells workers how to declare hooks. Every blocked `finish` replaces the
+lane's hooks (none given means none held), a checkpoint into `blocked` without
+`shared_hooks` drops them, other outcomes drop them, and `shared_hooks` may be set
+only on a blocked lane. A `shared_hook_decided` event is emitted, and the controller
+wakes a blocked lane once per decision at those pins: the wake's launch reason
+(`shared-hook-decision:<id>`) is the only durable marker, the tick reads the ledger,
+one lane record per open decision and, only for a waiting lane, the launches, leases
+and queue sections, and it remembers in memory decisions that can never wake (lane
+done or past that generation) and retries a lane that is not recovery-safe after 60
+seconds. Text dependencies are never cleared automatically.
 
 **Already landed.** A lane that changed nothing, or whose bytes an earlier commit
 already carries, is recorded with `"kind":"already_landed"` naming the commit that

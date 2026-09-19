@@ -47,6 +47,9 @@ class HandoffRepresentationTests(unittest.TestCase):
         self.state['support_actions']['p']['target']['kind']='blocked_review'
         self.state['shared_preflight_decisions']={f:dict(lane='producer',file=f,status='approved',
             source_pins={'root':'a','native':'b'},generation=1) for f in lane['owned_files']}
+        tick(self.c);self.reg.plan_launch.assert_not_called()  # Unauthenticated legacy rows never count.
+        for f,d in self.state['shared_preflight_decisions'].items():d['approval']='row-'+f
+        self.state['approvals']={'row-'+f:dict(id='row-'+f,kind='preflight') for f in lane['owned_files']}
         tick(self.c)
         self.reg.plan_launch.assert_called_once()
         reason=self.reg.plan_launch.call_args.args[1]

@@ -9,9 +9,10 @@ import unittest
 from types import SimpleNamespace
 
 from tests import test_pikmin2_workflow as workflow_fixtures
-from tests.approval_auth import calling, identity, reviewer
+from tests.approval_auth import caller, calling, identity, reviewer
 from tests.landing_git import commit, git, source
-from workflow import approvals, landing, landing_audit, review_decisions, shared_decisions
+from workflow import approvals, landing, landing_audit, review_decisions, shared_decisions, shared_review_routing
+from workflow.controller import Controller
 from workflow.handoff import Rejected, digest
 
 SHARED = 'engine/hook.cpp'
@@ -89,6 +90,86 @@ class LedgerTests(Base):
         with self.assertRaisesRegex(Rejected, 'no matching authenticated decision'):
             self.submit('approved')
 
+    def test_reapproval_after_rejection_is_a_new_latest_row(self):
+        self.submit(); first = self.approve(); self.approve('rejected')  # Same clock tick: the sequence orders them.
+        self.assertEqual(self.reg.check_handoff(self.lane())['pending_reviews'], [SHARED])
+        again = self.approve()
+        self.assertNotEqual(again['id'], first['id'])
+        rows = self.reg.snapshot()['approvals']
+        row = rows[again['approvals'][0]]
+        self.assertEqual((row['status'], len(row['supersedes'])), ('approved', 1))
+        self.assertEqual(rows[row['supersedes'][0]]['status'], 'rejected')
+        self.assertEqual(self.reg.check_handoff(self.lane())['pending_reviews'], [])
+        self.assertEqual(self.approve(), again)  # Still the latest decision: an identical call replays.
+        lane = self.reg.checkpoint('one', 1, self.lane()['revision'], {'state': 'integrating'})
+        self.assertEqual(self.reg.integrate('one', 1, lane['revision'], self.record(lane['root']['head']))['state'], 'done')
+
+    def test_preflight_reapproval_and_legacy_rows(self):
+        self.reg.checkpoint('one', 1, self.lane()['revision'], {'state': 'blocked', 'dependencies': ['#186 review']})
+        self.f.health = 'dead'
+        args = dict(key='one', generation=1, source_pins=shared_decisions.pins(self.lane()), file='workflow/one.py',
+                    status='approved', reviewer='two', reviewer_generation=1, reason='Scoped', evidence=self.evidence)
+        first = shared_decisions.record(self.reg, **args)
+        shared_decisions.record(self.reg, **dict(args, status='rejected'))
+        state = self.reg.snapshot(); lane = dict(state['lanes']['one'], owned_files=['workflow/one.py'])
+        self.assertFalse(shared_decisions.approved_scope(state, lane))
+        again = shared_decisions.record(self.reg, **args)
+        self.assertNotEqual((again['id'], again['approval']), (first['id'], first['approval']))
+        state = self.reg.snapshot()
+        self.assertTrue(shared_decisions.approved_scope(state, lane))
+        self.assertEqual(approvals.decision(state['approvals'], lane, 'workflow/one.py')['id'], again['approval'])
+        for item in state['shared_preflight_decisions'].values():  # Legacy rows carry no ledger approval.
+            item.pop('approval')
+        self.assertFalse(shared_decisions.approved_scope(state, lane))
+        report = approvals.legacy(state, self.root)
+        self.assertEqual((report['mid_flight'], report['summary']['preflight']), (['one'], 3))
+
+    def test_nearer_launch_session_cannot_borrow_an_outer_reviewer(self):
+        self.submit()
+        three = reviewer(self, self.reg, 'three')  # A registered launch started inside two's session.
+        caller(self, three, self.two)
+        with self.assertRaisesRegex(Rejected, r'nearer live launch session \(three\)'):
+            self.approve()
+        self.assertEqual(approvals.session(self.reg, approvals.ancestry())['lane'], 'three')
+        caller(self, self.two, three)
+        self.assertEqual(self.approve()['reviewer'], 'two')
+
+    def test_delegation_survives_only_recorded_dispositions(self):
+        target = dict(lane='one', generation=1, handoff=dict(path='h0', sha256='0' * 64), root='R', native=None)
+        state = dict(throughput_runtime=dict(autofill=dict(planner_pool=dict(scopes=dict(s=dict(
+            review_authority='shared-files-v1', spec=dict(lane=dict(lane='three')), support_targets=[target]))))),
+            throughput=dict(dispositions=dict(d1=dict(request=dict(handoff_sha256='0' * 64),
+                                                      snapshot=dict(handoff=dict(sha256='1' * 64))))))
+        lane = dict(target, handoff=dict(path='h1', sha256='1' * 64, result={}))
+        self.assertTrue(approvals.delegated(state, 'three', dict(target)))
+        self.assertTrue(approvals.delegated(state, 'three', lane))  # After disposing file 1, file 2 still decides.
+        self.assertFalse(approvals.delegated(state, 'three', dict(lane, handoff=dict(sha256='2' * 64))))
+        self.assertFalse(approvals.delegated(state, 'three', dict(lane, root='moved')))
+
+    def test_readiness_diagnostic_reads_the_ledger(self):
+        lane = self.submit()
+        data = json.loads(open(lane['handoff']['path'], encoding='utf-8').read())
+        data['shared_reviews'][0]['status'] = 'approved'  # A pre-ledger handoff; its stored result says no pending.
+        path = self.root / 'output/legacy-ready.json'; path.write_text(json.dumps(data))
+        lane = dict(lane, handoff=dict(path=str(path), sha256=digest(path), result=dict(pending_reviews=[])))
+        fake = SimpleNamespace(reg=self.reg)
+        self.assertEqual(Controller._pending_reviews(fake, {}, lane), [SHARED])
+        self.approve(); self.assertEqual(Controller._pending_reviews(fake, {}, self.lane()), [])
+
+    def test_routed_owner_records_the_routed_decision(self):
+        self.submit()
+        controller = SimpleNamespace(reg=self.reg, config=dict(integrator_inbox='output/inbox',
+                                     shared_review_routing=dict(enabled=True, files={SHARED: 'three'})))
+        shared_review_routing.tick(controller)  # three owns nothing: no undecidable packet.
+        inbox = self.root / 'output/inbox'
+        self.assertEqual(list(inbox.glob('*.md')) if inbox.exists() else [], [])
+        controller.config['shared_review_routing']['files'][SHARED] = 'two'
+        shared_review_routing.tick(controller)
+        self.assertEqual(len(list(inbox.glob('*.md'))), 1)
+        self.approve(); shared_review_routing.tick(controller)  # The routed owner records it through the ledger.
+        self.assertEqual({r['status'] for r in self.reg.snapshot()['shared_review_routes'].values()},
+                         {'resolved_or_superseded'})
+
     def test_mid_flight_producer_written_status_does_not_pass_integrate(self):
         lane = self.submit()
         data = json.loads(open(lane['handoff']['path'], encoding='utf-8').read())
@@ -132,8 +213,9 @@ class LedgerTests(Base):
         with self.assertRaisesRegex(Rejected, 'free-text reviewers are refused'):
             shared_decisions.record(self.reg, **args)
         with self.assertRaisesRegex(Rejected, 'own producer workstream'):
-            reviewer(self, self.reg, 'three')
+            caller(self, reviewer(self, self.reg, 'three'))
             shared_decisions.record(self.reg, **dict(args, reviewer='three', reviewer_generation=1))
+        caller(self, self.two)
         first = shared_decisions.record(self.reg, **dict(args, reviewer='two', reviewer_generation=1))
         self.assertEqual(self.reg.snapshot()['approvals'][first['approval']]['kind'], 'preflight')
 
@@ -164,6 +246,7 @@ class LandingReviewTests(Base):
         self.three = reviewer(self, self.reg, 'three', owns=['one'])
 
     def review(self, status='approved', who='two', interdiff=None, key_generation=1):
+        caller(self, identity(who))
         return approvals.landing_review(self.reg, who, 1, 'one', key_generation, self.head, self.landed,
                                         interdiff or self.interdiff, [SHARED], status, self.evidence, ['keep hook order'])
 
@@ -211,6 +294,12 @@ class LandingReviewTests(Base):
         self.review(); self.f.now += 1; self.review('rejected')
         with self.assertRaisesRegex(Rejected, 'requires a landing review approved'):
             self.integrate(self.three)
+
+    def test_reapproval_after_rejection_lets_integrate_accept(self):
+        first = self.review(); self.review('rejected'); again = self.review()
+        self.assertNotEqual(again['id'], first['id'])
+        self.assertEqual(self.integrate(self.three)['integration_landing']['root']['port_reviews'][SHARED],
+                         [again['id'], self.interdiff])
 
     def test_blocked_and_done_producers_accept_landing_reviews(self):
         self.reg.checkpoint('one', 1, self.lane()['revision'], {'state': 'running'})
@@ -260,6 +349,61 @@ class SharedHookTests(Base):
         with self.reg.transaction() as s:
             s['lanes']['one']['root']['head'] = 'c' * 40  # Pins moved: the decision no longer holds.
         self.assertFalse(approvals.hook_state(self.reg.snapshot()['approvals'], self.lane(), self.hook)[0])
+
+    def controller(self):
+        with self.reg.transaction() as s:
+            s['lanes']['one']['task_id'] = 'opencode:session-one'
+        self.f.health = 'dead'
+        return SimpleNamespace(reg=self.reg, config=dict(lanes={'one': {}}, models=['test/model']), available=lambda key: True)
+
+    def exit_launches(self):
+        with self.reg.transaction() as s:
+            for x in s['control']['launches'].values():
+                if x['lane'] == 'one':
+                    x['status'] = 'exited'
+
+    def test_redecision_after_rejection_wakes_again_and_is_shown(self):
+        controller = self.controller()
+        ids = []
+        for status in ('approved', 'rejected', 'approved'):
+            ids.append(self.decide(status)[0]['id']); approvals.tick(controller); self.exit_launches()
+        self.assertEqual(len(set(ids)), 3)
+        reasons = sorted(x['reason'] for x in self.reg.control_status()['launches'].values() if x['lane'] == 'one')
+        self.assertEqual(reasons, sorted('shared-hook-decision:' + i for i in ids))
+        shown = self.reg.status()['lanes']['one']['shared_hook_status']
+        self.assertEqual([(h['id'], h['satisfied'], h['decision']) for h in shown], [(self.hook['id'], True, ids[-1])])
+
+    def test_later_blocked_outcome_replaces_hooks(self):
+        self.reg.finish('one', 1, 'blocked', 'Now waiting on assets only', self.evidence, ['#assets'])
+        self.assertEqual(self.lane()['shared_hooks'], [])
+        with self.assertRaisesRegex(Rejected, 'holds no matching shared_hook'):
+            self.decide()
+        lane = self.reg.checkpoint('one', 1, self.lane()['revision'], {'state': 'blocked', 'shared_hooks': [self.HOOK]})
+        self.assertEqual(lane['shared_hooks'], [self.hook])
+        with self.assertRaisesRegex(Rejected, 'shared_hooks belong to a blocked lane'):
+            self.reg.checkpoint('one', 1, lane['revision'], {'state': 'running', 'shared_hooks': []})
+        lane = self.reg.checkpoint('one', 1, lane['revision'], {'state': 'running'})
+        self.assertEqual(lane['shared_hooks'], [self.hook])  # Held while it works; a new blocked state replaces it.
+        lane = self.reg.checkpoint('one', 1, lane['revision'], {'state': 'blocked', 'dependencies': ['#assets']})
+        self.assertNotIn('shared_hooks', lane)
+
+    def test_tick_reads_sections_and_closes_dead_decisions(self):
+        controller = self.controller()
+        row = self.decide()[0]
+        sections, snapshot = [], self.reg.snapshot
+        self.reg.snapshot = lambda section=None: (sections.append(section), snapshot(section=section))[1]
+        self.reg.probe = lambda p: 'alive'  # Waiting at the decided pins but not recovery-safe.
+        approvals.tick(controller); approvals.tick(controller)
+        self.assertNotIn(None, sections)
+        self.assertEqual(controller._shared_hook_retry[row['id']], self.f.now + approvals.RETRY_SECONDS)
+        self.assertEqual(sections.count(('control', 'launches')), 1)  # The second tick skipped the throttled row.
+        with self.reg.transaction() as s:
+            s['lanes']['one']['generation'] = 2
+        self.f.now += approvals.RETRY_SECONDS
+        approvals.tick(controller)
+        self.assertIn(row['id'], controller._shared_hook_closed)
+        before = len(sections); approvals.tick(controller)
+        self.assertEqual(sections[before:], [('approvals',)])
 
     def test_rejection_and_foreign_lanes(self):
         self.decide('rejected')
