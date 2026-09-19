@@ -15,9 +15,14 @@ The latest row per subject decides; a repeated decision after a different one is
 packet_decision is the one writer that is not a reviewer lane: the running controller process
 re-runs a requested review packet (workflow.review_packet) at its audited pins and records
 shared_hook rows with decided_by 'packet:<schema>@<blob>'; agents can only request that.
+operator_shared_hook is the human operator's writer (decided_by 'operator'): it approves a lane's
+pending shared-review requirement for one issue only when every commit the lane recorded is on the
+declared integration line, and refuses any caller inside a live launch session (authenticate inverted);
+--yes without a TTY is also refused under any process a launch or lane ever recorded.
 
   <python> <checkout>/scripts/workflow_module.py approvals landing-review --root <root> --request <json>
   <python> <checkout>/scripts/workflow_module.py approvals shared-hook --root <root> --request <json>
+  <python> <checkout>/scripts/workflow_module.py approvals operator-shared-hook --root <root> --lane L --issue 186 [--yes] [--note T]
 
 landing_audit --approvals lists older approvals without ledger backing, read-only.
 """
@@ -546,7 +551,31 @@ def hook_status(rows, lane):
     return result
 
 
-def shared_hook_decision(reg, reviewer, reviewer_generation, hook, lanes, status, evidence, conditions=(), commit=None):
+CRITERION = 'acceptance-criterion'  # item_id of the implicit hook an unmet shared_reviews acceptance criterion holds.
+
+
+def criteria(lane):
+    """Decision issues an acceptance criterion names that only a shared_reviews decision can satisfy (producer_contract)."""
+    from .blockers import issues
+    from .producer_contract import acceptance_lint
+    return sorted({n for f in acceptance_lint(lane.get('acceptance')) if f['move_to'] == 'shared_reviews'
+                   for n in issues(f['match'])})
+
+
+def held(lane):
+    """Every structured shared-review requirement of the lane: its registered shared_hooks, then one implicit
+    {kind:shared_hook, issue, item_id:CRITERION} hook per issue its acceptance criteria need decided."""
+    own = [h for h in lane.get('shared_hooks') or [] if isinstance(h, dict) and type(h.get('issue')) is int]
+    return own + [h for h in hooks([dict(kind='shared_hook', issue=n, item_id=CRITERION) for n in criteria(lane)])
+                  if h['id'] not in {x.get('id') for x in own}]
+
+
+def requirements(rows, lane):
+    """The lane's structured shared-review requirements not satisfied by the ledger at its current pins."""
+    return [h for h in held(lane) if not hook_state(rows, lane, h)[0]]
+
+
+def shared_hook_decision(reg,reviewer, reviewer_generation, hook, lanes, status, evidence, conditions=(), commit=None):
     """Decision on non-owned shared files or a hook item, recorded against each named lane holding that hook."""
     from .landing import SHA, lines, objects, repository
     from .provenance import stamp
@@ -587,12 +616,136 @@ def shared_hook_decision(reg, reviewer, reviewer_generation, hook, lanes, status
         return result
 
 
+OPERATOR_STATES = ('done', 'handoff_ready', 'blocked')
+WORKER_STATES = ('intent', 'spawned', 'running', 'exiting')
+
+
+def operator_check(root, state, key, issue, declared=None):
+    """(lane, pending hooks for issue, {repo: commits}, {repo: {ref, tip}}) the operator may approve; refuses otherwise.
+
+    The lane must be done, handoff_ready or blocked with an unmet requirement for the issue (held), clean
+    sources, integration_lines declared, and every commit it recorded (head and commits, root and native)
+    reachable from its repository's declared line. Pure over state; git is read-only (landing.git)."""
+    from .landing import SHA, git, lines, repository
+    lane = state.get('lanes', {}).get(key)
+    require(isinstance(lane, dict), 'Unknown lane: ' + str(key))
+    require(type(issue) is int and issue > 0, 'Issue number required')
+    require(lane.get('state') in OPERATOR_STATES, f"{key} is {lane.get('state')}; operator approval needs a done, "
+            'handoff_ready or blocked lane')
+    pending = [h for h in requirements(state.get('approvals') or {}, lane) if h['issue'] == issue]
+    require(pending, f'{key} has no unmet structured shared-review requirement for #{issue} (a shared_hook or a '
+            'shared_reviews acceptance criterion); prose alone is not one')
+    declared = lines(root) if declared is None else declared
+    require(declared, 'integration_lines undeclared in the controller config: operator approval needs the lane\'s '
+            'commits provably on a declared line')
+    commits, tips = {}, {}
+    for name in ('root', 'native'):
+        source = lane.get(name)
+        if not source: continue
+        recorded = [source.get('head'), *(source.get('commits') or [])]
+        require(isinstance(source, dict) and all(isinstance(c, str) and SHA.fullmatch(c) for c in recorded),
+                f'{key} {name} source lacks full head/commits')
+        require(not source.get('dirty'), f'{key} {name} source is dirty; its recorded commits are not what it holds')
+        require(not source.get('commits') or source['head'] in source['commits'],
+                f'{key} {name} head is not among its recorded commits (changed since recording)')
+        require(declared.get(name), f'integration_lines.{name} undeclared; {key} recorded {name} commits')
+        repo, ref = repository(root, name, declared), declared[name]['ref']
+        tip = git(repo, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}')[1].decode().strip()
+        shas = sorted(set(recorded))
+        off = [c for c in shas if git(repo, 'merge-base', '--is-ancestor', c, tip, codes=(0, 1))[0] != 0]
+        require(not off, f"{name}: {', '.join(c[:12] for c in off)} not reachable from declared line {ref} ({tip[:12]}); "
+                'land the lane first')
+        commits[name], tips[name] = shas, dict(ref=ref, tip=tip)
+    require(commits, key + ' recorded no root/native source')
+    return lane, pending, commits, tips
+
+
+def worker_processes(state):
+    """Process identities of every launch the controller recorded as live and every running lane."""
+    control = state.get('control', {})
+    found = [x.get('process') for x in control.get('launches', {}).values() if x.get('status') in WORKER_STATES]
+    found += [l.get('process') for l in state.get('lanes', {}).values() if l.get('state') == 'running']
+    return [p for p in found if isinstance(p, dict)]
+
+
+def launched(state):
+    """Every process identity any launch or lane ever recorded (a worker, live or not)."""
+    found = [x.get('process') for x in state.get('control', {}).get('launches', {}).values()]
+    found += [l.get('process') for l in state.get('lanes', {}).values()]
+    return [p for p in found if isinstance(p, dict)]
+
+
+def operator_gate(state, chain, yes, tty):
+    """Refuse an agent: the caller descends from a live launch session or running lane (inverse of authenticate);
+    --yes without a TTY also needs a readable ancestry that holds no process any launch or lane ever recorded."""
+    live = [p for p in worker_processes(state) if p in chain]
+    require(not live, 'Operator approval refused inside a live launch session; run it from your own terminal')
+    if yes and not tty:
+        require(chain, 'Operator approval --yes without a TTY needs a readable process ancestry')
+        require(not any(p in chain for p in launched(state)),
+                'Operator approval --yes without a TTY refused under a launched worker process')
+
+
+def operator_shared_hook(reg, key, issue, note=None, confirm=None, yes=False, tty=None, who=None):
+    """Operator approval of the lane's pending shared-review requirement(s) for one issue at its current pins.
+
+    Idempotent: when an operator row already satisfies every requirement for the issue, that row is returned
+    and nothing is written. confirm(summary) -> bool is asked unless yes; refuses without a TTY then."""
+    import getpass
+    from .handoff import digest
+    from .provenance import stamp
+    tty = sys.stdin.isatty() if tty is None else tty
+    require(note is None or isinstance(note, str), 'note must be text')
+    chain = ancestry()
+    state = reg.snapshot()
+    operator_gate(state, chain, yes, tty)
+    lane = state.get('lanes', {}).get(key)
+    if isinstance(lane, dict):
+        done = [hook_state(state.get('approvals') or {}, lane, h) for h in held(lane) if h['issue'] == issue]
+        rows = [r for ok, r in done if ok]
+        if done and len(rows) == len(done) and all(r.get('decided_by') == 'operator' for r in rows):
+            return [copy.deepcopy(r) for r in rows]
+    lane, pending, commits, tips = operator_check(reg.root, state, key, issue)
+    summary = dict(lane=key, generation=lane['generation'], state=lane['state'], issue=issue, pins=pins(lane),
+                   hooks=pending, commits=commits, lines=tips, note=note)
+    if not yes:
+        require(tty and confirm is not None, 'Operator approval needs an interactive confirmation (TTY) or --yes')
+        require(confirm(summary), 'Operator approval not confirmed')
+    who = who or getpass.getuser()
+    folder = reg.root / 'output/workflow/operator-approvals'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / ('%s-%d-%s.json' % (key, issue, fingerprint([summary, who])[:16]))
+    path.write_text(json.dumps(dict(summary, who=who, chain=chain), indent=1, sort_keys=True), encoding='utf-8')
+    evidence = dict(path=str(path.relative_to(reg.root)).replace('\\', '/'), sha256=digest(path))
+    code = stamp()
+    with reg.transaction() as state:
+        operator_gate(state, chain, yes, tty)
+        current = reg.lane(state, key, lane['generation'])
+        require(current['state'] == lane['state'] and pins(current) == pins(lane) and
+                all(current.get(n) == lane.get(n) for n in commits),
+                key + ' changed since its commits were checked; run again')
+        result = []
+        for hook in [h for h in requirements(ledger(state), current) if h['id'] in {x['id'] for x in pending}]:
+            row = write(reg, state, dict(kind='shared_hook', source='operator', lane=key, generation=current['generation'],
+                                         hook_id=hook['id'], hook=hook, pins=pins(current),
+                                         subject=dict(commits=commits, lines=tips), status='approved', conditions=[],
+                                         evidence=evidence, reviewer=dict(operator=who), decided_by='operator',
+                                         who=who, note=note), code)
+            reg.event(state, 'shared_hook_decided', key, approval=row['id'], hook=hook['id'], status='approved',
+                      decided_by='operator', who=who)
+            result.append(copy.deepcopy(row))
+    reg.notice(key, 'operator_shared_hook_approved', dict(issue=issue, approvals=[r['id'] for r in result], who=who,
+                                                          commits=commits), status='info')
+    return result
+
+
 RETRY_SECONDS = 60
 
 
 def completer(rows, lane):
-    """The approval that most recently made every structured shared_hook of the lane satisfied, while it holds."""
-    hooks = lane.get('shared_hooks') or []
+    """The approval that most recently made every structured shared-review requirement of the lane (held)
+    satisfied, while it holds."""
+    hooks = held(lane)
     if not hooks or not all(hook_state(rows, lane, h)[0] for h in hooks):
         return None
     ids = {h['id'] for h in hooks}
@@ -729,18 +882,39 @@ def _lane_of(root, item):
         return None
 
 
+def _ask(summary):
+    """Print what the operator approves (lane, issue, commits, line tips) and read y/N from the terminal."""
+    print('Lane %s gen %d (%s), issue #%d' % (summary['lane'], summary['generation'], summary['state'], summary['issue']))
+    for hook in summary['hooks']:
+        print('  requirement %s: %s' % (hook['id'], hook.get('files') or hook.get('item_id')))
+    for name, shas in summary['commits'].items():
+        line = summary['lines'][name]
+        print('  %s: %s on %s (tip %s)' % (name, ' '.join(shas), line['ref'], line['tip']))
+    return input('Record an operator approval for exactly these commits? [y/N] ').strip().casefold() in ('y', 'yes')
+
+
 def main(argv=None):
     import argparse
     import sqlite3
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('landing-review', 'shared-hook'))
+    parser.add_argument('command', choices=('landing-review', 'shared-hook', 'operator-shared-hook'))
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--request', type=Path, required=True, help='UTF-8 JSON arguments')
+    parser.add_argument('--request', type=Path, help='UTF-8 JSON arguments (landing-review, shared-hook)')
+    parser.add_argument('--lane', help='operator-shared-hook: the lane whose requirement you approve')
+    parser.add_argument('--issue', type=int, help='operator-shared-hook: the decision issue (e.g. 186)')
+    parser.add_argument('--yes', action='store_true', help='operator-shared-hook: skip the y/N prompt')
+    parser.add_argument('--note', help='operator-shared-hook: recorded with the approval')
     args = parser.parse_args(argv)
     from .registry import Registry
     root = args.root.resolve()
     try:
         reg = Registry(root / 'output/workflow/registry.sqlite3', root)
+        if args.command == 'operator-shared-hook':
+            require(args.lane and args.issue, '--lane and --issue required')
+            result = operator_shared_hook(reg, args.lane, args.issue, args.note, confirm=_ask, yes=args.yes)
+            print(json.dumps(result, indent=2))
+            return 0
+        require(args.request is not None, '--request required')
         request = json.loads(args.request.read_text(encoding='utf-8-sig'))
         require(isinstance(request, dict), 'Request must be a JSON object')
         result = (landing_review if args.command == 'landing-review' else shared_hook_decision)(reg, **request)

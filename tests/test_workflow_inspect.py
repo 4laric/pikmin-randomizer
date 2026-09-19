@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 from tests import test_pikmin2_controller as fixtures
-from workflow import blockers, inspect
+from workflow import approvals, blockers, inspect
 from workflow.autofill import clustered_blockers
 from workflow.consumer_wakeup import explain, tick
 from workflow.control import fingerprint
@@ -128,14 +128,16 @@ class ReadOnlyTests(unittest.TestCase):
 
 class StuckTests(unittest.TestCase):
     def test_refs_normalize_issue_forms_and_resolve_owners(self):
-        state = world(lane('a', deps=['#186 shared-hook review (bridge)', '#50 producer landing']),
+        hook = approvals.hooks([dict(kind='shared_hook', issue=186, files=['engine/bridge.cpp'])])
+        state = world(lane('a', deps=['#186 shared-hook review (bridge)', '#50 producer landing'], shared_hooks=hook),
                       lane('b', issue=2, deps=['4laric/pikmin-randomizer#186', 'producer-lane: needs its commits']),
                       lane('producer-lane', state='done', issue=50),
                       lane('c', issue=3, deps=['#77', 'captain safety #632']))
         self.assertEqual(blockers.refs(state, 'a', blockers.owners(state)), ['issue:186', 'issue:50'])
-        self.assertEqual(blockers.refs(state, 'b', blockers.owners(state)), ['issue:186', 'lane:producer-lane'])
+        # b only names #186 in prose: no structured requirement, so it waits on its producer alone.
+        self.assertEqual(blockers.refs(state, 'b', blockers.owners(state)), ['lane:producer-lane'])
         grouped = {g['ref']: g for g in blockers.groups(state)['groups']}
-        self.assertEqual((grouped['issue:186']['count'], grouped['issue:186']['owner_state']), (2, 'decision'))
+        self.assertEqual((grouped['issue:186']['lanes'], grouped['issue:186']['owner_state']), (['a'], 'decision'))
         # '#50' and the name of the lane owning #50 are one owner: one group with both lanes.
         producer = grouped['lane:producer-lane']
         self.assertEqual((producer['owner'], producer['owner_state'], producer['lanes']), ('producer-lane', 'done_unlanded', ['a', 'b']))
@@ -249,7 +251,8 @@ class NeedsYouTests(unittest.TestCase):
 
 class ViewTests(unittest.TestCase):
     def test_empty_umbrella_list_means_no_decision_issues_everywhere(self):
-        state = world(lane('a', deps=['#186']), lane('b', issue=2, deps=['#186']))
+        hook = approvals.hooks([dict(kind='shared_hook', issue=186, item_id='bridge')])
+        state = world(lane('a', deps=['#186'], shared_hooks=hook), lane('b', issue=2, deps=['#186'], shared_hooks=hook))
         grouped = inspect.stuck(state, 1000, cfg=dict(consumer_wakeup=dict(umbrella_issues=[])))
         self.assertEqual(grouped['groups'][0]['owner_state'], 'missing')
         self.assertEqual(clustered_blockers(state, [])[0]['owner_state'], 'missing')
@@ -284,23 +287,34 @@ class ViewTests(unittest.TestCase):
 class ClusterTests(unittest.TestCase):
     def test_live_shaped_dependencies_cluster_on_structured_refs(self):
         state = world(
-            lane('muki-rows', issue=748, deps=['Explicit #186 landing decision for the serialized wiring (issue #186 OPEN)']),
+            lane('muki-rows', issue=748, deps=['Explicit #186 landing decision for the serialized wiring (issue #186 OPEN)'],
+                 acceptance=['MUKI rows resolve; #186 decision recorded for the serialized wiring']),
             lane('houdai', issue=735, deps=['Integrator: #748 MUKI rows landing + #730 ext for the full wiring follow-on']),
             lane('redblue', issue=744, deps=['#748 native MUKI stage rows landing (muki-rows running gen 3, no handoff)']),
             lane('damagumo', issue=740, deps=['muki-rows (#748): unblock MUKI rows', '4laric/pikmin-randomizer#186']),
-            lane('bomb', issue=573, deps=['#186 shared-hook review (detonation driver path, dynamic-bridge source 93)']),
+            lane('bomb', issue=573, deps=['#186 shared-hook review (detonation driver path, dynamic-bridge source 93)'],
+                 shared_hooks=approvals.hooks([dict(kind='shared_hook', issue=186, files=['native/src/bomb.cpp'])])),
+            lane('prose', issue=575, deps=['#186 review, then #730 ext landing']),
             lane('ext', issue=730, state='done', created_at=5),
             lane('nari', issue=537, deps=['pc_bbft.cpp boot serialization (follow-on blocked on #730 ext landing)']),
             lane('kusachi-a', issue=780, deps=['sustained live squad (diagnosis #787 has no engine change)']),
             lane('kusachi-b', issue=781, deps=['staged producer; extinction per diagnosis #787']),
             lane('diag', issue=787, state='done', integration=dict(root_commit='a' * 40)))
         clusters = {c['signature']: c for c in clustered_blockers(state)}
-        self.assertEqual(clusters['#186']['count'], 3)
+        # Only pending structured requirements (bomb's shared_hook, muki-rows' criterion) cluster on #186; damagumo and
+        # prose name #186 in text only and fall through to their owners.
+        self.assertEqual(clusters['#186']['lanes'], ['bomb', 'muki-rows'])
         rows = clusters['#748, muki-rows']  # damagumo cites both forms: one owner, one cluster.
         self.assertEqual((rows['count'], rows['owner_state'], rows['ref']), (3, 'blocked', 'lane:muki-rows'))
         self.assertNotIn('#748', clusters)
         self.assertIn('Unblock muki-rows', rows['next_action'])
         self.assertEqual((clusters['#730, ext']['owner'], clusters['#730, ext']['owner_state']), ('ext', 'done_unlanded'))
+        self.assertEqual(clusters['#730, ext']['lanes'], ['houdai', 'nari', 'prose'])
+        state['approvals'] = {}  # An approved row at the lane's pins satisfies the hook: bomb leaves the #186 group.
+        hook = state['lanes']['bomb']['shared_hooks'][0]
+        state['approvals']['r'] = dict(id='r', kind='shared_hook', lane='bomb', hook_id=hook['id'], status='approved',
+                                       pins=approvals.pins(state['lanes']['bomb']), at=1)
+        self.assertEqual({c['signature']: c for c in clustered_blockers(state)}.get('#186'), None)
         self.assertEqual(clusters['#787']['lanes'], ['kusachi-a', 'kusachi-b'])
         self.assertFalse(any(c['covered'] for c in clusters.values()))
 

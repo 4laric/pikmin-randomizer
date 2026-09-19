@@ -14,7 +14,7 @@ WAITING = ('blocked', 'waiting_resource')
 LIVE = ('ready', 'running', 'waiting_resource', 'reconciling')
 HANDOFF = ('handoff_ready', 'integrating', 'review_ready')
 ASKED = WAITING + ('handoff_ready', 'integrating')  # States a support worker may record a user ask against.
-DECISIONS = (186,)  # Shared-hook decision issues: no producer lane owns them, a reviewer decides.
+DECISIONS = (186,)  # Shared-hook decision issues: no producer lane owns them, a reviewer or the operator decides.
 POLICY = (632,)  # Standing policy cited by many lanes (captain safety); never a blocker.
 
 
@@ -61,19 +61,24 @@ def standing(lane):
 def refs(state, key, table=None, decisions=DECISIONS):
     """Sorted structured refs of one lane: its dependency text, current-pin producer link, the
     classification of its current snapshot, structured shared_hooks and open user-owned asks.
+    A decision issue is a ref only while a structured requirement for it is pending (an unsatisfied
+    shared_hook or an unmet shared_reviews acceptance criterion, approvals.requirements); prose that
+    merely names it falls through to the lane's other refs.
     A lane's reference to its own issue or name is not a blocker and is dropped."""
+    from .approvals import requirements
     lanes = state.get('lanes', {})
     lane = lanes.get(key) or {}
     found = set()
     for text in lane.get('dependencies') or []:
-        found.update('issue:%d' % n for n in issues(text) if n not in POLICY)
+        found.update('issue:%d' % n for n in issues(text) if n not in POLICY and n not in decisions)
         found.update('external:' + r for r in external(text))
         found.update('lane:' + t for t in TOKEN.findall(str(text)) if t in lanes)
     link = state.get('blocked_producer_links', {}).get(key) or {}
     if link.get('source_pins') == {k: (lane.get(k) or {}).get('head') for k in ('root', 'native')}:
         found.update('lane:' + p for p in link.get('producers', []) if p in lanes)
     for hook in lane.get('shared_hooks') or []:
-        if type(hook.get('issue')) is int: found.add('issue:%d' % hook['issue'])
+        if type(hook.get('issue')) is int and hook['issue'] not in decisions: found.add('issue:%d' % hook['issue'])
+    found.update('issue:%d' % h['issue'] for h in requirements(state.get('approvals') or {}, lane) if h['issue'] in decisions)
     classified = classification(state, key)
     contracts, actions = state.get('delivery_contracts', {}), state.get('support_actions', {})
     for d in (classified or {}).get('dispositions', []):
@@ -124,7 +129,8 @@ def action(ref, owner_key, standing_, waits_on, count):
     name, lanes = label(ref), '%d lane%s' % (count, '' if count == 1 else 's')
     if standing_ == 'decision':
         return 'reviewer', ('Record the %s shared-hook decision for these %s (approvals shared-hook from a reviewer '
-                            'lane, or review_packet request against a committed packet)' % (name, lanes))
+                            'lane, review_packet request against a committed packet, or approvals operator-shared-hook '
+                            'by the operator once the commits are on the integration line)' % (name, lanes))
     if standing_ == 'user': return 'user', 'Answer the open ask in Needs you'
     if standing_ == 'missing':
         return 'planner', 'No lane owns %s: publish or link a producer (prerequisite_queue / delivery_contracts)' % name

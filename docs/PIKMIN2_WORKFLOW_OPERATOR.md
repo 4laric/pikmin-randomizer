@@ -83,7 +83,14 @@ come from its dependency text (`#N` and `4laric/pikmin-randomizer#N` become `#N`
 another repository's `owner/repo#N` stays external and no local lane owns it; lane
 names become lanes), its producer link at current pins, the classification of its
 current snapshot, its structured `shared_hooks`, and open user asks. A lane's own
-issue and name are dropped; `#632` (captain safety policy) is never a blocker. Each
+issue and name are dropped; `#632` (captain safety policy) is never a blocker. A
+decision issue (`#186`) is a reference only while the lane holds a pending structured
+requirement for it: an unsatisfied `shared_hooks` entry, or an acceptance criterion
+that only a `shared_reviews` decision can satisfy with no approval at the lane's pins
+(`approvals.requirements`). Dependency prose that merely mentions `#186` falls through
+to the lane's other references, so such a lane shows under its real prerequisite
+(`#730`, `#748`, ...) or, with none, as prose only. The wake gate
+(`consumer_wakeup`) still excludes umbrella issues from producer lookup as before. Each
 reference resolves to its owner lane, and groups key on that owner: `#730` and
 `challenge-stage-table-extension-native` form one group labelled with both. References
 no lane owns (a decision issue, a user ask, an unowned or external issue) group on
@@ -91,7 +98,7 @@ the reference. A lane with several owners appears in each group. Owner states:
 
 | Owner state | Meaning | Accountable / next action |
 |---|---|---|
-| `decision` | `#186` (config `consumer_wakeup.umbrella_issues`): no lane owns it | reviewer: record the shared-hook decision (`approvals shared-hook` from a reviewer lane, or `review_packet request`) |
+| `decision` | `#186` (config `consumer_wakeup.umbrella_issues`): no lane owns it; only lanes with a pending structured requirement | reviewer: record the shared-hook decision (`approvals shared-hook` from a reviewer lane, or `review_packet request`); or you, with `approvals operator-shared-hook` once the lane's commits are on the integration line |
 | `missing` | No lane has that issue | planner: publish or link a producer |
 | `live` | Owner ready, running, waiting or reconciling | producer: nothing unless it stalls |
 | `handoff` | Owner holds a handoff or review-ready report | integrator: land it |
@@ -113,8 +120,11 @@ them on the autofill item as `acceptance_lint`.
 two or more lanes (field `covered` when the owner is live or holds a handoff); lanes
 with no structured reference still cluster on identical normalized text. An empty
 `consumer_wakeup.umbrella_issues` means no decision issues here, in `inspect` and in
-the wake gate alike. On the live registry of 2026-09-19 it found 10 clusters: the
-`#186` decision (15 lanes) and nine owner lanes.
+the wake gate alike. On the live registry of 2026-09-19 prose matching put 15 lanes
+under `#186`; by structure 6 remain (one `shared_hooks` entry, five `#186` acceptance
+criteria) and the rest show under `#730`, `#748`, `#755`, `#616`, `#767`, `#742` and the like.
+`inspect lane` lists each structured requirement as `Shared review #N <scope>:
+unmet|satisfied by <reviewer lane|operator|packet>`.
 
 ## Lane states
 
@@ -142,15 +152,40 @@ that worker (`inspect lane` shows `worker_busy`).
 
 - **Answer asks** from Needs you first; they gate the most lanes.
 - **Shared-hook (#186) decisions**: approvals are ledger rows written only by an
-  authenticated reviewer lane from its own launch session; a handoff's own
-  `approved` never counts and there is no operator approval command. A reviewer lane
-  may cite your statement as hashed evidence. Out-of-band decisions on files a
+  authenticated reviewer lane from its own launch session, or by you through
+  `approvals operator-shared-hook` (below); a handoff's own `approved` never counts.
+  A reviewer lane may cite your statement as hashed evidence. Out-of-band decisions on files a
   blocked lane does not own: `approvals shared-hook`; on ported landed bytes:
   `approvals landing-review`. Review packets are committed under
   `tools/review_packets/` ([PIKMIN2_REVIEW_PACKETS.md](PIKMIN2_REVIEW_PACKETS.md));
   `review_packet verify` is read-only, lanes ask with `review_packet request`, pins
   change only through `review_packet repin --show-diff`. Packets need
   `integration_lines.root` declared and the packet landed on that line.
+- **Operator shared-hook approval**:
+
+  ```
+  py -3.12 scripts/workflow_module.py approvals operator-shared-hook --root . --lane <lane> --issue 186 [--note TEXT] [--yes]
+  ```
+
+  Records one approved `shared_hook` ledger row per pending requirement of the lane
+  for that issue (its `shared_hooks`, or the implicit `acceptance-criterion` hook of a
+  criterion needing a `#186` decision) with `decided_by: operator`, your OS user name,
+  time, note, the exact commits and line tips, plus hashed evidence under
+  `output/workflow/operator-approvals/`, a `shared_hook_decided` event and an info
+  notice. Refused unless the lane is done, handoff_ready or blocked with an unmet
+  requirement for the issue; `integration_lines` is declared; every commit the lane
+  recorded (root and native head and commits) is reachable from its repository's
+  declared line (land first); the sources are clean with the head among the recorded
+  commits; and nothing changed between the check and the write. The row holds only at
+  the lane's current pins, like a reviewer's. It prints the lane, issue, commits and
+  line tips and asks y/N. Agent guard: refused whenever the calling process descends
+  from any live launch session or running lane (the reviewer authentication, inverted);
+  `--yes` on a non-TTY stdin is also refused when the process ancestry is unreadable or
+  contains any process a launch or lane ever recorded, live or not. Run it from your own
+  terminal. A second call once approved is a no-op returning the existing row(s). After
+  it, the ordinary path follows: a blocked lane whose requirements are now all
+  satisfied is woken by the controller's next tick (`shared-hook-decision:<id>`); a done
+  lane still lands only through `integrate`, whose landing proof is unchanged.
 - **Deliveries**: a closed batch is not a lane completion. Only `Registry.integrate`
   records integration, and only when the receipt commits provably contain the
   reviewed bytes (identical blobs, ancestry or a declared port). A port of a shared

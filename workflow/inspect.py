@@ -361,11 +361,24 @@ def lane(state, key, view, cfg, now=None):
         next_action=row.get('next_action'), dependencies=row.get('dependencies', []), refs=refs,
         parked=row.get('parked'), wake_after=row.get('wake_after'), stall_streak=row.get('stall_streak'),
         capacity_parked=row.get('capacity_parked'), acceptance_lint=acceptance_lint(row.get('acceptance')),
+        shared_reviews=shared_reviews(state, row),
         launches=[compact(x, now) for x in launches[-5:]], launch_count=len(launches), archived_launches=archived,
         notices=notices[-10:], worktrees=worktrees(view.root, row))
     if row.get('state') == 'blocked':
         result['wake'] = (explain(view, state, key, launchable, available, cfg) if cfg is not None else
                           dict(gate='config_unread', detail='No controller config read; pass --root or --config'))
+    return result
+
+
+def shared_reviews(state, row):
+    """The lane's structured shared-review requirements (approvals.held) and their ledger standing at its pins."""
+    from .approvals import held, hook_state
+    result = []
+    for hook in held(row):
+        ok, found = hook_state(state.get('approvals') or {}, row, hook)
+        result.append(dict(id=hook['id'], issue=hook['issue'], scope=', '.join(hook.get('files') or []) or hook.get('item_id'),
+                           satisfied=ok, status=found and found['status'],
+                           decided_by=found and (found.get('decided_by') or (found.get('reviewer') or {}).get('lane'))))
     return result
 
 
@@ -471,6 +484,8 @@ def text(verb, data):
         if 'wake' in d: out.append('Prerequisite wake: %s - %s' % (d['wake']['gate'], d['wake']['detail']))
         for name, why in (d.get('wake') or {}).get('skipped', {}).items(): out.append('    %s: %s' % (name, why))
         out += ['Criterion %d needs another owner (%s): %s' % (f['index'], f['move_to'], f['match']) for f in d['acceptance_lint']]
+        out += ['Shared review #%d %s: %s%s' % (r['issue'], r['scope'], 'satisfied by ' + r['decided_by'] if r['satisfied'] else 'unmet',
+                ' (latest %s %s)' % (r['decided_by'], r['status']) if r['status'] and not r['satisfied'] else '') for r in d.get('shared_reviews', [])]
         out.append('Launches (%d%s, last %d):' % (d['launch_count'], ', %d archived' % d['archived_launches'] if d.get('archived_launches') else '',
                                                   len(d['launches'])))
         out += ['  %s %s %s ago gen %s exit %s tools %s: %s' % (x['id'], x['status'], mins(x['age_seconds']), x['generation'],

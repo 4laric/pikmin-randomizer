@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from tests import test_pikmin2_workflow as workflow_fixtures
 from tests.approval_auth import caller, calling, identity, reviewer
 from tests.landing_git import commit, git, source
-from workflow import approvals, landing, landing_audit, review_decisions, shared_decisions, shared_review_routing
+from workflow import approvals, blockers, landing, landing_audit, review_decisions, shared_decisions, shared_review_routing
 from workflow.controller import Controller
 from workflow.handoff import Rejected, digest
 
@@ -433,6 +433,107 @@ class SharedHookTests(Base):
             self.decide(key='three')
         with self.assertRaisesRegex(Rejected, 'kind "shared_hook"'):
             approvals.hooks([dict(kind='shared_hook', issue=186)])
+
+
+class OperatorTests(Base):
+    HOOK = dict(kind='shared_hook', issue=186, files=[SHARED])
+
+    def setUp(self):
+        super().setUp()
+        self.reg.finish('one', 1, 'blocked', 'Waiting for the #186 hook decision', self.evidence,
+                        ['#186 shared-hook review'], shared_hooks=[self.HOOK])
+        self.head = self.lane()['root']['head']
+        git(self.root, 'branch', '-f', 'maintained', self.head)
+        self.declare('maintained')
+        caller(self)  # The operator's own terminal: no launch session in its ancestry.
+
+    def declare(self, ref=None):
+        config = self.root / landing.CONFIG; config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(json.dumps(dict(output='output/workflow/controller', **(
+            dict(integration_lines=dict(root=dict(repo='.', ref=ref))) if ref else {}))))
+
+    def approve(self, key='one', yes=False, tty=True, answer=True):
+        return approvals.operator_shared_hook(self.reg, key, 186, 'checked the bridge', confirm=lambda s: answer,
+                                              yes=yes, tty=tty, who='operator-test')
+
+    def test_operator_approval_satisfies_the_requirement_and_wakes_the_lane(self):
+        self.assertEqual(blockers.refs(self.reg.snapshot(), 'one', {}), ['issue:186'])
+        with self.assertRaisesRegex(Rejected, 'not confirmed'):
+            self.approve(answer=False)
+        row = self.approve()[0]
+        state = self.reg.snapshot()
+        self.assertEqual((row['decided_by'], row['who'], row['note'], row['status']),
+                         ('operator', 'operator-test', 'checked the bridge', 'approved'))
+        self.assertEqual((row['subject']['commits'], row['subject']['lines']['root']),
+                         (dict(root=[self.head]), dict(ref='maintained', tip=self.head)))
+        self.assertTrue(approvals.hook_state(state['approvals'], self.lane(), self.lane()['shared_hooks'][0])[0])
+        self.assertEqual(approvals.requirements(state['approvals'], self.lane()), [])
+        self.assertEqual(blockers.refs(state, 'one', {}), [])  # Prose still names #186; nothing structured waits on it.
+        self.assertIn('shared_hook_decided', [e['kind'] for e in state['events']])
+        self.assertIn('operator_shared_hook_approved', [n['kind'] for n in state['control']['notices'].values()])
+        self.reg.evidence(row['evidence'])
+        with self.reg.transaction() as s:
+            s['lanes']['one']['task_id'] = 'opencode:session-one'
+        self.f.health = 'dead'
+        controller = SimpleNamespace(reg=self.reg, config=dict(lanes={'one': {}}, models=['test/model']),
+                                     available=lambda key: True)
+        approvals.tick(controller)  # The ordinary completing-approval wake follows; landing is untouched.
+        reasons = [x['reason'] for x in self.reg.control_status()['launches'].values() if x['lane'] == 'one']
+        self.assertEqual(reasons, ['shared-hook-decision:' + row['id']])
+
+    def test_second_call_is_a_no_op_returning_the_row(self):
+        first = self.approve()
+        count = len(self.reg.snapshot()['approvals'])
+        self.assertEqual(self.approve(answer=False), first)  # Returned before any prompt; nothing is written.
+        self.assertEqual(len(self.reg.snapshot()['approvals']), count)
+
+    def test_commits_off_the_declared_line_are_refused(self):
+        git(self.root, 'branch', '-f', 'maintained', self.head + '~1')
+        with self.assertRaisesRegex(Rejected, 'not reachable from declared line maintained'):
+            self.approve()
+        self.assertEqual(approvals.ledger(self.reg.snapshot()), {})
+
+    def test_undeclared_integration_lines_are_refused(self):
+        self.declare(None)
+        with self.assertRaisesRegex(Rejected, 'integration_lines undeclared'):
+            self.approve()
+
+    def test_worker_processes_are_refused(self):
+        caller(self, identity('two'))  # Inside reviewer lane two's live launch session.
+        with self.assertRaisesRegex(Rejected, 'inside a live launch session'):
+            self.approve()
+        old = identity('old-worker')
+        with self.reg.transaction() as s:
+            self.reg.control(s)['launches']['launch-old'] = dict(id='launch-old', lane='three', status='exited', process=old)
+        caller(self, old)  # Under an exited worker: interactive may proceed, --yes without a TTY may not.
+        with self.assertRaisesRegex(Rejected, 'under a launched worker process'):
+            self.approve(yes=True, tty=False)
+        caller(self)
+        with self.assertRaisesRegex(Rejected, 'readable process ancestry'):
+            self.approve(yes=True, tty=False)
+        with self.assertRaisesRegex(Rejected, 'interactive confirmation'):
+            self.approve(tty=False)
+        self.assertEqual(approvals.ledger(self.reg.snapshot()), {})
+
+    def test_acceptance_criterion_becomes_satisfied_and_prose_is_not_a_requirement(self):
+        with self.reg.transaction() as s:
+            s['lanes']['three'].update(state='done', acceptance=['Table resolves; #186 decision recorded'],
+                                       root=dict(self.lane()['root']))
+            s['lanes']['one'].pop('shared_hooks')
+        with self.assertRaisesRegex(Rejected, 'no unmet structured shared-review requirement'):
+            self.approve()  # one names #186 only in its dependency prose.
+        self.assertEqual([h['item_id'] for h in approvals.requirements({}, self.lane('three'))], [approvals.CRITERION])
+        row = self.approve('three')[0]
+        state = self.reg.snapshot()
+        self.assertEqual(approvals.requirements(state['approvals'], self.lane('three')), [])
+        from workflow import inspect
+        self.assertEqual([(r['satisfied'], r['decided_by']) for r in inspect.shared_reviews(state, self.lane('three'))],
+                         [(True, 'operator')])
+        self.assertEqual(row['hook']['item_id'], approvals.CRITERION)
+        with self.reg.transaction() as s:
+            s['lanes']['three']['state'] = 'running'
+        with self.assertRaisesRegex(Rejected, 'three is running'):
+            approvals.operator_check(self.root, self.reg.snapshot(), 'three', 186)
 
 
 class LegacyReportTests(Base):
