@@ -559,6 +559,13 @@ class OperatorReviewTests(Base):
         return approvals.operator_shared_review(self.reg, 'one', 'merge-tested', confirm=lambda s: answer,
                                                 yes=yes, tty=tty, who='operator-test')
 
+    def test_untouched_dirty_side_does_not_block_approval(self):
+        git(self.root, 'branch', '-f', 'maintained', self.lane()['root']['head'])
+        self.declare('maintained')
+        with self.reg.transaction() as s:   # A notes-only side: same commit, no commits, dirty at handoff time.
+            s['lanes']['one']['native'] = dict(base='a' * 40, head='a' * 40, commits=[], dirty=' M notes.md')
+        self.assertEqual([r['file'] for r in self.approve_op()], [SHARED])
+
     def test_refuses_until_the_lane_is_on_its_line(self):
         git(self.root, 'branch', '-f', 'maintained', self.lane()['root']['base'])
         self.declare('maintained')

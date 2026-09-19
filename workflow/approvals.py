@@ -655,10 +655,12 @@ def landed_on_lines(root, lane, declared=None):
         recorded = [source.get('head'), *(source.get('commits') or [])]
         require(isinstance(source, dict) and all(isinstance(c, str) and SHA.fullmatch(c) for c in recorded),
                 f'{key} {name} source lacks full head/commits')
+        # An untouched side has nothing to land, so a worktree that was dirty when the lane
+        # recorded it (a side used for notes only) says nothing about what landed.
+        if not source.get('commits') and source.get('head') == source.get('base'): continue
         require(not source.get('dirty'), f'{key} {name} source is dirty; its recorded commits are not what it holds')
         require(not source.get('commits') or source['head'] in source['commits'],
                 f'{key} {name} head is not among its recorded commits (changed since recording)')
-        if not source.get('commits') and source.get('head') == source.get('base'): continue  # Untouched side: nothing to land.
         require(declared.get(name), f'integration_lines.{name} undeclared; {key} recorded {name} commits')
         repo, ref = repository(root, name, declared), declared[name]['ref']
         tip = git(repo, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}')[1].decode().strip()
