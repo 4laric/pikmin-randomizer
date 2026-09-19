@@ -56,7 +56,7 @@ def start_monitor(controller):
                 admitted = tick(controller)
                 write(controller.base / 'implementation-admission-status.json',
                       dict(at=controller.reg.clock(), admitted=admitted,
-                           elapsed_seconds=time.monotonic()-started))
+                           elapsed_seconds=time.monotonic()-started), durable=False)
             except Exception as exc:
                 write(controller.base / 'implementation-admission-error.json',
                       dict(at=controller.reg.clock(), error=str(exc), type=type(exc).__name__))

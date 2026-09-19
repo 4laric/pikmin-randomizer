@@ -22,7 +22,7 @@ def start_monitor(controller):
                     route_actions(controller)
                     tick(controller, settings, github_issue)
                 write(controller.base / 'helper-refill-status.json',
-                      dict(at=controller.reg.clock(), elapsed_seconds=time.monotonic()-started))
+                      dict(at=controller.reg.clock(), elapsed_seconds=time.monotonic()-started), durable=False)
             except Exception as exc:
                 write(controller.base / 'helper-refill-error.json',
                       dict(at=controller.reg.clock(), error=str(exc), type=type(exc).__name__))

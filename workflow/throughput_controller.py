@@ -294,7 +294,7 @@ def publish_status(controller):
     status['export_preparation'] = export_status(reg, state=state)
     from .dashboard import render_dashboard, publishable
     status = publishable(status)
-    write(controller.base / 'throughput.json', status)
+    write(controller.base / 'throughput.json', status, durable=False)
     target = controller.base / 'throughput.html'
     temporary = target.with_suffix('.tmp')
     temporary.write_text(render_dashboard(status), encoding='utf-8')

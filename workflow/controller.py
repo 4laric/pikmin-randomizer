@@ -67,9 +67,9 @@ class Controller:
         require(self.base.is_relative_to(registry.root / 'output'), 'Controller output must be private')
         self.base.mkdir(parents=True, exist_ok=True)
         self.spawn = spawn or self.spawn_runner
-        from .processes import boot_time
+        from .processes import boot_id, boot_time
         from .provider_recovery import process_table
-        self.boot_time, self.process_table = boot_time, process_table  # Crash proofs; tests inject.
+        self.boot_time, self.boot_id, self.process_table = boot_time, boot_id, process_table  # Crash proofs; tests inject.
 
     def spawn_runner(self, directory):
         # Import implementation from its pinned checkout; workspace root stays canonical.
@@ -265,18 +265,25 @@ class Controller:
         write(directory / 'start.json', dict(action_id=item['id'], executable=self.config['executable'],
             worktree=entry['root'], config=entry['config'], model=model, session=None if fresh else item['session'],
             fresh_session=fresh, prompt=prompt, exit_grace_seconds=runner.get('exit_grace_seconds', 10),
-            rate_limit_settle_seconds=runner.get('rate_limit_settle_seconds', 5)))
+            rate_limit_settle_seconds=runner.get('rate_limit_settle_seconds', 5),
+            descendant_recheck_seconds=runner.get('descendant_recheck_seconds', 30)))
         return True
 
-    def child_death_proof(self, runner):
+    def child_death_proof(self, runner, directory):
         """Proof that no child of a stopped runner can still run, or None (the launch stays fenced).
 
-        A runner created before the current boot proves every child dead. Otherwise the process table
-        must hold no process whose parent PID is the runner's and that started after it: Windows keeps
-        an orphan's parent PID, and a recycled PID's children count as survivors."""
+        A runner created before the current boot proves every child dead: its creation time must
+        predate the boot and the boot counter it recorded (boot.json) must differ from the current
+        one, so a clock correction alone proves nothing. Otherwise the process table must hold no
+        process whose parent PID is the runner's and that started after it: Windows keeps an
+        orphan's parent PID, and a recycled PID's children count as survivors."""
         from .processes import started_before_boot
-        if started_before_boot(runner, self.boot_time):
-            return dict(kind='runner_started_before_boot', runner=runner)
+        try:
+            recorded = json.loads((directory / 'boot.json').read_text(encoding='utf-8')).get('boot_id')
+        except (OSError, ValueError, AttributeError):
+            recorded = None  # Launches from before the marker: the process table decides.
+        if started_before_boot(runner, self.boot_time, recorded_boot=recorded, current_boot=self.boot_id):
+            return dict(kind='runner_started_before_boot', runner=runner, boot_id=recorded)
         try:
             pid, born = int(runner['pid']), int(runner['started'])
             require(pid > 0 and born > 0 and runner.get('host') == socket.gethostname(), 'Not a local identity')
@@ -292,34 +299,49 @@ class Controller:
 
     def adopt_sessions(self, snapshot):
         """Record the fresh OpenCode session a runner published as the lane's task, fenced on the exact
-        launch, runner, generation and inherited session. Returns True when a record changed."""
+        launch, runner, generation and inherited session. Returns True when a record changed; one
+        failing adoption is recorded and never stops the others or the completion sweep."""
+        import sqlite3
         from .runner import SESSION
         from .storage import selected
         changed = False
         for item in snapshot.get('control', {}).get('launches', {}).values():
-            if (not item.get('fresh_session') or item.get('session_adopted') or
-                    item['status'] not in ('running', 'exiting')):
-                continue
             try:
-                value = json.loads((self.launch_directory(item['id']) / 'session.json').read_text(encoding='utf-8'))
-                session = value.get('session') if isinstance(value, dict) and value.get('action_id') == item['id'] else None
-            except (OSError, ValueError):
-                continue
-            if not isinstance(session, str) or not SESSION.match(session): continue
-            with selected(self.reg, [(('control', 'launches'), item['id']), (('lanes',), item['lane'])]) as rows:
-                launch, lane = rows[(('control', 'launches'), item['id'])], rows[(('lanes',), item['lane'])]
-                if not (launch and lane and launch.get('status') in ('running', 'exiting') and
-                        not launch.get('session_adopted') and launch.get('process') == item['process'] and
-                        launch.get('session') == item['session'] and lane.get('process') == item['process'] and
-                        lane.get('generation') == launch.get('bound_generation') and
-                        lane.get('task_id') == 'opencode:' + item['session']):
+                if (not item.get('fresh_session') or item.get('session_adopted') or
+                        item['status'] not in ('running', 'exiting')):
                     continue
-                lane['task_id'] = 'opencode:' + session
-                lane.setdefault('session_history', []).append(dict(session=item['session'], until=self.reg.clock(), launch=item['id']))
-                lane['session_lane'] = lane['lane']
-                launch.update(session=session, session_adopted=True, inherited_session=item['session'])
-                changed = True
+                try:
+                    value = json.loads((self.launch_directory(item['id']) / 'session.json').read_text(encoding='utf-8'))
+                    session = value.get('session') if isinstance(value, dict) and value.get('action_id') == item['id'] else None
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(session, str) or not SESSION.match(session): continue
+                with selected(self.reg, [(('control', 'launches'), item['id']), (('lanes',), item['lane'])]) as rows:
+                    launch, lane = rows[(('control', 'launches'), item['id'])], rows[(('lanes',), item['lane'])]
+                    if not (launch and lane and launch.get('status') in ('running', 'exiting') and
+                            not launch.get('session_adopted') and launch.get('process') == item['process'] and
+                            launch.get('session') == item['session'] and lane.get('process') == item['process'] and
+                            lane.get('generation') == launch.get('bound_generation') and
+                            lane.get('task_id') == 'opencode:' + item['session']):
+                        continue
+                    lane['task_id'] = 'opencode:' + session
+                    lane.setdefault('session_history', []).append(dict(session=item['session'], until=self.reg.clock(), launch=item['id']))
+                    lane['session_lane'] = lane['lane']
+                    lane.pop('session_pending', None)
+                    launch.update(session=session, session_adopted=True, inherited_session=item['session'])
+                    changed = True
+            except (ValueError, KeyError, TypeError, AttributeError, OSError, sqlite3.OperationalError) as exc:
+                self.completion_error('adopt_session', item, exc)
         return changed
+
+    def completion_error(self, stage, item, exc):
+        """Advisory record of a per-launch completion failure; the sweep and heartbeats continue."""
+        try:
+            write(self.base / 'complete-runs-error.json', dict(at=self.reg.clock(), stage=stage,
+                  action=item.get('id') if isinstance(item, dict) else None, error=str(exc), type=type(exc).__name__),
+                  durable=False)
+        except OSError:
+            pass
 
     def complete_runs(self):
         """Settle stopped launches. Recovery is planned before a launch is marked exited, and one failing
@@ -327,7 +349,9 @@ class Controller:
         import sqlite3
         snapshot = self.reg.snapshot()
         if self.adopt_sessions(snapshot):
-            snapshot = self.reg.snapshot()
+            try: snapshot = self.reg.snapshot()
+            except sqlite3.OperationalError as exc:  # The pre-adoption view still settles and heartbeats this sweep.
+                self.completion_error('snapshot', {}, exc)
         heartbeats = []
         for item in snapshot.get('control', {}).get('launches', {}).values():
             if item['status'] not in ('running', 'exiting'): continue
@@ -337,8 +361,7 @@ class Controller:
             except (ValueError, KeyError, TypeError, OSError) as exc:  # Rejected is a ValueError.
                 self.reg.notice(item['lane'], 'completion_deferred', dict(action=item['id'], error=str(exc) or type(exc).__name__))
             except sqlite3.OperationalError as exc:  # Busy registry: nothing committed; the next sweep retries.
-                write(self.base / 'complete-runs-error.json', dict(at=self.reg.clock(), action=item['id'],
-                      error=str(exc), type=type(exc).__name__))
+                self.completion_error('complete_run', item, exc)
         self.heartbeat_runs(heartbeats)
 
     def complete_run(self, snapshot, item):
@@ -380,11 +403,12 @@ class Controller:
             from .runner import legacy_spawn_failure
             child, proof = records.get('child.json'), None
             if child is None and not legacy_spawn_failure(directory):
-                proof = self.child_death_proof(item['process'])  # No readable child record: prove none survives.
+                proof = self.child_death_proof(item['process'], directory)  # No readable child record: prove none survives.
                 if proof is None:
                     for detail in damaged.values():
                         self.reg.notice(item['lane'], 'completion_record_unreadable',
                                         dict(detail, action=item['id'], child='unproven'))
+                    self.defer_completion(item, 600)  # Each proof is a system-wide process scan: back off.
                     return False
             elif child is not None and self.reg.probe(child) != 'dead':
                 return False
@@ -464,17 +488,10 @@ class Controller:
         """Plan one automatic recovery continuation; False (with a notice) when a budget is spent or the
         plan is refused, so the caller reconciles instead. Every counter rides the whole chain, so
         alternating failure kinds cannot reset each other, and automatic_retries caps the chain."""
-        retries, chain = item.get(counter, 0), item.get('automatic_retries', 0)
-        if retries >= limit:
+        if item.get(counter, 0) >= limit:
             self.reg.notice(item['lane'], exhausted, {'action': item['id']}); return False
-        if chain >= self.config.get('automatic_retry_limit', 8):
-            self.reg.notice(item['lane'], 'automatic_retry_exhausted', {'action': item['id'], 'chain': chain}); return False
-        carry = {}
-        inherit(item, carry)  # Obligations survive the retry; bind_context rebinds the check.
-        carry.update({f: item[f] for f in self.RETRY_COUNTERS if f in item})
-        carry.update({counter: retries + 1, 'automatic_retries': chain + 1})
-        if item.get('fresh_session') and not item.get('session_adopted'):
-            carry['fresh_session'] = True  # The lane never learned its own session: stay fresh.
+        carry = self.retry_carry(item, item['lane'], counter)
+        if carry is None: return False
         try:  # One transaction plans the continuation, with its budget, and marks this launch exited.
             self.reg.plan_launch(item['lane'], prefix + item['id'], instruction, models, item.get('version'),
                                  supersedes=item['id'], carry=carry)
@@ -483,20 +500,42 @@ class Controller:
             return False
         return True
 
+    def retry_carry(self, item, key, counter=None):
+        """What any automatic continuation of item inherits (Controller.retry and provider-stall recovery):
+        obligations, every retry counter plus one on counter, the chain count plus one, and a fresh
+        session while the lane never adopted its own. None, with a notice, once the chain cap is spent."""
+        chain = item.get('automatic_retries', 0)
+        if chain >= self.config.get('automatic_retry_limit', 8):
+            self.reg.notice(key, 'automatic_retry_exhausted', {'action': item.get('id'), 'chain': chain}); return None
+        carry = {}
+        inherit(item, carry)  # Obligations survive the retry; bind_context rebinds the check.
+        carry.update({f: item[f] for f in self.RETRY_COUNTERS if f in item})
+        if counter: carry[counter] = item.get(counter, 0) + 1
+        carry['automatic_retries'] = chain + 1
+        if item.get('fresh_session') and not item.get('session_adopted'):
+            carry['fresh_session'] = True  # The lane never learned its own session: stay fresh.
+        return carry
+
+    def defer_completion(self, item, cap=3600):
+        """Back one launch's completion off with a record-level write (never the whole state)."""
+        from .storage import selected
+        attempts = item.get('completion_attempts', 0) + 1
+        with selected(self.reg, [(('control', 'launches'), item['id'])]) as rows:
+            row = rows[(('control', 'launches'), item['id'])]
+            if row is not None:
+                row.update(completion_attempts=attempts,
+                           completion_retry_after=self.reg.clock() + min(cap, 60 * 2 ** min(attempts, 6)))
+
     def reconcile_launch(self, item, lane, evidence, result):
         """Durable fallback when no automatic retry runs: the lane reconciles with hashed evidence, then
         the launch exits. A refusal leaves the launch unexited and backs its next attempt off."""
-        from .storage import selected
         try:
             from .storage import read_record
             if read_record(self.reg, ('lanes',), item['lane'])['state'] not in TERMINAL:
                 self.reg.finish(item['lane'], lane['generation'], 'reconcile',
                     'Worker exited without terminal outcome; inspect existing artifacts before another attempt', evidence)
         except Rejected as exc:
-            attempts = item.get('completion_attempts', 0) + 1
-            with selected(self.reg, [(('control', 'launches'), item['id'])]) as rows:
-                rows[(('control', 'launches'), item['id'])].update(completion_attempts=attempts,
-                    completion_retry_after=self.reg.clock() + min(3600, 60 * 2 ** min(attempts, 6)))
+            self.defer_completion(item)
             raise Rejected('Reconciliation refused: ' + str(exc)) from exc
         self.reg.notice(item['lane'], 'outcome_missing', {'action': item['id'], 'result': result})
         self.mark_exited(item['id'])
@@ -993,7 +1032,7 @@ class Controller:
             publish_status(self)
         self.shepherd()
         self.deliver_notifications()
-        write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()))
+        write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()), durable=False)
 
     def deliver_notifications(self):
         inbox = self.config.get('integrator_inbox')

@@ -418,7 +418,8 @@ class SchedulingMixin:
                           work_class=data['jobs'][item['job']].get('work_class', 'existing'),
                           focus=data['jobs'][item['job']].get('focus', 'existing_content'), code_revision=code)
             if fresh_session and lane.get('previous_lane') and lane['generation'] == 1 and not lane.get('session_lane'):
-                launch['fresh_session'] = True
+                # session_pending lets every later planner keep the lane fresh until adopt_sessions clears it.
+                launch['fresh_session'] = lane['session_pending'] = True
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)

@@ -219,9 +219,10 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                     reset_after=policy.get('reset_after_seconds', 1800))
                 retry_models = [m for m in models if m != failed_model]
                 if failed_model in models: retry_models.append(failed_model)
-            from .consumer_verification import inherit
-            carry = {}
-            inherit(control['launches'].get(journal['launch']) or {}, carry)
+            # The same chain budget, counters and session scope as every other automatic continuation.
+            carry = controller.retry_carry(control['launches'].get(journal['launch']) or {}, key)
+            if carry is None:
+                continue  # Chain spent (noticed): completion reconciles the stopped launch.
             # The stopped launch exits in the planning transaction; a refused plan leaves it for the next tick.
             item = reg.plan_launch(key, 'provider-stall:' + identity,
                 'Recover the same session after an idle provider rate-limit failure. '

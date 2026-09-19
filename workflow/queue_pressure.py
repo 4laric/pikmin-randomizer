@@ -118,7 +118,7 @@ def update(controller):
         if s.get('queue_pressure',{}).get('at',0)>now:return
         s['queue_pressure']=result
     from .runner import write
-    write(controller.base/'queue-pressure.json',{k:v for k,v in result.items() if k!='history'})
+    write(controller.base/'queue-pressure.json',{k:v for k,v in result.items() if k!='history'},durable=False)
 
 def start_monitor(controller):
     """Single pressure sampler independent of the main reconciliation pass."""
@@ -133,7 +133,7 @@ def start_monitor(controller):
             started=time.monotonic()
             try:
                 update(controller)
-                write(controller.base/'queue-pressure-monitor.json',dict(at=controller.reg.clock(),elapsed_seconds=time.monotonic()-started))
+                write(controller.base/'queue-pressure-monitor.json',dict(at=controller.reg.clock(),elapsed_seconds=time.monotonic()-started),durable=False)
             except Exception as exc:
                 write(controller.base/'queue-pressure-error.json',dict(at=controller.reg.clock(),error=str(exc)))
             stop.wait(max(1,30-(time.monotonic()-started)))

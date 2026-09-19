@@ -99,7 +99,7 @@ def tick(controller, inventory=process_inventory, terminate=terminate_exact):
                 if (out/'stderr.log').read_text(encoding='utf-8',errors='replace')!=log:continue
                 report=dict(at=reg.clock(),lane=lane['lane'],generation=lane['generation'],launch=identity,
                     child=child,evidence=evidence,log_sha256=digest(out/'stderr.log'),reason='Verified terminal turn lingering after exit-loop')
-                write(out/'terminal-cleanup.json',report)
+                write(out/'terminal-cleanup.json',report,durable=False)  # Under the writer lock; the journal row is the record.
                 if terminate(child):
                     s.setdefault('terminal_cleanup',{})[identity]=report
                     reg.event(s,'terminal_process_retired',lane['lane'],launch=identity)

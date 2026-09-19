@@ -266,10 +266,19 @@ The runner owns its child's exit. OpenCode stays alive after its turn, so when t
 turn ends (stdout `step_finish` with reason `stop`, or stderr `"exiting loop"` for
 the launch's session) and neither stream has shown non-cleanup output for
 `runner.exit_grace_seconds` (default 10), the runner re-checks the recorded child
-identity and stops it through its own Popen handle. The result records
-`stopped_after_turn` and `turn_end`, and completes like a natural exit, so the slot
-is free seconds after the turn instead of after the cleanup sweepers.
-`terminal_idle_recovery` and `terminal_cleanup` remain backstops.
+identity and takes a Toolhelp process snapshot (no CIM or PowerShell): it stops the
+child through its own Popen handle only when nothing but `conhost.exe` runs below
+it, the same idle-tree fence the sweepers enforce. A tool's build, server or
+detached shell (or an unavailable snapshot) defers the stop, recorded as
+`turn_end_deferred` (reason, descendant names) in `activity.json` and the result,
+and is rechecked every `runner.descendant_recheck_seconds` (default 30), so a stop never
+orphans work in the lane's worktree. A stopped turn records `stopped_after_turn`
+and `turn_end`, and completes like a natural exit, so the slot is free seconds
+after the turn instead of after the cleanup sweepers. A turn end is withdrawn when
+its stream shows the loop running again (a loop line or permission evaluation after
+`"exiting loop"`, or a `tool_use` after `step_finish` `stop`); after a stderr
+re-entry only stderr can end the turn. `terminal_idle_recovery` and
+`terminal_cleanup` remain backstops.
 
 OpenCode block-buffers stdout JSON on a pipe, so tool activity is read from both
 streams: any `tool_use` event, any stderr `evaluated permission=` line, or a loop
@@ -288,18 +297,26 @@ unexited. A refused or exhausted continuation falls through to `reconcile` with
 hashed evidence, and only then is the launch marked exited; if reconciliation is
 also refused the launch stays open with `completion_attempts` and backs off
 (`completion_retry_after`, 1 minute doubling to 1 hour) behind a
-`completion_deferred` notice. One launch's failure never skips the rest of the sweep
-or the live runners' heartbeat; a busy registry leaves the launch for the next sweep
-(`complete-runs-error.json`). Every retry counter (`dead_runner_retries`,
-`rate_limit_retries`, `provider_failure_retries`, `permission_retries`) rides the
-whole chain and `automatic_retries` caps it (`automatic_retry_limit`, default 8), so
-alternating failure kinds cannot reset each other.
+`completion_deferred` notice. One launch's failure, including a failed session
+adoption, never skips the rest of the sweep or the live runners' heartbeat; a busy
+registry leaves the launch for the next sweep (`complete-runs-error.json`, with its
+stage). Every retry counter (`dead_runner_retries`, `rate_limit_retries`,
+`provider_failure_retries`, `permission_retries`) rides the whole chain and
+`automatic_retries` caps it (`automatic_retry_limit`, default 8), so alternating
+failure kinds cannot reset each other. Provider-stall recovery builds its
+continuation with the same carry (`Controller.retry_carry`): counters, chain count,
+obligations and session scope.
 
 A `child.json` or `result.json` that parses to garbage (NUL bytes after a power
-loss; `runner.write` now fsyncs before its atomic replace) is a crash once the
-runner is dead and no child can survive: the runner started before the current boot,
-or the process table holds no process whose parent is the runner's PID and that
-started after it. The launch then takes the normal dead-runner path with a
+loss; `runner.write` fsyncs launch records before its atomic replace, while
+advisory status files and writes under the registry writer lock pass
+`durable=False`) is a crash once the
+runner is dead and no child can survive: the runner started before the current boot
+(its creation time predates the boot and the Windows `BootId` it recorded in
+`boot.json` differs from the current one, so a clock correction proves nothing), or
+the process table holds no process whose parent is the runner's PID and that
+started after it. An unproven launch backs off (`completion_retry_after`, up to 10
+minutes) instead of scanning the process table every tick. The launch then takes the normal dead-runner path with a
 `crash.json` (reason, damaged record hashes, proof) as its evidence and an
 informational `crashed_launch_recovered` notice; the damaged bytes stay in place. A
 valid `result.json` already proves the child exited. Without a proof, a live runner,

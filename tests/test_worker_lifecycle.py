@@ -19,6 +19,7 @@ class LifecycleTests(unittest.TestCase):
         self.reg, self.c = self.f.reg, self.f.controller
         self.c.process_table = lambda: self.fail('process table not expected')
         self.c.boot_time = lambda: 0  # By default nothing started before the current boot.
+        self.c.boot_id = lambda: 35
 
     def bound(self, **launch):
         """A dispatched launch whose runner (RUNNER) is the lane's recorded process."""
@@ -45,6 +46,7 @@ class LifecycleTests(unittest.TestCase):
     def test_nul_child_after_reboot_takes_dead_runner_recovery_with_evidence(self):
         item, directory = self.bound()
         (directory / 'child.json').write_bytes(b'\0' * 84)
+        write(directory / 'boot.json', {'boot_id': 34})  # The runner's boot, not the current one.
         self.dead(); self.c.boot_time = lambda: time.time()
         self.c.complete_runs()
         old, follow = self.launches()
@@ -58,6 +60,22 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual((directory / 'child.json').read_bytes(), b'\0' * 84)
         self.assertIn('crashed_launch_recovered', self.kinds())
 
+    def test_clock_alone_never_proves_a_reboot(self):
+        # A runner whose creation time predates the computed boot (clock corrected after it started)
+        # but whose recorded boot counter is current, or missing, needs the process-table proof.
+        for marker in ({'boot_id': 35}, None):
+            with self.subTest(marker=marker):
+                self.setUp()
+                item, directory = self.bound()
+                (directory / 'child.json').write_bytes(b'\0' * 84)
+                if marker: write(directory / 'boot.json', marker)
+                self.dead(); self.c.boot_time = lambda: time.time()
+                self.c.process_table = lambda: [dict(ProcessId=5000, ParentProcessId=4242, Name='opencode.exe',
+                                                     Started='133000000000000001')]
+                self.c.complete_runs()
+                self.assertEqual([l['status'] for l in self.launches()], ['running'])
+                self.assertFalse((directory / 'crash.json').exists())
+
     def test_unreadable_child_stays_fenced_while_a_child_may_survive(self):
         item, directory = self.bound()
         (directory / 'child.json').write_bytes(b'\0' * 84)
@@ -70,7 +88,12 @@ class LifecycleTests(unittest.TestCase):
                     return rows
                 self.c.process_table = table
                 self.c.complete_runs()
-                self.assertEqual([l['status'] for l in self.launches()], ['running'])
+                launch = self.launches()[0]
+                self.assertEqual(launch['status'], 'running')
+                self.assertGreater(launch['completion_retry_after'], self.f.now)  # No process scan every tick.
+                self.c.process_table = lambda: self.fail('backed off')
+                self.c.complete_runs()
+                self.f.now = launch['completion_retry_after'] + 1
         notice = [n for n in self.reg.control_status()['notices'].values() if n['kind'] == 'completion_record_unreadable']
         self.assertEqual(notice[0]['detail']['child'], 'unproven')
 
@@ -198,12 +221,26 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn('free/muse', self.reg.control_status().get('model_limits', {}))
 
     def test_turn_end_stop_is_a_normal_exit(self):
-        item, directory = self.bound()
-        write(directory / 'result.json', {'kind': 'exit', 'exit_code': 1, 'stopped_after_turn': True,
-                                           'turn_end': {'source': 'stderr_exiting_loop'}})
-        self.reg.finish('consumer', self.reg.status()['lanes']['consumer']['generation'], 'blocked', 'needs x', self.f.ev, ['x'])
-        self.dead(); self.c.complete_runs()
-        self.assertEqual([l['status'] for l in self.launches()], ['exited'])
+        # The runner's own stop exits 1 and the session's log carries an old provider error: neither
+        # makes it a provider failure. Without stopped_after_turn the same exit is one.
+        for stopped in (True, False):
+            with self.subTest(stopped=stopped):
+                self.setUp()
+                item, directory = self.bound()
+                result = {'kind': 'exit', 'exit_code': 1, 'turn_end': {'source': 'stderr_exiting_loop'}}
+                if stopped: result.update(stopped_after_turn=True, runner_stop={'reason': 'turn_end'})
+                write(directory / 'result.json', result)
+                (directory / 'events.jsonl').write_text(json.dumps(dict(type='error', sessionID=item['session'],
+                    error=dict(name='APIError', data=dict(message='Rate limit exceeded', statusCode=429)))) + '\n')
+                self.dead(); self.c.complete_runs()
+                follow = [l for l in self.launches() if l['id'] != item['id']]
+                if stopped:
+                    self.assertEqual(follow, [])
+                    self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
+                else:
+                    self.assertTrue(follow[0]['reason'].startswith('provider-error:'))
+                self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'], 'exited')
+                self.assertNotIn('free/muse', self.reg.control_status().get('model_limits', {}))
 
     # Session scope.
     def test_fresh_session_is_adopted_then_resumed_within_the_lane(self):
@@ -237,6 +274,45 @@ class LifecycleTests(unittest.TestCase):
         follow = self.launches()[-1]
         self.assertEqual(follow['session'], 'session-consumer')
         self.assertTrue(follow['fresh_session'])
+
+    def test_unadopted_fresh_lane_starts_fresh_from_every_planner(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer'].update(previous_lane='old-lane', session_pending=True)
+        item, directory = self.bound(fresh_session=True)
+        write(directory / 'result.json', {'kind': 'exit', 'exit_code': 0})  # Died before naming its session.
+        self.dead(); self.c.complete_runs()
+        self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
+        self.reg.probe = lambda p: 'alive' if p == self.f.identity else 'dead'
+        wake = self.reg.plan_launch('consumer', 'outcome-recovery:x', 'Continue', ['free/muse'], obligation=True)
+        self.assertTrue(wake['fresh_session'])
+        self.c.dispatch(wake)
+        self.assertEqual(json.loads((self.c.launch_directory(wake['id']) / 'start.json').read_text())['session'], None)
+
+    def test_adopted_or_pre_deploy_lane_resumes_its_session(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer'].update(previous_lane='old-lane')  # Provisioned before session_pending existed.
+        wake = self.reg.plan_launch('consumer', 'outcome-recovery:x', 'Continue', ['free/muse'], obligation=True)
+        self.assertNotIn('fresh_session', wake)
+        with self.reg.transaction() as state:
+            state['control']['launches'].clear()
+            state['lanes']['consumer'].update(session_pending=True)
+        item, directory = self.bound(fresh_session=True)
+        write(directory / 'session.json', dict(session='ses_newLane01', action_id=item['id']))
+        self.reg.probe = lambda p: 'alive' if p == RUNNER else 'dead'
+        self.c.complete_runs()
+        self.assertNotIn('session_pending', self.reg.snapshot()['lanes']['consumer'])
+
+    def test_failed_adoption_never_skips_completion_or_heartbeats(self):
+        import sqlite3
+        item, directory = self.bound(fresh_session=True)
+        write(directory / 'session.json', dict(session='ses_newLane01', action_id=item['id']))
+        self.reg.probe = lambda p: 'alive' if p == RUNNER else 'dead'
+        with patch('workflow.storage.selected', side_effect=sqlite3.OperationalError('database is locked')), \
+                patch.object(self.c, 'heartbeat_runs') as heartbeat:
+            self.c.complete_runs()
+        self.assertEqual([i['id'] for i in heartbeat.call_args[0][0]], [item['id']])
+        error = json.loads((self.c.base / 'complete-runs-error.json').read_text())
+        self.assertEqual((error['stage'], error['action']), ('adopt_session', item['id']))
 
     # Supervision and attention.
     def test_unsupervised_stopped_lane_raises_one_notice(self):

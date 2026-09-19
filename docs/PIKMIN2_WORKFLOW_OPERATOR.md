@@ -110,7 +110,7 @@ The fast dispatcher detects an initial provider stream with no events after
 exact session, process identities, logs, descendants and protected resources
 before stopping only the idle child. The real runner exit triggers bounded
 provider fallback; a session-specific APIError on process exit follows the same
-path. Runners stop their own child a few seconds after its turn ends and never stop
+path. Runners stop their own child a few seconds after its turn ends (never while a tool process still runs below it) and never stop
 a session for a rate limit once a tool has started, so these sweeps are backstops. Permission requests, event bytes, tools and protected builds block this
 timeout recovery. Exhausted retries remain visible for inspection.
 
@@ -124,8 +124,10 @@ missing input; they do not implement over another owner's files or grant accepta
 
 Supervision notices: `unsupervised_lane` names a stopped lane with no launch config
 (configure its launch or retire it). `shared_review_target_dead` names a routed
-shared-review owner that is not running: pending, and the packet is held with route
-status `owner_unsupervised`, when nothing supervises it; informational when the
+shared-review owner that is not running: pending, and an undelivered packet is held
+with route status `owner_unsupervised`, when nothing supervises it (a delivered
+route keeps its record and resend throttle, marked `owner_state:
+unsupervised_stopped` while the owner is stopped); informational when the
 controller can wake it. Fix the routing (`shared_review_routing.files`) or
 supervise the owner. `completion_deferred` means a stopped launch could neither
 retry nor reconcile; it retries with backoff. `automatic_retry_exhausted` ends a
@@ -626,4 +628,4 @@ no process is terminated and lane/acceptance state is unchanged. Reclamation is
 recorded as lease_reaped events, with latest sample in build_lease_recovery.
 
 
-Completion record isolation (#635): an unreadable or malformed child.json/result.json affects only its own launch; later launches still complete and original bytes are preserved. With a dead runner and a proof that no child survives (runner started before the current boot, or no process whose parent is the runner's PID started after it), the launch is a crash: `crash.json` records the reason, damaged-record hashes and proof, and it takes normal dead-runner recovery or reconciliation. Without that proof, or while the runner lives, it stays protected with a completion_record_unreadable notice; a corrupt identity never authorizes a stop or a fabricated result.
+Completion record isolation (#635): an unreadable or malformed child.json/result.json affects only its own launch; later launches still complete and original bytes are preserved. With a dead runner and a proof that no child survives (runner started before the current boot by both its creation time and its recorded boot counter, or no process whose parent is the runner's PID started after it), the launch is a crash: `crash.json` records the reason, damaged-record hashes and proof, and it takes normal dead-runner recovery or reconciliation. Without that proof, or while the runner lives, it stays protected with a completion_record_unreadable notice; a corrupt identity never authorizes a stop or a fabricated result.

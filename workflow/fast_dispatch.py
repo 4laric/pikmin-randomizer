@@ -61,7 +61,7 @@ def run_cycle(controller, group='all'):
     for name,action in steps:
         before=time.monotonic();prior=health.get(name,{})
         health[name]=dict(prior,status='running',started_at=controller.reg.clock())
-        write(target,dict(at=controller.reg.clock(),current_stage=name,stages=health))
+        write(target,dict(at=controller.reg.clock(),current_stage=name,stages=health),durable=False)
         try:
             action()
             health[name]=dict(status='ok',last_success=controller.reg.clock(),failures=0)
@@ -70,7 +70,7 @@ def run_cycle(controller, group='all'):
                 failures=prior.get('failures',0)+1,error=str(exc),type=type(exc).__name__)
         health[name]['elapsed_seconds']=time.monotonic()-before
     setattr(controller,attribute,health)
-    write(target,dict(at=controller.reg.clock(),stages=health))
+    write(target,dict(at=controller.reg.clock(),stages=health),durable=False)
 
 
 def start_monitor(controller):

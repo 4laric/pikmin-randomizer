@@ -26,6 +26,10 @@ for step in scenario['steps']:
     elif kind == 'buffered': buffered.append(value)  # OpenCode on a pipe: stdout arrives at exit.
     elif kind == 'mark': Path(value).write_text(repr(time.time()))
     elif kind == 'sleep': time.sleep(value)
+    elif kind == 'spawn':  # A tool's detached process (build, server, shell) outliving the turn.
+        import subprocess
+        subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(%r)' % value], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=0x08000000)
     elif kind == 'linger':  # The CLI stays alive after its turn, printing only periodic cleanup.
         deadline = time.time() + value
         while time.time() < deadline:
@@ -46,7 +50,7 @@ def finish(reason, session=SESSION):
 
 
 class RunnerTurnTests(unittest.TestCase):
-    def launch(self, steps, exit=0, **start):
+    def launch(self, steps, exit=0, runner=None, before=None, **start):
         """Run the real runner against the fake CLI; returns (result, seconds, directory)."""
         temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -58,8 +62,9 @@ class RunnerTurnTests(unittest.TestCase):
         write(out / 'start.json', dict(dict(action_id='launch-1', executable=sys.executable, worktree=str(worktree),
             config=str(scenario), model='go/muse', session=SESSION, prompt='work', exit_grace_seconds=.5,
             rate_limit_settle_seconds=.5, poll_seconds=.05), **start))
+        if before: before(out)
         started = time.monotonic()
-        main(str(out))
+        main(str(out), **(runner or {}))
         elapsed = time.monotonic() - started
         self.argv = json.loads((root / 'argv.json').read_text())
         return json.loads((out / 'result.json').read_text()), elapsed, out
@@ -83,6 +88,32 @@ class RunnerTurnTests(unittest.TestCase):
         self.assertEqual(result['kind'], 'exit')
         self.assertTrue(result['tools_started'])
         self.assertIn('--session', self.argv)
+
+    @unittest.skipUnless(os.name == 'nt', 'Toolhelp process inventory is Windows-only')
+    def test_turn_end_waits_for_a_lingering_tool_process(self):
+        steps = [['err', 'loop session.id=%s step=0' % SESSION], ['spawn', 3],
+                 ['err', '"exiting loop" session.id=%s' % SESSION], ['linger', 60]]
+        result, elapsed, out = self.launch(steps, descendant_recheck_seconds=.3)
+        self.assertGreater(elapsed, 2.5)  # Not stopped while the grandchild ran (no orphan in the worktree).
+        self.assertLess(elapsed, 10)
+        self.assertTrue(result['stopped_after_turn'])
+        deferred = result['turn_end_deferred']
+        self.assertEqual(deferred['reason'], 'descendants')
+        self.assertTrue(any('python' in n.lower() for n in deferred['descendants']), deferred)
+        self.assertTrue(json.loads((out / 'boot.json').read_text())['boot_id'])
+
+    def test_failed_side_record_never_stops_draining_a_stream(self):
+        steps = [['out', tool()], ['out', finish('stop')], ['err', '"exiting loop" session.id=%s' % SESSION], ['linger', 60]]
+        result, _, out = self.launch(steps, before=lambda out: (out / 'activity.json.tmp').mkdir())
+        self.assertEqual(len((out / 'events.jsonl').read_text().splitlines()), 2)
+        self.assertTrue(result['stopped_after_turn'])
+
+    def test_unknown_process_tree_never_stops_the_turn(self):
+        steps = [['err', '"exiting loop" session.id=%s' % SESSION], ['linger', 2]]
+        result, elapsed, _ = self.launch(steps, runner=dict(inventory=lambda: None), descendant_recheck_seconds=.3)
+        self.assertGreater(elapsed, 1.5)
+        self.assertNotIn('runner_stop', result)
+        self.assertEqual(result['turn_end_deferred']['reason'], 'inventory_unavailable')
 
     def test_events_step_finish_stop_also_ends_the_turn(self):
         steps = [['out', tool()], ['out', finish('tool-calls')], ['out', finish('stop')], ['linger', 60]]
@@ -156,6 +187,22 @@ class TurnClassificationTests(unittest.TestCase):
         self.assertEqual(self.turn.decide(5, 5), 'turn_end')
         self.line('"disposing instance" directory=x')
         self.assertIsNone(self.turn.decide(5, 5))
+
+    def test_reentered_loop_withdraws_the_turn_end(self):
+        self.line('"exiting loop" session.id=' + SESSION)
+        self.line('loop session.id=%s step=0' % SESSION)  # Queued message or compaction: the loop runs again.
+        self.turn.event(finish('stop'))  # Buffered stdout from the earlier turn arrives late.
+        self.now = 60  # A long, silent tool.
+        self.assertIsNone(self.turn.decide(10, 5))
+        self.line('"exiting loop" session.id=' + SESSION)
+        self.now = 75
+        self.assertEqual(self.turn.decide(10, 5), 'turn_end')
+
+    def test_tool_event_after_stdout_stop_withdraws_it(self):
+        self.turn.event(finish('stop'))
+        self.turn.event(tool())
+        self.now = 60
+        self.assertIsNone(self.turn.decide(10, 5))
 
     def test_loop_step_past_zero_counts_as_tools(self):
         self.line('loop session.id=%s step=0' % SESSION)

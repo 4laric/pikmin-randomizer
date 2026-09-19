@@ -264,7 +264,9 @@ class ControlMixin:
         that carries a non-deferrable duty (disposition_required reviews) and is never parked.
         supersedes names the stopped launch a recovery continues: it is marked exited in the same
         transaction, so a refused plan leaves it unexited for the next completion sweep. carry adds
-        fields (obligations, retry counters) to a new intent without overriding its own."""
+        fields (obligations, retry counters) to a new intent without overriding its own. Whatever the
+        planner, a lane whose provisioned fresh session was never adopted (session_pending) starts
+        fresh again: its task_id is still the worker's previous, unrelated lane's session."""
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
         require(nonempty(instruction), 'Resume instruction required')
         from . import no_progress
@@ -325,6 +327,8 @@ class ControlMixin:
                 if inputs:
                     item['inputs'] = inputs
                 item.update({k: v for k, v in (carry or {}).items() if k not in item})
+                if lane.get('session_pending') and not lane.get('session_lane'):
+                    item['fresh_session'] = True
                 c['launches'][identity] = item
                 self.event(state, 'launch_intent', key, action=identity)
                 return item

@@ -113,17 +113,82 @@ def boot_time():
     return time.time() - kernel.GetTickCount64() / 1000
 
 
-def started_before_boot(identity, boot=boot_time, margin=60):
+def boot_id():
+    """This host's boot counter (Windows BootId, bumped by every boot), or None. Unlike boot_time it
+    cannot move with a clock correction."""
+    if os.name != 'nt':
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                r'SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters') as key:
+            value, kind = winreg.QueryValueEx(key, 'BootId')
+        return value if kind == winreg.REG_DWORD and isinstance(value, int) else None
+    except OSError:
+        return None
+
+
+def started_before_boot(identity, boot=boot_time, margin=60, recorded_boot=None, current_boot=boot_id):
     """True only for a same-host Windows identity created before the current boot: nothing it
-    started can still run. Any missing or unparsable observation is False, never a proof."""
+    started can still run. The wall-clock comparison must agree with a boot counter the process
+    recorded at start (recorded_boot) that differs from the current one, so neither a clock
+    correction nor a missing marker proves anything. Any missing observation is False."""
     try:
         if identity.get('host') != socket.gethostname() or os.name != 'nt':
+            return False
+        now = current_boot()
+        if not (isinstance(recorded_boot, int) and isinstance(now, int) and recorded_boot != now):
             return False
         at = boot()
         started = int(identity['started']) / 1e7 - 11644473600  # FILETIME (100 ns since 1601) to Unix.
         return at is not None and 0 < started < at - margin
     except (AttributeError, KeyError, TypeError, ValueError, OSError):
         return False
+
+
+def process_rows():
+    """[{ProcessId, ParentProcessId, Name}] from one Toolhelp snapshot: cheap (no CIM, no PowerShell)
+    but without creation times. None when the snapshot cannot be taken."""
+    if os.name != 'nt':
+        return None
+    from ctypes import wintypes
+    class Entry(ctypes.Structure):
+        _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD), ('th32ProcessID', wintypes.DWORD),
+                    ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wintypes.DWORD),
+                    ('cntThreads', wintypes.DWORD), ('th32ParentProcessID', wintypes.DWORD),
+                    ('pcPriClassBase', ctypes.c_long), ('dwFlags', wintypes.DWORD), ('szExeFile', wintypes.WCHAR * 260)]
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.Process32FirstW.argtypes = kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entry)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    snapshot = kernel.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    if not snapshot or snapshot == wintypes.HANDLE(-1).value:
+        return None
+    try:
+        entry, rows = Entry(), []
+        entry.dwSize = ctypes.sizeof(Entry)
+        more = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            rows.append(dict(ProcessId=entry.th32ProcessID, ParentProcessId=entry.th32ParentProcessID, Name=entry.szExeFile))
+            more = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        return rows if ctypes.get_last_error() == 18 else None  # ERROR_NO_MORE_FILES: the walk completed.
+    finally:
+        kernel.CloseHandle(snapshot)
+
+
+def busy_descendants(rows, pid):
+    """Names of pid's descendants other than conhost.exe, or None when rows cannot say (pid absent).
+    Without creation times a recycled parent PID counts as a descendant: conservative, never a pass."""
+    if not isinstance(rows, list) or pid not in {r.get('ProcessId') for r in rows}:
+        return None
+    family = {pid}
+    while True:
+        more = {r['ProcessId'] for r in rows if r.get('ParentProcessId') in family and r.get('ProcessId') != 0}
+        if more <= family: break
+        family |= more
+    return sorted(str(r.get('Name')) for r in rows if r['ProcessId'] in family - {pid}
+                  and str(r.get('Name')).lower() != 'conhost.exe')
 
 
 def probe(identity):

@@ -54,6 +54,17 @@ class RoutingTests(unittest.TestCase):
         tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
         notices=[n for n in self.r.control_status()['notices'].values() if n['kind']=='shared_review_target_dead']
         self.assertEqual(sorted(n['status'] for n in notices),['info','pending'])
+    def test_delivered_route_survives_an_unsupervised_owner_stopping(self):
+        del self.c.config['lanes']['provider']
+        alive=[True];self.r.probe=lambda p:'alive' if alive[0] else 'dead'
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+        for running in (False,True,False,True):  # Stop/start cycles between owner sessions.
+            alive[0]=running;self.f.now+=10;tick(self.c)
+            route=next(iter(self.r.snapshot()['shared_review_routes'].values()))
+            self.assertEqual((route['protocol'],route['attempts'],route['status']),(2,1,'awaiting_owner_decision'))
+            self.assertEqual(route.get('owner_state'),None if running else 'unsupervised_stopped')
+        routed=[e for e in self.r.snapshot()['events'] if e.get('kind')=='shared_review_routed']
+        self.assertEqual(len(routed),1)
     def test_unrouted_file_never_receives_invented_owner(self):
         self.c.config['shared_review_routing']['files']={};tick(self.c)
         self.assertFalse(self.inbox.exists())

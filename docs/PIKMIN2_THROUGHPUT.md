@@ -224,8 +224,11 @@ session (`fresh_session`; `throughput.fresh_session_per_lane`, default true). Th
 runner publishes the new id in `session.json`, and the controller adopts it as the
 lane's `task_id` (and the launch's `session`) only while the launch, runner,
 generation and inherited session still match; `lane.session_history` keeps the
-previous one. Later launches of the lane resume its own session; a recovery of a
-launch that never published its session starts fresh again. Its source record is the actual prepared
+previous one. Until then the lane carries `session_pending`, so a launch planned by
+any path (retry, outcome recovery, wake-ups, shepherd resume, provider-stall
+recovery) starts fresh again; adoption clears it and later launches resume the
+lane's own session. Lanes provisioned before `session_pending` existed keep resuming
+their current session. Its source record is the actual prepared
 worktree, and acceptance/owned files must match the issue. Native work includes
 a complete native source record and the usual private build/worktree isolation.
 

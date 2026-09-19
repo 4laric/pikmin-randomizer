@@ -51,7 +51,7 @@ def merge_proposals(reg, manifest_path, proposal_path, issue_reader=None):
             backup.parent.mkdir(exist_ok=True)
             if not backup.exists(): backup.write_bytes(before)
             manifest['items'].extend(added)
-            write(manifest_path, manifest)
+            write(manifest_path, manifest, durable=False)  # Under the writer lock: no fsync; the backup is durable.
     return [s['id'] for s in added]
 
 
@@ -137,7 +137,7 @@ def tick(controller, settings, issue_reader):
     def stage(name):
         if getattr(controller,'base',None):
             from .runner import write
-            write(controller.base/'helper-refill-progress.json',dict(at=reg.clock(),stage=name))
+            write(controller.base/'helper-refill-progress.json',dict(at=reg.clock(),stage=name),durable=False)
     stage('worker_eligibility')
     # Expensive historical process inspection must happen before taking a writer lock.
     eligible_workers = {l['worker_id'] for l in _workers(reg, reg.snapshot())}

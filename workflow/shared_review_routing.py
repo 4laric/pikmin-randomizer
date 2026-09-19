@@ -45,10 +45,14 @@ def tick(controller):
                           ' and has no controller launch config; routing held until it is supervised or rerouted')),
                     status='info' if supervised else 'pending')
                 if not supervised:
-                    if old.get('status')!='owner_unsupervised':
+                    # A delivered packet keeps its record (and the protocol-2 resend throttle); only an
+                    # undelivered route is held.
+                    delivered=old.get('protocol')==2
+                    if (old.get('owner_state')!='unsupervised_stopped') if delivered else (old.get('status')!='owner_unsupervised'):
                         with reg.transaction(sections=()) as s:  # shared_review_routes lives in the meta row.
-                            s.setdefault('shared_review_routes',{})[identity]=dict(producer=key,generation=lane['generation'],
-                                file=review['file'],owner=owner,status='owner_unsupervised',at=now,attempts=old.get('attempts',0))
+                            s.setdefault('shared_review_routes',{})[identity]=(dict(old,owner_state='unsupervised_stopped',held_at=now)
+                                if delivered else dict(producer=key,generation=lane['generation'],file=review['file'],owner=owner,
+                                status='owner_unsupervised',at=now,attempts=old.get('attempts',0)))
                     continue
             try:authorize(auth,owner,lane)
             except Rejected as exc:
@@ -65,7 +69,11 @@ def tick(controller):
             require(inbox.is_relative_to(reg.root/'output'),'Review inbox must be private')
             inbox.mkdir(parents=True,exist_ok=True)
             packet=inbox/('shared-review-'+identity+'.md')
-            if old.get('protocol')==2 and (packet.exists() or now-old['delivered_at']<max(300,cfg.get('retry_seconds',600))):continue
+            if old.get('protocol')==2 and (packet.exists() or now-old['delivered_at']<max(300,cfg.get('retry_seconds',600))):
+                if old.get('owner_state'):  # The owner runs again: drop the stopped marker, keep the delivery.
+                    with reg.transaction(sections=()) as s:
+                        s.setdefault('shared_review_routes',{})[identity]={k:v for k,v in old.items() if k not in ('owner_state','held_at')}
+                continue
             payload=dict(owner=owner,producer=key,generation=lane['generation'],revision=lane['revision'],
                 issue=lane['issue'],file=review['file'],review_request=review,handoff=handoff,
                 root=lane.get('root'),native=lane.get('native'))
