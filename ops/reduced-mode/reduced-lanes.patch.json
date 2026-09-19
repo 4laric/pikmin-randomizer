@@ -1,0 +1,60 @@
+{
+  "lanes": {
+    "rd-sarai-capture": {
+      "root": "output/reduced/rd-sarai-capture/root",
+      "output": "output/reduced/rd-sarai-capture/run",
+      "brief": "output/reduced/rd-sarai-capture/brief.md",
+      "config": "output/reduced/rd-sarai-capture/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-snakecrow-gate": {
+      "root": "output/reduced/rd-snakecrow-gate/root",
+      "output": "output/reduced/rd-snakecrow-gate/run",
+      "brief": "output/reduced/rd-snakecrow-gate/brief.md",
+      "config": "output/reduced/rd-snakecrow-gate/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-mamuta-poses": {
+      "root": "output/reduced/rd-mamuta-poses/root",
+      "output": "output/reduced/rd-mamuta-poses/run",
+      "brief": "output/reduced/rd-mamuta-poses/brief.md",
+      "config": "output/reduced/rd-mamuta-poses/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-bigtreasure-elements": {
+      "root": "output/reduced/rd-bigtreasure-elements/root",
+      "output": "output/reduced/rd-bigtreasure-elements/run",
+      "brief": "output/reduced/rd-bigtreasure-elements/brief.md",
+      "config": "output/reduced/rd-bigtreasure-elements/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-demon-chain-a": {
+      "root": "output/reduced/rd-demon-chain-a/root",
+      "output": "output/reduced/rd-demon-chain-a/run",
+      "brief": "output/reduced/rd-demon-chain-a/brief.md",
+      "config": "output/reduced/rd-demon-chain-a/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-demon-chain-b": {
+      "root": "output/reduced/rd-demon-chain-b/root",
+      "output": "output/reduced/rd-demon-chain-b/run",
+      "brief": "output/reduced/rd-demon-chain-b/brief.md",
+      "config": "output/reduced/rd-demon-chain-b/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-root-held-a": {
+      "root": "output/reduced/rd-root-held-a/root",
+      "output": "output/reduced/rd-root-held-a/run",
+      "brief": "output/reduced/rd-root-held-a/brief.md",
+      "config": "output/reduced/rd-root-held-a/opencode.json",
+      "legacy_supervisors": []
+    },
+    "rd-root-held-b": {
+      "root": "output/reduced/rd-root-held-b/root",
+      "output": "output/reduced/rd-root-held-b/run",
+      "brief": "output/reduced/rd-root-held-b/brief.md",
+      "config": "output/reduced/rd-root-held-b/opencode.json",
+      "legacy_supervisors": []
+    }
+  }
+}
