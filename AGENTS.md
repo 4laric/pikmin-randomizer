@@ -95,3 +95,12 @@ The shared `native/` checkout normally carries a recorded dirty baseline from ot
   ```
 - Only the integration lead runs the maintained export; lanes keep their own uncommitted work out of the shared checkout by using private `native/` worktrees (§Build isolation) and commit native changes on their own branch.
 - Record the native commit **and** dirty state with any export evidence. Native work branches may be pushed to origin under the Git push policy above; never push default/p2-integration branches, tags, or force-pushes.
+
+## Stock asset sources (check before asking the user)
+
+- Pikmin 1 engine stock assets (dataDir, stages, courses/pikmin2room): `C:/Users/alari/bbft/dist/cohesion/pikmin/assets`
+  (e.g. `dataDir/stages/chal0/default.gen`, sha256 eeb58bacfb1dc7235a99c95ac6d5e019ed09547aab066cf8f9132edc43ff9972).
+- Pikmin 2 retail disc: `C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso`
+  (sha256 5388b54a9c2d156c94bcfa80acd53b513288dc17e88c97a1edfb57ad25db661a). Extract with the
+  experimental/pikmin2_* tools (e.g. `pikmin2_white.py --iso` for white_* room models).
+- Recorded user answers with hashes: `output/workflow/user-answers/`.
