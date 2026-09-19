@@ -23,6 +23,7 @@ declared integration line, and refuses any caller inside a live launch session (
   <python> <checkout>/scripts/workflow_module.py approvals landing-review --root <root> --request <json>
   <python> <checkout>/scripts/workflow_module.py approvals shared-hook --root <root> --request <json>
   <python> <checkout>/scripts/workflow_module.py approvals operator-shared-hook --root <root> --lane L --issue 186 [--yes] [--note T]
+  <python> <checkout>/scripts/workflow_module.py approvals operator-shared-review --root <root> --lane L [--yes] [--note T]
 
 landing_audit --approvals lists older approvals without ledger backing, read-only.
 """
@@ -635,6 +636,15 @@ def operator_check(root, state, key, issue, declared=None):
     pending = [h for h in requirements(state.get('approvals') or {}, lane) if h['issue'] == issue]
     require(pending, f'{key} has no unmet structured shared-review requirement for #{issue} (a shared_hook or a '
             'shared_reviews acceptance criterion); prose alone is not one')
+    commits, tips = landed_on_lines(root, lane, declared)
+    return lane, pending, commits, tips
+
+
+def landed_on_lines(root, lane, declared=None):
+    """({repo: commits}, {repo: {ref, tip}}) when every commit the lane recorded is reachable from its declared
+    integration line and its sources are clean; refuses otherwise. git is read-only (landing.git)."""
+    from .landing import SHA, git, lines, repository
+    key = lane['lane']
     declared = lines(root) if declared is None else declared
     require(declared, 'integration_lines undeclared in the controller config: operator approval needs the lane\'s '
             'commits provably on a declared line')
@@ -658,7 +668,7 @@ def operator_check(root, state, key, issue, declared=None):
                 'land the lane first')
         commits[name], tips[name] = shas, dict(ref=ref, tip=tip)
     require(commits, key + ' recorded no root/native source')
-    return lane, pending, commits, tips
+    return commits, tips
 
 
 def worker_processes(state):
@@ -737,6 +747,62 @@ def operator_shared_hook(reg, key, issue, note=None, confirm=None, yes=False, tt
             result.append(copy.deepcopy(row))
     reg.notice(key, 'operator_shared_hook_approved', dict(issue=issue, approvals=[r['id'] for r in result], who=who,
                                                           commits=commits), status='info')
+    return result
+
+
+OPERATOR_REVIEW_STATES = OPERATOR_STATES + ('integrating',)
+
+
+def operator_shared_review(reg, key, note=None, confirm=None, yes=False, tty=None, who=None):
+    """Operator approval of every still-pending handoff shared_reviews file of a lane whose commits are all on
+    the declared integration lines (the integrator merge-tested and landed them). Writes one handoff_review row
+    per file at the lane's current pins with decided_by 'operator'; same gate as operator_shared_hook (TTY or
+    --yes, never from inside a launch session). Idempotent: nothing pending returns []."""
+    import getpass
+    from .handoff import digest
+    from .provenance import stamp
+    tty = sys.stdin.isatty() if tty is None else tty
+    require(note is None or isinstance(note, str), 'note must be text')
+    chain = ancestry()
+    state = reg.snapshot()
+    operator_gate(state, chain, yes, tty)
+    lane = state.get('lanes', {}).get(key)
+    require(isinstance(lane, dict), 'Unknown lane: ' + str(key))
+    require(lane.get('state') in OPERATOR_REVIEW_STATES, f"{key} is {lane.get('state')}; operator review approval "
+            'needs a done, handoff_ready, integrating or blocked lane')
+    require(lane.get('handoff'), key + ' has no submitted handoff')
+    handoff = json.loads(Path(lane['handoff']['path']).read_text(encoding='utf-8-sig'))
+    reviews = [r for r in handoff.get('shared_reviews') or [] if isinstance(r, dict) and nonempty(r.get('file'))]
+    found = statuses(state.get('approvals') or {}, lane, reviews)
+    files = sorted(f for f, v in found.items() if v['status'] != 'approved')
+    if not files:
+        return []
+    commits, tips = landed_on_lines(reg.root, lane)
+    digests = {f: diff(reg.root, lane, f) for f in files}
+    summary = dict(lane=key, generation=lane['generation'], state=lane['state'], files=files, pins=pins(lane),
+                   commits=commits, lines=tips, note=note)
+    if not yes:
+        require(tty and confirm is not None, 'Operator approval needs an interactive confirmation (TTY) or --yes')
+        require(confirm(summary), 'Operator approval not confirmed')
+    who = who or getpass.getuser()
+    folder = reg.root / 'output/workflow/operator-approvals'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / ('%s-reviews-%s.json' % (key, fingerprint([summary, who])[:16]))
+    path.write_text(json.dumps(dict(summary, who=who, chain=chain), indent=1, sort_keys=True), encoding='utf-8')
+    evidence = dict(path=str(path.relative_to(reg.root)).replace('\\', '/'), sha256=digest(path))
+    code = stamp()
+    result = []
+    with reg.transaction() as state:
+        operator_gate(state, chain, yes, tty)
+        current = reg.lane(state, key, lane['generation'])
+        require(pins(current) == pins(lane) and all(current.get(n) == lane.get(n) for n in commits),
+                key + ' changed since its commits were checked; run again')
+        for file in files:
+            row = review_row(reg, state, 'operator', current, file, digests[file], 'approved', evidence,
+                             dict(lane='operator', operator=who), code, decided_by='operator', who=who, note=note)
+            result.append(copy.deepcopy(row))
+    reg.notice(key, 'operator_shared_review_approved', dict(files=files, approvals=[r['id'] for r in result], who=who,
+                                                            commits=commits), status='info')
     return result
 
 
@@ -898,7 +964,8 @@ def main(argv=None):
     import argparse
     import sqlite3
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=('landing-review', 'shared-hook', 'operator-shared-hook'))
+    parser.add_argument('command', choices=('landing-review', 'shared-hook', 'operator-shared-hook',
+                                            'operator-shared-review'))
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--request', type=Path, help='UTF-8 JSON arguments (landing-review, shared-hook)')
     parser.add_argument('--lane', help='operator-shared-hook: the lane whose requirement you approve')
@@ -910,6 +977,11 @@ def main(argv=None):
     root = args.root.resolve()
     try:
         reg = Registry(root / 'output/workflow/registry.sqlite3', root)
+        if args.command == 'operator-shared-review':
+            require(args.lane, '--lane required')
+            result = operator_shared_review(reg, args.lane, args.note, confirm=_ask, yes=args.yes)
+            print(json.dumps(result, indent=2))
+            return 0
         if args.command == 'operator-shared-hook':
             require(args.lane and args.issue, '--lane and --issue required')
             result = operator_shared_hook(reg, args.lane, args.issue, args.note, confirm=_ask, yes=args.yes)

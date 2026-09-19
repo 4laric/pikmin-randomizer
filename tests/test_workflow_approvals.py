@@ -543,6 +543,41 @@ class OperatorTests(Base):
             approvals.operator_check(self.root, self.reg.snapshot(), 'three', 186)
 
 
+class OperatorReviewTests(Base):
+    """Operator approval of a landed lane's handoff shared_reviews (reduced mode has no reviewer lanes)."""
+    def setUp(self):
+        super().setUp()
+        self.submit()
+        caller(self)  # The operator's own terminal: no launch session in its ancestry.
+
+    def declare(self, ref):
+        config = self.root / landing.CONFIG; config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text(json.dumps(dict(output='output/workflow/controller',
+                                          integration_lines=dict(root=dict(repo='.', ref=ref)))))
+
+    def approve_op(self, yes=False, tty=True, answer=True):
+        return approvals.operator_shared_review(self.reg, 'one', 'merge-tested', confirm=lambda s: answer,
+                                                yes=yes, tty=tty, who='operator-test')
+
+    def test_refuses_until_the_lane_is_on_its_line(self):
+        git(self.root, 'branch', '-f', 'maintained', self.lane()['root']['base'])
+        self.declare('maintained')
+        with self.assertRaisesRegex(Rejected, 'not reachable from declared line'):
+            self.approve_op()
+        self.assertEqual(self.reg.check_handoff(self.lane())['pending_reviews'], [SHARED])
+
+    def test_approves_pending_files_once_landed(self):
+        git(self.root, 'branch', '-f', 'maintained', self.lane()['root']['head'])
+        self.declare('maintained')
+        with self.assertRaisesRegex(Rejected, 'not confirmed'):
+            self.approve_op(answer=False)
+        rows = self.approve_op()
+        self.assertEqual([(r['file'], r['status'], r['decided_by'], r['kind']) for r in rows],
+                         [(SHARED, 'approved', 'operator', 'handoff_review')])
+        self.assertEqual(self.reg.check_handoff(self.lane())['pending_reviews'], [])
+        self.assertEqual(self.approve_op(), [])  # Idempotent: nothing left pending.
+
+
 class LegacyReportTests(Base):
     def test_report_marks_unbacked_approvals_and_never_writes(self):
         lane = self.submit()
