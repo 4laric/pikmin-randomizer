@@ -6,6 +6,15 @@ workers are available and refill demand remains. `pause_integration_depth` and
 `pause_integration_age_seconds` override these thresholds. The dashboard reports
 the helper target reason; worker reservations and the bounded helper cap still apply.
 
+Integrated is not shipped. Below Needs you, the dashboard's **Delivery** cards show,
+per repository, done lanes by delivery class (`workflow.shipping`: shipped, pushed,
+integrated-on-line, off-line, missing, undeclared), unpushed receipts with the
+oldest, the oldest unshipped receipt, and the declared line's ahead/behind and
+conflicting-path count against the release target. Git runs for it only when a line,
+target or push-remote tip or the receipt set changed, with tips re-read at most once
+a minute; an error shows "Delivery view unavailable", never zero. Without a declared
+`release_target` every receipt is `undeclared`, and only the unpushed count is known.
+
 Exact-pin handoffs isolated by a batch are a separate repair backlog, excluded
 from actionable integration age/depth, oldest-handoff metrics and repeated
 integration support reviews. The dashboard retains their age and isolation reason.

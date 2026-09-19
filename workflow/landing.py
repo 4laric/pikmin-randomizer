@@ -45,13 +45,17 @@ INSTRUCTION = (' Landing proof: integrate verifies, per repository, that every f
     'clean -f, checkout --ours/--theirs or <ref> -- <path>, restore, or force-push in maintained worktrees.')
 
 
-def git(repo, *args, stdin=None, codes=(0,)):
-    """(exit code, stdout bytes) of one bounded, non-fetching git call; anything else refuses."""
-    env = {k: v for k, v in os.environ.items() if k not in _REDIRECTS}
-    env.update(GIT_OPTIONAL_LOCKS='0', GIT_NO_LAZY_FETCH='1', GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1')
+def git(repo, *args, stdin=None, codes=(0,), timeout=TIMEOUT, env=None):
+    """(exit code, stdout bytes) of one bounded, non-fetching git call; anything else refuses.
+
+    env adds variables after the inherited redirects are removed (shipping points merge-tree's
+    object writes at a scratch directory)."""
+    environment = {k: v for k, v in os.environ.items() if k not in _REDIRECTS}
+    environment.update(GIT_OPTIONAL_LOCKS='0', GIT_NO_LAZY_FETCH='1', GIT_TERMINAL_PROMPT='0', GIT_NO_REPLACE_OBJECTS='1',
+                       **(env or {}))
     command = ['git', '--no-replace-objects', '-c', 'protocol.allow=never', '-C', str(repo), *args]
     try:
-        p = subprocess.run(command, input=stdin, capture_output=True, timeout=TIMEOUT, env=env,
+        p = subprocess.run(command, input=stdin, capture_output=True, timeout=timeout, env=environment,
                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise Rejected(f"Landing git call failed ({' '.join(args[:2])} in {repo}): {str(exc) or type(exc).__name__}")

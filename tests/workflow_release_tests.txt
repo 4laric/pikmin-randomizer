@@ -117,3 +117,4 @@ tests/test_runner_turns.py
 tests/test_worker_lifecycle.py
 tests/test_controller_forensics.py
 tests/test_workflow_inspect.py
+tests/test_workflow_shipping.py

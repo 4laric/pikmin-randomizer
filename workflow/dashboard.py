@@ -94,6 +94,45 @@ def render_stuck(stuck):
     return html + '<p class="note">Full view: <code>workflow_module.py inspect stuck</code>.</p></div></details></section>'
 
 
+def render_delivery(delivery):
+    """Done work by delivery class per repository (workflow.shipping), bounded; undeclared config is said, not guessed."""
+    if not isinstance(delivery, dict): return ''
+    if delivery.get('error') or 'repos' not in delivery:
+        return ('<section class="delivery"><h2>Delivery</h2><p class="warning">Delivery view unavailable: ' +
+                escape(str(delivery.get('error') or 'not published')[:400]) +
+                '; run <code>workflow_module.py inspect delivery</code>.</p></section>')
+    def hours(value):
+        return '?' if type(value) not in (int, float) else '%.1f h' % (value / 3600)
+    lanes = delivery.get('lanes') or {}
+    html = ('<section class="delivery"><h2>Delivery <span>' + escape(str(lanes.get('done', '?'))) + ' done · ' +
+            escape(str(lanes.get('receipts', '?'))) + ' with receipts · ' + escape(str(lanes.get('done-no-code', '?'))) +
+            ' done-no-code</span></h2><div class="cards">')
+    for name, repo in (delivery.get('repos') or {}).items():
+        counts = repo.get('counts') or {}
+        if not counts and not repo.get('error'): continue
+        unpushed, oldest = repo.get('unpushed') or {}, repo.get('oldest_unshipped')
+        facts = [', '.join('%s %s' % (k, counts[k]) for k in sorted(counts)[:8]) or 'no receipts']
+        if repo.get('error'): facts.append('unverifiable: ' + str(repo['error'])[:200])
+        facts.append('unpushed receipts %s%s' % (unpushed.get('count', '?'), ' · oldest ' + hours((unpushed.get('oldest') or {}).get(
+            'age_seconds')) if unpushed.get('oldest') else ''))
+        facts.append('oldest unshipped: ' + (str(oldest) if not isinstance(oldest, dict) else
+                                             '%s (%s, %s)' % (oldest.get('lane'), oldest.get('cls'), hours(oldest.get('age_seconds')))))
+        for label in ('line', 'target'):
+            value = repo.get(label)
+            facts.append('%s %s' % (label, value if not isinstance(value, dict) else '%s at %s' % (value.get('ref'), str(value.get('tip'))[:12])))
+        divergence = repo.get('divergence')
+        if isinstance(divergence, dict):
+            facts.append('line %s ahead / %s behind target · conflicts %s' % (divergence.get('ahead'), divergence.get('behind'),
+                         divergence.get('conflicts') if divergence.get('conflicts') is not None else 'skipped'))
+        remote = repo.get('remote') or {}
+        if remote and not remote.get('off_disk'):
+            facts.append('push remote %s is not off-disk: nothing counts as pushed' % remote.get('name'))
+        html += ('<div><span>' + escape(name) + '</span><strong>' + escape(str(unpushed.get('count', '?'))) +
+                 ' unpushed</strong><p class="note">' + '<br>'.join(escape(f) for f in facts) + '</p></div>')
+    return html + '</div><p class="note">Full view: <code>workflow_module.py inspect delivery</code>; choose lines with ' \
+                  '<code>inspect delivery-suggest</code>.</p></section>'
+
+
 def render_dashboard(report):
     def table(items):
         return '<table>' + ''.join('<tr><th>' + escape(str(k).replace('_', ' ')) + '</th><td>' +
@@ -294,7 +333,7 @@ def render_dashboard(report):
         attention_html = '<details class="attention" id="attention"><summary>Needs attention <span>' + str(len(attention)) + ' items</span></summary><div class="detail-body">' + ''.join(
             '<article><div class="item-heading"><strong>' + escape(str(lane)) + '</strong><span>' + escape(str(kind)) + '</span></div><p>' + escape(str(reason)) + '</p></article>'
             for lane, kind, reason in attention) + '</div></details>'
-    stuck_html = render_stuck(report.get('stuck'))
+    stuck_html = render_stuck(report.get('stuck')) + render_delivery(report.get('delivery'))
     body = '<div class="diagnostics"><h2>Inspect details</h2><p>Expand a section for individual lanes, evidence, and scheduling decisions.</p>' + ''.join(
         '<details id="detail-' + str(i) + '"><summary>' + escape(name) + '</summary><div class="detail-body">' +
         table(value if isinstance(value, dict) else {'recommendations': value}) + '</div></details>'
@@ -309,11 +348,12 @@ def render_dashboard(report):
 header{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:24px}.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#90bda9;margin:0 0 5px}h1{font-size:28px;letter-spacing:-.03em;margin:0}header p{margin:0}header small{display:block;color:#8fa5b3}.updated{text-align:right;font-size:12px;color:#adbfca}
 .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#344651;border:1px solid #344651;border-radius:12px;overflow:hidden;margin:20px 0}.cards>div{background:#192b30;padding:20px 24px}.cards span{display:block;color:#bdd0cb;font-size:12px}.cards strong{display:block;font-size:30px;font-weight:600;letter-spacing:-.03em;margin-top:4px}
 .needs-you{margin:0 0 24px;padding:16px 22px;border:1px solid #8a6a3a;border-radius:12px;background:#231f18}.needs-you h2{color:#efcb92;margin:0 0 8px}.needs-you h2 span{font-size:13px;color:#c7ae83;margin-left:8px}.needs-you article{background:#2b251c}
+.delivery{margin:0 0 24px}.delivery h2 span{font-size:13px;color:#92aaa9;margin-left:8px}.delivery .cards{grid-template-columns:repeat(2,minmax(0,1fr));margin:8px 0}.delivery .cards strong{font-size:24px}.delivery .note{margin:6px 0 0}
 .warning{border-left:3px solid #efba64;padding:12px 16px;background:#302a21;color:#ffe0a7;border-radius:4px;font-size:13px}.overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;border-bottom:1px solid #344651;padding-bottom:20px}.overview section{min-width:0}h2{font-size:16px;font-weight:600;color:#a6dfc5;margin:8px 0 12px}.note{font-size:12px;margin:12px 0;color:#92aaa9}
 table{border-collapse:collapse;width:100%;table-layout:fixed}th,td{text-align:left;padding:10px 8px;vertical-align:top;border-bottom:1px solid #293c47;overflow-wrap:anywhere}th{width:28%;font-weight:500;color:#b8c8d2}.overview th{width:65%;padding-left:0;font-size:13px}.overview td{text-align:right;padding-right:0;font-variant-numeric:tabular-nums}.overview tr:last-child th,.overview tr:last-child td{border-bottom:0}p{color:#aebfc9}.diagnostics{margin-top:26px}.diagnostics>p{font-size:12px;margin-top:-6px}
 details{border-bottom:1px solid #344651}summary{cursor:pointer;padding:13px 4px;font-weight:500;color:#d8e6ec}summary:hover{color:#a6dfc5}summary:focus-visible{outline:2px solid #a6dfc5;outline-offset:3px}summary span{float:right;color:#c7ae83;font-size:12px}details[open]>summary{color:#a6dfc5}.detail-body{padding:4px 0 18px}.attention{margin-top:10px}.attention summary{color:#efcb92}article{padding:12px 16px;background:#1b2933;margin:8px 0;border-radius:6px}.item-heading{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}.item-heading span{font-size:12px;color:#efcb92;flex-shrink:0}article p{margin:5px 0 0;font-size:13px}footer{margin-top:24px;font-size:12px;color:#8fa5b3}
 @media(max-width:850px){body{padding:20px}.overview{grid-template-columns:1fr;gap:16px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.cards>div{padding:16px}.cards strong{font-size:25px}}
-@media(max-width:520px){body{padding:16px}header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:24px}.item-heading{display:block}.item-heading span{display:block}th{width:38%}}
+@media(max-width:520px){body{padding:16px}header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:24px}.item-heading{display:block}.item-heading span{display:block}th{width:38%}.delivery .cards{grid-template-columns:1fr}}
 </style><header><div><p class="eyebrow">Pikmin randomizer · Operations</p><h1>Workflow throughput</h1></div><div class="updated">Updated ''' + timestamp + '''<small>Refreshes every 15 seconds</small></div></header><main>''' + stuck_html + milestone + warning + headline + workforce + overview + attention_html + body + '''</main><footer><details id="reading"><summary>Reading the numbers</summary><p>An accepted slice is not an enemy admission. The headline uses the maintained admission contract; when records cannot be read, enemy ADMIT status is unavailable. Missing prices are unavailable, not free. Provisional QA does not grant admission. Planner reservations include queued work; running helpers are reported separately. Isolated repairs do not count toward actionable integration pressure.</p></details></footer>
 <script type="module">
 // Preserve expanded diagnostics across the automatic refresh.

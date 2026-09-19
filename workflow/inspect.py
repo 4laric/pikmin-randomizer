@@ -2,12 +2,15 @@
 
   <python> <checkout>/scripts/workflow_module.py inspect [--root R | --db COPY] <verb> [--json]
   verbs: stuck (default) | needs-you | lane <key> | launches <key> | assignment <lane> | config
+         delivery | delivery-suggest | promotion-plan root|native [--line REF --target REF --out output/<stem>]
 
 The registry is opened with SQLite URI mode=ro plus PRAGMA query_only, decoding only the sections a
 verb needs; this module never imports workflow.registry or the writer gate and never calls a write
 path (it shares pure helpers with modules that also hold writers; View refuses every write), so it
 works on a live WAL registry, a backup copy, and while the writer lock is contended. --db reads any
-registry file (a copy) without the workspace check, with the config of the registry's own root."""
+registry file (a copy) without the workspace check, with the config of the registry's own root.
+The delivery verbs (workflow.shipping) also read the root and native git repositories through bounded,
+non-fetching git calls; promotion-plan --out writes only the named plan files under output/."""
 import argparse
 import json
 from pathlib import Path
@@ -261,6 +264,11 @@ def machine(state, now, *, cfg=None, probe=None, config_path=None):
             what='Controller config declares no integration_lines.root: review packets cannot be re-pinned, requested or '
                  'decided, and landings are checked against any branch', next='Declare integration_lines {root, native} '
                  'as a deploy step (docs/PIKMIN2_WORKFLOW_OPERATOR.md)'))
+    if cfg is not None and not (cfg.get('release_target') or {}).get('root'):
+        result.append(dict(kind='release_target_undeclared', what='Controller config declares no release_target.root: '
+            'shipped work cannot be told from integrated work and no promotion can be planned from config',
+            next='Run inspect delivery-suggest, choose the lines and target, and declare release_target beside '
+                 'integration_lines (docs/PIKMIN2_WORKFLOW_OPERATOR.md)'))
     return result
 
 
@@ -383,14 +391,14 @@ def topology(root, state, cfg):
     code = claimed(state.get('control') or {}) or {}
     return dict(root=dict(path=str(root), head=head(root)), native=dict(path=str(root / 'native'), head=head(root / 'native')),
         research=dict(path=str(root / 'native/pikmin2-research'), head=head(root / 'native/pikmin2-research')),
-        integration_lines=cfg.get('integration_lines'), controller=dict(sha=code.get('sha'), path=code.get('path'),
+        integration_lines=cfg.get('integration_lines'), release_target=cfg.get('release_target'), controller=dict(sha=code.get('sha'), path=code.get('path'),
         dirty=code.get('dirty')), releases=sorted(p.name for p in release.iterdir() if p.is_dir()) if release.is_dir() else [],
         lane_worktrees=['output/dsw/<lane>-root|native', 'output/workflow/autofill/planning-shards/<scope>/prepared/<lane>-root|native'])
 
 
 def settings(cfg, root, state):
     """Config keys an operator reads most, without the per-lane launch table; config_read false when none was found."""
-    keep = ('interval', 'ram_low', 'ram_high', 'launches_per_tick', 'models', 'integration_lines', 'consumer_wakeup',
+    keep = ('interval', 'ram_low', 'ram_high', 'launches_per_tick', 'models', 'integration_lines', 'release_target', 'consumer_wakeup',
             'build_capacity', 'shepherd', 'queue_pressure', 'terminal_idle_recovery', 'shared_review_routing')
     read, cfg = cfg is not None, cfg or {}
     return dict(config_read=read, topology=topology(root, state, cfg), lanes_configured=len(cfg.get('lanes') or {}),
@@ -456,26 +464,88 @@ def text(verb, data):
         for name, w in d['worktrees'].items():
             out.append('%s worktree %s at %s (canonical %s)' % (name, w['worktree'], (w['head'] or '?')[:12], (w['canonical_head'] or '?')[:12]))
         return '\n'.join(out)
+    if verb == 'delivery':
+        d = data
+        out.append('Done lanes: %d (%d with receipts, %d done-no-code, %d archived)' % (
+            d['lanes']['done'], d['lanes']['receipts'], d['lanes']['done-no-code'], d['lanes']['archived']))
+        for name, r in d['repos'].items():
+            if not r['counts'] and not r.get('error'): continue
+            out.append('== %s ==' % name)
+            if r.get('error'): out.append('  unverifiable: ' + r['error'])
+            out.append('  ' + ', '.join('%s %d' % (k, r['counts'][k]) for k in sorted(r['counts'])))
+            def at(x): return x if isinstance(x, str) or x is None else '%s at %s' % (x['ref'], x['tip'][:12])
+            out.append('  line %s; target %s' % (at(r['line']), at(r['target'])))
+            remote = r.get('remote') or {}
+            if remote: out.append('  push remote %s %s%s' % (remote['name'], remote.get('url'), '' if remote.get('off_disk') else
+                                  ' (not off-disk: never counts as pushed)'))
+            u = r['unpushed']
+            out.append('  unpushed receipts %d%s%s' % (u['count'], ', oldest %s (%s old)' % (u['oldest']['lane'],
+                       mins(u['oldest']['age_seconds'])) if u['oldest'] else '', ': ' + ', '.join(u['lanes']) if u['lanes'] else ''))
+            o = r['oldest_unshipped']
+            out.append('  oldest unshipped: ' + (str(o) if isinstance(o, str) or o is None else '%s (%s, %s old)' % (
+                o['lane'], o['cls'], mins(o['age_seconds']))))
+            if r.get('divergence'):
+                v = r['divergence']
+                out.append('  line vs target: %d ahead, %d behind, conflicts %s' % (v['ahead'], v['behind'],
+                           v['conflicts'] if v.get('conflicts') is not None else 'skipped (%s)' % v.get('conflicts_skipped')))
+            if r.get('truncated'): out.append('  truncated: %d receipt commits not evaluated (cap)' % r['truncated'])
+        return '\n'.join(out)
+    if verb == 'delivery-suggest':
+        for name, r in data['repos'].items():
+            out.append('== %s: %d receipt commits ==' % (name, r['receipts']))
+            if r.get('error'):
+                out.append('  error: ' + r['error'])
+                continue
+            out.append('  missing %d, on no ref %s, not on the off-disk %s remote %s' % (r.get('missing', 0), r.get('on_no_ref', '?'),
+                       (r.get('remote') or {}).get('name'), r.get('unpushed', '?')))
+            if any((r.get('truncated') or {}).values()): out.append('  truncated: ' + ', '.join(k for k, v in r['truncated'].items() if v))
+            out += ['  branch %s: %d%s' % (b['ref'], b['receipts'], ' (worktree %s)' % b['worktree'] if b['worktree'] else '')
+                    for b in r.get('branches', [])]
+            out += ['  remote %s: %d' % (b['ref'], b['receipts']) for b in r.get('remote_refs', [])]
+            t = r.get('default_target')
+            out.append('  default target: ' + ('%s (%d receipts)' % (t['ref'], t['receipts']) if t else 'none known'))
+            for c in r.get('candidates', []):
+                v = c.get('vs_target') or {}
+                out.append('  candidate %s: %d receipts%s; vs target %s ahead, %s behind, conflicts %s' % (c['ref'], c['receipts'],
+                           ' (%d not on the first)' % c['beyond_top'] if 'beyond_top' in c else '',
+                           v.get('ahead', '?'), v.get('behind', '?'), v.get('conflicts', 'skipped')))
+            if r.get('candidates'): out.append('  candidates together hold %d of %d' % (r['candidates_hold'], r['receipts'] - r.get('missing', 0)))
+            if r.get('between'):
+                b = r['between']
+                out.append('  %s vs %s: %d ahead, %d behind, conflicts %s' % (b['ours'], b['theirs'], b['ahead'], b['behind'],
+                           b.get('conflicts', 'skipped')))
+            if r.get('warning'): out.append('  warning: ' + r['warning'])
+        out.append('Suggested config for the top candidates (paste into output/workflow/controller/config.json yourself; '
+                   'nothing was written):')
+        out.append(json.dumps(data['snippet'], indent=2))
+        return '\n'.join(out)
     return json.dumps(data, indent=2, default=sorted)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('verb', nargs='?', default='stuck', choices=('stuck', 'needs-you', 'lane', 'launches', 'assignment', 'config'))
-    parser.add_argument('key', nargs='?', help='lane key for lane, launches and assignment')
+    parser.add_argument('verb', nargs='?', default='stuck', choices=('stuck', 'needs-you', 'lane', 'launches', 'assignment', 'config',
+                                                                      'delivery', 'delivery-suggest', 'promotion-plan'))
+    parser.add_argument('key', nargs='?', help='lane key for lane, launches and assignment; root or native for promotion-plan')
     parser.add_argument('--root', type=Path, default=None, help='canonical workspace (default: current directory)')
     parser.add_argument('--db', type=Path, help='read this registry file (e.g. a backup copy) instead; no workspace check')
     parser.add_argument('--config', type=Path, help='controller config (default <root>/%s)' % CONFIG)
     parser.add_argument('--limit', type=int, default=20, help='launches shown by launches; groups shown by stuck')
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--line', help='promotion-plan: the integration line ref (default: config integration_lines)')
+    parser.add_argument('--target', help='promotion-plan: the release target ref (default: config release_target)')
+    parser.add_argument('--out', type=Path, help='promotion-plan: also write <out>.json and <out>.md (under output/)')
+    parser.add_argument('--no-conflicts', action='store_true', help='delivery verbs: skip merge-tree conflict counts')
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):  # Registry prose is not cp1252-safe; a piped Windows stdout would raise.
         sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     try:
         require(args.verb not in ('lane', 'launches', 'assignment') or args.key, args.verb + ' needs a lane key')
+        require(args.verb != 'promotion-plan' or args.key in ('root', 'native'), 'promotion-plan needs root or native')
         root = (args.root or Path.cwd()).resolve()
         sections = {'stuck': STUCK, 'needs-you': STUCK, 'lane': LANE, 'launches': [('lanes',), ('control', 'launches')],
-                    'assignment': [('lanes',)], 'config': [('throughput_runtime', 'launch_specs')]}[args.verb]
+                    'assignment': [('lanes',)], 'config': [('throughput_runtime', 'launch_specs')], 'delivery': [('lanes',)],
+                    'delivery-suggest': [('lanes',)], 'promotion-plan': [('lanes',)]}[args.verb]
         state = read(args.db or root / REGISTRY, sections, None if args.db else root)
         if args.db and not args.root: root = Path(state['root'])  # A copy's own workspace, not the caller's directory.
         view = View(Path(state['root']) if args.db else root)
@@ -498,6 +568,19 @@ def main(argv=None):
             row = assignment(state, args.key)
             data = dict(lane=args.key, open=bool(row), assignment={k: v for k, v in row.items() if k != 'spec'},
                         spec_lane=(row.get('spec') or {}).get('lane'))
+        elif args.verb == 'delivery':
+            from .shipping import gather, reconcile
+            data = reconcile(view.root, state, now, known=gather(view.root, state, not args.no_conflicts))
+        elif args.verb == 'delivery-suggest':
+            from .shipping import suggest
+            data = suggest(view.root, state, conflicts=not args.no_conflicts)
+        elif args.verb == 'promotion-plan':
+            from .shipping import markdown, plan, write_plan
+            data = plan(view.root, state, args.key, line=args.line, target=args.target)
+            if args.out: data['written'] = write_plan(view.root, data, args.out)
+            if not args.json:
+                print(markdown(data))
+                return 0
         else:
             data = settings(cfg, view.root, state)
     except (Rejected, OSError, ValueError, sqlite3.Error) as exc:

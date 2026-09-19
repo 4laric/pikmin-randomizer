@@ -132,9 +132,16 @@ from integrated slices. Historical work is never retroactively counted as succes
 | Orchestrator | Assign issues; resolve dependencies; inspect dispatch guidance; claim recovery actions; review/integrate/export |
 | Watchdog | Classify stalled execution; persist a bounded, deduplicated action; never independently launch, kill, merge or push |
 
-Native work branches may be pushed to **native `origin`**. Do not push `main`,
-`master`/another default branch, `p2-integration` or a namespaced branch ending in
-`/p2-integration`; never force-push or push tags. Verify the remote; do not guess it.
+**Push contract.** After each integration receipt the integrator pushes the head of
+the line it landed on to that repository's off-disk remote: root `origin`
+(GitHub), native `fork` (GitHub). Native `origin` is a local directory and gives no
+durability; a push there never counts. Push the line branch itself (fast-forward
+only); never push `main`, `master`/another default branch, `p2-integration` or a
+namespaced branch ending in `/p2-integration`, never force-push, never push tags.
+Verify the remote URL; do not guess it. A receipt whose commit no remote-tracking ref
+of that remote reaches is reported as unpushed (`inspect delivery`) until the push
+lands and the ref is fetched. Promotion to the release target is a separate,
+human-reviewed step (section 5, **Delivery to the release target**).
 Private runtime launches are **exempt** from shared-runtime reservations.
 The maintained build/export and shared runtime fixtures remain exclusive resources.
 Private build directories are exclusive individually and share a heavy-build cap.
@@ -540,7 +547,7 @@ allowed. A lane without changes is refused unless it says `already_landed`.
 `"integration_lines":{"root":{"repo":".","ref":"<branch>"},"native":{"repo":"native","ref":"<branch>"}}`,
 the receipt commit must be reachable from that ref (`merge-base --is-ancestor`).
 Only that path is read; the controller refuses to start with another `--config`
-that declares `integration_lines`. Otherwise the proof records
+that declares `integration_lines` or `release_target`. Otherwise the proof records
 `line_check: "undeclared"` and lines are never guessed, but the commit must still be
 contained in some local or remote-tracking branch other than the one checked out in
 the lane's own recorded worktree (`landed_refs` lists up to five); a receipt naming
@@ -548,6 +555,29 @@ the lane's unmerged head refuses as not landed. A lane working directly in the
 maintained checkout has no such exclusion. This is weaker than a declared line (an
 integrator's own branch counts), so declaring the lines is the recommended deploy
 step.
+
+**Delivery to the release target.** `done` means integrated on a line, not shipped.
+The release target is declared beside the lines, in the same canonical config only:
+`"release_target":{"root":{"repo":".","ref":"origin/main"},"native":{"repo":"native","ref":"fork/main"}}`
+(an entry may add `"remote"`; the defaults are root `origin`, native `fork`).
+`inspect delivery` (workflow.shipping) classifies each side of every done lane's
+receipt, archived lanes included: `shipped` (ancestor of the release target),
+`pushed` (reachable from a remote-tracking ref of the off-disk remote), `integrated-on-line`
+(reachable from the declared line only), `off-line`, `missing` (not a commit of that
+repository), `undeclared` (no release target, or no line for an unpushed commit;
+never guessed), `truncated` (over a cap) or `unverifiable` (git failed); done lanes
+without a receipt are `done-no-code`. A remote whose URL is a local path never counts
+as pushed. It reads local refs only (fetch first for current remote state) and never
+fetches, pushes or writes the registry. Promotion is proposed by `inspect
+promotion-plan root|native`: bounded batches of what the line changed since its merge
+base with the target, modifications of existing shared-engine files (root `engine/`,
+`include/`, `src/`, `pc_port/`; native `pc_port/`, `src/`, `include/`, `cmake/`,
+`CMakeLists.txt`) first in small batches (12 files, 8 receipts), other modifications
+next (40, 20), additive files last (200, 40). Each batch lists its files, the receipts
+it carries (`partial` when split) and a stub of #186 review-packet inputs for its
+shared paths. A person opens each batch as a PR to the release target after its #186
+review; nothing is merged, branched or pushed by the workflow, and `shipped` is only
+ever observed from git ancestry.
 
 **Audit.** `<python> <checkout>/scripts/workflow_module.py landing_audit --root <root>
 [--out report.json] [--lane KEY]` runs the same checks over every existing receipt

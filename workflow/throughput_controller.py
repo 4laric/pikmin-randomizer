@@ -287,6 +287,11 @@ def publish_status(controller):
             probe=reg.probe), available_workers=status['worker_roster']['available_workers']))
     except (Rejected, KeyError, TypeError, ValueError, AttributeError, OSError) as exc:
         status['stuck'] = dict(error='Stuck view unavailable: %s' % (str(exc) or type(exc).__name__))
+    from .shipping import dashboard as delivery
+    try:  # Git runs only when a line, target or push-remote tip or the receipt set moved.
+        status['delivery'] = delivery(reg.root, state, status['at'])
+    except (Rejected, KeyError, TypeError, ValueError, AttributeError, OSError) as exc:
+        status['delivery'] = dict(error='Delivery view unavailable: %s' % (str(exc) or type(exc).__name__))
     spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
                        control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))
     status['hourly_spend'] = hourly_spend(spend_state, status['at'])

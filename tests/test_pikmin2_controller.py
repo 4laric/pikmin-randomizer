@@ -514,12 +514,13 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual({n['detail']['path'] for n in rejected}, set(self.config['receipts']))
 
     def test_integration_lines_only_from_the_canonical_config(self):
-        config = self.root/'other.json'; config.write_text(json.dumps(dict(integration_lines={})))
         script = Path(__file__).resolve().parents[1]/'scripts/pikmin2_controller.py'
-        p = subprocess.run([sys.executable, str(script), '--root', str(self.root), '--config', str(config), '--once'],
-                           capture_output=True, text=True, timeout=120)
-        self.assertEqual(p.returncode, 2)
-        self.assertIn('integration_lines is read only from', p.stderr)
+        for key in ('integration_lines', 'release_target'):
+            config = self.root/'other.json'; config.write_text(json.dumps({key: {}}))
+            p = subprocess.run([sys.executable, str(script), '--root', str(self.root), '--config', str(config), '--once'],
+                               capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 2)
+            self.assertIn(key + ' is read only from', p.stderr)
 
     def test_live_owner_prevents_resume(self):
         with self.reg.transaction() as state:state['lanes']['consumer']['process']=self.identity

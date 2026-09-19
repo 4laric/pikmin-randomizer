@@ -2,7 +2,10 @@
 
 Implementation #508; coordination #491/#186. Owner: Codex through shared account
 4laric. This extends the existing single registry; it does not replace native
-acceptance or grant ADMIT. The existing integrator remains the sole promotion owner.
+acceptance or grant ADMIT. The existing integrator remains the sole promotion owner:
+it pushes line heads to the off-disk remotes after each receipt, and promotion
+batches to the release target (`inspect promotion-plan`) become human-reviewed PRs;
+the controller never merges, branches or pushes (docs/PIKMIN2_WORKFLOW.md, section 5).
 
 ## Responsibilities
 

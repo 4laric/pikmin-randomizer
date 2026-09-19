@@ -17,6 +17,9 @@ Commands below run from the canonical root, `C:/Users/alari/pikmin-randomizer`.
 | Its launches (reason, exit code, tools started) | `py -3.12 scripts/workflow_module.py inspect launches <key> [--limit N]` |
 | A helper lane's open planner assignment | `py -3.12 scripts/workflow_module.py inspect assignment <lane>` |
 | Config, heads of every checkout, controller release | `py -3.12 scripts/workflow_module.py inspect config` |
+| Which done work is shipped, pushed, only on a line, or only on this disk? | `py -3.12 scripts/workflow_module.py inspect delivery` |
+| Which branches hold the receipts; what to declare as lines and target | `py -3.12 scripts/workflow_module.py inspect delivery-suggest` |
+| Bounded promotion batches from a line to the release target | `py -3.12 scripts/workflow_module.py inspect promotion-plan root\|native [--line REF --target REF] [--json] [--out output/<stem>]` |
 | Receipt, admission and batch actions | `py -3.12 -m workflow.operator [--json]` |
 | Is the controller alive, supervised and on clean code? | `py -3.12 scripts/workflow_module.py service status --root <root>` |
 | Stall streaks and parked lanes | `py -3.12 scripts/workflow_module.py no_progress --root <root>` |
@@ -40,7 +43,11 @@ into one count line. The dashboard, output/workflow/controller/throughput.html, 
 Needs you and the blocker groups at the top with every list capped (20 items, 12
 groups, 10 lanes per item, 400 characters of text). If the view cannot be built, the
 dashboard and `workflow.operator` say "Needs you unavailable" with the error, never
-an empty list.
+an empty list. Below it, the **Delivery** cards summarize `inspect delivery` (see
+Delivery below). The delivery verbs also read the root and native git repositories
+with bounded, non-fetching git calls (a cap and a 60 s timeout per call; merge-tree
+writes its trial objects to a deleted scratch directory); `promotion-plan --out`
+writes only `<stem>.json` and `<stem>.md` under output/.
 Workers are told to read state with the same `inspect` command (the release's
 absolute path) instead of writing Registry or sqlite scripts.
 
@@ -60,9 +67,10 @@ absolute path) instead of writing Registry or sqlite scripts.
 | `packet_refused` | A recorded review packet request was refused for lack of `integration_lines.root` (only when the line was removed between request and decision) | Declare the line, land the packet there, re-request |
 
 **Machine-wide** lists the controller down (or no claim), a RAM launch pause, a
-build-admission pause, `config_unread`, and `integration_lines_undeclared` (review
+build-admission pause, `config_unread`, `integration_lines_undeclared` (review
 packets cannot be re-pinned, requested or decided; landings are checked against any
-branch; the item counts open lanes holding shared hooks). `review_packet request`
+branch; the item counts open lanes holding shared hooks) and `release_target_undeclared`
+(shipped cannot be told from integrated; see Delivery). `review_packet request`
 refuses before recording anything while the line is undeclared, so that item, not
 `packet_refused`, is where those refusals show.
 
@@ -159,6 +167,75 @@ that worker (`inspect lane` shows `worker_busy`).
   `throughput_runtime.launch_specs`. Read current state before any mutation. Record
   scope, validation and remaining blockers on the assigned issue.
 
+## Delivery: from integration line to release target
+
+`done` means integrated on a line. `inspect delivery` classifies each repository side
+of every done lane's receipt (lanes whose history was archived are included; lanes
+never leave the registry):
+
+| Class | Meaning |
+|---|---|
+| `shipped` | The receipt commit is an ancestor of the declared release target |
+| `pushed` | Reachable from a remote-tracking ref of the off-disk remote (root `origin`, native `fork`), not shipped |
+| `integrated-on-line` | Reachable from the declared integration line only: it exists on this disk alone |
+| `off-line` | On none of those (a side branch, a preparation worktree) |
+| `missing` | Not a commit of that repository (e.g. a root sha recorded as native_commit) |
+| `undeclared` | No `release_target` for that side (or no line for an unpushed commit); never guessed |
+| `truncated` / `unverifiable` | Over a cap / git failed for that repository (the error is shown) |
+| `done-no-code` | Done lane without an integration receipt (lane level) |
+
+It also lists unpushed receipts (commits no ref of the off-disk remote reaches, whatever
+the config says) with the oldest, the oldest unshipped receipt, and the declared line's
+ahead/behind, unpushed commits and conflicting paths against the target. A remote whose
+URL is a local path (native `origin` is `C:\Users\alari\Documents\ChatGPT\decomp\pikmin-research`)
+never counts. Only local refs are read: run `git fetch origin` (root) and `git fetch fork`
+(native) yourself first for current remote state.
+
+**Declaring the lines and the target.** Neither is declared today. `inspect
+delivery-suggest` counts, per repository, how many receipt commits each local branch and
+remote-tracking ref holds, picks up to three distinct candidate lines (a branch whose
+receipts an earlier candidate already holds is a copy and is skipped), compares each with
+the off-disk remote's default branch (ahead/behind and conflicting paths through `git
+merge-tree --write-tree`, skipped on an older git) and the first two with each other, and
+prints a config snippet for the top candidates. It never writes the config. On
+2026-09-19 it found two divergent root lines: `codex/content-lanes-531` (130 of 220
+receipt commits, 388 ahead / 32 behind origin/main, 9 conflicting paths) and
+`claude/p2-deepseek-wave` (84 others, 1,598 ahead / 7 behind, 2 conflicts), with 151
+conflicting paths between them; native is one line, `claude/p2-deepseek-wave-native`
+(81 of 87, 1,141 ahead of fork/main, no conflicts). Choose deliberately (converge the root
+lines first or declare one), then add to output/workflow/controller/config.json:
+
+```json
+"integration_lines": {"root": {"repo": "<worktree with the line checked out>", "ref": "<branch>"},
+                      "native": {"repo": "output/dsw/native-wave", "ref": "claude/p2-deepseek-wave-native"}},
+"release_target": {"root": {"repo": ".", "ref": "origin/main"}, "native": {"repo": "native", "ref": "fork/main"}}
+```
+
+Both keys are read only from that canonical file (landing proofs, review packets and
+delivery read them on every use; the controller refuses to start with them in another
+config), so they take effect for those checks at once.
+
+**Push contract.** After each receipt the integrator pushes the line head to the
+off-disk remote (root `origin`, native `fork`), fast-forward only; never `main` or a
+default branch, never force, never tags. Unpushed receipts on the dashboard are receipts
+that exist only on this disk.
+
+**Promotion.** `inspect promotion-plan root|native` (the declared line and target, or
+`--line`/`--target` naming refs explicitly) takes what the line changed since its merge
+base with the target and splits it into batches: modifications of existing shared-engine
+files first (root `engine/`, `include/`, `src/`, `pc_port/`; native `pc_port/`, `src/`,
+`include/`, `cmake/`, `CMakeLists.txt`; 12 files and 8 receipts per batch), other
+modifications next (40, 20), additive files last (200, 40). Each batch lists its files,
+the receipts it carries (attributed through each lane's landing proof or base..head
+diff; `partial` when a receipt spans batches; files no receipt changed are counted) and a
+stub of review-packet-v1 inputs for its shared paths (candidates at the line tip,
+maintained side on the target, which a packet needs checked out in a worktree). It
+prints markdown (`--json` for data) or writes both with `--out output/<stem>`. It
+creates no branch, commit or PR. Promote batch by batch: build a branch from the target
+with that batch's files, commit the packet under `tools/review_packets/` from the stub
+inputs, get the #186 review, open the PR to the target, and let a person merge it.
+Receipts become `shipped` only when the target ref (after a fetch) contains them.
+
 ## Deploy and roll back
 
 Production runs from an immutable release worktree under
@@ -215,6 +292,8 @@ finish first.
 | `native/` | Maintained native tree, its own git repository (the `native` side of landings and exports) |
 | `native/pikmin2-research/` | Nested research repository inside the native tree; not an integration line |
 | config `integration_lines` | `{root: {repo, ref}, native: {repo, ref}}`: the reviewed lines landings and review packets are checked against; undeclared today |
+| config `release_target` | `{root: {repo, ref[, remote]}, native: {...}}`: what `shipped` is measured against (presumably origin/main and fork/main); undeclared today |
+| remotes | Root `origin` = GitHub (off-disk). Native `fork` = GitHub (off-disk), `upstream` = the upstream port, `origin` = a local directory (not a backup) |
 | `output/workflow/registry.sqlite3` (+ `-wal`, `-shm`), `registry-archive.sqlite3` | Registry and its archive |
 | `output/workflow/controller/` | Controller config, throughput.json/html, `*-stage-health.json`, error.json, shepherd-attention.json, `launches/<id>/` |
 | `output/workflow/release/<short-sha>/` | Release worktrees; the controller and worker CLIs run from one |
@@ -229,7 +308,8 @@ ones.
 ## Suggested Claude Code allowlist (read-only commands only)
 
 Nothing writes this for you; add it to a settings file yourself if you want these
-reads to run without prompts. Every entry below is read-only for all arguments.
+reads to run without prompts. Every entry below is read-only for all arguments, except
+that `inspect promotion-plan --out` writes the two named plan files under output/.
 Do not allowlist `scripts/pikmin2_workflow.py`, `workflow_module.py` as a whole,
 `registry_wal`, `registry_archive`, `landing_audit` (its `--out` writes a file),
 `review_packet` beyond `verify`, `delivery_contracts` (`--request` writes),

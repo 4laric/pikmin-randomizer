@@ -28,8 +28,9 @@ def main(argv=None):
     if isinstance(config, dict) and isinstance(config.get('output'), str):
         FATAL['base'] = args.root / config['output']
     from workflow.landing import CONFIG
-    if 'integration_lines' in config and args.config.resolve() != (args.root / CONFIG).resolve():
-        parser.error(f'integration_lines is read only from <root>/{CONFIG}; declare it there')  # Never silently unchecked.
+    for key in ('integration_lines', 'release_target'):  # Never silently unchecked.
+        if key in config and args.config.resolve() != (args.root / CONFIG).resolve():
+            parser.error(f'{key} is read only from <root>/{CONFIG}; declare it there')
     interval = max(1, min(30, config.get('interval', 15)))
     spacing = config.get('min_tick_seconds', 5)  # Registry events arrive every few seconds.
     if type(spacing) not in (int, float) or not 0 <= spacing <= interval:
