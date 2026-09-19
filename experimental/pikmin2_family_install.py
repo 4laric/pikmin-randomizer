@@ -549,10 +549,20 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
     run.mkdir(parents=True, exist_ok=True)
     if retail_assets is not None:
         prepare_private_destination(run, Path(retail_assets))
+    # A family installer owns its run-root sidecars and refuses a second install, and
+    # seeds repeat families (several Otakara, Mamuta, ...), so install each family once
+    # with every actor bound to it. Each family source holds the whole family import.
+    by_family = {}
+    for target, enum_name, family, source, generator in plans:
+        entry = by_family.setdefault(family, dict(source=source, actors=[], targets=[]))
+        entry['actors'].append((generator, enum_name))
+        entry['targets'].append(target)
     receipts = {}
     try:
-        for target, enum_name, family, source, generator in plans:
-            receipts[target] = _installer(family)(source, run, [(generator, enum_name)])
+        for family, entry in by_family.items():
+            receipt = _installer(family)(entry['source'], run, entry['actors'])
+            for target in entry['targets']:
+                receipts[target] = receipt
     except BaseException:
         # A family installer that fails mid-copy must not leave a partial asset
         # tree or run-root sidecars (e.g. p2-snow.txt copied by the Snow adapter):
