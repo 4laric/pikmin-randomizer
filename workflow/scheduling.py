@@ -386,7 +386,9 @@ class SchedulingMixin:
     def plan_assignment(self, assignment_id, models, ram_percent):
         """Atomic validation + existing controller launch-intent schema, never spawn."""
         from .control import fingerprint
+        from .provenance import stamp
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
+        code = stamp()
         with self.transaction() as state:
             data = self.scheduling(state)
             item = data['assignments'][assignment_id]
@@ -405,7 +407,7 @@ class SchedulingMixin:
                           model_index=0, version=None, session=lane['task_id'].removeprefix('opencode:'),
                           status='intent', process=None, created_at=self.clock(), attempts=0,
                           work_class=data['jobs'][item['job']].get('work_class', 'existing'),
-                          focus=data['jobs'][item['job']].get('focus', 'existing_content'))
+                          focus=data['jobs'][item['job']].get('focus', 'existing_content'), code_revision=code)
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)

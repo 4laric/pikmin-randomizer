@@ -528,7 +528,8 @@ live lane generation; batches are all-or-none. Claims never expire or transfer
 automatically. This cooperative protocol complements actual implementation scope
 checks and depends on using the catalog's common vocabulary.
 
-CLI: `py -3.12 -m workflow.planner_claims --root ABS_ROOT --request ABS_JSON claim`
+CLI: `<python> <checkout>/scripts/workflow_module.py planner_claims --root ABS_ROOT --request ABS_JSON claim`
+(worker instructions render the absolute form; `py -3.12 -m workflow.planner_claims` imports from the current directory)
 (also `inspect` and `release`). Requests contain `lane`, `generation`, `resources`.
 A live owner may release unused claims. Proposal claims remain until the registered
 live `acceptance-backlog-planner` coordinator reviews them, records hashed disposition,

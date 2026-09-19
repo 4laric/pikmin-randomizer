@@ -3,6 +3,7 @@ import copy
 import json
 import re
 from .control import fingerprint
+from .provenance import cli
 from .handoff import require
 from .batching import isolated_handoff
 
@@ -55,11 +56,11 @@ def extra_targets(reg,state):
 
 
 INSTRUCTION=(' ACTIONABLE OUTCOME REQUIRED before finish review-ready: prose referrals do not count. '
- 'For blocked_review use python -m workflow.shared_decisions --root <root> --request <json>; fields '
+ 'For blocked_review use '+cli('shared_decisions')+' --root <root> --request <json>; fields '
  'key,generation (producer),source_pins:{root:<head>,native:<head or null>},file (producer-owned),'
  'status:approved|rejected,reviewer (your lane),reviewer_generation (your current generation),reason,evidence:{path,sha256}. '
  'Review actual scoped changes only, not future unimplemented wiring. For other outcomes use '
- 'python -m workflow.support_actions --root <root> --request <json> with reviewer,generation (yours),'
+ +cli('support_actions')+' --root <root> --request <json> with reviewer,generation (yours),'
  'key (target lane),action:repair|integration_packet|producer|proposal|external|stale,reason,evidence:{path,sha256},details. '
  'Planning recovery may record proposal with details.proposal {path,sha256}, details.proposal_id and '
  'details.consumer equal to the target lane; the artifact must contain a complete valid executable spec. '

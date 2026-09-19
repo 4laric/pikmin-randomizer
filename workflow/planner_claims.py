@@ -9,8 +9,9 @@ done/review_ready owner only with hashed disposition
 evidence; unknown processes, protected children and in-flight launches fail closed.
 This is cooperative registry fencing, not authentication against hostile local users.
 
-CLI: python -m workflow.planner_claims --root <shared-absolute-root>
-     --request <json-file> claim|release|inspect
+CLI: <python> <checkout>/scripts/workflow_module.py planner_claims --root <shared-absolute-root>
+     --request <json-file> claim|release|inspect  (workers; provenance.cli renders it)
+     python -m workflow.planner_claims ... works for humans in the checkout itself.
 Request keys match the public functions, excluding reg. Never initialize a private
 registry for helpers. File keys use repository-relative semantic paths, not worktree
 paths. File parents overlap descendants; unrelated topic/provider names require the

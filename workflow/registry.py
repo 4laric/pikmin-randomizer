@@ -512,6 +512,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             return action
 
     def submit_handoff(self, key, generation, revision, path):
+        from .provenance import stamp
+        code = stamp()
         path = local_path(self.root, path)
         observed=self.snapshot()
         before=self.lane(observed,key,generation,revision)
@@ -533,7 +535,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             require(data.get('kind') != 'review', 'Use finish review-ready for reviews; reviews are not implementation handoffs')
             require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
-                        revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
+                        revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result),
+                        handoff_code_revision=code)
             if frozen:
                 self.delivery(state)['snapshots'][frozen['handoff']['sha256']]=dict(frozen,lane=key,
                     generation=generation,version='submission',created_at=self.clock())
@@ -550,6 +553,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         return result
 
     def integrate(self, key, generation, revision, record):
+        """The receipt stays exactly as submitted (replays compare it); code is a sibling."""
+        from .provenance import stamp
+        code = stamp()
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
             require(lane['state'] == 'integrating', 'Begin integration before recording completion')
@@ -574,7 +580,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                     export_record = None  # Existing text/log evidence remains supported.
                 require(not isinstance(export_record, dict) or export_record.get('action') != 'none-performed',
                         'Export evidence explicitly records no export; obtain actual export evidence')
-            lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record)
+            lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record,
+                        integration_code_revision=code)
             self.event(state, 'integrated', key, lead_seconds=self.clock() - (lane['started_at'] or lane['created_at']))
             return lane
 

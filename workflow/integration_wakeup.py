@@ -3,6 +3,7 @@ import copy
 import re
 
 from .control import fingerprint
+from .provenance import cli
 from .handoff import Rejected
 from .batching import isolated_handoff
 from .planner_demand import is_helper
@@ -157,7 +158,7 @@ def tick(controller):
                 'Never duplicate a cherry-pick, fabricate export evidence, or call missing lane receipts intact. '
                 'For admission_audit entries, the family is already admitted but the lane remains open. '
                 'Finish real source/export receipts through normal integration first. Otherwise use '
-                'python -m workflow.admission_reconciliation --root <canonical-root> --request <json>: '
+                + cli('admission_reconciliation') + ' --root <canonical-root> --request <json>: '
                 'lane, token from audit, reviewer, reviewer_generation, decision retain/superseded, reason, '
                 'evidence {path,sha256}. Retain requires next_action; superseded requires '
                 'no_remaining_delivery:true and covered_criteria explaining acceptance coverage. '
@@ -168,7 +169,7 @@ def tick(controller):
                 'A disposition_required review is enforced before review-ready standby. Accept a completed '
                 'review only with evidence via accept_review, or resume its stopped producer through normal '
                 'plan_launch for missing delivery. For a genuine prerequisite wait, record a pinned deferral '
-                'using python -m workflow.review_followup --root <canonical-root> --request <json>. '
+                'using ' + cli('review_followup') + ' --root <canonical-root> --request <json>. '
                 'Fields: key, generation, review_pin from demand, reviewer (your lane), reviewer_generation, '
                 'waiting_on (existing independent unfinished prerequisite lane, not yourself or the report), '
                 'next_action, reason, evidence {path,sha256}. This preserves the unresolved report and '
@@ -181,7 +182,7 @@ def tick(controller):
                 'absence of a valid integration handoff does not make the review itself ineligible. '
                 'Record an evidence-backed review decision and the exact next owner/action in the issue. '
                 'For a safely stopped blocked producer without a handoff, record the substantive decision '
-                'using py -3.12 -m workflow.shared_decisions --root <canonical-root> --request <json>. '
+                'using ' + cli('shared_decisions') + ' --root <canonical-root> --request <json>. '
                 'Fields: key, generation, source_pins {root,native} from current lane heads, file (owned path), '
                 'status approved/rejected, reviewer, reason, evidence {path,sha256}. This tool wakes the '
                 'same producer without granting integration or clearing unrelated gates. You own the '

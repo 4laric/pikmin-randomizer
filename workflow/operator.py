@@ -9,8 +9,10 @@ from .registry import Registry
 from .handoff import local_path, digest
 
 
-def report(state, now, root=None):
+def report(state, now, root=None, on_disk=None):
+    """on_disk is the checkout revision; it is read from git only when root is given."""
     from .delivery_contracts import audit
+    from .provenance import warnings
     lanes = state.get('lanes', {})
     autofill = state.get('throughput_runtime', {}).get('autofill', {})
     actions = []
@@ -67,10 +69,26 @@ def report(state, now, root=None):
                        for k, l in lanes.items() if l.get('state') in ('handoff_ready', 'integrating')],
                       key=lambda x: -x['age_seconds'])
     pool = autofill.get('planner_pool', {})
-    return dict(at=now, delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
+    control = state.get('control') or {}
+    if root is not None and on_disk is None:
+        from .service import code_status
+        code = code_status(control)
+    else:
+        running = control.get('controller_code_revision')
+        code = dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk))
+    return dict(at=now, code=code, delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
                 handoffs=handoffs, blocked=blocked,
                 planning={k:pool.get(k) for k in ('active','target','target_reason','recovery_active','recovery_candidates','sleeping_scopes','cooling_scopes')},
                 worker_count=len(state.get('throughput', {}).get('workers', {})))
+
+
+def code_line(code):
+    """One provenance line; dirty or mismatched code is loud."""
+    running = code.get('running') or {}
+    line = f"Code: running {(running.get('sha') or 'unknown')[:12]} dirty={running.get('dirty', 'unknown')}"
+    if code.get('on_disk'):
+        line += f" | on disk {(code['on_disk'].get('sha') or 'unknown')[:12]} dirty={code['on_disk'].get('dirty')}"
+    return line + ''.join('\n!!! WARNING: ' + w for w in code.get('warnings', []))
 
 
 def main():
@@ -83,6 +101,7 @@ def main():
     if args.json:
         print(json.dumps(data, indent=2))
         return
+    print(code_line(data['code']))
     print(f"Workers: {data['worker_count']} | Handoffs: {len(data['handoffs'])} | Blocked lanes: {len(data['blocked'])}")
     p = data['planning']
     print(f"Planning: {p['active']}/{p['target']} — {p['target_reason']}")

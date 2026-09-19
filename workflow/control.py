@@ -215,6 +215,8 @@ class ControlMixin:
         """Commit intent before external spawn; repeat requests return the same intent."""
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
         require(nonempty(instruction), 'Resume instruction required')
+        from .provenance import stamp
+        code = stamp()
         with self.transaction() as state:
             c = self.control(state)
             lane = self.lane(state, key)
@@ -243,7 +245,7 @@ class ControlMixin:
             item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
                 instruction=instruction, models=models, model_index=0, version=version,
                 session=lane['task_id'].removeprefix('opencode:'), status='intent',
-                process=None, created_at=self.clock(), attempts=0)
+                process=None, created_at=self.clock(), attempts=0, code_revision=code)
             require(lane['task_id'].startswith('opencode:'), 'Only known OpenCode sessions can resume')
             c['launches'][identity] = item
             self.event(state, 'launch_intent', key, action=identity)
@@ -356,10 +358,16 @@ class ControlMixin:
             return lane
 
     def controller_claim(self, process):
+        """The identity stays exact for probing; its code revision is a sibling field."""
+        from .provenance import code_revision
+        code = code_revision()  # Git runs before the writer lock is taken.
         with self.transaction() as state:
             c = self.control(state); old = c['controller']
             require(old is None or old == process or self.probe(old) == 'dead', 'Controller already live/unknown')
             c['controller'] = process
+            if old != process or c.get('controller_code_revision') != code:
+                c['controller_code_revision'] = code
+                self.event(state, 'controller_started', None, process=process, code_revision=code)
 
     def cool_provider(self, provider, seconds):
         with self.transaction() as state:

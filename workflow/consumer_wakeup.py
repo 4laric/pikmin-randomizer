@@ -4,6 +4,7 @@ import json
 import re
 
 from .control import fingerprint
+from .provenance import cli
 from .handoff import Rejected
 from .planner_demand import is_helper
 
@@ -80,7 +81,7 @@ def tick(controller):
                 prefix=('CONSUMER VERIFICATION REQUIRED before finish: verification='+launch['id']+'. '
                     'Reproduce the actual consumer failure using the integrated producer pins. '
                     'Record command, expected result and observed result, plus independent hashed consumer evidence. '
-                    'Submit python -m workflow.consumer_verification --root <canonical> --request <json> '
+                    'Submit '+cli('consumer_verification')+' --root <canonical> --request <json> '
                     'with verification, consumer, current generation, passed (boolean), prerequisite_resolved (boolean), check '
                     '{command,expected,observed}, evidence {path,sha256}. Runtime consumers also require runtime '
                     '{kind:game_runtime,native_head,executable:{path,sha256},log:{path,sha256},result:{path,sha256}}; '

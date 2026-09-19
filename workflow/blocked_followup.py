@@ -1,6 +1,7 @@
 """Turn evidence-backed blocked consumers into concrete preparation demand."""
 import copy
 from .control import fingerprint
+from .provenance import cli
 from .handoff import Rejected, require
 from .planner_demand import is_helper
 
@@ -109,7 +110,7 @@ def tick(controller):
             'Preserve source claims, final single-writer integration, '
             'runtime safety and ADMIT gates. Record proposal IDs, producer lane IDs, or precise external '
             'user-owned input evidence for every consumer in your final checkpoint. After publication, '
-            'record executable producer links with python -m workflow.blocked_followup --root <canonical> '
+            'record executable producer links with '+cli('blocked_followup')+' --root <canonical> '
             '--request <json>: coordinator, generation, consumer, consumer_generation, producers (lane IDs), '
             'reason, acceptance_check (the exact consumer command and expected outcome), evidence {path,sha256}. '
             'This creates automatic consumer wakeup after verified integration; delivery is not a verified '

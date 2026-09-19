@@ -39,6 +39,8 @@ def record(reg, key, generation, source_pins, file, status, reviewer, reason, ev
     require(isinstance(reviewer,str) and reviewer.strip() and isinstance(reason,str) and reason.strip(),
             'Reviewer attribution and scoped reasoning required')
     reg.evidence(evidence)
+    from .provenance import stamp
+    code=stamp()
     with reg.transaction() as state:
         lane=reg.lane(state,key,generation)
         if reviewer_generation is not None or reviewer.startswith('integration-support-'):
@@ -53,8 +55,8 @@ def record(reg, key, generation, source_pins, file, status, reviewer, reason, ev
         decision=dict(lane=key,generation=generation,source_pins=source_pins,file=file,status=status,
                       reviewer=reviewer,reason=reason,evidence=evidence)
         identity=fingerprint(decision)
-        state.setdefault('shared_preflight_decisions',{}).setdefault(identity,dict(decision,at=reg.clock()))
-        return dict(id=identity,**decision)
+        row=state.setdefault('shared_preflight_decisions',{}).setdefault(identity,dict(decision,at=reg.clock(),code_revision=code))
+        return dict(id=identity,**decision,code_revision=row.get('code_revision'))
 
 
 def tick(controller):

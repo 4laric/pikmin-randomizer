@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 
 from .control import fingerprint
+from .provenance import cli
 from .handoff import Rejected, digest, local_path, require, source_record
 from .runner import write
 from .scheduling import pending_heavy_lanes
@@ -670,7 +671,7 @@ def _planner_tick(controller, settings, manifest_hash):
             'owner/action disposition explaining whether it can resume without new inputs; do not invent '
             'a dependency or new job. External asset/decision blockers must identify the exact needed input. '
             'Then resolve each request using canonical workflow.prerequisite_queue.resolve, or run from '
-            'the canonical repository: py -3.12 -m workflow.prerequisite_queue --root ' + str(reg.root) +
+            'the pinned workflow checkout: ' + cli('prerequisite_queue') + ' --root ' + str(reg.root) +
             ' --request <private-json>. JSON fields: coordinator (your lane), generation (session-ready), '
             'request_id, outcome (linked or no_action), lanes (published/existing producer IDs for linked; '
             'empty for no_action), reason, evidence ({path,sha256} of your disposition report). '
@@ -682,7 +683,7 @@ def _planner_tick(controller, settings, manifest_hash):
     launch = reg.plan_launch(key, 'autofill-planner:' + previous['id'],
         partition_directive + 'Read your configured backlog-planner brief at ' + str(brief) + '. Capacity needs explicit prepared next-gate scopes. '
         'For an unclaimed prepared job with a wrong role/instruction/proof, use '
-        'workflow.prepared_repair.repair or py -3.12 -m workflow.prepared_repair --root <canonical-root> '
+        'workflow.prepared_repair.repair or ' + cli('prepared_repair') + ' --root <canonical-root> '
         '--request <json>; request fields manifest_path,replacement,expected_hash,evidence. '
         'It validates fresh issue/launch proofs, archives the original and preserves issue/lane/owned files/source pins. '
         'Registered or launched lanes cannot use this repair tool. Private candidate preparation uses '

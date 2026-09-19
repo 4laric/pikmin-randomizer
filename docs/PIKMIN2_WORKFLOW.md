@@ -45,6 +45,31 @@ canonical root (add `--json` for pins and blocker evidence). See the
 [operator quickstart](PIKMIN2_WORKFLOW_OPERATOR.md) for feeding work, completing
 receipts and checking real progress.
 
+### Code provenance
+
+Every record can be tied to the workflow code that wrote it. `workflow.provenance`
+computes, once per process, `{sha, dirty, tree, path}` for the checkout containing
+the `workflow` package: `git rev-parse HEAD`, whether `git status --porcelain --
+workflow scripts` is non-empty, and a sha256 over the sorted (path, sha256) pairs
+of `workflow/**/*.py`, `scripts/pikmin2_workflow.py` and
+`scripts/pikmin2_controller.py`. Unknown git state is reported as `sha: null,
+dirty: true`, never as clean. Additive `code_revision` fields use the compact form
+`{sha, dirty, tree}` (16-hex tree prefix):
+
+| Record | Field |
+|---|---|
+| controller claim | `control.controller_code_revision` (full form) and a `controller_started` event; `control.controller` stays the exact process identity |
+| launch intents (`plan_launch`, pool and candidate-QA) | `code_revision` |
+| `shared_review_decisions`, `shared_preflight_decisions`, `consumer_verifications` reports, `delivery.dispositions` | `code_revision` |
+| lane after `submit_handoff` / `integrate` | `handoff_code_revision` / `integration_code_revision` (handoff and receipt records stay exactly as submitted, so replays still compare equal) |
+
+Records written before provenance lack these fields; readers treat that as unknown.
+Worker instructions name absolute commands (`<python> <checkout>/scripts/workflow_module.py
+<module> --root ...`) rather than `python -m workflow.<module>`, which would import a
+stale `workflow/` from the worker's current directory. `-m` remains fine for humans
+in the checkout itself. `service status` and the operator report flag dirty or
+mismatched running code; deployment is in [the controller guide](PIKMIN2_CONTROLLER.md).
+
 ## Roles and current policy
 
 Shared-file review delegation (#635): the controller may grant a new
@@ -550,7 +575,7 @@ from their demand-based target, with reserved/queued/report/recovery details and
 the handoffs assigned to each worker.
 
 A live registered integration owner records explicit shared-file decisions with
-`python -m workflow.review_decisions --root <canonical-root> --request <json>`.
+the rendered `scripts/workflow_module.py review_decisions --root <canonical-root> --request <json>`.
 The request contains `reviewer`, reviewer `generation`, producer `key`,
 `producer_generation`, current `handoff_sha256`, and `decisions` entries with
 `file`, `status` (`approved` or `rejected`), and hashed `evidence` (`path`, `sha256`).

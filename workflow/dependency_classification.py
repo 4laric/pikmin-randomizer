@@ -2,6 +2,7 @@
 import copy
 import json
 from .control import fingerprint
+from .provenance import cli
 from .delivery_contracts import source_pins
 from .handoff import require, nonempty
 
@@ -125,7 +126,7 @@ INSTRUCTION=('CLASSIFICATION ASSIGNMENT: classify EVERY exact dependency of the 
  'Internal findings create separate bounded preparation demand; consumers remain blocked. Existing '
  'validated proposals may still be referenced through action_id. Exact user assets/decisions require '
  'an external support action. '
- 'Then run python -m workflow.dependency_classification --root <canonical-root> --request <json>, with '
+ 'Then run '+cli('dependency_classification')+' --root <canonical-root> --request <json>, with '
  'reviewer (your lane), generation, consumer, snapshot (assigned classification snapshot), evidence '
  '{path,sha256}, dispositions [{requirement (exact dependency, or <unspecified> if none), check '
  '(original consumer acceptance command and expected result), reason, contract_id OR action_id OR internal_blocker}]. '

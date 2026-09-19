@@ -42,12 +42,52 @@ py -3.12 scripts/pikmin2_controller.py --root C:/Users/alari/pikmin-randomizer -
 ```
 
 `--once` performs a real tick, including permitted dispatch. For ongoing operation,
-launch `scripts/Start-Pikmin2Controller.ps1` hidden with `-WorkspaceRoot`, `-Config`
-and an absolute `-Python` executable. The wrapper restarts a crashed controller
-with backoff; the registry rejects a second live controller. This is a local
-background process, not a boot-persistent Windows service. Start the wrapper again
-after reboot. Create `<controller output>/STOP` to stop future ticks. Active workers
-finish independently; STOP does not kill builds or runtime sessions.
+run the wrapper from a release worktree (see Deployment below). The wrapper restarts
+a crashed controller with backoff; the registry rejects a second live controller.
+This is a local background process, not a boot-persistent Windows service. Start
+the wrapper again after reboot. Create `<controller output>/STOP` to stop future
+ticks. Active workers finish independently; STOP does not kill builds or runtime
+sessions.
+
+## Deployment from a pinned release
+
+Production runs from an immutable release worktree, never from the shared canonical
+checkout: a branch switch, stash or half-finished edit there would otherwise change
+the controller's and every worker's gate code at once. The controller imports its
+runner from its own checkout and hands workers absolute commands into it
+(`scripts/pikmin2_workflow.py`, and `scripts/workflow_module.py <module>` for the
+module CLIs), while `--root` stays the canonical workspace and registry.
+
+```powershell
+py -3.12 scripts/workflow_module.py service status --root C:/Users/alari/pikmin-randomizer
+py -3.12 scripts/workflow_module.py service prepare-release --root C:/Users/alari/pikmin-randomizer --ref <commit or branch> --config C:/Users/alari/pikmin-randomizer/output/workflow/controller/config.json --python <absolute python.exe>
+```
+
+`status` is read-only. It shows the controller identity from `control.controller`,
+its liveness, the code revision recorded when it claimed the registry
+(`control.controller_code_revision`), the on-disk revision of that checkout, and
+whether its parent is the `Start-Pikmin2Controller.ps1` wrapper (`unknown` when
+the process table cannot tell). It warns, and exits 1, for dirty code, a running
+sha that differs from disk, missing provenance or an unsupervised controller.
+
+`prepare-release` resolves the ref to a commit (a worktree path is accepted only
+when it has no uncommitted changes) and creates a detached worktree at
+`<root>/output/workflow/release/<short-sha>`. An existing directory is reused only
+if it is a clean worktree at exactly that commit; anything else is refused. It then
+runs the pytest arguments listed in the release's `tests/workflow_release_tests.txt`
+inside the worktree and refuses on any failure or if the tests dirty the tree. It
+never signals the controller. On success it prints the switch-over for the operator:
+
+1. create `<controller output>/STOP` and wait for the controller PID to exit (its
+   wrapper exits too, because the controller exits 0 on STOP);
+2. delete STOP, or the new wrapper exits immediately;
+3. start `<release>/scripts/Start-Pikmin2Controller.ps1` hidden with
+   `-WorkspaceRoot <canonical root> -Config <config> -Python <python>`;
+4. run `service status` from the release and confirm the new sha, `dirty=False`
+   and a wrapper parent.
+
+Running workers keep the CLI paths they were given; new launches get the release's.
+Keep old release worktrees until no launch refers to them.
 
 The standard interval is 30 seconds. A 72–77% RAM band limits new launches, one per
 tick. Do not invent tasks to fill RAM. Existing jobs are not killed when memory
@@ -180,7 +220,8 @@ use a durable marker: uncertain creation is searched/reconciled, not submitted t
 Before live adoption, take a SQLite backup, preserve legacy sessions, and record
 supervisor identities. Seed the already-consumed dependency versions when a manual
 continuation has already consumed them. Do not run overlapping legacy and controller
-recovery. Deployment can use a pinned tooling checkout against the canonical registry.
+recovery. Deploy through `service prepare-release` (above); the registry records
+which revision claimed it (`controller_started` events) and stamps each launch.
 
 Validation:
 

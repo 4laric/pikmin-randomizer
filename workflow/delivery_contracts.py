@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 from .control import fingerprint
+from .provenance import cli
 from .handoff import require, nonempty
 from .planner_demand import is_helper
 
@@ -133,7 +134,7 @@ INSTRUCTION = (' Typed delivery_contract demand is owned by you through consumer
     'For a review-only completed producer whose source is not delivered, prepare a bounded issue-backed '
     'delivery successor using its preserved source/evidence through normal proposal/admission gates; '
     'do not rewrite done lanes or fabricate integration. Reuse active scopes and serialize conflicting '
-    'ownership. Register or replace the exact contract via python -m workflow.delivery_contracts '
+    'ownership. Register or replace the exact contract via ' + cli('delivery_contracts') + ' '
     '--root <canonical-root> --request <json>: consumer, consumer_generation, producer, '
     'kind (source_integration|review_artifact|consumer_behavior), requirement, acceptance_check, '
     'owner (your registered workstream owner lane), evidence {path,sha256}, optional supersedes ID. '

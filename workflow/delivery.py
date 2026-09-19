@@ -119,6 +119,8 @@ class DeliveryMixin:
         self.evidence(evidence)
         request = dict(file=file, status=status, reviewer=reviewer, evidence=evidence,
                        handoff_sha256=handoff_sha256)
+        from .provenance import stamp
+        stamp()  # Warm the per-process revision before taking the writer lock.
         with self.transaction() as state:
             return self._dispose_review(state, key, generation, revision, version, request)
 
@@ -152,7 +154,9 @@ class DeliveryMixin:
                     handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                     handoff=dict(**snapshot['handoff'], result=result))
         self.check_wip(state, lane)
-        record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock())
+        from .provenance import stamp
+        record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock(),
+                      code_revision=stamp())
         dispositions[identity] = record
         self.event(state, 'shared_review_applied', key, file=file, status=status, version=version)
         return record
@@ -297,8 +301,10 @@ class DeliveryMixin:
     def queue_candidate_qa(self, key, generation, revision, pin, instruction, models):
         """Atomically claim a pin and persist/bind its one launch intent."""
         from .control import fingerprint
+        from .provenance import stamp
         require(nonempty(instruction) and pin in instruction, 'Instruction must identify candidate pin')
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
+        code = stamp()
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
             subscription = self.delivery(state)['qa'].get(key)
@@ -325,7 +331,7 @@ class DeliveryMixin:
                 old = dict(id=identity, lane=key, generation=generation, reason=reason,
                            instruction=instruction, models=models, model_index=0, version=pin,
                            session=subscription['session_id'], status='intent', process=None,
-                           created_at=self.clock(), attempts=0)
+                           created_at=self.clock(), attempts=0, code_revision=code)
                 control['launches'][identity] = old
                 self.event(state, 'launch_intent', key, action=identity)
             attempt = subscription['attempts'].setdefault(pin, dict(status='claimed', valid=True,

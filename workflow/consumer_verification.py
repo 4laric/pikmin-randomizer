@@ -2,6 +2,7 @@
 import copy
 import json
 from .control import fingerprint
+from .provenance import cli
 from .handoff import require, Rejected
 
 
@@ -28,7 +29,7 @@ def bind_context(reg, state, launch, lane):
     launch['instruction']=('CURRENT CONSUMER VERIFICATION: use verification='+record['id']+
         ', consumer='+lane['lane']+', generation='+str(lane['generation'])+'. Prior verification IDs '
         'belong to old generations and must not be reused. Run this exact check before finish: '+
-        record['acceptance_check']+'. Submit through workflow.consumer_verification with independent '
+        record['acceptance_check']+'. Submit through '+cli('consumer_verification')+' --root <canonical> --request <json> with independent '
         'hashed evidence and current runtime proof where required. No prior success is inherited.\n'+launch['instruction'])
     reg.event(state,'consumer_verification_rebound',lane['lane'],verification=record['id'],previous=old['id'])
 
@@ -139,6 +140,8 @@ def report(reg, verification, consumer, generation, passed, check, evidence, pre
     require(isinstance(check, dict) and all(isinstance(check.get(k), str) and check[k].strip()
             for k in ('command', 'expected', 'observed')), 'Concrete command, expected and observed result required')
     reg.evidence(evidence)
+    from .provenance import stamp
+    code = stamp()
     with reg.transaction() as state:
         record = state.get('consumer_verifications', {}).get(verification)
         require(record and record['consumer'] == consumer, 'Consumer verification not found')
@@ -154,7 +157,7 @@ def report(reg, verification, consumer, generation, passed, check, evidence, pre
         record.update(status='passed' if passed else 'failed', check=check, evidence=evidence,
             runtime=runtime,
             prerequisite_resolved=passed and prerequisite_resolved is True,
-            consumer_generation=generation, checked_at=reg.clock(),
+            consumer_generation=generation, checked_at=reg.clock(), code_revision=code,
             source_pins={k:(lane.get(k) or {}).get('head') for k in ('root','native')})
         reg.event(state, 'consumer_verification_reported', consumer, verification=verification, passed=passed)
         return copy.deepcopy(record)

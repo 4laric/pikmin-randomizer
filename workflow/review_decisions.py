@@ -2,11 +2,12 @@
 import copy
 import json
 from .control import fingerprint
+from .provenance import cli
 from .handoff import require, Rejected
 
 
 INSTRUCTION = (' For handoff shared reviews, record your actual decision through '
-    'python -m workflow.review_decisions --root <canonical-root> --request <json>. '
+    + cli('review_decisions') + ' --root <canonical-root> --request <json>. '
     'Fields: reviewer (your registered authorized reviewer lane), generation (your generation), '
     'key (producer lane), producer_generation, handoff_sha256, decisions '
     '[{file,status:approved|rejected,evidence:{path,sha256}}]. The controller applies '
@@ -35,6 +36,8 @@ def record(reg, reviewer, generation, key, producer_generation, handoff_sha256, 
     for d in decisions:
         require(set(d)=={'file','status','evidence'} and d['status'] in ('approved','rejected'), 'Explicit scoped review required')
         reg.evidence(d['evidence'])
+    from .provenance import stamp
+    code=stamp()
     with reg.transaction() as state:
         owner=reg.lane(state,reviewer,generation)
         require(owner['state']=='running' and reg.probe(owner['process'])=='alive', 'Live integration reviewer required')
@@ -51,7 +54,8 @@ def record(reg, reviewer, generation, key, producer_generation, handoff_sha256, 
         identity=fingerprint(value)
         ledger=state.setdefault('shared_review_decisions',{})
         if identity not in ledger:
-            ledger[identity]=dict(value,id=identity,status='pending',applied=0,current_handoff=handoff_sha256,at=reg.clock())
+            ledger[identity]=dict(value,id=identity,status='pending',applied=0,current_handoff=handoff_sha256,at=reg.clock(),
+                                  code_revision=code)
             reg.event(state,'shared_review_decision_queued',key,decision=identity)
         return copy.deepcopy(ledger[identity])
 

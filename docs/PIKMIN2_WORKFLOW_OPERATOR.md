@@ -6,11 +6,18 @@ native implementation also requires PIKMIN2_IMPLEMENTATION_FANOUT.md.
 ```powershell
 py -3.12 -m workflow.operator --root C:/Users/alari/pikmin-randomizer
 py -3.12 -m workflow.operator --root C:/Users/alari/pikmin-randomizer --json
+py -3.12 scripts/workflow_module.py service status --root C:/Users/alari/pikmin-randomizer
 ```
 
 This reads the current registry, lists actionable admission and receipt gaps,
 and supplies blocked consumer checks/evidence in JSON. It does not launch or
 complete work. The dashboard is output/workflow/controller/throughput.html.
+The first line gives the controller's running code sha and dirty flag against
+the checkout on disk; `!!! WARNING` lines mean dirty or mismatched code, or a
+controller started by code that records no provenance. `service status` adds the
+controller's liveness and whether the restart wrapper supervises it. Deploy code
+changes with `service prepare-release` (docs/PIKMIN2_CONTROLLER.md), not by
+editing the checkout the controller runs from.
 
 ## Feed existing workers
 
