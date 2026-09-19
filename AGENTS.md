@@ -104,3 +104,9 @@ The shared `native/` checkout normally carries a recorded dirty baseline from ot
   (sha256 5388b54a9c2d156c94bcfa80acd53b513288dc17e88c97a1edfb57ad25db661a). Extract with the
   experimental/pikmin2_* tools (e.g. `pikmin2_white.py --iso` for white_* room models).
 - Recorded user answers with hashes: `output/workflow/user-answers/`.
+
+## Integration lines (canonical)
+
+Land root work only on `codex/p2-main-review` and native work only on `claude/p2-deepseek-wave-native`
+(declared as `integration_lines` in the controller config). `codex/content-lanes-531` and
+`claude/p2-deepseek-wave` are merged and closed: never land or push to them.
