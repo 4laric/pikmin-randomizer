@@ -173,7 +173,7 @@ imports the release worktree.
 1. Commit on `workflow-hardening` and test it (`py -3.12 -m pytest -q tests/test_runner_*.py`, etc.).
 2. The user builds the release:
    ```powershell
-   $env:PYTHONPATH='<current release>'; py -3.12 -m workflow.service prepare-release --root C:/Users/alari/pikmin-randomizer --ref <sha> --config C:/Users/alari/pikmin-randomizer/output/workflow/controller/config.json
+   cd <current release>; py -3.12 -m workflow.service prepare-release --root C:/Users/alari/pikmin-randomizer --ref <sha> --config C:/Users/alari/pikmin-randomizer/output/workflow/controller/config.json
    ```
    The entry point is `workflow.service`, not `pikmin2_controller.py`.
 3. The user deploys it: create STOP, then run
@@ -202,6 +202,9 @@ back over the registry; that drops every write made since.
   - "unable to find Ninja": pass `CMAKE_MAKE_PROGRAM` (the pip ninja path above).
   - "p2_fixture_captain_guard.h not found": pass `P2_CHALLENGE_GUARD_INCLUDE_DIR` pointing at the root
     line's `scripts/`.
+- **`No module named workflow.service`:** `-m` puts the current directory first on the path, and the live
+  checkout's older `workflow/` package shadows the release. Run `-m workflow.*` commands from inside the
+  release folder.
 - **The `prepare-release` "unrecognized arguments" error:** you called `pikmin2_controller.py`. Use
   `-m workflow.service`.
 - **An issue held by an old lane:** old non-`rd` lanes still hold issues and files. `check_lanes.py`
