@@ -6,6 +6,7 @@ an issue, changes admission, or starts a second integration writer.
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 
 from .handoff import Rejected, digest, local_path
@@ -16,7 +17,7 @@ def capture_costs(controller):
     """Ingest provider-reported estimates once; absent prices stay unknown."""
     reg = controller.reg
     paths = []
-    for key, entry in controller.config.get('lanes', {}).items():
+    for key, entry in controller.config.get('lanes', {}).copy().items():
         try:
             directory = local_path(reg.root, entry['output'])
             paths.extend((key, p) for p in directory.glob('run-*.jsonl'))
@@ -89,6 +90,7 @@ def completion_evidence(reg, lane):
     disposition = lane.get('review_disposition')
     if isinstance(disposition, dict):
         candidates.append(('review_disposition', disposition.get('evidence')))
+        candidates.append(('archived_review_disposition', disposition.get('archived_evidence')))
     handoff = lane.get('handoff')
     if isinstance(handoff, dict):
         candidates.append(('handoff', {key: handoff.get(key) for key in ('path', 'sha256')}))
@@ -109,38 +111,24 @@ def completion_evidence(reg, lane):
     raise Rejected('No valid completion evidence' + (': ' + '; '.join(failures) if failures else ' recorded'))
 
 
-def pool_tick(controller):
+def assign_pending(controller):
     reg = controller.reg
     settings = controller.config.get('throughput', {})
-    with reg.transaction() as state:
-        specs = dict(state.get('throughput_runtime', {}).get('launch_specs', {}))
-    controller.config['lanes'].update(specs)
-    if not settings.get('enabled', False):
-        return
-    # Completion releases a persistent pool worker only after accepted output.
-    pool = reg.scheduling_status()
-    lanes = reg.status()['lanes']
-    for assignment in pool['assignments'].values():
-        if assignment['status'] != 'dispatched':
-            continue
-        lane = lanes.get(assignment['lane'], {})
-        if lane.get('state') != 'done':
-            continue
-        try:
-            evidence = completion_evidence(reg, lane)
-            reg.complete_assignment(assignment['id'], evidence)
-        except (Rejected, OSError, ValueError, TypeError) as exc:
-            reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
-    from .autofill import autofill_tick, autofill_status
-    autofill_tick(controller)
+    if not settings.get('enabled', False): return
     pool = reg.scheduling_status()
     if controller.capacity():
         from .scheduling import job_priority
+        assigned = 0
+        assignment_limit = min(4, max(1, int(settings.get('assignments_per_tick', 1))))
         def priority(worker):
             return min((job_priority(j) for j in pool['jobs'].values()
                         if j['status'] in ('queued', 'assigned') and j['worker_id'] == worker['worker_id']),
                        default=(99, 99, 99, 0, worker['worker_id']))
-        for worker in sorted(pool['workers'].values(), key=priority):
+        # Workers without queued/assigned work cannot produce an assignment.
+        # Avoid a registry transaction and fresh RAM probe for every idle slot.
+        dispatched={a['worker_id'] for a in pool['assignments'].values() if a['status']=='dispatched'}
+        demanded={j['worker_id'] for j in pool['jobs'].values() if j['status'] in ('queued','assigned')}-dispatched
+        for worker in sorted((w for w in pool['workers'].values() if w['worker_id'] in demanded), key=priority):
             try:
                 assignment = reg.assign_job(worker['worker_id'], controller.memory())
                 if not assignment or assignment['status'] != 'assigned':
@@ -151,9 +139,87 @@ def pool_tick(controller):
                                {'reason': 'Prepared launch spec or stopped legacy supervisor required'})
                     continue
                 reg.plan_assignment(assignment['id'], controller.config['models'], controller.memory())
-                break  # Existing dispatcher still starts at most one runner per tick.
+                assigned += 1
+                if assigned >= assignment_limit or not controller.capacity(): break
             except Rejected as exc:
                 reg.notice(worker['worker_id'], 'pool_dispatch_blocked', {'error': str(exc)})
+
+
+def complete_pool_assignments(controller):
+    reg = controller.reg
+    # Completion releases a persistent pool worker only after accepted output.
+    snapshot = reg.snapshot()
+    pool = reg.scheduling(snapshot)
+    lanes = snapshot['lanes']
+    for assignment in pool['assignments'].values():
+        if assignment['status'] != 'dispatched':
+            continue
+        lane = lanes.get(assignment['lane'], {})
+        if lane.get('state') != 'done':
+            continue
+        try:
+            if lane.get('target_level') == 'planning-only' and not lane.get('integration') and not lane.get('review_disposition'):
+                child_path = controller.launch_directory(assignment['launch_id']) / 'child.json'
+                if child_path.is_file():
+                    reg.supersede_planning_assignment(assignment['id'], json.loads(child_path.read_text()))
+                    continue
+            evidence = completion_evidence(reg, lane)
+            reg.complete_assignment(assignment['id'], evidence)
+        except (Rejected, OSError, ValueError, TypeError) as exc:
+            reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
+
+
+def pool_tick(controller, *, publish=True):
+    reg = controller.reg
+    settings = controller.config.get('throughput', {})
+    with reg.transaction() as state:
+        specs = dict(state.get('throughput_runtime', {}).get('launch_specs', {}))
+    controller.config['lanes'].update(specs)
+    if not settings.get('enabled', False):
+        return
+    if not getattr(controller, '_dispatch_monitor', None):
+        complete_pool_assignments(controller)
+    from .autofill import autofill_tick, autofill_status
+    from .worker_capacity import park_blocked
+    park_blocked(reg)
+    autofill_tick(controller)
+    if settings.get('auto_batch_claim', False):
+        try:
+            claimed = reg.auto_claim_batches(max_candidates=settings.get('auto_batch_max_candidates', 16))
+            for batch in claimed:
+                reg.notice(batch['integrator'], 'integration_batch_claimed', {
+                    'batch_id': batch['id'], 'workstream': batch['workstream'],
+                    'candidates': list(batch['candidates']),
+                    'next_action': 'record validated build evidence or isolate a candidate'})
+        except (Rejected, OSError, ValueError, TypeError, KeyError) as exc:
+            reg.notice('integration', 'auto_batch_claim_blocked', {'error': str(exc)})
+    # A live owner is not sufficient: claimed batches must show execution
+    # progress. Escalate stalled owners by age bucket without changing pins or
+    # killing a live process; reassignment remains a fenced owner operation.
+    try:
+        batch_sla = max(300, int(settings.get('batch_stall_seconds', 900)))
+        sched = reg.scheduling_status()
+        lanes = reg.status()['lanes']
+        now = reg.clock()
+        for batch in sched.get('batches', {}).values():
+            if batch.get('state') != 'claimed':
+                continue
+            owner = lanes.get(batch.get('integrator'), {})
+            progress = owner.get('progress_at') or batch.get('created_at') or now
+            age = max(0, now - progress)
+            if age < batch_sla:
+                continue
+            bucket = int(age // batch_sla)
+            reg.notice(batch['integrator'], 'integration_batch_stalled', {
+                'batch_id': batch['id'], 'workstream': batch.get('workstream'),
+                'stall_bucket': bucket,
+                'candidates': list(batch.get('candidates', {})),
+                'action': 'record build progress or fenced reassignment before the next SLA bucket'})
+    except (Rejected, OSError, ValueError, TypeError, KeyError):
+        pass
+    if not getattr(controller, '_dispatch_monitor', None):
+        assign_pending(controller)
+    if controller.capacity():
         if settings.get('provisional_qa', True):
             for job in reg.candidate_qa_ready():
                 key = job['key']
@@ -177,13 +243,71 @@ def pool_tick(controller):
             capture_costs(controller)
         except (Rejected, OSError, ValueError) as exc:
             write(controller.base / 'cost-error.json', {'at': reg.clock(), 'error': str(exc)})
+    if publish and not getattr(controller, '_dashboard_monitor', None):
+        publish_status(controller)
+
+
+def publish_status(controller):
+    """Publish after dispatch so the dashboard includes this tick's starts."""
+    reg = controller.reg
+    from .stage_timing import observe, alert
+    observe(reg)
+    alert(reg)
+    from .autofill import autofill_status
     status = reg.throughput_status(ram_percent=controller.memory())
     status['autofill'] = autofill_status(reg)
-    with reg.transaction() as state:
+    error_path = controller.base / 'error.json'
+    if error_path.is_file():
+        try:
+            error = json.loads(error_path.read_text(encoding='utf-8-sig'))
+            age = status['at'] - error.get('at', status['at']) if isinstance(error, dict) else 0
+            status['controller_health'] = dict(status='degraded' if age < 2 * controller.config.get('interval', 15) else 'healthy',
+                                               last_error=error, age_seconds=max(0, age))
+        except (OSError, ValueError, TypeError):
+            status['controller_health'] = {'status': 'error record unreadable'}
+    else:
+        status['controller_health'] = {'status': 'healthy'}
+    from contextlib import nullcontext
+    with nullcontext(reg.snapshot()) as state:
         status['queue_pressure']={k:v for k,v in state.get('queue_pressure',{}).items() if k!='history'}
+    from .activity_health import snapshot
+    status['worker_activity'] = snapshot(controller)
+    from .worker_roster import roster
+    from .spend import hourly_spend
+    from .autofill import _workers
+    with nullcontext(reg.snapshot()) as state:
+        from .delivery_contracts import audit as delivery_audit
+        status['delivery_audit'] = delivery_audit(state)
+        status['worker_roster'] = roster(state, {w['worker_id'] for w in _workers(reg, state)},
+                                         status['worker_activity'])
+        spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
+                           control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))
+    status['hourly_spend'] = hourly_spend(spend_state, status['at'])
+    from .admission_progress import snapshot as admission_snapshot
+    status['monster_admission'] = admission_snapshot(reg.root, controller.config.get('monster_admission', {}))
+    from .admission_reconciliation import audit as admission_audit
+    status['admission_reconciliation'] = admission_audit(reg, status['monster_admission'],
+        controller.config.get('monster_admission', {}))
+    from .export_preparation import status as export_status
+    status['export_preparation'] = export_status(reg)
     write(controller.base / 'throughput.json', status)
     from .dashboard import render_dashboard
     target = controller.base / 'throughput.html'
     temporary = target.with_suffix('.tmp')
     temporary.write_text(render_dashboard(status), encoding='utf-8')
-    temporary.replace(target)
+    publish_dashboard(temporary, target, controller.reg.clock())
+
+
+def publish_dashboard(temporary, target, now, *, pause=time.sleep):
+    """An open Windows reader must not abort controller maintenance."""
+    for attempt in range(6):
+        try:
+            temporary.replace(target)
+            return True
+        except PermissionError as exc:
+            if attempt < 5:
+                pause(.05 * 2**attempt)
+                continue
+            write(target.parent / 'dashboard-publish-error.json',
+                  dict(at=now, error=str(exc), status='retry_next_tick', target=str(target)))
+            return False

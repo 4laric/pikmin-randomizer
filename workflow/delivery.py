@@ -74,6 +74,8 @@ class DeliveryMixin:
             require(hashlib.sha256(payload).hexdigest() == item['sha256'], 'Evidence changed during snapshot')
             frozen['evidence'][name] = write(f'evidence-{index}{source.suffix}', payload)
         build = frozen.get('build', {})
+        if build is None:
+            build = {}  # Valid tooling handoffs may explicitly omit a build.
         if build.get('replacement_main'):
             # Preserve original certificate bytes and explicitly derive a relocation
             # certificate for the identical executable bytes in the frozen bundle.
@@ -118,37 +120,42 @@ class DeliveryMixin:
         request = dict(file=file, status=status, reviewer=reviewer, evidence=evidence,
                        handoff_sha256=handoff_sha256)
         with self.transaction() as state:
-            lane = self.lane(state, key, generation)
-            dispositions = self.delivery(state)['dispositions']
-            identity = pin([key, generation, version])
-            old = dispositions.get(identity)
-            if old:
-                require(old['request'] == request, 'Conflicting disposition replay')
-                self._delivery_validate(old['snapshot'], lane)
-                require(lane['handoff']['sha256'] == old['snapshot']['handoff']['sha256'], 'Disposition superseded')
-                return old
-            self.lane(state, key, generation, revision)
-            self._delivery_stopped(state, lane)
-            require(lane['state'] in ('running', 'handoff_ready', 'integrating'), 'Resume/reconcile lane before disposition')
-            self.check_handoff(lane)
-            require(lane['handoff']['sha256'] == handoff_sha256, 'Review source hash changed')
-            data = self._delivery_read_handoff(lane)
-            matches = [r for r in data['shared_reviews'] if r['file'] == file]
-            require(len(matches) == 1, 'Expected exactly one shared review for file')
-            evidence_key = 'disposition_' + pin(request)
-            data['evidence'][evidence_key] = evidence
-            matches[0].update(status=status, reviewer=reviewer,
-                              evidence=matches[0]['evidence'] + [evidence_key])
-            snapshot = self._delivery_freeze(lane, data)
-            _, result = self._delivery_validate(snapshot, lane)
-            lane.update(state='handoff_ready', revision=revision + 1,
-                        handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
-                        handoff=dict(**snapshot['handoff'], result=result))
-            self.check_wip(state, lane)
-            record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock())
-            dispositions[identity] = record
-            self.event(state, 'shared_review_applied', key, file=file, status=status, version=version)
-            return record
+            return self._dispose_review(state, key, generation, revision, version, request)
+
+    def _dispose_review(self, state, key, generation, revision, version, request):
+        file, status, reviewer, evidence, handoff_sha256 = (request[k] for k in
+            ("file", "status", "reviewer", "evidence", "handoff_sha256"))
+        lane = self.lane(state, key, generation)
+        dispositions = self.delivery(state)['dispositions']
+        identity = pin([key, generation, version])
+        old = dispositions.get(identity)
+        if old:
+            require(old['request'] == request, 'Conflicting disposition replay')
+            self._delivery_validate(old['snapshot'], lane)
+            require(lane['handoff']['sha256'] == old['snapshot']['handoff']['sha256'], 'Disposition superseded')
+            return old
+        self.lane(state, key, generation, revision)
+        self._delivery_stopped(state, lane)
+        require(lane['state'] in ('running', 'handoff_ready', 'integrating'), 'Resume/reconcile lane before disposition')
+        self.check_handoff(lane)
+        require(lane['handoff']['sha256'] == handoff_sha256, 'Review source hash changed')
+        data = self._delivery_read_handoff(lane)
+        matches = [r for r in data['shared_reviews'] if r['file'] == file]
+        require(len(matches) == 1, 'Expected exactly one shared review for file')
+        evidence_key = 'disposition_' + pin(request)
+        data['evidence'][evidence_key] = evidence
+        matches[0].update(status=status, reviewer=reviewer,
+                          evidence=matches[0]['evidence'] + [evidence_key])
+        snapshot = self._delivery_freeze(lane, data)
+        _, result = self._delivery_validate(snapshot, lane)
+        lane.update(state='handoff_ready', revision=revision + 1,
+                    handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
+                    handoff=dict(**snapshot['handoff'], result=result))
+        self.check_wip(state, lane)
+        record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock())
+        dispositions[identity] = record
+        self.event(state, 'shared_review_applied', key, file=file, status=status, version=version)
+        return record
 
     def publish_candidate(self, key, generation, revision, version):
         require(nonempty(version), 'Candidate version required')

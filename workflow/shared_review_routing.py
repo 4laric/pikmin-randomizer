@@ -4,6 +4,7 @@ import json
 from .control import fingerprint
 from .handoff import local_path,require
 from .runner import write
+from .review_decisions import INSTRUCTION
 
 
 def tick(controller):
@@ -30,7 +31,7 @@ def tick(controller):
             require(inbox.is_relative_to(reg.root/'output'),'Review inbox must be private')
             inbox.mkdir(parents=True,exist_ok=True)
             packet=inbox/('shared-review-'+identity+'.md')
-            if old and (packet.exists() or now-old['delivered_at']<max(300,cfg.get('retry_seconds',600))):continue
+            if old.get('protocol')==2 and (packet.exists() or now-old['delivered_at']<max(300,cfg.get('retry_seconds',600))):continue
             payload=dict(owner=owner,producer=key,generation=lane['generation'],revision=lane['revision'],
                 issue=lane['issue'],file=review['file'],review_request=review,handoff=handoff,
                 root=lane.get('root'),native=lane.get('native'))
@@ -45,10 +46,10 @@ def tick(controller):
                 'Its stopped-producer/child fences must pass; if producer still live, retain decision and apply after stop. '
                 'Apply separate dispositions sequentially using the refreshed hash/revision. Approval then follows normal '
                 'integration/receipt checks; rejection needs explicit owner repair instructions. No ADMIT or semantic approval '
-                'outside this named file. Task remains outstanding until shared_reviews status changes, even if inbox consumed.\n',encoding='utf-8')
+                'outside this named file. Task remains outstanding until shared_reviews status changes, even if inbox consumed.\n'+INSTRUCTION,encoding='utf-8')
             with reg.transaction() as s:
                 s.setdefault('shared_review_routes',{})[identity]=dict(**payload,path=str(packet),
-                    delivered_at=now,attempts=old.get('attempts',0)+1,status='awaiting_owner_decision')
+                    delivered_at=now,attempts=old.get('attempts',0)+1,status='awaiting_owner_decision',protocol=2)
                 reg.event(s,'shared_review_routed',key,file=review['file'],owner=owner,task=identity)
     with reg.transaction() as s:
         for identity,record in s.setdefault('shared_review_routes',{}).items():

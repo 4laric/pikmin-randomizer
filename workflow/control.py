@@ -24,8 +24,8 @@ class ControlMixin:
             notices={}, consumed={}, controller=None, decisions={}, ram_paused=False))
 
     def control_status(self):
-        with self.transaction() as state:
-            return self.control(state)
+        control=self.snapshot(section=('control',))
+        return self.control({'control':control} if control else {})
 
     def evidence(self, value):
         require(isinstance(value, dict), 'Hashed evidence required')
@@ -51,6 +51,11 @@ class ControlMixin:
                 return lane
             if outcome == 'blocked':
                 require(dependencies and all(nonempty(d) for d in dependencies), 'Blocked needs explicit dependencies')
+            if outcome == 'review-ready':
+                from .support_actions import require_outcomes
+                require_outcomes(state,key)
+                from .review_followup import require_dispositions
+                require_dispositions(state, key, generation)
             lane.update(state={'blocked': 'blocked', 'review-ready': 'review_ready',
                                'reconcile': 'reconciling'}[outcome], outcome=value,
                         next_action=summary, revision=lane['revision'] + 1,
@@ -86,19 +91,40 @@ class ControlMixin:
 
     def accept_review(self, key, generation, summary, evidence):
         """Integrator acknowledges a completed review without promoting gameplay gates."""
-        self.evidence(evidence)
         require(nonempty(summary), 'Review disposition required')
         with self.transaction() as state:
             lane = self.lane(state, key, generation)
             record = dict(summary=summary, evidence=evidence)
             if lane['state'] == 'done':
-                require(lane.get('review_disposition') == record, 'Conflicting review disposition')
+                previous = lane.get('review_disposition') or {}
+                require(all(previous.get(k) == v for k, v in record.items()), 'Conflicting review disposition')
+                if previous.get('archived_evidence'):
+                    self.evidence(previous['archived_evidence'])
+                else:
+                    previous['archived_evidence'] = self.archive_evidence(evidence)
+                    self.event(state, 'review_evidence_archived', key, evidence=previous['archived_evidence'])
                 return lane
             require(lane['state'] == 'review_ready' and lane.get('review'), 'Completed review required')
             validate_review(self.root, lane['review'], lane)
+            record['archived_evidence'] = self.archive_evidence(evidence)
             lane.update(state='done', review_disposition=record, revision=lane['revision'] + 1)
             self.event(state, 'review_accepted', key)
             return lane
+
+    def archive_evidence(self, evidence):
+        """Keep verified bytes independent of mutable worker inbox lifetimes."""
+        source = local_path(self.root, evidence.get('path'))
+        content = source.read_bytes()
+        expected = evidence.get('sha256')
+        require(hashlib.sha256(content).hexdigest() == expected, 'Missing or changed evidence')
+        target = self.root / 'output/workflow/evidence' / expected
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with target.open('xb') as stream:
+                stream.write(content)
+        except FileExistsError:
+            require(digest(target) == expected, 'Evidence archive is corrupt')
+        return dict(path=str(target), sha256=expected)
 
     def receipt(self, key, generation, record, root_worktree, native_worktree=None):
         """Verify an existing integration, then replay its completion safely."""
@@ -165,12 +191,25 @@ class ControlMixin:
             return lane
 
     def notice(self, key, kind, detail):
+        identity = fingerprint([key, kind, detail])
+        from .storage import read_record
+        if read_record(self,('control','notices'),identity) is not None:return identity
         with self.transaction() as state:
             c = self.control(state)
-            identity = fingerprint([key, kind, detail])
             c['notices'].setdefault(identity, dict(id=identity, lane=key, kind=kind,
                 detail=detail, status='pending', at=self.clock()))
             return identity
+
+    def _resumable_integration_batches(self, state, lane):
+        """Fence ownership, not candidate validity: invalid candidates need isolation."""
+        pool = state.get('throughput', {})
+        batches = [b for b in pool.get('batches', {}).values()
+                   if b.get('integrator') == lane['lane'] and b.get('state') == 'claimed']
+        for batch in batches:
+            require(batch.get('generation') == lane['generation'], 'Stale integration batch generation')
+            require(pool.get('workstreams', {}).get(batch.get('workstream'), {}).get('owner_lane') == lane['lane'],
+                    'Integration batch workstream ownership changed')
+        return batches
 
     def plan_launch(self, key, reason, instruction, models, version=None):
         """Commit intent before external spawn; repeat requests return the same intent."""
@@ -183,8 +222,22 @@ class ControlMixin:
             old = c['launches'].get(identity)
             if old:
                 return old
-            require(lane['state'] in ('blocked', 'ready', 'running', 'reconciling'), 'Lane cannot resume')
+            if reason.startswith('internal-owner-resume:'):
+                from .action_routing import validate_resume
+                validate_resume(state,key,reason)
+            owner_wakeup = reason.startswith('integration-demand:') and lane['state'] == 'review_ready'
+            repair_wakeup = reason.startswith('integration-repair:')
+            if repair_wakeup:
+                from .integration_repair import repair_pin
+                repair_pin(state, lane, reason, self)
+            if owner_wakeup:
+                require(any(s.get('owner_lane') == key for s in state.get('throughput', {}).get('workstreams', {}).values()),
+                        'Only registered integration owners can wake from review')
+            if reason.startswith('integration-demand:'):
+                self._resumable_integration_batches(state, lane)
+            require(owner_wakeup or repair_wakeup or lane['state'] in ('blocked', 'ready', 'running', 'reconciling'), 'Lane cannot resume')
             require(self.recovery_safe(state, lane), 'Old worker or protected child still live/unknown')
+            self.check_wip(state, dict(lane, state='running'))
             require(not any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')
                             for l in c['launches'].values()), 'Dispatch already in flight')
             item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
@@ -251,12 +304,49 @@ class ControlMixin:
             require(item['status'] in ('intent', 'spawned'), 'Launch is not awaiting registration')
             lane = self.lane(state, item['lane'], item['generation'])
             require(self.recovery_safe(state, lane), 'Previous execution is not stopped')
+            self.check_wip(state, dict(lane, state='running'))
             require(self.probe(process) == 'alive', 'New runner must be alive')
+            resumed_batches = []
+            if item['reason'].startswith('integration-demand:'):
+                require(item['session'] == lane['task_id'].removeprefix('opencode:'),
+                        'Integration session changed before recovery')
+                resumed_batches = self._resumable_integration_batches(state, lane)
+            if item['reason'].startswith('integration-repair:'):
+                from .integration_repair import repair_pin
+                pin = repair_pin(state, lane, item['reason'], self)
+                lane.setdefault('repair_history', []).append(dict(isolation=pin, handoff=lane['handoff'],
+                    root=lane['root'], native=lane.get('native'), handoff_at=lane.get('handoff_at'),
+                    launch_id=action_id, at=self.clock()))
+                lane.update(handoff=None, handoff_at=None)
+            if lane['state'] == 'review_ready':
+                require(item['reason'].startswith('integration-demand:') and
+                        any(s.get('owner_lane') == lane['lane'] for s in state.get('throughput', {}).get('workstreams', {}).values()),
+                        'Review ownership changed before wakeup')
+                lane.setdefault('completed_turns', []).append(dict(generation=lane['generation'],
+                    outcome=lane.get('outcome'), review=lane.get('review'), handoff_at=lane.get('handoff_at')))
+                lane.update(review=None, handoff_at=None)
+            claims = [v for v in state.get('planning_claims', {}).values() if v['lane'] == lane['lane']]
+            for claim in claims:
+                require(self.probe(claim['process']) == 'dead', 'Original planning claim owner must be stopped')
+            for claim in claims:
+                claim.update(generation=lane['generation'] + 1, process=dict(process))
+            if claims:
+                self.event(state, 'planning_claims_rebound', lane['lane'], action=action_id)
             lane.update(generation=lane['generation'] + 1, revision=lane['revision'] + 1,
                 process=process, state='running', heartbeat_at=self.clock(), progress_at=self.clock(),
                 next_action=item['instruction'], progress_detail='Resumed: ' + item['reason'],
                 outcome=None, failure_streak=0, recovery_count=0)
             item.update(status='running', process=process, bound_generation=lane['generation'])
+            from .consumer_verification import bind_context
+            bind_context(self,state,item,lane)
+            lane['next_action']=item['instruction']
+            for batch in resumed_batches:
+                batch.setdefault('recovery_history', []).append(dict(
+                    generation=batch['generation'], revision=batch['revision'],
+                    launch_id=action_id, at=self.clock()))
+                batch.update(generation=lane['generation'], revision=batch['revision'] + 1)
+                self.event(state, 'integration_batch_resumed', lane['lane'],
+                           batch_id=batch['id'], action=action_id)
             self._rebind_pool_recovery(state, item, lane)
             if item['version']:
                 c['consumed'][item['lane']] = item['version']

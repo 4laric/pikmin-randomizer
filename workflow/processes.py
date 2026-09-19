@@ -3,6 +3,64 @@ import ctypes
 import os
 from pathlib import Path
 import socket
+import subprocess
+import threading
+import time
+
+
+class DeadIdentityCache:
+    """An exact dead identity cannot become alive again, even when its PID is reused."""
+    def __init__(self, inspect, limit=16384, *, unknown_seconds=0, clock=time.monotonic):
+        self.inspect, self.limit = inspect, limit
+        self.dead = set()
+        self.lock = threading.Lock()
+        self.unknown = {}
+        self.unknown_seconds, self.clock = unknown_seconds, clock
+
+    def __call__(self, identity):
+        key = tuple(identity.get(k) for k in ('host', 'pid', 'started'))
+        cacheable = all(key) and set(identity) == {'host', 'pid', 'started'}
+        if cacheable:
+            with self.lock:
+                if key in self.dead:
+                    return 'dead'
+                if self.unknown.get(key,0) > self.clock():
+                    return 'unknown'  # Conservative protection, never permission to recover.
+        result = self.inspect(identity)
+        if cacheable and result == 'dead':
+            with self.lock:
+                if len(self.dead) >= self.limit:
+                    self.dead.clear()
+                self.dead.add(key)
+                self.unknown.pop(key,None)
+        elif cacheable and result == 'unknown' and self.unknown_seconds:
+            with self.lock:
+                if len(self.unknown)>=self.limit:self.unknown.clear()
+                self.unknown[key]=self.clock()+self.unknown_seconds
+        return result
+
+
+def _windows_reused(identity):
+    """CIM may expose creation time even when a recycled service PID denies handles.
+
+    Only a positive mismatch proves the old owner dead; missing observations
+    remain unknown. This fallback never authorizes killing the replacement.
+    """
+    try:
+        pid = int(identity['pid'])
+        expected = int(identity['started'])
+        if pid <= 0 or expected <= 0:
+            return False
+        command = (f"$p = Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
+                   "if ($p.CreationDate) { $p.CreationDate.ToUniversalTime().ToFileTimeUtc() }")
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', command],
+                                capture_output=True, text=True, timeout=5,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        observed = int(result.stdout.strip()) if result.returncode == 0 else 0
+        # CIM timestamps have microsecond precision; FILETIME uses 100 ns.
+        return observed > 0 and observed // 10 != expected // 10
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return False
 
 
 def identify(pid):
@@ -54,4 +112,4 @@ def probe(identity):
     except ProcessLookupError:
         return 'dead'
     except (OSError, KeyError, ValueError):
-        return 'unknown'
+        return 'dead' if os.name == 'nt' and _windows_reused(identity) else 'unknown'

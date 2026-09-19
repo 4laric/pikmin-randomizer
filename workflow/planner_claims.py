@@ -139,6 +139,27 @@ def release(reg, lane, generation, resources, *, disposition=None, coordinator=N
         return dict(released=removed)
 
 
+def reconcile_topics(reg):
+    """Release terminal helper routing topics, preserving all substantive claims."""
+    from .planner_demand import is_helper
+    from .handoff import Rejected
+    state=reg.snapshot();coordinator=state.get('control',{}).get('controller')
+    if not coordinator or reg.probe(coordinator)!='alive':return []
+    released=[]
+    for resource,claim_record in state.get('planning_claims',{}).items():
+        if not resource.startswith('topic:') or not is_helper(claim_record['lane']):continue
+        lane=state['lanes'].get(claim_record['lane'],{})
+        disposition=lane.get('review_disposition') or {}
+        evidence=disposition.get('archived_evidence') or disposition.get('evidence')
+        if lane.get('state')!='done' or not evidence:continue
+        try:
+            result=release(reg,claim_record['lane'],claim_record['generation'],[resource],
+                           coordinator=coordinator,disposition=evidence)
+            released.extend(result['released'])
+        except (Rejected,OSError,ValueError):continue
+    return released
+
+
 def main(argv=None):
     from .registry import Registry
     parser = argparse.ArgumentParser(description=__doc__)

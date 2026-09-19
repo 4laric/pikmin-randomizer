@@ -11,7 +11,7 @@ import threading
 import traceback
 
 from .handoff import GATES, digest, local_path, nonempty, phantom_shared_reviews, require, source_record, validate_handoff
-from .processes import identify, probe
+from .processes import identify, probe, DeadIdentityCache
 
 STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
 ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
@@ -46,20 +46,24 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
         self.clock, self.probe = clock, process_probe
+        if process_probe is probe:
+            self.probe = DeadIdentityCache(process_probe, unknown_seconds=5)
         self._transaction_local = threading.local()
 
-    def snapshot(self):
+    def snapshot(self, *, section=None):
         """Read one committed registry version; never reserve the writer lock."""
         require(self.path.is_file(), 'Registry missing; run init first')
         db = sqlite3.connect(self.path, timeout=30)
         try:
             db.execute('PRAGMA query_only=ON')
-            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
+            db.execute('BEGIN')
+            from .storage import load
+            state, _ = load(db, section_path=section)
         finally:
             db.close()
-        require(row is not None, 'Registry not initialized')
-        state = json.loads(row[0])
         require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
+        if section:
+            for key in section:state=state.get(key,{})
         return state
 
     @contextmanager
@@ -70,23 +74,25 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         started = time.monotonic()
         acquired = None
         self._transaction_local.active = True
+        from .write_gate import gate
+        writer = gate(self.path)
+        entered = False
         try:
+            writer.acquire(); entered = True
             db.execute('BEGIN IMMEDIATE')
             acquired = time.monotonic()
-            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
-            require(row is not None, 'Registry not initialized')
-            state = json.loads(row[0])
+            from .storage import load, save
+            state, previous = load(db)
             require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
             yield state
-            encoded = json.dumps(state)
-            if encoded != row[0]:
-                db.execute('UPDATE registry SET body=? WHERE id=1', (encoded,))
+            save(db, state, previous)
             db.commit()
         except BaseException:
             db.rollback()
             raise
         finally:
             db.close()
+            if entered:writer.release()
             self._transaction_local.active = False
             elapsed = time.monotonic() - started
             if elapsed >= 2:
@@ -213,8 +219,11 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             return data
 
     def heartbeat(self, key, generation):
-        with self.transaction() as state:
-            lane = self.lane(state, key, generation)
+        from .storage import selected
+        with selected(self, [(('lanes',),key)]) as rows:
+            lane = rows[(('lanes',),key)]
+            require(lane is not None, 'Unknown lane: ' + key)
+            require(lane['generation'] == generation, 'Stale ownership generation')
             require(lane['state'] != 'done', 'Lane is done')
             lane['heartbeat_at'] = self.clock()
             # Liveness updates do not change revision or progress.
@@ -297,6 +306,20 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
     @staticmethod
     def heavy(resource):
         return resource == 'maintained-build-export' or resource.startswith('build:')
+
+    def reap_dead_build_leases(self, state):
+        """Caller holds the registry transaction; expiry never proves death."""
+        released=[]
+        for resource, lease in list(state['leases'].items()):
+            if not self.heavy(resource) or self.probe(lease['process'])!='dead':continue
+            del state['leases'][resource]
+            released.append(resource)
+            self.event(state,'lease_reaped',lease['lane'],resource=resource,
+                       reason='independent_build_capacity_monitor',process=lease['process'],
+                       generation=lease.get('generation'))
+        state['build_lease_recovery']=dict(at=self.clock(),released=released,
+            remaining=sum(self.heavy(k) for k in state['leases']))
+        return released
 
     def acquire(self, key, generation, resource, pid, ttl=300):
         resource = self.resource(resource)
@@ -490,8 +513,19 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
 
     def submit_handoff(self, key, generation, revision, path):
         path = local_path(self.root, path)
+        observed=self.snapshot()
+        before=self.lane(observed,key,generation,revision)
+        frozen=None
+        if observed['settings'].get('freeze_handoffs_on_submit',False):
+            data=json.loads(path.read_text(encoding='utf-8'))
+            result=validate_handoff(self.root,data,before)
+            require(data.get('kind')!='review' and result['slice_passed'], 'Passing implementation handoff required')
+            # Copy/hash large artifacts outside the registry writer lock.
+            frozen=self._delivery_freeze(before,data)
+            path=Path(frozen['handoff']['path'])
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
+            require(all(lane.get(k)==before.get(k) for k in ('root','native')), 'Submission source pins changed')
             require(lane['state'] in ('running', 'handoff_ready', 'integrating'),
                     'Only running/ready/integrating slices can submit a handoff')
             data = json.loads(path.read_text(encoding='utf-8'))
@@ -500,6 +534,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                         revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
+            if frozen:
+                self.delivery(state)['snapshots'][frozen['handoff']['sha256']]=dict(frozen,lane=key,
+                    generation=generation,version='submission',created_at=self.clock())
             self.check_wip(state, lane)
             self.event(state, 'handoff_ready', key)
             return lane
@@ -530,6 +567,13 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                 export = local_path(self.root, record['export_evidence'])
                 require(export.is_file() and digest(export) == record.get('export_sha256'),
                         'Export evidence missing/changed')
+                # A hashed statement that no export happened is not export proof.
+                try:
+                    export_record = json.loads(export.read_text(encoding='utf-8-sig'))
+                except (ValueError, UnicodeError):
+                    export_record = None  # Existing text/log evidence remains supported.
+                require(not isinstance(export_record, dict) or export_record.get('action') != 'none-performed',
+                        'Export evidence explicitly records no export; obtain actual export evidence')
             lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record)
             self.event(state, 'integrated', key, lead_seconds=self.clock() - (lane['started_at'] or lane['created_at']))
             return lane

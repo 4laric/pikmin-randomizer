@@ -58,6 +58,26 @@ class SchedulingTests(unittest.TestCase):
                                          {'integration': {'root_commit': 'a'*40}}))
         return self.reg.complete_assignment(assignment['id'], self.evidence)
 
+    def test_verified_parked_owner_allows_dispatch_without_liveness_race(self):
+        self.reg.finish('owner', 1, 'review-ready', 'Prior batch complete; standby', self.evidence)
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['process']['health'] = 'dead'
+        assignment = self.claim()
+        self.assertIsNotNone(assignment)
+        launch = self.reg.plan_assignment(assignment['id'], ['paid/muse'], 60)
+        self.assertEqual(launch['lane'], 'one')
+
+    def test_uninspectable_parked_owner_or_open_batch_blocks_admission(self):
+        self.reg.finish('owner', 1, 'review-ready', 'Prior batch complete; standby', self.evidence)
+        self.reg.enqueue_job(self.job())
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['process']['health'] = 'unknown'
+        self.assertIsNone(self.reg.assign_job('one', 60))
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['process']['health'] = 'dead'
+            state['throughput']['batches'] = {'open': dict(integrator='owner', state='claimed')}
+        self.assertIsNone(self.reg.assign_job('one', 60))
+
     def test_duplicate_and_mismatched_scope_rejected(self):
         job = self.job()
         self.reg.enqueue_job(job)
@@ -76,6 +96,17 @@ class SchedulingTests(unittest.TestCase):
             state['lanes']['one']['task_id'] = 'codex:unknown'
         with self.assertRaises(Rejected):
             self.reg.enqueue_job(self.job())
+
+    def test_idle_worker_can_be_reassigned_with_explicit_fence(self):
+        with self.reg.transaction() as state:
+            state['lanes']['one']['process']['health'] = 'alive'
+        record = self.reg.reassign_pool_worker('one', ['review', 'implementation'],
+                                               ['python', 'fixture-build'], 'operator',
+                                               'Promote idle worker for prepared fixture job')
+        self.assertIn('implementation', record['roles'])
+        self.assertIn('fixture-build', record['capabilities'])
+        with self.assertRaises(Rejected):
+            self.reg.reassign_pool_worker('one', ['review'], ['python'], 'operator', '')
 
     def test_racing_claims_and_plans_are_idempotent(self):
         self.reg.enqueue_job(self.job())

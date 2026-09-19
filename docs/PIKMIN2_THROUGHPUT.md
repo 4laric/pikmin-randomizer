@@ -1,20 +1,90 @@
 # Throughput operations
 
+Planning backpressure defaults to four waiting integration handoffs or an oldest
+handoff age of one hour. A single fresh handoff does not pause planning when
+workers are available and refill demand remains. `pause_integration_depth` and
+`pause_integration_age_seconds` override these thresholds. The dashboard reports
+the helper target reason; worker reservations and the bounded helper cap still apply.
+
+Exact-pin handoffs isolated by a batch are a separate repair backlog, excluded
+from actionable integration age/depth, oldest-handoff metrics and repeated
+integration support reviews. The dashboard retains their age and isolation reason.
+The controller resumes the existing stopped owner within its recorded scope,
+at most twice, to prepare a self-contained replacement against the destination
+pins. Live/unknown workers, protected resources and open integration claims remain
+fenced. Binding rechecks isolation pins and archives the rejected handoff before
+starting a new generation. Changed handoff pins return to normal validation;
+exhausted repairs require explicit adjudication. A repair is never acceptance.
+
 ## Parallel planning pool (#581)
 
-`throughput.autofill.planner_pool` configures up to three bounded helper turns,
+Planner intents waiting three minutes enter FIFO dispatch ahead of newer helpers,
+regardless of discovery priority; execution and recovery work retain precedence.
+`planner_fairness_seconds` on the controller config adjusts this threshold.
+
+Accepted, hash-verified no-work reports suspend repeat discovery while their named
+lane/issue inputs remain unchanged. Source pins, dependency lists and meaningful
+completion/blockage transitions wake them; heartbeat, generation and revision
+churn do not. Reports without named inputs use non-planner workflow state.
+`planner_pool.no_work_recheck_seconds` defaults to one hour for changes recorded
+only outside the local registry, such as GitHub issue updates. Active turns finish
+normally. The dashboard lists sleeping scopes, dependencies and recheck times.
+When a missing provider has been promoted into a concrete job, configure that
+helper's `prerequisite_lanes` with its canonical lane IDs. These explicit links
+supersede narrative inference and periodic retries: discovery waits until each
+named job is done with integration or an accepted review disposition. Missing or
+merely `done` lanes without acceptance remain blocked. The dashboard exposes each
+job's owner, issue, state and next action. A newly completed prerequisite wakes
+the partition even when its old no-work report never named that job.
+Pending non-helper review reports also wake their registered integration owner
+for an explicit evidence-based disposition; they no longer wait only for a source
+handoff to trigger the owner. Review acceptance never substitutes for integration.
+In parallel mode the publication coordinator waits for a new undispositioned
+proposal in the configured inboxes, or a manifest error, instead of waking just
+because the executable queue is empty.
+
+Verified no-work reports without an unfinished linked producer also create durable
+prerequisite requests automatically. These wake the same coordinator even without
+a proposal. It handles at most three requests per turn: reuse an existing owner,
+or create an assigned bounded issue and private source/launch proofs, publish via
+`merge_proposals`, then record `linked` through `workflow.prerequisite_queue.resolve`.
+Runtime links require no controller-config edit. Multiple partitions may share
+one producer; normal ownership validation and dispatch still apply. This is a
+narrow exception to the coordinator's publication-only role, authorizing provider
+job preparation, not source implementation or independent worker launches.
+
+Run the disposition CLI from the canonical repository:
+`py -3.12 -m workflow.prerequisite_queue --root <canonical-root> --request <private-json>`.
+The JSON contains `coordinator`, `generation`, `request_id`, `outcome` (`linked` or
+`no_action`), `lanes`, `reason`, and hashed `evidence`. Only the live configured
+coordinator may disposition a still-current report. A link must name an existing
+non-planner lane or a published spec. `no_action` needs a concrete evidence-backed
+reason, not an outside-my-partition deferral; changed inputs reopen consideration.
+Two unanswered turns leave an explicit exhausted request in diagnostics instead
+of silently spending on the same preparation forever. Existing active producers
+are never duplicated. Requests and links survive controller restarts.
+
+`throughput.autofill.planner_pool` configures bounded helper turns,
 partitioned into enemy acceptance/provider gaps, dungeons, and overworld/challenge.
 Each entry in `helpers` supplies a unique `scope`, private immutable autofill
 `template` path and its `sha256`. Templates are issue-backed, non-heavy reviews
 with private clean planning worktrees and no native implementation source.
 
 The controller derives a helper target from ready-backlog deficit, available
-approved stopped workers, `items_per_helper` (live: 3), `max_active` (3), and
+approved stopped workers, `items_per_helper` (live: 3), `max_active` (live: 24), and
 `reserve_workers` (2). Ready implementation consumes workers first. It provisions
 at most one helper per tick through ordinary ownership/launch checks. Scopes cannot
 overlap themselves; cycle IDs and stored specs make restart replay idempotent.
-At high backlog no new helpers launch; running bounded turns finish normally.
-`cooldown_seconds` (live: 900) prevents immediate repeat planning of one partition.
+In deficit mode, a full ready backlog suppresses new helpers. Idle-capacity mode
+instead grows planning to the lesser of the configured maximum, distinct demanded
+partitions, and idle plus active helper capacity minus unclaimed ready work and
+the execution reserve. There is no additional hard-coded three-helper ceiling.
+For example, nine idle workers and three active helpers with a reserve of two
+permit ten helpers. Eight newly ready unclaimed jobs lower that target to two.
+Running bounded turns finish normally as the target shrinks.
+Helper refill is paused when the integration queue has depth at least four or an
+item older than one hour. A ready item with only one idle worker also pauses refill.
+`cooldown_seconds` (live: 300) prevents immediate repeat planning of one partition.
 
 Helpers stage immutable complete spec proposals in separate partition inboxes,
 finish `review-ready` with a hashed report, and perform no source implementation,
@@ -335,6 +405,13 @@ accumulating. Add implementation, review, repair, integration, and QA capacity a
 appropriate while respecting each workstream's one integration writer, 90% RAM
 ceiling, and two shared heavy-build slots.
 
+The dashboard reports idle workers by role/capability and lists ready jobs with no
+compatible idle worker. “Idle” without a compatible role is not available capacity;
+resolve that mismatch before increasing planner fan-out. Blocked refill items
+retain a category (`provider`, `integration_owner`, `worker_capacity`, or
+`workflow`) and a first-blocked timestamp so repeated retries do not hide the
+actual dependency age.
+
 ## 8. Keep acceptance work staffed without another approval round
 
 The user has authorized ongoing paid worker reuse and available capacity. Within
@@ -518,6 +595,14 @@ review, change acceptance, reset the coordinator or grant ADMIT.
 
 ## Queue-aware support (#624)
 
+The dashboard Capacity panel includes worker spend over the last 60 minutes,
+with a per-model breakdown under Inspect details. The read-only OpenCode database
+query is restricted to this workflow's distinct registered/managed sessions and
+completed messages within the window. It uses reported message costs, excludes
+Codex and unrelated account use, and is an estimate rather than a billing statement.
+Zero/missing prices are unpriced, not free. If the database is unavailable, the
+existing event-log subtotal is labeled partial and never added to the database total.
+
 With `queue_pressure.enabled`, the controller observes publication, integration and
 runtime queues every tick, sampling arrivals/departures/completions at most once
 per minute over one hour. Initial observations are a baseline, not arrivals.
@@ -528,12 +613,33 @@ downstream + twice positive sampled growth). See dashboard Queue pressure and
 controller/queue-pressure.json. Measurements guide staffing, not CPU utilization.
 
 Idle support helpers rank by stage pressure ahead of discovery; ready implementation
-still reserves workers first. Two issue-backed integration-support partitions (#625,
-#626) prepare advisory pinned handoff review packets for the existing integrator.
+still reserves workers first. Integration assistance has a separate concurrency
+limit (`integration_support_max_active`, default 2). Integration depth/age pauses
+discovery but does not pause assistance draining that queue. The execution reserve,
+model pacing and RAM controls still apply; existing turns drain without preemption.
+Registered planning-only discovery, publication and integration helpers in the autofill
+pool can be admitted and dispatched while the integrator is unavailable; implementation jobs retain the
+integration-owner availability gate.
+Preparation (`planner_pool.provisions_per_tick`) and pool assignment
+(`throughput.assignments_per_tick`) support bounded bursts of one to four jobs.
+The live controller uses four, as does its existing dispatch burst. Each preparation
+rechecks free workers and the execution reserve; each dispatch retains RAM and model
+spacing controls. Pending helper records do not count as occupied worker capacity.
+The dashboard reports integration assistance and its target separately.
+Two issue-backed integration-support partitions prepare pinned packets for the integrator.
 They review up to three targets per turn; completed report targets are remembered by
 source/handoff fingerprint so unchanged packets do not consume repeat turns. Changed
-pins or new handoffs create new demand. No helper merges, grants shared approval,
-builds, or admits enemies. Active lanes are not preempted.
+pins or new handoffs create new demand. `mode: preparation` upgrades read-only review
+to private integration rehearsal: helpers may resolve conflicts and test in exclusive
+worktrees/`codex/` branches beneath their owned output directory. Heavy builds still
+require registry leases and private build directories. Packets identify producer and
+actual destination commits, handoff hash, resolution commits/patches, test evidence
+and unresolved decisions. Changed pins require revalidation. A prior read-only report
+does not suppress the first preparation turn; unchanged preparation is deduplicated.
+Helpers never edit producer/shared worktrees, merge into the maintained line, export,
+grant shared approval, issue integration receipts or admit enemies. The integrator
+checks preparation packets in `output/deepseek-wave/inbox/integration-support-prep-*.md`
+and retains final validation and acceptance. Existing read-only turns retain their scope.
 
 Within existing enemy/content/expansion priority classes, autofill prefers prepared
 providers with more explicit downstream dependents. Preflight now rejects missing
@@ -541,6 +647,15 @@ lane names and runtime proposals without a prepared private native source worktr
 review feedback routes these failures to preparation repair before assignment.
 
 ## Unbound dispatch recovery (#627)
+
+Dispatch allows up to two seconds for a newly spawned local runner to register,
+then binds and delivers its prompt in the same call. A model reservation and pacing
+timestamp are persisted before spawn. Already-started unbound runners have priority
+over fresh launches, and their reserved model can finish binding during its own
+spacing window. This prevents long reconciliation ticks from consuming the runner
+registration timeout. The existing three-retry bound remains; exhausted registration
+is reported as recovery/inspection rather than ordinary queued work. The dashboard's
+helper-session counts exclude implementation sessions, which appear in the worker roster.
 
 An intent whose runner explicitly ended registration_timeout can be retried only
 with null bound process, confirmed-dead runner, absent start.json/child.json and a
@@ -570,3 +685,202 @@ files receive no invented owner. For #129/#132, #186 delegates focused file revi
 the existing species integration lead; the reviewer must inspect pins/tests and record
 approve/request-changes evidence through dispose_review, retaining stopped-producer
 fences. The healthy coordinator/integrator is not restarted or duplicated.
+# Managed-session recovery and activity evidence
+
+The controller checks process identity (PID, host and creation time), not PID
+existence alone. A heartbeat is liveness bookkeeping, not proof of useful work.
+The dashboard's Worker activity section reports observed session activity;
+routine OpenCode cleanup lines do not reset the age. Ten minutes without session
+activity creates an inspection notice. This is deliberately not permission to
+kill an arbitrary live tool or build.
+
+Quiet, session-specific balance, rate-limit and invalid-request failures are
+eligible for bounded recovery. The controller checks the runner/child relationship,
+descendant processes, leases, queued requests and ownership generation before
+stopping only the stranded OpenCode child. The runner records its real exit.
+Confirmed-dead runners with confirmed-dead children can also be resumed without
+inventing successful results. Unknown process identities remain fenced.
+
+Retries preserve the session, work and planning claims, use the current model
+allowlist, and stop after their retry budget with an actionable notice. Recovery
+does not mark slices completed, remove issue dependencies, or grant ADMIT.
+
+Managed launches derive a private configuration granting access within the
+canonical repository when no explicit external-directory policy exists. This
+covers workflow scripts, registry/evidence and private worktrees; issue ownership
+still controls edits. Explicit policies are preserved. An existing idle prompt
+inside that repository can be recovered through the same process fences; paths
+outside it require inspection. Permission repair has its own two-retry budget
+and preserves provider retry counters. Every launch uses a private configuration
+copy so OpenCode cannot mutate pinned source files. Legacy schema-hint insertion
+is accepted only when removing that exact insertion reproduces the pinned hash;
+all other configuration changes still fail validation.
+
+New handoffs wake the existing stopped integration owner. Admission and worker
+dispatch also recognize a stopped owner with a verified standby review report,
+no open batch and no live/unknown protected process. This avoids a timing race
+between a short standby turn and the scheduler. Actual batch integration still
+requires the owner to run and claim the work; standby never accepts a slice.
+A parked review report is archived when that same owner binds a new generation;
+it is not discarded or treated as gameplay acceptance. A claimed batch is itself
+wake demand: a confirmed stopped owner can resume in the same session, provided
+its batch generation and registered workstream ownership still match. Binding
+atomically advances the batch ownership generation/revision and records recovery
+history, preserving all candidate pins, builds and isolation decisions. The owner
+must reread revisions and resume existing batches before claiming new work.
+Live/unknown owners or protected processes and stale/transferred ownership remain
+fenced. Unchanged demand has at most two wakeups,
+then produces an inspection notice instead of an endless model loop.
+
+Blocked implementation consumers also receive one reassessment turn per exact
+verified prerequisite receipt set. A newly integrated producer can match an issue
+reference in the consumer dependencies, or a hashed coordinator prerequisite
+disposition/report can explicitly connect it to that consumer. This covers issue
+aliases that the versioned artifact wakeup cannot resolve. Receipt validation
+evidence must still verify; review-only completion is not integrated source.
+Live/unknown workers, protected children, in-flight launches and existing handoffs
+remain fenced. Reassessment preserves original dependencies and source records:
+the consumer must verify applicability, update its private worktree and record
+remaining gates. It cannot infer shared approval or gameplay acceptance. An
+unchanged receipt set does not restart a still-blocked consumer repeatedly.
+
+Automatic batching excludes an isolated handoff while its generation, revision,
+source and evidence pins match the recorded isolation. The controller emits a
+deduplicated repair-needed notice containing the batch ID and reason, and does
+not wake the integrator repeatedly for that unchanged input. Revised handoffs
+are reconsidered through normal validation. Explicit batch operations remain
+available for deliberate re-review.
+
+Accepted review dispositions retain a verified copy under
+`output/workflow/evidence/<sha256>`. Completion can use that copy after a temporary
+worker inbox disappears; changed or corrupt evidence is never rehashed into
+acceptance. Legacy accepted dispositions can archive their original verified
+bytes through idempotent review-acceptance replay.
+
+An interrupted planning-only cycle incorrectly left `done` without a disposition
+can retire as `superseded` only after a later accepted cycle covers the identical
+issue, scope and owned files. The original runner, child, leases and requests must
+be stopped, with no in-flight dispatch or retained planning claims. The old
+assignment releases its reservation without counting any accepted implementation
+or inventing a report for the interrupted turn.
+
+Autofill can adapt idle worker capabilities through the explicit
+`throughput.autofill.worker_adaptation` policy. It requires `enabled`, an
+`authorized_by` identity, and named `profiles` with `role`, `workstream`,
+`requires` (existing capabilities), and `grants` (permitted capabilities).
+For example, a content-import implementation profile can authorize
+`runtime-import` for workers already holding `content-source-audit` and
+`source-review`. Existing compatible workers are preferred. Roles are never
+automatically promoted and only the missing capabilities required by the job
+are added; this is dispatch authorization, not evidence of runtime acceptance.
+
+Adaptation follows issue/source/launch validation and admission/conflict checks,
+and commits atomically with the worker reservation. Every lane belonging to the
+worker must be completed and safely stopped, with accepted completion or an
+explicit cancellation/supersession. Open assignments, in-flight launches,
+provisioning reservations and integration owners are excluded. The
+`pool_worker_adapted` event records the policy, authorizer, job spec hash and
+added capabilities. Private worktrees, build leases and runtime evidence remain
+mandatory. Missing or disabled policy leaves unmatched work awaiting a worker.
+
+Prerequisite resolution contract v3 re-audits verified no-work reports once under
+its new rules. A linked disposition must include an outstanding producer; linking
+only completed historical work cannot resolve a missing input. Genuine completed
+partitions use an evidence-backed no_action disposition. The coordinator receives
+cross-partition blocked consumers and their evidence/ownership, and must prepare
+actual missing provider work or identify an exact external owner/input. Requests
+referencing blocked runtime consumers take priority; the three-request turn bound
+and two-attempt retry limit still apply. No planner is restarted merely to change
+the waiting count.
+
+A no_action report referencing blocked consumers must name an explicit user-owned
+external_input (kind user_asset/user_decision, owner user, and exact detail).
+Internal missing pins, fixture ownership or integration work require an executable
+producer or bounded discovery job; referring them back to the controller cannot
+close the request. This does not clear external asset or acceptance requirements.
+
+The dashboard's prominent monster admission progress reads the configured
+monster_admission.source maintained worktree through its canonical
+load_and_validate/admission_contract functions in a read-only subprocess.
+The denominator is playable source/variant identities (variants separate),
+excluding plants/helpers/projectiles/non-spawnable bases. Names and counting
+rules are expandable. Invalid/missing source displays Unavailable, never zero.
+
+Linked prerequisite scopes are re-promoted when every outstanding linked producer
+is blocked. A linked disposition must include an outstanding non-blocked producer
+(or a published job awaiting admission); linking blocked consumers back to themselves
+cannot establish progress. Re-promotion is deduplicated against the report and
+stranded producer set, and existing retry bounds apply. Exhausted requests may retry
+when semantic inputs change (source pins, dependencies or terminal state), never
+merely because a heartbeat or progress timestamp moved.
+# Prerequisite preparation fallback (#635)
+
+An exhausted coordinator request (two unsuccessful turns), or a pending request
+older than 15 minutes, can demand a bounded prerequisite-recovery turn from its
+existing issue-backed planning partition. The ordinary idle-worker reserve,
+private worktree, topic/file claims and publication validation still apply.
+An outstanding nonblocked producer suppresses this recovery. The helper must
+prepare concrete producer proposals (or a bounded pin-discovery proposal), verify
+an actual live producer, or identify an exact user-owned external input; merely
+referring work back to the coordinator is insufficient.
+
+Recovery is recorded once per partition and semantic dependency snapshot, before
+admission, so heartbeat changes and rewritten no-work reports cannot create an
+unbounded retry loop. Changed source/dependency inputs can rearm it. Recovery
+preparation does not imply implementation, integration or gameplay acceptance.
+
+Shared-owner review routing (#635): explicit #186 review requests on stopped,
+nonintegrated blocked producers or completed review-only producers are integration
+owner demand, even before a valid handoff exists. The existing integrator must
+inspect pinned source and record a review decision or prepare bounded shared work;
+this never grants integration or gameplay acceptance. Each unchanged request/source
+pin set receives at most two wakeups, independently of unrelated queue churn.
+Live or unknown producer/owner processes retain the normal recovery fences.
+
+Terminal lease cleanup (#635): a terminal managed session with a verified normal
+exit-loop boundary and completed tools may clean up its idle CLI despite an
+expired build lease owned by its exact current-generation runner. Fresh safe-tree
+checks remain mandatory. Queue entries, live builds, unknown identities,
+non-build leases, unexpired leases and provider-error paths remain protected.
+The recovery does not delete leases or stop runners: real runner exit permits
+normal dead-owner lease reclamation.
+
+Build-resource wakeup (#635): after a newer build lease release/reap or capacity
+increase, stopped blocked lanes explicitly reporting build contention can reassess
+once per availability event. Fresh capacity sampling, ordinary process/ownership
+fences and a two-launch per-tick limit apply. This reserves no lease and clears no
+source, asset or shared-review dependencies; resumed workers must acquire normal
+FIFO/exclusive leases and retain unresolved gates.
+
+Pre-handoff shared decisions (#635): `py -3.12 -m workflow.shared_decisions
+--root <canonical-root> --request <json>` records a substantive approved/rejected
+file review for a safely stopped blocked producer. Fields: key, generation,
+source_pins `{root,native}` matching current heads, exact owned file, status,
+reviewer attribution, scoped reason, evidence `{path,sha256}`. The controller
+verifies the evidence and pins again and wakes the same producer once. This does
+not integrate source, clear unrelated dependencies, or grant gameplay acceptance.
+
+Unclaimed prepared-spec repairs (#635): `py -3.12 -m workflow.prepared_repair
+--root <canonical-root> --request <json>` accepts manifest_path, full replacement,
+expected_hash (workflow.control.fingerprint of original spec), and evidence.
+Fresh issue/launch/source proofs are mandatory. Issue/lane, source records,
+workstream and owned files cannot change. Originals are archived; manifest writes
+are fenced against concurrent changes. Registered/launched lanes are ineligible.
+Use implementation/review roles for private candidate preparation; the existing
+integrator retains shared destination writes. Update issue scope before repair.
+
+### Abandoned build waiters and availability recovery
+
+Normal-ended terminal sessions may be reclaimed when their only build reservation is a pre-exit queue entry owned by the exact current-generation runner. Existing terminal evidence, descendant safety and PID birth checks still apply. Recovery stops only the idle CLI child; canonical dead-owner queue reaping then removes the reservation. Queue reaping/cancellation carries the resource in its event and can wake blocked build consumers, including explicit FIFO-head/heavy-pool blockers. Live or unknown processes and unrelated review/runtime gates remain protected. Dashboard attention lists count every blocked item rather than silently capping the total at ten.
+
+### Admission freshness and orphaned blocker follow-up
+
+The sole controller runs a lightweight RAM observer every 15 seconds independently of scheduling, issue queries and dashboard publication. It only refreshes the RAM admission sample/hysteresis; it never dispatches work or acquires a build lease. Failed measurements leave the timestamp unchanged, so the 60-second stale-sample gate still fails closed. Staffing exposes both unoccupied capacity and the reason usable capacity is withheld (RAM pressure or expired observation).
+
+A safely stopped runner with a missing terminal outcome gets one same-session artifact reconciliation per unchanged root/native head pair. It must inspect preserved changes and receipts first, and cannot infer acceptance from the previous exit code.
+
+Blocked consumers with verified outcome evidence older than five minutes can generate prerequisite-preparation demand independently of helper no-work reports. The existing coordinator receives at most three consumers per turn and two attempts per unchanged evidence/source snapshot. An unstarted coordinator intent can receive this demand before any launch directory exists; a live or uncertain launch is never rewritten. Explicit active producer dependencies and in-flight consumer recovery are respected. This prepares real scoped proposals, not acceptance or automatic gate clearance.
+
+Blocked-consumer links are recorded by the live registered coordinator with `python -m workflow.blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path.
+
+Dashboard HTML replacement retries transient Windows reader locks for at most 1.55 seconds. A persistent lock preserves the last good HTML, records `dashboard-publish-error.json`, and retries next tick without aborting controller maintenance.

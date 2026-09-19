@@ -43,6 +43,37 @@ class BatchTests(unittest.TestCase):
             results = list(pool.map(attempt, ('a', 'b')))
         self.assertEqual(sum(x is not None for x in results), 1)
 
+    def test_auto_claim_batches_oldest_first_for_live_owner(self):
+        batches = self.reg.auto_claim_batches()
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0]['workstream'], 'cave')
+        self.assertEqual(list(batches[0]['candidates']), ['one', 'two'])
+
+    def test_auto_claim_rejections_are_contained_and_reported(self):
+        from unittest.mock import patch
+        with patch.object(self.reg, 'batch_claim', side_effect=Rejected('Batch ID already exists')):
+            self.assertEqual(self.reg.auto_claim_batches(), [])
+        self.assertIn('auto_batch_claim_rejected', [n['kind'] for n in self.reg.control_status()['notices'].values()])
+        with patch.object(self.reg, 'check_handoff', side_effect=Rejected('Stale evidence')):
+            self.assertEqual(self.reg.auto_claim_batches(), [])
+
+    def test_isolated_unchanged_handoffs_wait_for_revision(self):
+        batch = self.reg.auto_claim_batches()[0]
+        self.reg.batch_isolate(batch['id'], 'three', 1, 1, 'one', 'Missing prerequisite')
+        self.reg.batch_isolate(batch['id'], 'three', 1, 2, 'two', 'Failed validation')
+        self.reg.batch_close(batch['id'], 'three', 1, 3)
+        self.fixture.health = 'dead'
+        self.assertEqual(self.reg.auto_claim_batches(), [])
+        self.assertEqual(self.reg.auto_claim_batches(), [])
+        notices = [n for n in self.reg.control_status()['notices'].values() if n['kind'] == 'integration_repair_needed']
+        self.assertEqual(len(notices), 2)
+        self.fixture.health = 'alive'
+        with self.reg.transaction() as state:
+            state['lanes']['one']['revision'] += 1
+        new = self.reg.auto_claim_batches()
+        self.assertEqual(len(new), 1)
+        self.assertEqual(list(new[0]['candidates']), ['one'])
+
     def test_stale_owner_and_candidate_fences(self):
         self.pins[0]['generation'] = 2
         with self.assertRaises(Rejected): self.claim()
@@ -66,6 +97,12 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(result['builds'][0]['candidates'], ['two'])
         self.assertFalse(result['builds'][0]['gameplay_accepted'])
         self.assertEqual(self.reg.status()['lanes']['two']['state'], 'handoff_ready')
+        with self.assertRaisesRegex(Rejected, 'per-lane integration receipts'):
+            self.reg.batch_close('batch', 'three', 1, 3)
+        lane=self.reg.status()['lanes']['two']
+        lane=self.reg.checkpoint('two',1,lane['revision'],{'state':'integrating'})
+        self.reg.integrate('two',1,lane['revision'],dict(root_commit=source['head'],
+            validation_path=self.fixture.evidence['path'],validation_sha256=self.fixture.evidence['sha256']))
         self.reg.batch_close('batch', 'three', 1, 3)
 
     def test_source_file_overlap_rejected(self):

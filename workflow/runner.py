@@ -31,6 +31,22 @@ def decisions_from_text(text):
     return result if isinstance(result, list) else None
 
 
+def prompt_arguments(out, prompt):
+    path=Path(out).resolve()/'prompt.txt'
+    path.write_bytes(prompt.encode('utf-8'))
+    return ['Read the attached prompt.txt and execute its complete workflow instructions.', '--file', str(path)]
+
+
+def legacy_spawn_failure(directory):
+    directory=Path(directory)
+    if (directory/'child.json').exists():return False
+    try:text=(directory/'runner.stderr').read_text(encoding='utf-8',errors='replace')
+    except OSError:return False
+    return all(part in text for part in ('Traceback (most recent call last)',
+        'subprocess.Popen(command', '_winapi.CreateProcess',
+        'FileNotFoundError: [WinError 206] The filename or extension is too long'))
+
+
 def main(directory):
     out = Path(directory)
     # Atomic filesystem claim prevents replayed spawns from executing twice.
@@ -51,14 +67,19 @@ def main(directory):
         command += ['--session', data['session']]
     else:
         command += ['--title', 'Workflow shepherd ' + data['action_id']]
-    command.append(data['prompt'])
+    command += prompt_arguments(out, data['prompt'])
     flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
     activity = {'tools_started': False, 'rate_limit': False, 'session': data.get('session')}
     started = time.monotonic()
     with (out / 'stderr.log').open('w', encoding='utf-8') as errors:
-        proc = subprocess.Popen(command, env=env, cwd=data['worktree'], stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',
-                                creationflags=flags)
+        try:
+            proc = subprocess.Popen(command, env=env, cwd=data['worktree'], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace',
+                                    creationflags=flags)
+        except OSError as exc:
+            write(out / 'result.json', dict(kind='spawn_error',exit_code=None,error=str(exc),
+                  winerror=getattr(exc,'winerror',None),child_created=False))
+            return
         try:
             write(out / 'child.json', identify(proc.pid))
         except ProcessLookupError:

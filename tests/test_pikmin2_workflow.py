@@ -366,6 +366,21 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(Rejected):
             self.reg.checkpoint('one', 1, 3, {'state': 'integrating'})
 
+    def test_native_receipt_rejects_explicit_non_export_and_rolls_back(self):
+        from unittest.mock import patch
+        self.running()
+        with self.reg.transaction() as state:
+            state['lanes']['one'].update(state='integrating', native={'head':'a'*40})
+        evidence=self.root/'output/no-export.json'
+        evidence.write_text(json.dumps({'action':'none-performed'}))
+        record=dict(root_commit='b'*40,native_commit='a'*40,native_dirty='',
+                    validation_path=str(self.log),validation_sha256=digest(self.log),
+                    export_evidence=str(evidence),export_sha256=digest(evidence))
+        with patch.object(self.reg,'check_handoff',return_value={'pending_reviews':[]}):
+            with self.assertRaisesRegex(Rejected,'explicitly records no export'):
+                self.reg.integrate('one',1,2,record)
+        self.assertEqual(self.reg.snapshot()['lanes']['one']['state'],'integrating')
+
     def test_cli_and_persistent_reopen(self):
         script = Path(__file__).resolve().parents[1] / 'scripts/pikmin2_workflow.py'
         command = [sys.executable, str(script), '--root', str(self.root), '--db', str(self.db), 'status']

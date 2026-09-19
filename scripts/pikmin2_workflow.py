@@ -21,11 +21,11 @@ def main(argv=None):
                         'acquire', 'renew', 'release', 'cancel-request', 'watchdog', 'claim-action',
                         'complete-action', 'finish', 'accept-review', 'publish', 'receipt', 'control-status', 'handoff', 'validate-handoff', 'integrate', 'status', 'process',
                         'reconcile-handoff', 'throughput-status', 'wait-events', 'configure-lane-launch',
-                        'set-workstream', 'register-pool-worker', 'provision-pool-lane', 'enqueue-job', 'assign-job',
+                        'set-workstream', 'register-pool-worker', 'reassign-pool-worker', 'provision-pool-lane', 'enqueue-job', 'assign-job',
                         'validate-assignment', 'plan-assignment', 'complete-assignment', 'release-assignment', 'scheduling-status',
                         'snapshot-handoff', 'dispose-review', 'publish-candidate', 'subscribe-candidate-qa',
                         'candidate-qa-ready', 'claim-candidate-qa', 'queue-candidate-qa', 'bind-candidate-qa-launch', 'record-candidate-qa',
-                        'batch-claim', 'batch-record-build', 'batch-isolate', 'batch-close', 'report-cost', 'report-cost-batch'))
+                        'batch-claim', 'batch-reassign', 'batch-record-build', 'batch-isolate', 'batch-close', 'report-cost', 'report-cost-batch'))
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.request.read_text(encoding='utf-8-sig')) if args.request else {}

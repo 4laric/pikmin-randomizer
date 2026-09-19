@@ -54,6 +54,26 @@ class AnalyticsTests(unittest.TestCase):
         self.assertTrue(all(r['action'] == 'wait_ram' for r in staffing_recommendations(state, 1000, 90)['recommendations']))
         self.assertTrue(all(r['action'] == 'measure' for r in staffing_recommendations(state, 1000)['recommendations']))
 
+    def test_reports_idle_worker_compatibility(self):
+        state = {'settings': {'max_heavy_builds': 2}, 'leases': {},
+                 'lanes': {'worker-a': {'state': 'done', 'process': {'health': 'dead'}},
+                           'worker-b': {'state': 'done', 'process': {'health': 'dead'}}},
+                 'throughput': {
+                     'workers': {
+                         'a': {'worker_id': 'a', 'roles': ['implementation'], 'capabilities': ['python']},
+                         'b': {'worker_id': 'b', 'roles': ['review'], 'capabilities': ['native']},
+                     },
+                     'assignments': {},
+                     'jobs': {
+                         'ready': {'id': 'ready', 'lane': 'worker-a', 'worker_id': 'a', 'role': 'implementation',
+                                   'capabilities': ['python'], 'status': 'queued'},
+                         'unmatched': {'id': 'unmatched', 'lane': 'worker-b', 'worker_id': 'b', 'role': 'implementation',
+                                       'capabilities': ['python'], 'status': 'queued'},
+                     }}}
+        result = staffing_recommendations(state, 1000, 60, process_probe=lambda p: p.get('health', 'unknown'))
+        self.assertEqual(result['compatible_idle_workers'], 1)
+        self.assertEqual([item['job'] for item in result['unmatched_ready_jobs']], ['unmatched'])
+
     def test_stopped_terminal_heavy_reservation_frees_reported_slot_only(self):
         assignment={'lane':'consumer','heavy':True,'status':'dispatched'}
         state={'settings':{'max_heavy_builds':2},'leases':{},

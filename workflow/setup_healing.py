@@ -27,7 +27,21 @@ def dispose_claims(controller):
         scope=lane[len('planning-shard-'):].rsplit('-cycle-',1)[0]
         inbox=reg.root/'output/workflow/autofill/planning-shards'/scope
         proposals=list(inbox.glob('proposals-*.json'))
-        if not proposals:continue  # No-work claims still need coordinator adjudication.
+        # A stopped terminal planner with no proposals is a completed no-work
+        # cycle.  Leaving its topic claim behind permanently fences the next
+        # cycle, so create an auditable disposition and release it through the
+        # same coordinator fencing used for reviewed proposals.
+        if not proposals:
+            report=reg.root/'output/workflow/controller/claim-dispositions'/f'{lane}-{generation}.json'
+            report.parent.mkdir(parents=True,exist_ok=True)
+            write(report,dict(lane=lane,generation=generation,proposals=[],
+                              reason='No proposals published; stopped terminal planner claim is reclaimable'))
+            try:
+                release(reg,lane,generation,keys,
+                        disposition=dict(path=str(report),sha256=digest(report)),coordinator=identity)
+            except Rejected:
+                pass
+            continue
         evidence=[]
         for path in proposals:
             sha=digest(path);decision=decisions.get(str(path))
@@ -55,7 +69,11 @@ def recover_setup(controller):
         lanes=copy.deepcopy(state['lanes'])
     for key,lane in lanes.items():
         if lane['state']!='blocked' or lane.get('target_level')!='runtime':continue
-        summary=lane.get('outcome',{}).get('summary','').lower()
+        outcome=lane.get('outcome')
+        if not isinstance(outcome,dict):continue
+        summary=outcome.get('summary')
+        if not isinstance(summary,str):continue
+        summary=summary.lower()
         if not any(t in summary for t in ('native:null','no private native worktree','missing native worktree')):continue
         token=fingerprint([key,lane.get('root'),lane.get('native'),summary])
         with reg.transaction() as state:
@@ -82,7 +100,7 @@ def recover_setup(controller):
 
 def tick(controller):
     if not controller.config.get('setup_healing',{}).get('enabled'):return
-    for action in (dispose_claims,recover_setup):
+    for action in (dispose_claims, recover_setup):
         try:
             action(controller)
             with controller.reg.transaction() as state:

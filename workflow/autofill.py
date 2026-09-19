@@ -117,11 +117,20 @@ def launch_files_unchanged(reg, entry):
         return False
 
 
-def _workers(reg, state, spec=None):
+def _workers(reg, state, spec=None, eligible=None):
     from .worker_capacity import reusable
     pool = reg.scheduling(state)
+    delivery_workers={row['worker_id'] for key,row in state.get('handoff_resume_reservations',{}).items()
+        if row.get('expires_at',0)>reg.clock() and
+        state['lanes'].get(key,{}).get('state')=='blocked' and
+        state['lanes'][key]['generation']==row['generation'] and
+        not any(x['lane']==key and x['reason']==row['reason']
+                for x in state.get('control',{}).get('launches',{}).values())}
     candidates = []
     for worker in pool['workers'].values():
+        if worker['worker_id'] in delivery_workers:continue
+        if eligible is not None and worker['worker_id'] not in eligible:
+            continue
         if spec and (spec['role'] not in worker['roles'] or not set(spec['capabilities']) <= set(worker['capabilities'])):
             continue
         lanes = [l for l in state['lanes'].values() if l['worker_id'] == worker['worker_id']]
@@ -138,7 +147,7 @@ def _workers(reg, state, spec=None):
     return sorted(candidates, key=lambda l: (l['worker_id'], l['lane']))
 
 
-def _adapt_worker(controller, state, spec, reserved):
+def _adapt_worker(controller, state, spec, reserved, eligible=None):
     """Apply an operator-authorized capability profile during reservation only."""
     reg = controller.reg
     policy = controller.config.get('throughput', {}).get('autofill', {}).get('worker_adaptation', {})
@@ -146,7 +155,7 @@ def _adapt_worker(controller, state, spec, reserved):
         return []
     pool = reg.scheduling(state)
     owners = {stream['owner_lane'] for stream in pool['workstreams'].values()}
-    for lane in _workers(reg, state):
+    for lane in _workers(reg, state, eligible=eligible):
         worker_id = lane['worker_id']
         worker = pool['workers'][worker_id]
         if worker_id in reserved or spec['role'] not in worker['roles']:
@@ -219,15 +228,16 @@ def autofill_status(reg):
         data['compatible_idle_workers'] = len(compatible_ids)
         data['unmatched_ready_items'] = unmatched
         data['reassignment_options'] = reassignment_options
-        helpers = dict(running=0, queued=0, report_ready=0, recovery=0)
-        integration_helpers = dict(running=0,queued=0,report_ready=0,recovery=0,workers=[])
+        helpers = dict(running=0, queued=0, prepared=0, report_ready=0, recovery=0)
+        integration_helpers = dict(running=0,queued=0,prepared=0,report_ready=0,recovery=0,workers=[])
         exhausted = {v['lane'] for v in state.get('control', {}).get('launches', {}).values()
                      if v.get('status') == 'intent' and v.get('registration_recovery_exhausted')}
         for record in data.get('planner_pool', {}).get('scopes', {}).values():
             if 'completed_at' in record: continue
             lane = state['lanes'].get(record['spec']['lane']['lane'], {})
             if lane.get('state') == 'done': continue
-            if lane.get('state') == 'review_ready': bucket = 'report_ready'
+            if not lane: bucket = 'prepared'
+            elif lane.get('state') == 'review_ready': bucket = 'report_ready'
             elif lane.get('state') == 'ready': bucket = 'recovery' if lane.get('lane') in exhausted else 'queued'
             elif lane.get('state') == 'running' and reg.probe(lane['process']) == 'alive': bucket = 'running'
             else: bucket = 'recovery'
@@ -352,13 +362,18 @@ def _check_conflicts(controller, state, spec):
 def _prepare(controller, spec, issue_reader):
     reg = controller.reg
     identity, spec_hash = spec['id'], fingerprint(spec)
-    with reg.transaction() as state:
+    from contextlib import nullcontext
+    with nullcontext(reg.snapshot()) as state:
         data = _state(state)
         item = data['items'].get(identity)
         require(item is not None and item['spec_hash'] == spec_hash, 'Spec changed after publication')
         if item.get('phase') == 'enqueued':
             if state['lanes'].get(item['lane'], {}).get('state') == 'done':
-                item.update(status='completed', updated_at=reg.clock())
+                with reg.transaction() as current:
+                    live = _state(current)['items'][identity]
+                    if (live['spec_hash'] == spec_hash and live.get('phase') == 'enqueued' and
+                            current['lanes'].get(live['lane'], {}).get('state') == 'done'):
+                        live.update(status='completed', updated_at=reg.clock())
             return False
         pinned = item.get('previous_lane')
         verified = item.get('issue_verified_at') is not None and reg.clock() - item['issue_verified_at'] <= 86400
@@ -366,6 +381,10 @@ def _prepare(controller, spec, issue_reader):
     # checks the recorded identity, not a falsely required clean implementation.
     if not pinned or item.get('phase') == 'intent':
         validate_spec(reg, spec, issue_reader, verified=False)
+    # Discovery happens outside the lock. Reservation rechecks the selected pool
+    # against current lanes, leases and assignments, so a stale snapshot cannot
+    # double-book a worker. Newly freed workers can be discovered next pass.
+    eligible = {l['worker_id'] for l in _workers(reg, reg.snapshot())} if not pinned else set()
     with reg.transaction() as state:
         data = _state(state)
         item = data['items'][identity]
@@ -385,12 +404,21 @@ def _prepare(controller, spec, issue_reader):
         if not item.get('previous_lane'):
             require(spec['lane']['lane'] not in state['lanes'], 'Lane already exists outside this refill')
             _check_conflicts(controller, state, spec)
-            candidates = _workers(reg, state, spec)
+            candidates = _workers(reg, state, spec, eligible=eligible)
             reserved = {i.get('worker_id') for i in data['items'].values()
                         if i.get('phase') in ('intent', 'provisioned', 'configured') and i.get('previous_lane')}
             candidates = [l for l in candidates if l['worker_id'] not in reserved]
+            if item.get('planner_helper'):
+                # The outside preflight is advisory; parallel preparation needs
+                # the reserve enforced at the same fence as worker selection.
+                available={l['worker_id'] for l in _workers(reg,state,eligible=eligible)}-reserved
+                execution=sum(bool(i.get('ready')) and not i.get('planner_helper') and
+                              i.get('lane') not in state['lanes'] for i in data['items'].values())
+                helper_config=controller.config.get('throughput',{}).get('autofill',{}).get('planner_pool',{})
+                require(len(available)>execution+max(0,int(helper_config.get('reserve_workers',2))),
+                        'Idle workers reserved for execution')
             if not candidates:
-                candidates = _adapt_worker(controller, state, spec, reserved)
+                candidates = _adapt_worker(controller, state, spec, reserved, eligible=eligible)
             require(candidates, 'No authorized stopped worker with required role/capabilities')
             prior = candidates[0]
             item.update(previous_lane=prior['lane'], worker_id=prior['worker_id'], owner=prior['owner'],
@@ -469,6 +497,7 @@ def _refresh_readiness(controller, items, issue_reader):
                 and item.get('spec_hash') == fingerprint(spec) and item.get('status') == status
                 and item.get('reason') == reason and not item.get('ready') and not item.get('awaiting_worker'))
     items = [spec for spec in items if not unchanged_execution(spec)]
+    eligible = {l['worker_id'] for l in _workers(reg, snapshot)} if items else set()
     for spec in items:
         identity = spec['id']
         try:
@@ -512,7 +541,7 @@ def _refresh_readiness(controller, items, issue_reader):
                 item = _state(state)['items'][identity]
                 item.update(role=spec.get('role'), capabilities=list(spec.get('capabilities', [])),
                             workstream=spec.get('workstream'))
-                waiting = lane is None and not _workers(reg, state, spec)
+                waiting = lane is None and not _workers(reg, state, spec, eligible=eligible)
                 item.update(ready=True, awaiting_worker=waiting, reason='Awaiting compatible worker' if waiting else None,
                             status='queued' if lane else 'pending', updated_at=reg.clock())
                 if lane is None and not verified:
@@ -744,10 +773,11 @@ def autofill_tick(controller, *, issue_reader=github_issue):
         except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
             with reg.transaction() as state:
                 _state(state).setdefault('planner_pool', {})['error'] = str(exc)
+        eligible = {l['worker_id'] for l in _workers(reg, reg.snapshot())}
         with reg.transaction() as state:
             data = _state(state)
             data['clustered_blockers'] = clustered_blockers(state)
-            idle = bool(_workers(reg, state))
+            idle = bool(_workers(reg, state, eligible=eligible))
             has_ready = any(i.get('ready') for i in data['items'].values())
             if admitted or not idle or has_ready:
                 data['needs_refill_since'] = None

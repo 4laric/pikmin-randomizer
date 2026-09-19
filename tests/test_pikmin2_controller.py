@@ -56,13 +56,176 @@ class ControllerTests(unittest.TestCase):
     def plan(self):
         return self.reg.plan_launch('consumer', 'test', 'Inspect previous work', self.config['models'])
 
+    def test_runner_publication_read_races_retry_without_duplicate_spawn(self):
+        from unittest.mock import patch
+        item = self.plan()
+        original = Path.read_text
+        failures = [PermissionError('sharing violation'), json.JSONDecodeError('partial', '', 0)]
+        def read(path, *args, **kwargs):
+            if path.name == 'runner.json' and failures:
+                raise failures.pop(0)
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', read):
+            self.controller.dispatch(item)
+        self.assertEqual(len(self.spawns), 1)
+        self.assertTrue((self.controller.launch_directory(item['id']) / 'start.json').is_file())
+
+    def test_locked_existing_runner_defers_binding_without_respawn(self):
+        from unittest.mock import patch
+        item = self.plan()
+        directory = self.controller.launch_directory(item['id']); directory.mkdir(parents=True)
+        write(directory / 'spawn.json', {'action': item['id'], 'at': self.now})
+        write(directory / 'runner.json', self.identity)
+        original = Path.read_text
+        def read(path, *args, **kwargs):
+            if path.name == 'runner.json': raise PermissionError('sharing violation')
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', read):
+            self.controller.dispatch(item)
+        self.assertEqual(self.spawns, [])
+        self.assertFalse((directory / 'start.json').exists())
+        self.controller.dispatch(item)
+        self.assertEqual(self.spawns, [])
+        self.assertTrue((directory / 'start.json').is_file())
+
+    def test_dead_runner_without_result_retries_once_and_preserves_claims(self):
+        from unittest.mock import patch
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        write(directory/'child.json', {'pid': -222})
+        self.reg.probe = lambda p: 'dead'
+        with patch.object(self.reg,'status',side_effect=AssertionError('Recovery must not rebuild full status')):
+            self.controller.complete_runs()
+            self.controller.complete_runs()
+        launches = list(self.reg.control_status()['launches'].values())
+        self.assertEqual(len(launches), 2)
+        self.assertEqual(launches[-1]['dead_runner_retries'], 1)
+        self.assertEqual(launches[-1]['session'], item['session'])
+        self.assertFalse((directory/'result.json').exists())
+        self.assertNotEqual(self.reg.status()['lanes']['consumer']['state'], 'done')
+
+    def test_dead_runner_unknown_child_does_not_retry(self):
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        child = {'pid': -222}
+        write(directory/'child.json', child)
+        self.reg.probe = lambda p: 'unknown' if p == child else 'dead'
+        self.controller.complete_runs()
+        self.assertEqual(len(self.reg.control_status()['launches']), 1)
+
+    def test_provider_recovery_retry_uses_current_allowlist(self):
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        write(directory/'result.json', {'kind': 'exit', 'exit_code': 1})
+        self.reg.probe = lambda p: 'dead'
+        self.config['models'] = ['allowed/deepseek']
+        with self.reg.transaction() as state:
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+        self.controller.complete_runs()
+        self.controller.complete_runs()
+        launches = list(self.reg.control_status()['launches'].values())
+        self.assertEqual(len(launches), 2)
+        self.assertEqual(launches[-1]['models'], ['allowed/deepseek'])
+        self.assertEqual(launches[-1]['provider_failure_retries'], 1)
+
+    def test_silent_timeout_uses_bounded_provider_fallback(self):
+        item=self.plan();self.controller.dispatch(item)
+        write(self.controller.launch_directory(item['id'])/'result.json',{'kind':'exit','exit_code':15})
+        self.reg.probe=lambda p:'dead'
+        self.config['models']=['allowed/deepseek']
+        with self.reg.transaction() as state:
+            state['control']['terminal_recoveries']={'one':dict(launch=item['id'],evidence={'failure':'first_response_timeout'})}
+        self.controller.complete_runs();self.controller.complete_runs()
+        follow=list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(follow['models'],['allowed/deepseek'])
+        self.assertEqual(follow['provider_failure_retries'],1)
+
+    def test_exited_api_error_falls_back_without_terminal_stop_journal(self):
+        item=self.plan();self.controller.dispatch(item)
+        directory=self.controller.launch_directory(item['id'])
+        write(directory/'result.json',{'kind':'exit','exit_code':1})
+        (directory/'events.jsonl').write_text(json.dumps(dict(type='error',sessionID=item['session'],error={'name':'APIError'}))+'\n')
+        self.reg.probe=lambda p:'dead'
+        self.config['models']=['allowed/deepseek']
+        self.controller.complete_runs();self.controller.complete_runs()
+        follow=list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(follow['models'],['allowed/deepseek'])
+        self.assertEqual(follow['provider_failure_retries'],1)
+
+    def test_provider_retry_rotates_to_other_authorized_model(self):
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        write(directory/'result.json', {'kind': 'exit', 'exit_code': 1})
+        self.reg.probe = lambda p: 'dead'
+        with self.reg.transaction() as state:
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+        self.controller.complete_runs()
+        follow = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(follow['models'], ['paid/muse', 'free/muse'])
+        self.reg.probe = lambda p: 'alive' if p == self.identity else 'dead'
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['process'] = {'pid': -999}
+        self.controller.dispatch(follow)
+        start = json.loads((self.controller.launch_directory(follow['id'])/'start.json').read_text())
+        self.assertEqual(start['model'], 'paid/muse')
+
+    def test_permission_repair_has_separate_bounded_budget(self):
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        write(directory/'result.json', {'kind': 'exit', 'exit_code': 1})
+        self.reg.probe = lambda p: 'dead'
+        with self.reg.transaction() as state:
+            state['control']['launches'][item['id']]['provider_failure_retries'] = 2
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'output_permission'})}
+        self.controller.complete_runs()
+        follow = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(follow['permission_retries'], 1)
+        self.assertEqual(follow['provider_failure_retries'], 2)
+        self.assertTrue(follow['reason'].startswith('permission-repair:'))
+        with self.reg.transaction() as state:
+            state['control']['launches'][follow['id']]['status'] = 'cancelled'
+            state['control']['launches'][item['id']].update(status='running', permission_retries=2)
+        self.controller.complete_runs()
+        self.assertEqual(len(self.reg.control_status()['launches']), 2)
+        self.assertIn('permission_retry_exhausted', [n['kind'] for n in self.reg.control_status()['notices'].values()])
+
+    def test_provider_retry_budget_leaves_reconciliation_notice(self):
+        item = self.plan()
+        self.controller.dispatch(item)
+        directory = self.controller.launch_directory(item['id'])
+        write(directory/'result.json', {'kind': 'exit', 'exit_code': 1})
+        self.reg.probe = lambda p: 'dead'
+        with self.reg.transaction() as state:
+            state['control']['launches'][item['id']]['provider_failure_retries'] = 2
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+        self.controller.complete_runs()
+        self.assertEqual(len(self.reg.control_status()['launches']), 1)
+        self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
+        self.assertIn('provider_retry_exhausted', [n['kind'] for n in self.reg.control_status()['notices'].values()])
+
+    def test_rebind_planning_claim_preserves_exclusivity(self):
+        item = self.plan()
+        previous = self.reg.status()['lanes']['consumer']['process']
+        with self.reg.transaction() as state:
+            state['planning_claims'] = {'topic:a': dict(lane='consumer', generation=1, process=previous)}
+        self.controller.dispatch(item)
+        with self.reg.transaction() as state:
+            claim = state['planning_claims']['topic:a']
+            self.assertEqual(claim['generation'], 2)
+            self.assertEqual(claim['process'], self.identity)
+
     def test_dispatch_resolves_relative_paths_before_runner_changes_directory(self):
         self.config['lanes']['consumer'] = dict(root='output/lane', output='output/lane',
                                                brief='output/lane/review.txt', config='output/lane/review.txt')
         item=self.plan();self.controller.dispatch(item)
         start=json.loads((self.controller.launch_directory(item['id'])/'start.json').read_text())
         self.assertEqual(Path(start['worktree']),self.out)
-        self.assertEqual(Path(start['config']),self.log)
+        self.assertEqual(Path(start['config']).read_bytes(),self.log.read_bytes())
         self.assertIn(str(self.log),start['prompt'])
 
     def test_duplicate_dependency_event_plans_once(self):
@@ -79,6 +242,23 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(list(directory.parent.glob(item['id']+'.unbound-*'))),1)
         self.assertEqual(len(self.spawns),1)
 
+    def test_async_runner_binds_in_same_dispatch_with_durable_model_reservation(self):
+        from unittest.mock import patch
+        item=self.plan()
+        def spawn(directory):
+            self.spawns.append(directory)
+            current=self.reg.control_status()['launches'][item['id']]
+            self.assertEqual(current['model'],'free/muse')
+            self.assertGreater(self.reg.control_status()['model_launch_after']['free/muse'],self.now)
+        self.controller.spawn=spawn
+        def registered(_):
+            write(self.controller.launch_directory(item['id'])/'runner.json',self.identity)
+        with patch('workflow.controller.time.sleep',side_effect=registered):
+            self.assertTrue(self.controller.dispatch(item))
+        self.assertEqual(len(self.spawns),1)
+        self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'],'running')
+        self.assertTrue((self.controller.launch_directory(item['id'])/'start.json').exists())
+
     def test_unbound_recovery_refuses_possible_child_or_live_runner(self):
         item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
         write(directory/'runner.json',self.identity);write(directory/'result.json',{'kind':'registration_timeout'})
@@ -94,6 +274,7 @@ class ControllerTests(unittest.TestCase):
         write(directory/'runner.json',{'pid':-123});write(directory/'result.json',{'kind':'registration_timeout'})
         with self.reg.transaction() as s:s['control']['launches'][item['id']]['unbound_retries']=3
         self.assertFalse(self.controller.recover_unbound(item,directory))
+        self.assertTrue(self.reg.control_status()['launches'][item['id']]['registration_recovery_exhausted'])
 
     def test_same_version_not_resumed_after_consumption(self):
         self.ready_dependency(); self.controller.dependencies()
@@ -124,6 +305,45 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(lane['state'],'review_ready')
         self.assertFalse(validate_review(self.root,lane['review'],lane)['gameplay_accepted'])
         self.assertFalse(any(a['lane']=='consumer' for a in self.reg.watchdog()))
+
+    def test_old_handoff_emits_actionable_integration_escalation(self):
+        with self.reg.transaction() as state:
+            lane = state['lanes']['consumer']
+            lane.update(state='handoff_ready', handoff_at=self.now - 7200,
+                        handoff={'path':'handoff.json', 'sha256':'h',
+                                 'result':{'pending_reviews':[], 'outstanding_gates':[]}})
+            state.setdefault('throughput', {})['workstreams'] = {}
+        self.controller.observe()
+        notices = self.reg.control_status()['notices'].values()
+        overdue = [n for n in notices if n['kind'] == 'integration_overdue']
+        self.assertEqual(len(overdue), 1)
+        detail = overdue[0]['detail']
+        self.assertIn('workstream_unassigned', detail['blockers'])
+        self.assertEqual(detail['next_action'], 'resolve blockers, then claim a batch')
+
+    def test_unconfigured_handoff_is_still_observed(self):
+        with self.reg.transaction() as state:
+            lane = state['lanes']['provider']
+            lane.update(state='handoff_ready', handoff_at=self.now - 7200,
+                        handoff={'path':'handoff.json', 'sha256':'h',
+                                 'result':{'pending_reviews':[], 'outstanding_gates':[]}})
+        self.controller.observe()
+        self.assertTrue(any(n['lane'] == 'provider' and n['kind'] == 'integration_overdue'
+                            for n in self.reg.control_status()['notices'].values()))
+
+    def test_handoff_workstream_is_inferred_from_membership(self):
+        with self.reg.transaction() as state:
+            lane = state['lanes']['consumer']
+            lane.update(state='handoff_ready', handoff_at=self.now - 7200,
+                        handoff={'path':'handoff.json', 'sha256':'h',
+                                 'result':{'pending_reviews':[], 'outstanding_gates':[]}})
+            state.setdefault('throughput', {})['workstreams'] = {
+                'species': {'owner_lane': 'consumer', 'lanes': ['consumer']}}
+        self.controller.observe()
+        notice = next(n for n in self.reg.control_status()['notices'].values()
+                      if n['lane'] == 'consumer' and n['kind'] == 'integration_overdue')
+        self.assertEqual(notice['detail']['workstream'], 'species')
+        self.assertNotIn('workstream_unassigned', notice['detail']['blockers'])
 
     def test_review_cannot_claim_fresh_runtime(self):
         lane=self.reg.finish('consumer',1,'review-ready','reviewed',self.ev)
@@ -336,6 +556,9 @@ class ControllerTests(unittest.TestCase):
         self.config['publications']=[dict(producer='provider',path=str(self.log),description='contract')]
         self.controller.receipts()
         before=list(self.reg.control_status()['artifacts'].values())[-1]
+        from unittest.mock import patch
+        with patch.object(self.reg,'publish',side_effect=AssertionError('unchanged publication must not write')):
+            self.controller.receipts()
         self.log.write_text('new reviewed contract');self.controller.receipts()
         self.reg.evidence(before['evidence'])
 

@@ -16,6 +16,26 @@ requirements; it does not reassign existing owners or authorize duplicate work.
 
 ## Mandatory first action: adopt the current test fixture
 
+### Verify local source availability before declaring assets missing
+
+On this host, consult the canonical workspace's
+`output/workflow/asset-inputs.json` before reporting missing legal/source assets.
+The inventory records the local P2 disc, all 2,768 disc members with offsets and
+sizes, hash-verified Forest/Yakushima cave data and Demon model/animation bytes,
+and the existing P1 runtime asset directory. Recheck the actual paths and relevant
+bytes using `experimental.pikmin2_assets.disc_files`; stale inventory metadata is
+not proof of absence or availability. The disc is currently at
+`C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso`; runtime assets are at
+`C:/Users/alari/AppData/Roaming/PikminRandomizer/game-data/assets`.
+
+Distinguish missing raw source bytes from unfinished extraction, decompression,
+conversion, geometry decoding, staging, source integration and runtime support.
+Those engineering gaps need concrete owned work, not a request for the user to
+provide assets already present. Record exact missing members, searched roots and
+failed reads before claiming an external asset dependency. Use private output for
+derived data and preserve the source disc and shared asset installation. Raw
+asset presence never establishes runtime readiness or clears gameplay gates.
+
 Every new AND already-running lane must refresh its fixture baseline before its
 next runtime acceptance run. Old generated arenas and old executables do not
 acquire these changes automatically. Report adoption in the lane's child issue.
@@ -58,6 +78,39 @@ production main object. A fixture with its own startup is not guaranteed to run
 `pc_main.cpp` window setup. Its owner must verify equivalent window sizing and
 centring in that entrypoint and record observed evidence. An environment variable
 alone cannot add the behavior to an old or custom executable.
+
+**Guarded cave boots must use wall-clock supervision (#671).** Run the canonical
+`scripts/run_pikmin2_cave_fixture.py --exe <private-exe> --source-run <old-run>
+--run-dir <new-private-run> --timeout 60` instead of launching an unbounded raw
+fixture or relying on its frame counter. The runner preserves input files,
+creates a separate overlay with readable files and valid directory junctions,
+streams `native.log`, kills its own child on timeout, and writes `run-result.json`.
+Keep `run-inputs.json` with the executable and input hashes. Never construct a
+directory junction to an ordinary file: this made `consFont.bti` unreadable and
+crashed real startup in `Font::setTexture` despite green guard self-tests.
+
+The historical Yakushima arena also disagreed with its 20-survivor checkpoint.
+Regenerate the lane arena using the current squad baseline before acceptance;
+do not weaken the checkpoint count check. `--baseline-assets <legal-P1-assets>`
+explicitly regenerates the standard 20-Pikmin arena for a **boot smoke test only**.
+It replaces lane placement and cannot establish cave geometry, collision or
+gameplay acceptance. The same bounded runner with
+`P2_CAVE_GUARDED_BOOT_FORCE_CAPTAIN_DOWN=1` must produce raw exit 86 and
+`P2_FIXTURE_CAPTAIN_DOWN` with no boot PASS. Window creation and engine-independent
+guard tests alone do not establish a working boot.
+
+**Other native fixtures also require a bounded runtime launch (#701/#702).**
+Use `py -3.12 scripts/run_pikmin2_fixture.py --exe <private-exe> --run-dir
+<fresh-staged-private-arena> --arg=--experimental-pikmin2-room --pass-marker
+"<fixture-specific PASS marker>" --timeout 60` from the canonical checkout.
+Use the fixture's actual arguments (for example `--arg=--experimental-challenge-level
+--arg=1`). The runner validates readable boot assets/runtime DLLs, preserves cwd,
+records hashes and kills only its own fixture child on timeout. Stage the correct
+arena before launching; an empty directory is not a runtime input package.
+Do not use a build supervisor for runtime: `leased_run.py` sets cwd to the source
+worktree, discarding the selected arena. Runtime needs no build lease. A window
+stuck in `System::Initialise`/`pumpAudio` is not gameplay progress; preserve its
+failure logs and correct inputs before a fresh attempt.
 
 If a window is already stuck at extinction, retire that run, regenerate its arena
 and relaunch the updated executable. Do not use an extinction-screen screenshot
@@ -240,3 +293,9 @@ keys does not prove adoption. Use `protected_observation` only for the isolated,
 labelled case described above. Its attack/receiver PASS is rejected. Existing
 already-submitted handoffs are not rewritten; apply the requirement before the
 next run. Subsequent controller dispatches repeat the instructions explicitly.
+
+## Preparation packets are not source implementation
+
+A missing native hook, build registration or engine entry point needs a job that reserves the actual native files in a private native worktree, implements them, compiles/tests them and submits native commits for the existing integrator to review and merge. A job owning only documentation and a Python patch generator is preparation, even if its title says "landing" or "integration candidate". Integrating that packet does not integrate its proposed native patch and must not clear the consumer's source dependency.
+
+The single-writer restriction protects the maintained checkout and final merge/export. It does not prohibit issue-backed, exclusively owned private native implementation. Serialize overlapping file claims; do not evade them by producing repeated packets. Record the actual executable producer lane with `workflow.blocked_followup` so verified source integration can wake its consumer. The #668 Mar registration job is an example: it owns native CMake/preview/Mar/receipt code and compiled tests, while #665 is only a preparation input.

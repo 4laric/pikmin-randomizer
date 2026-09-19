@@ -68,12 +68,14 @@ class PoolCompletionEvidenceTests(unittest.TestCase):
         self.assert_completes_with(integration)
 
     def test_valid_handoff_fallback_when_disposition_artifact_unavailable(self):
+        self.change(review_disposition={'summary': 'Legacy receipt', 'evidence': self.applied})
         evidence = copy.deepcopy(self.fixture.fixture.ev)
         self.applied_path.unlink()
         self.change(handoff=dict(evidence, result={'outstanding_gates': []}), progress_evidence=None, outcome=None)
         self.assert_completes_with(evidence)
 
     def test_outcome_fallback_skips_invalid_disposition_handoff_and_progress(self):
+        self.change(review_disposition={'summary': 'Legacy receipt', 'evidence': self.applied})
         evidence = copy.deepcopy(self.fixture.fixture.ev)
         self.applied_path.unlink()
         missing = {'path': str(self.root / 'output/missing.txt'), 'sha256': 'b' * 64}
@@ -81,6 +83,7 @@ class PoolCompletionEvidenceTests(unittest.TestCase):
         self.assert_completes_with(evidence)
 
     def test_all_invalid_evidence_preserves_assignment_and_records_blocker(self):
+        self.change(review_disposition={'summary': 'Legacy receipt', 'evidence': self.applied})
         self.applied_path.write_text('Changed after disposition')
         invalid = {'path': str(self.applied_path), 'sha256': 'b' * 64}
         self.change(progress_evidence=invalid, outcome={'evidence': invalid}, handoff=dict(invalid, result=None),
@@ -101,5 +104,19 @@ class PoolCompletionEvidenceTests(unittest.TestCase):
         self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'done')
 
 
-if __name__ == '__main__':
-    unittest.main()
+
+    def test_deleted_inbox_uses_archive_and_acceptance_replay_is_safe(self):
+        lane = self.reg.status()['lanes']['consumer']
+        archive = lane['review_disposition']['archived_evidence']
+        self.applied_path.unlink()
+        self.reg.accept_review('consumer', lane['generation'], 'Disposition applied', self.applied)
+        self.assert_completes_with(archive)
+
+    def test_corrupt_archive_with_no_other_evidence_does_not_release(self):
+        from pathlib import Path
+        lane = self.reg.status()['lanes']['consumer']
+        Path(lane['review_disposition']['archived_evidence']['path']).write_text('corrupt')
+        self.applied_path.unlink()
+        self.change(progress_evidence=None, outcome=None, handoff=None)
+        pool_tick(self.controller)
+        self.assertEqual(self.assignment()['status'], 'dispatched')
