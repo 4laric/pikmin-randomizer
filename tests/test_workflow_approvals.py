@@ -493,6 +493,13 @@ class OperatorTests(Base):
             self.approve()
         self.assertEqual(approvals.ledger(self.reg.snapshot()), {})
 
+    def test_untouched_side_is_not_required_on_the_line(self):
+        git(self.root, 'branch', '-f', 'maintained', self.head + '~1')
+        with self.reg.transaction() as s:
+            s['lanes']['one']['root'].update(commits=[], base=self.head)  # No change made on root.
+        with self.assertRaisesRegex(Rejected, 'recorded no root/native source'):
+            self.approve()  # Skipped rather than refused as off the line.
+
     def test_undeclared_integration_lines_are_refused(self):
         self.declare(None)
         with self.assertRaisesRegex(Rejected, 'integration_lines undeclared'):

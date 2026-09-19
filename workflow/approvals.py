@@ -648,6 +648,7 @@ def operator_check(root, state, key, issue, declared=None):
         require(not source.get('dirty'), f'{key} {name} source is dirty; its recorded commits are not what it holds')
         require(not source.get('commits') or source['head'] in source['commits'],
                 f'{key} {name} head is not among its recorded commits (changed since recording)')
+        if not source.get('commits') and source.get('head') == source.get('base'): continue  # Untouched side: nothing to land.
         require(declared.get(name), f'integration_lines.{name} undeclared; {key} recorded {name} commits')
         repo, ref = repository(root, name, declared), declared[name]['ref']
         tip = git(repo, 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}')[1].decode().strip()
