@@ -48,9 +48,14 @@ def test_order_source_ids_playable_first():
 
 
 def test_split_supported_reports_installerless_ids():
-    supported, unsupported = prepare.split_supported([44, 54, 59, 9, 23, 57, 78, 79])
-    assert supported == [44, 54, 59, 23]
-    assert unsupported == [9, 57, 78, 79]
+    # Which ids have a family installer moves as installers land (#442), so derive it.
+    from experimental.pikmin2_family_install import IDENTITY_FAMILY
+    ids = [44, 54, 59, 9, 23, 57, 78, 79]
+    supported, unsupported = prepare.split_supported(ids)
+    assert supported + unsupported == prepare.order_source_ids(ids)
+    assert set(supported) == {i for i in ids if i in IDENTITY_FAMILY}
+    assert set(unsupported) == {i for i in ids if i not in IDENTITY_FAMILY}
+    assert 44 in supported
 
 
 def test_content_dir_for_uses_enum_names(tmp_path):

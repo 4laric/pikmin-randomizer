@@ -29,7 +29,27 @@ from experimental.pikmin2_batch2_families import FAMILIES
 from experimental.pikmin2_kogane_install import sha as kogane_sha
 from tests.test_pikmin2_install_binding import make_dwarf_orange_source
 from tests.test_pikmin2_batch2 import fake_imported as batch_fake_imported
-from tests.test_pikmin2_mamuta_install import fake_imported as mamuta_fake_imported
+from experimental.pikmin2_mamuta_install import BANK_CLIPS as MAMUTA_CLIPS
+
+
+def mamuta_fake_imported(root):
+    """Synthetic Mamuta import built from the installer's own clip list.
+
+    Self-contained on purpose: borrowing another test module's fixture made this
+    test depend on that module's copy of the clip list and fail by selection order.
+    """
+    species = root / "Miulin"
+    species.mkdir(parents=True)
+    clips = []
+    for clip in MAMUTA_CLIPS:
+        name = f"{clip}_00.mod"
+        data = clip.upper().encode()
+        (species / name).write_bytes(data)
+        clips.append({"file": clip + ".bca", "status": "converted",
+                      "poses": [{"file": name, "sha256": hashlib.sha256(data).hexdigest()}]})
+    (root / "mamuta.json").write_text(
+        json.dumps({"schema": 1, "species": "Miulin", "enemy_id": 54, "clips": clips}), encoding="utf-8")
+    return root
 
 ADMITTED = [
     ("gen-009", 9, "Kogane", 219009),
