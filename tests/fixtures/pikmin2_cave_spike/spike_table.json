@@ -1,0 +1,24 @@
+{
+  "schema": "p2-cave-seeded-table/1",
+  "seed": 468001,
+  "cave": "forest_1",
+  "floor": 1,
+  "segments": [
+    {"index": 0, "name": "A"},
+    {"index": 1, "name": "B"}
+  ],
+  "chokes": [
+    {"id": "choke_water_0", "kind": "water", "segment_index": 1}
+  ],
+  "leaves": [
+    {"id": "leaf_elec_0", "hazard": "elec", "segment_index": 0, "item_slot": "slot_elec_0"},
+    {"id": "leaf_water_0", "hazard": "water", "segment_index": 1, "item_slot": "slot_water_0"}
+  ],
+  "buds": [],
+  "treasures": [
+    {"id": "treasure_elec", "tagged": true, "hazard": "elec", "segment_index": 0, "leaf": "leaf_elec_0"},
+    {"id": "treasure_water", "tagged": true, "hazard": "water", "segment_index": 1, "leaf": "leaf_water_0"},
+    {"id": "juji_key_fc", "tagged": false}
+  ],
+  "hole": {"segment_index": 1}
+}
