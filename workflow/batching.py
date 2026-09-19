@@ -92,7 +92,7 @@ class BatchingMixin:
                 require(lane['state'] == 'handoff_ready', 'Candidate must have ready handoff')
                 require(not any(b['state'] == 'claimed' and key in b['candidates'] and key not in b['isolated'] for b in batches.values()),
                         'Candidate is claimed by another batch')
-                result = self.check_handoff(lane)
+                result = self.check_handoff(lane, state)
                 require(not result['pending_reviews'], 'Candidate shared reviews unresolved')
                 handoff = json.loads(local_path(self.root, lane['handoff']['path']).read_text(encoding='utf-8'))
                 changed = handoff['changed_files']
@@ -123,6 +123,7 @@ class BatchingMixin:
         claimed = {b.get('workstream') for b in batches.values() if b.get('state') == 'claimed'}
         results = []
         now = self.clock()
+        ledger = {'approvals': self.snapshot(section=('approvals',))}
         # Repair visibility must not depend on the integrator still running.
         for key, lane in state['lanes'].items():
             if lane.get('state') == 'handoff_ready':
@@ -145,7 +146,7 @@ class BatchingMixin:
                 if isolated:
                     continue
                 try:
-                    result = self.check_handoff(lane)
+                    result = self.check_handoff(lane, ledger)
                     if result.get('pending_reviews'):
                         continue
                     handoff = json.loads(local_path(self.root, lane['handoff']['path']).read_text(encoding='utf-8-sig'))
@@ -210,7 +211,7 @@ class BatchingMixin:
             lane = self.lane(state, key, pin['generation'])
             require(lane['state'] in ('handoff_ready', 'integrating'), 'Candidate is no longer ready')
             require(all(lane.get(field) == pin[field] for field in ('root', 'native', 'handoff')), 'Candidate source or handoff drift')
-            result = self.check_handoff(lane)
+            result = self.check_handoff(lane, state)
             require(not result['pending_reviews'], 'Candidate reviews changed')
 
     def batch_record_build(self, batch_id, integrator, generation, revision, sources, evidence):

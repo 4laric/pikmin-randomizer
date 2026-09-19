@@ -40,6 +40,8 @@ class SupportActionsTests(unittest.TestCase):
         with self.r.transaction() as s:
             l=s['lanes']['one'];l.update(state='blocked',next_action='#186 shared review',owned_files=['shared.cpp'])
         self.assertEqual(extra_targets(self.r,self.r.snapshot())[0]['kind'],'blocked_review')
+        from tests.approval_auth import reviewer
+        reviewer(self,self.r,'two',fake_diff=True)
         args=dict(key='one',generation=1,source_pins=pins(self.target),file='shared.cpp',status='approved',
                   reviewer='two',reviewer_generation=1,reason='Exact scoped diff inspected',evidence=self.f.evidence)
         shared(self.r,**args);require_outcomes(self.r.snapshot(),'two')

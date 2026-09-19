@@ -21,7 +21,13 @@ class RoutingTests(unittest.TestCase):
         next(self.inbox.glob('*.md')).unlink();tick(self.c);self.assertFalse(list(self.inbox.glob('*.md')))
         self.f.now+=601;tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
         with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'awaiting_owner_decision')
-        self.data['shared_reviews'][0]['status']='approved';self.save();tick(self.c)
+        self.data['shared_reviews'][0]['status']='approved';self.save();tick(self.c)  # A handoff status resolves nothing.
+        with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'awaiting_owner_decision')
+        from workflow.approvals import pins
+        with self.r.transaction() as s:
+            s['approvals']={'row':dict(id='row',kind='handoff_review',lane='consumer',file='native/shared.cpp',at=1,
+                pins=pins(s['lanes']['consumer']),status='approved',reviewer=dict(lane='provider'))}
+        tick(self.c)
         with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'resolved_or_superseded')
     def test_unrouted_file_never_receives_invented_owner(self):
         self.c.config['shared_review_routing']['files']={};tick(self.c)

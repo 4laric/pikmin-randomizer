@@ -13,6 +13,7 @@ import re
 import subprocess
 
 from .handoff import Rejected, digest, local_path, nonempty, require
+from .provenance import cli
 
 SHA, HEX64 = re.compile(r'[0-9a-f]{40}'), re.compile(r'[0-9a-f]{64}')
 KINDS = ('landed', 'already_landed')
@@ -30,14 +31,16 @@ _REDIRECTS = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTOR
               'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_REPLACE_REF_BASE', 'GIT_CONFIG_PARAMETERS')
 INSTRUCTION = (' Landing proof: integrate verifies, per repository, that every file the lane changed base..head is '
     'blob-identical at root_commit/native_commit or that the lane head is an ancestor of it, and that the commit is on the '
-    'declared integration line (or, if none is declared, on a branch other than the lane\'s own worktree branch). Pass '
-    'lander {lane, generation} (your lane; stored as an unauthenticated claim). For a file you had to adapt or leave out, '
+    'declared integration line (or, if none is declared, on a branch other than the lane\'s own worktree branch). Run '
+    'integrate from inside your own live launch session: the lander is that session (optional lander {lane, generation} '
+    'must name it). For a file you had to adapt or leave out, '
     'add record.ports entries {repo root|native, file, reviewed_blob, landed_blob (null if left out), interdiff_sha256 '
     '(sha256 of the stdout of: git --literal-pathspecs ' + ' '.join(INTERDIFF) +
     ' <lane head> <receipt commit> -- <file>), reason, '
     'evidence {path,sha256}}; ports of #186 shared-review or engine files (root engine/, include/; native pc_port/, src/, '
-    'include/, cmake/, CMakeLists.txt) are refused until a landing review exists, so hand those back instead of adapting '
-    'or excluding them. When the bytes were already landed or the lane changed nothing, set record.kind "already_landed" '
+    'include/, cmake/, CMakeLists.txt) need an approved landing review at exactly <lane head>..<receipt commit> recorded '
+    'by another authenticated lane (never you) through ' + cli('approvals') + ' landing-review; without it, hand those '
+    'back instead of adapting or excluding them. When the bytes were already landed or the lane changed nothing, set record.kind "already_landed" '
     'and name the commit that actually contains them. Never merge or pull with -X ours/theirs or -s ours, reset --hard, '
     'clean -f, checkout --ours/--theirs or <ref> -- <path>, restore, or force-push in maintained worktrees.')
 
@@ -121,10 +124,33 @@ def shared_file(name, path, shared):
                                                  for p in ENGINE[name])
 
 
-def require_landing_review(name, port, shared):
-    """Item 3 extends this with an authenticated landing_review record; until then shared ports refuse."""
-    require(not shared_file(name, port['file'], shared),
-            f"shared-file port requires a landing review: {name}:{port['file']}")
+def require_landing_review(name, port, shared, review=None):
+    """None for a non-shared port; else the id of the approved landing review covering it at these exact pins.
+
+    review is {lane, head, commit, interdiff, lander, ledger}; lander is the authenticated
+    integrate caller and never the reviewer."""
+    if not shared_file(name, port['file'], shared):
+        return None
+    where = f"{name}:{port['file']}"
+    require(review and review.get('lander'), 'shared-file port requires a landing review and an authenticated lander '
+            '(run integrate from your own live launch session): ' + where)
+    from .approvals import landing_approval
+    row = landing_approval(review['ledger'], review['lane'], name, review['head'], review['commit'], port['file'],
+                           review['interdiff'])
+    require(row, f"shared-file port requires a landing review approved at {review['head'][:12]}..{review['commit'][:12]} "
+            f"with interdiff {review['interdiff']}: " + where)
+    require(row['reviewer']['lane'] != review['lander']['lane'], 'shared-file port reviewed by its own lander: ' + where)
+    return row['id']
+
+
+def recheck(ledger, key, attestation):
+    """In the writer transaction: every landing review a port relied on is still the latest approved row."""
+    from .approvals import landing_approval
+    for name in ('root', 'native'):
+        report = attestation.get(name) or {}
+        for path, (identity, interdiff) in (report.get('port_reviews') or {}).items():
+            row = landing_approval(ledger, key, name, report['head'], report['commit'], path, interdiff)
+            require(row and row['id'] == identity, f'Landing review for {name}:{path} changed while proving the landing')
 
 
 def check_ports(root, ports):
@@ -152,7 +178,7 @@ def check_ports(root, ports):
     return result
 
 
-def side(root, name, source, commit, declared, ports=None, shared=()):
+def side(root, name, source, commit, declared, ports=None, shared=(), review=None):
     """(report, problems) for one repository; problems are precise per-file strings."""
     ports = ports or {}
     repo = repository(root, name, declared)
@@ -176,10 +202,13 @@ def side(root, name, source, commit, declared, ports=None, shared=()):
                     f'{name}:{path} needs no port: the reviewed bytes are landed')
             require((port['reviewed_blob'], port['landed_blob']) == (reviewed, landed),
                     f"{name}:{path} port blobs differ from git (reviewed {reviewed}, landed {landed})")
-            require_landing_review(name, port, shared)
             actual = hashlib.sha256(git(repo, '--literal-pathspecs', *INTERDIFF, head, commit, '--', path)[1]).hexdigest()
             require(port['interdiff_sha256'] == actual, f'{name}:{path} port interdiff_sha256 must be {actual} '
                     f"(sha256 of git --literal-pathspecs {' '.join(INTERDIFF)} {head} {commit} -- {path})")
+            identity = require_landing_review(name, port, shared, review and dict(
+                review, head=head, commit=commit, interdiff=actual))
+            if identity:
+                report.setdefault('port_reviews', {})[path] = [identity, actual]
             via = 'port'
         elif reviewed == landed:
             via = 'blob' if reviewed else 'absent'
@@ -233,7 +262,7 @@ def shared_files(root, lane):
     return [r['file'] for r in data.get('shared_reviews', []) if isinstance(r, dict) and nonempty(r.get('file'))]
 
 
-def inspect(root, lane, record, declared=None, ports=None, shared=()):
+def inspect(root, lane, record, declared=None, ports=None, shared=(), review=None):
     """(attestation, problems) for a receipt without raising on content mismatches."""
     root = Path(root).resolve()
     declared = lines(root) if declared is None else declared
@@ -256,7 +285,7 @@ def inspect(root, lane, record, declared=None, ports=None, shared=()):
                                  detail=f'{name}: full {name}_commit required for a lane with {name} source'))
             reports[name] = None
             continue
-        reports[name], found = side(root, name, source, commit, declared, ports, shared)
+        reports[name], found = side(root, name, source, commit, declared, ports, shared, review)
         problems += found
     missing = {p['repo'] for p in problems if p['kind'] == 'missing_commit'}  # Their ports were never examined.
     ports = {k: v for k, v in ports.items() if k[0] not in missing}
@@ -266,13 +295,17 @@ def inspect(root, lane, record, declared=None, ports=None, shared=()):
                 files_changed=sum(len(r['files']) for r in reports.values() if r)), problems
 
 
-def prove(root, lane, record, lander=None):
-    """Attestation for integrate(); refuses with every per-file problem otherwise."""
+def prove(root, lane, record, lander=None, ledger=None):
+    """Attestation for integrate(); refuses with every per-file problem otherwise.
+
+    lander is the authenticated integrate caller (approvals.session) or None; ledger holds
+    the approvals rows a shared-file port's landing review is read from."""
     root = Path(root).resolve()
     ports = check_ports(root, record.get('ports', []))
     require(not ports or record.get('kind', 'landed') == 'landed', 'already_landed receipts cannot carry ports')
     shared = shared_files(root, lane) if ports else []
-    attestation, problems = inspect(root, lane, record, ports=ports, shared=shared)
+    attestation, problems = inspect(root, lane, record, ports=ports, shared=shared,
+                                    review=dict(lane=lane['lane'], lander=lander, ledger=ledger or {}))
     require(attestation['kind'] == 'already_landed' or attestation['files_changed'] or problems,
             "Lane changed no files between base and head; record kind 'already_landed' naming the commit "
             "that contains its bytes")
@@ -281,6 +314,5 @@ def prove(root, lane, record, lander=None):
         raise Rejected('Receipt does not contain the reviewed bytes: ' + '; '.join(details[:20]) +
                        (f' (+{len(details) - 20} more)' if len(details) > 20 else '') +
                        '. Land the reviewed bytes, name the commit that contains them, or declare a port.')
-    # Nothing authenticates the request's lander yet (item 3), so it is stored as a claim that confers nothing.
-    attestation.update(ports=list(record.get('ports', [])), claimed_lander=lander)
+    attestation.update(ports=list(record.get('ports', [])), lander=lander)
     return attestation

@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 from tests import test_workflow_delivery as delivery_fixtures
+from tests.approval_auth import reviewer
 from workflow.review_decisions import record,tick
 from workflow.handoff import Rejected
 from workflow.queue_pressure import support_allocations,integration_items
@@ -13,6 +14,7 @@ class QueuedReviewTests(unittest.TestCase):
         self.lane=self.f.ready(reviews=True);self.r=self.f.reg
         self.f.running('two');self.f.health='alive'
         with self.r.transaction() as s:s.setdefault('throughput',{})['workstreams']={'test':{'owner_lane':'two','lanes':['one']}}
+        reviewer(self,self.r,'two',fake_diff=True)
         self.args=dict(reviewer='two',generation=1,key='one',producer_generation=1,handoff_sha256=self.lane['handoff']['sha256'],decisions=[dict(file='shared.cpp',status='approved',evidence=self.f.evidence)])
         self.c=SimpleNamespace(reg=self.r)
     def test_wait_apply_and_replay(self):
@@ -21,6 +23,10 @@ class QueuedReviewTests(unittest.TestCase):
         self.f.health='dead';tick(self.c)
         state=self.r.snapshot();self.assertEqual(state['shared_review_decisions'][receipt['id']]['status'],'applied')
         self.assertEqual(self.r.check_handoff(state['lanes']['one'])['pending_reviews'],[])
+        row=state['approvals'][receipt['approvals'][0]]
+        self.assertEqual((row['kind'],row['reviewer']['launch'],row['reviewer']['models']),
+                         ('handoff_review','launch-two',['test/reviewer-model']))
+        self.assertEqual(state['throughput']['dispositions'][next(iter(state['throughput']['dispositions']))]['approval'],row['id'])
         tick(self.c);self.assertEqual(state['lanes']['one'],self.r.snapshot()['lanes']['one'])
     def test_mutation_failure_rolls_back(self):
         receipt=record(self.r,**self.args);self.f.health='dead'

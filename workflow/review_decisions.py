@@ -4,60 +4,54 @@ import json
 from .control import fingerprint
 from .provenance import cli
 from .handoff import require, Rejected
+from . import approvals
+from .approvals import INSTRUCTION as APPROVALS, delegated  # noqa: F401 (delegated is re-exported)
 
 
 INSTRUCTION = (' For handoff shared reviews, record your actual decision through '
-    + cli('review_decisions') + ' --root <canonical-root> --request <json>. '
-    'Fields: reviewer (your registered authorized reviewer lane), generation (your generation), '
+    + cli('review_decisions') + ' --root <canonical-root> --request <json>, run from inside your own live launch '
+    'session. Fields: reviewer (your registered lane), generation (your generation), '
     'key (producer lane), producer_generation, handoff_sha256, decisions '
-    '[{file,status:approved|rejected,evidence:{path,sha256}}]. The controller applies '
-    'each decision to a new immutable handoff once the producer is safely stopped. '
-    'Do not hand approved status changes back to a stopped producer. Issue comments '
-    'and prose approval alone do not complete the decision. Read the returned queue receipt. ')
-
-
-def delegated(state, reviewer, lane):
-    """Only the live cycle's exact frozen assignment grants decision authority."""
-    if reviewer == lane['lane']:return False
-    scopes=state.get('throughput_runtime',{}).get('autofill',{}).get('planner_pool',{}).get('scopes',{})
-    for row in scopes.values():
-        if row.get('review_authority') != 'shared-files-v1' or 'completed_at' in row:continue
-        if row.get('spec',{}).get('lane',{}).get('lane') != reviewer:continue
-        for target in row.get('support_targets',[]):
-            if (target.get('lane')==lane['lane'] and target.get('generation')==lane['generation'] and
-                    target.get('handoff')==lane.get('handoff') and target.get('root')==lane.get('root') and
-                    target.get('native')==lane.get('native')):return True
-    return False
+    '[{file,status:approved|rejected,evidence:{path,sha256}}]. Each decision becomes an authenticated '
+    'approvals-ledger row pinned to the producer root/native pins and that file diff; integrate reads only '
+    'the ledger. The controller also applies each decision to a new immutable handoff once the producer is '
+    'safely stopped. Do not hand approved status changes back to a stopped producer. Issue comments '
+    'and prose approval alone do not complete the decision. Read the returned queue receipt.' + APPROVALS)
 
 
 def record(reg, reviewer, generation, key, producer_generation, handoff_sha256, decisions):
     require(isinstance(decisions,list) and decisions, 'Nonempty file decisions required')
-    require(len({d['file'] for d in decisions}) == len(decisions), 'One decision per file required')
+    require(all(isinstance(d,dict) for d in decisions) and len({d.get('file') for d in decisions}) == len(decisions),
+            'One decision per file required')
     for d in decisions:
         require(set(d)=={'file','status','evidence'} and d['status'] in ('approved','rejected'), 'Explicit scoped review required')
         reg.evidence(d['evidence'])
     from .provenance import stamp
-    code=stamp()
+    from .storage import read_record
+    code=stamp();chain=approvals.ancestry()
+    before=read_record(reg,('lanes',),key)
+    require(isinstance(before,dict),'Unknown lane: '+str(key))
+    digests={d['file']:approvals.diff(reg.root,before,d['file']) for d in decisions}
     with reg.transaction() as state:
-        owner=reg.lane(state,reviewer,generation)
-        require(owner['state']=='running' and reg.probe(owner['process'])=='alive', 'Live integration reviewer required')
+        identity=approvals.authenticate(reg,state,reviewer,generation,chain)
         lane=reg.lane(state,key,producer_generation)
-        require(any(w.get('owner_lane')==reviewer and key in w.get('lanes',[]) for w in
-                    state.get('throughput',{}).get('workstreams',{}).values()) or delegated(state,reviewer,lane),
-                'Reviewer must own producer workstream or hold exact delegated assignment')
+        approvals.authorize(state,reviewer,lane)
         require(lane['state'] in ('handoff_ready','integrating') and lane['handoff']['sha256']==handoff_sha256,
                 'Exact current handoff required')
+        require(approvals.pins(lane)==approvals.pins(before),'Producer pins changed while hashing the reviewed diff')
         data=reg._delivery_read_handoff(lane)
         require({d['file'] for d in decisions}<={r['file'] for r in data['shared_reviews']}, 'Unknown shared file')
         value=dict(reviewer=reviewer,reviewer_generation=generation,key=key,generation=producer_generation,
                    handoff_sha256=handoff_sha256,root=lane['root'],native=lane.get('native'),decisions=copy.deepcopy(decisions))
-        identity=fingerprint(value)
+        identity_key=fingerprint(value)
         ledger=state.setdefault('shared_review_decisions',{})
-        if identity not in ledger:
-            ledger[identity]=dict(value,id=identity,status='pending',applied=0,current_handoff=handoff_sha256,at=reg.clock(),
-                                  code_revision=code)
-            reg.event(state,'shared_review_decision_queued',key,decision=identity)
-        return copy.deepcopy(ledger[identity])
+        if identity_key not in ledger:
+            rows=[approvals.review_row(reg,state,'review_decisions',lane,d['file'],digests[d['file']],d['status'],
+                                       d['evidence'],identity,code,handoff_sha256=handoff_sha256)['id'] for d in decisions]
+            ledger[identity_key]=dict(value,id=identity_key,status='pending',applied=0,current_handoff=handoff_sha256,at=reg.clock(),
+                                      code_revision=code,approvals=rows,reviewer_identity=identity)
+            reg.event(state,'shared_review_decision_queued',key,decision=identity_key)
+        return copy.deepcopy(ledger[identity_key])
 
 
 def tick(controller):
@@ -80,7 +74,8 @@ def tick(controller):
                     d=row['decisions'][row['applied']];reg.evidence(d['evidence'])
                     request=dict(d,reviewer=row['reviewer'],handoff_sha256=row['current_handoff'])
                     reg._dispose_review(state,row['key'],row['generation'],lane['revision'],
-                                        'queued-'+row['id']+'-'+str(row['applied']),request)
+                                        'queued-'+row['id']+'-'+str(row['applied']),request,
+                                        (row.get('approvals') or [None]*len(row['decisions']))[row['applied']])
                     row['applied']+=1;budget-=1
                     row['current_handoff']=lane['handoff']['sha256']
                 if row['applied']==len(row['decisions']):

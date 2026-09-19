@@ -84,7 +84,7 @@ def tick(controller, inventory=process_inventory, terminate=terminate_exact):
                 if any(v['lane']==lane['lane'] and v['process']!=lane['process'] and reg.probe(v['process'])!='dead'
                        for collection in ('leases','queue') for v in s[collection].values()):continue
                 if lane['state']=='handoff_ready':
-                    reg.check_handoff(lane)
+                    reg.check_handoff(lane, s)
                     evidence={k:lane['handoff'][k] for k in ('path','sha256')}
                 elif lane['state']=='review_ready':
                     evidence=lane['review']['evidence']['review'];reg.evidence(evidence)

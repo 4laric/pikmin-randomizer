@@ -1,12 +1,17 @@
 """Read-only audit of every integration receipt against the landing proof integrate() now requires.
 
   <python> <checkout>/scripts/workflow_module.py landing_audit --root <root> [--out <file.json>] [--lane KEY ...]
+  <python> <checkout>/scripts/workflow_module.py landing_audit --approvals --root <root> [--out <file.json>]
 
 Reads one committed registry snapshot (no transaction, never writes the registry) and
 runs the same per-file git checks: missing commits, files absent or different at the
 receipt commit, deleted files still present, commits not on a declared integration line (or,
 undeclared, on no branch outside the lane's own worktree).
 Exit 1 when any receipt has a mismatch, 2 when the audit itself cannot run.
+
+--approvals instead lists recorded approvals with no approvals-ledger row (handoff statuses the
+producer wrote, free-text dispositions, queued and preflight decisions from before the ledger),
+each marked unauthenticated-legacy. History is never rewritten; exit 1 when any exist.
 """
 import argparse
 from collections import Counter
@@ -56,9 +61,22 @@ def main(argv=None):
     parser.add_argument('--out', type=Path, help='Also write the full JSON report here')
     parser.add_argument('--lane', action='append', help='Audit only these lanes (repeatable)')
     parser.add_argument('--all', action='store_true', help='Print clean receipts too')
+    parser.add_argument('--approvals', action='store_true', help='Report approvals without ledger backing instead')
     args = parser.parse_args(argv)
     from .registry import Registry
     root = args.root.resolve()
+    if args.approvals:
+        from .approvals import legacy
+        try:
+            report = legacy(Registry(args.db or root / 'output/workflow/registry.sqlite3', root).snapshot(), root)
+        except (Rejected, OSError, ValueError, sqlite3.Error) as exc:
+            print('Refused: ' + str(exc), file=sys.stderr)
+            return 2
+        if args.out:
+            args.out.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        shown = report if args.all else dict(report, items=[i for i in report['items'] if i['lane_state'] != 'done'])
+        print(json.dumps(shown, indent=2))
+        return 1 if report['items'] else 0
     try:
         lanes = Registry(args.db or root / 'output/workflow/registry.sqlite3', root).snapshot(section=('lanes',))
         report = audit(root, lanes, only=set(args.lane or ()))

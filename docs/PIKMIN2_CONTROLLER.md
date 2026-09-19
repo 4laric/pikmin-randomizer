@@ -161,14 +161,16 @@ Configure the path in `receipts`. It contains the arguments to `workflow receipt
 The controller verifies accepted candidate ancestry with Git in the given worktrees,
 then `integrate` proves the landed bytes (docs/PIKMIN2_WORKFLOW.md section 5), the
 existing handoff and validation/export hashes before marking completion. A receipt
-may add `"lander":{"lane":...,"generation":...}`, stored as an unauthenticated claim.
+may add `"lander":{"lane":...,"generation":...}`; config receipts run in the
+controller, outside any launch session, so it stays an unauthenticated
+`claimed_lander` and shared-file ports in them refuse.
 Replaying the same receipt does not increment completion twice. Conflicting receipts
 fail closed; a malformed receipt file is refused with a `receipt_rejected` notice and
 never stalls the tick. Every native file the lane changed must be at `native_commit`:
 leaving an auxiliary native fixture out needs a per-file port with `landed_blob` null,
 a reason and hashed evidence, and leaving out an engine-path file (native `pc_port/`,
-`src/`, `include/`, `cmake/`, `CMakeLists.txt`) is refused until a landing review
-exists. Validation evidence alone no longer excludes a file. Receipt submission does
+`src/`, `include/`, `cmake/`, `CMakeLists.txt`) needs an approved landing review and
+an authenticated lander, so it refuses in a config receipt. Validation evidence alone no longer excludes a file. Receipt submission does
 not run a merge/export.
 
 Configure `publications` with `{producer,path,description}` for completed provider

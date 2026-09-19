@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from tests import test_pikmin2_workflow as workflow_fixtures
+from tests.approval_auth import reviewer
 from tests.landing_git import commit, git, head, source
 from workflow import landing, landing_audit
 from workflow.handoff import Rejected, digest
@@ -32,8 +33,16 @@ class Base(unittest.TestCase):
         data = self.f.handoff(lane)
         data['changed_files'] = sorted(set(data['changed_files']) | {r['file'] for r in reviews})
         data['shared_reviews'] = [dict(file=r['file'], reason='Shared hook', issue_url='https://x/186',
-                                       status='approved', evidence=['log']) for r in reviews]
+                                       status='requested', evidence=['log']) for r in reviews]
         lane = self.reg.submit_handoff(key, 1, lane['revision'], self.f.save_handoff(data))
+        if reviews:  # An authenticated reviewer's ledger rows approve them.
+            from workflow import review_decisions
+            if 'reviewer' not in self.reg.snapshot()['lanes']:
+                self.reg.register(dict(self.f.data('three'), lane='reviewer', worker_id='reviewer', issue=493,
+                                       owned_files=['workflow/reviewer.py']))
+                reviewer(self, self.reg, 'reviewer', owns=[key])
+            review_decisions.record(self.reg, 'reviewer', 1, key, 1, lane['handoff']['sha256'],
+                                    [dict(file=r['file'], status='approved', evidence=self.f.evidence) for r in reviews])
         return self.reg.checkpoint(key, 1, lane['revision'], {'state': 'integrating'})
 
     def record(self, commit_sha, **extra):
@@ -138,8 +147,9 @@ class LandingTests(Base):
         landed = self.landing_branch({'workflow/one.py': 'X = 1\n', 'workflow/shared.py': 'HOOK = 2\n',
                                       'engine/pc_port/hook.cpp': 'int b;\n'})
         for name in ('workflow/shared.py', 'engine/pc_port/hook.cpp'):
-            port = self.port(name, self.blob(lane['root']['head'], name), self.blob(landed, name))
-            with self.assertRaisesRegex(Rejected, 'shared-file port requires a landing review: root:' + name):
+            port = self.port(name, self.blob(lane['root']['head'], name), self.blob(landed, name),
+                             interdiff=self.interdiff(lane['root']['head'], landed, name))
+            with self.assertRaisesRegex(Rejected, 'shared-file port requires a landing review.*: root:' + name):
                 self.integrate(lane, self.record(landed, ports=[port]))
         self.assertTrue(landing.shared_file('native', 'pc_port/pc_p2_cave.cpp', []))
         self.assertTrue(landing.shared_file('native', 'x.cpp', ['native/x.cpp']))

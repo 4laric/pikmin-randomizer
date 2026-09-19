@@ -250,15 +250,18 @@ is `complete_assignment(assignment_id, evidence)`, where evidence has `path` and
 `sha256`. It refuses completion without a done lane, applied disposition, matching
 bound execution generation, and stopped worker/protected resources.
 
-For a requested shared-file review, `dispose-review` applies a new validated
-handoff instead of leaving an approval in a disconnected report:
+For a requested shared-file review, `dispose-review` records an authenticated
+approvals-ledger row and applies a new validated handoff instead of leaving an
+approval in a disconnected report:
 
 ```json
-{"key":"cave-50","generation":1,"revision":8,"version":"shared-review-1","handoff_sha256":"<submitted-handoff-sha256>","file":"native/pc_port/example.cpp","status":"approved","reviewer":"Codex through 4laric; focused reviewer","evidence":{"path":"output/reviews/cave-50-review.txt","sha256":"<review-evidence-sha256>"}}
+{"key":"cave-50","generation":1,"revision":8,"version":"shared-review-1","handoff_sha256":"<submitted-handoff-sha256>","file":"native/pc_port/example.cpp","status":"approved","reviewer":"species-integration-owner","reviewer_generation":42,"evidence":{"path":"output/reviews/cave-50-review.txt","sha256":"<review-evidence-sha256>"}}
 ```
 
 `status` is `approved` or `rejected`; the file must identify exactly one existing
-shared review. The source handoff hash, lane generation/revision, and stopped-owner
+shared review. `reviewer`/`reviewer_generation` name the caller's own live
+registered lane, and the command must run inside that lane's launch session; a
+free-text reviewer is refused (see the Approvals ledger in PIKMIN2_WORKFLOW.md). The source handoff hash, lane generation/revision, and stopped-owner
 checks fence the operation. Blocked lanes require supported reconciliation first.
 The resulting handoff is revalidated with all original slice/gate checks and stays
 `handoff_ready`; rejection remains a pending integration review. Replay of an
@@ -684,8 +687,8 @@ after ten minutes, deduplicated by producer generation/file/source pins. Tasks r
 only when the request disappears through disposition or source supersession. Unknown
 files receive no invented owner. For #129/#132, #186 delegates focused file review to
 the existing species integration lead; the reviewer must inspect pins/tests and record
-approve/request-changes evidence through dispose_review, retaining stopped-producer
-fences. The healthy coordinator/integrator is not restarted or duplicated.
+approve/request-changes evidence through dispose_review (authenticated, from its own
+launch session), retaining stopped-producer fences. The healthy coordinator/integrator is not restarted or duplicated.
 # Managed-session recovery and activity evidence
 
 The controller checks process identity (PID, host and creation time), not PID
@@ -857,7 +860,10 @@ Pre-handoff shared decisions (#635): `<python> <checkout>/scripts/workflow_modul
 --root <canonical-root> --request <json>` records a substantive approved/rejected
 file review for a safely stopped blocked producer. Fields: key, generation,
 source_pins `{root,native}` matching current heads, exact owned file, status,
-reviewer attribution, scoped reason, evidence `{path,sha256}`. The controller
+reviewer (your live registered lane) and reviewer_generation, scoped reason,
+evidence `{path,sha256}`. Like every approvals-ledger writer it authenticates the
+calling session and requires workstream ownership or the exact delegated
+assignment; free-text reviewers are refused. The controller
 verifies the evidence and pins again and wakes the same producer once. This does
 not integrate source, clear unrelated dependencies, or grant gameplay acceptance.
 

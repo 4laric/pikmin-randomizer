@@ -19,9 +19,11 @@ class ReviewRepairTests(unittest.TestCase):
         self.f=DeliveryTests();self.f.setUp();self.addCleanup(self.f.doCleanups)
 
     def test_rejected_handoff_routes_and_pin_drift_refuses(self):
-        f=self.f;lane=f.ready(reviews=True)
+        f=self.f;lane=f.ready(reviews=True);f.running('two')
+        from tests.approval_auth import reviewer
+        reviewer(self,f.reg,'two',owns=['one'],fake_diff=True)
         f.reg.dispose_review('one',1,lane['revision'],'reject',lane['handoff']['sha256'],
-                             'shared.cpp','rejected','reviewer',f.evidence)
+                             'shared.cpp','rejected','two',f.evidence,reviewer_generation=1)
         review_rejections(f.reg)
         state=f.reg.snapshot();lane=state['lanes']['one']
         from workflow.control import fingerprint

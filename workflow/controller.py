@@ -790,6 +790,11 @@ class Controller:
         wake_consumers(self)
         from .shared_decisions import tick as wake_shared_decisions
         wake_shared_decisions(self)
+        from .approvals import tick as wake_shared_hooks
+        try:
+            wake_shared_hooks(self)
+        except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
+            write(self.base / 'shared-hook-wakeup-error.json', dict(at=self.reg.clock(), error=str(exc)))
         from .integration_repair import tick as repair_integration
         if not getattr(self, '_dispatch_monitor', None):
             repair_integration(self)

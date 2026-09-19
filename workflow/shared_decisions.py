@@ -35,28 +35,37 @@ def approved_scope(state,lane):
 
 
 def record(reg, key, generation, source_pins, file, status, reviewer, reason, evidence, reviewer_generation=None):
-    require(status in ('approved','rejected'), 'Explicit approved/rejected decision required')
-    require(isinstance(reviewer,str) and reviewer.strip() and isinstance(reason,str) and reason.strip(),
-            'Reviewer attribution and scoped reasoning required')
-    reg.evidence(evidence)
+    """Always authenticated: reviewer is a live registered lane, called from inside its own launch session."""
+    from . import approvals
     from .provenance import stamp
-    code=stamp()
+    from .storage import read_record
+    require(status in ('approved','rejected'), 'Explicit approved/rejected decision required')
+    require(isinstance(reason,str) and reason.strip(), 'Scoped reasoning required')
+    require(isinstance(reviewer,str) and reviewer.strip() and type(reviewer_generation) is int,
+            'reviewer (your registered lane) and reviewer_generation required; free-text reviewers are refused')
+    reg.evidence(evidence)
+    code=stamp();chain=approvals.ancestry()
+    before=read_record(reg,('lanes',),key)
+    require(isinstance(before,dict) and pins(before)==source_pins, 'Source pins changed')
+    require(file in before['owned_files'], 'Decision file must belong to producer scope')
+    digest=approvals.diff(reg.root,before,file)
     with reg.transaction() as state:
         lane=reg.lane(state,key,generation)
-        if reviewer_generation is not None or reviewer.startswith('integration-support-'):
-            from .review_decisions import delegated
-            require(reviewer_generation is not None,'Reviewer generation required')
-            owner=reg.lane(state,reviewer,reviewer_generation)
-            require(owner['state']=='running' and reg.probe(owner['process'])=='alive' and delegated(state,reviewer,lane),
-                    'Live exact delegated blocked-review assignment required')
-        require(pins(lane)==source_pins, 'Source pins changed')
+        identity=approvals.authenticate(reg,state,reviewer,reviewer_generation,chain)
+        approvals.authorize(state,reviewer,lane)
+        require(pins(lane)==source_pins and approvals.pins(lane)==approvals.pins(before), 'Source pins changed')
         require(file in lane['owned_files'], 'Decision file must belong to producer scope')
         require(lane['state']=='blocked' and reg.recovery_safe(state,lane), 'Safely stopped blocked producer required')
         decision=dict(lane=key,generation=generation,source_pins=source_pins,file=file,status=status,
                       reviewer=reviewer,reason=reason,evidence=evidence)
-        identity=fingerprint(decision)
-        row=state.setdefault('shared_preflight_decisions',{}).setdefault(identity,dict(decision,at=reg.clock(),code_revision=code))
-        return dict(id=identity,**decision,code_revision=row.get('code_revision'))
+        identity_key=fingerprint(decision)
+        rows=state.setdefault('shared_preflight_decisions',{})
+        if identity_key not in rows:
+            row=approvals.review_row(reg,state,'shared_decisions',lane,file,digest,status,evidence,identity,code,reason=reason)
+            rows[identity_key]=dict(decision,at=reg.clock(),code_revision=code,reviewer_generation=reviewer_generation,
+                                    reviewer_identity=identity,approval=row['id'])
+        row=rows[identity_key]
+        return dict(id=identity_key,**decision,code_revision=row.get('code_revision'),approval=row.get('approval'))
 
 
 def tick(controller):

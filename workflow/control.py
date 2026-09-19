@@ -37,10 +37,17 @@ class ControlMixin:
         require(path.is_file() and digest(path) == value.get('sha256'), 'Missing or changed evidence')
         return path
 
-    def finish(self, key, generation, outcome, summary, evidence, dependencies=None, path=None):
-        """A small terminal API; runtime handoffs still go through full validation."""
+    def finish(self, key, generation, outcome, summary, evidence, dependencies=None, path=None, shared_hooks=None):
+        """A small terminal API; runtime handoffs still go through full validation.
+
+        blocked may also carry structured shared_hooks [{kind:'shared_hook', issue, files|item_id}] next to its
+        text dependencies; approvals.shared_hook_decision records decisions against them."""
         require(nonempty(summary), 'Outcome summary required')
         require(outcome in ('blocked', 'review-ready', 'implementation-ready', 'reconcile'), 'Unknown outcome')
+        require(shared_hooks is None or outcome == 'blocked', 'shared_hooks belong to a blocked outcome')
+        if shared_hooks is not None:
+            from .approvals import hooks
+            shared_hooks = hooks(shared_hooks)
         self.evidence(evidence)
         if outcome == 'implementation-ready':
             require(path is not None, 'implementation-ready requires a validated handoff path')
@@ -51,6 +58,8 @@ class ControlMixin:
             require(lane['state'] != 'done', 'Completed slice cannot be reopened')
             value = dict(outcome=outcome, summary=summary, evidence=evidence,
                          dependencies=dependencies or [])
+            if shared_hooks is not None:
+                value['shared_hooks'] = shared_hooks
             if lane.get('outcome') == value:
                 return lane
             if outcome == 'blocked':
@@ -65,6 +74,8 @@ class ControlMixin:
                         next_action=summary, revision=lane['revision'] + 1,
                         dependencies=dependencies or [], progress_at=self.clock(),
                         progress_detail=summary, progress_evidence=evidence)
+            if shared_hooks is not None:
+                lane['shared_hooks'] = shared_hooks
             if outcome == 'review-ready':
                 # Review is a terminal worker outcome, not runtime acceptance or source integration.
                 lane['handoff_at'] = lane['handoff_at'] or self.clock()
@@ -185,7 +196,7 @@ class ControlMixin:
             require(not any(item['lane'] == key and item['generation'] == generation and
                             item['status'] in ('intent', 'spawned', 'running')
                             for item in launches.values()), 'Controller dispatch in flight for this lane')
-            result = self.check_handoff(lane)
+            result = self.check_handoff(lane, state)
             lane.update(state='handoff_ready', revision=revision + 1,
                         outcome=None, dependencies=[],
                         next_action=summary, progress_at=self.clock(), progress_detail=summary,

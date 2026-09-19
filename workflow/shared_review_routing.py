@@ -5,6 +5,7 @@ from .control import fingerprint
 from .handoff import local_path,require
 from .runner import write
 from .review_decisions import INSTRUCTION
+from .approvals import decision
 
 
 def tick(controller):
@@ -13,6 +14,7 @@ def tick(controller):
     reg=controller.reg;now=reg.clock();routes=cfg.get('files',{})
     with reg.transaction() as s:
         lanes=copy.deepcopy(s['lanes']);ledger=copy.deepcopy(s.get('shared_review_routes',{}))
+        rows=copy.deepcopy(s.get('approvals',{}))
     active=set()
     for key,lane in lanes.items():
         if lane['state'] not in ('handoff_ready','integrating'):continue
@@ -21,7 +23,7 @@ def tick(controller):
         reg.evidence({k:handoff[k] for k in ('path','sha256')})
         data=json.loads(local_path(reg.root,handoff['path']).read_text(encoding='utf-8-sig'))
         for review in data.get('shared_reviews',[]):
-            if review['status']!='requested':continue
+            if decision(rows,lane,review['file']) is not None:continue  # Only a ledger decision resolves; handoff statuses never do.
             owner=routes.get(review['file'])
             if not owner:continue
             require(owner in lanes,'Shared-review owner not registered')
@@ -41,8 +43,9 @@ def tick(controller):
                 'An advisory packet or missing separate historical worker is not a reason to wait: you own this focused decision. '
                 'Do not infer approval from age or these instructions. Post actual decision/evidence to #186 and child issue. '
                 'Record an immutable hashed decision report. Re-read current lane revision/handoff hash before using canonical '
-                'Registry.dispose_review (CLI dispose-review) with key,generation,revision,unique version,handoff_sha256,file,'
-                'status approved/rejected,reviewer identifying yourself,evidence={path,sha256}. '
+                'Registry.dispose_review (CLI dispose-review, run from inside your own live launch session) with key,generation,'
+                'revision,unique version,handoff_sha256,file,status approved/rejected,reviewer (your registered lane),'
+                'reviewer_generation (your generation),evidence={path,sha256}; free-text reviewers are refused. '
                 'Its stopped-producer/child fences must pass; if producer still live, retain decision and apply after stop. '
                 'Apply separate dispositions sequentially using the refreshed hash/revision. Approval then follows normal '
                 'integration/receipt checks; rejection needs explicit owner repair instructions. No ADMIT or semantic approval '

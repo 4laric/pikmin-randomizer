@@ -472,7 +472,16 @@ class WorkflowTests(unittest.TestCase):
             self.reg.integrate('one', 1, 4, record)
         self.now += 99
         data['shared_reviews'][0]['status'] = 'approved'
-        self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))
+        with self.assertRaisesRegex(Rejected, 'no matching authenticated decision'):  # A producer cannot approve itself.
+            self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))
+        from tests.approval_auth import reviewer
+        from workflow import review_decisions
+        self.register('two'); reviewer(self, self.reg, 'two', owns=['one'])
+        handoff = self.reg.status()['lanes']['one']['handoff']
+        self.save_handoff(dict(data, shared_reviews=[dict(data['shared_reviews'][0], status='requested')]))
+        review_decisions.record(self.reg, 'two', 1, 'one', 1, handoff['sha256'],
+                                [dict(file='native/shared.cpp', status='approved', evidence=self.evidence)])
+        self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))  # Stamped from the ledger row.
         self.assertEqual(self.reg.status()['metrics']['handoff_queue'][0]['age_seconds'], 99)
         self.reg.checkpoint('one', 1, 5, {'state': 'integrating'})
         self.assertEqual(self.reg.integrate('one', 1, 6, record)['state'], 'done')

@@ -222,9 +222,11 @@ class StampTests(unittest.TestCase):
     def test_dispose_review_record(self):
         f = fixture(delivery_fixtures.DeliveryTests, 'test_null_build_tooling_snapshot_and_review')
         self.addCleanup(f.doCleanups)
-        lane = f.ready(reviews=True)
+        lane = f.ready(reviews=True); f.running('two')
+        from tests.approval_auth import reviewer
+        reviewer(self, f.reg, 'two', owns=['one'], fake_diff=True)
         record = f.reg.dispose_review('one', 1, lane['revision'], 'approved-1', lane['handoff']['sha256'],
-                                      'shared.cpp', 'approved', 'reviewer', f.evidence)
+                                      'shared.cpp', 'approved', 'two', f.evidence, reviewer_generation=1)
         self.assertEqual(record['code_revision'], provenance.stamp())
         self.assertEqual(f.reg.snapshot()['lanes']['one']['handoff_code_revision'], provenance.stamp())
 

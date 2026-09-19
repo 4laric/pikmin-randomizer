@@ -60,7 +60,7 @@ dirty: true`, never as clean. Additive `code_revision` fields use the compact fo
 |---|---|
 | controller claim | `control.controller_code_revision` (full form plus the claiming `process`) and a `controller_started` event; `control.controller` stays the exact process identity, and a revision whose `process` differs from it (a claim by pre-provenance code) is reported as unknown |
 | launch intents (`plan_launch`, pool and candidate-QA) | `code_revision` |
-| `shared_review_decisions`, `shared_preflight_decisions`, `consumer_verifications` reports, `delivery.dispositions` | `code_revision` |
+| `approvals` rows, `shared_review_decisions`, `shared_preflight_decisions`, `consumer_verifications` reports, `delivery.dispositions` | `code_revision` |
 | lane after `submit_handoff` / `integrate` | `handoff_code_revision` / `integration_code_revision` (handoff and receipt records stay exactly as submitted, so replays still compare equal); a disposition that rewrites the handoff restamps it, and clearing the handoff removes it |
 
 Records written before provenance lack these fields; readers treat that as unknown.
@@ -76,7 +76,8 @@ Shared-file review delegation (#635): the controller may grant a new
 integration-support cycle `shared-files-v1` authority over its frozen assignment.
 This supersedes older preparation-only shared-approval restrictions for that
 assignment. A live reviewer submits decisions through `workflow.review_decisions`;
-the registry fences producer generation, source pins, handoff and cycle completion.
+the registry fences producer generation, source pins, handoff and cycle completion,
+and records each decision as an authenticated approvals-ledger row (below).
 Dynamic allocation uses existing idle workers and distinct handoffs. Final merges,
 exports, integration receipts and gameplay admission retain the integration owner.
 See the operator quickstart for configuration and capacity bounds.
@@ -334,15 +335,51 @@ Validation requires:
 `reviewable:true` never means gameplay accepted. A slice can pass while unrelated
 family gates remain untested. The assigned criteria must pass before entering the
 handoff queue. Shared review may still be pending at that point; it must be approved
-before integration completion. The tool checks declared reviews, not the semantic
+before integration completion. The tool checks recorded approvals, not the semantic
 content of a diff; integration still reviews saves, damage, IDs and actor lifetime.
+
+### Approvals ledger (#186)
+
+An approval is a registry row in `approvals`, never a handoff field. The writers are
+`review_decisions.record` and `dispose-review` (kind `handoff_review`),
+`shared_decisions.record` (`preflight`), `approvals landing-review`
+(`landing_review`) and `approvals shared-hook` (`shared_hook`). Every writer
+authenticates its reviewer the same way: `reviewer` and `reviewer_generation` name a
+registered lane that is `running` and alive, has a running controller launch bound
+to that generation, and whose recorded runner process is an ancestor of the calling
+process (so the command must run inside that lane's own launch session); the lane
+must own the producer's workstream or hold its exact delegated assignment. Free-text
+reviewers are refused. Rows stamp the reviewer's launch id, models and session and
+the code revision.
+
+Handoff and preflight rows cover one file at the producer's root/native `base` and
+`head` (`pins`) and carry `diff_sha256`, the sha256 of that file's `base..head` diff
+(`landing.INTERDIFF` options), computed by the writer from git; git failure refuses.
+A row counts only while the lane holds exactly those pins, and the latest row per
+file wins. `submit_handoff` refuses a `shared_reviews` status of `approved` or
+`rejected` unless the latest matching row has that status ("submit it as
+requested"); for every entry the stored `handoff.result.reviews` and
+`pending_reviews` come from the ledger, so an honest producer's `requested` entry is
+stamped from an existing decision. `check_handoff`, batching and `integrate` read only
+the ledger at the lane's current pins, so a status written into a handoff before the
+ledger existed counts as `requested` until an authenticated decision is recorded
+(nothing is rewritten). Decisions derived from review packets are not accepted yet
+(`approvals.packet_decision` is the hook point for controller-verified packets).
+There is no human writer: agents share this machine and the GitHub account, so no
+agent-reachable flag can authenticate a person.
+
+`landing_audit --approvals` lists, read-only, every older approval without a ledger
+row (producer-written handoff statuses, free-text and queued dispositions, preflight
+decisions), each marked `unauthenticated-legacy`. Older preflight rows still
+suppress repeat `blocked_review` assignments but never satisfy a shared review.
 
 Submitted handoff/evidence hashes are rechecked when beginning and completing
 integration. To add review evidence, submit a new handoff file from `handoff_ready`
 or `integrating` using the current revision; it returns to `handoff_ready` and
 preserves original queue age. Do not silently edit submitted evidence in place.
 
-Start integration with a checkpoint to `integrating`. Finish with `integrate`:
+Start integration with a checkpoint to `integrating`. Finish with `integrate`, run
+from inside the integrator's own launch session:
 
 ```json
 {"key":"species-receivers","generation":1,"revision":5,"lander":{"lane":"species-integration-owner","generation":42},"record":{"root_commit":"FULL_INTEGRATED_ROOT_COMMIT","native_commit":"FULL_INTEGRATED_NATIVE_COMMIT","native_dirty":"RECORDED_DIRTY_STATE","export_evidence":"output/integration/export.json","export_sha256":"SHA256","validation_path":"output/integration/checks.log","validation_sha256":"SHA256"}}
@@ -373,9 +410,14 @@ head, not landed). Inside the transaction it refuses again if the lane's source 
 or handoff moved while git ran. The proof is stored beside the unchanged receipt as
 `integration_landing` {kind, root, native (repo, commit, base, head,
 head_is_ancestor, per-file `[path, status, reviewed_blob, landed_blob, via]`,
-line_check, landed_refs), ports, claimed_lander, verified_at}. `claimed_lander` is
-the `lander` {lane, generation} the request names, checked only to be a current,
-not-done lane; nothing authenticates the caller yet (item 3), so it confers nothing.
+line_check, landed_refs, port_reviews), ports, lander, claimed_lander, reviews,
+self_reviewed, verified_at}. `lander` is the authenticated caller: the running
+launch whose runner process is an ancestor of the `integrate` process, with its lane,
+generation, launch id and models; it is `null` when the caller is not inside a live
+launch session (an operator shell, the controller's config receipts). A request
+`lander` that names anything but that session refuses; otherwise it is stored as
+`claimed_lander`. `reviews` maps each shared file to its ledger approval, and
+`self_reviewed` lists files the lander approved itself (recorded, not refused).
 `batch-close` accepts a candidate whose receipt carries that proof; a receipt written
 before the proof existed is re-proven read-only outside the writer lock and recorded
 in the batch's `reproved`, and a mismatch refuses with the per-file details (isolate
@@ -396,9 +438,35 @@ is refused. `interdiff_sha256` is the sha256 of the stdout of
 -- <file>` (`landing.INTERDIFF`); integrate recomputes it and a mismatch refuses with
 the expected value. Ports of files the lane routed through shared review (#186
 `shared_reviews`) or of engine paths (root `engine/`, `include/`; native
-`pc_port/`, `src/`, `include/`, `cmake/`, `CMakeLists.txt`) are refused with
-`shared-file port requires a landing review`: hand those back for a re-reviewed
-handoff instead of adapting or leaving them out.
+`pc_port/`, `src/`, `include/`, `cmake/`, `CMakeLists.txt`) need an authenticated
+lander and the latest `landing_review` for that file at exactly `<lane head>` and
+`<receipt commit>` to be approved at the same per-file interdiff, recorded by a lane
+other than the lander; otherwise they refuse with `shared-file port requires a
+landing review ...`. The review ids are stored in `port_reviews` and rechecked inside
+the transaction. Without such a review, hand the file back for a re-reviewed handoff.
+
+**Landing reviews.** `<python> <checkout>/scripts/workflow_module.py approvals
+landing-review --root <root> --request <json>` with `reviewer`,
+`reviewer_generation`, `key`, `producer_generation`, `reviewed_head` (the producer's
+current root or native head), `landed_sha`, `files` (paths inside that repository,
+all changed by the lane), `interdiff_sha256`, `status` (`approved`/`rejected`),
+`conditions` and hashed `evidence`. The producer may be `blocked`, `done`,
+`handoff_ready` or `integrating`, with or without a handoff. The writer recomputes
+the interdiff from git (`landing.INTERDIFF` over `reviewed_head landed_sha -- <files
+sorted>`) and refuses a mismatch with the expected value; it also stores each file's
+own interdiff, which is what a port must match.
+
+**Shared-hook dependencies.** A blocked lane waiting on a decision about files it
+does not own may carry `shared_hooks` next to its text dependencies (via `finish` or
+`checkpoint`): `[{"kind":"shared_hook","issue":186,"files":[...]}]` or
+`{"kind":"shared_hook","issue":186,"item_id":"..."}`; each gets a stable `id`.
+`approvals shared-hook` records `{reviewer, reviewer_generation, hook, lanes:
+[{key, generation}], status, conditions, evidence, commit}` against every named lane
+holding that hook, in any producer state; for a files hook, `commit` pins the
+reviewed blobs. The dependency is satisfied only while the lane still holds the pins
+the decision recorded (`approvals.hook_state`). A `shared_hook_decided` event is
+emitted, and the controller wakes a blocked lane once per decision at those pins.
+Text dependencies are never cleared automatically.
 
 **Already landed.** A lane that changed nothing, or whose bytes an earlier commit
 already carries, is recorded with `"kind":"already_landed"` naming the commit that
@@ -649,12 +717,14 @@ from their demand-based target, with reserved/queued/report/recovery details and
 the handoffs assigned to each worker.
 
 A live registered integration owner records explicit shared-file decisions with
-the rendered `scripts/workflow_module.py review_decisions --root <canonical-root> --request <json>`.
+the rendered `scripts/workflow_module.py review_decisions --root <canonical-root> --request <json>`,
+run from inside its own launch session (see Approvals ledger).
 The request contains `reviewer`, reviewer `generation`, producer `key`,
 `producer_generation`, current `handoff_sha256`, and `decisions` entries with
 `file`, `status` (`approved` or `rejected`), and hashed `evidence` (`path`, `sha256`).
-The controller applies queued decisions through the existing immutable handoff
-API once producer/child stop fences pass. Source or handoff drift invalidates the
+Each decision is written to the approvals ledger immediately, and integrate reads
+only the ledger. The controller also applies queued decisions through the existing
+immutable handoff API once producer/child stop fences pass. Source or handoff drift invalidates the
 request, and evidence is rehashed on application. The registry mutation and
 receipt advance atomically. Prose approval alone is insufficient; an approved
 handoff must not be handed back to a stopped producer merely to flip statuses.

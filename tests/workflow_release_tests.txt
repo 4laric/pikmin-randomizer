@@ -107,3 +107,4 @@ tests/test_write_gate.py
 tests/test_workflow_provenance.py
 tests/test_workflow_landing.py
 --deselect=tests/test_pikmin2_surface_repeat_native.py::RepeatRuntimeDriverTests::test_private_recipe_uses_current_objects_and_private_import_library
+tests/test_workflow_approvals.py

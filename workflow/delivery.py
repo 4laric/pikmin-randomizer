@@ -103,7 +103,7 @@ class DeliveryMixin:
                 self._delivery_validate(old, lane)
                 require(lane['handoff']['sha256'] == old['submitted_sha256'], 'Version source changed')
                 return old
-            self.check_handoff(lane)
+            self.check_handoff(lane, state)
             data = self._delivery_read_handoff(lane)
             record = self._delivery_freeze(lane, data)
             record.update(lane=key, generation=generation, version=version,
@@ -113,18 +113,37 @@ class DeliveryMixin:
             return record
 
     def dispose_review(self, key, generation, revision, version, handoff_sha256,
-                       file, status, reviewer, evidence):
-        require(status in ('approved', 'rejected') and nonempty(reviewer) and nonempty(version),
-                'Version, reviewer and explicit review disposition required')
+                       file, status, reviewer, evidence, reviewer_generation=None):
+        """Authenticated disposition: reviewer is a live registered lane calling from its own launch session."""
+        from . import approvals
+        from .storage import read_record
+        require(status in ('approved', 'rejected') and nonempty(version),
+                'Version and explicit review disposition required')
+        require(nonempty(reviewer) and type(reviewer_generation) is int,
+                'reviewer (your registered lane) and reviewer_generation required; free-text reviewers are refused')
         self.evidence(evidence)
         request = dict(file=file, status=status, reviewer=reviewer, evidence=evidence,
-                       handoff_sha256=handoff_sha256)
+                       handoff_sha256=handoff_sha256, reviewer_generation=reviewer_generation)
         from .provenance import stamp
-        stamp()  # Warm the per-process revision before taking the writer lock.
+        code = stamp()  # Warm the per-process revision before taking the writer lock.
+        chain = approvals.ancestry()
+        before = read_record(self, ('lanes',), key)
+        require(isinstance(before, dict), 'Unknown lane: ' + str(key))
+        digest = approvals.diff(self.root, before, file)
         with self.transaction() as state:
-            return self._dispose_review(state, key, generation, revision, version, request)
+            identity = approvals.authenticate(self, state, reviewer, reviewer_generation, chain)
+            lane = self.lane(state, key, generation)
+            approvals.authorize(state, reviewer, lane)
+            if pin([key, generation, version]) in self.delivery(state)['dispositions']:
+                return self._dispose_review(state, key, generation, revision, version, request)
+            require(approvals.pins(lane) == approvals.pins(before), 'Producer pins changed while hashing the reviewed diff')
+            require(lane['state'] in ('running', 'handoff_ready', 'integrating') and lane.get('handoff') and
+                    lane['handoff']['sha256'] == handoff_sha256, 'Review source hash changed')
+            row = approvals.review_row(self, state, 'dispose_review', lane, file, digest, status, evidence, identity,
+                                       code, handoff_sha256=handoff_sha256)
+            return self._dispose_review(state, key, generation, revision, version, request, row['id'])
 
-    def _dispose_review(self, state, key, generation, revision, version, request):
+    def _dispose_review(self, state, key, generation, revision, version, request, approval=None):
         file, status, reviewer, evidence, handoff_sha256 = (request[k] for k in
             ("file", "status", "reviewer", "evidence", "handoff_sha256"))
         lane = self.lane(state, key, generation)
@@ -139,7 +158,7 @@ class DeliveryMixin:
         self.lane(state, key, generation, revision)
         self._delivery_stopped(state, lane)
         require(lane['state'] in ('running', 'handoff_ready', 'integrating'), 'Resume/reconcile lane before disposition')
-        self.check_handoff(lane)
+        self.check_handoff(lane, state)
         require(lane['handoff']['sha256'] == handoff_sha256, 'Review source hash changed')
         data = self._delivery_read_handoff(lane)
         matches = [r for r in data['shared_reviews'] if r['file'] == file]
@@ -150,13 +169,15 @@ class DeliveryMixin:
                           evidence=matches[0]['evidence'] + [evidence_key])
         snapshot = self._delivery_freeze(lane, data)
         _, result = self._delivery_validate(snapshot, lane)
+        from .approvals import apply
+        result = apply(state.get('approvals', {}), lane, data, result)
         from .provenance import stamp
         lane.update(state='handoff_ready', revision=revision + 1,
                     handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                     handoff=dict(**snapshot['handoff'], result=result), handoff_code_revision=stamp())
         self.check_wip(state, lane)
         record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock(),
-                      code_revision=stamp())
+                      code_revision=stamp(), approval=approval)
         dispositions[identity] = record
         self.event(state, 'shared_review_applied', key, file=file, status=status, version=version)
         return record
@@ -172,7 +193,7 @@ class DeliveryMixin:
                 self._delivery_validate(old['snapshot'], lane)
                 require(lane['handoff']['sha256'] == old['submitted_sha256'], 'Candidate version source changed')
                 return old
-            self.check_handoff(lane)
+            self.check_handoff(lane, state)
             data = self._delivery_read_handoff(lane)
             require(data.get('kind') == 'runtime', 'Candidate requires pinned native build and executable')
             snapshot = self._delivery_freeze(lane, data)
