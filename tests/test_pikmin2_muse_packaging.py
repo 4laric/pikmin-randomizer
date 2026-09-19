@@ -76,9 +76,13 @@ def make_retail(root):
 def test_candidate_identities_resolve_through_family_binding():
     assert family.resolve_family(58) == 'bombsarai'
     assert family.resolve_family('BombSarai') == 'bombsarai'
-    # 41/57/78 intentionally stay out of the family binding: they stage via
-    # the candidate sidecar path, never a forced family fallback.
-    for identity in (41, 57, 78, 'Fuefuki', 'Kurage', 'MiniHoudai'):
+    # #442 adds family bindings for Kurage (57) and MiniHoudai (78) alongside
+    # the unchanged candidate sidecar path; only Fuefuki (41) stays out.
+    assert family.resolve_family(57) == 'kurage'
+    assert family.resolve_family('Kurage') == 'kurage'
+    assert family.resolve_family(78) == 'minihoudai'
+    assert family.resolve_family('MiniHoudai') == 'minihoudai'
+    for identity in (41, 'Fuefuki'):
         with pytest.raises(ValueError):
             family.resolve_family(identity)
 
