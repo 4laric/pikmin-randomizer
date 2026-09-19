@@ -282,5 +282,102 @@ def main() -> None:
           f"manifest={args.output / 'manifest.json'}")
 
 
+P1_SCHEMA = "p2-challenge-ch_abem_tutorial-p1-v1"
+
+
+def validate_p1_manifest(manifest: dict) -> dict:
+    if not isinstance(manifest, dict):
+        raise ValueError("P1 manifest must be a dict")
+    if manifest.get("cave_id") != CAVE_ID:
+        raise ValueError("P1 stage mismatch")
+    floors = manifest.get("floors")
+    if not isinstance(floors, list) or len(floors) != 2:
+        raise ValueError("P1 needs exactly the 2 decoded floors")
+    staged = []
+    for n, floor in enumerate(floors, 1):
+        if not isinstance(floor, dict):
+            raise ValueError("P1 floor malformed")
+        for key in ("unit_pool", "enemies", "treasures"):
+            if key not in floor:
+                raise ValueError("P1 floor missing field")
+        if not isinstance(floor["enemies"], list) or not floor["enemies"]:
+            raise ValueError("P1 floor has no enemy roster")
+        if not isinstance(floor["unit_pool"], str) or not floor["unit_pool"]:
+            raise ValueError("P1 floor has no unit pool")
+        staged.append({
+            "number": n,
+            "unit_pool": floor["unit_pool"],
+            "enemies": [e["source_token"] for e in floor["enemies"]],
+            "treasures": [t["treasure_id"] for t in floor["treasures"]],
+        })
+    roster = manifest.get("starting_roster")
+    if not isinstance(roster, list) or len(roster) != 7:
+        raise ValueError("P1 starting roster malformed")
+    squad_total = sum(int(v) for row in roster for v in row)
+    if squad_total <= 0:
+        raise ValueError("P1 starting squad is empty")
+    timers = [float(v) for v in manifest.get("floor_seconds", [])]
+    if len(timers) != 2 or any(v <= 0 for v in timers):
+        raise ValueError("P1 floor timers malformed")
+    sprays = manifest.get("sprays", {})
+    if not isinstance(sprays, dict):
+        raise ValueError("P1 sprays malformed")
+    return {
+        "cave_id": CAVE_ID,
+        "floors": staged,
+        "squad_total": squad_total,
+        "floor_seconds": timers,
+        "sprays": {"bitter": int(sprays.get("bitter", 0)),
+                   "spicy": int(sprays.get("spicy", 0))},
+        "ui_index": int(manifest.get("ui_index", 0)),
+    }
+
+
+def stage_run_layout(manifest: dict, output: Path) -> dict:
+    staging = validate_p1_manifest(manifest)
+    output.mkdir(parents=True, exist_ok=True)
+    files: dict[str, str] = {}
+
+    def write(name: str, payload: object) -> None:
+        text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        (output / name).write_text(text, encoding="utf-8")
+        files[name] = sha256(text.encode("utf-8"))
+
+    write("stage-manifest.json", manifest)
+    write("p1-input-package.json", {
+        "schema": P1_SCHEMA,
+        "cave_id": staging["cave_id"],
+        "floors": staging["floors"],
+        "squad_total": staging["squad_total"],
+        "floor_seconds": staging["floor_seconds"],
+        "sprays": staging["sprays"],
+        "ui_index": staging["ui_index"],
+    })
+    write("run-plan.json", {
+        "schema": P1_SCHEMA,
+        "order": [
+            "boot private runtime with the input package (fresh arena, starting-Pikmin overlay, centred 960x540)",
+            "captain guard FIRST (orimaDead/NaviDead/HP<=1, CAPTAIN_DOWN + BLOCKED, parked captain)",
+            "observe live starting squad (no immediate extinction)",
+            "observe actual collision/routes/actors per floor with receipt-parseable markers",
+            "record honest six-gate evidence; no playability claim beyond observed evidence",
+        ],
+        "gates": "all six UNTESTED unless genuinely observed",
+    })
+    return {"files": files, "cave_id": staging["cave_id"],
+            "floors": len(staging["floors"])}
+
+
+def p1_main(manifest_path: Path, output: Path) -> dict:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"P1 manifest unreadable: {exc}") from None
+    result = stage_run_layout(manifest, output)
+    print(f"P1 staged cave={result['cave_id']} floors={result['floors']} "
+          f"files={sorted(result['files'])}")
+    return result
+
+
 if __name__ == "__main__":
     main()

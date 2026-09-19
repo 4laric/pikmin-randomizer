@@ -195,3 +195,93 @@ class BoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+import tempfile
+
+
+def _p1_manifest(**over):
+    m = {
+        "schema": "p2-challenge-ch_abem_tutorial-p0-v1",
+        "cave_id": "ch_ABEM_tutorial",
+        "floors": [
+            {"unit_pool": "1_units_cent3_tsuchi.txt",
+             "enemies": [{"source_token": "Clover"}, {"source_token": "Tukushi"}],
+             "treasures": [{"treasure_id": "key"}]},
+            {"unit_pool": "2_MAT_mid1_nor2_tsuchi.txt",
+             "enemies": [{"source_token": "Egg"}],
+             "treasures": [{"treasure_id": "gold_medal"}]},
+        ],
+        "starting_roster": [[0, 0, 0]] + [[50, 0, 0]] + [[0, 0, 0]] * 5,
+        "floor_seconds": [100.0, 100.0],
+        "sprays": {"bitter": 2, "spicy": 2},
+        "ui_index": 0,
+    }
+    m.update(over)
+    return m
+
+
+class P1ImportTests(unittest.TestCase):
+    def test_validate_ok(self):
+        out = adapter.validate_p1_manifest(_p1_manifest())
+        self.assertEqual(out["cave_id"], "ch_ABEM_tutorial")
+        self.assertEqual(out["squad_total"], 50)
+        self.assertEqual(len(out["floors"]), 2)
+
+    def test_wrong_cave_rejected(self):
+        with self.assertRaises(ValueError):
+            adapter.validate_p1_manifest(_p1_manifest(cave_id="ch_OTHER"))
+
+    def test_floor_count_rejected(self):
+        m = _p1_manifest()
+        m["floors"] = m["floors"][:1]
+        with self.assertRaises(ValueError):
+            adapter.validate_p1_manifest(m)
+
+    def test_empty_enemies_rejected(self):
+        m = _p1_manifest()
+        m["floors"][0]["enemies"] = []
+        with self.assertRaises(ValueError):
+            adapter.validate_p1_manifest(m)
+
+    def test_empty_squad_rejected(self):
+        m = _p1_manifest()
+        m["starting_roster"] = [[0, 0, 0]] * 7
+        with self.assertRaises(ValueError):
+            adapter.validate_p1_manifest(m)
+
+    def test_bad_timers_rejected(self):
+        with self.assertRaises(ValueError):
+            adapter.validate_p1_manifest(_p1_manifest(floor_seconds=[100.0, 0.0]))
+
+    def test_stage_run_layout_writes_three_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            result = adapter.stage_run_layout(_p1_manifest(), out)
+            self.assertEqual(result["cave_id"], "ch_ABEM_tutorial")
+            self.assertEqual(len(result["files"]), 3)
+            for name in ("stage-manifest.json", "p1-input-package.json",
+                         "run-plan.json"):
+                self.assertIn(name, result["files"])
+                self.assertTrue((out / name).is_file())
+            package = json.loads((out / "p1-input-package.json").read_text())
+            self.assertEqual(package["schema"],
+                             "p2-challenge-ch_abem_tutorial-p1-v1")
+            self.assertEqual(package["squad_total"], 50)
+
+    def test_stage_run_layout_rejects_bad_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                adapter.stage_run_layout({"cave_id": "nope"}, Path(tmp))
+
+    def test_p1_main_missing_file_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                adapter.p1_main(Path(tmp) / "absent.json", Path(tmp) / "out")
+
+    def test_p1_main_end_to_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "manifest.json"
+            src.write_text(json.dumps(_p1_manifest()), encoding="utf-8")
+            result = adapter.p1_main(src, Path(tmp) / "run")
+            self.assertEqual(result["floors"], 2)

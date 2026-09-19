@@ -88,3 +88,27 @@ semantics are generated.
   through the adapter main and is logged, not pytest.
 - Real run: `manifest.json` + `run.log` under the lane output directory;
   hashes in the run log.
+
+
+## P1 import path (this turn; no re-implementation)
+
+`validate_p1_manifest()` checks a P0 manifest carries everything the P1
+runtime import needs (2 decoded floors with unit pools + enemy/treasure
+rosters, 7-row starting roster with non-empty squad, positive floor timers,
+sprays dict, ui index) and normalizes a staging dict; anything else raises
+fail-closed. `stage_run_layout()` writes a private run layout:
+`stage-manifest.json` (validated copy), `p1-input-package.json` (stage key,
+floors, squad total 50, timers [100.0, 100.0], sprays 2/2, ui 0) and
+`run-plan.json` (ordered observation plan: fresh arena + starting-Pikmin
+overlay + centred 960x540 boot, captain guard FIRST with orimaDead/NaviDead/
+HP<=1 and CAPTAIN_DOWN + BLOCKED, live-squad check, collision/routes/actors
+markers, honest six-gate evidence). `p1_main()` drives it from a manifest
+file. No parser was forked: all decode helpers are the P0 ones.
+
+P1 validation evidence: `P1ImportTests`, 10 focused tests (valid manifest,
+wrong cave, floor count, empty enemies/squad, bad timers, three-file layout
+write + package schema/squad assertions, bad-manifest and missing-file
+rejections, end-to-end `p1_main`), all green alongside the 19 P0 tests
+(29 passed total). No runtime run, no build, no shared edits; all six gates
+UNTESTED. The runtime boot (leased build, fresh arena, guard adoption, live
+observation) remains explicitly future work once the host toolchain recovers.
