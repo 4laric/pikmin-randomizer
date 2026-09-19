@@ -79,6 +79,7 @@ def render_dashboard(report):
     runtime = queue.get('stages', {}).get('runtime', {}) if isinstance(queue, dict) else {}
     backlog = {'status': status, 'last_observed': autofill.get('updated_at'),
                'blocked_handoff_repairs': metrics.get('blocked_handoff_repairs', []),
+               'parked_no_progress': metrics.get('no_progress_parked', []),
                'planning_waiting_for_changes': planning.get('sleeping_scopes', {}),
                'coordinator_wait_reason': autofill.get('coordinator_wait_reason'),
                'prerequisite_requests': {k:v for k,v in autofill.get('prerequisite_requests', {}).items()
@@ -128,6 +129,7 @@ def render_dashboard(report):
         'Waiting for integration': integration.get('depth', 0),
         'Handoffs needing repair': len(metrics.get('blocked_handoff_repairs', [])),
         'Integrator standby reports': len(metrics.get('parked_integration_reports', [])),
+        'Parked, no progress': len(metrics.get('no_progress_parked', [])),
     }
     planning_summary = {
         'Waiting for input changes': len(planning.get('sleeping_scopes', {})),

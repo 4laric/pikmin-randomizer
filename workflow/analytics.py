@@ -105,7 +105,9 @@ def throughput_metrics(state, now, window_seconds=3600):
     from .consumer_verification import metrics as consumer_metrics
     from .stage_timing import metrics as stage_metrics
     from .recurring_failures import groups as recurring_groups
+    from .no_progress import parked
     return dict(window_seconds=window_seconds, accepted_slices=len(accepted),
+                no_progress_parked=parked(state, now),
                 stage_timing=stage_metrics(state, now),
                 recurring_failures=recurring_groups(state),
                 consumer_verification=consumer_metrics(state,now,window_seconds),

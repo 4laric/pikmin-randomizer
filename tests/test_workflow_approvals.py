@@ -373,6 +373,27 @@ class SharedHookTests(Base):
         shown = self.reg.status()['lanes']['one']['shared_hook_status']
         self.assertEqual([(h['id'], h['satisfied'], h['decision']) for h in shown], [(self.hook['id'], True, ids[-1])])
 
+    def test_only_the_completing_approval_or_a_rejection_wakes(self):
+        item = dict(kind='shared_hook', issue=186, item_id='engine-birth')
+        self.reg.finish('one', 1, 'blocked', 'Waiting for two #186 decisions', self.evidence,
+                        ['#186 shared-hook review'], shared_hooks=[self.HOOK, item])
+        controller = self.controller()
+        reasons = lambda: sorted(x['reason'] for x in self.reg.control_status()['launches'].values() if x['lane'] == 'one')
+        first = self.decide()[0]; approvals.tick(controller)
+        self.assertEqual(reasons(), [])  # Recorded: one hook is still undecided.
+        self.assertIn(first['id'], controller._shared_hook_closed)
+        self.f.now += 1
+        second = approvals.shared_hook_decision(self.reg, 'two', 1, item, [dict(key='one', generation=1)], 'approved',
+                                                self.evidence, ['bridge only'])[0]
+        approvals.tick(controller); self.exit_launches()
+        self.assertEqual(reasons(), ['shared-hook-decision:' + second['id']])
+        self.f.now += 1
+        self.decide(); approvals.tick(controller)
+        self.assertEqual(len(reasons()), 1)  # A repeat approval at the same pins launches nothing.
+        self.f.now += 1
+        rejected = self.decide('rejected')[0]; approvals.tick(controller)
+        self.assertEqual(reasons(), sorted(['shared-hook-decision:' + second['id'], 'shared-hook-decision:' + rejected['id']]))
+
     def test_later_blocked_outcome_replaces_hooks(self):
         self.reg.finish('one', 1, 'blocked', 'Now waiting on assets only', self.evidence, ['#assets'])
         self.assertEqual(self.lane()['shared_hooks'], [])

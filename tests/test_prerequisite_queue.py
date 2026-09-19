@@ -78,6 +78,23 @@ class PrerequisiteQueueTests(unittest.TestCase):
         self.f.tick()
         self.assertEqual(len(self.reg.scheduling_status()['jobs']), 2)
 
+    def test_new_report_at_same_inputs_keeps_the_request_its_cap_and_one_needs_human(self):
+        request = self.request()
+        path = self.f.f.out/'no-work-2.md'; path.write_text('No-work again: the same unowned provider contract.')
+        again = dict(path=str(path), sha256=digest(path))
+        with self.reg.transaction() as s:
+            data = s['throughput_runtime']['autofill']
+            data['planner_pool']['scopes'][request['scope']]['no_work']['report'] = again
+            data['prerequisite_requests'][request['id']].update(status='dispatched', launches=['one', 'two'])
+        self.assertEqual(collect(self.reg, self.settings), [])
+        self.assertEqual(collect(self.reg, self.settings), [])
+        state = self.reg.snapshot(); data = state['throughput_runtime']['autofill']
+        self.assertEqual(list(data['prerequisite_requests']), [request['id']])
+        row = data['prerequisite_requests'][request['id']]
+        self.assertEqual((row['status'], row['report']), ('exhausted', again))
+        self.assertIn('operator must link a producer', row['needs_human']['reason'])
+        self.assertEqual(sum(e['kind'] == 'prerequisite_needs_human' for e in state['events']), 1)
+
     def test_recovery_waits_for_pending_age_and_never_races_dispatched_coordinator(self):
         request = self.request(); helper = self.settings['planner_pool']['helpers'][0]
         with self.reg.transaction() as s:

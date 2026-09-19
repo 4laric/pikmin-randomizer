@@ -36,8 +36,11 @@ def allocations(state, helpers, records, now, age_seconds=900, classify=False):
                    (k in deps or v.get('issue') in issues)]
         if any(state['lanes'][k]['state'] in ('ready','running','waiting_resource','reconciling','handoff_ready','integrating')
                for k in producers):continue
-        signal=fingerprint([inputs(state,issues,[key]+producers),outcome['evidence']])
+        # The substantive signal alone: a new evidence file per no-op generation is not a new input.
+        signal=inputs(state,issues,[key]+producers)
         identity=fingerprint(['blocked-recovery-v1',key,signal])
+        legacy=fingerprint(['blocked-recovery-v1',key,fingerprint([signal,outcome['evidence']])])
+        if identity not in attempts and legacy in attempts:identity=legacy
         match=re.match(r'shard-(enemies-\d+|caves-[a-z]+)-',key)
         affinity=match.group(1) if match and any(h['scope']==match.group(1) for h in helpers) else None
         previous=None

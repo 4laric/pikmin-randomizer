@@ -227,6 +227,8 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                 'Continue only the assigned slice and record a terminal outcome. '
                 'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', retry_models)
             with reg.transaction() as db:
+                from .consumer_verification import inherit
+                inherit(control['launches'].get(journal['launch']) or {}, reg.control(db)['launches'][item['id']])
                 reg.control(db).setdefault('provider_recoveries', {})[identity] = dict(journal, status='planned', action=item['id'])
         except (OSError, ValueError) as exc:
             reg.notice(key, 'provider_recovery_inspection_failed', {'generation': fresh['generation'], 'error': str(exc)})

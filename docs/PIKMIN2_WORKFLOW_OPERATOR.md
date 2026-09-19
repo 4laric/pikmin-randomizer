@@ -116,7 +116,8 @@ timeout recovery. Exhausted retries remain visible for inspection.
 When every outstanding linked prerequisite is blocked and has a hashed terminal
 outcome, repair planning can use that evidence without another no-work report.
 One repair-planning turn is admitted per unchanged chain, shared across equivalent
-partitions; source/dependency/evidence changes permit reassessment. Existing live
+partitions; source/dependency/state changes permit reassessment, a new evidence
+file from another unchanged generation does not. Existing live
 producers keep priority. Repair planners prepare issue-backed proposals for the
 missing input; they do not implement over another owner's files or grant acceptance.
 
@@ -126,6 +127,14 @@ every mutation. After Python controller code changes, restart only the exact
 controller wrapper/process (wrapper first), preserve worker descendants, and
 start one hidden scripts/Start-Pikmin2Controller.ps1 using the existing arguments.
 Record issue scope, validation and remaining blockers under the assigned issue.
+
+A lane relaunched twice with nothing changed is parked (`lane.parked`,
+`lane.wake_after`, a `lane_parked` event, one `no_progress_parked` notice and the
+dashboard's "Parked, no progress" count). It wakes on any input it has not already
+been offered (a new receipt, decision or pin change), at `wake_after`, or through a
+recovery continuation; see docs/PIKMIN2_CONTROLLER.md. Parking never clears a
+dependency. Prerequisite requests offered twice without a disposition carry
+`needs_human`: link a producer or record the user-owned `external_input`.
 
 ## Dynamically delegated shared-file reviews (#635)
 
@@ -208,8 +217,9 @@ but cannot perform shared merges/exports or write final integration receipts.
 For producer-scoped blocked reviews, workflow.shared_decisions requires
 reviewer_generation, authenticates the calling session and validates workstream
 ownership or the live delegated assignment; free-text reviewers are refused. The producer
-consumes the pinned decision through the existing wakeup path while preserving
-unrelated blockers. Future unimplemented wiring cannot be approved as landed code.
+is woken for a rejection or for the approval that first completes its owned-file set
+at those pins; other approvals are recorded without a launch. Unrelated blockers are
+preserved. Future unimplemented wiring cannot be approved as landed code.
 Read canonical support_actions ledger and the immutable evidence for exact commands;
 prepared integration packets enter integration-demand automatically.
 Stopped blocked planning-only pool helpers are retired as unresolved archived turns

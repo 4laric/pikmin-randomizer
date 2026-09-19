@@ -576,6 +576,11 @@ def _planner_tick(controller, settings, manifest_hash):
     with reg.transaction() as state:
         _state(state)['coordinator_wait_reason'] = None
     cooldown = max(300, settings.get('planner_cooldown_seconds', 900))
+    staged = []
+    for directory in inboxes:
+        for path in sorted(_private(reg, directory).glob('proposals-*.json')):
+            try: staged.append((str(path), digest(path)))
+            except OSError: staged.append((str(path), None))
     with reg.transaction() as state:
         data = _state(state)
         pool = reg.scheduling(state)
@@ -607,12 +612,23 @@ def _planner_tick(controller, settings, manifest_hash):
         require(reg.recovery_safe(state, lane), 'Backlog planner protected child is live or unknown')
         previous = data.get('last_planner_request')
         resolution_version = max((r.get('resolution_version', 1) for r in promotion), default=1)
-        if (previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < cooldown
+        # Everything a cycle can consume or change; unchanged since the last cycle means that cycle was empty.
+        from .no_progress import signal
+        planner_inputs = fingerprint([manifest_hash, staged,
+            sorted((r['id'], r['status'], r.get('input_snapshot')) for r in data.get('prerequisite_requests', {}).values()
+                   if r['status'] in ('pending', 'dispatched')),
+            sorted((k, fingerprint(signal(l))) for k, l in state['lanes'].items() if l['state'] == 'blocked' and k != key),
+            state.get('blocked_producer_links', {})])
+        same = bool(previous and previous.get('inputs') == planner_inputs)
+        empty = previous.get('empty_cycles', 0) + 1 if same else 0
+        wait = max(cooldown, min(3600, cooldown * 2 ** empty)) if same else cooldown
+        if (previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < wait
                 and previous.get('resolution_version', 1) >= resolution_version):
             return False
         if not previous or previous.get('status') == 'planned':
             previous = dict(at=reg.clock(), id=fingerprint([manifest_hash, lane['generation'], int(reg.clock())]),
-                            status='intent', resolution_version=resolution_version)
+                            status='intent', resolution_version=resolution_version,
+                            inputs=planner_inputs, empty_cycles=empty)
             data['last_planner_request'] = previous
     require(key in controller.config['lanes'] and controller.available(key), 'Prepared planner launch configuration unavailable')
     brief = _private(reg, controller.config['lanes'][key]['brief'])
@@ -680,7 +696,22 @@ def _planner_tick(controller, settings, manifest_hash):
             'owner/action; a vague outside-my-partition answer is not a disposition. No raw registry or '
             'manifest writes, implementation, builds, independent dispatch or ADMIT. Handle at most the '
             'three supplied requests this turn; normal controller admission starts published jobs. ')
-    launch = reg.plan_launch(key, 'autofill-planner:' + previous['id'],
+    from .no_progress import Parked
+    try:
+        launch = _planner_launch(reg, key, previous, partition_directive, brief, parallel, settings, controller)
+    except Parked as exc:  # A parked coordinator waits for a changed input; that is not a planner error.
+        with reg.transaction() as state:
+            _state(state).update(coordinator_wait_reason=str(exc), last_planner_error=None)
+        return False
+    with reg.transaction() as state:
+        _state(state)['last_planner_request'].update(status='planned', launch_id=launch['id'])
+        _state(state)['last_planner_error'] = None
+    if promotion: dispatched(reg, promotion, launch['id'])
+    return True
+
+
+def _planner_launch(reg, key, previous, partition_directive, brief, parallel, settings, controller):
+    return reg.plan_launch(key, 'autofill-planner:' + previous['id'],
         partition_directive + 'Read your configured backlog-planner brief at ' + str(brief) + '. Capacity needs explicit prepared next-gate scopes. '
         'For an unclaimed prepared job with a wrong role/instruction/proof, use '
         'workflow.prepared_repair.repair or ' + cli('prepared_repair') + ' --root <canonical-root> '
@@ -696,12 +727,8 @@ def _planner_tick(controller, settings, manifest_hash):
         'then atomically append fresh IDs to ' + str(_private(reg, settings['manifest'])) + '. '
         'Do not grant ADMIT, duplicate active owners, enqueue workers, or alter existing immutable specs. '
         'Record evidence and finish BLOCKED awaiting the next controller refill demand. '
-        'If no eligible work remains, record that exact blocker; never invent scopes.', controller.config['models'])
-    with reg.transaction() as state:
-        _state(state)['last_planner_request'].update(status='planned', launch_id=launch['id'])
-        _state(state)['last_planner_error'] = None
-    if promotion: dispatched(reg, promotion, launch['id'])
-    return True
+        'If no eligible work remains, record that exact blocker; never invent scopes.', controller.config['models'],
+        inputs=['planner:' + previous.get('inputs', previous['id'])])
 
 
 def autofill_tick(controller, *, issue_reader=github_issue):

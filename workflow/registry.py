@@ -549,6 +549,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                         revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result),
                         handoff_code_revision=code)
+            from .no_progress import record
+            record(self, state, lane)
             if frozen:
                 self.delivery(state)['snapshots'][frozen['handoff']['sha256']]=dict(frozen,lane=key,
                     generation=generation,version='submission',created_at=self.clock())

@@ -4,6 +4,7 @@ from .control import fingerprint
 from .provenance import cli
 from .handoff import Rejected, require
 from .planner_demand import is_helper
+from .no_progress import signal
 
 
 def tick(controller):
@@ -70,10 +71,13 @@ def tick(controller):
         if linked.get('source_pins') == {k:(lane.get(k) or {}).get('head') for k in ('root','native')}:
             dependencies = dependencies + linked.get('producers', [])
         if any(state['lanes'].get(d, {}).get('state') in ('ready','running','waiting_resource','handoff_ready','integrating') for d in dependencies): continue
-        identity = fingerprint([name, (lane.get('root') or {}).get('head'),
-                                (lane.get('native') or {}).get('head'), evidence] +
-                               (['game-runtime-proof-v1'] if lane.get('target_level')=='runtime' else []))
-        attempts = sum(identity in x.get('blocked_followup_ids', []) for x in launches)
+        # Keyed on the substantive signal: a new evidence file per no-op generation is not new demand.
+        policy = ['game-runtime-proof-v1'] if lane.get('target_level')=='runtime' else []
+        identity = fingerprint(['blocked-followup-v2', name, signal(lane)] + policy)
+        legacy = fingerprint([name, (lane.get('root') or {}).get('head'),
+                              (lane.get('native') or {}).get('head'), evidence] + policy)
+        attempts = sum(identity in x.get('blocked_followup_ids', []) or legacy in x.get('blocked_followup_ids', [])
+                       for x in launches)
         if attempts >= 2: continue
         try: reg.evidence(evidence)
         except (Rejected,OSError,ValueError): continue
@@ -123,10 +127,12 @@ def tick(controller):
                         controller.launch_directory(launch['id']).exists()): return
                 launch['instruction'] += '\n\n' + instruction
                 launch['blocked_followup_ids'] = [x['id'] for x in candidates]
+                launch['inputs'] = sorted(set(launch.get('inputs', [])) | {'followup:'+x['id'] for x in candidates})
                 reg.event(current,'blocked_followup_attached',key,action=launch['id'])
             return
         launch = reg.plan_launch(key,'blocked-producer-followup:'+fingerprint(candidates),
-                                 instruction,controller.config['models'])
+                                 instruction,controller.config['models'],
+                                 inputs=['followup:'+x['id'] for x in candidates])
         with reg.transaction() as current:
             current['control']['launches'][launch['id']]['blocked_followup_ids']=[x['id'] for x in candidates]
     except Rejected as exc:

@@ -76,7 +76,25 @@ def record(reg, key, generation, source_pins, file, status, reviewer, reason, ev
         return dict(id=identity_key,**decision,code_revision=row.get('code_revision'),approval=row.get('approval'))
 
 
+def completer(state, lane):
+    """The approval that most recently completed the owned-file set at the lane's pins, while it is complete."""
+    if not approved_scope(state,lane):return None
+    files=set(lane.get('owned_files',[]))
+    rows=sorted(((k,d) for k,d in state.get('shared_preflight_decisions',{}).items() if d['lane']==lane['lane']
+                 and d['source_pins']==pins(lane) and backed(state,d)),key=lambda item:item[1].get('at',0))
+    latest,complete,result={},False,None
+    for identity,d in rows:
+        latest[d['file']]=d['status']
+        now=all(latest.get(f)=='approved' for f in files)
+        if now and not complete:result=identity
+        complete=now
+    return result
+
+
 def tick(controller):
+    """Launch for a rejection, or for the approval that first completes the owned-file set at these pins.
+
+    Every other decision stays a recorded ledger fact and launches nothing."""
     reg=controller.reg
     with reg.transaction() as state: state=copy.deepcopy(state)
     launches=list(state.get('control',{}).get('launches',{}).values())
@@ -88,17 +106,20 @@ def tick(controller):
                 and identity in decisions):
             d=decisions[identity];key=semantic(d)
             consumed[key]=max(consumed.get(key,0),d.get('at',0))
-    for identity,d in state.get('shared_preflight_decisions',{}).items():
+    completing={}
+    for identity,d in decisions.items():
         key=d['lane'];lane=state['lanes'].get(key,{})
         if (key not in controller.config['lanes'] or not backed(state,d) or lane.get('state')!='blocked' or
                 lane.get('generation')!=d['generation'] or pins(lane)!=d['source_pins']):continue
         token='shared-preflight-decision:'+identity
-        prior=consumed.get(semantic(d))
-        rejected_since=prior is not None and any(x['lane']==key and x['file']==d['file'] and
-            x['source_pins']==d['source_pins'] and x['status']=='rejected' and x.get('at',0)>prior
-            for x in decisions.values())
-        if (d['status']=='approved' and prior is not None and not rejected_since and
-                not any((lane.get(k) or {}).get('dirty') for k in ('root','native'))):continue
+        if d['status']=='approved':
+            if key not in completing:completing[key]=completer(state,lane)
+            if completing[key]!=identity:continue  # Recorded without a launch: it does not complete the set.
+            prior=consumed.get(semantic(d))
+            if prior is not None and not any(x['lane']==key and x['file']==d['file'] and x['status']=='rejected' and
+                    x['source_pins']==d['source_pins'] and x.get('at',0)>prior for x in decisions.values()):
+                continue  # This identical approved diff was already delivered at these pins.
+        elif semantic(d) in consumed:continue  # The same rejection was already delivered at these pins.
         if any(x['lane']==key and (x['reason']==token or x['status'] in ('intent','spawned','running','exiting')) for x in launches):continue
         if not reg.recovery_safe(state,lane) or not controller.available(key):continue
         try:
@@ -110,7 +131,7 @@ def tick(controller):
                 'For rejection implement the requested correction within owned files. Update dependencies '
                 'through normal checkpoints only where this decision actually resolves them. Submit a '
                 'validated handoff when appropriate; final integration remains with the existing owner. '
-                'Decision: '+json.dumps(d),controller.config['models'])
+                'Decision: '+json.dumps(d),controller.config['models'],inputs=['decision:'+semantic(d)])
         except (Rejected,OSError,ValueError) as exc:
             reg.notice(key,'shared_preflight_decision_blocked',dict(id=identity,error=str(exc)))
 

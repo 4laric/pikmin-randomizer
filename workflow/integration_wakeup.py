@@ -194,7 +194,9 @@ def tick(controller):
                 'Use canonical checkpoints/dependencies to make the result consumable; never mark a review '
                 'as source integration or clear runtime gates without evidence. '
                 'If neither handoffs nor review reports remain, record a bounded standby report; never invent acceptance. '
-                'No ADMIT.' + LANDING_INSTRUCTION + ' ' + DELIVERY_INSTRUCTION + 'Demand: ' + str(work), controller.config['models'])
+                'No ADMIT.' + LANDING_INSTRUCTION + ' ' + DELIVERY_INSTRUCTION + 'Demand: ' + str(work), controller.config['models'],
+                inputs=['integration:' + fingerprint(item) for item in work],
+                obligation=any(item.get('disposition_required') for item in work))
             with reg.transaction() as state:
                 state['control']['launches'][launch['id']]['shared_review_requests'] = sorted(
                     {item['shared_review_id'] for item in work if 'shared_review_id' in item})

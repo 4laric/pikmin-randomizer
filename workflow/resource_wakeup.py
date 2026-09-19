@@ -48,7 +48,7 @@ def tick(controller):
                 'commits and all unresolved asset, source, shared-review and runtime gates. Clear only '
                 'blockers disproved by fresh evidence. Do not create duplicate work, bypass ADMIT or '
                 'claim runtime acceptance. If another blocker remains, checkpoint it precisely and stop. '
-                'Availability event: ' + str(event), controller.config['models'])
+                'Availability event: ' + str(event), controller.config['models'], inputs=[])
             limit -= 1
         except Rejected as exc:
             reg.notice(key, 'resource_wakeup_blocked', dict(error=str(exc)))

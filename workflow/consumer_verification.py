@@ -12,12 +12,29 @@ def bind_context(reg, state, launch, lane):
     previous = [r for r in ledger.values() if r['consumer'] == lane['lane']]
     if not previous or launch['id'] in ledger:return
     old = max(previous, key=lambda r:r['created_at'])
-    if old['status'] not in ('pending','unverified','failed','superseded'):return
+    if old['status'] not in ('pending','unverified','failed','superseded'):
+        if launch.get('consumer_verification'):
+            launch['consumer_verification'] = None
+            launch['instruction'] = ('CONSUMER VERIFICATION ALREADY REPORTED: verification='+old['id']+' is '+
+                old['status']+'; do not report it again.\n'+launch['instruction'])
+        return
+    declined = None
     for p in old['producers']:
         receipt = state['lanes'].get(p['lane'],{}).get('integration') or {}
-        if any(p.get(k)!=receipt.get(k) for k in ('root_commit','native_commit')):return
+        if any(p.get(k)!=receipt.get(k) for k in ('root_commit','native_commit')):
+            declined = 'producer receipt changed: '+p['lane'];break
         try:reg.evidence(p['validation'])
-        except (Rejected,OSError,ValueError,KeyError):return
+        except (Rejected,OSError,ValueError,KeyError):
+            declined = 'producer validation evidence unreadable: '+p['lane'];break
+    if declined:
+        if launch.get('consumer_verification') or old['status']=='pending':
+            if launch.get('consumer_verification'):  # A carried obligation must not point at an unreportable id.
+                launch['consumer_verification'] = None
+                launch['instruction'] = ('CONSUMER VERIFICATION NOT REBOUND: '+declined+'. verification='+old['id']+
+                    ' belongs to an old generation and cannot be reported; do not reuse it. Finish with your '
+                    'current blocker; a changed producer receipt wakes a new check.\n'+launch['instruction'])
+            reg.event(state,'consumer_verification_rebind_declined',lane['lane'],previous=old['id'],reason=declined)
+        return
     record = dict(id=launch['id'],launch=launch['id'],consumer=lane['lane'],
         consumer_generation=lane['generation'],created_at=launch['created_at'],status='pending',
         producers=copy.deepcopy(old['producers']), delivery_contracts=old.get('delivery_contracts',[]),
@@ -32,6 +49,21 @@ def bind_context(reg, state, launch, lane):
         record['acceptance_check']+'. Submit through '+cli('consumer_verification')+' --root <canonical> --request <json> with independent '
         'hashed evidence and current runtime proof where required. No prior success is inherited.\n'+launch['instruction'])
     reg.event(state,'consumer_verification_rebound',lane['lane'],verification=record['id'],previous=old['id'])
+
+
+OBLIGATIONS = ('consumer_verification', 'delivery_contracts', 'consumer_acceptance_check', 'review_obligations',
+               'inputs', 'focus', 'work_class')
+
+
+def inherit(previous, follow):
+    """A recovery continuation keeps the duties its failed launch carried; bind_context rebinds the check.
+
+    Attempt counters (blocked_followup_ids, prerequisite_request_ids, shared_review_requests) stay with
+    the original launch so a retry does not spend the demand's own attempt budget."""
+    for field in OBLIGATIONS:
+        if previous.get(field) is not None:follow[field] = copy.deepcopy(previous[field])
+    if previous.get('reason','').startswith('consumer-prerequisite:') and not follow.get('consumer_verification'):
+        follow['consumer_verification'] = previous['id']
 
 
 def runtime_proof(reg, lane, runtime):
@@ -90,6 +122,8 @@ def reconcile(controller):
                 continue
             key = launch['id']
             if key not in ledger:
+                if not launch.get('reason', '').startswith('consumer-prerequisite:'):
+                    continue  # A carried obligation gets its record from bind_context, never before binding.
                 try:
                     producers = json.loads(launch['instruction'].split('Integrated prerequisites: ', 1)[1])
                     require(isinstance(producers, list) and producers, 'Producer pins required')
@@ -159,6 +193,13 @@ def report(reg, verification, consumer, generation, passed, check, evidence, pre
             prerequisite_resolved=passed and prerequisite_resolved is True,
             consumer_generation=generation, checked_at=reg.clock(), code_revision=code,
             source_pins={k:(lane.get(k) or {}).get('head') for k in ('root','native')})
+        # Consumed ledger: these receipts were checked at these pins, pass or fail. It only stops
+        # consumer_wakeup re-waking for them; it never clears a dependency or implies success.
+        ledger = lane.get('consumer_consumed') or {}
+        receipts = dict(ledger.get('receipts', {})) if ledger.get('source_pins') == record['source_pins'] else {}
+        receipts.update({p['lane']:[p.get('root_commit'),p.get('native_commit')] for p in record['producers']})
+        lane['consumer_consumed'] = dict(source_pins=record['source_pins'], receipts=receipts,
+                                         verification=verification, at=reg.clock())
         reg.event(state, 'consumer_verification_reported', consumer, verification=verification, passed=passed)
         return copy.deepcopy(record)
 

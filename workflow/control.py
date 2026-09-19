@@ -85,6 +85,8 @@ class ControlMixin:
                     evidence={'review': evidence}, **{k: lane[k] for k in ('lane', 'owner', 'task_id', 'issue', 'generation')})
                 lane['review'] = review
                 validate_review(self.root, review, lane)
+            from .no_progress import record
+            record(self, state, lane)  # The substantive signal sits next to the outcome it describes.
             self.check_wip(state, lane)
             self.event(state, 'outcome', key, outcome=outcome)
             return lane
@@ -210,9 +212,20 @@ class ControlMixin:
             return lane
 
     def notice(self, key, kind, detail):
-        identity = fingerprint([key, kind, detail])
-        from .storage import read_record
-        if read_record(self,('control','notices'),identity) is not None:return identity
+        """One notice per (lane, kind, error); a repeat bumps its counter at most every ten minutes.
+
+        A notice naming a launch (action) stays one per launch."""
+        error = detail.get('error') if isinstance(detail, dict) and 'action' not in detail else None
+        identity = fingerprint([key, kind, error] if isinstance(error, str) else [key, kind, detail])
+        from .storage import read_record, selected
+        old = read_record(self, ('control', 'notices'), identity)
+        if old is not None:
+            if old.get('status') == 'pending' and self.clock() - old.get('last_at', old.get('at', 0)) >= 600:
+                with selected(self, [(('control', 'notices'), identity)]) as rows:
+                    row = rows[(('control', 'notices'), identity)]
+                    if row is not None:
+                        row.update(repeats=row.get('repeats', 0) + 1, last_at=self.clock(), detail=detail)
+            return identity
         with self.transaction() as state:
             c = self.control(state)
             c['notices'].setdefault(identity, dict(id=identity, lane=key, kind=kind,
@@ -230,12 +243,27 @@ class ControlMixin:
                     'Integration batch workstream ownership changed')
         return batches
 
-    def plan_launch(self, key, reason, instruction, models, version=None):
-        """Commit intent before external spawn; repeat requests return the same intent."""
+    def plan_launch(self, key, reason, instruction, models, version=None, inputs=None, obligation=False):
+        """Commit intent before external spawn; repeat requests return the same intent.
+
+        Wake-type reasons pass the substantive inputs they carry; no_progress parks a stalled lane
+        whose wake brings none it has not already been offered (Parked). obligation marks a wake
+        that carries a non-deferrable duty (disposition_required reviews) and is never parked."""
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
         require(nonempty(instruction), 'Resume instruction required')
+        from . import no_progress
+        from .storage import read_record
+        inputs = sorted(set(inputs or []))
+        wake = no_progress.guarded(reason) and not obligation
+        if wake:  # An already parked lane refuses from committed rows, without the writer lock.
+            row = read_record(self, ('lanes',), key)
+            refusal = row and no_progress.verdict(row, inputs, self.clock())
+            if (refusal and row.get('wake_after') == refusal['wake_after'] and read_record(
+                    self, ('control', 'launches'), fingerprint([key, reason, version, row['generation']])) is None):
+                raise no_progress.Parked(refusal['message'])
         from .provenance import stamp
         code = stamp()
+        refusal = None
         with self.transaction() as state:
             c = self.control(state)
             lane = self.lane(state, key)
@@ -261,14 +289,24 @@ class ControlMixin:
             self.check_wip(state, dict(lane, state='running'))
             require(not any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')
                             for l in c['launches'].values()), 'Dispatch already in flight')
-            item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
-                instruction=instruction, models=models, model_index=0, version=version,
-                session=lane['task_id'].removeprefix('opencode:'), status='intent',
-                process=None, created_at=self.clock(), attempts=0, code_revision=code)
             require(lane['task_id'].startswith('opencode:'), 'Only known OpenCode sessions can resume')
-            c['launches'][identity] = item
-            self.event(state, 'launch_intent', key, action=identity)
-            return item
+            refusal = wake and no_progress.verdict(lane, inputs, self.clock())
+            if refusal:
+                no_progress.park(self, state, lane, reason, refusal)
+            else:
+                if wake:
+                    no_progress.admit(self, state, lane, reason)
+                item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
+                    instruction=instruction, models=models, model_index=0, version=version,
+                    session=lane['task_id'].removeprefix('opencode:'), status='intent',
+                    process=None, created_at=self.clock(), attempts=0, code_revision=code)
+                if inputs:
+                    item['inputs'] = inputs
+                c['launches'][identity] = item
+                self.event(state, 'launch_intent', key, action=identity)
+                return item
+        self.notice(key, 'no_progress_parked', dict(error=refusal['message']))
+        raise no_progress.Parked(refusal['message'])
 
     def _rebind_pool_recovery(self, state, item, lane):
         """Move one dispatched assignment across a verified same-session recovery."""
@@ -358,6 +396,8 @@ class ControlMixin:
                 next_action=item['instruction'], progress_detail='Resumed: ' + item['reason'],
                 outcome=None, failure_streak=0, recovery_count=0)
             item.update(status='running', process=process, bound_generation=lane['generation'])
+            from .no_progress import bound
+            bound(lane, item)  # stall_streak survives bind; only a changed terminal signal resets it.
             from .consumer_verification import bind_context
             bind_context(self,state,item,lane)
             lane['next_action']=item['instruction']

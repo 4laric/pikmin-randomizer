@@ -61,7 +61,10 @@ coordinator may disposition a still-current report. A link must name an existing
 non-planner lane or a published spec. `no_action` needs a concrete evidence-backed
 reason, not an outside-my-partition deferral; changed inputs reopen consideration.
 Two unanswered turns leave an explicit exhausted request in diagnostics instead
-of silently spending on the same preparation forever. Existing active producers
+of silently spending on the same preparation forever; it is marked `needs_human`
+once (a `prerequisite_needs_human` event) because an operator must link a producer
+or record a user-owned `external_input`. A later no-work report at the same input
+snapshot reuses that request, so it is never re-offered under a new ID. Existing active producers
 are never duplicated. Requests and links survive controller restarts.
 
 `throughput.autofill.planner_pool` configures bounded helper turns,
@@ -487,11 +490,15 @@ When capacity has no eligible prepared scope, the controller records starvation.
 With a configured planner it requests a planner wake; otherwise it emits a durable
 refill request to the designated integrator. Requests repeat at the applicable
 cooldown while the shortage persists; a previous notice is not permanent
-suppression. The single manifest writer must append the next fully prepared scopes
+suppression. A planner cycle whose inputs are unchanged at the next check (manifest
+hash, open prerequisite requests, staged proposal bytes, blocked-lane signals and
+producer links) counts as empty: each consecutive empty cycle doubles the cooldown,
+up to one hour, and any input change restores the configured cooldown. The single manifest writer must append the next fully prepared scopes
 or record the concrete blocking dependency and its owner. Completion reports
 should include a bounded follow-on proposal grounded in observed remaining gates
 and reusable evidence. Recheck ownership and prerequisite changes before planning;
-do not repeatedly relaunch the same blocked work without a useful next action.
+the controller parks a lane whose wakes bring no new input (docs/PIKMIN2_CONTROLLER.md,
+No-progress parking).
 Only validated, assigned, prepared scopes enter the queue. The user has authorized
 routine issue-backed follow-ons; enemy ADMIT retains its existing approval gate.
 
@@ -817,8 +824,9 @@ rules are expandable. Invalid/missing source displays Unavailable, never zero.
 Linked prerequisite scopes are re-promoted when every outstanding linked producer
 is blocked. A linked disposition must include an outstanding non-blocked producer
 (or a published job awaiting admission); linking blocked consumers back to themselves
-cannot establish progress. Re-promotion is deduplicated against the report and
-stranded producer set, and existing retry bounds apply. Exhausted requests may retry
+cannot establish progress. Re-promotion is deduplicated against the input
+snapshot and stranded producer set (a new report at the same snapshot reuses the
+request), and existing retry bounds apply. Exhausted requests may retry
 when semantic inputs change (source pins, dependencies or terminal state), never
 merely because a heartbeat or progress timestamp moved.
 # Prerequisite preparation fallback (#635)
@@ -868,8 +876,11 @@ reviewer (your live registered lane) and reviewer_generation, scoped reason,
 evidence `{path,sha256}`. Like every approvals-ledger writer it authenticates the
 calling session and requires workstream ownership or the exact delegated
 assignment; free-text reviewers are refused. The controller
-verifies the evidence and pins again and wakes the same producer once. This does
-not integrate source, clear unrelated dependencies, or grant gameplay acceptance.
+verifies the evidence and pins again and wakes the producer only for a rejection,
+or for the approval that first completes its owned-file set at those pins; an
+identical approved diff already delivered at those pins, and every other approval,
+stays a recorded ledger fact without a launch. This does not integrate source,
+clear unrelated dependencies, or grant gameplay acceptance.
 
 Unclaimed prepared-spec repairs (#635): `<python> <checkout>/scripts/workflow_module.py prepared_repair
 --root <canonical-root> --request <json>` accepts manifest_path, full replacement,
@@ -890,8 +901,8 @@ The sole controller runs a lightweight RAM observer every 15 seconds independent
 
 A safely stopped runner with a missing terminal outcome gets one same-session artifact reconciliation per unchanged root/native head pair. It must inspect preserved changes and receipts first, and cannot infer acceptance from the previous exit code.
 
-Blocked consumers with verified outcome evidence older than five minutes can generate prerequisite-preparation demand independently of helper no-work reports. The existing coordinator receives at most three consumers per turn and two attempts per unchanged evidence/source snapshot. An unstarted coordinator intent can receive this demand before any launch directory exists; a live or uncertain launch is never rewritten. Explicit active producer dependencies and in-flight consumer recovery are respected. This prepares real scoped proposals, not acceptance or automatic gate clearance.
+Blocked consumers with verified outcome evidence older than five minutes can generate prerequisite-preparation demand independently of helper no-work reports. The existing coordinator receives at most three consumers per turn and two attempts per unchanged substantive signal (state, source heads, normalized dependencies, handoff, integration); a new evidence file from another no-op generation is not new demand. An unstarted coordinator intent can receive this demand before any launch directory exists; a live or uncertain launch is never rewritten. Explicit active producer dependencies and in-flight consumer recovery are respected. This prepares real scoped proposals, not acceptance or automatic gate clearance.
 
-Blocked-consumer links are recorded by the live registered coordinator with `<python> <checkout>/scripts/workflow_module.py blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path.
+Blocked-consumer links are recorded by the live registered coordinator with `<python> <checkout>/scripts/workflow_module.py blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path (`workflow.consumer_wakeup`). A consumer wakes only for producers mapped to it: typed delivery contracts, its pinned producer link, coordinator links, or its own dependency entries by lane or issue number, never umbrella gate issues (`consumer_wakeup.umbrella_issues`, default `[186]`). Receipts a consumer verification already reported at the consumer's current source pins are consumed (`lane.consumer_consumed`) and do not wake it again; the wake names only unconsumed producers. After one consumer-prerequisite wake, further integrations wait `consumer_wakeup.debounce_seconds` (default 900) and arrive together. A token whose latest check was superseded without any report is issued again. Consumed only suppresses wakes; it never clears a dependency.
 
 Dashboard HTML replacement retries transient Windows reader locks for at most 1.55 seconds. A persistent lock preserves the last good HTML, records `dashboard-publish-error.json`, and retries next tick without aborting controller maintenance.

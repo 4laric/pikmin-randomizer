@@ -41,10 +41,12 @@ def recovery_demand(state, helper, now, age_seconds=900):
                (l.get('outcome') or {}).get('evidence') and
                now - max(l.get('progress_at') or 0, l.get('started_at') or 0) >= max(300, age_seconds)
                for l in lanes):
-            signal = fingerprint([inputs(state, [], stranded),
-                                  [(k, state['lanes'][k]['outcome']['evidence']) for k in stranded]])
+            # Keyed on the substantive signal; a new evidence file per no-op generation is not new input.
+            signal = inputs(state, [], stranded)
             key = fingerprint(['stranded-chain', signal])
-            if key not in attempts:
+            legacy = fingerprint(['stranded-chain', fingerprint(
+                [signal, [(k, state['lanes'][k]['outcome']['evidence']) for k in stranded]])])
+            if key not in attempts and legacy not in attempts:
                 request = dict(id=key, scope=helper['scope'], status='stranded',
                     report=copy.deepcopy(lanes[0]['outcome']['evidence']), lanes=stranded,
                     issues=sorted({l['issue'] for l in lanes}),
@@ -129,12 +131,13 @@ def collect(reg, settings):
             data.setdefault('prerequisite_errors', {}).pop(helper['scope'], None)
             request_lanes = sorted(set(observation['lanes'] + stranded))
             signal = inputs(state, observation['issues'], request_lanes)
+            # A new no-work report at an unchanged input snapshot is the same request: its 2-launch cap holds.
             old = next((r for r in requests.values() if r.get('resolution_version') == RESOLUTION_VERSION and
                         r['scope'] == helper['scope'] and
                         r.get('stranded_producers', []) == stranded and
-                        (r['status'] != 'exhausted' or r['input_snapshot'] == signal) and
-                        r['report'] == observation['report'] and r['status'] in ('pending', 'dispatched', 'exhausted')), None)
-            basis = [RESOLUTION_VERSION, helper['scope'], observation['report'], signal]
+                        (r['input_snapshot'] == signal or (r['status'] != 'exhausted' and r['report'] == observation['report']))
+                        and r['status'] in ('pending', 'dispatched', 'exhausted')), None)
+            basis = [RESOLUTION_VERSION, helper['scope'], 'substantive-v2', signal]
             if stranded: basis.append(['stranded-producers', stranded])
             identity = old['id'] if old else fingerprint(basis)
             current.add(identity)
@@ -144,11 +147,21 @@ def collect(reg, settings):
                     manifest=settings['manifest'], status='pending', created_at=reg.clock(), launches=[],
                     resolution_version=RESOLUTION_VERSION, stranded_producers=stranded)
             request = requests[identity]
+            if request['status'] == 'superseded':  # The same inputs came back; the old launches still count.
+                request.update(status='exhausted' if len(request['launches']) >= 2 else 'pending', updated_at=reg.clock())
+            if request['status'] in ('pending', 'dispatched', 'exhausted') and request['report'] != observation['report']:
+                request['report'] = copy.deepcopy(observation['report'])  # resolve() checks the current report.
             if request['status'] == 'dispatched':
                 running = any(state.get('control', {}).get('launches', {}).get(k, {}).get('status')
                               in ('intent', 'spawned', 'running', 'exiting') for k in request['launches'])
                 if not running:
                     request['status'] = 'exhausted' if len(request['launches']) >= 2 else 'pending'
+            if request['status'] == 'exhausted' and not request.get('needs_human'):
+                # No sanctioned closing path was used twice: record it once for a human, never re-offer it.
+                request['needs_human'] = dict(at=reg.clock(), reason='Offered to the coordinator twice without a '
+                    'disposition; an operator must link a producer or record a user-owned external_input')
+                reg.event(state, 'prerequisite_needs_human', settings['planner_lane'], request_id=identity,
+                          scope=request['scope'], lanes=request['lanes'])
         for identity, request in requests.items():
             if identity not in current and request['status'] in ('pending', 'dispatched', 'exhausted'):
                 request.update(status='superseded', updated_at=reg.clock())

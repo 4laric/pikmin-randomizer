@@ -71,6 +71,24 @@ class SharedDecisionTests(unittest.TestCase):
             old=s['shared_preflight_decisions'][first['id']]
             s['shared_preflight_decisions']['rejection']=dict(old,status='rejected',at=old['at']+1)
             s['lanes']['consumer']['generation']=2
+        self.f.now+=2  # The fresh approval follows the rejection.
         record(self.r,**dict(self.args,generation=2,reason='Approval reinstated after rejection review'))
         tick(self.c)
+        self.assertEqual(len(self.launches()),2)
+
+    def test_only_rejections_and_the_completing_approval_launch(self):
+        with self.r.transaction() as s:s['lanes']['consumer']['owned_files']=['consumer.py','consumer_b.py']
+        record(self.r,**self.args);tick(self.c)
+        self.assertEqual(self.launches(),[])  # Recorded, but the owned-file set is not yet complete.
+        self.f.now+=1
+        second=record(self.r,**dict(self.args,file='consumer_b.py'));tick(self.c)
+        self.assertEqual([x['reason'] for x in self.launches()],['shared-preflight-decision:'+second['id']])
+        with self.r.transaction() as s:
+            for x in s['control']['launches'].values():
+                if x['lane']=='consumer':x.update(status='exited',bound_generation=1)
+        self.f.now+=1
+        record(self.r,**dict(self.args,reason='Re-reviewed the same diff'));tick(self.c)
+        self.assertEqual(len(self.launches()),1)  # A repeat approval at the same pins launches nothing.
+        self.f.now+=1
+        record(self.r,**dict(self.args,status='rejected',reason='Marker must not ship'));tick(self.c)
         self.assertEqual(len(self.launches()),2)

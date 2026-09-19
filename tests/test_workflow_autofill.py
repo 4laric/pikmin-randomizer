@@ -264,7 +264,8 @@ class AutofillTests(unittest.TestCase):
             state['lanes']['planner']['generation']+=1
             state['lanes']['planner']['state']='blocked'
         self.tick();self.assertEqual(len(self.reg.control_status()['launches']),1)
-        self.now+=301;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
+        self.now+=301;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),1)  # Unchanged inputs: 2x cooldown.
+        self.now+=300;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
         self.assertFalse(list(self.inbox.glob('*.md')))
 
     def test_planner_live_or_inflight_is_normal_but_unknown_stays_visible(self):

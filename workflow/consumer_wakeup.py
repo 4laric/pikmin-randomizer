@@ -1,4 +1,9 @@
-"""Reassess stale consumer blockers after evidenced prerequisite integration."""
+"""Reassess stale consumer blockers after evidenced prerequisite integration.
+
+Wakes only for producers mapped to the consumer (typed delivery contracts, a pinned producer link,
+a coordinator link, or its own dependency entries excluding umbrella issues such as #186), only for
+receipts not yet consumed by a reported verification at the consumer's current source pins, and at
+most once per debounce window. Consumed only suppresses re-waking; it never clears a dependency."""
 import copy
 import json
 import re
@@ -8,9 +13,32 @@ from .provenance import cli
 from .handoff import Rejected
 from .planner_demand import is_helper
 
+DEBOUNCE_SECONDS, UMBRELLA_ISSUES = 900, (186,)
+
+
+def pins(lane):
+    return {k: (lane.get(k) or {}).get('head') for k in ('root', 'native')}
+
+
+def consumed(lane):
+    """{producer: [root_commit, native_commit]} already verified by a report at the consumer's current pins."""
+    ledger = lane.get('consumer_consumed') or {}
+    return ledger.get('receipts', {}) if ledger.get('source_pins') == pins(lane) else {}
+
+
+def reissue(state, key, prior):
+    """A token whose latest check was superseded without any report (a lost rebind) may be issued again."""
+    records = [r for r in state.get('consumer_verifications', {}).values() if r['consumer'] == key]
+    latest = max(records, key=lambda r: r['created_at'], default=None)
+    return (len(prior) < 3 and latest is not None and latest['status'] == 'superseded'
+            and latest.get('launch') in {x['id'] for x in prior})
+
 
 def tick(controller):
     reg = controller.reg
+    settings = controller.config.get('consumer_wakeup', {})
+    debounce = settings.get('debounce_seconds', DEBOUNCE_SECONDS)
+    umbrella = set(settings.get('umbrella_issues', UMBRELLA_ISSUES))
     state = reg.snapshot()
     launches = state.get('control', {}).get('launches', {}).values()
     requests = state.get('throughput_runtime', {}).get('autofill', {}).get('prerequisite_requests', {})
@@ -36,7 +64,8 @@ def tick(controller):
             continue
         if not reg.recovery_safe(state, lane) or not controller.available(key): continue
         if any(x['lane'] == key and x['status'] in ('intent', 'spawned', 'running', 'exiting') for x in launches): continue
-        issues = {int(n) for dep in lane.get('dependencies', []) for n in re.findall(r'#(\d+)\b', dep)}
+        issues = {int(n) for dep in lane.get('dependencies', []) for n in re.findall(r'#(\d+)\b', dep)} - umbrella
+        done = consumed(lane)
         from .delivery_contracts import contracts
         typed=[r for r in contracts(state,key) if r['kind'] in ('source_integration','consumer_behavior')]
         producers = []
@@ -47,6 +76,8 @@ def tick(controller):
             explicit = provider_key in linked.get(key, set()) or any(r['producer']==provider_key for r in typed)
             matches = provider_key in lane.get('dependencies', []) or provider.get('issue') in issues
             if not explicit and not (matches and (provider.get('integrated_at') or 0) > lane.get('progress_at', 0)):
+                continue
+            if done.get(provider_key) == [receipt.get('root_commit'), receipt.get('native_commit')]:
                 continue
             evidence = dict(path=receipt.get('validation_path'), sha256=receipt.get('validation_sha256'))
             try:
@@ -60,7 +91,10 @@ def tick(controller):
         if not producers: continue
         contract_ids=sorted(r['id'] for r in typed if r['producer'] in {p['lane'] for p in producers})
         token = 'consumer-prerequisite:' + fingerprint([sorted(producers, key=lambda x:x['lane']),contract_ids] if typed else sorted(producers, key=lambda x:x['lane']))
-        if any(x['lane'] == key and x['reason'] == token for x in launches): continue
+        prior = [x for x in launches if x['lane'] == key and x['reason'] == token]
+        if prior and not reissue(state, key, prior): continue
+        recent = [x['created_at'] for x in launches if x['lane'] == key and x['reason'].startswith('consumer-prerequisite:')]
+        if recent and reg.clock() - max(recent) < debounce: continue  # Coalesce integrations into one later wake.
         try:
             launch = reg.plan_launch(key, token,
                 'A prerequisite has new verified integration evidence. Reassess your existing blocked slice; '
@@ -72,7 +106,8 @@ def tick(controller):
                 'normal checkpoint APIs. If still blocked, report the concrete remaining gap and stop. '
                 'No shared source edits, maintained builds/exports, ADMIT or inferred gameplay acceptance. '
                 'Use leased private builds and current fixture/captain-safety baseline for runtime work. '
-                'Integrated prerequisites: ' + json.dumps(producers), controller.config['models'])
+                'Integrated prerequisites: ' + json.dumps(producers), controller.config['models'],
+                inputs=['receipt:%s:%s:%s' % (p['lane'], p['root_commit'], p['native_commit']) for p in producers])
             with reg.transaction() as current:
                 item=current['control']['launches'][launch['id']]
                 check=(state.get('blocked_producer_links',{}).get(key) or {}).get('acceptance_check')

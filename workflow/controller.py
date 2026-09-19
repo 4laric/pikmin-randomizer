@@ -13,6 +13,7 @@ from .handoff import digest, local_path, require, Rejected
 from .processes import identify, probe
 from .runner import write, decisions_from_text
 from .approvals import PRODUCER as SHARED_HOOKS
+from .consumer_verification import inherit
 
 
 def ram_percent():
@@ -307,7 +308,9 @@ class Controller:
                                     'Runner and child stopped without a result. Inspect saved artifacts first. ' +
                                     item['instruction'], self.config['models'], item.get('version'))
                                 with self.reg.transaction() as db:
-                                    self.reg.control(db)['launches'][follow['id']]['dead_runner_retries'] = retries + 1
+                                    planned = self.reg.control(db)['launches'][follow['id']]
+                                    inherit(item, planned)
+                                    planned['dead_runner_retries'] = retries + 1
                             else:
                                 self.reg.notice(item['lane'], 'dead_runner_retry_exhausted', {'action': item['id']})
                 continue
@@ -328,7 +331,9 @@ class Controller:
                     follow=self.reg.plan_launch(item['lane'],'dead-runner:'+item['id'],
                         item['instruction'],self.config['models'],item.get('version'))
                     with self.reg.transaction() as state:
-                        self.reg.control(state)['launches'][follow['id']]['dead_runner_retries']=retries+1
+                        planned=self.reg.control(state)['launches'][follow['id']]
+                        inherit(item,planned)
+                        planned['dead_runner_retries']=retries+1
                 else:
                     self.reg.notice(item['lane'],'dead_runner_retry_exhausted',{'action':item['id']})
                 continue
@@ -348,8 +353,7 @@ class Controller:
                     with self.reg.transaction() as state:
                         planned = self.reg.control(state)['launches'][follow['id']]
                         planned['rate_limit_retries'] = retries + 1
-                        for field in ('focus', 'work_class'):
-                            if field in item: planned[field] = item[field]
+                        inherit(item, planned)  # Obligations survive the fallback; bind_context rebinds the check.
                     self.mark_exited(item['id'])
                     continue
             recoveries = self.reg.control_status().get('terminal_recoveries', {}).values()
@@ -376,6 +380,7 @@ class Controller:
                         item['instruction'], models, item.get('version'))
                     with self.reg.transaction() as state:
                         planned = self.reg.control(state)['launches'][follow['id']]
+                        inherit(item, planned)
                         for field in ('permission_retries', 'provider_failure_retries', 'dead_runner_retries', 'rate_limit_retries'):
                             if field in item: planned[field] = item[field]
                         planned[counter] = retries + 1

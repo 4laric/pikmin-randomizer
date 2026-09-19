@@ -49,6 +49,9 @@ class ConsumerWakeupTests(unittest.TestCase):
         self.assertEqual(len(self.r.control_status()['launches']),1)
         with self.r.transaction() as s:s['lanes']['provider']['integration']['root_commit']='c'*40
         tick(self.c)
+        self.assertEqual(len(self.r.control_status()['launches']),1)  # Inside the debounce window.
+        self.f.now+=900
+        tick(self.c)
         self.assertEqual(len(self.r.control_status()['launches']),2)
 
     def test_review_only_and_corrupt_receipt_do_not_claim_source_available(self):

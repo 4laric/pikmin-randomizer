@@ -20,11 +20,45 @@ def released_slot(state, lane):
                   (other.get('integrated_at') or other.get('progress_at') or 0) > lane.get('progress_at', 0))
 
 
+def passed_check(state, lane):
+    """The lane's latest consumer check, when it passed with prerequisite_resolved and runtime proof at its current pins."""
+    records=[r for r in state.get('consumer_verifications',{}).values() if r['consumer']==lane['lane']]
+    latest=max(records,key=lambda r:r['created_at'],default=None)
+    current={k:(lane.get(k) or {}).get('head') for k in ('root','native')}
+    if (latest and latest['status']=='passed' and latest.get('prerequisite_resolved') is True and
+            latest.get('runtime') and latest.get('evidence') and latest.get('source_pins')==current):
+        return latest
+    return None
+
+
+VERIFIED=('HANDOFF RE-PRESENTATION AFTER A PASSED CONSUMER CHECK: the verification below passed with '
+    'prerequisite_resolved and hashed runtime proof at your current source pins, yet your slice is still blocked '
+    'with no handoff. Re-read your issue acceptance criteria. Gaps outside those criteria are follow-ons: list them '
+    'in the handoff remaining_work instead of keeping them as blocking dependencies. Submit a truthful '
+    'current-generation handoff through the normal implementation-ready API; every slice criterion must still pass '
+    'validation, shared reviews stay pending and gameplay gates stay UNTESTED unless observed. Do not claim new tests '
+    'without running them. If an in-scope criterion still fails, finish blocked naming exactly that criterion. '
+    'This is one bounded turn for this verification. Verification: ')
+
+
 def tick(controller):
     reg=controller.reg;state=reg.snapshot()
     launches=list(state.get('control',{}).get('launches',{}).values())
     for key,lane in state['lanes'].items():
         if key not in controller.config['lanes'] or lane['state']!='blocked' or lane.get('handoff'):continue
+        check=passed_check(state,lane)
+        token='handoff-representation:verification:'+check['id'] if check else None
+        if check and not any(x['lane']==key and x['reason']==token for x in launches):
+            if any(x['lane']==key and x['status'] in ('intent','spawned','running','exiting') for x in launches):continue
+            if not reg.recovery_safe(state,lane) or not controller.available(key):continue
+            try:
+                reg.evidence(check['evidence'])
+                reg.plan_launch(key,token,VERIFIED+json.dumps({k:check.get(k) for k in
+                    ('id','acceptance_check','check','evidence','runtime','source_pins')}),
+                    controller.config['models'],inputs=[token])
+            except (Rejected,OSError,ValueError) as exc:
+                reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))
+            continue
         from .shared_decisions import approved_scope
         approved = approved_scope(state, lane)
         if not (lane.get('repair_history') or approved):continue
@@ -68,6 +102,6 @@ def tick(controller):
                 'Do not touch maintained worktrees, repeat landed cherry-picks, fabricate an export or grant ADMIT. '
                 'If source/evidence cannot pass normal handoff validation, finish blocked with the exact failed '
                 'check and correction needed. This is one bounded resumption at these source heads.',
-                controller.config['models'])
+                controller.config['models'],inputs=[token])
         except (Rejected,OSError,ValueError) as exc:
             reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))

@@ -23,6 +23,18 @@ class BlockedRecoveryTests(unittest.TestCase):
         self.state['lanes']['1']['root']['head']='c'*40
         self.assertEqual(len(allocations(self.state,self.helpers,{},10000)),1)
 
+    def test_new_evidence_is_not_a_new_input_and_legacy_keys_still_count(self):
+        from workflow.control import fingerprint
+        from workflow.planner_demand import inputs
+        first=allocations(self.state,self.helpers,{},2000)
+        self.state['throughput_runtime']={'autofill':{'prerequisite_recovery':{v['key']:{} for v in first.values()}}}
+        for lane in self.state['lanes'].values():lane['outcome']['evidence']=dict(path='report-2',sha256='c'*64)
+        self.assertFalse(allocations(self.state,self.helpers,{},10000))
+        signal=inputs(self.state,[],['1'])
+        legacy=fingerprint(['blocked-recovery-v1','1',fingerprint([signal,self.state['lanes']['1']['outcome']['evidence']])])
+        self.state['throughput_runtime']['autofill']['prerequisite_recovery']={legacy:{}}
+        self.assertNotIn('1',[x['request']['lanes'][0] for x in allocations(self.state,self.helpers,{},10000).values()])
+
     def test_active_assignments_and_real_producers_are_protected(self):
         records={'0':dict(recovery_targets=['1'])}
         self.state['lanes']['2']['dependencies']=['#3']

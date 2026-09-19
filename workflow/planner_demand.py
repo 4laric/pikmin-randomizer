@@ -22,13 +22,16 @@ def dispatch_priority(item, lanes, now, fairness_seconds=180):
     return (0, work_class, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
 
 
+def signal(lane):
+    """Substantive per-lane input; no_progress normalizes its dependencies."""
+    return dict(state=lane['state'] if lane['state'] in ('done', 'blocked', 'handoff_ready', 'review_ready') else 'pending',
+                root=(lane.get('root') or {}).get('head'), native=(lane.get('native') or {}).get('head'),
+                dependencies=sorted(lane.get('dependencies', [])),
+                handoff=(lane.get('handoff') or {}).get('sha256'),
+                integrated=bool(lane.get('integration')))
+
+
 def inputs(state, issues, keys):
-    def signal(lane):
-        return dict(state=lane['state'] if lane['state'] in ('done', 'blocked', 'handoff_ready', 'review_ready') else 'pending',
-                    root=(lane.get('root') or {}).get('head'), native=(lane.get('native') or {}).get('head'),
-                    dependencies=sorted(lane.get('dependencies', [])),
-                    handoff=(lane.get('handoff') or {}).get('sha256'),
-                    integrated=bool(lane.get('integration')))
     return fingerprint({k:signal(l) for k,l in state['lanes'].items()
                         if not is_helper(k) and k != 'acceptance-backlog-planner'
                         and (not issues and not keys or l.get('issue') in issues or k in keys)})

@@ -25,6 +25,6 @@ def tick(controller):
                 'the original owned slice only where needed. Submit a validated handoff if complete; '
                 'otherwise checkpoint the exact remaining blocker and its producer. Preserve all review, '
                 'build-lease and runtime gates. This automatic attempt is bounded for unchanged source pins.',
-                controller.config['models'])
+                controller.config['models'], inputs=[])
         except (Rejected, OSError, ValueError) as exc:
             reg.notice(key, 'outcome_recovery_blocked', {'error':str(exc)})

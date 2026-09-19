@@ -589,8 +589,27 @@ def shared_hook_decision(reg, reviewer, reviewer_generation, hook, lanes, status
 RETRY_SECONDS = 60
 
 
+def completer(rows, lane):
+    """The approval that most recently made every structured shared_hook of the lane satisfied, while it holds."""
+    hooks = lane.get('shared_hooks') or []
+    if not hooks or not all(hook_state(rows, lane, h)[0] for h in hooks):
+        return None
+    ids = {h['id'] for h in hooks}
+    latest, complete, result = {}, False, None
+    for row in sorted((r for r in rows.values() if r.get('kind') == 'shared_hook' and r.get('lane') == lane['lane']
+                       and r.get('hook_id') in ids and r.get('pins') == pins(lane)),
+                      key=lambda r: (r.get('at', 0), r.get('seq', 0), r['id'])):
+        latest[row['hook_id']] = row['status']
+        now = all(latest.get(i) == 'approved' for i in ids)
+        if now and not complete:
+            result = row['id']
+        complete = now
+    return result
+
+
 def tick(controller):
-    """Wake each blocked lane once per shared_hook decision recorded at its current pins.
+    """Wake a blocked lane for a rejected shared_hook decision at its current pins, or for the approval
+    that first completes all of its hooks there; other approvals are recorded ledger facts and launch nothing.
 
     Never writes except through plan_launch, whose reason token is the durable wake marker.
     Reads the ledger, one lane record per lane with an open decision and, only when a lane
@@ -605,7 +624,8 @@ def tick(controller):
     retry = getattr(controller, '_shared_hook_retry', None)
     if retry is None:
         retry = {}; controller._shared_hook_retry = retry
-    rows = [r for r in reg.snapshot(section=('approvals',)).values() if r.get('kind') == 'shared_hook' and
+    ledger_rows = reg.snapshot(section=('approvals',))
+    rows = [r for r in ledger_rows.values() if r.get('kind') == 'shared_hook' and
             r['id'] not in closed and retry.get(r['id'], 0) <= now and r['lane'] in controller.config['lanes']]
     lanes, launches, safety = {}, None, None
     for row in sorted(rows, key=lambda r: (r['at'], r.get('seq', 0))):
@@ -617,6 +637,8 @@ def tick(controller):
             closed.add(row['id']); continue
         if lane.get('state') != 'blocked' or lane.get('generation') != row['generation'] or pins(lane) != row['pins']:
             continue  # Not waiting at the decided pins; the row stays a ledger fact.
+        if row['status'] == 'approved' and completer(ledger_rows, lane) != row['id']:
+            closed.add(row['id']); continue  # Recorded without a launch: it does not complete the hook set.
         if launches is None:
             launches = reg.snapshot(section=('control', 'launches'))
         token = 'shared-hook-decision:' + row['id']
@@ -634,7 +656,9 @@ def tick(controller):
                 'An authenticated decision was recorded on your structured shared_hook dependency. It holds only at '
                 'your current root/native pins and only for its exact hook scope; it is not source integration, '
                 'runtime acceptance or ADMIT. Read its hashed evidence and conditions, keep every unrelated blocker, '
-                'and continue or apply the requested correction. Decision: ' + json.dumps(row), controller.config['models'])
+                'and continue or apply the requested correction. Decision: ' + json.dumps(row), controller.config['models'],
+                inputs=['hook:' + fingerprint([row['hook_id'], row['status'], row['pins'],
+                                               row.get('conditions') if row['status'] != 'approved' else None])])
             closed.add(row['id'])
         except (Rejected, OSError, ValueError) as exc:
             retry[row['id']] = now + RETRY_SECONDS

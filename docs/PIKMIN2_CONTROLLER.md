@@ -182,6 +182,39 @@ those lane IDs resume once per accepted dependency set. Their same session and
 worktrees are preserved. Issue references such as `#437` never resolve merely
 because an issue closes; the shepherd/integrator checks the evidence.
 
+## No-progress parking
+
+Every terminal outcome (`finish`, `submit_handoff`) records the lane's substantive
+signal next to it as `progress_signal`: state, root/native heads, dependencies
+(case, whitespace and `gen N` markers normalized), handoff sha and integration flag.
+`stall_streak` counts consecutive generations whose signal equals the previous
+generation's; it resets only when the signal changes, never at bind, and each stalled
+generation emits `no_progress_generation`. Lanes written before this field read as
+streak 0, so nothing parks until two further unchanged generations are observed.
+
+`Registry.plan_launch` enforces the guard once, for wake reasons only:
+`consumer-prerequisite`, `blocked-producer-followup`, `shared-preflight-decision`,
+`shared-hook-decision` (approvals and review packets), `autofill-planner`,
+`integration-demand`, `build-resource-available`, `outcome-reconcile` and
+`handoff-representation`. Each wake passes the substantive inputs it carries
+(producer receipts, decision keys, demand items, planner input fingerprint). At
+`stall_streak >= 2` a wake is admitted only with an input the lane has not already
+been offered since it last progressed, or once `wake_after` has passed (periodic
+recheck). Otherwise it refuses with `Parked`, sets `lane.wake_after` (15 min doubling
+per further stalled generation, capped at 4 h) and `lane.parked`, emits `lane_parked`
+and one `no_progress_parked` notice; later refusals read committed rows and take no
+writer lock. Recovery continuations (`dead-runner`, `provider fallback`,
+`provider-error`, `permission-repair`, `provider-stall`), operator/user reasons and
+integration demand carrying `disposition_required` reviews are never parked, and any
+bound launch unparks the lane. Parking only suppresses relaunch: it never clears a
+dependency, infers resolution or records an approval. The dashboard counts parked
+lanes; `<python> <checkout>/scripts/workflow_module.py no_progress --root <root>` lists streaks and parked lanes
+read-only.
+
+Notices collapse per (lane, kind, error): a repeat bumps `repeats` and `last_at` at
+most every ten minutes instead of adding a row. A notice naming a launch (`action`)
+stays one per launch.
+
 ## Crash and provider recovery
 
 Launch intent is committed before spawn. A unique launch directory holds an atomic
@@ -194,7 +227,14 @@ replacement even if its parent disappeared.
 
 Pre-tool rate limiting cools down the provider globally (default 15 minutes) and
 falls back through the configured model chain in the same session after the old
-process stops. Once tools have run, the controller does not kill the process to
+process stops. Every recovery continuation (dead runner, spawn error, provider
+fallback, provider error, permission repair, provider stall) carries the failed
+launch's obligations: consumer verification, delivery contracts, acceptance check,
+review obligations and wake inputs. At bind, `bind_context` gives the new generation
+its own pending check and names it in the instruction; when the producer receipts
+drifted it instead tells the worker the old ID cannot be reported and emits
+`consumer_verification_rebind_declined`. Attempt counters stay with the original
+launch. Once tools have run, the controller does not kill the process to
 switch providers unless the guarded idle-provider recovery below is enabled.
 Every attempted endpoint is tried at most once in that chain.
 

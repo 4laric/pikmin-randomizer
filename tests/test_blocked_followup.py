@@ -23,6 +23,17 @@ class BlockedFollowupTests(unittest.TestCase):
         self.assertEqual(len(self.reg.control_status()['launches']),2)
         self.assertEqual(self.reg.status()['lanes']['provider']['state'],'blocked')
 
+    def test_new_evidence_per_generation_keeps_the_attempt_cap(self):
+        from workflow.handoff import digest
+        for n in range(4):
+            path=self.f.out/('evidence-%d.txt'%n);path.write_text('Gap unchanged, generation %d'%n)
+            self.reg.finish('provider',1,'blocked','Needs engine implementation, not missing raw assets',
+                            dict(path=str(path),sha256=digest(path)),['#186'])
+            self.f.now+=301;tick(self.c)
+            with self.reg.transaction() as s:
+                for x in s['control']['launches'].values():x['status']='exited'
+        self.assertEqual(len(self.reg.control_status()['launches']),2)
+
     def test_live_consumer_and_explicit_active_producer_are_not_duplicated(self):
         self.reg.probe=lambda p:'unknown'
         tick(self.c);self.assertFalse(self.reg.control_status()['launches'])

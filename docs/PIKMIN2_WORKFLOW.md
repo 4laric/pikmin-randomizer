@@ -107,6 +107,15 @@ the original defect must report `passed: false, prerequisite_resolved: false`.
 Legacy success reports without this explicit resolution attestation are retained
 as unverified, preserving their original checks/evidence and bounded repair demand.
 
+A recovery continuation of the wake (dead runner, provider fallback, provider
+error, permission repair, provider stall) carries the obligation: the new generation
+gets its own pending check whose ID its instruction names, never inherited success.
+A report records the checked producer receipts at the consumer's source pins, so
+those receipts do not wake the consumer again; this never clears a dependency.
+A blocked consumer whose latest check passed with `prerequisite_resolved` and runtime
+proof at its current pins, with no handoff, gets one bounded handoff re-presentation
+per verification ID: gaps outside its acceptance criteria belong in `remaining_work`.
+
 Unreported terminal outcomes count as unverified, including integration-ready
 outcomes. Failed or unverified blocked consumers feed repair demand grouped by
 the exact producer receipt set. The coordinator must inspect the consumer evidence,
@@ -508,8 +517,9 @@ instruction tells workers how to declare hooks. Every blocked `finish` replaces 
 lane's hooks (none given means none held), a checkpoint into `blocked` without
 `shared_hooks` drops them, other outcomes drop them, and `shared_hooks` may be set
 only on a blocked lane. A `shared_hook_decided` event is emitted, and the controller
-wakes a blocked lane once per decision at those pins: the wake's launch reason
-(`shared-hook-decision:<id>`) is the only durable marker, the tick reads the ledger,
+wakes a blocked lane at those pins for a rejected decision, or for the approval that
+first makes all of its hooks satisfied; other approvals are recorded without a
+launch. The wake's launch reason (`shared-hook-decision:<id>`) is the only durable marker, the tick reads the ledger,
 one lane record per open decision and, only for a waiting lane, the launches, leases
 and queue sections, and it remembers in memory decisions that can never wake (lane
 done or past that generation) and retries a lane that is not recovery-safe after 60
