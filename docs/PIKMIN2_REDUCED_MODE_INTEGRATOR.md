@@ -151,7 +151,13 @@ A lane keeps its pool worker until it is `done`.
    ```powershell
    & "$RM\land-batch.ps1" native <sha>     # or: root <sha>
    ```
-7. **Record receipts (integrator or user).** Receipts mark the lanes `done` and free their workers.
+7. **Record receipts (the user runs this).** Receipts mark the lanes `done` and free their workers. A lane
+   whose handoff lists `shared_reviews` (usually `CMakeLists.txt`) first needs the operator to approve those
+   files. Reduced mode runs no reviewer lanes, so this is the only way, and it refuses until every commit
+   of the lane is on its line:
+   ```powershell
+   cd $REL; py -3.12 scripts\workflow_module.py approvals operator-shared-review --root $WS --lane rd-x --yes --note "merge-tested"
+   ```
    Check first:
    ```powershell
    py -3.12 "$RM\record_landing.py" --root $WS --lane rd-x --dry-run
