@@ -1,6 +1,13 @@
 # Lane, orchestrator and watchdog operating contract
 
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
+
+Build-capacity update (#580): the live controller enables lease-only heavy-build
+admission. Preparing lanes do not reserve build slots. Actual private and maintained
+builds still acquire exclusive directory/resource leases and share the current
+registry cap. The controller scales that cap from 2 to 4 with demand and RAM
+headroom; see `docs/PIKMIN2_CONTROLLER.md`. This supersedes fixed two-slot
+assignment reservations in historical runbooks. Existing-work priority is unchanged.
 Owner: Codex through shared GitHub account `4laric`.
 
 Throughput extension (#524): [worker pool, frozen delivery, batching and dashboard](PIKMIN2_THROUGHPUT.md).

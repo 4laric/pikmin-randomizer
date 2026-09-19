@@ -111,6 +111,7 @@ class ProviderRecoveryTests(unittest.TestCase):
 
     def test_managed_runner_is_replaced_in_same_session(self):
         self.prepare()
+        self.controller.config['provider_stall_recovery']['models'] = ['paid/muse', 'paid/deepseek']
         directory=self.controller.launch_directory('old'); directory.mkdir(parents=True)
         write(directory/'child.json',self.worker)
         (directory/'events.jsonl').write_text(self.events.read_text())
@@ -118,12 +119,16 @@ class ProviderRecoveryTests(unittest.TestCase):
         (directory/'stderr.log').write_text(self.errors.read_text())
         with self.reg.transaction() as state:
             state['lanes']['consumer']['process']=self.supervisor
-            self.reg.control(state)['launches']['old']=dict(id='old',lane='consumer',status='running')
+            self.reg.control(state)['launches']['old']=dict(id='old',lane='consumer',status='running',model='paid/muse')
         self.run_recovery(); self.run_recovery(); self.run_recovery()
         launches=self.reg.control_status()['launches']
         self.assertEqual(launches['old']['status'],'exited')
         self.assertEqual(len(launches),2)
         self.assertEqual(next(x for k,x in launches.items() if k!='old')['session'],'session-consumer')
+        retry = next(x for k,x in launches.items() if k!='old')
+        self.assertEqual(retry['models'], ['paid/deepseek', 'paid/muse'])
+        self.assertEqual(self.reg.select_model(retry['models']), 'paid/deepseek')
+        self.assertEqual(self.reg.control_status()['model_limits']['paid/muse']['count'], 1)
 
     def test_terminal_state_after_shutdown_prevents_relaunch(self):
         self.prepare(); self.run_recovery()

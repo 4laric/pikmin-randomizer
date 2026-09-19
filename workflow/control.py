@@ -196,12 +196,58 @@ class ControlMixin:
             self.event(state, 'launch_intent', key, action=identity)
             return item
 
+    def _rebind_pool_recovery(self, state, item, lane):
+        """Move one dispatched assignment across a verified same-session recovery."""
+        pool = state.get('throughput', {})
+        assignments = [a for a in pool.get('assignments', {}).values()
+                       if a.get('lane') == lane['lane'] and a.get('status') == 'dispatched']
+        require(len(assignments) <= 1, 'Multiple dispatched assignments for recovered lane')
+        if not assignments:
+            return None
+        assignment = assignments[0]
+        if assignment.get('launch_id') == item['id']:
+            return assignment  # Initial binding or already-reconciled recovery.
+        old = self.control(state)['launches'].get(assignment.get('launch_id'))
+        require(isinstance(old, dict) and old.get('status') == 'exited', 'Previous pool launch must have exited')
+        require(old.get('bound_generation') == item.get('generation') and
+                item.get('bound_generation') == lane['generation'], 'Recovery generation chain differs')
+        require(old.get('lane') == item.get('lane') == assignment['lane'] == lane['lane'], 'Recovery lane differs')
+        require(lane['task_id'].startswith('opencode:') and
+                old.get('session') == item.get('session') == lane['task_id'].removeprefix('opencode:'),
+                'Recovery must preserve the exact worker session')
+        job = pool.get('jobs', {}).get(assignment.get('job'), {})
+        require(assignment.get('worker_id') == lane['worker_id'] == job.get('worker_id') and
+                job.get('lane') == lane['lane'] and job.get('assignment') == assignment['id'] and
+                job.get('status') == 'assigned', 'Recovery assignment worker/job ownership differs')
+        require(isinstance(old.get('process'), dict) and self.probe(old['process']) == 'dead',
+                'Previous pool runner remains live or unknown')
+        require(item.get('process') == lane['process'], 'Recovered runner identity differs')
+        link = dict(previous_launch=old['id'], launch_id=item['id'],
+                    previous_generation=old['bound_generation'], generation=lane['generation'], at=self.clock())
+        assignment.setdefault('recovery_history', []).append(link)
+        assignment.update(launch_id=item['id'], generation=lane['generation'], revision=lane['revision'])
+        self.event(state, 'pool_recovery_rebound', lane['lane'], assignment=assignment['id'],
+                   previous_launch=old['id'], action=item['id'], generation=lane['generation'])
+        return assignment
+
+    def reconcile_pool_recovery(self, action_id):
+        """Reconcile an already-bound recovery without modifying its live worker."""
+        with self.transaction() as state:
+            item = self.control(state)['launches'][action_id]
+            require(item['status'] in ('running', 'exiting', 'exited'), 'Recovery launch has not bound')
+            lane = self.lane(state, item['lane'], item.get('bound_generation'))
+            require(type(item.get('bound_generation')) is int and item['process'] == lane['process'],
+                    'Recovery no longer owns current execution')
+            return self._rebind_pool_recovery(state, item, lane)
+
     def bind_launch(self, action_id, process):
         with self.transaction() as state:
             c = self.control(state); item = c['launches'][action_id]
             if item['status'] == 'running':
                 require(item['process'] == process, 'Launch already bound to another process')
-                return self.lane(state, item['lane'])
+                lane = self.lane(state, item['lane'], item['bound_generation'])
+                self._rebind_pool_recovery(state, item, lane)
+                return lane
             require(item['status'] in ('intent', 'spawned'), 'Launch is not awaiting registration')
             lane = self.lane(state, item['lane'], item['generation'])
             require(self.recovery_safe(state, lane), 'Previous execution is not stopped')
@@ -211,6 +257,7 @@ class ControlMixin:
                 next_action=item['instruction'], progress_detail='Resumed: ' + item['reason'],
                 outcome=None, failure_streak=0, recovery_count=0)
             item.update(status='running', process=process, bound_generation=lane['generation'])
+            self._rebind_pool_recovery(state, item, lane)
             if item['version']:
                 c['consumed'][item['lane']] = item['version']
             state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
@@ -231,4 +278,23 @@ class ControlMixin:
 
     def select_model(self, models):
         c = self.control_status()
-        return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= self.clock()), None)
+        now = self.clock()
+        return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= now
+                     and c.get('model_limits', {}).get(m, {}).get('until', 0) <= now
+                     and c.get('model_launch_after', {}).get(m, 0) <= now), None)
+
+    def model_rate_limit(self, model, action, *, initial=30, maximum=300, reset_after=1800):
+        """Persist one adaptive penalty per failed attempt, including across replay."""
+        with self.transaction() as state:
+            c = self.control(state)
+            records = c.setdefault('model_limit_attempts', {})
+            if action in records:
+                return records[action]
+            now = self.clock()
+            previous = c.setdefault('model_limits', {}).get(model, {})
+            count = previous.get('count', 0) if now - previous.get('at', 0) < reset_after else 0
+            seconds = min(maximum, initial * 2 ** min(count, 16))
+            record = dict(model=model, count=count + 1, at=now, until=now + seconds, seconds=seconds)
+            c['model_limits'][model] = record
+            records[action] = record
+            return record

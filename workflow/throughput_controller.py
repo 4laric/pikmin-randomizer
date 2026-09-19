@@ -78,6 +78,37 @@ def capture_costs(controller):
             state.setdefault('throughput_runtime', {}).setdefault('cost_offsets', {})[identity] = offset + complete
 
 
+
+def completion_evidence(reg, lane):
+    """Prefer the applied disposition; never repair or rehash stale evidence."""
+    candidates = []
+    integration = lane.get('integration')
+    if isinstance(integration, dict):
+        candidates.append(('integration', {'path': integration.get('validation_path'),
+                                           'sha256': integration.get('validation_sha256')}))
+    disposition = lane.get('review_disposition')
+    if isinstance(disposition, dict):
+        candidates.append(('review_disposition', disposition.get('evidence')))
+    handoff = lane.get('handoff')
+    if isinstance(handoff, dict):
+        candidates.append(('handoff', {key: handoff.get(key) for key in ('path', 'sha256')}))
+    candidates.append(('progress', lane.get('progress_evidence')))
+    outcome = lane.get('outcome')
+    if isinstance(outcome, dict):
+        candidates.append(('outcome', outcome.get('evidence')))
+    failures = []
+    for label, evidence in candidates:
+        if evidence is None:
+            continue
+        try:
+            reg.evidence(evidence)
+        except (Rejected, OSError, ValueError, TypeError) as exc:
+            failures.append(label + ': ' + str(exc))
+            continue
+        return evidence
+    raise Rejected('No valid completion evidence' + (': ' + '; '.join(failures) if failures else ' recorded'))
+
+
 def pool_tick(controller):
     reg = controller.reg
     settings = controller.config.get('throughput', {})
@@ -95,23 +126,20 @@ def pool_tick(controller):
         lane = lanes.get(assignment['lane'], {})
         if lane.get('state') != 'done':
             continue
-        evidence = lane.get('progress_evidence') or (lane.get('outcome') or {}).get('evidence')
-        if not evidence and lane.get('integration', {}).get('validation_path'):
-            evidence = {'path': lane['integration']['validation_path'],
-                        'sha256': lane['integration']['validation_sha256']}
-        if not evidence and lane.get('handoff'):
-            evidence = {k: lane['handoff'][k] for k in ('path', 'sha256')}
-        if evidence:
-            try:
-                reg.complete_assignment(assignment['id'], evidence)
-            except Rejected as exc:
-                reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
+        try:
+            evidence = completion_evidence(reg, lane)
+            reg.complete_assignment(assignment['id'], evidence)
+        except (Rejected, OSError, ValueError, TypeError) as exc:
+            reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
+    from .autofill import autofill_tick, autofill_status
+    autofill_tick(controller)
+    pool = reg.scheduling_status()
     if controller.capacity():
         from .scheduling import job_priority
         def priority(worker):
             return min((job_priority(j) for j in pool['jobs'].values()
                         if j['status'] in ('queued', 'assigned') and j['worker_id'] == worker['worker_id']),
-                       default=(99, 99, 0, worker['worker_id']))
+                       default=(99, 99, 99, 0, worker['worker_id']))
         for worker in sorted(pool['workers'].values(), key=priority):
             try:
                 assignment = reg.assign_job(worker['worker_id'], controller.memory())
@@ -150,6 +178,9 @@ def pool_tick(controller):
         except (Rejected, OSError, ValueError) as exc:
             write(controller.base / 'cost-error.json', {'at': reg.clock(), 'error': str(exc)})
     status = reg.throughput_status(ram_percent=controller.memory())
+    status['autofill'] = autofill_status(reg)
+    with reg.transaction() as state:
+        status['queue_pressure']={k:v for k,v in state.get('queue_pressure',{}).items() if k!='history'}
     write(controller.base / 'throughput.json', status)
     from .dashboard import render_dashboard
     target = controller.base / 'throughput.html'

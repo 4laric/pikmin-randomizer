@@ -56,9 +56,44 @@ class ControllerTests(unittest.TestCase):
     def plan(self):
         return self.reg.plan_launch('consumer', 'test', 'Inspect previous work', self.config['models'])
 
+    def test_dispatch_resolves_relative_paths_before_runner_changes_directory(self):
+        self.config['lanes']['consumer'] = dict(root='output/lane', output='output/lane',
+                                               brief='output/lane/review.txt', config='output/lane/review.txt')
+        item=self.plan();self.controller.dispatch(item)
+        start=json.loads((self.controller.launch_directory(item['id'])/'start.json').read_text())
+        self.assertEqual(Path(start['worktree']),self.out)
+        self.assertEqual(Path(start['config']),self.log)
+        self.assertIn(str(self.log),start['prompt'])
+
     def test_duplicate_dependency_event_plans_once(self):
         self.ready_dependency(); self.controller.dependencies(); self.controller.dependencies()
         self.assertEqual(len(self.reg.control_status()['launches']), 1)
+
+    def test_unbound_timeout_archives_dead_runner_and_reuses_intent(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',{'pid':-123,'started':'old'})
+        write(directory/'result.json',{'kind':'registration_timeout'})
+        write(directory/'spawn.json',{'at':0})
+        self.assertTrue(self.controller.dispatch(item))
+        self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'],'running')
+        self.assertEqual(len(list(directory.parent.glob(item['id']+'.unbound-*'))),1)
+        self.assertEqual(len(self.spawns),1)
+
+    def test_unbound_recovery_refuses_possible_child_or_live_runner(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',self.identity);write(directory/'result.json',{'kind':'registration_timeout'})
+        self.assertFalse(self.controller.recover_unbound(item,directory))
+        write(directory/'runner.json',{'pid':-123})
+        for name in ('child.json','start.json'):
+            write(directory/name,{})
+            self.assertFalse(self.controller.recover_unbound(item,directory))
+            (directory/name).unlink()
+
+    def test_unbound_recovery_has_retry_budget(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',{'pid':-123});write(directory/'result.json',{'kind':'registration_timeout'})
+        with self.reg.transaction() as s:s['control']['launches'][item['id']]['unbound_retries']=3
+        self.assertFalse(self.controller.recover_unbound(item,directory))
 
     def test_same_version_not_resumed_after_consumption(self):
         self.ready_dependency(); self.controller.dependencies()
@@ -124,6 +159,83 @@ class ControllerTests(unittest.TestCase):
         self.reg.cool_provider('free',50)
         self.assertEqual(self.reg.select_model(['free/other','paid/muse']),'paid/muse')
         self.now+=51;self.assertEqual(self.reg.select_model(['free/other','paid/muse']),'free/other')
+
+    def test_same_provider_fallback_keeps_session_and_priority(self):
+        self.config['models'] = ['go/muse', 'go/deepseek']
+        item = self.plan()
+        with self.reg.transaction() as state:
+            self.reg.control(state)['launches'][item['id']]['focus'] = 'enemy_acceptance'
+        self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs(); self.controller.complete_runs()
+        items = list(self.reg.control_status()['launches'].values())
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[-1]['session'], item['session'])
+        self.assertEqual(items[-1]['focus'], 'enemy_acceptance')
+        self.assertEqual(self.reg.select_model(items[-1]['models']), 'go/deepseek')
+        self.assertEqual(self.reg.control_status()['model_limits']['go/muse']['count'], 1)
+        self.assertFalse(self.reg.control_status()['providers'])
+
+    def test_adaptive_penalty_replay_cap_and_quiet_reset(self):
+        for index, seconds in enumerate([30, 60, 120, 240, 300, 300]):
+            result = self.reg.model_rate_limit('go/muse', str(index))
+            self.assertEqual(result['seconds'], seconds)
+            self.assertEqual(self.reg.model_rate_limit('go/muse', str(index)), result)
+            self.now += seconds
+        self.now += 1801
+        self.assertEqual(self.reg.model_rate_limit('go/muse', 'fresh')['seconds'], 30)
+
+    def test_both_models_cooling_then_earliest_recovers(self):
+        self.reg.model_rate_limit('go/muse', 'one', initial=60)
+        self.reg.model_rate_limit('go/deepseek', 'two')
+        self.assertIsNone(self.reg.select_model(['go/muse', 'go/deepseek']))
+        self.now += 31
+        self.assertEqual(self.reg.select_model(['go/muse', 'go/deepseek']), 'go/deepseek')
+
+    def test_single_model_rate_limit_retains_delayed_retry(self):
+        self.config['models'] = ['go/muse']
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs()
+        retry = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(retry['status'], 'intent')
+        self.assertIsNone(self.reg.select_model(retry['models']))
+        self.now += 31
+        self.assertEqual(self.reg.select_model(retry['models']), 'go/muse')
+
+    def test_retry_budget_exhaustion_requires_reconciliation(self):
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        with self.reg.transaction() as state:
+            self.reg.control(state)['launches'][item['id']]['rate_limit_retries'] = 8
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs()
+        self.assertEqual(len(self.reg.control_status()['launches']), 1)
+        self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
+
+    def test_rate_limit_after_tools_exited_keeps_same_session(self):
+        self.config['models'] = ['go/muse', 'go/deepseek']
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json',
+              {'kind':'exit', 'rate_limit':True, 'tools_started':True, 'exit_code':1})
+        self.controller.complete_runs()
+        retry = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(retry['session'], item['session'])
+        self.assertEqual(self.reg.select_model(retry['models']), 'go/deepseek')
+
+    def test_launch_pacing_survives_controller_restart(self):
+        item = self.plan(); self.controller.dispatch(item)
+        restarted = Controller(self.reg, self.config, spawn=lambda _: self.fail('Duplicate spawn'), memory=lambda:60)
+        restarted.dispatch(item)
+        self.assertEqual(self.reg.select_model(['free/muse']), None)
+        self.now += 16
+        self.assertEqual(self.reg.select_model(['free/muse']), 'free/muse')
+
+    def test_cooling_model_does_not_spawn_or_bind(self):
+        self.config['models'] = ['go/muse']
+        item = self.plan(); self.reg.model_rate_limit('go/muse', 'prior')
+        self.controller.dispatch(item)
+        self.assertFalse(self.spawns)
+        self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'], 'intent')
 
     def test_intent_replay_idempotent(self):
         first=self.plan();second=self.plan();self.assertEqual(first['id'],second['id'])

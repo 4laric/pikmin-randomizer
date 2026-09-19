@@ -1,0 +1,198 @@
+"""Bounded, partitioned planning turns on the existing approved worker pool."""
+import copy
+import json
+import math
+from types import SimpleNamespace
+from .control import fingerprint
+from .handoff import require, digest, Rejected
+
+
+def merge_proposals(reg, manifest_path, proposal_path, issue_reader=None):
+    """Coordinator publication: validate new specs, then serialize append/replay."""
+    from .autofill import _private, validate_spec, github_issue, _check_conflicts
+    from .runner import write
+    manifest_path, proposal_path = _private(reg, str(manifest_path)), _private(reg, str(proposal_path))
+    proposals = json.loads(proposal_path.read_text(encoding='utf-8-sig'))['items']
+    require(isinstance(proposals, list) and proposals, 'Nonempty proposal items required')
+    before = manifest_path.read_bytes()
+    manifest = json.loads(before)
+    require(manifest.get('schema') == 1 and manifest.get('repository') == '4laric/pikmin-randomizer'
+            and manifest.get('assignee') == '4laric', 'Invalid coordinator manifest')
+    known = {s['id']: s for s in manifest['items']}
+    require(len(known) == len(manifest['items']), 'Duplicate manifest IDs')
+    added = []
+    for spec in proposals:
+        if spec['id'] in known:
+            require(known[spec['id']] == spec, 'Published spec cannot change')
+            continue
+        validate_spec(reg, spec, issue_reader or github_issue)
+        known[spec['id']] = spec
+        added.append(spec)
+    with reg.transaction() as state:
+        require(manifest_path.read_bytes() == before, 'Manifest changed; reread and retry publication')
+        controller = SimpleNamespace(reg=reg, config={'lanes': {}})
+        for spec in added:
+            _check_conflicts(controller, state, spec)
+            for other in known.values():
+                if other['id'] == spec['id'] or state['lanes'].get(other['lane']['lane'], {}).get('state') == 'done': continue
+                require(spec['lane']['issue'] != other['lane']['issue'] and spec['lane']['lane'] != other['lane']['lane'],
+                        'Proposal duplicates an outstanding issue/lane')
+                require(not ({f.casefold() for f in spec['lane']['owned_files']} &
+                             {f.casefold() for f in other['lane']['owned_files']}), 'Proposal files overlap outstanding scope')
+                require(_private(reg, spec['launch']['output']) != _private(reg, other['launch']['output']), 'Proposal output overlaps')
+                trees = {_private(reg, spec['lane'][k]['worktree']) for k in ('root','native') if spec['lane'].get(k)}
+                require(not trees & {_private(reg, other['lane'][k]['worktree']) for k in ('root','native') if other['lane'].get(k)},
+                        'Proposal worktree overlaps')
+        if added:
+            backup = manifest_path.parent / 'coordinator-backups' / (fingerprint(manifest) + '.json')
+            backup.parent.mkdir(exist_ok=True)
+            if not backup.exists(): backup.write_bytes(before)
+            manifest['items'].extend(added)
+            write(manifest_path, manifest)
+    return [s['id'] for s in added]
+
+
+def review_pending(reg, settings, helper):
+    """Review demand comes from unpublished immutable inbox items, not idle time."""
+    from .autofill import _private
+    manifest = json.loads(_private(reg, settings['manifest']).read_text(encoding='utf-8-sig'))
+    known = {s['id']: s for s in manifest['items']}
+    for directory in helper.get('review_inboxes', []):
+        for path in _private(reg, directory).glob('proposals-*.json'):
+            from .proposal_feedback import feedback
+            if feedback(reg, path): continue
+            try:
+                items = json.loads(path.read_text(encoding='utf-8-sig'))['items']
+                if any(known.get(s.get('id')) != s for s in items): return True
+            except (ValueError, KeyError, TypeError, AttributeError):
+                return True  # A reviewer must disposition malformed input too.
+    return False
+
+
+def tick(controller, settings, issue_reader):
+    from .autofill import _private, _workers, _state, _prepare
+    reg = controller.reg
+    config = settings.get('planner_pool', {})
+    if not config.get('enabled'): return
+    launches = reg.control_status()['launches']
+    waiting = [key for key in config.get('wait_for_launches', [])
+               if launches.get(key, {}).get('status') != 'exited']
+    with reg.transaction() as state:
+        _state(state).setdefault('planner_pool', {})['waiting_for_coordinator'] = waiting
+    if waiting: return
+    helpers = config.get('helpers', [])
+    require(len({h['scope'] for h in helpers}) == len(helpers), 'Duplicate planner partition')
+    with reg.transaction() as state:
+        records = copy.deepcopy(_state(state).setdefault('planner_pool', {}).setdefault('scopes', {}))
+        pressure=copy.deepcopy(state.get('queue_pressure',{}).get('stages',{}))
+    from .queue_pressure import support_work
+    support={h['scope']:support_work(reg,h) for h in helpers if h.get('kind')=='integration_support'}
+    def demanded(h):
+        if h.get('kind')=='integration_support':
+            work=support[h['scope']]
+            return bool(work) and fingerprint(work)!=records.get(h['scope'],{}).get('support_snapshot')
+        return (review_pending(reg,settings,h) if h.get('kind')=='publication' else
+                not (h.get('defer_for_review') and review_pending(reg,settings,{'review_inboxes':h['defer_for_review']})))
+    helpers = [h for h in helpers if
+               (h['scope'] in records and 'completed_at' not in records[h['scope']]) or
+               demanded(h)]
+    # Receiving a report accepts no proposed implementation or gameplay gate.
+    for scope, record in records.items():
+        if record.get('cancelled_before_start'): continue
+        lane = reg.status()['lanes'].get(record['spec']['lane']['lane'])
+        if lane and lane['state'] == 'review_ready':
+            with reg.transaction() as state:
+                safe = reg.recovery_safe(state, state['lanes'][lane['lane']])
+            if safe:
+                reg.accept_review(lane['lane'], lane['generation'],
+                    'Planning report received; coordinator validation still required; no gameplay acceptance',
+                    lane['review']['evidence']['review'])
+        if lane and reg.status()['lanes'][lane['lane']]['state'] == 'done':
+            with reg.transaction() as state:
+                live = _state(state)['planner_pool']['scopes'][scope]
+                live.setdefault('completed_at', reg.clock())
+                for target in live.get('support_targets',[]):
+                    state.setdefault('integration_support_reviewed',{})[fingerprint(target)]={
+                        'reviewer':lane['lane'],'at':reg.clock()}
+                _state(state)['items'][record['spec']['id']].update(status='completed', ready=False)
+    with reg.transaction() as state:
+        data = _state(state)
+        pool = data['planner_pool']
+        records = copy.deepcopy(pool['scopes'])
+        active = sum('completed_at' not in record for record in records.values())
+        ready = sum(bool(i.get('ready')) and not i.get('planner_helper') for i in data['items'].values())
+        unclaimed_ready = sum(bool(i.get('ready')) and not i.get('planner_helper') and
+                              i.get('lane') not in state['lanes'] for i in data['items'].values())
+        idle = len(_workers(reg, state))
+        deficit = max(0, settings.get('low_watermark', 8) - ready)
+        planning_demand = (len(helpers) if config.get('use_idle_capacity') else
+                           math.ceil(deficit / max(1, config.get('items_per_helper', 4))))
+        target = min(config.get('max_active', 3), len(helpers),
+                     planning_demand,
+                     max(0, idle + active - unclaimed_ready - config.get('reserve_workers', 2)))
+        pool.update(enabled=True, active=active, target=target, ready_backlog=ready, updated_at=reg.clock())
+    if not controller.capacity() or not 0 <= controller.memory() < 90: return
+    # Never-used shards precede repeated turns, so fast no-work reports cannot
+    # continually reclaim workers ahead of untouched backlog partitions.
+    def staffing_priority(h):
+        stage={'publication':'publication','integration_support':'integration'}.get(h.get('kind'))
+        return (0 if stage else 1,-pressure.get(stage,{}).get('pressure',0),
+                records.get(h['scope'],{}).get('started_at',0))
+    for helper in sorted(helpers, key=staffing_priority):
+        scope = helper['scope']
+        record = records.get(scope)
+        pending = record and 'completed_at' not in record
+        if pending:
+            with reg.transaction() as state:
+                if _state(state)['items'][record['spec']['id']]['phase'] == 'enqueued': continue
+            spec = record['spec']
+        else:
+            if active >= target: continue
+            if record and reg.clock() - record['completed_at'] < max(300, config.get('cooldown_seconds', 900)): continue
+            path = _private(reg, helper['template'])
+            require(digest(path) == helper['sha256'], 'Planner template bytes changed')
+            spec = json.loads(path.read_text(encoding='utf-8-sig'))
+            require(spec['role'] == 'review' and spec['heavy'] is False and spec['lane']['native'] is None,
+                    'Planner template must be non-build review work')
+            cycle = (record or {}).get('cycle', 0) + 1
+            spec['id'] += '-cycle-' + str(cycle)
+            spec['lane']['lane'] += '-cycle-' + str(cycle)
+            if helper.get('kind') == 'integration_support':
+                spec['instruction'] += (' Integration review support: review this frozen queue snapshot: '+
+                    json.dumps(support[scope])+'. Verify current handoff pins before reviewing. '
+                    'Prepare a hashed review packet for the existing integrator; no merges, shared edits, '
+                    'builds, approval impersonation or ADMIT. Finish review-ready. Existing owner retains integration.')
+            elif helper.get('kind') == 'publication':
+                spec['instruction'] += (' Publication review partition: ' + scope +
+                    '. Review existing immutable proposals only. Publish solely through canonical '
+                    'workflow.planner_pool.merge_proposals; retry manifest-change conflicts from fresh state. '
+                    'No raw manifest writes, implementation, launches or ADMIT. Finish review-ready with hashed decisions.')
+            else:
+                from .proposal_feedback import feedback
+                for directory in helper.get('defer_for_review', []):
+                    for proposal in _private(reg, directory).glob('proposals-*.json'):
+                        decision = feedback(reg, proposal)
+                        if decision:
+                            spec['instruction'] += (' PRIOR REVIEW FEEDBACK: ' + json.dumps(decision) +
+                                '. For repair, prioritize a corrected uniquely named immutable proposal '
+                                'and validate the full schema; do not alter old bytes. For dependency, '
+                                'advance the existing named dependency through its owner; do not create '
+                                'a duplicate scope or re-review the unchanged proposal. Read the hashed report.')
+                spec['instruction'] += (' Planning partition: ' + scope +
+                '. Stage proposals only in your configured partition; never write the shared manifest. '
+                'Finish review-ready with a hashed planning report even when no actionable scope exists. '
+                'No implementation, builds, worker launches or ADMIT. Respect coordinator ownership partition.')
+            with reg.transaction() as state:
+                data = _state(state)
+                data['planner_pool']['scopes'][scope] = dict(spec=spec, cycle=cycle, started_at=reg.clock())
+                if helper.get('kind')=='integration_support':
+                    data['planner_pool']['scopes'][scope]['support_snapshot']=fingerprint(support[scope])
+                    data['planner_pool']['scopes'][scope]['support_targets']=support[scope]
+                data['items'][spec['id']] = dict(spec_hash=fingerprint(spec), priority=spec['priority'],
+                    lane=spec['lane']['lane'], phase='pending', status='pending', ready=False, planner_helper=True)
+            active += 1
+        try:
+            if _prepare(controller, spec, issue_reader): return
+        except (Rejected, OSError, ValueError, KeyError) as exc:
+            with reg.transaction() as state:
+                _state(state)['planner_pool']['scopes'][scope]['error'] = str(exc)

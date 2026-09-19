@@ -85,30 +85,65 @@ class Controller:
     def available(self, key):
         """Adopt only after a legacy supervisor and worker have both stopped."""
         entry = self.config['lanes'][key]
+        if entry.get('autofill_proof'):
+            from .autofill import launch_files_unchanged
+            if not launch_files_unchanged(self.reg, entry):
+                self.reg.notice(key, 'autofill_launch_files_changed', {'reason': 'Pinned launch bytes changed or missing'})
+                return False
         owners = entry.get('legacy_supervisors', [])
         return all(self.reg.probe(owner) == 'dead' for owner in owners)
 
+    def recover_unbound(self, item, directory):
+        """Retry only a proven registration timeout before any child could start."""
+        result=directory/'result.json';runner=directory/'runner.json'
+        if not result.exists() or not runner.exists():return False
+        if json.loads(result.read_text()).get('kind')!='registration_timeout':return False
+        with self.reg.transaction() as state:
+            current=self.reg.control(state)['launches'][item['id']]
+            if current['status']!='intent' or current.get('process') or current.get('unbound_retries',0)>=3:return False
+            if (directory/'start.json').exists() or (directory/'child.json').exists():return False
+            identity=json.loads(runner.read_text())
+            if self.reg.probe(identity)!='dead':return False
+            if not self.reg.recovery_safe(state,state['lanes'][item['lane']]):return False
+            parent=(self.base/'launches').resolve()
+            require(directory.resolve().parent==parent,'Unbound recovery directory outside launches')
+            archive=parent/(item['id']+'.unbound-'+fingerprint(identity))
+            require(archive.resolve().parent==parent and not archive.exists(),'Recovery archive collision')
+            directory.rename(archive)
+            current['unbound_retries']=current.get('unbound_retries',0)+1
+            self.reg.event(state,'unbound_runner_recovered',item['lane'],action=item['id'],archive=str(archive))
+        return True
+
     def dispatch(self, item):
         if not self.available(item['lane']): return
-        directory = self.launch_directory(item['id']); directory.mkdir(parents=True, exist_ok=True)
+        directory = self.launch_directory(item['id'])
+        self.recover_unbound(item,directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        if (directory / 'start.json').exists(): return
+        # A model recorded before start.json is a durable launch reservation.
+        current = self.reg.control_status()['launches'][item['id']]
+        model = current.get('model') or self.reg.select_model(item['models'])
+        if model is None: return
         # Persist spawn intent before Popen. Uncertain windows are reconciled, never retried blindly.
         marker = directory / 'spawn.json'
+        spawned=False
         if not marker.exists():
             write(marker, {'action': item['id'], 'at': self.reg.clock()})
             self.spawn(directory)
+            spawned=True
         identity_file = directory / 'runner.json'
         if not identity_file.exists():
             if self.reg.clock() - json.loads(marker.read_text())['at'] > 120:
                 self.reg.notice(item['lane'], 'uncertain_dispatch', {'action': item['id'], 'directory': str(directory)})
-            return
+            return spawned
         identity = json.loads(identity_file.read_text())
         if probe(identity) != 'alive':
             self.reg.notice(item['lane'], 'runner_stopped_before_binding', {'action': item['id']})
             return
         lane = self.reg.bind_launch(item['id'], identity)
-        entry = self.config['lanes'][item['lane']]
-        model = self.reg.select_model(item['models'])
-        if model is None: return  # No work begins while providers cool down.
+        entry = dict(self.config['lanes'][item['lane']])
+        for field in ('root', 'output', 'brief', 'config'):
+            entry[field] = str(local_path(self.reg.root, entry[field]))
         ready = dict(attempt_id=item['id'], lane=item['lane'], generation=lane['generation'],
                      revision=lane['revision'], task_id=lane['task_id'], pid=identity['pid'], session=item['session'])
         write(local_path(self.reg.root, entry['output']) / 'session-ready.json', ready)
@@ -116,15 +151,22 @@ class Controller:
             f"{entry['output']}/session-ready.json. Require attempt_id={item['id']} and generation={lane['generation']} "
             "before edits. This continuation supersedes old missing-dependency instructions. Preserve committed work. "
             + item['instruction'] + '\nUse the canonical registry and private worktrees, common leased builds; no ADMIT writes. '
+            'Before any runtime acceptance run, adopt canonical docs/PIKMIN2_IMPLEMENTATION_FANOUT.md captain safety #632: '
+            'check orimaDead, NaviDead and HP<=1 before pause/movie returns or observed ticks; emit CAPTAIN_DOWN and exit BLOCKED. '
+            'Use scripts/p2_fixture_captain_guard.h or equivalent tested guard. Park captain outside attack reach when not testing captain hits. '
+            'No blanket invincibility; protected observation is labelled and cannot prove captain damage. Record adoption and guard/source hashes. '
             'Do not spawn agents. Before exiting use workflow finish with blocked, review-ready, or implementation-ready. '
             f"CLI: {sys.executable} {Path(__file__).resolve().parents[1] / 'scripts/pikmin2_workflow.py'} "
             f"--root {self.reg.root} --request <json> finish. Required JSON: key, generation, outcome, summary, "
             'evidence {path,sha256}; blocked also dependencies; implementation-ready also path to full handoff. '
             'Review-ready records review of existing evidence without claiming a new runtime run.')
         with self.reg.transaction() as state:
-            self.reg.control(state)['launches'][item['id']]['model'] = model
+            c = self.reg.control(state)
+            c['launches'][item['id']]['model'] = model
+            c.setdefault('model_launch_after', {})[model] = self.reg.clock() + self.config.get('model_launch_spacing', 15)
         write(directory / 'start.json', dict(action_id=item['id'], executable=self.config['executable'],
             worktree=entry['root'], config=entry['config'], model=model, session=item['session'], prompt=prompt))
+        return True
 
     def complete_runs(self):
         for item in self.reg.control_status()['launches'].values():
@@ -147,11 +189,24 @@ class Controller:
             lane = self.reg.status()['lanes'][item['lane']]
             if lane['state'] in ('done', 'blocked', 'review_ready', 'handoff_ready', 'integrating'):
                 self.mark_exited(item['id']); continue
-            if result['kind'] == 'rate_limit':
-                self.reg.cool_provider(item['model'].split('/')[0], self.config.get('provider_cooldown', 900))
-                remaining = [m for m in item['models'] if m != item['model']]
-                if remaining:
-                    self.reg.plan_launch(item['lane'], 'provider fallback:' + item['id'], item['instruction'], remaining, item['version'])
+            if result['kind'] == 'rate_limit' or result.get('rate_limit'):
+                policy = self.config.get('model_rate_limit', {})
+                self.reg.model_rate_limit(item['model'], item['id'],
+                    initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
+                    reset_after=policy.get('reset_after_seconds', 1800))
+                retries = item.get('rate_limit_retries', 0)
+                if retries < policy.get('max_retries', 8):
+                    # Keep every authorized choice: exhausted models become eligible
+                    # after cooling, without dropping a single-model lane on the floor.
+                    models = list(dict.fromkeys(item['models'] + self.config.get('models', [])))
+                    models = [m for m in models if m != item['model']] + [item['model']]
+                    follow = self.reg.plan_launch(item['lane'], 'provider fallback:' + item['id'],
+                        item['instruction'], models, item['version'])
+                    with self.reg.transaction() as state:
+                        planned = self.reg.control(state)['launches'][follow['id']]
+                        planned['rate_limit_retries'] = retries + 1
+                        for field in ('focus', 'work_class'):
+                            if field in item: planned[field] = item[field]
                     self.mark_exited(item['id'])
                     continue
             evidence = dict(path=str(result_path), sha256=digest(result_path))
@@ -383,13 +438,31 @@ class Controller:
         return decisions
 
     def tick(self):
+        from .build_capacity import update as update_build_capacity
+        update_build_capacity(self)
         # Existing pooled runs must remain replayable even after pool scheduling
         # is disabled, including recovery/dependency work earlier in this tick.
         with self.reg.transaction() as state:
             self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
+        from .fixture_policy import tick as fixture_policy
+        fixture_policy(self)
         from .provider_recovery import recover
         recover(self)
+        from .terminal_cleanup import tick as clean_terminal
+        clean_terminal(self)
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
+        from .setup_healing import tick as heal_setup
+        heal_setup(self)
+        from .shared_review_routing import tick as route_shared_reviews
+        try:
+            route_shared_reviews(self)
+        except (Rejected,OSError,ValueError,KeyError,TypeError) as exc:
+            write(self.base/'shared-review-routing-error.json',dict(at=self.reg.clock(),error=str(exc)))
+        from .queue_pressure import update as update_pressure
+        try:
+            update_pressure(self)
+        except (Rejected,OSError,ValueError,KeyError,TypeError) as exc:
+            write(self.base/'queue-pressure-error.json',dict(at=self.reg.clock(),error=str(exc)))
         from .throughput_controller import pool_tick
         pool_tick(self)
         # Complete a previously bound launch after a crash before writing start.json.
@@ -403,13 +476,18 @@ class Controller:
                 downstream = sum(item['lane'] in other['dependencies'] for other in lanes.values() if other['state'] != 'done')
                 # Legacy/dependency/recovery intents default to existing work.
                 work_class = 1 if item.get('work_class') == 'expansion' else 0
-                return (work_class, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+                focus = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}.get(item.get('focus'), 1)
+                helper=item['lane'].startswith(('planning-','publication-review-','integration-support-'))
+                return (work_class, helper, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+            launched = 0
+            burst = min(4, max(1, self.config.get('launches_per_tick', 1)))
             for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue
-                    self.dispatch(item)
-                    # One new launch per tick; avoid crossing the RAM band in a batch.
-                    break
+                    progressed=self.dispatch(item)
+                    if progressed:
+                        launched += 1
+                        if launched >= burst or not self.capacity(): break
         self.shepherd()
         self.deliver_notifications()
         write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()))

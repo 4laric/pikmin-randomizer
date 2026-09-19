@@ -57,7 +57,8 @@ def process_table():
     if os.name != 'nt':
         raise OSError('Automatic provider-stop inspection currently supports Windows only')
     result = subprocess.run(['powershell', '-NoProfile', '-Command',
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress'],
+        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,'
+        '@{Name="Started";Expression={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}}} | ConvertTo-Json -Compress'],
         capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
     if result.returncode:
         raise OSError('Cannot inspect process descendants')
@@ -69,9 +70,24 @@ def safe_descendants(owners, rows):
     allowed = {p['pid'] for p in owners}
     if not allowed.issubset({p['ProcessId'] for p in rows}):
         return False
+    def started(value):
+        # Win32 creation FILETIME, not a wall-clock guess; absent/malformed data
+        # cannot exclude descendants and therefore remains conservative.
+        if isinstance(value, str) and value.isdecimal() and int(value) > 0:
+            return int(value)
+        return None
+    # CIM timestamps retain microseconds; GetProcessTimes retains 100ns ticks.
+    births = {p['ProcessId']: started(p.get('Started')) for p in rows}
+    for owner in owners:
+        expected, actual = started(owner.get('started')), births.get(owner['pid'])
+        if expected is not None and actual is not None and expected // 10 != actual // 10:
+            return False
     descendants = set(allowed)
     while True:
-        extra = {p['ProcessId'] for p in rows if p['ParentProcessId'] in descendants}
+        extra = {p['ProcessId'] for p in rows if p['ParentProcessId'] in descendants
+                 and not (births.get(p['ParentProcessId']) is not None
+                          and births.get(p['ProcessId']) is not None
+                          and births[p['ProcessId']] < births[p['ParentProcessId']])}
         if extra.issubset(descendants):
             break
         descendants.update(extra)
@@ -109,6 +125,7 @@ def stop_exact(identity):
 
 
 def recover(controller, *, table=process_table, stop=stop_exact):
+    recover_terminal(controller, table=table, stop=stop)
     settings = controller.config.get('provider_stall_recovery', {})
     if not settings.get('enabled'):
         return
@@ -195,12 +212,159 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                 continue
             if journal['launch']:
                 controller.mark_exited(journal['launch'])
+            retry_models = list(models)
+            failed_model = control['launches'].get(journal['launch'], {}).get('model')
+            if failed_model:
+                policy = controller.config.get('model_rate_limit', {})
+                reg.model_rate_limit(failed_model, journal['launch'],
+                    initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
+                    reset_after=policy.get('reset_after_seconds', 1800))
+                retry_models = [m for m in models if m != failed_model]
+                if failed_model in models: retry_models.append(failed_model)
             item = reg.plan_launch(key, 'provider-stall:' + identity,
                 'Recover the same session after an idle provider rate-limit failure. '
                 'Inspect existing checkpoints, edits and commits; preserve completed work. '
                 'Continue only the assigned slice and record a terminal outcome. '
-                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', models)
+                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', retry_models)
             with reg.transaction() as db:
                 reg.control(db).setdefault('provider_recoveries', {})[identity] = dict(journal, status='planned', action=item['id'])
         except (OSError, ValueError) as exc:
             reg.notice(key, 'provider_recovery_inspection_failed', {'generation': fresh['generation'], 'error': str(exc)})
+
+# Only the observed periodic cleanup message is ignorable. Unknown diagnostics,
+# permission prompts, tool output and partial log lines are meaningful activity.
+_CLEANUP = re.compile(r'^timestamp=\S+ level=INFO run=\S+ message=cleanup prune=\d+\.days$')
+_EXIT = re.compile(r'^timestamp=(\S+) level=INFO run=\S+ message="exiting loop" session\.id=(\S+)$')
+
+
+def idle_terminal(events_path, errors_path, session, now, quiet=60):
+    """Recognize an exact idle session-loop boundary without inferring acceptance."""
+    import math
+    if not isinstance(session, str) or not session or not math.isfinite(now):
+        return None
+    quiet = max(60, quiet)
+    try:
+        errors = Path(errors_path).read_text(encoding='utf-8')
+        raw = Path(events_path).read_text(encoding='utf-8')
+        if (errors and not errors.endswith('\n')) or (raw and not raw.endswith('\n')):
+            return None
+        lines = [line.strip() for line in errors.splitlines() if line.strip() and not _CLEANUP.fullmatch(line.strip())]
+        if not lines:
+            return None
+        match = _EXIT.fullmatch(lines[-1])
+        if not match or match[2] != session:
+            return None
+        moment = datetime.datetime.fromisoformat(match[1].replace('Z', '+00:00'))
+        if moment.tzinfo is None:
+            return None
+        exited_at = moment.timestamp()
+        if now - exited_at < quiet or now - Path(events_path).stat().st_mtime < quiet:
+            return None
+        events = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        if events and (not isinstance(events[-1], dict) or events[-1].get('type') != 'step_finish'):
+            return None
+        tools = {}
+        for event in events:
+            if not isinstance(event, dict):
+                return None
+            stamp = event.get('timestamp')
+            if type(stamp) not in (int, float) or not math.isfinite(stamp) or stamp / 1000 > exited_at:
+                return None
+            if event.get('sessionID') not in (None, session):
+                return None
+            if event.get('type') == 'tool_use':
+                part = event.get('part')
+                if not isinstance(part, dict) or not isinstance(part.get('state'), dict):
+                    return None
+                key = part.get('callID') or part.get('id')
+                if not isinstance(key, str) or not key:
+                    return None
+                tools[key] = part['state'].get('status')
+        if any(status not in ('completed', 'error') for status in tools.values()):
+            return None
+        return dict(session=session, exited_at=exited_at, events=str(events_path), errors=str(errors_path))
+    except (OSError, ValueError, OverflowError, TypeError):
+        return None
+
+
+def recover_terminal(controller, *, table=process_table, stop=stop_exact):
+    """Stop only a managed idle CLI child; its runner records the real exit.
+
+    Registry outcomes are preserved. A running lane with no terminal submission
+    follows complete_runs' existing reconciliation path after the runner exits.
+    """
+    settings = controller.config.get('terminal_idle_recovery', {})
+    if not settings.get('enabled', False):
+        return
+    reg = controller.reg
+    quiet = max(60, settings.get('quiet_seconds', 60))
+    eligible = {'done', 'review_ready', 'handoff_ready', 'blocked', 'running'}
+    for launch in reg.control_status()['launches'].values():
+        if launch.get('status') != 'running' or not launch.get('session'):
+            continue
+        key = launch['lane']
+        directory = controller.launch_directory(launch['id'])
+        if (directory / 'result.json').exists():
+            continue
+        try:
+            child = json.loads((directory / 'child.json').read_text())
+            runner = json.loads((directory / 'runner.json').read_text())
+            start = json.loads((directory / 'start.json').read_text())
+            if start.get('session') != launch['session'] or start.get('action_id') != launch['id']:
+                continue
+            if not isinstance(child, dict) or not isinstance(runner, dict) or child == runner:
+                continue
+            owners = [runner, child]
+            if any(not all(k in owner for k in ('pid', 'host', 'started')) for owner in owners):
+                continue
+            evidence = idle_terminal(directory / 'events.jsonl', directory / 'stderr.log',
+                                     launch['session'], reg.clock(), quiet)
+            if not evidence:
+                continue
+            def fenced(state):
+                lane = state['lanes'].get(key, {})
+                current = state.get('control', {}).get('launches', {}).get(launch['id'], {})
+                return (lane.get('state') in eligible and lane.get('generation') == launch.get('bound_generation')
+                        and lane.get('task_id') == 'opencode:' + launch['session']
+                        and lane.get('process') == runner and current.get('status') == 'running'
+                        and current.get('process') == runner and current.get('bound_generation') == lane.get('generation')
+                        and all(reg.probe(owner) == 'alive' for owner in owners)
+                        and not any(reg.probe(v['process']) != 'dead' for v in state['leases'].values() if v['lane'] == key))
+            with reg.transaction() as state:
+                if not fenced(state):
+                    continue
+            rows = table()
+            if not safe_descendants(owners, rows):
+                continue
+            # The recorded child must actually belong to the recorded runner.
+            if not any(p['ProcessId'] == child['pid'] and p['ParentProcessId'] == runner['pid'] for p in rows):
+                continue
+            identity = fingerprint([launch['id'], launch['bound_generation'], child, 'idle-terminal'])
+            with reg.transaction() as state:
+                if not fenced(state):
+                    continue
+                reg.control(state).setdefault('terminal_recoveries', {}).setdefault(identity,
+                    dict(lane=key, launch=launch['id'], generation=launch['bound_generation'],
+                         child=child, runner=runner, evidence=evidence, status='stopping', at=reg.clock()))
+            # Revalidate after persisting intent. Never reuse stale liveness,
+            # descendant, lease or log checks from a previous recovery attempt.
+            with reg.transaction() as state:
+                if not fenced(state) or (directory / 'result.json').exists():
+                    continue
+                if json.loads((directory / 'child.json').read_text()) != child:
+                    continue
+                if idle_terminal(directory / 'events.jsonl', directory / 'stderr.log',
+                                 launch['session'], reg.clock(), quiet) != evidence:
+                    continue
+                rows = table()
+                if not safe_descendants(owners, rows) or not any(
+                        p['ProcessId'] == child['pid'] and p['ParentProcessId'] == runner['pid'] for p in rows):
+                    continue
+                if idle_terminal(directory / 'events.jsonl', directory / 'stderr.log',
+                                 launch['session'], reg.clock(), quiet) != evidence:
+                    continue
+                stop(child)  # Never stop the runner or synthesize its result.
+                reg.control(state)['terminal_recoveries'][identity]['status'] = 'child_stop_requested'
+                reg.event(state, 'terminal_child_stop_requested', key, launch=launch['id'])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            reg.notice(key, 'terminal_recovery_inspection_failed', {'launch': launch['id'], 'error': str(exc)})

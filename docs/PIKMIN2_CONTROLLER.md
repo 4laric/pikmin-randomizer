@@ -191,3 +191,92 @@ py -3.12 -m unittest tests.test_pikmin2_workflow tests.test_pikmin2_controller t
 Tests inject duplicate events, stale generations/decisions, missing terminal outcomes,
 rate limits, uncertain spawn, crashes around registration, live children, immutable
 publications and actual Git ancestry. They do not certify any native gameplay gate.
+
+## Elastic build admission (#580)
+
+Enable `build_capacity: {"enabled": true, "base": 2, "maximum": 4,
+"ramp_seconds": 60}` in the controller configuration. The controller durably
+enables lease-only admission: heavy assignments can prepare and dispatch while
+actual build leases occupy the pool. All compilation/link jobs must still acquire
+the canonical registry lease before starting. Directory exclusivity, FIFO,
+process fencing, and maintained-build ownership remain enforced.
+
+The controller raises the cap one slot per minute, up to four, when RAM is below
+80% and builds are queued, or idle workers coexist with enough active heavy lanes.
+At 87% RAM it pauses new build grants and lowers the target to two; grants resume
+below or at 82%. Existing leases are never revoked. Samples older than 60 seconds
+pause new heavy grants until the controller refreshes them. Lane dispatch retains
+the separate 90% RAM ceiling. Low demand returns the target to two.
+
+The dashboard separates leases held, preparing lanes, concurrency limit and
+currently available grants. Historical utilization uses capacity-change events.
+The policy and lease-only mode persist in the registry; removing configuration
+does not silently disable the stale-sample guard. Reconfiguration needs an explicit
+reviewed migration. The cap is a cooperative limit, not an OS memory guarantee.
+
+## Model throttling and fallback (#579)
+
+Configure the authorized ordered `models` chain, for example Muse followed by
+`opencode-go/deepseek-v4.1-flash`, and the same chain in `provider_stall_recovery.models`.
+Observed worker rate limits cool only the failed model. Explicit provider-wide
+cooldowns remain supported for confirmed provider-wide incidents. A model switch
+does not guarantee a separate upstream quota; if both models throttle, both wait.
+
+`model_rate_limit` defaults to `initial_seconds: 30`, `max_seconds: 300`,
+`reset_after_seconds: 1800`, and `max_retries: 8`. Consecutive throttles double
+the delay to the cap; a 30-minute quiet period resets escalation. Attempt IDs
+make penalties replay-safe. Retries preserve sessions, instructions and dispatch
+priority, prefer another authorized model, and retain cooled models for later.
+Exhausted exited-worker retries enter reconciliation with evidence; live post-tool recovery
+retains its existing stricter per-head budget and completed-tool safety checks.
+
+`model_launch_spacing` defaults to 15 seconds between new launches of each model,
+persisted across controller restarts. Existing local tools/builds keep running.
+This paces launches, not individual model requests inside an active worker.
+Deployment must update pending intents as well as configuration; existing running
+workers keep their current model until a safely fenced continuation.
+
+## Headless worker recovery (#568)
+
+Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
+
+Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.
+
+Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
+
+
+Heavy assignment reservations pause only when a lane is `blocked`, `review_ready`, `handoff_ready`, or `done` and its worker and every protected lease process are confirmed stopped. This frees prospective build capacity for dependency producers; it does not release any actual resource lease, change worker ownership, complete an assignment, or accept evidence. Live or unknown workers and protected children retain their reservations. Actual build leases always count separately toward the shared cap, including multiple leases held by one lane, and resuming a heavy assignment must reserve capacity again.
+
+
+### Prepared work and queued planner reservations (#630)
+
+Ready backlog measures validated work independently of idle workers. The separate
+Ready awaiting worker card counts prepared items awaiting compatible capacity.
+The sole controller may yield a never-started planner reservation to prepared
+implementation, in the existing implementation priority order. This is a recorded
+cancellation before execution, not a completed plan or accepted slice. The helper
+partition remains eligible for a later cycle after its normal cooldown.
+
+Reclamation requires generation 1, ready state, confirmed stopped inherited
+process, no execution evidence, no claims or leases, and compatible worker roles
+and capabilities. Any launch attempt, binding, process or launch-directory artifact
+prevents reclamation; normal recovery handles uncertain startup. Running helpers
+finish normally. Implementation takes the released worker before helper refill.
+
+### Terminal cleanup and capacity dispatch (#631)
+
+With terminal_cleanup.enabled, completed review/handoff producers may have their
+lingering OpenCode child retired after a five-minute grace period. The controller
+requires the matching session exit-loop, no later activity except service cleanup,
+valid immutable outcome evidence, matching generation and process identity, no
+productive descendants, and no live or unknown independent resource owner. Only
+that child is stopped; its runner records the actual exit. No acceptance or age
+reset is synthesized. Unknown states remain protected. Windows termination checks
+creation time and stops through the same process handle.
+
+Dashboard helper reservations are split into running, queued, report-ready and
+recovery counts. launches_per_tick may be raised from 1 to 2 (hard maximum 4)
+to activate additional paid workers; model pacing and measured RAM admission are
+rechecked. Existing implementation/recovery retains priority over helper discovery.
+Prepared relative paths are resolved against the canonical workspace before the
+runner changes directory, preventing failed starts such as PanModoki #220.

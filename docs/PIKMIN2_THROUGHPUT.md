@@ -1,5 +1,41 @@
 # Throughput operations
 
+## Parallel planning pool (#581)
+
+`throughput.autofill.planner_pool` configures up to three bounded helper turns,
+partitioned into enemy acceptance/provider gaps, dungeons, and overworld/challenge.
+Each entry in `helpers` supplies a unique `scope`, private immutable autofill
+`template` path and its `sha256`. Templates are issue-backed, non-heavy reviews
+with private clean planning worktrees and no native implementation source.
+
+The controller derives a helper target from ready-backlog deficit, available
+approved stopped workers, `items_per_helper` (live: 3), `max_active` (3), and
+`reserve_workers` (2). Ready implementation consumes workers first. It provisions
+at most one helper per tick through ordinary ownership/launch checks. Scopes cannot
+overlap themselves; cycle IDs and stored specs make restart replay idempotent.
+At high backlog no new helpers launch; running bounded turns finish normally.
+`cooldown_seconds` (live: 900) prevents immediate repeat planning of one partition.
+
+Helpers stage immutable complete spec proposals in separate partition inboxes,
+finish `review-ready` with a hashed report, and perform no source implementation,
+build, dispatch, manifest publication or ADMIT. After the worker and protected
+children stop, the controller acknowledges only the planning report; ordinary
+pool completion returns the worker for implementation. This does not accept any
+proposed slice or increment accepted implementation/gameplay metrics.
+
+The existing planner remains the sole coordinator and manifest writer. It reads
+helper proposals and calls canonical `workflow.planner_pool.merge_proposals(reg,
+manifest_path, proposal_path)`. Publication verifies fresh issue assignment and
+body hashes, private source/launch proofs, active ownership, and pending proposal
+issue/lane/file/worktree/output collisions. Appends are serialized with registry
+transactions, detect manifest changes, preserve a backup and replay unchanged
+IDs without duplication. Invalid proposals remain unpublished. The coordinator
+does not independently create scopes owned by helpers.
+
+Dashboard helper counts are separate from active enemy implementation. Lease-only
+build mode also applies at autofill readiness and provisioning, so preparation
+cannot silently consume build slots before the ordinary scheduler sees it.
+
 Implementation: #524–#527. Owner: Codex through shared GitHub account `4laric`.
 This extends [the workflow operating contract](PIKMIN2_WORKFLOW.md) and
 [controller contract](PIKMIN2_CONTROLLER.md); it does not replace their fencing,
@@ -298,3 +334,239 @@ Use queue age and role demand to add authorized workers where ready work is
 accumulating. Add implementation, review, repair, integration, and QA capacity as
 appropriate while respecting each workstream's one integration writer, 90% RAM
 ceiling, and two shared heavy-build slots.
+
+## 8. Keep acceptance work staffed without another approval round
+
+The user has authorized ongoing paid worker reuse and available capacity. Within
+that scope, the configured planner prepares the next concrete assignment;
+ordinary bounded items do not need another per-item user approval. Issue-first
+ownership, private worktrees, source review and the existing runtime acceptance
+rules still apply. The controller remains the sole dispatcher.
+
+The unattended order is **existing enemy acceptance work, existing content work,
+then content expansion**. Use the explicit backlog priorities `enemy_acceptance`,
+`existing_content`, and `expansion`. An enemy assignment must identify the exact
+source identity and missing gates, such as transport/reward or cleanup/reentry.
+An imported model, review acknowledgement, tooling test, or one admitted variant
+cannot stand in for an entire family's gameplay completion. No automatic ADMIT
+is granted by refill, pool completion, or integration metrics.
+
+Enable the adapter inside the existing controller's `throughput` configuration:
+
+```json
+{
+  "autofill": {
+    "enabled": true,
+    "manifest": "output/workflow/acceptance-backlog.json",
+    "refill_cooldown_seconds": 900,
+    "planner_lane": "acceptance-backlog-planner",
+    "planner_cooldown_seconds": 900,
+    "low_watermark": 4
+  }
+}
+```
+
+The path is illustrative; use the actual prepared manifest under the canonical
+workspace's `output/`. The manifest envelope has `schema: 1`,
+`repository: "4laric/pikmin-randomizer"`, `assignee: "4laric"`, and an `items` list.
+Each item carries its stable `id`, priority, workstream, role/capabilities, heavy
+flag, instruction, lane/source record, prepared launch inputs with brief/config
+SHA-256 hashes, and hashed issue proof with the exact issue-body hash. Use the validator's current schema when
+preparing inputs; unresolved validation is a visible blocker, not permission to
+invent missing evidence. The configured refill cooldown defaults to 900 seconds
+and is bounded below at 60 seconds. The registered acceptance backlog planner
+(#570, `acceptance-backlog-planner`) supplies the next concrete scopes through the
+same issue-first and sole-controller protocol. Its separate cooldown defaults to
+900 seconds (minimum 300); `low_watermark` defaults to four. An enemy-work shortage
+can request planning even when content expansion has a large remaining backlog.
+
+The configured planner is the single writer of the autofill manifest, a queue
+of prepared, issue-backed scopes. The integrator reviews source acceptance and
+handoff proposals. If no planner is configured, designate the integrator as the
+sole fallback writer; never run concurrent manifest writers. Before appending an
+item, inspect the current handoff, open issue and existing ownership; continue existing useful work before
+creating another slice. Each new scope needs an assigned GitHub issue, precise
+owned paths and acceptance, an existing workstream integration owner, source
+commit and dirty-state pins, an actual private worktree, a brief and provider
+configuration, documented prerequisites, and explicit capabilities. Queue only
+actionable scopes: resolve prerequisites first, or prepare a useful bounded
+provider/consumer assignment that can proceed independently. Prepare those inputs
+first; a title or a proposed issue alone is not dispatchable work. Preserve existing
+manifest item identities and specifications; append a fresh item for a changed
+scope so provisioning can be replayed without a duplicate lane or job.
+
+On each controller pass, eligible entries can fill confirmed stopped, authorized
+pool workers through their existing sessions. Live or unknown owners, conflicting
+paths, unavailable integration owners, unprepared inputs, RAM hysteresis, and
+heavy-build capacity remain hard constraints. A blocked enemy item does not
+consume all spare capacity when an independent eligible content item is ready.
+No second supervisor, fabricated process identity, or direct runtime launch is
+part of this protocol.
+
+When capacity has no eligible prepared scope, the controller records starvation.
+With a configured planner it requests a planner wake; otherwise it emits a durable
+refill request to the designated integrator. Requests repeat at the applicable
+cooldown while the shortage persists; a previous notice is not permanent
+suppression. The single manifest writer must append the next fully prepared scopes
+or record the concrete blocking dependency and its owner. Completion reports
+should include a bounded follow-on proposal grounded in observed remaining gates
+and reusable evidence. Recheck ownership and prerequisite changes before planning;
+do not repeatedly relaunch the same blocked work without a useful next action.
+Only validated, assigned, prepared scopes enter the queue. The user has authorized
+routine issue-backed follow-ons; enemy ADMIT retains its existing approval gate.
+
+The dashboard's **Acceptance backlog** section reports the observed ready backlog,
+running or resource-waiting enemy work, confirmed idle authorized workers, blocked
+reasons, manifest errors and latest refill request. Queue starvation means eligible
+capacity has waited for prepared work. Missing observations display `Unavailable`;
+zero is displayed only when the controller actually reports zero. The item summary
+shows at most ten blocked scopes plus the additional count; inspect the complete
+JSON status for the full list. A disabled autofill adapter is identified explicitly.
+
+**Integrated slices / hour** measures accepted implementation output from registry
+integration records. It does not count review acknowledgements or enemy admissions.
+The dashboard does not currently have an authoritative enemy-admission metric and
+says so explicitly. Assess family progress using the source-identity admission
+ledger and its gate evidence, independently of worker utilization or slice rate.
+# Idle-capacity planning shards (#586)
+
+Set `planner_pool.use_idle_capacity: true` to fill otherwise-idle eligible workers
+up to `max_active` and the number of distinct helper templates. Unclaimed ready
+implementation still reserves workers first; RAM, launch pacing and model cooldowns
+continue to apply. `reserve_workers: 0` permits all remaining eligible capacity.
+Untouched shards precede repeat turns. Turns are bounded and return workers after
+a hashed review report; a planning report is not gameplay acceptance.
+
+The deployed catalog under `output/workflow/autofill/planning-shards/catalog.json`
+divides enemy identity groups, dungeon regions, overworld stages, challenge stages
+and shared providers into 24 assigned issue-backed scopes. Old broad planners must
+exit before activation (`wait_for_launches`). Only the coordinator publishes the
+shared manifest using `merge_proposals`; helpers stage immutable proposals.
+
+Before overlapping research or issue preparation, use `workflow.planner_claims`
+against the canonical shared registry. Atomically claim `topic:<canonical-name>`,
+`issue:<number>`, `provider:<catalog-name>` and `file:<repository-relative-path>`.
+Case/slash aliases and file ancestor overlaps conflict. Claims require the current
+live lane generation; batches are all-or-none. Claims never expire or transfer
+automatically. This cooperative protocol complements actual implementation scope
+checks and depends on using the catalog's common vocabulary.
+
+CLI: `py -3.12 -m workflow.planner_claims --root ABS_ROOT --request ABS_JSON claim`
+(also `inspect` and `release`). Requests contain `lane`, `generation`, `resources`.
+A live owner may release unused claims. Proposal claims remain until the registered
+live `acceptance-backlog-planner` coordinator reviews them, records hashed disposition,
+and confirms the owner and protected children stopped. Its release request adds
+`coordinator: {lane: acceptance-backlog-planner, generation: N}` and
+`disposition: {path: ABS_REPORT, sha256: HASH}`. Prefer disposition before rebinding. After automatic recovery, the coordinator may
+explicitly dispose an older claim generation: pass the generation recorded on the
+claim, and verify both the current terminal owner and original claim processes are
+stopped. Worker release remains current-generation fenced. Unknown process state
+or in-flight dispatch must not be bypassed.
+
+## Parallel publication helpers (#617)
+
+Idle worker capacity can review staged proposals before discovering new work.
+Planner-pool helper entries with `kind: publication` and `review_inboxes` run only
+while immutable `proposals-*.json` files contain unpublished or differing items.
+They sort before discovery helpers. Discovery entries can set `defer_for_review`
+to their inbox paths, suppressing repeat discovery until existing proposals publish.
+Current bounded turns finish normally; ready implementation retains first call on
+workers. The live pool has four review groups, issues #618–#621.
+
+Publication helpers claim their review partition, validate complete source/issue/
+ownership evidence, then call canonical `merge_proposals`. This supersedes the
+older sole-coordinator publication restriction for these explicitly assigned helpers.
+Only the actual append is serialized: SQLite protects the write, changed manifests
+reject the stale attempt, and helpers reread/revalidate before bounded retry.
+Identical published IDs replay safely. Raw manifest writes remain forbidden.
+Helpers report hashed decisions and release their own claims. Coordinator #570
+retains cross-shard arbitration, old inbox work and original planner-claim disposition.
+Malformed/rejected proposals require explicit reasons; helpers cannot invent missing
+specs, modify accepted scopes, integrate source or grant ADMIT.
+
+## Review feedback routing (#622)
+
+Reviewers record repair/dependency dispositions through canonical
+`workflow.proposal_feedback.record(reg, lane, generation, proposal, sha256,
+outcome, reason, evidence, wait_for_lanes=None)`. Evidence is a hashed report;
+proposal bytes and registered reviewer generation are fenced. Completed reviewers
+can import only the exact report already registered as their review evidence.
+
+Unchanged rejected bytes no longer generate review demand. Repair feedback is
+injected into the next shard planning turn, requiring a corrected uniquely named
+proposal. Dependency feedback names actual registry lanes and suppresses review
+until all reach done. New proposal bytes/files wake normal validation. Nothing
+expires on a timer, grants acceptance or bypasses the publication validator.
+Current queued turns may finish, but new identical review cycles are suppressed.
+
+## Setup and claim maintenance (#623)
+
+`setup_healing.enabled` adds bounded controller maintenance without replacing the
+healthy coordinator. Stopped planner claims can be disposed automatically only
+when every immutable proposal in that shard is identical to published specs or
+has hashed explicit review feedback. The controller records a hashed disposition
+and invokes the existing release API, retaining current/original process, child,
+launch and generation checks. Undecided proposals remain protected.
+
+Blocked runtime lanes whose recorded blocker explicitly identifies absent native
+setup receive one ordinary same-owner recovery launch per source/blocker fingerprint.
+The worker must recheck current source records (which may already be repaired),
+preserve all work, and create a private native worktree from an integration-approved
+pin only when actually missing. It checkpoints source identity and uses normal
+private build leases and mandatory runtime fixtures. This does not bypass external
+review, change acceptance, reset the coordinator or grant ADMIT.
+
+## Queue-aware support (#624)
+
+With `queue_pressure.enabled`, the controller observes publication, integration and
+runtime queues every tick, sampling arrivals/departures/completions at most once
+per minute over one hour. Initial observations are a baseline, not arrivals.
+Rates are marked warming up for five minutes. Departures are not acceptance;
+completion counts require a done lane. Oldest age and explicit lane/issue dependency
+fan-out contribute to a transparent pressure score (depth + age capped at 12 +
+downstream + twice positive sampled growth). See dashboard Queue pressure and
+controller/queue-pressure.json. Measurements guide staffing, not CPU utilization.
+
+Idle support helpers rank by stage pressure ahead of discovery; ready implementation
+still reserves workers first. Two issue-backed integration-support partitions (#625,
+#626) prepare advisory pinned handoff review packets for the existing integrator.
+They review up to three targets per turn; completed report targets are remembered by
+source/handoff fingerprint so unchanged packets do not consume repeat turns. Changed
+pins or new handoffs create new demand. No helper merges, grants shared approval,
+builds, or admits enemies. Active lanes are not preempted.
+
+Within existing enemy/content/expansion priority classes, autofill prefers prepared
+providers with more explicit downstream dependents. Preflight now rejects missing
+lane names and runtime proposals without a prepared private native source worktree;
+review feedback routes these failures to preparation repair before assignment.
+
+## Unbound dispatch recovery (#627)
+
+An intent whose runner explicitly ended registration_timeout can be retried only
+with null bound process, confirmed-dead runner, absent start.json/child.json and a
+recovery-safe lane. Archive the exact launch directory inside its verified parent;
+reuse the durable intent and session with at most three such retries. Never infer
+safety from age alone. Non-progressing intents no longer monopolize dispatch.
+Within existing/expansion priority, assigned implementation/recovery launches precede
+planning/publication/integration-support helpers; RAM and model pacing still apply.
+
+## Enemy activity classification (#628)
+
+Dashboard active_enemy_lanes/count uses distinct running/waiting-resource
+implementation lanes, excluding helpers. Scheduling priority is the legacy default;
+registry settings.enemy_acceptance_lanes provides explicit audited semantic overrides
+for immutable proposals mislabeled existing_content (Armor15 and Tadpole27).
+The dashboard lists counted lane IDs. This does not alter scheduling, published
+proposal bytes or family admission. Queued/blocked/done lanes are not counted.
+
+## Shared-review decision routing (#629)
+
+`shared_review_routing` maps exact shared files to registered decision owners.
+Pending handoff reviews produce durable decision packets in the existing integrator
+inbox; packet consumption is not approval. Unresolved consumed packets are reissued
+after ten minutes, deduplicated by producer generation/file/source pins. Tasks resolve
+only when the request disappears through disposition or source supersession. Unknown
+files receive no invented owner. For #129/#132, #186 delegates focused file review to
+the existing species integration lead; the reviewer must inspect pins/tests and record
+approve/request-changes evidence through dispose_review, retaining stopped-producer
+fences. The healthy coordinator/integrator is not restarted or duplicated.
