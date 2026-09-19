@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from .control import fingerprint
 from .handoff import require, Rejected
+from .no_progress import Parked
 
 
 def requested(text):
@@ -133,7 +134,7 @@ def tick(controller):
                 'validated handoff when appropriate; final integration remains with the existing owner. '
                 'Decision: '+json.dumps(d),controller.config['models'],inputs=['decision:'+semantic(d)])
         except (Rejected,OSError,ValueError) as exc:
-            reg.notice(key,'shared_preflight_decision_blocked',dict(id=identity,error=str(exc)))
+            if not isinstance(exc,Parked):reg.notice(key,'shared_preflight_decision_blocked',dict(id=identity,error=str(exc)))
 
 
 def main():

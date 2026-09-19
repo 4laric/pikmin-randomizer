@@ -2,8 +2,9 @@
 
 Wakes only for producers mapped to the consumer (typed delivery contracts, a pinned producer link,
 a coordinator link, or its own dependency entries excluding umbrella issues such as #186), only for
-receipts not yet consumed by a reported verification at the consumer's current source pins, and at
-most once per debounce window. Consumed only suppresses re-waking; it never clears a dependency."""
+receipts not yet consumed by a reported verification at the consumer's current source pins, at
+most once per debounce window and only after the integrations since the last wake have been quiet
+for one. Consumed only suppresses re-waking; it never clears a dependency."""
 import copy
 import json
 import re
@@ -11,6 +12,7 @@ import re
 from .control import fingerprint
 from .provenance import cli
 from .handoff import Rejected
+from .no_progress import Parked
 from .planner_demand import is_helper
 
 DEBOUNCE_SECONDS, UMBRELLA_ISSUES = 900, (186,)
@@ -89,12 +91,16 @@ def tick(controller):
                 root_commit=receipt.get('root_commit'), native_commit=receipt.get('native_commit'),
                 validation=evidence, source=provider.get('root'), native=provider.get('native')))
         if not producers: continue
+        recent = [x['created_at'] for x in launches if x['lane'] == key and x['reason'].startswith('consumer-prerequisite:')]
+        if recent and reg.clock() - max(recent) < debounce: continue  # At most one wake per window.
+        fresh = [t for t in (state['lanes'][p['lane']].get('integrated_at') or 0 for p in producers)
+                 if t > max(recent, default=0)]
+        # Quiet window: integrations since the last wake settle into one; the first never waits two windows.
+        if fresh and reg.clock() - max(fresh) < debounce and reg.clock() - min(fresh) < 2 * debounce: continue
         contract_ids=sorted(r['id'] for r in typed if r['producer'] in {p['lane'] for p in producers})
         token = 'consumer-prerequisite:' + fingerprint([sorted(producers, key=lambda x:x['lane']),contract_ids] if typed else sorted(producers, key=lambda x:x['lane']))
         prior = [x for x in launches if x['lane'] == key and x['reason'] == token]
         if prior and not reissue(state, key, prior): continue
-        recent = [x['created_at'] for x in launches if x['lane'] == key and x['reason'].startswith('consumer-prerequisite:')]
-        if recent and reg.clock() - max(recent) < debounce: continue  # Coalesce integrations into one later wake.
         try:
             launch = reg.plan_launch(key, token,
                 'A prerequisite has new verified integration evidence. Reassess your existing blocked slice; '
@@ -133,4 +139,4 @@ def tick(controller):
             from .consumer_verification import reconcile
             reconcile(controller)
         except (Rejected, OSError, ValueError) as exc:
-            reg.notice(key, 'consumer_prerequisite_wakeup_blocked', dict(reason=str(exc)))
+            if not isinstance(exc, Parked): reg.notice(key, 'consumer_prerequisite_wakeup_blocked', dict(reason=str(exc)))

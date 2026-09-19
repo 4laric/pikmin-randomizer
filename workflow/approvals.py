@@ -31,6 +31,7 @@ import sys
 
 from .control import fingerprint
 from .handoff import Rejected, local_path, nonempty, require
+from .no_progress import Parked
 from .processes import identify
 from .provenance import cli
 
@@ -662,7 +663,7 @@ def tick(controller):
             closed.add(row['id'])
         except (Rejected, OSError, ValueError) as exc:
             retry[row['id']] = now + RETRY_SECONDS
-            reg.notice(key, 'shared_hook_decision_blocked', dict(id=row['id'], error=str(exc)))
+            if not isinstance(exc, Parked): reg.notice(key, 'shared_hook_decision_blocked', dict(id=row['id'], error=str(exc)))
 
 
 def legacy(state, root):

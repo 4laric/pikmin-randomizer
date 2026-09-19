@@ -32,6 +32,7 @@ class ConsumerWakeupTests(unittest.TestCase):
             s['lanes']['provider'].update(state='done',integrated_at=1001,
                 integration=dict(root_commit='b'*40,native_commit=None,
                     validation_path=self.f.ev['path'],validation_sha256=self.f.ev['sha256']))
+        self.f.now+=1000  # Past the integration quiet window.
 
     def test_issue_dependency_reassessed_once_without_clearing_other_gates(self):
         tick(self.c);tick(self.c)

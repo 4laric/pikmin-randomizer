@@ -42,11 +42,11 @@ def recovery_demand(state, helper, now, age_seconds=900):
                now - max(l.get('progress_at') or 0, l.get('started_at') or 0) >= max(300, age_seconds)
                for l in lanes):
             # Keyed on the substantive signal; a new evidence file per no-op generation is not new input.
-            signal = inputs(state, [], stranded)
+            signal, raw = inputs(state, [], stranded), inputs(state, [], stranded, raw=True)
             key = fingerprint(['stranded-chain', signal])
-            legacy = fingerprint(['stranded-chain', fingerprint(
-                [signal, [(k, state['lanes'][k]['outcome']['evidence']) for k in stranded]])])
-            if key not in attempts and legacy not in attempts:
+            legacy = {fingerprint(['stranded-chain', raw]), fingerprint(['stranded-chain', fingerprint(
+                [raw, [(k, state['lanes'][k]['outcome']['evidence']) for k in stranded]])])}
+            if key not in attempts and not legacy & set(attempts):
                 request = dict(id=key, scope=helper['scope'], status='stranded',
                     report=copy.deepcopy(lanes[0]['outcome']['evidence']), lanes=stranded,
                     issues=sorted({l['issue'] for l in lanes}),
@@ -131,11 +131,12 @@ def collect(reg, settings):
             data.setdefault('prerequisite_errors', {}).pop(helper['scope'], None)
             request_lanes = sorted(set(observation['lanes'] + stranded))
             signal = inputs(state, observation['issues'], request_lanes)
+            snapshots = {signal, inputs(state, observation['issues'], request_lanes, raw=True)}  # Pre-normalization rows.
             # A new no-work report at an unchanged input snapshot is the same request: its 2-launch cap holds.
             old = next((r for r in requests.values() if r.get('resolution_version') == RESOLUTION_VERSION and
                         r['scope'] == helper['scope'] and
                         r.get('stranded_producers', []) == stranded and
-                        (r['input_snapshot'] == signal or (r['status'] != 'exhausted' and r['report'] == observation['report']))
+                        (r['input_snapshot'] in snapshots or (r['status'] != 'exhausted' and r['report'] == observation['report']))
                         and r['status'] in ('pending', 'dispatched', 'exhausted')), None)
             basis = [RESOLUTION_VERSION, helper['scope'], 'substantive-v2', signal]
             if stranded: basis.append(['stranded-producers', stranded])
@@ -151,6 +152,9 @@ def collect(reg, settings):
                 request.update(status='exhausted' if len(request['launches']) >= 2 else 'pending', updated_at=reg.clock())
             if request['status'] in ('pending', 'dispatched', 'exhausted') and request['report'] != observation['report']:
                 request['report'] = copy.deepcopy(observation['report'])  # resolve() checks the current report.
+            if request['status'] in ('pending', 'dispatched') and request['input_snapshot'] != signal:
+                # A live request absorbs the inputs it now sees, so exhaustion is judged at the current snapshot.
+                request.update(input_snapshot=signal, updated_at=reg.clock())
             if request['status'] == 'dispatched':
                 running = any(state.get('control', {}).get('launches', {}).get(k, {}).get('status')
                               in ('intent', 'spawned', 'running', 'exiting') for k in request['launches'])

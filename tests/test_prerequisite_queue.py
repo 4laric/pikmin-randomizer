@@ -95,6 +95,22 @@ class PrerequisiteQueueTests(unittest.TestCase):
         self.assertIn('operator must link a producer', row['needs_human']['reason'])
         self.assertEqual(sum(e['kind'] == 'prerequisite_needs_human' for e in state['events']), 1)
 
+    def test_live_request_absorbs_changed_inputs_so_exhaustion_is_not_reoffered(self):
+        request = self.request()
+        with self.reg.transaction() as s:
+            s['throughput_runtime']['autofill']['prerequisite_requests'][request['id']].update(status='dispatched', launches=['one'])
+            s['lanes']['owner']['dependencies'] = ['blocked gen 4 on the provider contract']
+        collect(self.reg, self.settings)
+        row = self.reg.snapshot()['throughput_runtime']['autofill']['prerequisite_requests'][request['id']]
+        self.assertNotEqual(row['input_snapshot'], request['input_snapshot'])  # Judged at the inputs it now sees.
+        with self.reg.transaction() as s:
+            s['throughput_runtime']['autofill']['prerequisite_requests'][request['id']].update(status='dispatched', launches=['one', 'two'])
+            s['lanes']['owner']['dependencies'] = ['blocked gen 5 on the provider contract']  # Only renumbered.
+        self.assertEqual(collect(self.reg, self.settings), [])
+        self.assertEqual(collect(self.reg, self.settings), [])
+        rows = self.reg.snapshot()['throughput_runtime']['autofill']['prerequisite_requests']
+        self.assertEqual((list(rows), rows[request['id']]['status']), ([request['id']], 'exhausted'))
+
     def test_recovery_waits_for_pending_age_and_never_races_dispatched_coordinator(self):
         request = self.request(); helper = self.settings['planner_pool']['helpers'][0]
         with self.reg.transaction() as s:

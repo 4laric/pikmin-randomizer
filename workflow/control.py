@@ -86,7 +86,7 @@ class ControlMixin:
                 lane['review'] = review
                 validate_review(self.root, review, lane)
             from .no_progress import record
-            record(self, state, lane)  # The substantive signal sits next to the outcome it describes.
+            record(self, state, lane, outcome)  # The substantive signal sits next to the outcome it describes.
             self.check_wip(state, lane)
             self.event(state, 'outcome', key, outcome=outcome)
             return lane
@@ -211,25 +211,32 @@ class ControlMixin:
             self.event(state, 'handoff_reconciled', key)
             return lane
 
-    def notice(self, key, kind, detail):
-        """One notice per (lane, kind, error); a repeat bumps its counter at most every ten minutes.
+    def notice(self, key, kind, detail, status='pending'):
+        """One open notice per (lane, kind, error); a repeat bumps its counter at most every ten minutes.
 
-        A notice naming a launch (action) stays one per launch."""
+        Only a still-open row (same status) absorbs repeats: once the shepherd resolves it, a distinct
+        detail is a new notice and an identical one stays suppressed, as with exact-detail identities.
+        A notice naming a launch (action) stays one per launch. status='info' is recorded for
+        visibility but never offered to the shepherd."""
+        exact = fingerprint([key, kind, detail])
         error = detail.get('error') if isinstance(detail, dict) and 'action' not in detail else None
-        identity = fingerprint([key, kind, error] if isinstance(error, str) else [key, kind, detail])
+        identity = fingerprint([key, kind, error]) if isinstance(error, str) else exact
         from .storage import read_record, selected
         old = read_record(self, ('control', 'notices'), identity)
+        if old is not None and old.get('status') != status:
+            if old.get('detail') == detail: return identity
+            identity, old = exact, read_record(self, ('control', 'notices'), exact)
         if old is not None:
-            if old.get('status') == 'pending' and self.clock() - old.get('last_at', old.get('at', 0)) >= 600:
+            if old.get('status') == status and self.clock() - old.get('last_at', old.get('at', 0)) >= 600:
                 with selected(self, [(('control', 'notices'), identity)]) as rows:
                     row = rows[(('control', 'notices'), identity)]
                     if row is not None:
-                        row.update(repeats=row.get('repeats', 0) + 1, last_at=self.clock(), detail=detail)
+                        row.update(repeats=row.get('repeats', 0) + 1, last_at=self.clock(), last_detail=detail)
             return identity
         with self.transaction() as state:
             c = self.control(state)
             c['notices'].setdefault(identity, dict(id=identity, lane=key, kind=kind,
-                detail=detail, status='pending', at=self.clock()))
+                detail=detail, status=status, at=self.clock()))
             return identity
 
     def _resumable_integration_batches(self, state, lane):
@@ -305,7 +312,8 @@ class ControlMixin:
                 c['launches'][identity] = item
                 self.event(state, 'launch_intent', key, action=identity)
                 return item
-        self.notice(key, 'no_progress_parked', dict(error=refusal['message']))
+        # Informational: field, event and dashboard carry it; a pending notice would invite a shepherd resume.
+        self.notice(key, 'no_progress_parked', dict(error=refusal['message']), status='info')
         raise no_progress.Parked(refusal['message'])
 
     def _rebind_pool_recovery(self, state, item, lane):

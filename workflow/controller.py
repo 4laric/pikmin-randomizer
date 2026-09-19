@@ -684,7 +684,9 @@ class Controller:
                 path = local_path(self.reg.root, self.config['lanes'][key]['output']) / name
                 if path.is_file():
                     lane['available_evidence'].append(dict(path=str(path), sha256=digest(path)))
-        pending = dict(list(pending.items())[:12])
+        # Repeat counters stay out of the offered body: an unchanged event set keeps its packet id.
+        pending = {k: {f: x for f, x in v.items() if f not in ('repeats', 'last_at', 'last_detail')}
+                   for k, v in list(pending.items())[:12]}
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
                       previous_error=c.get('shepherd_error'),
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')

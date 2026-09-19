@@ -574,7 +574,9 @@ def _planner_tick(controller, settings, manifest_hash):
                         else 'Waiting for new unpublished proposals')
                 return False
     with reg.transaction() as state:
-        _state(state)['coordinator_wait_reason'] = None
+        data = _state(state)
+        if (data.get('last_planner_request') or {}).get('status') != 'parked':  # A park keeps its reason.
+            data['coordinator_wait_reason'] = None
     cooldown = max(300, settings.get('planner_cooldown_seconds', 900))
     staged = []
     for directory in inboxes:
@@ -612,20 +614,26 @@ def _planner_tick(controller, settings, manifest_hash):
         require(reg.recovery_safe(state, lane), 'Backlog planner protected child is live or unknown')
         previous = data.get('last_planner_request')
         resolution_version = max((r.get('resolution_version', 1) for r in promotion), default=1)
-        # Everything a cycle can consume or change; unchanged since the last cycle means that cycle was empty.
-        from .no_progress import signal
-        planner_inputs = fingerprint([manifest_hash, staged,
-            sorted((r['id'], r['status'], r.get('input_snapshot')) for r in data.get('prerequisite_requests', {}).values()
-                   if r['status'] in ('pending', 'dispatched')),
-            sorted((k, fingerprint(signal(l))) for k, l in state['lanes'].items() if l['state'] == 'blocked' and k != key),
-            state.get('blocked_producer_links', {})])
+        # What a cycle is offered: the manifest, staged proposals and the open requests at their input
+        # snapshots (not their pending/dispatched churn). Re-offering the same set is an empty cycle.
+        planner_inputs = fingerprint([manifest_hash, staged, bool(data.get('last_manifest_error')),
+            sorted((r['id'], r.get('input_snapshot')) for r in data.get('prerequisite_requests', {}).values()
+                   if r['status'] in ('pending', 'dispatched'))])
         same = bool(previous and previous.get('inputs') == planner_inputs)
         empty = previous.get('empty_cycles', 0) + 1 if same else 0
         wait = max(cooldown, min(3600, cooldown * 2 ** empty)) if same else cooldown
         if (previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < wait
                 and previous.get('resolution_version', 1) >= resolution_version):
             return False
-        if not previous or previous.get('status') == 'planned':
+        due = lane.get('wake_after')
+        if (previous and previous.get('status') == 'parked' and same and
+                type(due) in (int, float) and reg.clock() < due):
+            return False  # Parked on these inputs: only a changed input or the lane's recheck relaunches.
+        if previous and previous.get('status') == 'intent' and previous.get('inputs') != planner_inputs:
+            previous['inputs'] = planner_inputs  # A reused intent offers what this cycle actually sees.
+        if not previous or previous.get('status') in ('planned', 'parked'):
+            if previous and previous['status'] == 'parked':
+                data['coordinator_wait_reason'] = None  # Re-offered: a new input or the due recheck.
             previous = dict(at=reg.clock(), id=fingerprint([manifest_hash, lane['generation'], int(reg.clock())]),
                             status='intent', resolution_version=resolution_version,
                             inputs=planner_inputs, empty_cycles=empty)
@@ -700,8 +708,10 @@ def _planner_tick(controller, settings, manifest_hash):
     try:
         launch = _planner_launch(reg, key, previous, partition_directive, brief, parallel, settings, controller)
     except Parked as exc:  # A parked coordinator waits for a changed input; that is not a planner error.
-        with reg.transaction() as state:
-            _state(state).update(coordinator_wait_reason=str(exc), last_planner_error=None)
+        with reg.transaction() as state:  # Once per park: later ticks return before any write.
+            data = _state(state)
+            data['last_planner_request'].update(status='parked', parked_at=reg.clock())
+            data.update(coordinator_wait_reason=str(exc), last_planner_error=None)
         return False
     with reg.transaction() as state:
         _state(state)['last_planner_request'].update(status='planned', launch_id=launch['id'])

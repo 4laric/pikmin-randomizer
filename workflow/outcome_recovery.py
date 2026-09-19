@@ -2,6 +2,7 @@
 import copy
 from .control import fingerprint
 from .handoff import Rejected
+from .no_progress import Parked
 
 
 def tick(controller):
@@ -27,4 +28,4 @@ def tick(controller):
                 'build-lease and runtime gates. This automatic attempt is bounded for unchanged source pins.',
                 controller.config['models'], inputs=[])
         except (Rejected, OSError, ValueError) as exc:
-            reg.notice(key, 'outcome_recovery_blocked', {'error':str(exc)})
+            if not isinstance(exc, Parked): reg.notice(key, 'outcome_recovery_blocked', {'error':str(exc)})

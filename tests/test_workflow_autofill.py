@@ -268,6 +268,29 @@ class AutofillTests(unittest.TestCase):
         self.now+=300;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
         self.assertFalse(list(self.inbox.glob('*.md')))
 
+    def test_parked_planner_waits_without_writes_and_wakes_on_a_new_input(self):
+        import workflow.autofill as autofill
+        self.save([]);self.planner();self.tick()
+        first=next(iter(self.reg.control_status()['launches'].values()))
+        with self.reg.transaction() as state:
+            state['control']['launches'][first['id']]['status']='exited'
+            state['lanes']['planner'].update(state='blocked',stall_streak=2,wake_inputs=list(first['inputs']))
+            state['lanes']['planner']['generation']+=1
+        self.now+=4000;self.tick()
+        status=autofill_status(self.reg)
+        self.assertEqual(status['last_planner_request']['status'],'parked')
+        self.assertIn('No progress',status['coordinator_wait_reason'])
+        self.assertEqual(len(self.reg.control_status()['launches']),1)
+        with patch.object(autofill,'_planner_launch',side_effect=AssertionError('parked tick re-offered')):
+            self.tick()  # Same inputs before wake_after: no launch attempt, no park write.
+        self.assertIn('No progress',autofill_status(self.reg)['coordinator_wait_reason'])
+        write(self.manifest,dict(schema=1,repository='4laric/pikmin-randomizer',assignee='4laric',items=[],note='new'))
+        self.tick()
+        launches=self.reg.control_status()['launches']
+        self.assertEqual(len(launches),2)
+        self.assertNotEqual(max(launches.values(),key=lambda x:x['created_at'])['inputs'],first['inputs'])
+        self.assertIsNone(autofill_status(self.reg)['coordinator_wait_reason'])
+
     def test_planner_live_or_inflight_is_normal_but_unknown_stays_visible(self):
         self.save([]);self.planner();self.tick()
         for health, expected_error in (('dead', None), ('alive', None), ('unknown', 'unknown')):

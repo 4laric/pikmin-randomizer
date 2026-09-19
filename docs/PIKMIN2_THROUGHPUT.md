@@ -64,7 +64,9 @@ Two unanswered turns leave an explicit exhausted request in diagnostics instead
 of silently spending on the same preparation forever; it is marked `needs_human`
 once (a `prerequisite_needs_human` event) because an operator must link a producer
 or record a user-owned `external_input`. A later no-work report at the same input
-snapshot reuses that request, so it is never re-offered under a new ID. Existing active producers
+snapshot reuses that request, so it is never re-offered under a new ID. A pending
+or dispatched request adopts the input snapshot it currently sees, so exhaustion is
+judged at the latest inputs and cannot reappear as a fresh request at the same ones. Existing active producers
 are never duplicated. Requests and links survive controller restarts.
 
 `throughput.autofill.planner_pool` configures bounded helper turns,
@@ -490,10 +492,13 @@ When capacity has no eligible prepared scope, the controller records starvation.
 With a configured planner it requests a planner wake; otherwise it emits a durable
 refill request to the designated integrator. Requests repeat at the applicable
 cooldown while the shortage persists; a previous notice is not permanent
-suppression. A planner cycle whose inputs are unchanged at the next check (manifest
-hash, open prerequisite requests, staged proposal bytes, blocked-lane signals and
-producer links) counts as empty: each consecutive empty cycle doubles the cooldown,
-up to one hour, and any input change restores the configured cooldown. The single manifest writer must append the next fully prepared scopes
+suppression. A planner cycle offered the same inputs as the last (manifest hash,
+manifest error flag, staged proposal bytes, and the open prerequisite requests by ID
+and input snapshot, not their pending/dispatched status) counts as empty: each
+consecutive empty cycle doubles the cooldown, up to one hour, and any input change
+restores the configured cooldown. A parked planner (no-progress guard) records
+`last_planner_request.status = parked` once and then stays quiet, with no writes, until
+those inputs change or its `wake_after` recheck is due. The single manifest writer must append the next fully prepared scopes
 or record the concrete blocking dependency and its owner. Completion reports
 should include a bounded follow-on proposal grounded in observed remaining gates
 and reusable evidence. Recheck ownership and prerequisite changes before planning;
@@ -903,6 +908,6 @@ A safely stopped runner with a missing terminal outcome gets one same-session ar
 
 Blocked consumers with verified outcome evidence older than five minutes can generate prerequisite-preparation demand independently of helper no-work reports. The existing coordinator receives at most three consumers per turn and two attempts per unchanged substantive signal (state, source heads, normalized dependencies, handoff, integration); a new evidence file from another no-op generation is not new demand. An unstarted coordinator intent can receive this demand before any launch directory exists; a live or uncertain launch is never rewritten. Explicit active producer dependencies and in-flight consumer recovery are respected. This prepares real scoped proposals, not acceptance or automatic gate clearance.
 
-Blocked-consumer links are recorded by the live registered coordinator with `<python> <checkout>/scripts/workflow_module.py blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path (`workflow.consumer_wakeup`). A consumer wakes only for producers mapped to it: typed delivery contracts, its pinned producer link, coordinator links, or its own dependency entries by lane or issue number, never umbrella gate issues (`consumer_wakeup.umbrella_issues`, default `[186]`). Receipts a consumer verification already reported at the consumer's current source pins are consumed (`lane.consumer_consumed`) and do not wake it again; the wake names only unconsumed producers. After one consumer-prerequisite wake, further integrations wait `consumer_wakeup.debounce_seconds` (default 900) and arrive together. A token whose latest check was superseded without any report is issued again. Consumed only suppresses wakes; it never clears a dependency.
+Blocked-consumer links are recorded by the live registered coordinator with `<python> <checkout>/scripts/workflow_module.py blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path (`workflow.consumer_wakeup`). A consumer wakes only for producers mapped to it: typed delivery contracts, its pinned producer link, coordinator links, or its own dependency entries by lane or issue number, never umbrella gate issues (`consumer_wakeup.umbrella_issues`, default `[186]`). Receipts a consumer verification already reported at the consumer's current source pins are consumed (`lane.consumer_consumed`) and do not wake it again; the wake names only unconsumed producers. Integrations are debounced over `consumer_wakeup.debounce_seconds` (default 900): a consumer wakes at most once per window, and only once the integrations since its last wake have been quiet for a window (the first of them never waits more than two), so a burst arrives as one wake. Issue matching counts any `#N` in the consumer's own dependency entries except configured umbrella issues; the bundled wake, the consumed ledger and the window bound what a shared issue can cause. A token whose latest check was superseded without any report is issued again. Consumed only suppresses wakes; it never clears a dependency.
 
 Dashboard HTML replacement retries transient Windows reader locks for at most 1.55 seconds. A persistent lock preserves the last good HTML, records `dashboard-publish-error.json`, and retries next tick without aborting controller maintenance.

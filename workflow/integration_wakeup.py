@@ -5,17 +5,22 @@ import re
 from .control import fingerprint
 from .provenance import cli
 from .handoff import Rejected
+from .no_progress import Parked
 from .batching import isolated_handoff
 from .planner_demand import is_helper
 from .review_followup import pin as review_pin, deferred, dependency_pin
 
 
+def substantive(work):
+    """Admission queue churn (queued jobs, planning rows) is not demand unless nothing else is."""
+    return [item for item in work if any(k in item for k in
+        ('handoff','review','batch','shared_review','receipt_gap','admission_audit','prepared_action','delivery_contract'))] or work
+
+
 def demand_token(work):
     # Admission queue churn must not reset the bounded retry budget for the same
     # packet/handoff. Admission-only recovery still has its own stable identity.
-    substantive=[item for item in work if any(k in item for k in
-        ('handoff','review','batch','shared_review','receipt_gap','admission_audit','prepared_action','delivery_contract'))]
-    return 'integration-demand:'+fingerprint(sorted(substantive or work,key=str))
+    return 'integration-demand:'+fingerprint(sorted(substantive(work),key=str))
 
 
 def receipt_gaps(state, stream):
@@ -195,7 +200,7 @@ def tick(controller):
                 'as source integration or clear runtime gates without evidence. '
                 'If neither handoffs nor review reports remain, record a bounded standby report; never invent acceptance. '
                 'No ADMIT.' + LANDING_INSTRUCTION + ' ' + DELIVERY_INSTRUCTION + 'Demand: ' + str(work), controller.config['models'],
-                inputs=['integration:' + fingerprint(item) for item in work],
+                inputs=['integration:' + fingerprint(item) for item in substantive(work)],
                 obligation=any(item.get('disposition_required') for item in work))
             with reg.transaction() as state:
                 state['control']['launches'][launch['id']]['shared_review_requests'] = sorted(
@@ -204,4 +209,4 @@ def tick(controller):
                     dict(lane=item['review'], pin=item['review_pin']) for item in work
                     if item.get('disposition_required')]
         except Rejected as exc:
-            reg.notice(owner, 'integration_wakeup_blocked', dict(reason=str(exc), demand=work))
+            if not isinstance(exc, Parked): reg.notice(owner, 'integration_wakeup_blocked', dict(reason=str(exc), demand=work))

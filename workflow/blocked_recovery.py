@@ -39,8 +39,10 @@ def allocations(state, helpers, records, now, age_seconds=900, classify=False):
         # The substantive signal alone: a new evidence file per no-op generation is not a new input.
         signal=inputs(state,issues,[key]+producers)
         identity=fingerprint(['blocked-recovery-v1',key,signal])
-        legacy=fingerprint(['blocked-recovery-v1',key,fingerprint([signal,outcome['evidence']])])
-        if identity not in attempts and legacy in attempts:identity=legacy
+        raw=inputs(state,issues,[key]+producers,raw=True)  # Identities written before gen-marker normalization.
+        for legacy in (fingerprint(['blocked-recovery-v1',key,raw]),
+                       fingerprint(['blocked-recovery-v1',key,fingerprint([raw,outcome['evidence']])])):
+            if identity not in attempts and legacy in attempts:identity=legacy
         match=re.match(r'shard-(enemies-\d+|caves-[a-z]+)-',key)
         affinity=match.group(1) if match and any(h['scope']==match.group(1) for h in helpers) else None
         previous=None

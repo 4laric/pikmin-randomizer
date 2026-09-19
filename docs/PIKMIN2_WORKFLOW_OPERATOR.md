@@ -129,8 +129,9 @@ start one hidden scripts/Start-Pikmin2Controller.ps1 using the existing argument
 Record issue scope, validation and remaining blockers under the assigned issue.
 
 A lane relaunched twice with nothing changed is parked (`lane.parked`,
-`lane.wake_after`, a `lane_parked` event, one `no_progress_parked` notice and the
-dashboard's "Parked, no progress" count). It wakes on any input it has not already
+`lane.wake_after`, a `lane_parked` event, one informational `no_progress_parked`
+notice and the dashboard's "Parked, no progress" count). Deploy the checkout, then
+restart the controller: streaks count only generations the new controller binds. It wakes on any input it has not already
 been offered (a new receipt, decision or pin change), at `wake_after`, or through a
 recovery continuation; see docs/PIKMIN2_CONTROLLER.md. Parking never clears a
 dependency. Prerequisite requests offered twice without a disposition carry

@@ -74,15 +74,47 @@ class StallTests(Base):
             record(self.reg, s, lane)
             self.assertEqual(lane['stall_streak'], 0)
 
-    def test_report_cli_reads_without_writing(self):
-        import contextlib, hashlib, io
+    def test_report_cli_reads_without_writing_including_a_copy_outside_output(self):
+        import contextlib, hashlib, io, shutil, tempfile
+        from pathlib import Path
         self.stalled()
         before = hashlib.sha256(self.reg.path.read_bytes()).hexdigest()
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(no_progress.main(['--root', str(self.f.root)]), 0)
-        self.assertEqual(json.loads(out.getvalue())['stalled'], ['consumer'])
+        with tempfile.TemporaryDirectory() as scratch:
+            copy = Path(scratch) / 'registry-copy.sqlite3'; shutil.copy(self.reg.path, copy)
+            for argv in (['--root', str(self.f.root)], ['--db', str(copy)]):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(no_progress.main(argv), 0)
+                self.assertEqual(json.loads(out.getvalue())['stalled'], ['consumer'])
+            self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), before)
         self.assertEqual(hashlib.sha256(self.reg.path.read_bytes()).hexdigest(), before)
+
+    def test_reconcile_is_neither_progress_nor_a_stall(self):
+        self.stalled()
+        item = self.reg.plan_launch('consumer', 'operator: rerun', 'Continue', self.models)
+        lane = self.reg.bind_launch(item['id'], self.f.identity)
+        self.reg.finish('consumer', lane['generation'], 'reconcile', 'Worker exited without terminal outcome', self.f.ev)
+        self.assertEqual(self.lane()['stall_streak'], 2)  # A runner crash does not discard the streak.
+        self.stop(); self.cycle()
+        self.assertEqual(self.lane()['stall_streak'], 3)
+
+    def test_generations_bound_by_older_code_never_build_a_streak(self):
+        self.reg.finish('consumer', 1, 'blocked', 'Gap', self.f.ev, GAP)
+        for _ in range(3):  # Deploy lag: worker CLIs run new code while the old controller still binds.
+            with self.reg.transaction() as s: s['lanes']['consumer']['generation'] += 1
+            self.reg.finish('consumer', self.lane()['generation'], 'blocked', 'Gap', self.f.ev, GAP)
+        self.assertEqual(self.lane()['stall_streak'], 0)
+        self.assertIsNone(no_progress.verdict(self.lane(), [], self.f.now))
+        self.cycle(); self.assertEqual(self.lane()['stall_streak'], 1)  # Counting starts at a guard-aware bind.
+
+    def test_dependency_generation_markers_do_not_rekey_attempt_identities(self):
+        from workflow.planner_demand import inputs
+        state = self.reg.snapshot()
+        state['lanes']['consumer']['dependencies'] = GAP
+        before = inputs(state, [], ['consumer'])
+        state['lanes']['consumer']['dependencies'] = ['Waiting for generation: 9 engine birth (#1)']
+        self.assertEqual(inputs(state, [], ['consumer']), before)
+        self.assertNotEqual(inputs(state, [], ['consumer'], raw=True), before)
 
     def test_backoff_doubles_and_caps(self):
         self.assertEqual([no_progress.backoff(n) for n in (2, 3, 4, 6, 9)], [900, 1800, 3600, 14400, 14400])
@@ -162,6 +194,41 @@ class ParkingTests(Base):
         self.reg.finish('consumer', self.lane()['generation'], 'blocked', 'Gap', self.f.ev, GAP)
         self.assertEqual(self.lane()['stall_streak'], 0)  # No baseline yet: the first finish after deploy only records.
 
+    def test_integration_inputs_leave_out_admission_churn(self):
+        from workflow.integration_wakeup import demand_token, substantive
+        handoff, job = dict(handoff='a', lane='p'), dict(job='autofill:x', status='queued')
+        self.assertEqual(substantive([handoff, job]), [handoff])
+        self.assertEqual(demand_token([handoff, job]), demand_token([handoff]))
+        self.assertEqual(substantive([job]), [job])  # Admission-only recovery keeps its own input.
+
+    def test_progress_without_a_launch_unparks(self):
+        self.stalled()
+        with self.assertRaises(no_progress.Parked):
+            self.wake(inputs=[])
+        self.reg.finish('consumer', self.lane()['generation'], 'blocked', 'Shepherd decision', self.f.ev, ['#2 new gap'])
+        lane = self.lane()
+        self.assertEqual((lane['stall_streak'], 'parked' in lane, 'wake_after' in lane), (0, False, False))
+        self.assertEqual([e['reason'] for e in self.events('lane_unparked')], ['progress'])
+        self.assertEqual(no_progress.parked(self.reg.snapshot(), self.f.now), [])
+
+    def test_parking_offers_the_shepherd_nothing_to_resume(self):
+        self.stalled()
+        with self.assertRaises(no_progress.Parked):
+            self.wake(inputs=[])
+        notices = self.reg.control_status()['notices'].values()
+        self.assertEqual([(n['kind'], n['status']) for n in notices], [('no_progress_parked', 'info')])
+
+    def test_a_resolved_notice_reopens_for_a_new_detail_but_not_an_identical_one(self):
+        first = self.reg.notice('consumer', 'receipt_rejected', dict(path='r1.json', error='Missing key'))
+        with self.reg.transaction() as s:
+            self.reg.control(s)['notices'][first].update(status='resolved', decision='d1')
+        self.assertEqual(self.reg.notice('consumer', 'receipt_rejected', dict(path='r1.json', error='Missing key')), first)
+        second = self.reg.notice('consumer', 'receipt_rejected', dict(path='r2.json', error='Missing key'))
+        self.assertNotEqual(second, first)
+        notices = self.reg.control_status()['notices']
+        self.assertEqual((notices[first]['status'], notices[second]['status']), ('resolved', 'pending'))
+        self.assertEqual(self.reg.notice('consumer', 'receipt_rejected', dict(path='r2.json', error='Missing key')), second)
+
     def test_repeated_notices_collapse_with_a_counter(self):
         for identity in ('a', 'b', 'c'):
             self.reg.notice('consumer', 'shared_preflight_decision_blocked', dict(id=identity, error='Dispatch already in flight'))
@@ -169,7 +236,7 @@ class ParkingTests(Base):
         self.reg.notice('consumer', 'shared_preflight_decision_blocked', dict(id='d', error='Dispatch already in flight'))
         notices = [n for n in self.reg.control_status()['notices'].values() if n['kind'] == 'shared_preflight_decision_blocked']
         self.assertEqual(len(notices), 1)
-        self.assertEqual((notices[0]['repeats'], notices[0]['detail']['id']), (1, 'd'))
+        self.assertEqual((notices[0]['repeats'], notices[0]['detail']['id'], notices[0]['last_detail']['id']), (1, 'a', 'd'))
         self.reg.notice('consumer', 'integrator_guard_refused', dict(action='one', error='same'))
         self.reg.notice('consumer', 'integrator_guard_refused', dict(action='two', error='same'))
         self.assertEqual(sum(n['kind'] == 'integrator_guard_refused' for n in self.reg.control_status()['notices'].values()), 2)
@@ -179,7 +246,7 @@ class ConsumerWakeTests(Base):
     def setUp(self):
         super().setUp()
         self.reg.finish('consumer', 1, 'blocked', 'Missing source and approval', self.f.ev, ['#1', '#186 shared-hook review'])
-        self.integrate('provider', 'b')
+        self.integrate('provider', 'b'); self.f.now += 1000  # Past the integration quiet window.
         path = self.f.root / 'consumer-check.log'; path.write_text('Consumer command output')
         self.check_ev = dict(path=str(path), sha256=digest(path))
 
@@ -218,6 +285,9 @@ class ConsumerWakeTests(Base):
         self.assertEqual(len(self.launches()), 1)  # Checked at these pins: no wake for the same receipt.
         self.integrate('second', 'c', issue=3)
         wake(self.c)
+        self.assertEqual(len(self.launches()), 1)  # Quiet window after the integration.
+        self.f.now += 1000
+        wake(self.c)
         second = self.launches()[-1]
         self.assertEqual(len(self.launches()), 2)
         producers = json.loads(second['instruction'].split('Integrated prerequisites: ', 1)[1])
@@ -232,16 +302,27 @@ class ConsumerWakeTests(Base):
         self.integrate('provider', 'c')
         wake(self.c)
         self.assertEqual(len(self.launches()), 1)  # Within the debounce window.
-        self.f.now += 900
+        self.f.now += 1000
         wake(self.c)
         self.assertEqual(len(self.launches()), 2)
         self.stop(); self.f.now += 900
-        self.integrate('hook-owner', 'd', issue=186)
+        self.integrate('hook-owner', 'd', issue=186); self.f.now += 1000
         wake(self.c)
         self.assertEqual(len(self.launches()), 2)  # '#186' is an umbrella gate, not a producer mapping.
         self.c.config['consumer_wakeup'] = dict(umbrella_issues=[])
         wake(self.c)
         self.assertEqual(len(self.launches()), 3)
+
+    def test_a_burst_of_integrations_settles_into_one_wake(self):
+        wake(self.c); self.stop(); self.f.now += 900
+        self.integrate('second', 'c', issue=1)
+        self.f.now += 500; self.integrate('third', 'd', issue=1)
+        self.f.now += 500; wake(self.c)
+        self.assertEqual(len(self.launches()), 1)  # The burst is still arriving.
+        self.f.now += 500; wake(self.c)
+        self.assertEqual(len(self.launches()), 2)
+        producers = json.loads(self.launches()[-1]['instruction'].split('Integrated prerequisites: ', 1)[1])
+        self.assertEqual(sorted(p['lane'] for p in producers), ['provider', 'second', 'third'])  # provider: unverified.
 
     def test_superseded_check_without_report_reissues_its_token(self):
         wake(self.c)

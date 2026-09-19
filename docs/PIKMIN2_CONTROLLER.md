@@ -189,31 +189,48 @@ signal next to it as `progress_signal`: state, root/native heads, dependencies
 (case, whitespace and `gen N` markers normalized), handoff sha and integration flag.
 `stall_streak` counts consecutive generations whose signal equals the previous
 generation's; it resets only when the signal changes, never at bind, and each stalled
-generation emits `no_progress_generation`. Lanes written before this field read as
-streak 0, so nothing parks until two further unchanged generations are observed.
+generation emits `no_progress_generation`. Only generations bound by a guard-aware
+controller (`bind_launch` stamps `lane.guarded_generation`) count, so outcomes that
+worker CLIs record before the controller restarts onto this code build no streak.
+A `reconcile` finish (the controller's "exited without terminal outcome") leaves
+signal and streak unchanged: a runner crash is neither progress nor a stalled
+generation. Lanes written before these fields read as streak 0, so nothing parks
+until two further unchanged generations bound after the restart are observed. A
+changed signal clears `parked`/`wake_after` even when it arrives without a launch
+(a shepherd decision, a handoff) and emits `lane_unparked`.
 
 `Registry.plan_launch` enforces the guard once, for wake reasons only:
 `consumer-prerequisite`, `blocked-producer-followup`, `shared-preflight-decision`,
 `shared-hook-decision` (approvals and review packets), `autofill-planner`,
 `integration-demand`, `build-resource-available`, `outcome-reconcile` and
 `handoff-representation`. Each wake passes the substantive inputs it carries
-(producer receipts, decision keys, demand items, planner input fingerprint). At
+(producer receipts, decision keys, substantive demand items, planner input
+fingerprint); integration demand leaves out queued-job and planning-row churn, as its
+token does. Build-resource wakes pass none: a release is not evidence that this
+lane's blocker changed, so a stalled lane waiting on a build slot relaunches only at
+its `wake_after` recheck. At
 `stall_streak >= 2` a wake is admitted only with an input the lane has not already
 been offered since it last progressed, or once `wake_after` has passed (periodic
 recheck). Otherwise it refuses with `Parked`, sets `lane.wake_after` (15 min doubling
 per further stalled generation, capped at 4 h) and `lane.parked`, emits `lane_parked`
-and one `no_progress_parked` notice; later refusals read committed rows and take no
-writer lock. Recovery continuations (`dead-runner`, `provider fallback`,
+and one informational `no_progress_parked` notice (status `info`, never offered to the
+shepherd, and the waking tick adds no notice of its own, so parking cannot invite a
+model-directed resume); later refusals read committed rows and take no writer lock. Recovery continuations (`dead-runner`, `provider fallback`,
 `provider-error`, `permission-repair`, `provider-stall`), operator/user reasons and
 integration demand carrying `disposition_required` reviews are never parked, and any
 bound launch unparks the lane. Parking only suppresses relaunch: it never clears a
 dependency, infers resolution or records an approval. The dashboard counts parked
 lanes; `<python> <checkout>/scripts/workflow_module.py no_progress --root <root>` lists streaks and parked lanes
-read-only.
+read-only, and `--db <copy.sqlite3>` reads any registry copy (opened `mode=ro`, no
+workspace checks) for a dry run of what would park.
 
-Notices collapse per (lane, kind, error): a repeat bumps `repeats` and `last_at` at
-most every ten minutes instead of adding a row. A notice naming a launch (`action`)
-stays one per launch.
+Open notices collapse per (lane, kind, error): a repeat bumps `repeats`, `last_at` and
+`last_detail` at most every ten minutes instead of adding a row, and the shepherd
+packet omits those three fields so an unchanged event set keeps its packet ID. Only
+a row still open absorbs repeats: after the shepherd resolves it, a repeat with the
+same detail stays suppressed and a distinct detail (another path, generation or
+decision) is a new pending notice. A notice naming a launch (`action`) stays one per
+launch.
 
 ## Crash and provider recovery
 

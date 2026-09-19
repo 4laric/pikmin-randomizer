@@ -3,6 +3,7 @@ import json
 import re
 from .control import fingerprint
 from .handoff import Rejected
+from .no_progress import Parked
 from .support_actions import same
 from .export_packet import error
 
@@ -57,7 +58,7 @@ def tick(controller):
                     ('id','acceptance_check','check','evidence','runtime','source_pins')}),
                     controller.config['models'],inputs=[token])
             except (Rejected,OSError,ValueError) as exc:
-                reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))
+                if not isinstance(exc,Parked):reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))
             continue
         from .shared_decisions import approved_scope
         approved = approved_scope(state, lane)
@@ -104,4 +105,4 @@ def tick(controller):
                 'check and correction needed. This is one bounded resumption at these source heads.',
                 controller.config['models'],inputs=[token])
         except (Rejected,OSError,ValueError) as exc:
-            reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))
+            if not isinstance(exc,Parked):reg.notice(key,'handoff_representation_blocked',dict(error=str(exc)))

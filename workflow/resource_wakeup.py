@@ -5,6 +5,7 @@ import re
 from .build_capacity import admission_paused
 from .control import fingerprint
 from .handoff import Rejected
+from .no_progress import Parked
 from .planner_demand import is_helper
 
 
@@ -51,4 +52,4 @@ def tick(controller):
                 'Availability event: ' + str(event), controller.config['models'], inputs=[])
             limit -= 1
         except Rejected as exc:
-            reg.notice(key, 'resource_wakeup_blocked', dict(error=str(exc)))
+            if not isinstance(exc, Parked): reg.notice(key, 'resource_wakeup_blocked', dict(error=str(exc)))

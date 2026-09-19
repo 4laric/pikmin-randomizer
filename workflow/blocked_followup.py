@@ -4,7 +4,7 @@ from .control import fingerprint
 from .provenance import cli
 from .handoff import Rejected, require
 from .planner_demand import is_helper
-from .no_progress import signal
+from .no_progress import Parked, signal
 
 
 def tick(controller):
@@ -136,7 +136,7 @@ def tick(controller):
         with reg.transaction() as current:
             current['control']['launches'][launch['id']]['blocked_followup_ids']=[x['id'] for x in candidates]
     except Rejected as exc:
-        reg.notice(key,'blocked_followup_deferred',dict(error=str(exc)))
+        if not isinstance(exc,Parked):reg.notice(key,'blocked_followup_deferred',dict(error=str(exc)))
 
 
 def link(reg, coordinator, generation, consumer, consumer_generation, producers, reason, evidence, acceptance_check=None):
