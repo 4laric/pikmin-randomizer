@@ -309,7 +309,9 @@ def main(argv=None):
         return 2
     print(f"Release {data['sha']} ready at {data['release']} ({'created' if data['created'] else 'reused'}); "
           f"tests: {data['tests']}")
-    print('Run these yourself to switch the controller (workers keep running):')
+    print('Switch the controller yourself (workers keep running) with the one-shot script:')
+    print(f"  & '{Path(data['release']) / 'scripts/Deploy-WorkflowRelease.ps1'}'")
+    print('or step by step:')
     for line in data['commands']:
         print('  ' + line)
     return 0

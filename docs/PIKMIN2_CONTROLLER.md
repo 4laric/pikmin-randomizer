@@ -93,6 +93,13 @@ refused with its command. On success it prints the switch-over for the operator:
 4. run `service status` from the release and confirm the new sha, `dirty=False`
    and a wrapper parent.
 
+`<release>/scripts/Deploy-WorkflowRelease.ps1` performs steps 1-4 for the release it
+lives in: it waits for every `pikmin2_controller.py` and wrapper process to exit
+(leaving STOP in place and exiting 1 after `-TimeoutSeconds`), then starts the
+wrapper from its own folder and prints `service status`. Rolling back is running
+the same script from an older release folder. Run it from an operator shell; agent
+sessions must not restart production.
+
 Running workers keep the CLI paths they were given; new launches get the release's.
 Keep old release worktrees until no launch refers to them.
 
