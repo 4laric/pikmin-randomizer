@@ -21,21 +21,36 @@ Two failure modes matter, and neither is a compile error:
 
 ## Matrix
 
-| Source | Species | Host type | Model binding | Campaign-ready? |
-| --- | --- | --- | --- | --- |
-| 44 | BlueKochappy | `TEKI_Chappy` 3 | own module | **in pool** |
-| 54 | Miulin / Mamuta | `TEKI_Miurin` 24 | own module | **in pool** |
-| 59–62 | Fire/Water/Gas/Elec Otakara | `TEKI_Chappy` 3 | batch2 `dweevil` | **in pool** |
-| 9 | Kogane | `TEKI_Chappy` 3 ✓ | own module, bridge-aware | **yes** — no known blocker |
-| 79 | Sokkuri | `TEKI_Chappy` 3 ✓ | batch2 `ground|Sokkuri` | **yes** — no known blocker |
-| 23 | Sarai | `TEKI_Chappy` 3 ✓ | own module, bridge sweep | **yes** — no known blocker |
-| 57 | Kurage | `TEKI_Frog` 0 ✓ | own module, bridge-aware | visual yes, **AI gated** |
-| 78 | MiniHoudai / Groink | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
-| 1 | Kochappy | needs 3, **absent** | own module, `_70`-keyed | no |
-| 45 | Snow / YellowKochappy | needs 3, **absent** | own module, source-blind | no |
-| 58 | BombSarai | needs `TEKI_Napkid` 11, **absent** | **none in campaign** | no |
+A species must clear **three** gates, in this order:
 
-✓ = the table entry is present and matches what that species' own setup actually requires.
+1. **Content** — `scripts/p2_prepare_content.py` `EXTRACTORS` can pull its assets off the ISO.
+   Without this the species cannot be staged at all, whatever the native code does. Note that
+   an entry in `IDENTITY_FAMILY` is *not* enough: the installer knows how to lay the files down,
+   but something still has to produce them.
+2. **Host type** — `hostType()` matches what its setup checks.
+3. **Binding** — something binds its model in bridge mode, and its draw hook is in the chain.
+
+| Source | Species | Content | Host type | Model binding | Ready? |
+| --- | --- | --- | --- | --- | --- |
+| 44 | BlueKochappy | ✓ | `TEKI_Chappy` 3 | own module | **in pool** |
+| 54 | Miulin / Mamuta | ✓ | `TEKI_Miurin` 24 | own module | **in pool** |
+| 59–62 | Fire/Water/Gas/Elec Otakara | ✓ | `TEKI_Chappy` 3 | batch2 `dweevil` | **in pool** |
+| 23 | Sarai | ✓ | `TEKI_Chappy` 3 ✓ | own module, bridge sweep | **yes** — next in line |
+| 9 | Kogane | **no extractor** | `TEKI_Chappy` 3 ✓ | own module, bridge-aware | blocked on content |
+| 79 | Sokkuri | **no extractor** | `TEKI_Chappy` 3 ✓ | batch2 `ground\|Sokkuri` | blocked on content |
+| 57 | Kurage | **no extractor** | `TEKI_Frog` 0 ✓ | own module, bridge-aware | blocked on content; AI also gated |
+| 78 | MiniHoudai / Groink | **no extractor** | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
+| 1 | Kochappy | **no extractor** | needs 3, **absent** | own module, `_70`-keyed | no |
+| 45 | Snow / YellowKochappy | **no extractor** | needs 3, **absent** | own module, source-blind | no |
+| 58 | BombSarai | **no extractor** | needs `TEKI_Napkid` 11, **absent** | **none in campaign** | no |
+
+✓ = present and matching what that species' own setup actually requires.
+
+**So the binding constraint today is content, not native code.** `EXTRACTORS`
+(`scripts/p2_prepare_content.py:252`) covers exactly 44, 54, 59–62 and 23. Seven of the eleven
+species have an installer but no way to produce what it installs, so native work on them cannot
+be proven in a seed until an extractor exists. Sarai (23) is the only un-pooled species that
+clears all three gates.
 
 ## What each "no" needs
 
