@@ -106,7 +106,13 @@ def render_delivery(delivery):
     lanes = delivery.get('lanes') or {}
     html = ('<section class="delivery"><h2>Delivery <span>' + escape(str(lanes.get('done', '?'))) + ' done · ' +
             escape(str(lanes.get('receipts', '?'))) + ' with receipts · ' + escape(str(lanes.get('done-no-code', '?'))) +
-            ' done-no-code</span></h2><div class="cards">')
+            ' done-no-code · ' + escape(str(lanes.get('done-unreceipted', '?'))) + ' done-unreceipted</span></h2>')
+    if lanes.get('done-unreceipted'):
+        keys = [str(k) for k in (lanes.get('unreceipted_lanes') or [])[:10]]
+        html += ('<p class="warning">' + escape(str(lanes['done-unreceipted'])) + ' done lanes carry code no integration '
+                 'receipt tracks (not counted as unpushed or unshipped): ' + escape(', '.join(keys)[:400]) +
+                 (', …' if lanes['done-unreceipted'] > len(keys) else '') + '</p>')
+    html += '<div class="cards">'
     for name, repo in (delivery.get('repos') or {}).items():
         counts = repo.get('counts') or {}
         if not counts and not repo.get('error'): continue

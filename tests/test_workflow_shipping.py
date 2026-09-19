@@ -5,6 +5,8 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,6 +26,12 @@ def done(key, root_commit=None, at=100, native_commit=None, base=None, head=None
     if native_commit:
         lane['native'] = dict(base='0' * 40, head='0' * 40, worktree='native')
     return dict(lane, **extra)
+
+
+def write_tree_supported():
+    """git merge-tree --write-tree arrived in git 2.38."""
+    found = re.search(r'(\d+)\.(\d+)', subprocess.run(['git', '--version'], capture_output=True, text=True).stdout)
+    return bool(found) and (int(found.group(1)), int(found.group(2))) >= (2, 38)
 
 
 class Repos(unittest.TestCase):
@@ -55,6 +63,7 @@ class Repos(unittest.TestCase):
             'offline': done('offline', self.O, 50),
             'missing': done('missing', 'f' * 40, 60),
             'nocode': done('nocode'),
+            'unreceipted': done('unreceipted', base=self.S, head=self.P),  # Code, but no integration receipt.
             'busy': dict(done('busy', self.L), state='running')})
 
     def configure(self, **values):
@@ -82,7 +91,8 @@ class ReconcileTests(Repos):
         self.assertEqual({k: report['receipts'][k]['root']['cls'] for k in ('shipped', 'pushed', 'online', 'offline', 'missing')},
                          {'shipped': 'shipped', 'pushed': 'pushed', 'online': 'integrated-on-line', 'offline': 'off-line',
                           'missing': 'missing'})
-        self.assertEqual(report['lanes'], {'done': 6, 'done-no-code': 1, 'receipts': 5, 'archived': 1})
+        self.assertEqual(report['lanes'], {'done': 7, 'done-no-code': 1, 'done-unreceipted': 1, 'receipts': 5, 'archived': 1,
+                                           'unreceipted_lanes': ['unreceipted']})
         self.assertTrue(report['receipts']['online']['archived'])  # History archived by registry_archive: still classified.
         self.assertEqual((root['unpushed']['count'], root['unpushed']['oldest']['lane']), (2, 'offline'))
         self.assertEqual(sorted(root['unpushed']['lanes']), ['offline', 'online'])
@@ -116,8 +126,29 @@ class ReconcileTests(Repos):
         self.assertEqual((root['line'], root['target'], root['oldest_unshipped']), ('undeclared', 'undeclared', 'undeclared'))
         self.assertEqual(root['unpushed']['count'], 2)  # Pushed facts need no config.
         self.configure(release_target=dict(root=dict(repo='.', ref='origin/main')))
-        classes = {k: v['root']['cls'] for k, v in shipping.reconcile(self.root, self.state, 1000)['receipts'].items()}
+        report = shipping.reconcile(self.root, self.state, 1000)
+        classes = {k: v['root']['cls'] for k, v in report['receipts'].items()}
         self.assertEqual((classes['shipped'], classes['pushed'], classes['online']), ('shipped', 'pushed', 'undeclared'))
+        # The target proves 'offline' (the oldest) unshipped even though no line is declared to name its class.
+        oldest = report['repos']['root']['oldest_unshipped']
+        self.assertEqual((oldest['lane'], oldest['cls'], oldest['age_seconds']), ('offline', 'undeclared', 950))
+        few = dict(lanes={k: self.state['lanes'][k] for k in ('shipped', 'offline', 'online')})
+        self.assertEqual(shipping.reconcile(self.root, few, 1000)['repos']['root']['oldest_unshipped']['lane'], 'offline')
+        # A done lane with code but no receipt is not no-code.
+        self.assertEqual(shipping.receipts(dict(lanes=dict(
+            a=done('a'), b=done('b', head='1' * 40), c=dict(done('c'), root=dict(base='0' * 40, head='0' * 40, commits=['x'])),
+            d=dict(done('d'), root=None, native=dict(base='2' * 40, head='3' * 40)))))[1:], (['a'], ['b', 'c', 'd']))
+
+    def test_native_side_without_a_native_commit(self):
+        self.declare()
+        state = dict(lanes=dict(
+            nochange=dict(done('nochange', self.S, 10), native=dict(base='1' * 40, head='1' * 40, commits=[], worktree='native')),
+            changed=dict(done('changed', self.S, 20), native=dict(base='1' * 40, head='2' * 40, worktree='native')),
+            empty=dict(done('empty', self.S, 30), native={}, integration=dict(root_commit=self.S, native_commit=''))))
+        self.assertEqual([sorted(s) for _, _, s in shipping.receipts(state)[0]], [['root'], ['native', 'root'], ['root']])
+        report = shipping.reconcile(self.root, state, 1000)
+        self.assertEqual(report['repos']['native']['counts'], {'no-native-receipt': 1})  # Never 'missing'.
+        self.assertEqual(report['receipts']['changed']['native'], dict(commit=None, cls='no-native-receipt', pushed=None))
 
     def test_malformed_or_unresolvable_declarations_refuse(self):
         self.configure(release_target=dict(root=dict(repo='.', ref='--upload-pack=x')))
@@ -142,8 +173,8 @@ class ReconcileTests(Repos):
         git(self.root, 'update-ref', 'refs/remotes/origin/main', self.O)  # Target now diverges on shared.txt.
         divergence = shipping.reconcile(self.root, self.state, 1000)['repos']['root']['divergence']
         self.assertEqual((divergence['ahead'], divergence['behind']), (2, 1))
-        if divergence.get('conflicts') is not None:
-            self.assertEqual((divergence['conflicts'], divergence['conflict_paths']), (1, ['shared.txt']))
+        if not write_tree_supported(): self.skipTest('git merge-tree --write-tree needs git 2.38')
+        self.assertEqual((divergence['conflicts'], divergence['conflict_paths']), (1, ['shared.txt']))
         real = shipping._git
         def old_git(repo, *args, **kw):
             if args[:1] == ('merge-tree',): raise Rejected('unknown option --write-tree')
@@ -179,6 +210,23 @@ class ReconcileTests(Repos):
         self.assertIn('unpushed', html); self.assertIn('off-line 1', html)
         self.assertIn('unavailable', render_delivery(dict(error='<boom>')))
         self.assertNotIn('<boom>', render_delivery(dict(error='<boom>')))
+        self.assertIn('1 done-unreceipted', html); self.assertIn('unreceipted</p>', html)
+
+    def test_dashboard_retries_a_failed_side_after_tip_seconds(self):
+        self.declare()
+        clock, cache, real, failures = [0.0], {}, shipping.present, [1]
+        def flaky(*a, **k):
+            if failures[0]:
+                failures[0] -= 1
+                raise OSError('WinError 1455')
+            return real(*a, **k)
+        with patch.object(shipping, 'present', flaky):
+            first = shipping.dashboard(self.root, self.state, 1000, clock=lambda: clock[0], cache=cache)
+            self.assertEqual(first['repos']['root']['counts'], {'unverifiable': 5})
+            clock[0] = shipping.TIP_SECONDS + 1  # Tips unchanged, but the failed side is not reused.
+            again = shipping.dashboard(self.root, self.state, 1100, clock=lambda: clock[0], cache=cache)
+        self.assertEqual(again['repos']['root']['counts'].get('shipped'), 1)
+        self.assertIsNone(again['repos']['root']['error'])
 
 
 class SuggestTests(Repos):
@@ -192,8 +240,8 @@ class SuggestTests(Repos):
         top = root['candidates'][0]
         self.assertEqual((top['ref'], top['worktree'], top['vs_target']['ahead'], top['vs_target']['behind']), ('line', '.', 2, 0))
         self.assertEqual((root['between']['ours'], root['between']['theirs']), ('line', 'side'))
-        if root['between'].get('conflicts') is not None:
-            self.assertEqual(root['between']['conflicts'], 1)
+        if write_tree_supported():
+            self.assertEqual((root['between']['conflicts'], root['between']['conflict_paths']), (1, ['shared.txt']))
         native = report['repos']['native']
         self.assertIsNone(native['default_target'])  # fork is a local path with no default branch: not guessed.
         self.assertEqual(native['unpushed'], 1)
@@ -201,8 +249,18 @@ class SuggestTests(Repos):
             integration_lines=dict(root=dict(repo='.', ref='line'), native=dict(repo='native', ref='nline')),
             release_target=dict(root=dict(repo='.', ref='origin/main'))))
         self.assertFalse((self.root / 'output/workflow/controller/config.json').exists())  # Never written.
+        self.assertEqual(report['snippet_warnings'], ['root: 1 receipt commits on other candidate lines are not on line: '
+                                                      'declared as is they classify off-line; converge the lines first'])
         text = inspect.text('delivery-suggest', report)
         self.assertIn('"integration_lines"', text); self.assertIn('nothing was written', text)
+        self.assertIn('WARNING: root: 1 receipt commits', text)
+
+    def test_suggest_warns_when_the_top_lines_pair_different_waves(self):
+        lanes = dict(self.state['lanes'], online=done('online', self.O, 300, native_commit=self.N))
+        report = shipping.suggest(self.root, dict(lanes=lanes), conflicts=False)
+        self.assertEqual(report['snippet']['integration_lines']['root']['ref'], 'line')
+        self.assertIn('only 0 of 1 lanes whose native receipt is on nline have their root receipt on line',
+                      report['snippet_warnings'][-1])
 
 
 class PlanTests(Repos):
@@ -241,6 +299,53 @@ class PlanTests(Repos):
         with self.assertRaises(Rejected):
             shipping.plan(self.root, self.state, 'root', line='line', target='--output=x')
 
+    def test_receipts_over_the_cap_are_not_evaluated_rather_than_missing(self):
+        self.declare()
+        with patch.object(shipping, 'COMMITS', 1):
+            data = shipping.plan(self.root, self.state, 'root')
+        self.assertTrue(data['truncated']['receipts'])
+        self.assertEqual((data['receipts']['missing'], data['receipts']['not_evaluated'], data['receipts']['off_line']), (1, 3, 0))
+        self.assertIn('receipts (3 receipt commits not evaluated)', shipping.markdown(data))
+
+    def test_packet_stub_names_a_line_review_packet_can_verify(self):
+        self.declare()
+        data = shipping.plan(self.root, self.state, 'root')  # Target origin/main: a remote-tracking ref.
+        batch = data['batches'][0]
+        lines = {json.dumps(v['line'], sort_keys=True) for v in batch['packet_inputs'].values() if v['role'] == 'maintained'}
+        self.assertEqual(lines, {json.dumps(dict(repo='output/promotion/root-modify-shared-01',
+                                                 ref='promote/root-modify-shared-01'), sort_keys=True)})
+        self.assertIn('origin/main is not a branch checked out', batch['maintained_line_required'])
+        self.assertIn('maintained line required', shipping.markdown(data))
+        line = json.loads(lines.pop())
+        git(self.root, 'worktree', 'add', '-q', '-b', line['ref'], str(self.root / line['repo']), self.S)
+        self.assertEqual(review_packet.line_repo(self.root, line)[1:], (self.S, []))
+        # A target branch checked out in its declared repo is itself the maintained line.
+        git(self.root, 'worktree', 'add', '-q', str(self.root / 'output/main'), 'main')
+        self.configure(integration_lines=dict(root=dict(repo='.', ref='line')),
+                       release_target=dict(root=dict(repo='output/main', ref='main')))
+        batch = shipping.plan(self.root, self.state, 'root')['batches'][0]
+        self.assertNotIn('maintained_line_required', batch)
+        line = next(v['line'] for v in batch['packet_inputs'].values() if v['role'] == 'maintained')
+        self.assertEqual(line, dict(repo='output/main', ref='main'))
+        self.assertEqual(review_packet.line_repo(self.root, line)[1:], (self.S, []))
+
+    def test_plan_output_stays_below_output_and_off_existing_files(self):
+        self.declare()
+        data = shipping.plan(self.root, self.state, 'root')
+        config = self.root / 'output/workflow/controller/config.json'
+        before = config.read_text()
+        for out in ('output', 'output/workflow/controller/config', 'output/workflow/controller/config.json',
+                    'output/workflow/throughput', 'plan', '../elsewhere/plan'):
+            with self.assertRaises(Rejected, msg=out):
+                shipping.write_plan(self.root, data, out)
+        self.assertEqual(config.read_text(), before)
+        self.assertFalse((self.root / 'output.json').exists() or (self.root / 'output.md').exists())
+        written = shipping.write_plan(self.root, data, 'output/plans/p')
+        self.assertEqual([Path(p).name for p in written], ['p.json', 'p.md'])
+        with self.assertRaisesRegex(Rejected, 'exists'):
+            shipping.write_plan(self.root, data, 'output/plans/p.json')
+        self.assertEqual(shipping.write_plan(self.root, data, 'output/plans/p', force=True), written)
+
 
 class ReadOnlyTests(Repos):
     def test_inspect_verbs_leave_registry_and_refs_unchanged(self):
@@ -261,13 +366,22 @@ class ReadOnlyTests(Repos):
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(inspect.main(['--root', str(self.root), 'promotion-plan', 'root', '--out', 'plan-outside']), 2)
-        self.assertIn('under output/', err.getvalue())
+        self.assertIn('below output/', err.getvalue())
 
     def test_machine_item_for_undeclared_release_target(self):
         items = inspect.machine(dict(lanes={}, control={}), 0, cfg={})
         self.assertIn('release_target_undeclared', [i['kind'] for i in items])
         items = inspect.machine(dict(lanes={}, control={}), 0, cfg=dict(release_target=dict(root=dict(repo='.', ref='m'))))
         self.assertNotIn('release_target_undeclared', [i['kind'] for i in items])
+        kinds = lambda **kw: [i['kind'] for i in inspect.machine(dict(lanes={}, control={}), 0, **kw)]
+        self.assertIn('release_target_malformed', kinds(cfg=dict(release_target='origin/main', integration_lines='x')))
+        # With root, the canonical file decides (as workflow.shipping reads it), not the startup cfg.
+        self.configure(release_target=dict(root=dict(repo='.', ref='origin/main')))
+        self.assertNotIn('release_target_undeclared', kinds(cfg={}, root=self.root))
+        self.configure(release_target='origin/main')
+        self.assertIn('release_target_malformed', kinds(cfg=dict(release_target=dict(root=dict(repo='.', ref='m'))), root=self.root))
+        self.configure()
+        self.assertIn('release_target_undeclared', kinds(cfg=dict(release_target=dict(root=dict(repo='.', ref='m'))), root=self.root))
 
 
 if __name__ == '__main__':

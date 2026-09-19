@@ -565,9 +565,13 @@ receipt, archived lanes included: `shipped` (ancestor of the release target),
 `pushed` (reachable from a remote-tracking ref of the off-disk remote), `integrated-on-line`
 (reachable from the declared line only), `off-line`, `missing` (not a commit of that
 repository), `undeclared` (no release target, or no line for an unpushed commit;
-never guessed), `truncated` (over a cap) or `unverifiable` (git failed); done lanes
-without a receipt are `done-no-code`. A remote whose URL is a local path never counts
-as pushed. It reads local refs only (fetch first for current remote state) and never
+never guessed), `no-native-receipt` (native code changed, no native commit named),
+`truncated` (over a cap) or `unverifiable` (git failed). Done lanes without a receipt
+are `done-no-code` when their source records show no commits and `done-unreceipted`
+(listed, never counted as delivered or as no code) when they do. Oldest unshipped is
+any evaluated receipt the declared target does not contain. A remote whose URL is a
+local path never counts as pushed. It reads local refs only (`git fetch --prune` first:
+a tracking ref of a deleted remote branch otherwise still counts as pushed) and never
 fetches, pushes or writes the registry. Promotion is proposed by `inspect
 promotion-plan root|native`: bounded batches of what the line changed since its merge
 base with the target, modifications of existing shared-engine files (root `engine/`,
@@ -575,7 +579,9 @@ base with the target, modifications of existing shared-engine files (root `engin
 `CMakeLists.txt`) first in small batches (12 files, 8 receipts), other modifications
 next (40, 20), additive files last (200, 40). Each batch lists its files, the receipts
 it carries (`partial` when split) and a stub of #186 review-packet inputs for its
-shared paths. A person opens each batch as a PR to the release target after its #186
+shared paths, whose maintained side is a branch that must be checked out (the target
+itself, or a `promote/<batch id>` branch cut from it when the target is a
+remote-tracking ref). A person opens each batch as a PR to the release target after its #186
 review; nothing is merged, branched or pushed by the workflow, and `shipped` is only
 ever observed from git ancestry.
 

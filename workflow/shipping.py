@@ -13,11 +13,14 @@ registry_archive moved keep their receipts in the lanes section and are included
   off-line            on none of those
   missing             not a commit of that repository
   undeclared          release_target (or, for an unpushed commit, integration_lines) is not declared
+  no-native-receipt   the lane changed native code but its receipt names no native commit
   truncated / unverifiable  over the commit or walk cap / git failed for that repository
-Done lanes without a receipt count as done-no-code. A remote whose URL is a local path never counts as
-pushed. Only local refs are read: git never fetches or pushes, reachability is one rev-list walk per
-repository with a cap, every call has a timeout, and merge-tree writes its objects to a scratch
-directory, never the repository. suggest() is the evidence for choosing integration_lines and
+A done lane without a receipt is done-no-code when its source records show no commits, else
+done-unreceipted (code that no receipt tracks). An unshipped receipt is any evaluated commit the declared
+target does not contain, whatever its class. A remote whose URL is a local path never counts as pushed,
+and remote-tracking refs are only as current as the last `git fetch --prune`. Only local refs are read:
+git never fetches or pushes, reachability is one rev-list walk per repository with a cap, every call
+has a timeout, and merge-tree writes its objects to a scratch directory, never the repository. suggest() is the evidence for choosing integration_lines and
 release_target (it prints a snippet, never writes the config); plan() proposes bounded promotion
 batches and creates no branch, commit or PR. CLI: workflow.inspect delivery | delivery-suggest |
 promotion-plan.
@@ -36,8 +39,8 @@ from .landing import CONFIG, DEFAULT_REPOS, SHA, lines
 TIMEOUT = 60  # Seconds per git call.
 COMMITS, WALK, REFS, FILES, LANE_DIFFS = 2000, 200000, 5000, 20000, 500  # Caps; over a cap the result says truncated.
 PUSH_REMOTES = {'root': 'origin', 'native': 'fork'}
-CLASSES = ('shipped', 'pushed', 'integrated-on-line', 'off-line', 'missing', 'undeclared', 'truncated', 'unverifiable')
-UNSHIPPED = ('pushed', 'integrated-on-line', 'off-line')
+CLASSES = ('shipped', 'pushed', 'integrated-on-line', 'off-line', 'missing', 'undeclared', 'no-native-receipt', 'truncated',
+           'unverifiable')
 REF = re.compile(r'[A-Za-z0-9._/-]+')
 NETWORK = re.compile(r'(?:https?|ssh|git|git\+ssh|ssh\+git)://[^/\s]+/\S+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:(?![\\/])\S+', re.I)
 SHARED = {'root': ('engine/', 'include/', 'src/', 'pc_port/'),
@@ -178,22 +181,35 @@ def merge_conflicts(repo, ours, theirs):
     return dict(conflicts=len(paths), conflict_paths=paths[:20])
 
 
+def has_code(source):
+    """A lane source record with commits or a head that moved from its base."""
+    if not isinstance(source, dict):
+        return False
+    base, head = source.get('base'), source.get('head')
+    return bool(source.get('commits')) or (isinstance(base, str) and isinstance(head, str) and base != head)
+
+
 def receipts(state):
-    """(done lanes with an integration receipt as [(key, lane, {side: commit})] newest first, done lanes without one)."""
-    done, bare = [], []
+    """(done lanes with an integration receipt as [(key, lane, {side: commit})] newest first, done lanes
+    without one and without code, done lanes without one whose source records carry code).
+
+    A native side is None (no-native-receipt) when the lane changed native code but named no native commit."""
+    done, bare, unreceipted = [], [], []
     for key, lane in state.get('lanes', {}).items():
         if lane.get('state') != 'done':
             continue
         record = lane.get('integration')
         if not isinstance(record, dict) or not record.get('root_commit'):
-            bare.append(key)
+            (unreceipted if has_code(lane.get('root')) or has_code(lane.get('native')) else bare).append(key)
             continue
         sides = {'root': record.get('root_commit')}
-        if record.get('native_commit') or lane.get('native'):
-            sides['native'] = record.get('native_commit')
+        if nonempty(record.get('native_commit')):
+            sides['native'] = record['native_commit']
+        elif has_code(lane.get('native')):
+            sides['native'] = None
         done.append((key, lane, sides))
     done.sort(key=lambda r: (-(r[1].get('integrated_at') or 0), r[0]))
-    return done, sorted(bare)
+    return done, sorted(bare), sorted(unreceipted)
 
 
 def commits_of(rows):
@@ -254,6 +270,7 @@ def sum_or(masks):
 
 def classify(fact, commit, has_line, has_target):
     """One side's class; undeclared config is its own class, never a guess."""
+    if not isinstance(commit, str): return 'no-native-receipt'
     if fact.get('error'): return 'unverifiable'
     if commit not in fact['exists']: return 'missing'
     if commit in fact['truncated']: return 'truncated'
@@ -266,7 +283,7 @@ def classify(fact, commit, has_line, has_target):
 
 def gather(root, state, conflicts=True):
     """{side: facts} for every side that has receipt commits; a failing side records its error."""
-    rows, _ = receipts(state)
+    rows = receipts(state)[0]
     declared_lines, declared_targets = lines(root), targets(root)
     result = {}
     for name, commits in commits_of(rows).items():
@@ -282,7 +299,7 @@ def reconcile(root, state, now=None, *, conflicts=True, known=None, detail=True)
     now = time.time() if now is None else now
     declared_lines, declared_targets = lines(root), targets(root)
     known = gather(root, state, conflicts) if known is None else known
-    rows, bare = receipts(state)
+    rows, bare, unreceipted = receipts(state)
     repos, lanes = {}, {}
     for name in DEFAULT_REPOS:
         fact = known.get(name) or {}
@@ -297,7 +314,7 @@ def reconcile(root, state, now=None, *, conflicts=True, known=None, detail=True)
         for name, commit in sides.items():
             fact, repo = known.get(name) or dict(error='not evaluated', exists=set(), truncated=set()), repos[name]
             kind = classify(fact, commit, name in declared_lines, name in declared_targets)
-            evaluated = kind not in ('missing', 'truncated', 'unverifiable')
+            evaluated = kind not in ('missing', 'truncated', 'unverifiable', 'no-native-receipt')
             pushed = commit in fact.get('pushed', ()) if evaluated else None
             entry[name] = dict(commit=commit, cls=kind, pushed=pushed)
             repo['counts'][kind] = repo['counts'].get(kind, 0) + 1
@@ -307,7 +324,8 @@ def reconcile(root, state, now=None, *, conflicts=True, known=None, detail=True)
                 if len(bucket['lanes']) < 10: bucket['lanes'].append(key)
                 if type(at) in (int, float) and (bucket['oldest'] is None or at < bucket['oldest']['integrated_at']):
                     bucket['oldest'] = dict(lane=key, integrated_at=at, age_seconds=max(0, now - at))
-            if kind in UNSHIPPED and type(at) in (int, float) and (
+            unshipped = name in declared_targets and evaluated and commit not in fact.get('shipped', ())
+            if unshipped and type(at) in (int, float) and (  # From the facts: an undeclared line does not hide it.
                     repo['oldest_unshipped'] is None or at < repo['oldest_unshipped']['integrated_at']):
                 repo['oldest_unshipped'] = dict(lane=key, integrated_at=at, age_seconds=max(0, now - at), cls=kind)
     for name, repo in repos.items():
@@ -315,7 +333,8 @@ def reconcile(root, state, now=None, *, conflicts=True, known=None, detail=True)
             repo['oldest_unshipped'] = 'undeclared'
     archived = sum(bool(l.get('archived')) for k, l in state.get('lanes', {}).items() if l.get('state') == 'done')
     report = dict(at=now, declared=dict(integration_lines=sorted(declared_lines), release_target=sorted(declared_targets)),
-                  lanes=dict(done=len(rows) + len(bare), **{'done-no-code': len(bare)}, receipts=len(rows), archived=archived),
+                  lanes=dict(done=len(rows) + len(bare) + len(unreceipted), receipts=len(rows), archived=archived,
+                             **{'done-no-code': len(bare), 'done-unreceipted': len(unreceipted)}, unreceipted_lanes=unreceipted[:10]),
                   repos=repos)
     if detail:
         report['receipts'] = lanes
@@ -324,16 +343,17 @@ def reconcile(root, state, now=None, *, conflicts=True, known=None, detail=True)
 
 def dashboard(root, state, now, *, clock=time.monotonic, cache=None):
     """The reconcile summary for the dashboard; git runs only when a line, target or push-remote tip
-    or the receipt set changed (tips re-read at most every TIP_SECONDS)."""
+    or the receipt set changed (tips re-read at most every TIP_SECONDS); a side that failed is retried then."""
     cache = _CACHE if cache is None else cache
-    rows, _ = receipts(state)
+    rows = receipts(state)[0]
     commits = {k: tuple(v) for k, v in commits_of(rows).items()}
     config = (json.dumps(lines(root), sort_keys=True), json.dumps(targets(root), sort_keys=True))
     entry = cache.get(str(root))
     fresh = entry and entry['commits'] == commits and entry['config'] == config
     if not (fresh and clock() - entry['checked'] < TIP_SECONDS):
         key = tips_key(root, commits)
-        if not (fresh and entry['key'] == key):
+        failed = fresh and any(f.get('error') for f in entry['known'].values())
+        if not (fresh and entry['key'] == key and not failed):
             entry = dict(commits=commits, config=config, key=key, known=gather(root, state))
         entry['checked'] = clock()
         cache[str(root)] = entry
@@ -381,11 +401,14 @@ def relative(root, path):
 
 def suggest(root, state, *, candidates=3, shown=10, conflicts=True):
     """Which refs hold how many receipt commits per side, and how the top candidates diverge from the
-    push remote's default branch; the snippet is for the operator to paste, never written here."""
-    rows, _ = receipts(state)
-    report, snippet = dict(repos={}), dict(integration_lines={}, release_target={})
+    push remote's default branch; the snippet is for the operator to paste, never written here.
+
+    snippet_warnings say when the top candidate leaves receipts of other lines off-line, or when the top
+    root and native lines hold mostly different lanes (lines of different waves)."""
+    rows = receipts(state)[0]
+    report, snippet, tops, warnings = dict(repos={}), dict(integration_lines={}, release_target={}), {}, []
     for name, commits in commits_of(rows).items():
-        side = report['repos'][name] = dict(receipts=len(commits))
+        side = report['repos'][name] = dict(receipts=len(commits), warnings=[])
         try:
             repo = checkout(root, name)
             found = present(repo, commits)
@@ -438,15 +461,28 @@ def suggest(root, state, *, candidates=3, shown=10, conflicts=True):
             if local:
                 top = side['candidates'][0]
                 snippet['integration_lines'][name] = dict(repo=top['worktree'] or DEFAULT_REPOS[name], ref=top['ref'])
+                tops[name] = (top['ref'], members(masks[chosen[0]['ref']], evaluated))
                 if not top['worktree']:
-                    side['warning'] = (f"{top['ref']} is not checked out in a worktree under the root; review packets need "
-                                       'the line checked out, so create or name one before declaring it')
+                    side['warnings'].append(f"{top['ref']} is not checked out in a worktree under the root; review packets "
+                                            'need the line checked out, so create or name one before declaring it')
+                elsewhere = bin(sum_or(masks[c['ref']] for c in chosen[1:]) & ~masks[chosen[0]['ref']]).count('1')
+                if elsewhere:
+                    side['warnings'].append(f"{elsewhere} receipt commits on other candidate lines are not on {top['ref']}: "
+                                            'declared as is they classify off-line; converge the lines first')
             if target:
                 snippet['release_target'][name] = dict(repo=DEFAULT_REPOS[name], ref=short(target['ref']))
         except (Rejected, OSError, ValueError) as exc:
             side['error'] = str(exc) or type(exc).__name__
+    warnings += ['%s: %s' % (name, w) for name, side in report['repos'].items() for w in side.get('warnings', ())]
+    if len(tops) == 2:  # Lanes whose native receipt is on the native top line: is their root receipt on the root top?
+        (rref, rset), (nref, nset) = tops['root'], tops['native']
+        paired = [s.get('root') in rset for _, _, s in rows if s.get('native') in nset]
+        if paired and 2 * sum(paired) < len(paired):
+            warnings.append(f'only {sum(paired)} of {len(paired)} lanes whose native receipt is on {nref} have their root '
+                            f'receipt on {rref}: the snippet pairs lines of different waves')
     report['declared'] = dict(integration_lines=lines(root), release_target=targets(root))
     report['snippet'] = {k: v for k, v in snippet.items() if v}
+    report['snippet_warnings'] = warnings
     return report
 
 
@@ -460,9 +496,9 @@ def slug(prefix, path):
     return f"{prefix}-{body}-{hashlib.sha1(path.encode('utf-8', 'surrogateescape')).hexdigest()[:8]}"
 
 
-def packet_inputs(name, files, line, target, tip_):
-    """review-packet-v1 inputs for the batch's shared-path files: the line's bytes as candidates, the
-    release target as the maintained side (it must be checked out in a worktree before a packet uses it)."""
+def packet_inputs(name, files, line, maintained_line, tip_):
+    """review-packet-v1 inputs for the batch's shared-path files: the line's bytes as candidates, maintained_line
+    (a branch that must be checked out in its repo, as review_packet.line_repo requires) as the maintained side."""
     inputs, skipped = {}, []
     for f in files:
         path = f['path']
@@ -473,7 +509,7 @@ def packet_inputs(name, files, line, target, tip_):
             continue
         if f['status'] != 'D':
             inputs[slug('c', path)] = dict(role='candidate', repo=line['repo'], commit=tip_, path=path)
-        maintained = dict(role='maintained', line=dict(repo=target['repo'], ref=target['ref']), path=path)
+        maintained = dict(role='maintained', line=dict(maintained_line), path=path)
         if f['status'] == 'A':
             maintained['optional'] = True
         inputs[slug('m', path)] = maintained
@@ -507,14 +543,17 @@ def plan(root, state, name, *, line=None, target=None, max_batches=40, limits=No
     changed = changes(repo, base, ltip)
     truncated = dict(files=len(changed) > FILES)
     changed = changed[:FILES]
-    rows, _ = receipts(state)
+    rows = receipts(state)[0]
     mine = [(k, l, s[name]) for k, l, s in rows if isinstance(s.get(name), str)]
-    found = present(repo, [c for _, _, c in mine])[:COMMITS]
+    everything = present(repo, [c for _, _, c in mine])
+    found = everything[:COMMITS]  # Receipts past the cap are not evaluated (and never counted as missing).
     masks, _, cut = reach(repo, dict(line=ltip, target=ttip), found)
     require(not cut, f'{name}: history walk over {WALK} commits; plan refused rather than guessed')
     on_line, shipped = members(masks['line'], found), members(masks['target'], found)
     carried = [(k, l, c) for k, l, c in mine if c in on_line and c not in shipped]
-    truncated['lanes'] = len(carried) > LANE_DIFFS
+    truncated.update(receipts=len(everything) > COMMITS, lanes=len(carried) > LANE_DIFFS)
+    code, out = _git(other, 'symbolic-ref', '--quiet', '--short', 'HEAD', codes=(0, 1))
+    checked_out = code == 0 and out.decode('utf-8', 'surrogateescape').strip() == target['ref']
     by_path, unattributed = {}, []
     for key, lane, commit in carried[:LANE_DIFFS]:
         paths = lane_paths(repo, name, lane)
@@ -524,7 +563,7 @@ def plan(root, state, name, *, line=None, target=None, max_batches=40, limits=No
         for p in paths:
             by_path.setdefault(p, set()).add(key)
     info = {k: dict(lane=k, commit=c, integrated_at=l.get('integrated_at')) for k, l, c in carried}
-    known, exists = set(info), set(found)
+    known, exists, evaluated = set(info), set(everything), set(found)
     batches, counts = [], {}
     for kind in LIMITS:
         files = sorted(((s, p) for s, p in changed if kind_of(name, s, p) == kind),
@@ -545,8 +584,16 @@ def plan(root, state, name, *, line=None, target=None, max_batches=40, limits=No
         for k in b['lanes']: spread[k] = spread.get(k, 0) + 1
     result = []
     for n, b in enumerate(batches[:max_batches], 1):
-        inputs, skipped = packet_inputs(name, b['files'], line, target, ltip)
-        result.append(dict(id='%s-%s-%02d' % (name, b['kind'], n), kind=b['kind'], files=b['files'],
+        ident = '%s-%s-%02d' % (name, b['kind'], n)
+        # review_packet needs the maintained line checked out as a branch; a remote-tracking or unchecked-out
+        # target cannot be, so the stub names a promotion branch cut from the target tip instead.
+        maintained = dict(repo=target['repo'], ref=target['ref']) if checked_out else dict(
+            repo='output/promotion/' + ident, ref='promote/' + ident)
+        inputs, skipped = packet_inputs(name, b['files'], line, maintained, ltip)
+        extra = {} if checked_out or not inputs else dict(maintained_line_required=(
+            f"{target['ref']} is not a branch checked out in {target['repo']}; before building the packet check out "
+            f"branch {maintained['ref']} from {target['ref']} ({ttip[:12]}) in a worktree at {maintained['repo']} under the root"))
+        result.append(dict(id=ident, kind=b['kind'], files=b['files'], **extra,
                            receipts=[dict(info[k], partial=spread[k] > 1) for k in sorted(b['lanes'])],
                            unattributed_files=sum(not (by_path.get(f['path'], set()) & known) for f in b['files']),
                            packet_inputs=inputs, packet_inputs_skipped=skipped,
@@ -554,9 +601,9 @@ def plan(root, state, name, *, line=None, target=None, max_batches=40, limits=No
     return dict(repo=name, line=dict(line, tip=ltip), target=dict(target, tip=ttip), merge_base=base, source=source,
                 files=len(changed), classes=counts, limits={k: dict(files=v[0], receipts=v[1]) for k, v in limits.items()},
                 receipts=dict(carried=len(carried), shipped=len(shipped & {c for _, _, c in mine}),
-                              off_line=len({c for _, _, c in mine if c in exists and c not in on_line}),
-                              missing=len({c for _, _, c in mine} - exists), unattributed=unattributed[:50],
-                              unattributed_count=len(unattributed)),
+                              off_line=len({c for _, _, c in mine if c in evaluated and c not in on_line}),
+                              missing=len({c for _, _, c in mine} - exists), not_evaluated=len(exists - evaluated),
+                              unattributed=unattributed[:50], unattributed_count=len(unattributed)),
                 batches=result, omitted_batches=max(0, len(batches) - max_batches), truncated=truncated,
                 note='Proposal only: no branch, commit or PR was created. Batches go first to last; each shared-path batch '
                      'needs its own #186 review packet.')
@@ -589,13 +636,16 @@ def markdown(data):
            data['receipts']['shipped'], data['receipts']['off_line'], data['receipts']['unattributed_count']), '',
            data['note'], '']
     if any(data['truncated'].values()):
-        out += ['**Truncated:** ' + ', '.join(k for k, v in data['truncated'].items() if v), '']
+        out += ['**Truncated:** ' + ', '.join(k for k, v in data['truncated'].items() if v) + (
+            ' (%d receipt commits not evaluated)' % data['receipts']['not_evaluated'] if data['receipts'].get('not_evaluated') else ''), '']
     for b in data['batches']:
         out += ['## %s (%s): %d files, %d receipts' % (b['id'], b['kind'], len(b['files']), len(b['receipts'])), '']
         out += ['- receipt %s at %s%s' % (r['lane'], r['commit'][:12], ' (split across batches)' if r['partial'] else '')
                 for r in b['receipts']]
         if b['unattributed_files']:
             out.append('- %d files carry no receipt (tooling, merges or unrecorded work)' % b['unattributed_files'])
+        if b.get('maintained_line_required'):
+            out.append('- maintained line required: ' + b['maintained_line_required'])
         out += ['', '```'] + ['%s %s' % (f['status'], f['path']) for f in b['files']] + ['```', '']
         if b['packet_inputs']:
             out += ['#186 packet inputs (stub, `tools/review_packets/template.json` format):', '', '```json',
@@ -605,13 +655,18 @@ def markdown(data):
     return '\n'.join(out)
 
 
-def write_plan(root, data, out):
-    """Write <out>.json and <out>.md; out must lie under <root>/output/."""
+def write_plan(root, data, out, force=False):
+    """Write <out>.json and <out>.md below <root>/output/ but outside output/workflow/ (controller config,
+    registry, published status); an existing file refuses unless force."""
+    base = (Path(root) / 'output').resolve()
     target = local_path(root, str(out))
-    require(target.is_relative_to((Path(root) / 'output').resolve()), 'promotion-plan --out must be under output/')
     stem = target.with_suffix('') if target.suffix in ('.json', '.md') else target
-    stem.parent.mkdir(parents=True, exist_ok=True)
     paths = (stem.with_name(stem.name + '.json'), stem.with_name(stem.name + '.md'))
+    for p in paths:
+        require(p.parent.is_relative_to(base) and not p.is_relative_to(base / 'workflow'),
+                f'promotion-plan --out must name a file below output/ and outside output/workflow/: {p}')
+        require(force or not p.exists(), f'{p} exists; choose another --out or pass --force')
+    stem.parent.mkdir(parents=True, exist_ok=True)
     paths[0].write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
     paths[1].write_text(markdown(data) + '\n', encoding='utf-8')
     return [str(p) for p in paths]

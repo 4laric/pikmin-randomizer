@@ -2,7 +2,7 @@
 
   <python> <checkout>/scripts/workflow_module.py inspect [--root R | --db COPY] <verb> [--json]
   verbs: stuck (default) | needs-you | lane <key> | launches <key> | assignment <lane> | config
-         delivery | delivery-suggest | promotion-plan root|native [--line REF --target REF --out output/<stem>]
+         delivery | delivery-suggest | promotion-plan root|native [--line REF --target REF --out output/<stem> [--force]]
 
 The registry is opened with SQLite URI mode=ro plus PRAGMA query_only, decoding only the sections a
 verb needs; this module never imports workflow.registry or the writer gate and never calls a write
@@ -10,7 +10,8 @@ path (it shares pure helpers with modules that also hold writers; View refuses e
 works on a live WAL registry, a backup copy, and while the writer lock is contended. --db reads any
 registry file (a copy) without the workspace check, with the config of the registry's own root.
 The delivery verbs (workflow.shipping) also read the root and native git repositories through bounded,
-non-fetching git calls; promotion-plan --out writes only the named plan files under output/."""
+non-fetching git calls; promotion-plan --out writes only the two named plan files below output/ (never
+output/workflow/, never over an existing file without --force)."""
 import argparse
 import json
 from pathlib import Path
@@ -234,9 +235,10 @@ def needs_you(state, now, *, cfg=None, base=None, probe=None, found=None, table=
     return sorted(items, key=lambda r: (r['kind'] in ('shepherd_escalation',), -(r.get('downstream') or 0), -(r['age_seconds'] or 0)))
 
 
-def machine(state, now, *, cfg=None, probe=None, config_path=None):
+def machine(state, now, *, cfg=None, probe=None, config_path=None, root=None):
     """Machine-wide blockers: controller down, RAM or build pause, undeclared integration lines; cfg None
-    (no config read) is itself an item, and nothing config-derived is claimed."""
+    (no config read) is itself an item, and nothing config-derived is claimed. With root, release_target
+    is read as workflow.shipping reads it (the canonical config, on every call), not from cfg."""
     result = []
     if cfg is None:
         result.append(dict(kind='config_unread', what='Controller config not found%s: integration lines, launch configs '
@@ -258,13 +260,26 @@ def machine(state, now, *, cfg=None, probe=None, config_path=None):
     if capacity.get('paused'):
         result.append(dict(kind='build_paused', what='New build admission paused (%s%% RAM)' % capacity.get('ram_percent'),
                            next='Free memory; builds resume below build_capacity.ram_low'))
-    if cfg is not None and not (cfg.get('integration_lines') or {}).get('root'):
+    declared = cfg.get('integration_lines') if cfg is not None else None  # A malformed value is not a crash.
+    if cfg is not None and not (isinstance(declared, dict) and isinstance(declared.get('root'), dict)):
         hooks = sum(bool(l.get('shared_hooks')) for l in state['lanes'].values() if l.get('state') != 'done')
         result.append(dict(kind='integration_lines_undeclared', lanes_with_shared_hooks=hooks,
             what='Controller config declares no integration_lines.root: review packets cannot be re-pinned, requested or '
                  'decided, and landings are checked against any branch', next='Declare integration_lines {root, native} '
                  'as a deploy step (docs/PIKMIN2_WORKFLOW_OPERATOR.md)'))
-    if cfg is not None and not (cfg.get('release_target') or {}).get('root'):
+    declared, malformed = cfg.get('release_target') if cfg is not None else None, None
+    if cfg is not None and root is not None:
+        from .shipping import targets
+        try:
+            declared = targets(root)
+        except Rejected as exc:
+            malformed = str(exc)
+    elif declared is not None and not isinstance(declared, dict):
+        malformed = 'release_target must map root/native to {repo, ref[, remote]}'
+    if malformed:
+        result.append(dict(kind='release_target_malformed', what=malformed, next='Fix release_target in '
+                           'output/workflow/controller/config.json (docs/PIKMIN2_WORKFLOW_OPERATOR.md)'))
+    elif cfg is not None and not isinstance((declared or {}).get('root'), dict):
         result.append(dict(kind='release_target_undeclared', what='Controller config declares no release_target.root: '
             'shipped work cannot be told from integrated work and no promotion can be planned from config',
             next='Run inspect delivery-suggest, choose the lines and target, and declare release_target beside '
@@ -272,7 +287,7 @@ def machine(state, now, *, cfg=None, probe=None, config_path=None):
     return result
 
 
-def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None, config_path=None):
+def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None, config_path=None, root=None):
     """Needs-you first, then blocked lanes grouped by structured blocker, parked lanes, and circular waits.
 
     cfg None means no controller config was read (a machine item says so)."""
@@ -286,7 +301,7 @@ def stuck(state, now, *, cfg=None, base=None, probe=None, limit=None, view=None,
     rest = [dict(p, refs=[blockers.label(r) for r in found.get(p['lane'], [])]) for p in parked(state, now)]
     lint = [dict(lane=k, findings=f) for k in waiting for f in [acceptance_lint(state['lanes'][k].get('acceptance'))] if f]
     result = dict(at=now, needs_you=needs_you(state, now, cfg=cfg, base=base, probe=probe, found=found, table=table),
-                  machine=machine(state, now, cfg=cfg, probe=probe, config_path=config_path), blocked=len(waiting), groups=grouped['groups'],
+                  machine=machine(state, now, cfg=cfg, probe=probe, config_path=config_path, root=root), blocked=len(waiting), groups=grouped['groups'],
                   total_groups=grouped['total_groups'], cycles=grouped['cycles'], unstructured=grouped['unstructured'],
                   parked=rest, catch22=lint)
     if view is not None:
@@ -466,8 +481,12 @@ def text(verb, data):
         return '\n'.join(out)
     if verb == 'delivery':
         d = data
-        out.append('Done lanes: %d (%d with receipts, %d done-no-code, %d archived)' % (
-            d['lanes']['done'], d['lanes']['receipts'], d['lanes']['done-no-code'], d['lanes']['archived']))
+        out.append('Done lanes: %d (%d with receipts, %d done-no-code, %d done-unreceipted, %d archived)' % (
+            d['lanes']['done'], d['lanes']['receipts'], d['lanes']['done-no-code'], d['lanes']['done-unreceipted'],
+            d['lanes']['archived']))
+        if d['lanes']['done-unreceipted']:
+            out.append('  done-unreceipted (code no receipt tracks): ' + ', '.join(d['lanes']['unreceipted_lanes']) +
+                       (', ...' if d['lanes']['done-unreceipted'] > len(d['lanes']['unreceipted_lanes']) else ''))
         for name, r in d['repos'].items():
             if not r['counts'] and not r.get('error'): continue
             out.append('== %s ==' % name)
@@ -514,9 +533,9 @@ def text(verb, data):
                 b = r['between']
                 out.append('  %s vs %s: %d ahead, %d behind, conflicts %s' % (b['ours'], b['theirs'], b['ahead'], b['behind'],
                            b.get('conflicts', 'skipped')))
-            if r.get('warning'): out.append('  warning: ' + r['warning'])
         out.append('Suggested config for the top candidates (paste into output/workflow/controller/config.json yourself; '
                    'nothing was written):')
+        out += ['WARNING: ' + w for w in data.get('snippet_warnings', ())]
         out.append(json.dumps(data['snippet'], indent=2))
         return '\n'.join(out)
     return json.dumps(data, indent=2, default=sorted)
@@ -535,6 +554,7 @@ def main(argv=None):
     parser.add_argument('--line', help='promotion-plan: the integration line ref (default: config integration_lines)')
     parser.add_argument('--target', help='promotion-plan: the release target ref (default: config release_target)')
     parser.add_argument('--out', type=Path, help='promotion-plan: also write <out>.json and <out>.md (under output/)')
+    parser.add_argument('--force', action='store_true', help='promotion-plan: replace existing --out files')
     parser.add_argument('--no-conflicts', action='store_true', help='delivery verbs: skip merge-tree conflict counts')
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):  # Registry prose is not cp1252-safe; a piped Windows stdout would raise.
@@ -554,7 +574,7 @@ def main(argv=None):
         now = view.clock()
         base = local_path(view.root, (cfg or {}).get('output', 'output/workflow/controller'))
         if args.verb in ('stuck', 'needs-you'):
-            data = stuck(state, now, cfg=cfg, base=base, probe=view.probe, limit=args.limit, config_path=path,
+            data = stuck(state, now, cfg=cfg, base=base, probe=view.probe, limit=args.limit, config_path=path, root=view.root,
                          view=view if args.verb == 'stuck' else None)  # Worker availability probes processes.
         elif args.verb == 'lane':
             data = lane(state, args.key, view, cfg, now)
@@ -577,7 +597,7 @@ def main(argv=None):
         elif args.verb == 'promotion-plan':
             from .shipping import markdown, plan, write_plan
             data = plan(view.root, state, args.key, line=args.line, target=args.target)
-            if args.out: data['written'] = write_plan(view.root, data, args.out)
+            if args.out: data['written'] = write_plan(view.root, data, args.out, args.force)
             if not args.json:
                 print(markdown(data))
                 return 0

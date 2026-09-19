@@ -284,7 +284,7 @@ def publish_status(controller):
     from .inspect import stuck, bounded as bounded_stuck
     try:  # A view only: a malformed record must not stop the dashboard publishing.
         status['stuck'] = bounded_stuck(dict(stuck(state, status['at'], cfg=controller.config, base=controller.base,
-            probe=reg.probe), available_workers=status['worker_roster']['available_workers']))
+            probe=reg.probe, root=reg.root), available_workers=status['worker_roster']['available_workers']))
     except (Rejected, KeyError, TypeError, ValueError, AttributeError, OSError) as exc:
         status['stuck'] = dict(error='Stuck view unavailable: %s' % (str(exc) or type(exc).__name__))
     from .shipping import dashboard as delivery

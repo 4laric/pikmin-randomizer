@@ -19,7 +19,7 @@ Commands below run from the canonical root, `C:/Users/alari/pikmin-randomizer`.
 | Config, heads of every checkout, controller release | `py -3.12 scripts/workflow_module.py inspect config` |
 | Which done work is shipped, pushed, only on a line, or only on this disk? | `py -3.12 scripts/workflow_module.py inspect delivery` |
 | Which branches hold the receipts; what to declare as lines and target | `py -3.12 scripts/workflow_module.py inspect delivery-suggest` |
-| Bounded promotion batches from a line to the release target | `py -3.12 scripts/workflow_module.py inspect promotion-plan root\|native [--line REF --target REF] [--json] [--out output/<stem>]` |
+| Bounded promotion batches from a line to the release target | `py -3.12 scripts/workflow_module.py inspect promotion-plan root\|native [--line REF --target REF] [--json] [--out output/<stem> [--force]]` |
 | Receipt, admission and batch actions | `py -3.12 -m workflow.operator [--json]` |
 | Is the controller alive, supervised and on clean code? | `py -3.12 scripts/workflow_module.py service status --root <root>` |
 | Stall streaks and parked lanes | `py -3.12 scripts/workflow_module.py no_progress --root <root>` |
@@ -47,7 +47,9 @@ an empty list. Below it, the **Delivery** cards summarize `inspect delivery` (se
 Delivery below). The delivery verbs also read the root and native git repositories
 with bounded, non-fetching git calls (a cap and a 60 s timeout per call; merge-tree
 writes its trial objects to a deleted scratch directory); `promotion-plan --out`
-writes only `<stem>.json` and `<stem>.md` under output/.
+writes only `<stem>.json` and `<stem>.md` below output/, never under output/workflow/
+(controller config, registry, published status) and never over an existing file
+without `--force`.
 Workers are told to read state with the same `inspect` command (the release's
 absolute path) instead of writing Registry or sqlite scripts.
 
@@ -69,8 +71,10 @@ absolute path) instead of writing Registry or sqlite scripts.
 **Machine-wide** lists the controller down (or no claim), a RAM launch pause, a
 build-admission pause, `config_unread`, `integration_lines_undeclared` (review
 packets cannot be re-pinned, requested or decided; landings are checked against any
-branch; the item counts open lanes holding shared hooks) and `release_target_undeclared`
-(shipped cannot be told from integrated; see Delivery). `review_packet request`
+branch; the item counts open lanes holding shared hooks), `release_target_undeclared`
+(shipped cannot be told from integrated; see Delivery) and `release_target_malformed`.
+The release_target items read the canonical config file on every publish, as delivery
+does, so they clear without a restart. `review_packet request`
 refuses before recording anything while the line is undeclared, so that item, not
 `packet_refused`, is where those refusals show.
 
@@ -181,15 +185,20 @@ never leave the registry):
 | `off-line` | On none of those (a side branch, a preparation worktree) |
 | `missing` | Not a commit of that repository (e.g. a root sha recorded as native_commit) |
 | `undeclared` | No `release_target` for that side (or no line for an unpushed commit); never guessed |
+| `no-native-receipt` | The lane changed native code but its receipt names no native commit |
 | `truncated` / `unverifiable` | Over a cap / git failed for that repository (the error is shown) |
-| `done-no-code` | Done lane without an integration receipt (lane level) |
+| `done-no-code` | Done lane without an integration receipt whose source records show no commits (lane level) |
+| `done-unreceipted` | Done lane without an integration receipt whose root or native source has commits or a moved head: code no receipt tracks, so it is in no unpushed or unshipped count (lane level; the first 10 keys are listed) |
 
 It also lists unpushed receipts (commits no ref of the off-disk remote reaches, whatever
-the config says) with the oldest, the oldest unshipped receipt, and the declared line's
-ahead/behind, unpushed commits and conflicting paths against the target. A remote whose
-URL is a local path (native `origin` is `C:\Users\alari\Documents\ChatGPT\decomp\pikmin-research`)
-never counts. Only local refs are read: run `git fetch origin` (root) and `git fetch fork`
-(native) yourself first for current remote state.
+the config says) with the oldest, the oldest unshipped receipt (any evaluated receipt the
+declared target does not contain, even when an undeclared line leaves its class
+`undeclared`), and the declared line's ahead/behind, unpushed commits and conflicting
+paths against the target. A remote whose URL is a local path (native `origin` is
+`C:\Users\alari\Documents\ChatGPT\decomp\pikmin-research`) never counts. Only local refs
+are read, and a remote-tracking ref of a branch deleted upstream stays until a pruning
+fetch, so run `git fetch --prune origin` (root) and `git fetch --prune fork` (native)
+yourself first; otherwise `pushed` may count commits that are no longer off-disk.
 
 **Declaring the lines and the target.** Neither is declared today. `inspect
 delivery-suggest` counts, per repository, how many receipt commits each local branch and
@@ -197,7 +206,11 @@ remote-tracking ref holds, picks up to three distinct candidate lines (a branch 
 receipts an earlier candidate already holds is a copy and is skipped), compares each with
 the off-disk remote's default branch (ahead/behind and conflicting paths through `git
 merge-tree --write-tree`, skipped on an older git) and the first two with each other, and
-prints a config snippet for the top candidates. It never writes the config. On
+prints a config snippet for the top candidates. It never writes the config. Warnings
+print beside the snippet when other candidates hold receipts the top line lacks (they
+would classify `off-line`) or when fewer than half the lanes whose native receipt is on
+the top native line have their root receipt on the top root line (lines of different
+waves). On
 2026-09-19 it found two divergent root lines: `codex/content-lanes-531` (130 of 220
 receipt commits, 388 ahead / 32 behind origin/main, 9 conflicting paths) and
 `claude/p2-deepseek-wave` (84 others, 1,598 ahead / 7 behind, 2 conflicts), with 151
@@ -228,11 +241,16 @@ files first (root `engine/`, `include/`, `src/`, `pc_port/`; native `pc_port/`, 
 modifications next (40, 20), additive files last (200, 40). Each batch lists its files,
 the receipts it carries (attributed through each lane's landing proof or base..head
 diff; `partial` when a receipt spans batches; files no receipt changed are counted) and a
-stub of review-packet-v1 inputs for its shared paths (candidates at the line tip,
-maintained side on the target, which a packet needs checked out in a worktree). It
-prints markdown (`--json` for data) or writes both with `--out output/<stem>`. It
-creates no branch, commit or PR. Promote batch by batch: build a branch from the target
-with that batch's files, commit the packet under `tools/review_packets/` from the stub
+stub of review-packet-v1 inputs for its shared paths (candidates at the line tip). The
+maintained side is the target when it is a branch checked out in its declared repo;
+otherwise (a remote-tracking target such as `origin/main`) it is a promotion branch
+`promote/<batch id>` in a worktree at `output/promotion/<batch id>`, and the batch's
+`maintained_line_required` says to create that worktree from the target tip first,
+because review packets verify only a checked-out branch. A plan whose receipts pass the
+commit cap says `truncated: receipts` and counts them as not evaluated, never missing.
+It prints markdown (`--json` for data) or writes both with `--out output/<stem>`. It
+creates no branch, commit or PR. Promote batch by batch: build that promotion branch from
+the target with the batch's files, commit the packet under `tools/review_packets/` from the stub
 inputs, get the #186 review, open the PR to the target, and let a person merge it.
 Receipts become `shipped` only when the target ref (after a fetch) contains them.
 
@@ -309,7 +327,7 @@ ones.
 
 Nothing writes this for you; add it to a settings file yourself if you want these
 reads to run without prompts. Every entry below is read-only for all arguments, except
-that `inspect promotion-plan --out` writes the two named plan files under output/.
+that `inspect promotion-plan --out` writes the two named plan files below output/.
 Do not allowlist `scripts/pikmin2_workflow.py`, `workflow_module.py` as a whole,
 `registry_wal`, `registry_archive`, `landing_audit` (its `--out` writes a file),
 `review_packet` beyond `verify`, `delivery_contracts` (`--request` writes),
