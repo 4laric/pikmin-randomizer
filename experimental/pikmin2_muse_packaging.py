@@ -16,14 +16,15 @@ Design (honest local candidate staging only):
     (the existing shared-contract pikmin2_bombsarai_install module, now
     mapped in IDENTITY_FAMILY). Its manifest/pose hash checks stay
     authoritative inside that installer.
-  - Sources 41/57/78/99 have no shared-signature family installer (Fuefuki is
-    bespoke install(run_dir)-only; the flying installer covers 29/55/77;
-    the cannon installer covers 97 FminiHoudai, not 78 MiniHoudai; the
-    batch-2 waterwraith installer is bespoke install(imported, run,
-    actors)-only and its family runner stays with consumer #572), so they
-    stage as hash-verified candidate sidecars: a validated
-    <content_root>/<Enum>/identity.json copy plus a generator actors file.
-    No asset conversion, no resolve markers, no admission claims.
+  - Sources 41/99 have no shared-signature family installer (Fuefuki is
+    bespoke install(run_dir)-only; the batch-2 waterwraith installer is
+    bespoke install(imported, run, actors)-only and its family runner stays
+    with consumer #572), so they stage as hash-verified candidate sidecars:
+    a validated <content_root>/<Enum>/identity.json copy plus a generator
+    actors file. No asset conversion, no resolve markers, no admission
+    claims. Sources 57/78 keep this candidate path AND gained a family
+    binding in #442 (kurage/minihoudai adapters emitting the native teki
+    sidecars); the candidate path here is unchanged.
   - Source 98 (Tyre) is an owned boss helper, never an independent seeded
     identity: a 98 binding stages only alongside a 99 binding on the same
     target with the same generator, and its sidecar records owner linkage.

@@ -68,12 +68,10 @@ _OVERRIDES = {}
 #
 # Muse packaging lane (#493): source 58 (BombSarai) reuses the existing shared-
 # contract ``experimental.pikmin2_bombsarai_install`` module as-is through this
-# mapping. Sources 41 (Fuefuki), 57 (Kurage) and 78 (MiniHoudai) have no shared-
-# signature family installer (Fuefuki is bespoke ``install(run_dir)``-only;
-# flying covers 29/55/77 and cannon covers 97 FminiHoudai, not these three), so
-# they intentionally stay unmapped here and stage through the candidate-only
-# ``experimental.pikmin2_muse_packaging`` sidecar path instead of a forced
-# family binding. See MUSE_CANDIDATE_IDS below.
+# mapping. Source 41 (Fuefuki) has no shared-signature family installer
+# (bespoke ``install(run_dir)``-only) and stays candidate-only; Kurage (57)
+# and MiniHoudai (78) now also bind here through the #442 adapters below while
+# keeping their candidate-only muse_packaging path. See MUSE_CANDIDATE_IDS.
 MUSE_CANDIDATE_IDS = frozenset({41, 57, 58, 78})
 IDENTITY_FAMILY = {
     44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
@@ -92,10 +90,17 @@ IDENTITY_FAMILY = {
     # reuses the existing shared-contract bombsarai installer as-is.
     58: 'bombsarai', 'bombsarai': 'bombsarai',
     # Admission 2026-09-16 (#530 defect D1): Miulin (Mamuta, source 54) reuses
-    # the existing shared-contract mamuta installer. Kurage (57) and MiniHoudai
-    # (78) intentionally stay unmapped and stage through the candidate-only
-    # pikmin2_muse_packaging sidecar path (recorded limitation).
+    # the existing shared-contract mamuta installer.
     54: 'mamuta', 'miulin': 'mamuta',
+    # rd-p2ap-installers (#442): Kogane (9), Sokkuri (79), Kurage (57) and
+    # MiniHoudai (78) now bind through the adapters below so a layout covering
+    # all 11 admitted ids stages without raising. Kurage/MiniHoudai keep their
+    # candidate-only muse_packaging path as well; the family path emits the
+    # same native teki sidecars the bridge-mode setups read.
+    9: 'kogane', 'kogane': 'kogane',
+    79: 'sokkuri', 'sokkuri': 'sokkuri',
+    57: 'kurage', 'kurage': 'kurage',
+    78: 'minihoudai', 'minihoudai': 'minihoudai',
 }
 
 
@@ -242,6 +247,247 @@ def _adapt_sarai(source, run, actors):
                 actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
 
 
+KOGANE_NATIVE_TXT = 'p2-kogane-native.txt'
+KOGANE_NATIVE_HEADER = 'P2_KOGANE_NATIVE_1'
+KURAGE_TEKI_TXT = 'p2-kurage-teki.txt'
+KURAGE_TEKI_HEADER = 'P2_KURAGE_TEKI_1'
+GROINK_TEKI_TXT = 'p2-groink-teki.txt'
+GROINK_TEKI_HEADER = 'P2_GROINK_TEKI_1'
+
+
+def _validate_kogane(source):
+    """Pre-flight check for the Kogane (Iridescent Flint Beetle, source 9) content.
+
+    The source is the kogane bank dir (``beetles.json`` + ``shared/*.mod``)
+    consumed as-is by ``experimental.pikmin2_kogane_install``; the full hash
+    contract stays authoritative inside that installer.
+    """
+    source = Path(source)
+    bank_json = source / 'beetles.json'
+    if not bank_json.is_file():
+        raise StagingError(f'Kogane bank missing for identity content: {bank_json}')
+    try:
+        metadata = json.loads(bank_json.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Kogane bank unreadable for identity content: {bank_json}') from error
+    if metadata.get('schema') != 1 or metadata.get('family') != 'Kogane':
+        raise StagingError(f'Kogane bank identity mismatch for identity content: {bank_json}')
+
+
+def _kogane_native_text(generators):
+    """Minimal valid ``p2-kogane-native.txt`` for the native policy parser.
+
+    Emits ``karada 0`` with one actor row per generator (species 9) and the
+    three required clips (move/wait/damage) in the exact
+    ``pc_p2_kogane_policy.h::read`` shape. In bridge mode the native setup
+    replaces these ids from the seed (``pc_p2_campaign_ids(9)``), so the filed
+    generators are placeholders there; outside bridge mode they bind directly.
+    """
+    gens = sorted(int(g) for g in generators)
+    if not gens or len(set(gens)) != len(gens) or any(not 0 < g <= 0xFFFFFFFF for g in gens):
+        raise StagingError('Kogane install requires unique non-zero generators')
+    parts = [KOGANE_NATIVE_HEADER, 'karada 0', f'actors {len(gens)}']
+    parts += [f'{g} 9' for g in gens]
+    parts += ['move 2 12 0 11', 'wait 2 15 0 14', 'damage 2 30 0 29']
+    return (' '.join(parts) + '\n').encode('ascii')
+
+
+def _adapt_kogane(source, run, actors):
+    """Adapter for Kogane (source 9): bank install + native sidecar.
+
+    Reuses ``experimental.pikmin2_kogane_install.install`` for the
+    ``p2-kogane-*.txt`` configs and ``kogane_*.mod`` visuals, then emits the
+    ``p2-kogane-native.txt`` sidecar the native ``pc_p2_kogane_setup`` parses.
+    ``install_layout`` groups by family, so this runs once per layout with all
+    Kogane generators; direct per-binding repeat calls refuse (like the shared
+    batch-2 installers) instead of silently overwriting.
+    """
+    from experimental import pikmin2_kogane_install as kogane
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'Kogane':
+            raise StagingError(f'Kogane adapter got non-Kogane species: {species!r}')
+    if not generators:
+        raise StagingError('Kogane install requires at least one generator')
+    try:
+        kogane_receipt = kogane.install(Path(source), run, generators)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    payload = _kogane_native_text(generators)
+    path = run / KOGANE_NATIVE_TXT
+    if path.exists():
+        raise StagingError(f'Refusing existing/conflicting Kogane native sidecar: {path}')
+    path.write_bytes(payload)
+    return dict(species='Kogane', source_id=9, generators=sorted(generators),
+                native_config_sha256=hashlib.sha256(payload).hexdigest(),
+                kogane_receipt=kogane_receipt)
+
+
+def _validate_sokkuri(source):
+    """Pre-flight check for the Sokkuri (Skitter Leaf, source 79) content.
+
+    The source is the ground-invertebrate import dir
+    (``ground_inverts.json``) consumed as-is by
+    ``experimental.pikmin2_ground_inverts_install``; the full schema/policy
+    contract stays authoritative inside that installer.
+    """
+    source = Path(source)
+    manifest = source / 'ground_inverts.json'
+    if not manifest.is_file():
+        raise StagingError(f'Sokkuri ground manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Sokkuri ground manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or species.get('Sokkuri') != 79:
+        # Manifests key species by name to enemy id in batch-2 shape; also
+        # accept the nested ``{'enemy_id': 79}`` shape.
+        entry = species.get('Sokkuri')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or enemy_id != 79:
+            raise StagingError(f'Sokkuri ground manifest identity mismatch: {manifest}')
+
+
+def _adapt_sokkuri(source, run, actors):
+    """Adapter for Sokkuri (source 79) via the ground-invertebrate installer.
+
+    Writes ``p2-ground-actors.txt`` + ``p2-ground-bank.txt`` (plus profile and
+    visuals) in the exact batch-2 shape the native ``pc_p2_sokkuri_setup``
+    parses (``P2_GROUND_ACTORS_1`` + ``P2_GROUND_BANK_1``). In bridge mode the
+    native setup replaces the filed ids from the seed (``pc_p2_campaign_ids``),
+    so filed generators are placeholders there; outside bridge mode they bind.
+    """
+    from experimental import pikmin2_ground_inverts_install as ground
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'Sokkuri':
+            raise StagingError(f'Sokkuri adapter got non-Sokkuri species: {species!r}')
+    if not pairs:
+        raise StagingError('Sokkuri install requires at least one generator')
+    try:
+        receipt = ground.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='Sokkuri', source_id=79,
+                generators=[g for g, _ in pairs], ground_receipt=receipt)
+
+
+def _read_identity_source(source, source_id, enum_name):
+    path = Path(source) / 'identity.json'
+    if not path.is_file():
+        raise StagingError(f'missing identity source for {enum_name!r}: {path}')
+    try:
+        metadata = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'unreadable identity source for {enum_name!r}: {path}') from error
+    if (not isinstance(metadata, dict) or metadata.get('schema') != 1
+            or metadata.get('source_id') != source_id
+            or metadata.get('enum_name') != enum_name):
+        raise StagingError(f'identity source mismatch for {enum_name!r}: {path}')
+    return path
+
+
+def _validate_kurage(source):
+    """Pre-flight check for the Kurage (Lesser Spotted Jellyfloat, source 57) content."""
+    _read_identity_source(source, 57, 'Kurage')
+
+
+def _parse_kurage_sidecar(text):
+    tokens = text.split()
+    if len(tokens) != 4 or tokens[0] != KURAGE_TEKI_HEADER or tokens[1] != '1':
+        raise StagingError(f'existing {KURAGE_TEKI_TXT} is malformed')
+    try:
+        generator, teki_type = int(tokens[2]), int(tokens[3])
+    except ValueError as error:
+        raise StagingError(f'existing {KURAGE_TEKI_TXT} is malformed') from error
+    if generator <= 0 or teki_type != 0:
+        raise StagingError(f'existing {KURAGE_TEKI_TXT} is malformed')
+    return generator
+
+
+def _adapt_kurage(source, run, actors):
+    """Adapter for Kurage (source 57): emit ``p2-kurage-teki.txt``.
+
+    Exact native shape (``pc_p2_kurage_teki_policy.h::read``) is
+    ``P2_KURAGE_TEKI_1 1 <generator> 0`` (Frog type 0 vehicle). In bridge mode
+    the native setup takes the bound actor from the seed
+    (``pc_p2_campaign_source == 57``), so the filed generator is a placeholder
+    there; outside bridge mode it binds directly. Idempotent: a second call
+    with the same run reuses the staged placeholder instead of overwriting.
+    """
+    _read_identity_source(source, 57, 'Kurage')
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'Kurage':
+            raise StagingError(f'Kurage adapter got non-Kurage species: {species!r}')
+    if not generators:
+        raise StagingError('Kurage install requires at least one generator')
+    path = run / KURAGE_TEKI_TXT
+    if path.is_file():
+        _parse_kurage_sidecar(path.read_text(encoding='ascii'))
+        existing = path.read_bytes()
+        return dict(species='Kurage', source_id=57, generators=sorted(set(generators)),
+                    actors_config_sha256=hashlib.sha256(existing).hexdigest(),
+                    placeholder_generator=True)
+    placeholder = sorted(set(generators))[0]
+    payload = f'{KURAGE_TEKI_HEADER} 1 {placeholder} 0\n'.encode('ascii')
+    path.write_bytes(payload)
+    return dict(species='Kurage', source_id=57, generators=sorted(set(generators)),
+                actors_config_sha256=hashlib.sha256(payload).hexdigest(),
+                placeholder_generator=True)
+
+
+def _validate_minihoudai(source):
+    """Pre-flight check for MiniHoudai (Gatling Groink, source 78) content."""
+    _read_identity_source(source, 78, 'MiniHoudai')
+
+
+def _adapt_minihoudai(source, run, actors):
+    """Adapter for MiniHoudai (source 78): emit ``p2-groink-teki.txt``.
+
+    Reuses ``experimental.pikmin2_groink_carcass_teki.sidecar_config`` so the
+    bytes match the native ``p2groink::read`` shape exactly (short
+    gauge/recovery profile, Frog type 0 host). In bridge mode the native setup
+    takes the bound actor from the seed (source 78), so the filed generator is
+    a placeholder there; outside bridge mode it binds directly. Idempotent
+    across repeat calls like the Kurage adapter.
+    """
+    from experimental.pikmin2_groink_carcass_teki import sidecar_config
+    _read_identity_source(source, 78, 'MiniHoudai')
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'MiniHoudai':
+            raise StagingError(f'MiniHoudai adapter got non-MiniHoudai species: {species!r}')
+    if not generators:
+        raise StagingError('MiniHoudai install requires at least one generator')
+    path = run / GROINK_TEKI_TXT
+    if path.is_file():
+        existing = path.read_bytes()
+        try:
+            text = existing.decode('ascii')
+        except UnicodeDecodeError as error:
+            raise StagingError(f'existing {GROINK_TEKI_TXT} is malformed') from error
+        tokens = text.split()
+        if len(tokens) < 5 or tokens[0] != GROINK_TEKI_HEADER:
+            raise StagingError(f'existing {GROINK_TEKI_TXT} is malformed')
+        return dict(species='MiniHoudai', source_id=78, generators=sorted(set(generators)),
+                    actors_config_sha256=hashlib.sha256(existing).hexdigest(),
+                    placeholder_generator=True)
+    placeholder = sorted(set(generators))[0]
+    try:
+        payload = sidecar_config(placeholder, 0, 2.0, 3.0, 1200.0).encode('ascii')
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    path.write_bytes(payload)
+    return dict(species='MiniHoudai', source_id=78, generators=sorted(set(generators)),
+                actors_config_sha256=hashlib.sha256(payload).hexdigest(),
+                placeholder_generator=True)
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
@@ -250,6 +496,10 @@ ADAPTERS = {
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
     'kochappy': {'install': _adapt_kochappy, 'validate': _validate_kochappy},
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
+    'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
+    'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
+    'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
+    'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
 }
 
 
@@ -549,10 +799,24 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
     run.mkdir(parents=True, exist_ok=True)
     if retail_assets is not None:
         prepare_private_destination(run, Path(retail_assets))
+    # Group by family so one layout can bind several identities that share a
+    # family installer (notably the four elemental Otakara species 59-62, all
+    # ``dweevil``). Family installers take ``(source, run, actors)`` with the
+    # full actor list; the representative source is the first binding's enum
+    # dir (multi-enum families must carry the full family manifest in each
+    # enum dir). The per-target receipt map keeps one entry per binding target
+    # sharing the family's single receipt.
+    grouped = {}
+    for target, enum_name, family, source, generator in plans:
+        grouped.setdefault(family, {'source': source, 'actors': [], 'targets': []})
+        grouped[family]['actors'].append((generator, enum_name))
+        grouped[family]['targets'].append(target)
     receipts = {}
     try:
-        for target, enum_name, family, source, generator in plans:
-            receipts[target] = _installer(family)(source, run, [(generator, enum_name)])
+        for family, group in grouped.items():
+            receipt = _installer(family)(group['source'], run, group['actors'])
+            for target in group['targets']:
+                receipts[target] = receipt
     except BaseException:
         # A family installer that fails mid-copy must not leave a partial asset
         # tree or run-root sidecars (e.g. p2-snow.txt copied by the Snow adapter):
