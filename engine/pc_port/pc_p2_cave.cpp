@@ -44,6 +44,7 @@ bool cargoTerminal=false;
 int checkpointSchema=1;
 std::string token;
 bool requested=false;
+bool tutorialEntry=false;
 bool completed=false;
 float titleTimer=0;
 P2CaveAnchor anchor;
@@ -53,23 +54,26 @@ unsigned navDrawCalls=0;
 bool navMarkerLogged=false;
 using Survivor = P2CaveSurvivor;
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
-// Tutorial later-floors entry extension (lane tutorial2-descend-policy-native,
-// #757; consumer #747). The shared header pc_p2_cave_entry_policy.h stays
-// read-only for this lane, so the new version maps here: P2_CAVE_ENTRY_4
-// admits tutorial staged floors 3-8 under the same 32-hex token contract as
-// Tutorial floors 1-2, and routes them to the Tutorial (non-beasts) path.
-// All previously valid (version, floor) pairs behave exactly as before;
-// floor 9+ stays Invalid (floor-9 cargo + persistence are follow-ons).
+// Tutorial later-floors entry admission (lanes tutorial2-descend-policy-native
+// #757 + tutorial2-floor9-descend #807; consumer #747). NEW version admission
+// (not a port): the shared header pc_p2_cave_entry_policy.h knows no
+// P2_CAVE_ENTRY_4 version, so this TU-local mapping newly admits ENTRY_4 for
+// tutorial staged floors 3-9 under the 32-hex token contract. Floors 3-8 are
+// admitted here alongside floor 9 because the staged tutorial_2 floors 3-9
+// uniformly carry ENTRY_4 headers (pins #757/#805) and the engine must accept
+// the whole chain to reach floor 9; previously Invalid (version, floor) pairs
+// outside this mapping still refuse exactly as before. The shared header
+// stays read-only.
 P2CaveEntryProfile p2_tutorial2_entry_profile(const std::string& version, int floor, const std::string& token){
-    if(version=="P2_CAVE_ENTRY_4" && floor>=3 && floor<=8 && token.size()==32
+    if(version=="P2_CAVE_ENTRY_4" && floor>=3 && floor<=9 && token.size()==32
         && token.find_first_not_of("0123456789abcdef")==std::string::npos)
         return P2CaveEntryProfile::Tutorial;
     return P2CaveEntryProfile::Invalid;
 }
-// Tutorial descend range: floors 1-7 transition downward (BulbminDescendFloor);
-// floor 8 is terminal until the floor-9 follow-on, so its transition exits.
+// Tutorial descend range: floors 1-8 transition downward (BulbminDescendFloor);
+// floor 9 exits terminal (no floor 10).
 // Beasts behavior is untouched (separate arms below).
-bool p2_tutorial_descends(int floor){return floor>=1 && floor<=7;}
+bool p2_tutorial_descends(int floor){return floor>=1 && floor<=8;}
 bool active(){return floorId && !completed && p2CavePreviewReady(beasts,floorId,pc_p2_preview_cargo_free_ready(),pc_p2_preview_ready(),pc_p2_preview_goal()!=nullptr,pc_p2_preview_cargo_count(),pc_p2_preview_pokos(),cargoTerminal) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
     && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd;}
@@ -102,32 +106,36 @@ int pc_p2_cave_floor(){return floorId;}
 bool pc_p2_cave_is_beasts(){return beasts;}
 std::string pc_p2_cave_boundary_token(){return token;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
-// Non-aborting entry-header validator for the descend fixture's
-// --check-entry mode. Same mapping + header rules as pc_p2_cave_setup
-// (shared profile, tutorial2 extension, health/count/schema/trailing
-// checks) without touching engine state and never aborting. The header
-// pc_p2_cave.h stays read-only for this lane; the fixture extern-declares
-// this symbol (established pattern).
+// Non-aborting entry-header validator (external linkage for the fixture;
+// defined at file scope outside the anonymous namespace). C stdio only
+// (no iostream sentries) so the engine-free --check-entry diagnostic cannot
+// fault on runtime init. Same mapping + header rules as pc_p2_cave_setup
+// (shared profile, tutorial2 extension incl. floor 9, health/count/trailing
+// checks) without touching engine state and never aborting.
 bool pc_p2_tutorial2_entry_check(const char* path, int* floorOut){
-    std::ifstream in(path?path:"");
-    if(!in)return false;
-    std::string version,token,extra;int floor=0,count=0;float health=0;
-    if(!(in>>version>>token>>floor>>health>>count))return false;
-    P2CaveEntryProfile profile=p2_cave_entry_profile(version,floor,token);
-    if(profile==P2CaveEntryProfile::Invalid)profile=p2_tutorial2_entry_profile(version,floor,token);
-    if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
-        return false;
-    const int schema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
-    for(int i=0;i<count;++i){int species=0,maturity=0;
-        if(!(in>>species>>maturity) || !p2_schema_supports(schema,species))return false;}
-    if(in>>extra || !in.eof())return false;
-    if(floorOut)*floorOut=floor;
-    return true;
+    if(!path || !path[0])return false;
+    FILE* fh=std::fopen(path,"rb");
+    if(!fh)return false;
+    char version[64]={0},token[256]={0},extra[256]={0};
+    int floor=0,count=0;float health=0;
+    int ok=std::fscanf(fh,"%63s %255s %d %f %d",version,token,&floor,&health,&count)==5;
+    if(ok){
+        std::string vs(version),tk(token);
+        P2CaveEntryProfile profile=p2_cave_entry_profile(vs,floor,tk);
+        if(profile==P2CaveEntryProfile::Invalid)profile=p2_tutorial2_entry_profile(vs,floor,tk);
+        ok=(profile!=P2CaveEntryProfile::Invalid && health>0 && health<=1 && count>=1 && count<=100);
+    }
+    for(int i=0;ok && i<count;++i){int species=0,maturity=0;
+        if(std::fscanf(fh,"%d %d",&species,&maturity)!=2)ok=0;}
+    if(ok && std::fscanf(fh,"%255s",extra)==1)ok=0;
+    std::fclose(fh);
+    if(ok && floorOut)*floorOut=floor;
+    return ok!=0;
 }
 void pc_p2_cave_setup(){
     const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
     navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
-    floorId=0;checkpointSchema=1;beasts=false;cargoTerminal=false;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
+    floorId=0;checkpointSchema=1;beasts=false;cargoTerminal=false;token.clear();requested=false;tutorialEntry=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     // yakushima4 boot-stall fix (#673): the pre-stage stall was a SILENT return.
     // Emit an explicit fail-closed marker naming the exact blocked precondition so
     // the guarded boot cannot stall without evidence before any stage load.
@@ -144,6 +152,7 @@ void pc_p2_cave_setup(){
     beasts=admitted==P2CaveEntryProfile::BeastsFloor2 || admitted==P2CaveEntryProfile::BeastsFloor3 || admitted==P2CaveEntryProfile::BeastsFloor4;
     if(admitted==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
+    tutorialEntry=(profile==P2CaveEntryProfile::Invalid && admitted!=P2CaveEntryProfile::Invalid);
     std::vector<Survivor> squad;
     checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
     for(int i=0;i<count;++i){Survivor s;if(!(in>>s.species>>s.maturity) || !p2_schema_supports(checkpointSchema,s.species) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
@@ -163,10 +172,10 @@ void pc_p2_cave_setup(){
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
-    if(!beasts){
-        // In-band descend-policy proof (#757): emitted from the engine on
-        // every tutorial entry; floors 1-7 descend, floor 8 exits terminal
-        // until the floor-9 follow-on.
+    if(!beasts && tutorialEntry){
+        // In-band descend-policy proof (#757/#807): emitted from the engine
+        // on tutorial-admitted entries only; floors 1-8 descend, floor 9
+        // exits terminal.
         std::printf("P2_TUTORIAL2_DESCEND_POLICY floor=%d descend=%d\n",
                     floor,p2_tutorial_descends(floor)?1:0);
         std::fflush(stdout);
@@ -250,7 +259,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
         if(confirm)notice(anchor.enabled?"Stand at the hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
     }
     if(confirm && !failed){
-        const char* action=(beasts || p2_tutorial_descends(floorId))?"Descend":"Leave cave";
+        const char* action=(beasts || (!tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"Descend":"Leave cave";
         std::string message=std::string(action)+" with all "+std::to_string(alive.size())+" surviving Pikmin?\n"
             "Uncollected treasure stays behind. Your squad and delivered treasure will be saved together.";
         const SDL_MessageBoxButtonData buttons[]={{SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,"Stay"},{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,1,action}};
@@ -310,7 +319,7 @@ void pc_p2_cave_tick(){
         titleTimer=0;
         int count=0,purples=0,whites=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;if(pc_p2_is_white(p))++whites;}}
         const std::string transition=beasts && floorId>=3?" | Floor "+std::to_string(floorId+1)+" descent unavailable":
-            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || p2_tutorial_descends(floorId))?"descend":"leave cave")+" | Saves at floor boundaries";
+            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || (!tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"descend":"leave cave")+" | Saves at floor boundaries";
         std::string title=std::string("Pikipelago - ")+caveName()+" | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple, "+std::to_string(whites)+" White) | "+std::to_string(pc_p2_preview_pokos())+" Pokos"+transition;
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
     }

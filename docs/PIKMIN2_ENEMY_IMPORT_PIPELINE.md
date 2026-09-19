@@ -132,7 +132,7 @@ level or a requirement to finish every easier enemy before parallel research.
 | Lifecycle worker | Tank/Wtank model, motion and parameter import | #170 | #195 |
 | Enemy worker | Qurione model, motion, reward attachment contract | #166 | #196 |
 | Separate Groink task | Static arena projectile/map collision and visual acceptance | #169 | Existing handoff |
-| Integration lead | Shared review/build/export; cave diagnostics #193 | #186 | #193 |
+| Integration lead | Shared-semantics review, maintained build/export serialization; cave diagnostics #193 | #186 | #193 |
 | Kimi | Independent cave return acceptance; later immutable family bundles | #184 | #184 |
 
 This historical allocation began with extraction/profile work. Under the current workflow, owners may continue through native mechanics and private runtime evidence. No shared native ID ranges are allocated by this table; record reservations in the coordination issue.
@@ -151,7 +151,7 @@ This update supersedes the initial queue above. User confirmed additional Kimi s
 | Kimi | Mamuta | #214 |
 | Separate hard-enemy task | Demon/Sarai capture family | #215 |
 | Root subagents | Frog/Honeywisp material fixes; Tank movie-heap diagnosis | #207 |
-| Root integration | Shared converter/native hooks/build/export; cave diagnostics | #186, #193 |
+| Root integration | Shared-semantics review, maintained build/export serialization, cave diagnostics | #186, #193 |
 
 Groink revival is parked by user direction. This table is a historical claim snapshot; check current issues for delivery status. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Family owners now supply complete private native candidates under the current workflow. Fixed independent QA184 remains a separate unfinished acceptance scope.
 

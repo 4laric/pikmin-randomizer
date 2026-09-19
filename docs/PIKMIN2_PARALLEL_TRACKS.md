@@ -1,7 +1,8 @@
 # Parallel Emergence Cave implementation
 
-Historical starting allocation below. [The current workflow](PIKMIN2_WORKFLOW.md)
-supersedes its ownership/review restrictions; current issue claims identify active workers.
+> Historical track allocation. Current execution, resources and recovery follow
+> [PIKMIN2_WORKFLOW.md](PIKMIN2_WORKFLOW.md); current pushes follow
+> [AGENTS.md](../AGENTS.md#git-push-policy). These assignments are not a live lane registry.
 
 Integration owner: Codex using shared GitHub account 4laric, [#114](https://github.com/4laric/pikmin-randomizer/issues/114). All work remains experimental and outside v0.1. Starting point: root `530fd17`, native `a78ea6d6`.
 

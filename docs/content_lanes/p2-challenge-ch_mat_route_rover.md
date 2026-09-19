@@ -1,0 +1,97 @@
+# p2-challenge-ch_mat_route_rover import contract (P0, issue #561)
+
+Lane `p2-challenge-ch_mat_route_rover`, phase P0 (source audit and additive
+import contract). Implementation owner: Codex through shared account `4laric`;
+executing contributor Muse Spark 1.3 through OpenCode. Parent content issue
+#137; coordination #531; autonomous backlog parent #569; integration owner
+#437. This document specifies the validated import contract; the
+machine-readable packet is produced by
+`experimental/content_lanes/p2-challenge-ch_mat_route_rover.py` and tested by
+`tests/content_lanes/test_p2_challenge_ch_mat_route_rover.py` (15/15 pass).
+
+## Source identity
+
+- Source ID `ch_MAT_route_rover`, label `P2 Challenge 28: ch_MAT_route_rover`
+  (English title unresolved; source ID and UI index 27 are authoritative).
+- Definition: `user/Mukki/mapunits/caveinfo/ch_MAT_route_rover.txt`, recorded
+  sha256
+  `e03eb33a78526adb13eebd08af453555bc9cd219f6a3e624b28a0771ea12cb79`
+  (inventory evidence pin, equal to the plan pin; the disc was unavailable to
+  this turn, so no bytes were re-extracted).
+- Stage table: `user/Matoba/challenge/stages.txt`, recorded sha256
+  `59890efa80fe5a77d52b9a87301b97c91cd10c94ff9a3fb85c49b78dfae03cf1`.
+- Baseline inputs: lane-plan entry (`docs/PIKMIN_CONTENT_IMPORT_LANES.json`)
+  and the 30-stage inventory collection
+  (`docs/PIKMIN2_CONTENT_INVENTORY.json`, table orders and UI indices each
+  exactly 0-29 with no collision/gap, floor total 59). All agree; any drift
+  fails the adapter closed.
+
+## Stage contract (verbatim definitions, not gameplay)
+
+| Field | Pinned value |
+|---|---|
+| Table order / UI index | 21 / 27 |
+| Floors | 1, with floor_seconds [90.0] (timer total 90.0) |
+| Starting Pikmin | 60 total: native color indices 0, 1 and 2, maturity index 2, count 20 each |
+| Sprays | bitter 2, spicy 2 |
+| Legacy time | 300.0 |
+| Treasure-count field | 0 |
+
+Native color/maturity indices are carried as indices, never guessed into
+species names. The backlog label ordinal (`P2 Challenge 28`) is **not** the UI
+index; across the 30-stage catalog the label ordinal equals `ui_index + 1`
+(verified), and this lane's UI index is 27.
+
+## Floor coverage
+
+Exactly one floor (1..1) with exactly one timer entry; the adapter reports a
+`floor_coverage` block (`complete: true`, `timer_total: 90.0`) and fails
+closed if floors and `floor_seconds` ever disagree. Per-floor enemy/treasure
+rosters are **not** decoded here: the caveinfo bytes were unavailable, so the
+packet records `floor_roster_decode: OPEN` and invents no roster values.
+Timers/sprays/populations are definition inputs for the P1 framework (#136),
+not observed gameplay.
+
+## Resource closure (status and owner per required resource)
+
+| Resource | Status | Owner |
+|---|---|---|
+| Stage definition bytes | pinned-not-read (sha256 recorded) | content lane #561 (decode OPEN) |
+| Stage table ordering | pinned-not-read | Challenge content #137 |
+| Floor layout and generator seams | unsupported-reference | #129 and #137 |
+| Starting roster, sprays and timers | pinned-not-read | #136 (Challenge framework) |
+| Floor actors and hazards | unsupported-reference | #130/#131 and family lanes |
+| TheKey/hole/geyser, scoring, retry, result semantics | unsupported-reference | #136 and #137 |
+
+## Reserved changes
+
+- `experimental/content_lanes/p2-challenge-ch_mat_route_rover.py` — isolated
+  metadata/import adapter.
+- `tests/content_lanes/test_p2_challenge_ch_mat_route_rover.py` — 15 focused
+  tests (pinned-source positives plus fail-closed negatives).
+- `docs/content_lanes/p2-challenge-ch_mat_route_rover.md` — this spec.
+
+No shared parser/schema, species, native, admission or other-lane edits.
+
+## Evidence
+
+- Focused test log and generated packet:
+  `output/workflow/autofill/p2-challenge-ch_mat_route_rover/`.
+- This P0 slice ran no native build and no runtime; the host `chal0` fixture
+  is not Challenge mode and proves nothing here.
+
+## Blockers (exact)
+
+1. Disc bytes of `user/Mukki/mapunits/caveinfo/ch_MAT_route_rover.txt` (and
+   `user/Matoba/challenge/stages.txt`) are required to decode per-floor
+   rosters; record their SHA-256 in the lane entry when staged. Never
+   redistribute assets.
+2. P1 waits on the Challenge runtime framework (#136) and the
+   content/generator/actor contracts (#137, #129, #130, #131).
+3. TheKey/hole/geyser, scoring, ordinary vs deathless completion and retry
+   reset are unvalidated.
+
+## Status
+
+P0 implementation packet reviewed and tested. Full content acceptance and
+dependencies stay OPEN. No claim of playability. No ADMIT.

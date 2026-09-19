@@ -199,3 +199,39 @@ test layout with a mocked disc reader:
   membership of `ip03`..`ip06` need one ISO read to confirm.
 - Parallel lanes (BigTreasure 73, DangoMushi 94, Bulblax, Breadbug, Mamuta,
   flying/aquatic families) untouched; no shared-file changes required.
+
+## 10. Batch 2 — install + arena (#352)
+
+Batch 2 takes the batch-1 `waterwraith.json` assets into the runtime through the
+shared core (`experimental/pikmin2_batch2_core.py`) bound by
+`experimental/pikmin2_waterwraith_install.py` and
+`pikmin2_waterwraith_arena.py`.
+
+- **Install**: hash-bound `plan`/`install`/`verify_install`; schema-1
+  `P2_WATERWRAITH_1` manifest, exact-byte pose binding, conflict refusal before
+  mutation, optional all-or-nothing visual bank (baseline preserved when
+  absent). Actors are BlackMan (boss) and Tyre (dependent roller child).
+- **Arena**: private original Impact Site staging — BlackMan, Tyre and one
+  ordinary P1 control, unique generator IDs 352001–352003, full expected XYZ,
+  zero offset, source yaw unapplied. Staging the dependent Tyre child as an
+  independent vehicle is an engineered choice; identity is not claimed and the
+  neutral Chappy placement vehicle is used.
+- **Real-disc evidence**: install + verify round-trip against
+  `output/p2-lane-verify/waterwraith/waterwraith.json` → **30 installed, 30
+  verified** (SHA-256 bound). Generated evidence stays under private `output/`.
+- **Status**: install + arena staging level. Native gates (`native_identity`,
+  `natural_AI`, `combat`, `death_corpse`, `boss_phases`, `tyre_roll_crush`,
+  `purple_vulnerability`, `boss_corpse`) are BLOCKED pending the hook request on
+  #186. No shared/native code touched; no disc assets committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the Waterwraith family owner implements narrow additive registration hooks.
+Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp` unit,
+wired through `pc_p2_batch2_setup/draw/reset/forget`; BlackMan and Tyre bind as
+`TEKI_Chappy` placement vehicles from `p2-waterwraith-actors.txt` /
+`p2-waterwraith-bank.txt` and the `ww_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

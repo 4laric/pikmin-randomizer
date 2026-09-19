@@ -303,3 +303,42 @@ ground-invertebrate test layout with a self-contained mocked disc reader:
   imported.
 - Parallel lanes (MiniHoudai 78 Groink #169, BombSarai #244, Fuefuki/BigTreasure
   #245/#246) untouched; no shared-file changes required by this lane.
+
+## 11. Batch 2 — install + arena (#350)
+
+Batch 2 takes the batch-1 `cannon_projectile.json` assets into the runtime
+through the shared core (`experimental/pikmin2_batch2_core.py`) bound by
+`experimental/pikmin2_cannon_projectile_install.py` and
+`pikmin2_cannon_projectile_arena.py`.
+
+- **Install**: hash-bound `plan`/`install`/`verify_install`; schema-1
+  `P2_CANNON_PROJECTILE_1` manifest, exact-byte pose binding, conflict refusal
+  before mutation, optional all-or-nothing visual bank (baseline preserved when
+  absent). Staged actors are Kabuto/Rkabuto/Fkabuto/Rock/Bomb/Egg; Stone (Rock
+  alias) and FminiHoudai remain installable but unplaced.
+- **Arena**: private original Impact Site staging — six actors plus one ordinary
+  P1 control, unique generator IDs 350001–350007, full expected XYZ, zero
+  offset, source yaw unapplied. Kabuto/Rkabuto/Fkabuto use the P1 Armored Cannon
+  Beetle (Beatle 17) ancestor as a placement vehicle and Rock uses the P1
+  Rolling Boulder (Iwagon 2); Bomb/Egg use the neutral Chappy vehicle. Identity
+  is not claimed.
+- **Real-disc evidence**: install + verify round-trip against
+  `output/p2-lane-verify/cannon2/cannon_projectile.json` → **93 installed, 93
+  verified** (SHA-256 bound). Generated evidence stays under private `output/`.
+- **Status**: install + arena staging level. Native gates
+  (`native_identity`, `cannon_projectile_pool`, `rock_roll`, `bomb_lifecycle`,
+  `egg_drop`, `buried_emerge`, `muzzle_alignment`) are BLOCKED pending the hook
+  request on #186. No shared/native code touched; no disc assets committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the cannon/projectile family owner implements narrow additive registration
+hooks. Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp`
+unit, wired through `pc_p2_batch2_setup/draw/reset/forget`; Kabuto/Rkabuto/
+Fkabuto bind as `TEKI_Beatle` (P1 Armored Cannon Beetle), Rock as `TEKI_Iwagon`
+(P1 Rolling Boulder) and Bomb/Egg as `TEKI_Chappy`, from
+`p2-cannon-actors.txt` / `p2-cannon-bank.txt` and the `cannon_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

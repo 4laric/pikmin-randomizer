@@ -1,0 +1,2 @@
+# Optional Mac/remote worker only; the Windows workflow retains its stdlib path.
+psutil>=6,<8

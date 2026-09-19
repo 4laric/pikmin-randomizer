@@ -253,3 +253,42 @@ layout with synthetic parameter blocks and a mocked disc/filesystem:
   native/integration track — none touched here.
 - Parallel lanes (Tank, Titan Dweevil / BigTreasure #246, other #170 batches)
   untouched; no shared-file changes required by this lane.
+
+## 11. Batch 2 — install + arena (#349)
+
+Batch 2 takes the batch-1 `dweevils.json` assets into the runtime through the
+shared core `experimental/pikmin2_batch2_core.py` +
+`experimental/pikmin2_batch2_families.py`, bound by
+`experimental/pikmin2_dweevil_install.py` and `pikmin2_dweevil_arena.py`.
+
+- **Install**: hash-bound `plan`/`install`/`verify_install`; schema-1
+  `P2_OTA_DWEEVIL_1` manifest, exact-byte pose binding, conflict refusal before
+  mutation, optional all-or-nothing visual bank (baseline preserved when
+  absent). Spawnable actors are FireOtakara/WaterOtakara/GasOtakara/
+  ElecOtakara/BombOtakara; the registered fixed hazards Hiba/GasHiba/ElecHiba
+  stay source-only and are not actors.
+- **Arena**: private original Impact Site staging — five dweevils plus one
+  ordinary P1 control, unique generator IDs 349001–349006, full expected XYZ,
+  zero offset, source yaw recorded unapplied. Dweevils have no P1 ancestor in
+  this engine, so the neutral Chappy placement vehicle is used and identity is
+  not claimed.
+- **Real-disc evidence**: install + verify round-trip against
+  `output/p2-lane-verify/dweevil2/dweevils.json` → **120 installed, 120
+  verified** (SHA-256 bound). Generated evidence stays under private `output/`.
+- **Status**: install + arena staging level. All native behavior gates
+  (`native_identity`, `natural_AI`, `combat`, `death_corpse`,
+  `otakara_shared_base`, `change_texture_identity`, `elemental_discharge`,
+  `bomb_payload_lifecycle`) are BLOCKED pending the hook request on #186. No
+  shared/native code touched; no disc assets committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the dweevil family owner implements narrow additive registration hooks.
+Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp` unit,
+wired through `pc_p2_batch2_setup/draw/reset/forget`; the five dweevils bind as
+`TEKI_Chappy` placement vehicles from `p2-dweevil-actors.txt` /
+`p2-dweevil-bank.txt` and the `ota_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

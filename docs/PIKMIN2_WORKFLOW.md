@@ -3,6 +3,13 @@
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
 Owner: Codex through shared GitHub account `4laric`.
 
+Throughput extension (#524): [worker pool, frozen delivery, batching and dashboard](PIKMIN2_THROUGHPUT.md).
+
+Self-healing execution extension (#508): [controller and smart shepherd](PIKMIN2_CONTROLLER.md).
+It adds terminal `finish` outcomes, review-only evidence, durable integration receipts,
+versioned dependency wakeups, fenced OpenCode dispatch and provider fallback. Use the
+controller as the sole automatic dispatcher after legacy supervisor adoption.
+
 This is the execution-state entrypoint. [AGENTS.md](../AGENTS.md) governs repository
 policy; [fan-out](PIKMIN2_IMPLEMENTATION_FANOUT.md) governs fixture adoption and
 acceptance. GitHub child issues hold scope, assignment, acceptance and handoffs.
@@ -283,3 +290,8 @@ fixture-build tests pass. A separate Windows smoke completed 21 CLI operations,
 including live/dead lease release, handoff-to-integration, duplicate recovery claims,
 idempotent recovery completion and stale-generation rejection. Local evidence:
 `output/workflow-coordination/cli-smoke/commands.json` and `status.json`.
+# Optional additional Mac worker
+
+See [Mac worker onboarding and fenced remote jobs](PIKMIN2_MAC_WORKER.md) for the
+opt-in worker path. It keeps the registry and native validation on Windows, adds
+capability-aware issue-backed jobs, and does not migrate active lanes.

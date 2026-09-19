@@ -624,3 +624,21 @@ Bundled runtime validated (#93): package_release.py --python-install with the py
 ## RVZ/WIA disc images (#93)
 
 launcher/rvz.py decodes Dolphin RVZ (and WIA) GameCube images to ISO with the standard library: header/disc struct parsing, compressed raw-data and group tables, per-group decompression (none, bzip2, LZMA, LZMA2, Zstandard through compression.zstd on 3.14 or the zstandard package), zero groups, the 0x80-offset rounding of the first raw-data entry, and RVZ packing with the lagged Fibonacci junk generator ported from Dolphin's LaggedFibonacciGenerator (CC0), including the shift-by-18 state fold and the per-run forward by disc offset mod 0x8000. Wii partitions and PURGE are rejected. discimage.extract_image decodes RVZ/WIA to a temporary ISO in game-data, hands it to nectar-launcher, then deletes it. Validation: tests/test_rvz.py (generator determinism/forward, packed literal+junk runs, synthetic uncompressed image round trip incl. zero group and packed group), scripts/test_rvz_convert.py decoded the real Pikmin USA Rev 1 RVZ (zstd level 19, 128 KiB chunks, 11139 groups) in 22 s to a byte-identical SHA-256 of the original ISO, and the console launcher launched the game from the RVZ into a fresh APPDATA. Under a system Python 3.12 the launcher reports that Zstandard images need the bundled runtime.
+
+
+## Optional Whistle Pluck (#452)
+
+Native a95040b6 adds an off-by-default F1 Mods option, persisted as whistlePluck.
+The actual Gather state plucks the nearest eligible sprout immediately, then
+at least 80 ms apart while held. Native AutoNuki owns animation/effects and
+formation completion. Sprout identity/maturity and population accounting are
+preserved, including experimental Purple and White. Failed allocation retains
+the sprout. No randomizer item, receipt or campaign-save schema was added.
+
+Private/maintained Release builds and no-work dry runs passed. Three fresh
+960x540 centered fixtures with 20 starting Reds passed disabled input, safety
+and range gates, population-limit conversion/failure, stagger, release, native
+animation completion, formation, species/maturity and constant population.
+Compiled whistle-tap regression and nine Python tests passed. Audio was dummy;
+manual controller/menu feel and full campaign acceptance remain untested.
+Detailed hashes and adoption evidence: docs/WHISTLE_PLUCK.md and #452.

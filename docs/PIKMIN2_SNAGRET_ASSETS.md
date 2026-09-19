@@ -375,3 +375,4 @@ sibling generator-overlap refusal; tamper detection on an installed pose and on
 the actor config; missing-receipt detection; the shared-base vs standalone
 receipt split; absent-bank baseline preservation; and arena contract checks
 (`P1_CHAPPY_TYPE=3`, gate coverage, `roster` on a missing path raises).
+

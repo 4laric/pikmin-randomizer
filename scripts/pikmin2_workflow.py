@@ -19,7 +19,13 @@ def main(argv=None):
     parser.add_argument('--request', type=Path, help='UTF-8 JSON arguments; paths resolve against --root')
     parser.add_argument('command', choices=('init', 'register', 'heartbeat', 'checkpoint', 'failure',
                         'acquire', 'renew', 'release', 'cancel-request', 'watchdog', 'claim-action',
-                        'complete-action', 'handoff', 'validate-handoff', 'integrate', 'status', 'process'))
+                        'complete-action', 'finish', 'accept-review', 'publish', 'receipt', 'control-status', 'handoff', 'validate-handoff', 'integrate', 'status', 'process',
+                        'reconcile-handoff', 'throughput-status', 'wait-events', 'configure-lane-launch',
+                        'set-workstream', 'register-pool-worker', 'provision-pool-lane', 'enqueue-job', 'assign-job',
+                        'validate-assignment', 'plan-assignment', 'complete-assignment', 'release-assignment', 'scheduling-status',
+                        'snapshot-handoff', 'dispose-review', 'publish-candidate', 'subscribe-candidate-qa',
+                        'candidate-qa-ready', 'claim-candidate-qa', 'queue-candidate-qa', 'bind-candidate-qa-launch', 'record-candidate-qa',
+                        'batch-claim', 'batch-record-build', 'batch-isolate', 'batch-close', 'report-cost', 'report-cost-batch'))
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.request.read_text(encoding='utf-8-sig')) if args.request else {}
@@ -30,6 +36,11 @@ def main(argv=None):
             result = registry.register(data)
         elif args.command == 'process':
             result = identify(**data)
+        elif args.command == 'wait-events':
+            from workflow.wakeup import EventWaiter
+            paths = [local_path(args.root, path) for path in data.get('paths', ['output/deepseek-wave/inbox'])]
+            waiter = EventWaiter(registry.path, paths, local_path(args.root, 'output/workflow/controller/STOP'))
+            result = waiter.wait(timeout=data.get('timeout', 15), cursor=data.get('cursor'))
         elif args.command == 'validate-handoff':
             path = local_path(args.root, data['path'])
             result = validate_handoff(args.root, json.loads(path.read_text(encoding='utf-8-sig')))

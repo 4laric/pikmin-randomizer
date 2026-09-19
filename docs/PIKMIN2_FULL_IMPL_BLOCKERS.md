@@ -198,3 +198,51 @@ QA. This is a proposal for next implementation issues, not newly dispatched work
 
 No code changes, native builds or runtime tests were performed for this audit.
 Earlier test totals certify their pinned snapshots, not every candidate above.
+
+---
+
+## Historical: P2 families — blockers to full implementation
+
+> Historical snapshot — out of date, confirmed 2026-09-15. Do not use the table
+> below to dispatch work. King WarCry is passed; source FSM and cleanup/re-entry
+> evidence has advanced beyond the blanket statements below. Consult the latest
+> child-issue evidence, [family evidence index](PIKMIN2_FAMILY_STATUS.md), and
+> [workflow registry](PIKMIN2_WORKFLOW.md) for remaining gates and active owners.
+> The preserved text records earlier planning, not current failures.
+
+Companion to [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md). "Full implementation" = the pipeline's **Family complete** level: every parent identity implemented as source P2 behavior (FSM, animation events, collision, receivers, rewards, lifecycle) passing the arena gates in mixed scenes.
+
+Current levels are visual/display only unless noted. The dominant blocker everywhere is **source-behavior translation**: most families render as P1 proxies with sampled visuals and have no source FSM, receivers or reward logic. Issues: [#186](https://github.com/4laric/pikmin-randomizer/issues/186) (coordination/acceptance), [#128](https://github.com/4laric/pikmin-randomizer/issues/128) (converter/animation/material pipeline), [#397](https://github.com/4laric/pikmin-randomizer/issues/397) (non-invincible cleanup/re-entry fixture).
+
+### Per-family blockers
+
+| Family | Current | Blockers to full implementation | Key issues |
+|---|---|---|---|
+| Ground invertebrates (#165) | Native display; all six source FSMs done (#407) | Residual per-species fidelity: Imomushi plant/tube eating + berry receiver (needs staged flora); Hana `setUnderGround` invulnerability/no-atari, `attackNavi` and `fp02` poison; Armor `dmg1` part rule + ItemBridge states; ElecBug two-beetle partner link + full Denki immunity; TamagoMushi manager group birth + true Astonish panic; corpse/carry/reward; Piklopedia; cleanup/re-entry; mixed-scene performance | #165, #346, #388, #407 |
+| Flying (#166) | Native display; Mar + Hanachirashi + ShijimiChou source FSMs done (#407) | Residual fidelity: ShijimiChou 25-member group/sound cluster + Red/Purple colour gates; full P2 wind cone/effect + flick/shake-off; corpse/reward; blowhog btk/brk preservation; cleanup | #166, #348, #375, #407 |
+| Aquatic (#167) | Native display; Tadpole + Catfish + Jigumo + UmiMushi source FSMs done (#407) | Residual fidelity: Jigumo `PanHouse`/nest actor; UmiMushi water box + shared Mgr base/Blind split + boss phase staging; true `MoveWater`/water receivers; corpse/carry; cleanup | #167, #347, #374, #407 |
+| Cannon / projectiles (#169) | Native display | Projectile lifecycle: `Rock`/`Bomb`/`Egg`/`Stone`/`FminiHoudai` birth→homing→collision→damage; buried/burrow FSM; damage receivers; Gatling Groink pedestal + fire lives in the Groink lane; BombSarai projectile contract cross-ref; cleanup | #169, #198, #204–#210, #350 |
+| Dweevil / elemental (#170) | Native display | **Dweevil damage receiver is broken** (FireOtakara accepts the injected attack but takes no damage); elemental receivers/immunities (fire/water/gas/elec); BombOtakara payload; dweevil FSM/base sharing; fixed hazards `Hiba`/`GasHiba`/`ElecHiba` activation/emission; cleanup | #170, #349, #388 |
+| Flora & Candypops (#171) | Native display | Pelplant pose conversion stuck (`Singular animation scale` / `Unsupported shape matrix type`; 0/10) and HikariKinoko (0/1) — #128 converter; Candypop conversion/refund predicate + Pelplant-Pom receptor; plant/seed lifecycle; cleanup/reload | #171, #353, #397 |
+| Bulblax & larvae (#172) | P2 mechanics | King WarCry + cross-Emperor behavior, bomb-target determinism; Baby attack/capture; #239 host lighting/BTK + material fidelity; #128 animation bank; mixed-family performance; native export reconcile | #172, #217, #256, #289, #239 |
+| Long Legs (#173) | Native display | Source FSM (Beady/Raging movement, stomp, knock-off), Man-at-Legs projectile + leg attacks; damage receivers; cleanup/re-load; leg performance | #173, #312, #397 |
+| Snagret (#174) | Native display; DangoMushi + SnakeCrow/SnakeWhole source FSMs done (#407) | Residual fidelity: shared `SnakeJointMgr` spine matrices + five-way directional bite; `appearNearByTarget` reposition; falling Rock/Egg spawner; White Flower Garden `mWFGHealth` override; DangoMushi Turn invulnerability + child spawner; corpse/carry; cleanup | #174, #351, #376, #407 |
+| Waterwraith / Titan (#175) | Native display | cleanup/re-entry (#397); Titan motion staging beyond 2/29 + unconverted lloozy model + ballistics/damage receivers + FSM host; BlackMan retained-asm FSM; Tyre roller lifecycle; boss performance | #175, #246, #352, #397 |
+| Dirigibug (BombSarai) (#244) | P2 mechanics | Visual bank + `kamu_jnt1` capture-joint transform (#128 converter); multi-carrier pool/induction; persistence | #244, #128 |
+| Antenna Beetle (Fuefuki) (#245) | P2 mechanics | Source `keyEvent`/animation bank (#128); follow-locomotion; true panic staging; claim persistence across day/cave | #245, #128 |
+| Titan Dweevil lane (#246) | P2 mechanics | Motion staging 2/29, lloozy unconverted, damage receivers, FSM host, mixer performance | #246, #128 |
+| Jellyfloat (#243) | Kurage source FSM + flight/suction policy + full ingestion lifecycle; OniKurage shared-base variant (Drop + two mouth slots) — unit + runtime PASS | Live captain capture/release against a real `Navi`; moving suction joint + animated collision tree; `kurage` material/opacity; #186 review of the shared `creature.cpp`/`piki.cpp`/`gameCoreSection.cpp`/`pc_window.*` edits | #243, #72, #186 |
+| Bumbling Snitchbug / Demon (#215–#242) | P2 mechanics | Consolidate forced-drop/capture gates; native drop interruption + generation teardown; mouth attachment rig; captain bridge | #215–#242 |
+| Beetles / Breadbug / Mamuta (#168) | P2 mechanics | Remaining runtime gates: flip/drop/forced-escape/cave relocation (beetles); contested cargo/nest ownership + Giant Breadbug scoring (breadbug); bury/99-cap/observation (mamuta) | #219–#221 |
+| Snow Bulborb (#120) | P2 mechanics | Reference lane; natural combat/carry/re-entry parity for the bulborb family remains | #120 |
+
+### Cross-cutting blockers
+
+1. **Source-behavior translation (largest).** Every family still uses P1 proxy AI. Implementing each species' `*State.cpp` FSM, animation-event semantics and receivers is the bulk of remaining work — it is per-family and mostly unstarted.
+2. **#128 converter/animation/material pipeline.** Blocks visual banks and fidelity everywhere: `.btk`/`.brk`, shape-matrix-type-1, singular scales/transforms, missing normals, material/TEV parity, retail event playback for unconverted clips.
+3. **Damage receivers and elemental routing.** Generic `InteractAttack`/element receivers are not wired for most P2 species (dweevil is the current concrete failure).
+4. **Cleanup / re-entry fixtures (#397).** No family has an observed forget/cleanup/re-entry because staged proxies are invincible; a non-invincible fixture is needed.
+5. **Rewards / corpse delivery.** P2 carcass, pellet drops, enemy-held treasure and Pod economy per family.
+6. **Mixed-scene performance.** First baseline measured: 12 implemented species + control in one private room at 960×540 → pose bank 4,883,616 B, tracked texture peak 64 MiB, **mean frame 33.45 ms / slowest window 33.93 ms** (proposed 60 fps budget not met). See `docs/PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md`; density budget needs integration agreement.
+7. **Shared semantics review (#186).** Save/reward, captain state, generic damage/physics, actor lifetime and ID-conflict changes require focused integration review.
+8. **Serialized build/export.** Maintained `native/build-randomizer` + `export_native_source.py` stay integration-owned; builders must use private environments (see [AGENTS.md](../AGENTS.md#build-isolation-required)).

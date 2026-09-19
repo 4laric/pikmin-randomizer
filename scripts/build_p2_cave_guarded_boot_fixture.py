@@ -17,6 +17,12 @@ Usage (from the canonical root):
   py -3.12 scripts/build_p2_cave_guarded_boot_fixture.py --configure --build
   py -3.12 scripts/build_p2_cave_guarded_boot_fixture.py --self-test
   py -3.12 scripts/build_p2_cave_guarded_boot_fixture.py --run <rundir>
+
+Private-candidate extension (#674, owner-approved): --fixture selects an
+arbitrary owned fixture TU under native/tools (defaulting to the shared
+one); exe/obj/rsp stems and the run PASS marker follow it. Base is the
+#642 authoritative wrapper (root 74f5a099, sha 58673eb8); shared checkout
+untouched. --self-test/--verify-negative stay cave-fixture-specific.
 """
 
 import argparse
@@ -83,6 +89,16 @@ def main(argv=None):
                         help="run the engine-independent guard self-test")
     parser.add_argument("--run", metavar="RUNDIR",
                         help="run the fixture over an input-package rundir")
+    parser.add_argument("--fixture", default="p2_cave_guarded_boot_fixture.cpp",
+                        help="fixture TU basename under native/tools (no directories)")
+    parser.add_argument("--pass-marker", default="PASS CAVE_GUARDED_BOOT",
+                        help="run PASS marker proving guarded boot")
+    parser.add_argument("--native-dir", default=None,
+                        help="override native worktree (default: <lane>/native)")
+    parser.add_argument("--build-dir", default=None,
+                        help="override private build dir (default: <lane>/build)")
+    parser.add_argument("--out-dir", default=None,
+                        help="override output dir (default: <lane>/out)")
     parser.add_argument("--verify-negative", action="store_true",
                         help=("verify the captain-down interruption: the raw exe "
                               "must exit 86 with CAPTAIN_DOWN and no PASS; "
@@ -91,9 +107,21 @@ def main(argv=None):
 
     root = os.path.abspath(args.root)
     lane_dir = os.path.dirname(root.rstrip(os.sep))
-    native_dir = os.path.join(lane_dir, "native")
-    build_dir = os.path.join(lane_dir, "build")
-    out_dir = os.path.join(lane_dir, "out")
+    native_dir = os.path.abspath(args.native_dir) if args.native_dir else os.path.join(lane_dir, "native")
+    build_dir = os.path.abspath(args.build_dir) if args.build_dir else os.path.join(lane_dir, "build")
+    out_dir = os.path.abspath(args.out_dir) if args.out_dir else os.path.join(lane_dir, "out")
+    fixture_name = os.path.basename(args.fixture)
+    if (fixture_name != args.fixture or not fixture_name.endswith(".cpp")
+            or "/" in args.fixture or chr(92) in args.fixture):
+        print("fixture must be a bare .cpp basename under native/tools")
+        return 2
+    stem = fixture_name[:-len(".cpp")]
+    base = stem[:-len("_fixture")] if stem.endswith("_fixture") else stem
+    exe = os.path.join(build_dir, base + ".exe")
+    fixture_src = os.path.join(native_dir, "tools", fixture_name)
+    if not os.path.isfile(fixture_src):
+        print("fixture TU missing: %s" % fixture_src)
+        return 2
     if not os.path.isdir(os.path.join(native_dir, "tools")):
         print("native worktree not found at %s" % native_dir)
         return 2
@@ -103,8 +131,8 @@ def main(argv=None):
     log_path = os.path.join(out_dir, "build-%s.log" % stamp)
     record_path = os.path.join(out_dir, "build-%s.json" % stamp)
     record = {"lane": "cave-guarded-runtime-fixture", "issue": 642,
-              "stamp": stamp, "build_dir": build_dir, "steps": {}}
-    exe = os.path.join(build_dir, "p2_cave_guarded_boot.exe")
+              "stamp": stamp, "build_dir": build_dir,
+              "fixture": fixture_name, "steps": {}}
     with open(log_path, "w", encoding="utf-8") as log:
         if args.configure:
             cmd = [a.format(native=native_dir, build=build_dir) for a in CONFIGURE]
@@ -123,14 +151,20 @@ def main(argv=None):
                                           "no_work": "no work to do" in dry}
             ref_cmd, ref_file = reference_command(build_dir)
             record["steps"]["reference_tu"] = {"file": ref_file}
-            fixture_src = os.path.join(native_dir, "tools",
-                                       "p2_cave_guarded_boot_fixture.cpp")
-            fixture_obj = os.path.join(build_dir, "p2_cave_guarded_boot_fixture.obj")
-            ref_base = os.path.basename(ref_file)
-            if ref_base in ref_cmd:
-                compile_cmd = ref_cmd.replace(ref_base,
-                                              "p2_cave_guarded_boot_fixture.cpp")
-            else:
+            fixture_obj = os.path.join(build_dir, stem + ".obj")
+            # Precise -c fix (#686): replace the full reference TU path, not
+            # its basename. A basename replace corrupts the -c directory
+            # (pc_port/<fixture>.cpp instead of tools/<fixture>.cpp) because
+            # the basename also matches inside the -o object path framing.
+            # Candidate spellings cover the compile_commands.json slash style.
+            replaced = False
+            for candidate in (ref_file, ref_file.replace("/", os.sep),
+                              ref_file.replace(os.sep, "/")):
+                if candidate in ref_cmd:
+                    compile_cmd = ref_cmd.replace(candidate, fixture_src)
+                    replaced = True
+                    break
+            if not replaced:
                 compile_cmd = ref_cmd + " " + fixture_src
             # Point the -o output at our own object (the reference -o path
             # belongs to the reference TU, not to this fixture).
@@ -169,7 +203,7 @@ def main(argv=None):
                 print("pc_main object not on the pikmin_pc link edge")
                 record["steps"]["fixture_link"] = {"exit": 3}
                 return 3
-            rsp = os.path.join(build_dir, "p2_cave_guarded_boot.rsp")
+            rsp = os.path.join(build_dir, base + ".rsp")
             with open(rsp, "w", encoding="utf-8") as f:
                 f.write("\n".join(chr(34) + o + chr(34) for o in objects))
             link_cmd = (["g++", "@" + rsp, "-mconsole", "-o", exe]
@@ -196,7 +230,7 @@ def main(argv=None):
                 return 2
             code, out = run_logged(log, [exe, "--guard-negative-test"])
             ok = (code == 86 and "P2_FIXTURE_CAPTAIN_DOWN" in out
-                  and "PASS CAVE_GUARDED_BOOT" not in out)
+                  and args.pass_marker not in out)
             record["steps"]["verify_negative"] = {"exit": code, "verified": ok}
             if ok:
                 log.write("P2_CAVE_GUARDED_NEGATIVETEST_PASS\n")
@@ -220,7 +254,7 @@ def main(argv=None):
                                    cwd=rundir, env=env)
             record["steps"]["run"] = {
                 "exit": code, "rundir": rundir,
-                "pass": code == 0 and "PASS CAVE_GUARDED_BOOT" in out,
+                "pass": code == 0 and args.pass_marker in out,
                 "generate_pass": "P2_CAVE_GENERATE_PASS" in out,
                 "captain_down": "P2_FIXTURE_CAPTAIN_DOWN" in out}
             return code

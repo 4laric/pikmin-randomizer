@@ -23,7 +23,6 @@
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_enemy.h"
-#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_demon_host.h"
 #include "pc_p2_sarai_manager.h"
 #include "pc_p2_cave.h"
@@ -1500,7 +1499,6 @@ void GameCoreSection::finalSetup()
 	pc_p2_sarai_manager_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
-	pc_p2_dwarf_orange_campaign_setup();
 	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.
 	pc_p2_scene_begin();
 	PRINT("====================== FINAL SETUP DONE ======================\n");

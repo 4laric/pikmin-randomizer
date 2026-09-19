@@ -239,3 +239,31 @@ class ResponseCommandTests(unittest.TestCase):
             self.assertIn('source folder', text)
             self.assertIn('\\"quoted value\\"', text)
             self.assertEqual(len(text.splitlines()), len(args) - 1)
+
+
+class L60LinkLineTests(unittest.TestCase):
+    def test_real_l60_link_line_expands(self):
+        BS = chr(92)
+        DQ = chr(34)
+        C = BS + 'Windows' + BS + 'system32' + BS + 'cmd.exe'
+        G = BS + 'msys64' + BS + 'mingw64' + BS + 'bin' + BS + 'g++.exe'
+        line = 'C:' + C + ' /C ' + DQ + 'cd . && C:' + G
+        line += ' -O3 -DNDEBUG -flto=auto -fno-fat-lto-objects -mconsole @CMakeFiles' + BS
+        line += 'pikmin_pc.rsp -o bin' + BS + 'nectar.exe -Wl,--out-implib,libnectar.dll.a'
+        line += ' -Wl,--major-image-version,0,--minor-image-version,0 && cd .' + DQ
+        with tempfile.TemporaryDirectory() as temp:
+            build = Path(temp)
+            (build / 'CMakeFiles').mkdir()
+            (build / 'CMakeFiles/pikmin_pc.rsp').write_text('main.obj legacy.a' + chr(10), encoding='utf-8')
+            with patch.object(tool, 'run', side_effect=[(0, '[]'), (0, '[]')]):
+                text = tool.expand_response_files(line, 'ninja', build)
+            self.assertNotIn('@', text)
+            self.assertIn('main.obj legacy.a', text)
+            args = tool.compiler_args(text)
+            self.assertTrue(args[0].endswith('g++.exe'))
+            self.assertIn('-o', args)
+            self.assertIn('bin' + BS + 'nectar.exe', args)
+
+    def test_empty_command_rejected(self):
+        with self.assertRaises(tool.BuildRejected):
+            tool.compiler_args(str())

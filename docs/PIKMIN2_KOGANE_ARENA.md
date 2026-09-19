@@ -107,6 +107,40 @@ on #219 / integration #186.
   position rejection, runtime log validator accept/reject paths.
 - Batch-1 `tests/test_pikmin2_kogane_assets.py` (15 tests) still passes.
 
+## Batch 3 — binding validation against native unblock (7faa644 / root f9f0839)
+
+The native track integrated the beetle binding (#228 handoff): native commit
+`7faa64475176658af85e2f558858c6d660cd4d20`, root `f9f0839`, fixed check bundle
+`output/p2-root-integration/output/kogane228/runtime/stages/f0bb11777d6040f5a68e7be3768dbc95/`
+(`Check.cmd` / `BindingCheck.exe`, SHA-256 `5385bd99…8baa36`).
+
+Independent lane re-run (direct exe invocation with the Check.cmd environment,
+`SDL_AUDIODRIVER=dummy`, MinGW64 PATH; exit 0 in 31 s; log
+`kimi-binding-run.log` inside the fixed stage dir; lane record
+`output/p2-kogane-batch2/binding-validation.json`):
+
+- Typed source IDs: `219001→9`, `219002→10`, `219003→11`, control `219004→-1`
+  with `control=1` (`P2_KOGANE_ID` lines).
+- Exact birth XYZ for all four actors, matching this lane's arena roster
+  (`P2_KOGANE_BIRTH` lines, ±0.000 after formatting).
+- Imported draw binds: `P2_KOGANE_DRAW corpse=0` present; capture
+  `kogane-binding.png` shows the three imported models plus ordinary control
+  (shared black/silver approximation — species texture fidelity NOT claimed).
+- PASS marker `behavior=P1_visual_binding_source_FSM_pending`: **P1 host AI
+  remains; no P2 FSM/drop/gas claim**.
+- Host-side bundle verification (`verify_fixed_run`): every file in
+  `fixed-manifest.json` re-hashes clean, recorded evidence passed, and the
+  binding consumed this lane's installed configs **unchanged** (profile/bank/
+  actors hashes equal the batch-2 `kogane-install.json` receipt).
+
+New validators in `experimental/pikmin2_kogane_runtime.py`:
+`validate_binding` (typed mapping, control flag, exact XYZ, draw, host-AI
+disclaimer, exit code) and `verify_fixed_run` (fixed-bundle re-hash, evidence
+gate, lane-config consumption proof). Tests:
+`tests/test_pikmin2_kogane_binding.py` (11 tests — clean-log acceptance,
+wrong source ID, control-as-species, XYZ drift, missing draw/PASS, tampered
+bundle file, failed evidence, lane-config drift, bad schema).
+
 ## Open
 
 - All behavior gates above (native track / integration lead).

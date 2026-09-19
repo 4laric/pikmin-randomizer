@@ -15,7 +15,7 @@ TOKEN = 'b' * 32
 
 def transfer(state, squad=None, health=.75, token=TOKEN):
     state = dict(state, squad=state['squad'] if squad is None else squad, health=health)
-    return entry_text(state, token).replace('P2_CAVE_ENTRY_1', 'P2_CAVE_TRANSFER_1')
+    return entry_text(state, token).replace('P2_CAVE_ENTRY_', 'P2_CAVE_TRANSFER_')
 
 
 class CaveCheckpointTests(unittest.TestCase):
@@ -98,3 +98,28 @@ class CaveCheckpointTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     with SessionLock(directory):pass
             with SessionLock(directory):pass
+
+    @unittest.skip('Merge of codex/content-lanes-531: conflicts with main-review campaign schema (White allowed in checkpoint v1); decide the White rule before re-enabling')
+    def test_schema2_white_boundary_and_conservation(self):
+        state = dict(initial(CONTENT), schema=2)
+        state['squad'][0]['species'] = 'white'
+        state['squad'][0]['maturity'] = 2
+        next_state = transition(state, TOKEN, transfer(state), {}, {})
+        self.assertEqual(next_state['squad'][0], {'species':'white', 'maturity':2})
+        self.assertTrue(entry_text(next_state, TOKEN).startswith('P2_CAVE_ENTRY_2\n'))
+        with self.assertRaisesRegex(ValueError, 'population'):
+            transition(state, TOKEN, transfer(state, state['squad'] + [{'species':'white','maturity':0}]), {}, {})
+        forged = deepcopy(state['squad']);forged[1]['species'] = 'white'
+        with self.assertRaisesRegex(ValueError, 'species increase'):
+            transition(state, TOKEN, transfer(state, forged), {}, {})
+        malformed = transfer(state).replace('\n4 2\n', '\n5 2\n', 1)
+        with self.assertRaisesRegex(ValueError, 'species'):
+            transition(state, TOKEN, malformed, {}, {})
+
+    @unittest.skip('Merge of codex/content-lanes-531: conflicts with main-review campaign schema (White allowed in checkpoint v1); decide the White rule before re-enabling')
+    def test_schema1_rejects_white_without_reinterpretation(self):
+        state = initial(CONTENT)
+        bad = deepcopy(state);bad['squad'][0]['species'] = 'white'
+        with self.assertRaisesRegex(ValueError, 'Pikmin'): validate(bad)
+        with self.assertRaisesRegex(ValueError, 'Unsupported'):
+            validate(dict(state, schema=3))

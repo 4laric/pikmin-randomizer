@@ -193,3 +193,40 @@ layout with a mocked disc reader:
 - Parallel lanes (Hanachirashi 55, Sheargrub/Shearwig 12-14, Beetle 9-11,
   Bulblax, Breadbug 38-40/83, Mamuta 54) untouched; no shared-file changes
   required by this lane.
+
+## 10. Batch 2 — install + arena (#346)
+
+Batch 2 takes the batch-1 `ground_inverts.json` assets into the runtime through
+the shared core (`experimental/pikmin2_batch2_core.py`) bound by
+`experimental/pikmin2_ground_inverts_install.py` and
+`pikmin2_ground_inverts_arena.py`.
+
+- **Install**: hash-bound `plan`/`install`/`verify_install`; schema-1
+  `P2_GROUND_INVERTS_1` manifest, exact-byte pose binding, conflict refusal
+  before mutation, optional all-or-nothing visual bank (baseline preserved when
+  absent). Actors are Armor/ElecBug/Imomushi/TamagoMushi/Sokkuri/Hana.
+- **Arena**: private original Impact Site staging — six species plus one
+  ordinary P1 control, unique generator IDs 346001–346007, full expected XYZ,
+  zero offset, source yaw unapplied. These species have no audited P1
+  counterpart in this engine, so the neutral Chappy placement vehicle is used
+  and identity is not claimed.
+- **Real-disc evidence**: install + verify round-trip against
+  `output/p2-lane-verify/ground/ground_inverts.json` → **96 installed, 96
+  verified** (SHA-256 bound). Generated evidence stays under private `output/`.
+- **Status**: install + arena staging level. Native gates
+  (`native_identity`, `natural_AI`, `combat`, `death_corpse`,
+  `armor_flint_reward`, `elecbug_charge`, `sokkuri_disguise`, `hana_ambush`,
+  `imomushi_plant_eat`, `tamagomushi_swarm`) are BLOCKED pending the hook
+  request on #186. No shared/native code touched; no disc assets committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the ground-invertebrate family owner implements narrow additive registration
+hooks. Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp`
+unit, wired through `pc_p2_batch2_setup/draw/reset/forget`; the six species bind
+as `TEKI_Chappy` placement vehicles from `p2-ground-actors.txt` /
+`p2-ground-bank.txt` and the `ginv_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

@@ -11,8 +11,8 @@ import uuid
 from .handoff import GATES, digest, local_path, nonempty, require, source_record, validate_handoff
 from .processes import identify, probe
 
-STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done'}
-ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked'}
+STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
+ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
 TRANSITIONS = {
     'ready': {'running', 'blocked'},
     'running': {'waiting_resource', 'blocked'},
@@ -20,6 +20,8 @@ TRANSITIONS = {
     'blocked': {'ready', 'running'},
     'handoff_ready': {'running', 'integrating'},
     'integrating': {'running', 'handoff_ready'},
+    'review_ready': {'running', 'integrating', 'blocked'},
+    'reconciling': {'running', 'blocked', 'ready'},
     'done': set(),
 }
 DEFAULTS = dict(max_heavy_builds=2, heartbeat_seconds=300, progress_seconds=1800,
@@ -30,7 +32,14 @@ def new_id():
     return uuid.uuid4().hex
 
 
-class Registry:
+from .control import ControlMixin
+from .remote import RemoteMixin, check_remote_ownership
+from .delivery import DeliveryMixin
+from .scheduling import SchedulingMixin
+from .batching import BatchingMixin
+
+
+class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, RemoteMixin):
     def __init__(self, path, root, *, clock=time.time, process_probe=probe):
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
@@ -47,7 +56,9 @@ class Registry:
             state = json.loads(row[0])
             require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
             yield state
-            db.execute('UPDATE registry SET body=? WHERE id=1', (json.dumps(state),))
+            encoded = json.dumps(state)
+            if encoded != row[0]:
+                db.execute('UPDATE registry SET body=? WHERE id=1', (encoded,))
             db.commit()
         except BaseException:
             db.rollback()
@@ -74,7 +85,40 @@ class Registry:
             db.close()
 
     def event(self, state, kind, lane, **detail):
+        state['wake_revision'] = state.get('wake_revision', len(state['events'])) + 1
         state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
+
+    def throughput_status(self, window_seconds=3600, ram_percent=None):
+        from .analytics import throughput_metrics, staffing_recommendations
+        with self.transaction() as state:
+            return dict(at=self.clock(), throughput=state.get('throughput', {}),
+                        metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
+                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent))
+
+    def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
+        """Attach local launch paths to an issue-backed pool lane without restarting service."""
+        paths = {name: local_path(self.root, value) for name, value in
+                 dict(root=root, output=output, brief=brief, config=config).items()}
+        require(paths['root'].is_dir() and paths['brief'].is_file() and paths['config'].is_file(),
+                'Prepared worktree, brief and provider config required')
+        require(paths['output'].is_relative_to(self.root / 'output'), 'Private output required')
+        owners = legacy_supervisors or []
+        require(isinstance(owners, list) and all(isinstance(p, dict) and
+                set(('host', 'pid', 'started')) <= p.keys() for p in owners), 'Process identities required')
+        record = {name: str(path) for name, path in paths.items()} | {'legacy_supervisors': owners}
+        with self.transaction() as state:
+            lane = self.lane(state, key)
+            require(paths['root'] == local_path(self.root, lane['root']['worktree']),
+                    'Launch worktree must match issue lane source')
+            specs = state.setdefault('throughput_runtime', {}).setdefault('launch_specs', {})
+            if specs.get(key) == record:
+                return record
+            require(self.recovery_safe(state, lane), 'Do not change launch paths of live execution')
+            require(not any(i['lane'] == key and i['status'] in ('intent', 'spawned', 'running')
+                            for i in self.control(state)['launches'].values()), 'Launch already in flight')
+            specs[key] = record
+            self.event(state, 'launch_spec_configured', key)
+            return record
 
     def lane(self, state, key, generation=None, revision=None):
         require(key in state['lanes'], 'Unknown lane: ' + key)
@@ -90,8 +134,8 @@ class Registry:
                   if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
         if lane['state'] in ACTIVE:
             require(not any(l['state'] in ACTIVE for l in others), 'Worker already has one active slice')
-        if lane['state'] in ('handoff_ready', 'integrating'):
-            require(not any(l['state'] in ('handoff_ready', 'integrating') for l in others),
+        if lane['state'] in ('handoff_ready', 'review_ready', 'integrating'):
+            require(not any(l['state'] in ('handoff_ready', 'review_ready', 'integrating') for l in others),
                     'Worker already has one ready/integrating handoff')
 
     def register(self, data):
@@ -123,6 +167,7 @@ class Registry:
                     failure_streak=0, recovery_count=0, failure_fingerprint=None, handoff=None, integrated_at=None)
         with self.transaction() as state:
             require(data['lane'] not in state['lanes'], 'Lane ID already registered')
+            check_remote_ownership(state, data['issue'], data['owned_files'])
             for other in state['lanes'].values():
                 if other['state'] != 'done':
                     require(other['issue'] != data['issue'], 'Issue already has an unfinished lane')
@@ -303,7 +348,7 @@ class Registry:
         with self.transaction() as state:
             results = []
             for key, lane in state['lanes'].items():
-                if lane['state'] in ('done', 'handoff_ready', 'integrating'):
+                if lane['state'] in ('done', 'handoff_ready', 'review_ready', 'reconciling', 'integrating'):
                     continue
                 kind, reason = None, None
                 settings = state['settings']
@@ -393,6 +438,7 @@ class Registry:
                     'Only running/ready/integrating slices can submit a handoff')
             data = json.loads(path.read_text(encoding='utf-8'))
             result = validate_handoff(self.root, data, lane)
+            require(data.get('kind') != 'review', 'Use finish review-ready for reviews; reviews are not implementation handoffs')
             require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                         revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
@@ -433,7 +479,7 @@ class Registry:
     def status(self):
         with self.transaction() as state:
             now = self.clock()
-            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'integrating')]
+            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'review_ready', 'integrating')]
             backlog = (len(handoffs) >= state['settings']['handoff_limit'] or any(
                 now - l['handoff_at'] >= state['settings']['handoff_age_seconds'] for l in handoffs))
             waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]

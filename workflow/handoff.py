@@ -49,6 +49,8 @@ def source_record(value, name):
 
 def validate_handoff(root, data, lane=None):
     """Raise Rejected on missing/tampered evidence; accept explicit untested gates."""
+    if isinstance(data, dict) and data.get('kind') == 'review':
+        return validate_review(root, data, lane)
     require(isinstance(data, dict) and data.get('schema') == 1, 'Handoff schema must be 1')
     for key in ('lane', 'owner', 'task_id', 'scope', 'target_level', 'next_action'):
         require(nonempty(data.get(key)), key + ' required')
@@ -169,3 +171,22 @@ def validate_handoff(root, data, lane=None):
                             all(t['exit_code'] == 0 for t in data['tests']),
             'pending_reviews': [r['file'] for r in reviews if r['status'] != 'approved'],
             'outstanding_gates': [k for k, g in gates.items() if g['status'] not in ('PASS', 'N/A')]}
+
+
+def validate_review(root, data, lane=None):
+    """Review of existing evidence is not a fresh runtime or implementation handoff."""
+    require(data.get('schema') == 1 and data.get('fresh_runtime') is False, 'Review must explicitly exclude a new runtime claim')
+    require(nonempty(data.get('conclusion')), 'Review conclusion required')
+    for name in ('lane', 'owner', 'task_id'):
+        require(nonempty(data.get(name)), name + ' required')
+        if lane: require(data[name] == lane[name], 'Review identity mismatch: ' + name)
+    for name in ('issue', 'generation'):
+        require(type(data.get(name)) is int and data[name] > 0, name + ' required')
+        if lane: require(data[name] == lane[name], 'Review identity mismatch: ' + name)
+    require(data.get('evidence'), 'Review evidence required')
+    for item in data['evidence'].values():
+        path = local_path(root, item.get('path'))
+        require(path.is_file() and item.get('sha256') == digest(path), 'Review evidence missing or changed')
+    require(not data.get('gates') and not data.get('build'), 'Review cannot declare new gate/build acceptance')
+    return dict(reviewable=True, gameplay_accepted=False, slice_passed=True,
+                pending_reviews=[], outstanding_gates=list(GATES), kind='review')

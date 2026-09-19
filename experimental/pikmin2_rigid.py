@@ -17,6 +17,10 @@ def compose(parent,child):
              for c in range(4)] for r in range(3)]
 
 
+# Accepted policy names (exported for callers that validate up front).
+SINGULAR_NORMAL_MODES=('error','transpose-adjugate','transpose-adjugate-zero')
+MISSING_NORMAL_MODES=('error','compute','default')
+
 def apply(matrix,point,normal=False,singular_normal="error"):
     if singular_normal not in ("error","transpose-adjugate","transpose-adjugate-zero"): raise ValueError("Invalid singular-normal policy")
     if normal:

@@ -1,8 +1,8 @@
 # P2 parallel worker handoff
 
-Read [the current workflow](PIKMIN2_WORKFLOW.md) first. It supersedes the older
-batch reservations and integration-permission rules below. Family owners now
-deliver native implementation and private runtime evidence as well as assets.
+> Historical batch handoff. For current lane records, resource reservations,
+> watchdog recovery and validated handoffs, use [PIKMIN2_WORKFLOW.md](PIKMIN2_WORKFLOW.md).
+> The owners and suggested assignments below are not current dispatch instructions.
 
 Coordination baseline: 2026-09-12. Parent [#109](https://github.com/4laric/pikmin-randomizer/issues/109). Read [the roadmap](PIKMIN2_CONTENT_COVERAGE.md), [AGENTS.md](../AGENTS.md) and [DEVELOPMENT.md](../DEVELOPMENT.md) before starting.
 

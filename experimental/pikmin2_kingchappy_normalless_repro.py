@@ -102,7 +102,20 @@ def kingchappy(imported):
         print(f'exact failure: KeyError: {error} (missing normal attribute index in baked vertex)')
     ok = has_vtx_normals and not shape_uses_normals
     print(f'reproducer confirmed: {ok}')
-    return ok
+    # #186: the opt-in tolerance unblocks every sampled frame of all 14 clips.
+    unblocked = 0
+    total = 0
+    for clip_path in sorted((imported / 'KingChappy').glob('*.bca')):
+        clip = clip_path.read_bytes()
+        duration, _ = bca_pose(clip, 0, joints, allow_scale=True)
+        for frame in sample_frames(duration, 6):
+            _, pose = bca_pose(clip, frame, joints, allow_scale=True)
+            matrices = draw_matrices(model_blocks, pose)
+            total += 1
+            decode(model, True, bake_rigid=True, draw_matrices=matrices, missing_normals='compute')
+            unblocked += 1
+    print(f"missing_normals='compute': {unblocked}/{total} sampled frames across all clips now convert")
+    return ok and unblocked == total
 
 
 def queen(imported):
@@ -126,6 +139,15 @@ def queen(imported):
         failures[name] = bad
         print(f'{name}: {len(bad)}/{len(targets)} sampled frames failed: '
               + json.dumps(bad[:4]))
+        # #186: the opt-in tolerance bakes those same frames.
+        recovered = 0
+        for frame in targets:
+            _, pose = bca_pose(clip, frame, joints, allow_scale=True)
+            matrices = draw_matrices(model_blocks, pose)
+            decode(model, True, bake_rigid=True, draw_matrices=matrices,
+                   singular_normal='transpose-adjugate')
+            recovered += 1
+        print(f"{name}: singular_normal='transpose-adjugate' converts {recovered}/{len(targets)} frames")
     expected = [f for f, _ in failures['dead']] == [83, 111, 139] and failures['carry']
     print(f'reproducer confirmed: {bool(expected)}')
     return bool(expected)

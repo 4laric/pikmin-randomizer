@@ -173,6 +173,36 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_sarai_manager.cpp
     pc_port/pc_p2_generated_placement.cpp
     pc_port/pc_bbft.cpp
+    # Challenge host-mode engine runtime bridge (#722, ported from #710
+    # db245877; #186 review before shared-line landing): the per-tick runtime
+    # bridge plus the landed host-state module, linked into pikmin_pc so the
+    # engine drives syncTick from live facts during a challenge boot.
+    # pc_bbft_test keeps linking: pc_bbft.cpp stays engine-free (null-by-default
+    # hook) and neither TU is added to that small target.
+    pc_port/pc_p2_challenge_runtime.cpp
+    # Bomb birth hook call site (#732; #186 review before shared-line
+    # landing): the #726/#616 manager + payload TUs plus the new
+    # research-mirror call-site TU that strong-defines
+    # pc_p2_bomb_birth_hook_notify in the production graph and routes the
+    # retail Bomb-family IDs (36/93) to pc_p2_bomb_engine_birth_poll.
+    # No GLOB covers pikmin2-research, so the call-site TU is listed
+    # explicitly; neither TU is added to engine-free test targets.
+    pc_port/pc_p2_bomb_mgr_birth.cpp
+    pc_port/pc_p2_bomb_payload_actor.cpp
+    pikmin2-research/src/plugProjectYamashitaU/generalEnemyMgr.cpp
+    pc_port/pc_p2_challenge_mode.cpp
+    # Overworld session save serializer (#736; #186 review before shared-line
+    # landing): the save/load/verify module, linked into pikmin_pc so the
+    # engine serializes the session on the pc_bbft session path. The pc_bbft
+    # call site is weak-linked (null-by-default), so pc_bbft_test keeps
+    # linking without this TU.
+    pc_port/pc_p2_overworld_save.cpp
+    # Challenge persistence recorder module (#725, membership for #713; #186
+    # review before shared-line landing). Added here so the production
+    # pikmin_pc target resolves the pc_bbft.cpp weak references and the engine
+    # emits its 7 challenge-persistence probe markers; the #718 callsite fixture
+    # links this same object rather than a fixture-local copy.
+    pc_port/pc_p2_challenge_persistence.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp
     pc_port/pc_p2_second_captain.cpp
@@ -192,6 +222,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_white.cpp
     pc_port/pc_p2_white_poison.cpp
     pc_port/pc_p2_cave.cpp
+    pc_port/pc_p2_cave_generate.cpp
     pc_port/pc_p2_enemy.cpp
     pc_port/pc_p2_sheargrub.cpp
     pc_port/pc_p2_kochappy.cpp
@@ -236,6 +267,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_hana.cpp
     pc_port/pc_p2_tadpole.cpp
     pc_port/pc_p2_mar.cpp
+    pc_port/pc_p2_mar_receipt.cpp
     pc_port/pc_p2_catfish.cpp
     pc_port/pc_p2_hanachirashi.cpp
     pc_port/pc_p2_dangomushi.cpp
@@ -733,6 +765,26 @@ target_include_directories(pc_menu_repeat_test PRIVATE pc_port)
 target_compile_options(pc_menu_repeat_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME pc_menu_repeat_test COMMAND pc_menu_repeat_test)
 
+# P2 Challenge host-state unit test (#651), landed per #676. Guard include dir
+# is an explicit, validated cache PATH (per the pinned #651/#186 review): it
+# defaults to the root-relative scripts/ when present, and private builds pass
+# -DP2_CHALLENGE_GUARD_INCLUDE_DIR=<canonical scripts dir>. No vendored copy.
+set(P2_CHALLENGE_GUARD_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../scripts" CACHE PATH
+    "Directory containing the canonical p2_fixture_captain_guard.h")
+if(NOT EXISTS "${P2_CHALLENGE_GUARD_INCLUDE_DIR}/p2_fixture_captain_guard.h")
+    message(FATAL_ERROR
+        "p2_fixture_captain_guard.h not found in ${P2_CHALLENGE_GUARD_INCLUDE_DIR}; "
+        "pass -DP2_CHALLENGE_GUARD_INCLUDE_DIR=<canonical scripts dir>")
+endif()
+add_executable(p2_challenge_mode_fixture
+    tools/p2_challenge_mode_fixture.cpp
+    pc_port/pc_p2_challenge_mode.cpp)
+target_include_directories(p2_challenge_mode_fixture PRIVATE
+    pc_port
+    ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+target_compile_options(p2_challenge_mode_fixture PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_challenge_mode_fixture COMMAND p2_challenge_mode_fixture)
+
 # Host software DSP test (not linked into main game)
 add_executable(pc_dsp_host_test
     pc_port/audio/pc_dsp_host_test.cpp
@@ -782,6 +834,12 @@ add_executable(p2_dangomushi_hazard_test
 target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
 target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
+add_executable(p2_mar_receipt_registration_test
+    tools/p2_mar_receipt_registration_test.cpp
+    pc_port/pc_p2_mar_receipt.cpp)
+target_include_directories(p2_mar_receipt_registration_test PRIVATE pc_port)
+target_compile_options(p2_mar_receipt_registration_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_mar_receipt_registration_test COMMAND p2_mar_receipt_registration_test)
 
 add_executable(p2_long_legs_fsm_test
     tools/p2_long_legs_fsm_test.cpp
@@ -988,6 +1046,20 @@ target_include_directories(p2_specular_dir_test PRIVATE pc_port)
 target_compile_options(p2_specular_dir_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_specular_dir_test COMMAND p2_specular_dir_test)
 
+# Lane 30 (#242) standalone policy tests. The drop/host-clock and Sarai
+# captor/lifecycle/identity harnesses are dependency-free headers: a test source
+# and the pc_port include dir are all they need. (demon_captor/demon_escape and
+# sarai_fsm/sarai_policy are already registered by the policy foreach below.)
+add_executable(p2_demon_drop_policy_test tools/p2_demon_drop_policy_test.cpp)
+target_include_directories(p2_demon_drop_policy_test PRIVATE pc_port)
+target_compile_options(p2_demon_drop_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_drop_policy_test COMMAND p2_demon_drop_policy_test)
+
+add_executable(p2_demon_host_clock_test tools/p2_demon_host_clock_test.cpp)
+target_include_directories(p2_demon_host_clock_test PRIVATE pc_port)
+target_compile_options(p2_demon_host_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_host_clock_test COMMAND p2_demon_host_clock_test)
+
 add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
 target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
 target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -1008,6 +1080,15 @@ target_include_directories(p2_demon_identity_test PRIVATE pc_port)
 target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_demon_identity_test COMMAND p2_demon_identity_test)
 
+# Engine-including admission test: it includes Navi/NaviState through
+# pc_port/pc_p2_demon_admission.h and uses _putenv_s/_spawnl to prove both
+# allowlist branches, so it is Windows-only like the launcher platform tests.
+if(WIN32)
+    add_executable(p2_demon_admission_test tools/p2_demon_admission_test.cpp)
+    target_include_directories(p2_demon_admission_test PRIVATE pc_port include)
+    target_compile_options(p2_demon_admission_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME p2_demon_admission_test COMMAND p2_demon_admission_test)
+endif()
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
