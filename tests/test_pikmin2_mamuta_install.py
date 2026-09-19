@@ -9,19 +9,24 @@ from experimental.pikmin2_mamuta_install import (CONFIG_NAME, install, plan, ver
 from experimental.pikmin2_mamuta_arena import GATES, P1_CHAPPY_TYPE, P1_MIURIN_TYPE, roster
 
 
+BANK_CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4',
+              'flick', 'dead', 'type5')
+
+
 def fake_imported(root):
     """Synthetic schema-1 Mamuta import: real bytes, recorded hashes."""
     species = root / 'Miulin'
     species.mkdir(parents=True)
-    poses = {'wait_00.mod': b'WAIT', 'dead_02.mod': b'DEAD', 'attack1_00.mod': b'ATTACK'}
-    for name, data in poses.items():
-        (species / name).write_bytes(data)
+    poses = {}
     clips = []
-    for clip, name in (('wait.bca', 'wait_00.mod'), ('dead.bca', 'dead_02.mod'),
-                       ('attack1.bca', 'attack1_00.mod')):
-        clips.append({'file': clip, 'status': 'converted',
+    for clip in BANK_CLIPS:
+        name = f'{clip}_00.mod'
+        data = clip.upper().encode()
+        poses[name] = data
+        (species / name).write_bytes(data)
+        clips.append({'file': clip + '.bca', 'status': 'converted',
                       'poses': [{'file': name,
-                                 'sha256': hashlib.sha256(poses[name]).hexdigest()}]})
+                                 'sha256': hashlib.sha256(data).hexdigest()}]})
     meta = {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}
     (root / 'mamuta.json').write_text(json.dumps(meta))
     return root
@@ -72,9 +77,11 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             result = install(imported, run, [(221001, 'Miulin')])
-            self.assertEqual(result['files'], ['miulin_attack1.mod', 'miulin_attack1_00.mod',
-                                               'miulin_dead.mod', 'miulin_dead_00.mod',
-                                               'miulin_wait.mod', 'miulin_wait_00.mod'])
+            self.assertEqual(result['files'], [
+                'miulin_attack0_00.mod', 'miulin_attack1.mod', 'miulin_attack1_00.mod',
+                'miulin_attack4_00.mod', 'miulin_dead.mod', 'miulin_dead_00.mod',
+                'miulin_flick_00.mod', 'miulin_move_00.mod', 'miulin_type5_00.mod',
+                'miulin_wait.mod', 'miulin_wait_00.mod', 'miulin_waitact_00.mod'])
             verified = verify_install(imported, run, [(221001, 'Miulin')])
             self.assertEqual(verified['verified'], result['files'])
             config = (run / CONFIG_NAME).read_text()
@@ -87,12 +94,12 @@ class InstallTests(unittest.TestCase):
             species = imported / 'Miulin'
             species.mkdir(parents=True)
             poses = {f'attack1_{i:02d}.mod': bytes([65 + i]) for i in range(3)}
-            poses['wait_00.mod'] = b'W'
-            poses['dead_00.mod'] = b'D'
+            for clip in BANK_CLIPS:
+                poses.setdefault(f'{clip}_00.mod', clip.upper().encode())
             for name, data in poses.items():
                 (species / name).write_bytes(data)
             clips = []
-            for clip in ('wait', 'dead', 'attack1'):
+            for clip in BANK_CLIPS:
                 names = sorted(n for n in poses if n.startswith(clip + '_'))
                 clips.append({'file': clip + '.bca', 'status': 'converted',
                               'poses': [{'file': n, 'sha256': hashlib.sha256(poses[n]).hexdigest()}
