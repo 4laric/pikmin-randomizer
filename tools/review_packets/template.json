@@ -1,0 +1,36 @@
+{
+  "format": "review-packet-v1",
+  "schema": "template-186-shared-hook",
+  "issue": 186,
+  "description": "Copy to tools/review_packets/<schema>.json, replace every placeholder, commit it, then pin each maintained input with review_packet repin. See docs/PIKMIN2_REVIEW_PACKETS.md.",
+  "consumers": ["<consumer lane key>"],
+  "landers": ["<integrator lane key>"],
+  "inputs": {
+    "candidate_hook": {
+      "role": "candidate",
+      "repo": "output/workflow/autofill/prerequisites/<producer>-native",
+      "commit": "0000000000000000000000000000000000000000",
+      "path": "src/example/manager.cpp"
+    },
+    "maintained_manager": {
+      "role": "maintained",
+      "line": {"repo": "output/dsw/native-wave", "ref": "claude/p2-deepseek-wave-native"},
+      "path": "src/example/manager.cpp",
+      "region": {"begin": "void Manager::birth(", "end": "\n}"}
+    }
+  },
+  "items": [
+    {
+      "id": "engine-example-birth-hook",
+      "gate": "engine example birth hook",
+      "candidates": ["candidate_hook"],
+      "candidate_tokens": ["pc_example_birth_notify"],
+      "maintained": ["maintained_manager"],
+      "required_tokens": ["Manager::birth"],
+      "integration_tokens": ["pc_example_birth_notify"],
+      "built_by": true,
+      "missing_change": "Land the additive birth hook from the candidate commit into Manager::birth on the line and list the file in the line's CMakeLists.txt.",
+      "downstream": ["<consumer issue>"]
+    }
+  ]
+}

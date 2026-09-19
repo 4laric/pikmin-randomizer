@@ -343,7 +343,8 @@ content of a diff; integration still reviews saves, damage, IDs and actor lifeti
 An approval is a registry row in `approvals`, never a handoff field. The writers are
 `review_decisions.record` and `dispose-review` (kind `handoff_review`),
 `shared_decisions.record` (`preflight`), `approvals landing-review`
-(`landing_review`) and `approvals shared-hook` (`shared_hook`). Every writer
+(`landing_review`), `approvals shared-hook` (`shared_hook`) and, for review packets
+only, the controller's `approvals.packet_decision` (see below). Every other writer
 authenticates its reviewer the same way: `reviewer` and `reviewer_generation` name a
 registered lane that is `running` and alive, has a running controller launch bound
 to that generation, and whose recorded runner process is the nearest ancestor of the
@@ -373,8 +374,19 @@ requested"); for every entry the stored `handoff.result.reviews` and
 stamped from an existing decision. `check_handoff`, batching and `integrate` read only
 the ledger at the lane's current pins, so a status written into a handoff before the
 ledger existed counts as `requested` until an authenticated decision is recorded
-(nothing is rewritten). Decisions derived from review packets are not accepted yet
-(`approvals.packet_decision` is the hook point for controller-verified packets).
+(nothing is rewritten).
+
+Review packets (docs/PIKMIN2_REVIEW_PACKETS.md, template in `tools/review_packets/`)
+are declarative JSON read from a commit. Candidate inputs are pinned by blob id at
+their commit. Maintained inputs are read at the consuming line's branch tip; a dirty
+or untracked path, a nested untracked repository or a line worktree on another branch
+refuses. Maintained pins exist only as audited `packet_pins` registry records written by
+`review_packet repin` (a changed reviewed region needs an authenticated reviewer that
+is neither consumer nor lander), so a packet cannot be re-pinned by editing hashes.
+Agents only request an evaluation (`review_packet request`); the controller alone
+(`approvals.packet_decision`, refused in any other process) re-runs the packet's
+side-effect-free verify at its audited pins and records a `shared_hook` row with
+`decided_by: packet:<schema>@<blob>`. A packet that drifted records nothing.
 
 Deferred: a human writer. Agents share this machine, its Windows user and the GitHub
 account, so no agent-reachable flag or command can authenticate a person. Proposal: a

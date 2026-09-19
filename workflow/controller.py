@@ -804,6 +804,11 @@ class Controller:
         wake_consumers(self)
         from .shared_decisions import tick as wake_shared_decisions
         wake_shared_decisions(self)
+        from .review_packet import tick as evaluate_packets
+        try:
+            evaluate_packets(self)
+        except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
+            write(self.base / 'review-packet-error.json', dict(at=self.reg.clock(), error=str(exc)))
         from .approvals import tick as wake_shared_hooks
         try:
             wake_shared_hooks(self)

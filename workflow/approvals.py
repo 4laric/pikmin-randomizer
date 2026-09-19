@@ -12,7 +12,9 @@ Handoff and preflight rows pin one file at the producer's root/native base/head 
 sha256 of that file's base..head diff; a row counts only while the lane holds exactly those
 pins. Landing reviews pin reviewed head, landed commit and a git-verified interdiff.
 The latest row per subject decides; a repeated decision after a different one is a new row.
-Decisions derived from review packets are not accepted here (see packet_decision).
+packet_decision is the one writer that is not a reviewer lane: the running controller process
+re-runs a requested review packet (workflow.review_packet) at its audited pins and records
+shared_hook rows with decided_by 'packet:<schema>@<blob>'; agents can only request that.
 
   <python> <checkout>/scripts/workflow_module.py approvals landing-review --root <root> --request <json>
   <python> <checkout>/scripts/workflow_module.py approvals shared-hook --root <root> --request <json>
@@ -46,17 +48,84 @@ INSTRUCTION = (' Approvals are registry rows, never handoff fields: a shared_rev
     'status approved|rejected, conditions [..], evidence {path,sha256}; the lander can never review its own '
     'port. Decision on a structured shared_hook dependency: ' + cli('approvals') + ' shared-hook --root <root> '
     '--request <json> with reviewer, reviewer_generation, hook {kind:shared_hook, issue, files|item_id}, '
-    'lanes [{key, generation}], commit (for files), status, conditions, evidence. ')
+    'lanes [{key, generation}], commit (for files), status, conditions, evidence. A review packet '
+    '(tools/review_packets/) never approves by itself: ' + cli('review_packet') + ' request asks the controller '
+    'to evaluate it for the lanes holding a hook, and pins change only through ' + cli('review_packet') + ' repin. ')
 PRODUCER = ('; for a #186 decision on files you do not own, blocked also takes shared_hooks '
     '[{kind:"shared_hook",issue:<number>,files:[repository-relative paths]} or {kind:"shared_hook",issue,item_id}] '
     'so a reviewer can record an authenticated decision against it (it holds only at your current pins; '
     'a later blocked finish replaces the list)')
 
 
-def packet_decision(*_, **__):
-    """Hook point for controller-verified review packets (item 4); until then a packet is evidence only."""
-    raise Rejected('Decisions derived from review packets are not accepted yet; a reviewer records the '
-                   'decision itself and may cite the packet as hashed evidence')
+def _controller(reg, control, me):
+    require((control or {}).get('controller') == me and reg.probe(me) == 'alive',
+            'Packet decisions are recorded only by the running controller process; agents request an evaluation '
+            'with review_packet request')
+
+
+def packet_decision(reg, request_id, directory=None):
+    """Controller only: re-run a requested packet's verify at its audited pins and record the outcome.
+
+    APPROVED is an approved and CHANGES_REQUIRED a rejected shared_hook row (conditions: the missing
+    changes) for each requested lane still holding the hook at that generation. A drifted or
+    unpinned packet marks the request refused and records nothing. The evaluation JSON written
+    under output/workflow/review-packets/ is the rows' hashed evidence."""
+    from .handoff import digest
+    from .provenance import stamp
+    from .review_packet import DECISIONS, DriftError, audited, evaluate, load
+    from .storage import read_record
+    me = identify(os.getpid())
+    _controller(reg, (read_record(reg, (), '') or {}).get('control'), me)
+    request = reg.snapshot(section=('packet_requests',)).get(request_id)
+    require(isinstance(request, dict) and request.get('status') == 'requested', 'No open packet request: ' + str(request_id))
+    packet, blob, commit = load(reg.root, request['packet'], request['commit'])
+    require(blob == request['blob'], 'Packet blob differs from the request')
+    records = audited(reg.snapshot(section=('packet_pins',)), packet)
+    try:
+        result = evaluate(reg.root, packet, blob, records)
+    except DriftError as exc:
+        with reg.transaction() as state:
+            _controller(reg, reg.control(state), me)
+            row = state['packet_requests'][request_id]
+            if row['status'] == 'requested':
+                row.update(status='refused', error=str(exc), decided_at=reg.clock())
+                reg.event(state, 'packet_evaluation_refused', None, request=request_id, error=str(exc))
+            return copy.deepcopy(row)
+    folder = Path(directory or reg.root / 'output/workflow') / 'review-packets'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (request_id + '.json')
+    path.write_text(json.dumps(result, indent=1, sort_keys=True), encoding='utf-8')
+    evidence = dict(path=str(path), sha256=digest(path))
+    reg.evidence(evidence)
+    status = DECISIONS[result['decision']]
+    conditions = [f"{i['id']}: {i['missing_change']}" for i in result['items'] if i['status'] != 'APPROVED']
+    used = {k: v['record'] for k, v in result['pins'].items() if 'record' in v}
+    code = stamp()
+    with reg.transaction() as state:
+        _controller(reg, reg.control(state), me)
+        row = state.get('packet_requests', {}).get(request_id)
+        require(row and row['status'] == 'requested', 'Packet request already closed: ' + request_id)
+        now = audited(state.get('packet_pins', {}), packet)
+        require({k: (now.get(k) or {}).get('id') for k in used} == used, 'Audited pins changed during evaluation')
+        identity = dict(decided_by=result['decided_by'], controller=me, request=request_id, requested_by=row['requested_by'])
+        written, skipped = [], []
+        for target in row['lanes']:
+            lane = state['lanes'].get(target['key'])
+            if not lane or lane['generation'] != target['generation'] or row['hook_id'] not in [
+                    h.get('id') for h in lane.get('shared_hooks') or []]:
+                skipped.append(target['key']); continue
+            item = write(reg, state, dict(kind='shared_hook', source='review_packet', lane=lane['lane'],
+                                          generation=lane['generation'], hook_id=row['hook_id'], hook=row['hook'],
+                                          pins=pins(lane), subject=dict(packet=row['packet'], commit=commit, blob=blob,
+                                          inputs=result['pins'], decision=result['decision']), status=status,
+                                          conditions=conditions, evidence=evidence, reviewer=identity,
+                                          decided_by=result['decided_by']), code)
+            reg.event(state, 'shared_hook_decided', lane['lane'], approval=item['id'], hook=row['hook_id'], status=status,
+                      decided_by=result['decided_by'])
+            written.append(item['id'])
+        row.update(status='decided' if written else 'stale', decision=result['decision'], decided_by=result['decided_by'],
+                   approvals=written, skipped=skipped, evidence=evidence, decided_at=reg.clock())
+        return copy.deepcopy(row)
 
 
 def pins(lane):

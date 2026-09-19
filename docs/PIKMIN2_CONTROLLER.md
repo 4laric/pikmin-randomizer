@@ -7,7 +7,9 @@ acceptance or grant ADMIT. The existing integrator remains the sole promotion ow
 ## Responsibilities
 
 The deterministic controller owns dispatch, dependency wakeups, provider cooldowns,
-outcome reconciliation and delivery. One smart OpenCode session reads changed-event
+outcome reconciliation and delivery. It is also the only writer of review-packet
+decisions: it evaluates at most one requested packet per 30 s at its audited pins
+(docs/PIKMIN2_REVIEW_PACKETS.md). One smart OpenCode session reads changed-event
 packets and emits bounded decisions as JSON in its final response. The runner saves
 the response: the model has no edit permission, shell, builds or nested agents.
 

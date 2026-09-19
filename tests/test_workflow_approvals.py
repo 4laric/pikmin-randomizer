@@ -219,9 +219,9 @@ class LedgerTests(Base):
         first = shared_decisions.record(self.reg, **dict(args, reviewer='two', reviewer_generation=1))
         self.assertEqual(self.reg.snapshot()['approvals'][first['approval']]['kind'], 'preflight')
 
-    def test_packets_are_not_decisions_yet(self):
-        with self.assertRaisesRegex(Rejected, 'review packets are not accepted'):
-            approvals.packet_decision(packet='output/review-packet.json')
+    def test_packet_decisions_are_controller_only(self):
+        with self.assertRaisesRegex(Rejected, 'only by the running controller process'):
+            approvals.packet_decision(self.reg, 'request-id')  # Covered end to end in test_review_packets.
 
     def test_real_ancestry_is_this_process_parent_chain(self):
         out = subprocess.run([sys.executable, '-c', 'import json,os; from workflow import approvals; '

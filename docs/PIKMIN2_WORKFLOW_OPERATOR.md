@@ -82,7 +82,13 @@ PIKMIN2_WORKFLOW.md). Out-of-band
 #186 decisions on files a blocked lane does not own go through
 `workflow_module.py approvals shared-hook` against the lane's structured
 `shared_hooks` dependency; decisions on ported landed bytes through
-`approvals landing-review`. Every file in `shared_review_routing.files` must name a
+`approvals landing-review`. A review packet is evidence until the controller verifies
+it: packets are committed under `tools/review_packets/` (docs/PIKMIN2_REVIEW_PACKETS.md),
+`py -3.12 scripts/workflow_module.py review_packet verify --root <root> --packet <path>`
+evaluates one read-only, lanes ask for a decision with `review_packet request`, and
+pins change only through the audited `review_packet repin --show-diff`. Never edit a
+packet's hashes or re-point it at working-copy bytes. `review_packet_migration`
+reports, read-only, what a legacy working-copy packet would return. Every file in `shared_review_routing.files` must name a
 lane that can record the decision: the owner of the producer's workstream (today
 `species-integration-replacement`) run as a controller launch. A routed owner that
 fails that authority check gets no packet; the route is stored as
