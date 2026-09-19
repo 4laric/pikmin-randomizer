@@ -261,6 +261,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             if target in ACTIVE:
                 lane['handoff'] = None
                 lane['handoff_at'] = None
+                lane.pop('handoff_code_revision', None)
             if progress is not None:
                 require(isinstance(progress, dict) and nonempty(progress.get('summary')),
                         'Meaningful progress requires a summary and hashed evidence')
@@ -502,6 +503,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                             recovery_count=lane['recovery_count'] + 1,
                             heartbeat_at=self.clock(), progress_at=self.clock(),
                             progress_detail='Recovered from checkpoint: ' + outcome)
+                lane.pop('handoff_code_revision', None)
                 # Only confirmed-dead old leases can reach here.
                 state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
                 state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}

@@ -133,10 +133,25 @@ class EntryScriptTests(unittest.TestCase):
         self.assertIn(provenance.cli('support_actions'), support_actions.INSTRUCTION)
         self.assertIn(provenance.cli('dependency_classification'), dependency_classification.INSTRUCTION)
         self.assertIn(provenance.cli('delivery_contracts'), delivery_contracts.INSTRUCTION)
+        self.assertEqual(len(command.split()), 3)  # No quoted, spaced word for PowerShell to misparse.
         human = {'operator.py', 'planner_claims.py', 'provenance.py'}  # Docstrings for humans only.
         for path in (ENTRY.parents[1] / 'workflow').glob('*.py'):
             if path.name not in human:
                 self.assertIsNone(re.search(r'(python|py -3\.12) -m workflow\.', path.read_text(encoding='utf-8')), path)
+
+
+    def test_spaced_path_without_short_form_refuses_instead_of_breaking_powershell(self):
+        with patch.object(provenance.sys, 'executable', 'C:/No Such Dir/python.exe'):
+            with self.assertRaisesRegex(ValueError, 'whitespace'):
+                provenance.cli('review_decisions')
+        with tempfile.TemporaryDirectory() as temp:
+            spaced = Path(temp) / 'has space' / 'python.exe'; spaced.parent.mkdir(); spaced.write_bytes(b'')
+            try:
+                rendered = provenance.unspaced(spaced)
+            except ValueError:
+                return  # Short names disabled on this volume: refusing is the correct outcome.
+            self.assertIsNone(re.search(r'\s', rendered))
+            self.assertEqual(Path(rendered).resolve(), spaced.resolve())
 
 
 class StampTests(unittest.TestCase):
@@ -146,7 +161,8 @@ class StampTests(unittest.TestCase):
         f.reg.controller_claim(f.identity); f.reg.controller_claim(f.identity)
         control = f.reg.control_status()
         self.assertEqual(control['controller'], f.identity)
-        self.assertEqual(control['controller_code_revision'], provenance.code_revision())
+        self.assertEqual(control['controller_code_revision'], dict(provenance.code_revision(), process=f.identity))
+        self.assertEqual(provenance.claimed(control), provenance.code_revision())
         started = [e for e in f.reg.snapshot()['events'] if e['kind'] == 'controller_started']
         self.assertEqual(len(started), 1)
         self.assertEqual(started[0]['code_revision'], provenance.code_revision())
@@ -154,6 +170,21 @@ class StampTests(unittest.TestCase):
         launch = f.plan()
         self.assertEqual(launch['code_revision'], provenance.stamp())
         self.assertEqual(f.reg.control_status()['launches'][launch['id']]['code_revision'], provenance.stamp())
+
+    def test_claim_by_pre_provenance_code_is_not_reported_as_the_recorded_revision(self):
+        f = fixture(controller_fixtures.ControllerTests, 'test_runner_publication_read_races_retry_without_duplicate_spawn')
+        self.addCleanup(f.doCleanups)
+        f.reg.controller_claim(f.identity)
+        legacy = dict(f.identity, pid=f.identity['pid'] + 1)
+        with f.reg.transaction() as state:
+            state['control']['controller'] = legacy  # Exactly what the base controller_claim writes.
+        control = f.reg.control_status()
+        self.assertIn('controller_code_revision', control); self.assertIsNone(provenance.claimed(control))
+        data = service.code_status(control, identify=lambda pid: None)
+        self.assertIsNone(data['running'])
+        self.assertTrue(any('provenance unknown' in w for w in data['warnings']))
+        self.assertIn('provenance unknown', code_line(report(f.reg.snapshot(), 5, on_disk=provenance.code_revision())['code']))
+        self.assertIsNone(provenance.claimed(dict(controller_code_revision=provenance.code_revision())))
 
     def test_old_launch_records_without_provenance_still_replay(self):
         f = fixture(controller_fixtures.ControllerTests, 'test_runner_publication_read_races_retry_without_duplicate_spawn')
@@ -195,6 +226,7 @@ class StampTests(unittest.TestCase):
         record = f.reg.dispose_review('one', 1, lane['revision'], 'approved-1', lane['handoff']['sha256'],
                                       'shared.cpp', 'approved', 'reviewer', f.evidence)
         self.assertEqual(record['code_revision'], provenance.stamp())
+        self.assertEqual(f.reg.snapshot()['lanes']['one']['handoff_code_revision'], provenance.stamp())
 
     def test_submit_handoff_and_integrate_keep_receipts_exact(self):
         f = fixture(workflow_fixtures.WorkflowTests, 'test_handoff_review_and_integration_metrics')
@@ -208,6 +240,15 @@ class StampTests(unittest.TestCase):
         done = f.reg.integrate('one', 1, 4, copy.deepcopy(record))
         self.assertEqual(done['integration'], record)
         self.assertEqual(done['integration_code_revision'], provenance.stamp())
+
+    def test_cleared_handoff_drops_its_code_revision(self):
+        f = fixture(workflow_fixtures.WorkflowTests, 'test_handoff_review_and_integration_metrics')
+        self.addCleanup(f.doCleanups)
+        lane = f.running()
+        lane = f.reg.submit_handoff('one', 1, 2, f.save_handoff(f.handoff(lane)))
+        self.assertIn('handoff_code_revision', lane)
+        lane = f.reg.checkpoint('one', 1, 3, {'state': 'running'})
+        self.assertIsNone(lane['handoff']); self.assertNotIn('handoff_code_revision', lane)
 
 
 class ServiceStatusTests(unittest.TestCase):
@@ -228,7 +269,8 @@ class ServiceStatusTests(unittest.TestCase):
                         dict(ProcessId=5, ParentProcessId=1, Name=parent_name, CommandLine=command), *extra]
 
     def control(self, code=None):
-        return dict(controller=self.identity, controller_code_revision=code or provenance.code_revision())
+        return dict(controller=self.identity,
+                    controller_code_revision=dict(code or provenance.code_revision(), process=self.identity))
 
     def test_wrapper_parent_and_matching_code(self):
         wrapper = 'powershell.exe -File C:/x/scripts/Start-Pikmin2Controller.ps1 -WorkspaceRoot C:/x'
@@ -272,12 +314,39 @@ class ServiceStatusTests(unittest.TestCase):
             self.assertIn(fragment, text)
         data = service.status(self.registry(dict(controller=None)))
         self.assertIn('No controller', data['warnings'][0])
-        legacy = service.status(self.registry(dict(controller=self.identity), 'unknown'))
+        legacy = service.status(self.registry(dict(controller=self.identity), 'unknown'), identify=lambda pid: None)
         self.assertTrue(any('provenance unknown' in w for w in legacy['warnings']))
+
+    def test_missing_provenance_reads_the_controllers_own_checkout_never_the_callers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            other = Path(temp).resolve()
+            (other / 'workflow').mkdir(); (other / 'scripts').mkdir()
+            (other / 'workflow/__init__.py').write_text(''); (other / 'scripts/pikmin2_controller.py').write_text('')
+            git(other, 'init', '-q'); git(other, 'add', '-A'); git(other, 'commit', '-qm', 'old')
+            (other / 'workflow/__init__.py').write_text('X = 1\n')
+            script = str(other / 'scripts/pikmin2_controller.py').replace('/', '\\')
+            rows = lambda: [dict(ProcessId=10, ParentProcessId=5, Name='python.exe',
+                                 CommandLine=f'python.exe "{script}" --root C:/x --config c.json')]
+            data = service.code_status(dict(controller=self.identity), None, rows, self.identify({10: '200'}))
+            self.assertEqual(Path(data['on_disk']['path']), other)
+            self.assertEqual(data['on_disk']['sha'], git(other, 'rev-parse', 'HEAD').strip())
+            self.assertTrue(any('uncommitted' in w for w in data['warnings']))
+            gone = dict(provenance.code_revision(), path=str(other / 'missing'), process=self.identity)
+            moved = service.code_status(dict(controller=self.identity, controller_code_revision=gone), None, rows,
+                                        self.identify({10: '200'}))
+            self.assertEqual(Path(moved['on_disk']['path']), other)
+        for rows, table in ((lambda: [dict(ProcessId=10, CommandLine='python pikmin2_controller.py')], {10: '200'}),
+                            (lambda: [dict(ProcessId=10, CommandLine=None)], {10: '200'}), (lambda: None, {10: '200'}),
+                            (lambda: [], {10: '999'})):
+            data = service.status(self.registry(dict(controller=self.identity)), rows, self.identify(table))
+            self.assertIsNone(data['on_disk'])
+            self.assertTrue(any('checkout unknown' in w for w in data['warnings']))
+            self.assertEqual(data['this_checkout'], provenance.code_revision())
 
     def test_operator_report_surfaces_loud_provenance(self):
         running = dict(sha='a' * 40, dirty=True, tree='b' * 64, path='p')
-        data = report(dict(lanes={}, control=dict(controller_code_revision=running)), 5,
+        identity = dict(host='h', pid=1, started='1')
+        data = report(dict(lanes={}, control=dict(controller=identity, controller_code_revision=dict(running, process=identity))), 5,
                       on_disk=dict(running, sha='c' * 40, dirty=False))
         line = code_line(data['code'])
         self.assertTrue(line.startswith('Code: running aaaaaaaaaaaa dirty=True | on disk cccccccccccc'))
@@ -319,13 +388,49 @@ class PrepareReleaseTests(unittest.TestCase):
         stop = (self.root / 'output/workflow/controller/STOP').as_posix()
         self.assertIn(f"New-Item -ItemType File -Force -Path '{stop}'", data['commands'][0])
         self.assertIn('Wait-Process -Id 4242', data['commands'][1])
-        self.assertIn(f"Remove-Item -LiteralPath '{stop}'", data['commands'][2])
-        self.assertIn((release / 'scripts/Start-Pikmin2Controller.ps1').as_posix(), data['commands'][3])
-        self.assertIn(f"'-WorkspaceRoot','{self.root.as_posix()}'", commands)
-        self.assertIn(f"'-Config','{self.config.as_posix()}'", commands)
+        self.assertIn('Get-CimInstance', data['commands'][2])  # Wrapper unknown: confirm none remains.
+        self.assertIn(f"Remove-Item -LiteralPath '{stop}'", data['commands'][3])
+        self.assertIn(f"'\"{(release / 'scripts/Start-Pikmin2Controller.ps1').as_posix()}\"'", data['commands'][4])
+        self.assertIn(f"'-WorkspaceRoot','\"{self.root.as_posix()}\"'", commands)
+        self.assertIn(f"'-Config','\"{self.config.as_posix()}\"'", commands)
         self.assertFalse((self.root / 'output/workflow/controller/STOP').exists())
         again = self.prepare()
         self.assertFalse(again['created']); self.assertEqual(again['release'], data['release'])
+
+    def test_restart_waits_for_wrapper_and_quotes_spaced_paths(self):
+        identity = dict(host='h', pid=4242, started='1')
+        commands = service.restart_commands(Path('C:/Work Root'), Path('C:/Work Root/c.json'), 'C:/Program Files/py.exe',
+                                            Path('C:/Work Root/output/workflow/release/abc'), Path('C:/Work Root/out'),
+                                            identity, dict(parent='wrapper', ppid=77))
+        self.assertIn('Wait-Process -Id 4242,77', commands[1])
+        self.assertNotIn('Get-CimInstance', '\n'.join(commands))
+        self.assertLess(commands.index(next(c for c in commands if c.startswith('Wait-Process'))),
+                        commands.index(next(c for c in commands if c.startswith('Remove-Item'))))
+        self.assertIn("'-Python','\"C:/Program Files/py.exe\"'", commands[3])
+        self.assertIn("'-WorkspaceRoot','\"C:/Work Root\"'", commands[3])
+        self.assertTrue(commands[4].startswith("& 'C:/Program Files/py.exe' 'C:/Work Root/output/workflow/release/abc/"))
+        self.assertTrue(commands[4].endswith("--root 'C:/Work Root'"))
+
+    def test_refuses_config_without_output_and_unstartable_subprocesses(self):
+        self.config.write_text(json.dumps(dict(interval=5)))
+        with self.assertRaisesRegex(Rejected, 'lacks output'):
+            self.prepare()
+        self.assertFalse((self.root / 'output/workflow/release').exists())
+        self.config.write_text(json.dumps(dict(output='output/workflow/controller')))
+        with self.assertRaisesRegex(Rejected, 'Release tests could not run.*remains and a rerun reuses it'):
+            service.prepare_release(self.root, 'HEAD', str(self.config), str(self.root / 'missing-python.exe'))
+        release = self.root / 'output/workflow/release' / self.sha[:12]
+        self.assertTrue(release.is_dir())
+        other = self.root / 'output/workflow/release'
+        def timeout(command, **kwargs):
+            if command[0] == 'git':
+                (other / Path(command[-2]).name).mkdir(parents=True)
+                raise subprocess.TimeoutExpired(command, 600)
+            return subprocess.run(command, **kwargs)
+        (self.root / 'workflow/gate.py').write_text('RULE = 9\n'); git(self.root, 'commit', '-qam', 'next')
+        sha = git(self.root, 'rev-parse', 'HEAD').strip()
+        with self.assertRaisesRegex(Rejected, 'git worktree add could not run.*partial release.*worktree remove'):
+            service.prepare_release(self.root, sha, str(self.config), sys.executable, run=timeout)
 
     def test_refuses_changed_release_dirty_worktree_unknown_ref_and_failing_tests(self):
         self.prepare()

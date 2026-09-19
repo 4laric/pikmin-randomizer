@@ -64,22 +64,29 @@ py -3.12 scripts/workflow_module.py service prepare-release --root C:/Users/alar
 ```
 
 `status` is read-only. It shows the controller identity from `control.controller`,
-its liveness, the code revision recorded when it claimed the registry
-(`control.controller_code_revision`), the on-disk revision of that checkout, and
-whether its parent is the `Start-Pikmin2Controller.ps1` wrapper (`unknown` when
-the process table cannot tell). It warns, and exits 1, for dirty code, a running
-sha that differs from disk, missing provenance or an unsupervised controller.
+its liveness, the code revision recorded when that process claimed the registry
+(`control.controller_code_revision`, trusted only when its `process` matches), the
+on-disk revision of the controller's own checkout (the recorded path, else the
+absolute `pikmin2_controller.py` in its command line; never the checkout running
+`status`, which is shown separately), and whether its parent is the
+`Start-Pikmin2Controller.ps1` wrapper (`unknown` when the process table cannot
+tell). It warns, and exits 1, for dirty code, a running sha that differs from disk,
+missing provenance, an undeterminable checkout or an unsupervised controller.
 
 `prepare-release` resolves the ref to a commit (a worktree path is accepted only
 when it has no uncommitted changes) and creates a detached worktree at
-`<root>/output/workflow/release/<short-sha>`. An existing directory is reused only
+`<root>/output/workflow/release/<short-sha>`. The config must name `output` (the
+wrapper has no default). An existing directory is reused only
 if it is a clean worktree at exactly that commit; anything else is refused. It then
 runs the pytest arguments listed in the release's `tests/workflow_release_tests.txt`
 inside the worktree and refuses on any failure or if the tests dirty the tree. It
-never signals the controller. On success it prints the switch-over for the operator:
+never signals the controller; a subprocess that cannot start or times out is
+refused with its command. On success it prints the switch-over for the operator:
 
-1. create `<controller output>/STOP` and wait for the controller PID to exit (its
-   wrapper exits too, because the controller exits 0 on STOP);
+1. create `<controller output>/STOP` and wait for the controller PID and its wrapper
+   PID to exit. A wrapper whose controller exited nonzero sleeps and relaunches the
+   old code unless STOP still exists, so when the wrapper cannot be identified the
+   plan prints a process query that must return nothing before step 2;
 2. delete STOP, or the new wrapper exits immediately;
 3. start `<release>/scripts/Start-Pikmin2Controller.ps1` hidden with
    `-WorkspaceRoot <canonical root> -Config <config> -Python <python>`;

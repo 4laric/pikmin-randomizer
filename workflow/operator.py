@@ -10,9 +10,9 @@ from .handoff import local_path, digest
 
 
 def report(state, now, root=None, on_disk=None):
-    """on_disk is the checkout revision; it is read from git only when root is given."""
+    """on_disk is the controller checkout's revision; found from its process and git only when root is given."""
     from .delivery_contracts import audit
-    from .provenance import warnings
+    from .provenance import claimed, warnings
     lanes = state.get('lanes', {})
     autofill = state.get('throughput_runtime', {}).get('autofill', {})
     actions = []
@@ -74,7 +74,7 @@ def report(state, now, root=None, on_disk=None):
         from .service import code_status
         code = code_status(control)
     else:
-        running = control.get('controller_code_revision')
+        running = claimed(control)
         code = dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk))
     return dict(at=now, code=code, delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
                 handoffs=handoffs, blocked=blocked,

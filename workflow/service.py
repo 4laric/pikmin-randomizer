@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 from .handoff import Rejected, local_path, require
-from .provenance import CHECKOUT, git, revision, warnings
+from .provenance import CHECKOUT, claimed, git, revision, warnings
 
 WRAPPER = 'Start-Pikmin2Controller.ps1'
 TESTS = 'tests/workflow_release_tests.txt'  # Whitespace-separated pytest arguments, versioned with the release.
@@ -80,21 +80,60 @@ def started_at(identity):
     return datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc).isoformat(timespec='seconds')
 
 
-def code_status(control, on_disk=None):
-    """Running provenance recorded at claim versus the checkout on disk (no process calls)."""
-    running = control.get('controller_code_revision')
+def controller_checkout(identity, inventory=None, identify=None):
+    """(checkout, None) from the live controller's absolute pikmin2_controller.py argument, else (None, reason)."""
+    from .processes import identify as current
+    from .terminal_cleanup import process_inventory
+    identify, inventory = identify or current, inventory or process_inventory
+    if not identity:
+        return None, 'No controller has claimed this registry'
+    try:
+        if identify(identity['pid']) != identity:
+            return None, 'Controller PID no longer has its recorded identity'
+        rows = inventory()
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        return None, 'Cannot inspect processes: ' + (str(exc) or type(exc).__name__)
+    rows = [rows] if isinstance(rows, dict) else rows
+    row = next((r for r in rows if r.get('ProcessId') == identity['pid']), None) if isinstance(rows, list) else None
+    command = (row or {}).get('CommandLine')
+    if not command:
+        return None, 'Command line of controller process is not readable'
+    match = re.search(r'"([^"]*pikmin2_controller\.py)"|(\S*pikmin2_controller\.py)', command, re.I)
+    script = Path(match.group(1) or match.group(2)) if match else None
+    if script is None or not script.is_absolute() or not script.is_file():
+        return None, 'Controller command line names no absolute, existing pikmin2_controller.py'
+    return script.resolve().parents[1], None
+
+
+def code_status(control, on_disk=None, inventory=None, identify=None):
+    """Running provenance of the current claim versus the checkout that controller runs from.
+
+    Never substitutes the caller's checkout: an undeterminable controller checkout is
+    reported as unknown."""
+    running = claimed(control)
+    notes = []
     if on_disk is None:
-        path = Path(running['path']) if running and running.get('path') else CHECKOUT
-        on_disk = revision(path if path.is_dir() else CHECKOUT)
-    return dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk))
+        path = Path(running['path']) if running and running.get('path') else None
+        if path is None or not path.is_dir():
+            path, reason = controller_checkout(control.get('controller'), inventory, identify)
+            if path is None:
+                notes.append('Controller checkout unknown (' + reason + '); on-disk comparison skipped')
+        on_disk = revision(path) if path else None
+    return dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk) + notes)
 
 
 def status(reg, inventory=None, identify=None):
     """Controller identity, liveness, parent and code provenance; strictly read-only."""
+    from .terminal_cleanup import process_inventory
+    rows = []
+    def listing():  # One process inventory serves both the checkout and the parent lookups.
+        if not rows:
+            rows.append((inventory or process_inventory)())
+        return rows[0]
     control = reg.control_status()
     identity = control.get('controller')
-    result = dict(controller=identity, started_at=started_at(identity or {}), **code_status(control))
-    if CHECKOUT != Path(result['on_disk']['path']):
+    result = dict(controller=identity, started_at=started_at(identity or {}), **code_status(control, None, listing, identify))
+    if not result['on_disk'] or CHECKOUT != Path(result['on_disk']['path']):
         result['this_checkout'] = revision(CHECKOUT)
     notes = result['warnings']
     if not identity:
@@ -106,7 +145,7 @@ def status(reg, inventory=None, identify=None):
         result['parent'] = None
         notes.insert(0, f"Controller {identity.get('pid')} is {result['liveness']}")
         return result
-    result['parent'] = parent_check(identity, inventory, identify)
+    result['parent'] = parent_check(identity, listing, identify)
     if result['parent']['parent'] == 'not_wrapper':
         notes.append('Controller is not supervised by ' + WRAPPER + ': ' + result['parent']['reason'])
     elif result['parent']['parent'] == 'unknown':
@@ -137,28 +176,54 @@ def resolve_ref(root, ref):
     return sha
 
 
-def restart_commands(root, config, python, release, out, identity=None):
-    """Operator commands; printed, never executed here."""
+def restart_commands(root, config, python, release, out, identity=None, parent=None):
+    """PowerShell operator commands; printed, never executed here.
+
+    A wrapper whose controller exits nonzero sleeps and relaunches unless STOP still
+    exists, so STOP is removed only once the old wrapper is gone too. Start-Process
+    joins -ArgumentList unquoted, so each path carries its own double quotes."""
     q = lambda s: "'" + str(s).replace("'", "''") + "'"
+    arg = lambda path: q('"' + Path(path).as_posix() + '"')
     stop = (out / 'STOP').as_posix()
-    wait = (f"Wait-Process -Id {identity['pid']}  # controller {identity['pid']}; confirm with service status"
-            if identity else '# Wait until service status reports the controller dead')
     wrapper = (release / 'scripts' / WRAPPER).as_posix()
-    return [f'New-Item -ItemType File -Force -Path {q(stop)} | Out-Null', wait,
-            f'Remove-Item -LiteralPath {q(stop)}',
+    commands = [f'New-Item -ItemType File -Force -Path {q(stop)} | Out-Null']
+    if identity and (parent or {}).get('parent') == 'wrapper':
+        commands.append(f"Wait-Process -Id {identity['pid']},{parent['ppid']} -ErrorAction SilentlyContinue"
+                        f"  # controller {identity['pid']} and its {WRAPPER} wrapper {parent['ppid']}")
+    else:
+        commands += ([f"Wait-Process -Id {identity['pid']} -ErrorAction SilentlyContinue  # controller {identity['pid']}"]
+                     if identity else ['# Wait until service status reports the controller dead'])
+        commands.append(f"# Wrapper not identified: before removing STOP, this must print nothing: Get-CimInstance Win32_Process"
+                        f" | Where-Object CommandLine -like '*{WRAPPER}*' | Select-Object ProcessId,CommandLine")
+    return commands + [f'Remove-Item -LiteralPath {q(stop)}',
             "Start-Process -WindowStyle Hidden -FilePath powershell.exe -ArgumentList "
-            f"'-NoProfile','-ExecutionPolicy','Bypass','-File',{q(wrapper)},"
-            f"'-WorkspaceRoot',{q(Path(root).as_posix())},'-Config',{q(Path(config).as_posix())},'-Python',{q(Path(python).as_posix())}",
-            f"{Path(python).as_posix()} {(release / 'scripts/workflow_module.py').as_posix()} service status --root {Path(root).as_posix()}"]
+            f"'-NoProfile','-ExecutionPolicy','Bypass','-File',{arg(wrapper)},"
+            f"'-WorkspaceRoot',{arg(root)},'-Config',{arg(config)},'-Python',{arg(python)}",
+            f"& {q(Path(python).as_posix())} {q((release / 'scripts/workflow_module.py').as_posix())} service status"
+            f" --root {q(Path(root).as_posix())}"]
 
 
-def prepare_release(root, ref, config, python=None, tests=None, run=subprocess.run, identity=None):
+def call(run, command, what, **kwargs):
+    """One subprocess; failure to start or finish refuses instead of raising a traceback."""
+    try:
+        return run(command, capture_output=True, text=True, **kwargs)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Rejected(f"{what} could not run ({' '.join(map(str, command))}): {str(exc) or type(exc).__name__}")
+
+
+def prepare_release(root, ref, config, python=None, tests=None, run=subprocess.run, identity=None, parent=None):
     """Create or reuse a clean release worktree, test it, return the restart plan."""
     root = Path(root).resolve()
     python = python or sys.executable
     config = local_path(root, str(config))
     require(config.is_file(), 'Controller config not found: ' + str(config))
-    out = local_path(root, json.loads(config.read_text(encoding='utf-8-sig')).get('output', 'output/workflow/controller'))
+    try:
+        settings = json.loads(config.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as exc:
+        raise Rejected('Controller config unreadable: ' + str(exc))
+    output = settings.get('output') if isinstance(settings, dict) else None
+    require(isinstance(output, str) and output.strip(), 'Controller config lacks output; the wrapper requires it')
+    out = local_path(root, output)
     sha = resolve_ref(root, ref)
     release = root / 'output/workflow/release' / sha[:12]
     if release.exists():
@@ -166,9 +231,14 @@ def prepare_release(root, ref, config, python=None, tests=None, run=subprocess.r
         created = False
     else:
         release.parent.mkdir(parents=True, exist_ok=True)
-        p = run(['git', '-C', str(root), 'worktree', 'add', '--detach', str(release), sha],
-                capture_output=True, text=True, timeout=600)
-        require(p.returncode == 0, 'git worktree add failed: ' + (p.stderr or '').strip())
+        partial = lambda: (f'; partial release {release} remains: clear it with git -C {root} worktree remove --force'
+                           f' {release} (or delete it and run git worktree prune)' if release.exists() else '')
+        try:
+            p = call(run, ['git', '-C', str(root), 'worktree', 'add', '--detach', str(release), sha], 'git worktree add',
+                     timeout=600)
+        except Rejected as exc:
+            raise Rejected(str(exc) + partial())
+        require(p.returncode == 0, 'git worktree add failed: ' + (p.stderr or '').strip() + partial())
         require(_clean_worktree(release, sha), 'New release worktree is not a clean checkout of ' + sha)
         created = True
     listing = release / (tests or TESTS)
@@ -178,15 +248,18 @@ def prepare_release(root, ref, config, python=None, tests=None, run=subprocess.r
     env = dict(os.environ, PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1')
     for key in ('PYTHONPATH', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'):
         env.pop(key, None)
-    p = run([python, '-m', 'pytest', *names, '-q', '-p', 'no:cacheprovider'], cwd=release, env=env,
-            capture_output=True, text=True, timeout=3600)
+    try:
+        p = call(run, [python, '-m', 'pytest', *names, '-q', '-p', 'no:cacheprovider'], 'Release tests',
+                 cwd=release, env=env, timeout=3600)
+    except Rejected as exc:
+        raise Rejected(f'{exc}; release worktree {release} remains and a rerun reuses it')
     summary = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()[-1:] or ['']
     require(p.returncode == 0, 'Release tests failed in ' + str(release) + ': ' + summary[0])
     require(_clean_worktree(release, sha), 'Release tests modified the release worktree')
     code = revision(release)
     require(code['sha'] == sha and not code['dirty'], 'Release provenance is not clean')
     return dict(release=str(release), sha=sha, created=created, tests=summary[0], code_revision=code,
-                commands=restart_commands(root, config, python, release, out, identity))
+                commands=restart_commands(root, config, python, release, out, identity, parent))
 
 
 def main(argv=None):
@@ -216,7 +289,11 @@ def main(argv=None):
                   f"({data['liveness']}); parent: {(data['parent'] or {}).get('parent')}")
             print(f"Running code: {run.get('sha')} dirty={run.get('dirty')} tree={run.get('tree')} at {run.get('path')}")
             d = data['on_disk']
-            print(f"On disk:      {d['sha']} dirty={d['dirty']} tree={d['tree']} at {d['path']}")
+            print(f"On disk:      {d['sha']} dirty={d['dirty']} tree={d['tree']} at {d['path']}" if d else
+                  'On disk:      unknown (controller checkout not determined)')
+            if data.get('this_checkout'):
+                t = data['this_checkout']
+                print(f"This checkout: {t['sha']} dirty={t['dirty']} tree={t['tree']} at {t['path']} (not the controller's)")
             for note in data['warnings']:
                 print('WARNING: ' + note)
             return 1 if data['warnings'] else 0
@@ -224,7 +301,9 @@ def main(argv=None):
             identity = reg.control_status().get('controller')
         except Rejected:
             identity = None  # A release can be prepared before any controller exists.
-        data = prepare_release(root, args.ref, args.config, args.python, args.tests, identity=identity)
+        identity = identity if identity and reg.probe(identity) == 'alive' else None
+        parent = parent_check(identity) if identity else None
+        data = prepare_release(root, args.ref, args.config, args.python, args.tests, identity=identity, parent=parent)
     except Rejected as exc:
         print('Refused: ' + str(exc), file=sys.stderr)
         return 2

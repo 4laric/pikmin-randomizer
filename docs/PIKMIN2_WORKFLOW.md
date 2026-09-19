@@ -58,10 +58,10 @@ dirty: true`, never as clean. Additive `code_revision` fields use the compact fo
 
 | Record | Field |
 |---|---|
-| controller claim | `control.controller_code_revision` (full form) and a `controller_started` event; `control.controller` stays the exact process identity |
+| controller claim | `control.controller_code_revision` (full form plus the claiming `process`) and a `controller_started` event; `control.controller` stays the exact process identity, and a revision whose `process` differs from it (a claim by pre-provenance code) is reported as unknown |
 | launch intents (`plan_launch`, pool and candidate-QA) | `code_revision` |
 | `shared_review_decisions`, `shared_preflight_decisions`, `consumer_verifications` reports, `delivery.dispositions` | `code_revision` |
-| lane after `submit_handoff` / `integrate` | `handoff_code_revision` / `integration_code_revision` (handoff and receipt records stay exactly as submitted, so replays still compare equal) |
+| lane after `submit_handoff` / `integrate` | `handoff_code_revision` / `integration_code_revision` (handoff and receipt records stay exactly as submitted, so replays still compare equal); a disposition that rewrites the handoff restamps it, and clearing the handoff removes it |
 
 Records written before provenance lack these fields; readers treat that as unknown.
 Worker instructions name absolute commands (`<python> <checkout>/scripts/workflow_module.py
@@ -90,7 +90,7 @@ original failure and submit a concrete command, expected result, observed result
 and independent hashed evidence while its current generation is running:
 
 ```powershell
-py -3.12 -m workflow.consumer_verification --root C:/Users/alari/pikmin-randomizer --request output/consumer-check.json
+<python> <checkout>/scripts/workflow_module.py consumer_verification --root C:/Users/alari/pikmin-randomizer --request output/consumer-check.json
 ```
 
 The request contains `verification`, `consumer`, `generation`, boolean `passed`,

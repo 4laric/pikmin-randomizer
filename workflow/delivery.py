@@ -150,11 +150,11 @@ class DeliveryMixin:
                           evidence=matches[0]['evidence'] + [evidence_key])
         snapshot = self._delivery_freeze(lane, data)
         _, result = self._delivery_validate(snapshot, lane)
+        from .provenance import stamp
         lane.update(state='handoff_ready', revision=revision + 1,
                     handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
-                    handoff=dict(**snapshot['handoff'], result=result))
+                    handoff=dict(**snapshot['handoff'], result=result), handoff_code_revision=stamp())
         self.check_wip(state, lane)
-        from .provenance import stamp
         record = dict(request=request, snapshot=snapshot, revision=lane['revision'], at=self.clock(),
                       code_revision=stamp())
         dispositions[identity] = record

@@ -53,8 +53,8 @@ one producer; normal ownership validation and dispatch still apply. This is a
 narrow exception to the coordinator's publication-only role, authorizing provider
 job preparation, not source implementation or independent worker launches.
 
-Run the disposition CLI from the canonical repository:
-`py -3.12 -m workflow.prerequisite_queue --root <canonical-root> --request <private-json>`.
+Run the disposition CLI through the controller's checkout (the rendered instruction gives the absolute form):
+`<python> <checkout>/scripts/workflow_module.py prerequisite_queue --root <canonical-root> --request <private-json>`.
 The JSON contains `coordinator`, `generation`, `request_id`, `outcome` (`linked` or
 `no_action`), `lanes`, `reason`, and hashed `evidence`. Only the live configured
 coordinator may disposition a still-current report. A link must name an existing
@@ -853,7 +853,7 @@ fences and a two-launch per-tick limit apply. This reserves no lease and clears 
 source, asset or shared-review dependencies; resumed workers must acquire normal
 FIFO/exclusive leases and retain unresolved gates.
 
-Pre-handoff shared decisions (#635): `py -3.12 -m workflow.shared_decisions
+Pre-handoff shared decisions (#635): `<python> <checkout>/scripts/workflow_module.py shared_decisions
 --root <canonical-root> --request <json>` records a substantive approved/rejected
 file review for a safely stopped blocked producer. Fields: key, generation,
 source_pins `{root,native}` matching current heads, exact owned file, status,
@@ -861,7 +861,7 @@ reviewer attribution, scoped reason, evidence `{path,sha256}`. The controller
 verifies the evidence and pins again and wakes the same producer once. This does
 not integrate source, clear unrelated dependencies, or grant gameplay acceptance.
 
-Unclaimed prepared-spec repairs (#635): `py -3.12 -m workflow.prepared_repair
+Unclaimed prepared-spec repairs (#635): `<python> <checkout>/scripts/workflow_module.py prepared_repair
 --root <canonical-root> --request <json>` accepts manifest_path, full replacement,
 expected_hash (workflow.control.fingerprint of original spec), and evidence.
 Fresh issue/launch/source proofs are mandatory. Issue/lane, source records,
@@ -882,6 +882,6 @@ A safely stopped runner with a missing terminal outcome gets one same-session ar
 
 Blocked consumers with verified outcome evidence older than five minutes can generate prerequisite-preparation demand independently of helper no-work reports. The existing coordinator receives at most three consumers per turn and two attempts per unchanged evidence/source snapshot. An unstarted coordinator intent can receive this demand before any launch directory exists; a live or uncertain launch is never rewritten. Explicit active producer dependencies and in-flight consumer recovery are respected. This prepares real scoped proposals, not acceptance or automatic gate clearance.
 
-Blocked-consumer links are recorded by the live registered coordinator with `python -m workflow.blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path.
+Blocked-consumer links are recorded by the live registered coordinator with `<python> <checkout>/scripts/workflow_module.py blocked_followup --root <canonical> --request <json>`. Request fields: `coordinator`, `generation`, `consumer`, `consumer_generation`, nonempty `producers` lane IDs, `reason`, hashed `evidence`. The consumer must be safely stopped and blocked; producers must be active executable lanes, integrated source, or validated ready published specs. Completed review-only providers, blocked owners, helpers, self-links and transitive cycles are rejected. The link preserves all original gates and consumer source pins. Verified integration then wakes that exact consumer through the existing evidence-checked path.
 
 Dashboard HTML replacement retries transient Windows reader locks for at most 1.55 seconds. A persistent lock preserves the last good HTML, records `dashboard-publish-error.json`, and retries next tick without aborting controller maintenance.

@@ -70,22 +70,50 @@ def stamp():
     return dict(sha=value['sha'], dirty=value['dirty'], tree=(value['tree'] or '')[:16] or None)
 
 
+def unspaced(path):
+    """Forward-slash path with no whitespace (Windows 8.3 form if needed); refuses otherwise.
+
+    A quoted first word is an expression, not a command, in PowerShell, so no quoting
+    renders one command line that PowerShell, cmd and bash all run.
+    """
+    text = Path(path).as_posix()
+    if not re.search(r'\s', text):
+        return text
+    if os.name == 'nt':
+        import ctypes
+        buffer = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(path), buffer, len(buffer)) and not re.search(r'\s', buffer.value):
+            return Path(buffer.value).as_posix()
+    raise ValueError('Worker CLI path contains whitespace and has no short form: ' + text +
+                     '; run the controller from a python and checkout without spaces')
+
+
 def cli(module):
     """Absolute worker command for workflow.<module>, pinned to this interpreter and checkout.
 
     `python -m workflow.X` puts the caller's directory first on sys.path, so a worker
     standing in a lane worktree with an older workflow/ would run stale gate code.
-    Forward slashes keep the command intact in PowerShell, cmd and bash alike.
     """
-    quote = lambda s: '"' + s + '"' if re.search(r'\s', s) else s
-    return ' '.join((quote(Path(sys.executable).as_posix()), quote(ENTRY.as_posix()), module))
+    return ' '.join((unspaced(sys.executable), unspaced(ENTRY), module))
+
+
+def claimed(control):
+    """Revision recorded by the current controller's own claim, else None.
+
+    A claim by pre-provenance code replaces control.controller but not the revision
+    field, so a revision recorded for another process must not describe this one.
+    """
+    code = (control or {}).get('controller_code_revision')
+    if not isinstance(code, dict) or not control.get('controller') or code.get('process') != control['controller']:
+        return None
+    return {k: v for k, v in code.items() if k != 'process'}
 
 
 def warnings(running, on_disk):
     """Loud, specific differences between the recorded running code and the checkout."""
     result = []
     if not running:
-        result.append('Controller provenance unknown: it was claimed by code that does not record a revision')
+        result.append('Controller provenance unknown: its claim recorded no revision (pre-provenance code)')
         running = dict(sha=on_disk and on_disk.get('sha'))  # Only on-disk findings remain meaningful.
     elif running.get('sha') is None:
         result.append('Controller code revision unknown (git unavailable when it started)')

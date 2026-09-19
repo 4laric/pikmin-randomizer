@@ -97,7 +97,7 @@ workers, retaining the execution reserve. The configured support templates bound
 available review partitions (currently eight); there is no additional active cap.
 
 Reviewers inspect the source/evidence and submit all decisions in one request through
-python -m workflow.review_decisions before finishing. The registry requires a live
+`<python> <checkout>/scripts/workflow_module.py review_decisions` (the absolute command in their instruction) before finishing. The registry requires a live
 reviewer, unfinished authorized cycle, exact producer generation, source pins and
 handoff. It rejects cross-target and stale assignments. Missing evidence remains a
 blocker. Durable decisions use the existing immutable handoff application queue.
@@ -196,7 +196,7 @@ old decisions. Dashboard admission details and `python -m workflow.operator` exp
 pending work; the existing integration owner receives bounded reconciliation demand.
 
 The live integration owner can record a disposition with:
-`python -m workflow.admission_reconciliation --root <root> --request <json>`.
+`<python> <checkout>/scripts/workflow_module.py admission_reconciliation --root <root> --request <json>`.
 Request fields: `lane`, audit `token`, `reviewer`, `reviewer_generation`, `decision`
 (`retain` or `superseded`), `reason`, `evidence` (`path`, `sha256`). Retention also
 requires a concrete `next_action`. Supersession requires `no_remaining_delivery:
@@ -335,7 +335,7 @@ alone cannot rearm this resumption. No receipt or ADMIT is synthesized.
 Aging review reports (30 minutes) now create pinned obligations on new integration
 launches. The owner cannot finish review-ready standby until each exact report is
 accepted with evidence, resumed for correction through normal launch fencing, or
-explicitly deferred using `python -m workflow.review_followup --root <root> --request
+explicitly deferred using `<python> <checkout>/scripts/workflow_module.py review_followup --root <root> --request
 <json>`. Requests name key, generation, review_pin from demand, reviewer,
 reviewer_generation, waiting_on (independent unfinished lane), next_action, reason,
 and hashed evidence. Deferral preserves the report and source-delivery gates;

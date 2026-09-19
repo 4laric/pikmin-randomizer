@@ -318,7 +318,7 @@ class ControlMixin:
                 pin = repair_pin(state, lane, item['reason'], self)
                 lane.setdefault('repair_history', []).append(dict(isolation=pin, handoff=lane['handoff'],
                     root=lane['root'], native=lane.get('native'), handoff_at=lane.get('handoff_at'),
-                    launch_id=action_id, at=self.clock()))
+                    launch_id=action_id, at=self.clock(), handoff_code_revision=lane.pop('handoff_code_revision', None)))
                 lane.update(handoff=None, handoff_at=None)
             if lane['state'] == 'review_ready':
                 require(item['reason'].startswith('integration-demand:') and
@@ -358,15 +358,15 @@ class ControlMixin:
             return lane
 
     def controller_claim(self, process):
-        """The identity stays exact for probing; its code revision is a sibling field."""
+        """The identity stays exact for probing; its revision names the claiming process."""
         from .provenance import code_revision
         code = code_revision()  # Git runs before the writer lock is taken.
         with self.transaction() as state:
             c = self.control(state); old = c['controller']
             require(old is None or old == process or self.probe(old) == 'dead', 'Controller already live/unknown')
             c['controller'] = process
-            if old != process or c.get('controller_code_revision') != code:
-                c['controller_code_revision'] = code
+            if old != process or c.get('controller_code_revision') != dict(code, process=process):
+                c['controller_code_revision'] = dict(code, process=process)  # Older claims never touch it.
                 self.event(state, 'controller_started', None, process=process, code_revision=code)
 
     def cool_provider(self, provider, seconds):
