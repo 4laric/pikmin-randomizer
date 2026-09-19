@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -36,6 +37,9 @@ source_prerequisites = _adapter.source_prerequisites
 stage_contract = _adapter.stage_contract
 starting_population = _adapter.starting_population
 verify_source = _adapter.verify_source
+validate_p1_manifest = _adapter.validate_p1_manifest
+stage_run_layout = _adapter.stage_run_layout
+p1_main = _adapter.p1_main
 
 
 def floor_block(index, pool, version=0):
@@ -228,7 +232,117 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ImportContractError):
             audit_packet(details(), EXPECTED_PIKMIN_ROSTER, source_bytes=data)
 
+class P1ImportTests(unittest.TestCase):
+    """P1 import path for ch_NARI_08tobasare (lane p2-challenge-ch-nari-08tobasare-p1).
 
+    Synthetic harness manifests (labeled here, never source evidence) that
+    preserve the pinned contract: 2 floors, timers [150.0, 100.0], squad
+    total 50 at cells [0][2]/[1][2]/[3][2], sprays 2/0, ui_index 24.
+    """
+
+    def manifest(self, **over):
+        m = {
+            "schema": "p2-challenge-ch_nari_08tobasare-p0/1",
+            "cave_id": "ch_NARI_08tobasare",
+            "floors": [
+                {"unit_pool": "tobasare-floor1-pool",
+                 "enemies": [{"source_token": "TrapA"}],
+                 "treasures": [{"treasure_id": "tile_key"}]},
+                {"unit_pool": "tobasare-floor2-pool",
+                 "enemies": [{"source_token": "TrapB"}, {"source_token": "TrapC"}],
+                 "treasures": []},
+            ],
+            "starting_roster": [[0, 0, 25], [0, 0, 20], [0, 0, 0], [0, 0, 5],
+                                [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+            "floor_seconds": [150.0, 100.0],
+            "sprays": {"bitter": 2, "spicy": 0},
+            "ui_index": 24,
+        }
+        m.update(over)
+        return m
+
+    def test_validate_ok(self):
+        out = validate_p1_manifest(self.manifest())
+        self.assertEqual(out["cave_id"], "ch_NARI_08tobasare")
+        self.assertEqual(out["squad_total"], 50)
+        self.assertEqual(len(out["floors"]), 2)
+        self.assertEqual(out["floor_seconds"], [150.0, 100.0])
+
+    def test_wrong_cave_rejected(self):
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(self.manifest(cave_id="ch_OTHER"))
+
+    def test_floor_count_rejected(self):
+        m = self.manifest()
+        m["floors"] = m["floors"][:1]
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(m)
+
+    def test_empty_enemies_rejected(self):
+        m = self.manifest()
+        m["floors"][0]["enemies"] = []
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(m)
+
+    def test_missing_unit_pool_rejected(self):
+        m = self.manifest()
+        del m["floors"][1]["unit_pool"]
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(m)
+
+    def test_wrong_squad_total_rejected(self):
+        m = self.manifest()
+        m["starting_roster"][0][2] = 24
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(m)
+
+    def test_missing_pinned_cell_rejected(self):
+        m = self.manifest()
+        m["starting_roster"][3][2] = 0
+        m["starting_roster"][2][2] = 5
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(m)
+
+    def test_bad_timer_rejected(self):
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(self.manifest(floor_seconds=[150.0, 99.0]))
+
+    def test_wrong_sprays_rejected(self):
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(self.manifest(sprays={"bitter": 2, "spicy": 2}))
+
+    def test_wrong_ui_rejected(self):
+        with self.assertRaises(ImportContractError):
+            validate_p1_manifest(self.manifest(ui_index=0))
+
+    def test_stage_run_layout_writes_three_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            result = stage_run_layout(self.manifest(), out)
+            self.assertEqual(result["cave_id"], "ch_NARI_08tobasare")
+            self.assertEqual(len(result["files"]), 3)
+            for name in ("stage-manifest.json", "p1-input-package.json", "run-plan.json"):
+                self.assertIn(name, result["files"])
+                self.assertTrue((out / name).is_file())
+            package = json.loads((out / "p1-input-package.json").read_text())
+            self.assertEqual(package["schema"], "p2-challenge-ch-nari-08tobasare-p1-v1")
+            self.assertEqual(package["squad_total"], 50)
+
+    def test_stage_run_layout_rejects_bad_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ImportContractError):
+                stage_run_layout({"cave_id": "nope"}, Path(tmp))
+
+    def test_p1_main_missing_file_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ImportContractError):
+                p1_main(Path(tmp) / "absent.json", Path(tmp) / "out")
+
+    def test_p1_main_end_to_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "manifest.json"
+            src.write_text(json.dumps(self.manifest()), encoding="utf-8")
+            result = p1_main(src, Path(tmp) / "run")
+            self.assertEqual(result["floors"], 2)
 if __name__ == '__main__':
     unittest.main()
-
