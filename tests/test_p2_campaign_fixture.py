@@ -133,6 +133,16 @@ class SessionPathTests(unittest.TestCase):
             resolved = require_safe_session_dir(Path(raw) / "s")
             self.assertTrue(resolved.is_absolute())
 
+    def test_existing_directory_rejected_without_deletion(self):
+        with tempfile.TemporaryDirectory() as raw:
+            session = Path(raw) / "session"
+            session.mkdir()
+            sentinel = session / "keep.txt"
+            sentinel.write_text("preserve", encoding="utf-8")
+            with self.assertRaises(FixtureRejected):
+                require_safe_session_dir(session)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve")
+
 
 class BootstrapTests(unittest.TestCase):
     def test_real_bootstrap_validates(self):
