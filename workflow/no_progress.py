@@ -42,6 +42,8 @@ def record(reg, state, lane, outcome=None):
     'reconcile' (no terminal outcome) is neither progress nor a stall: signal and streak stay put."""
     if outcome == 'reconcile':
         return
+    from .reduced_supervision import record_blocked
+    record_blocked(state, lane)
     value = fingerprint(signal(lane))
     last = lane.get('progress_signal') or {}
     again = last.get('generation') == lane['generation']  # A repeated finish in one generation counts once.

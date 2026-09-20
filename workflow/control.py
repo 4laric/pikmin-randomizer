@@ -311,6 +311,14 @@ class ControlMixin:
             if reason.startswith('integration-demand:'):
                 self._resumable_integration_batches(state, lane)
             require(owner_wakeup or repair_wakeup or lane['state'] in ('blocked', 'ready', 'running', 'reconciling'), 'Lane cannot resume')
+            from .reduced_supervision import check_retry
+            retry_evidence = (carry or {}).get('operator_retry_evidence')
+            if retry_evidence is not None:
+                require(reason.startswith('operator:'), 'Explicit operator retry reason required')
+                self.evidence(retry_evidence)
+                self.event(state, 'operator_retry', key, evidence=retry_evidence, reason=reason)
+            else:
+                check_retry(state, lane)
             require(self.recovery_safe(state, lane), 'Old worker or protected child still live/unknown')
             self.check_wip(state, dict(lane, state='running'))
             require(not any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')

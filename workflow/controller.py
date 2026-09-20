@@ -594,7 +594,11 @@ class Controller:
                 if not self.reg.recovery_safe(state, lane): continue
                 for artifact in selected: self.reg.evidence(artifact['evidence'])
                 instruction = 'Dependencies are now reviewed and integrated. Consume these exact versioned contracts: ' + json.dumps(selected)
-                self.reg.plan_launch(key, 'dependency_ready', instruction, self.config['models'], version)
+                from .no_progress import Parked
+                try:
+                    self.reg.plan_launch(key, 'dependency_ready', instruction, self.config['models'], version)
+                except Parked:
+                    pass  # An unchanged reduced consumer waits for substantive inputs, not another tick.
 
     def receipts(self):
         for path in self.config.get('receipts', []):
@@ -989,6 +993,11 @@ class Controller:
                 clean_terminal(self)
                 self.complete_runs()
         self.receipts(); self.dependencies(); self.observe()
+        from .reduced_supervision import tick as supervise_reduced
+        try:
+            supervise_reduced(self)
+        except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
+            write(self.base / 'reduced-supervision-error.json', dict(at=self.reg.clock(), error=str(exc)))
         from .outcome_recovery import tick as recover_outcomes
         recover_outcomes(self)
         from .setup_healing import tick as heal_setup
