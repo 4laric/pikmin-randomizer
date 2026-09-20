@@ -640,6 +640,36 @@ def operator_check(root, state, key, issue, declared=None):
     return lane, pending, commits, tips
 
 
+def dirt_cleared(root, source):
+    """True when a side recorded `dirty` is demonstrably clean NOW at the head it recorded.
+
+    A lane records `dirty` as free text, so any value at all reads as truthy -- including an
+    accurate note like "CRLF checkout artifact, git diff -w empty across 2752 files". That
+    punishes a lane for explaining itself: the better its note, the more certainly it blocks
+    its own receipt, with no way to clear the flag short of editing the registry.
+
+    What the check is actually for is whether the recorded commits are what the side holds.
+    That is checkable directly: if the worktree still sits at the recorded head with no
+    tracked modifications, whatever was dirty when the lane wrote its handoff is gone and
+    says nothing about what landed. Untracked files are ignored for the same reason the
+    recording ignores them -- build output and scratch files are not what landed.
+
+    Read-only: rev-parse and status only, through landing.git (bounded, non-fetching).
+    """
+    from .landing import SHA, git
+    path, head = source.get('worktree'), source.get('head')
+    if not (nonempty(path) and isinstance(head, str) and SHA.fullmatch(head)):
+        return False
+    worktree = Path(root, path)
+    if not (worktree / '.git').exists():
+        return False
+    code, out = git(worktree, 'rev-parse', '--verify', '--end-of-options', 'HEAD', codes=(0, 1))[:2]
+    if code != 0 or out.decode('utf-8', 'replace').strip() != head:
+        return False
+    code, out = git(worktree, 'status', '--porcelain', '--untracked-files=no', codes=(0, 1))[:2]
+    return code == 0 and not out.decode('utf-8', 'replace').strip()
+
+
 def landed_on_lines(root, lane, declared=None):
     """({repo: commits}, {repo: {ref, tip}}) when every commit the lane recorded is reachable from its declared
     integration line and its sources are clean; refuses otherwise. git is read-only (landing.git)."""
@@ -658,7 +688,10 @@ def landed_on_lines(root, lane, declared=None):
         # An untouched side has nothing to land, so a worktree that was dirty when the lane
         # recorded it (a side used for notes only) says nothing about what landed.
         if not source.get('commits') and source.get('head') == source.get('base'): continue
-        require(not source.get('dirty'), f'{key} {name} source is dirty; its recorded commits are not what it holds')
+        # A recorded dirty note only matters if the side is STILL not what it recorded; re-check
+        # rather than trusting free text a lane cannot clear (see dirt_cleared).
+        require(not source.get('dirty') or dirt_cleared(root, source),
+                f'{key} {name} source is dirty; its recorded commits are not what it holds')
         require(not source.get('commits') or source['head'] in source['commits'],
                 f'{key} {name} head is not among its recorded commits (changed since recording)')
         require(declared.get(name), f'integration_lines.{name} undeclared; {key} recorded {name} commits')

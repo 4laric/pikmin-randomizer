@@ -584,6 +584,44 @@ class OperatorReviewTests(Base):
         self.assertEqual(self.reg.check_handoff(self.lane())['pending_reviews'], [])
         self.assertEqual(self.approve_op(), [])  # Idempotent: nothing left pending.
 
+    def landed_with_dirty_note(self, note):
+        """Land the lane, then record `note` as the root side's dirty text."""
+        git(self.root, 'branch', '-f', 'maintained', self.lane()['root']['head'])
+        self.declare('maintained')
+        with self.reg.transaction() as s:
+            s['lanes']['one']['root']['dirty'] = note
+
+    def test_stale_dirty_note_does_not_block_a_clean_side(self):
+        """A dirty note the side has since cleared says nothing about what landed.
+
+        Lanes record `dirty` as free text, so an accurate explanation ("CRLF checkout
+        artifact, git diff -w empty") used to block the lane's own receipt forever.
+        """
+        self.landed_with_dirty_note('Pre-existing worktree-wide CRLF checkout artifact only; '
+                                    'whitespace-only vs HEAD, git diff -w empty.')
+        self.assertEqual([r['file'] for r in self.approve_op()], [SHARED])
+
+    def test_a_side_that_is_still_dirty_is_still_refused(self):
+        """The re-check must not become a way to wave dirt through."""
+        self.landed_with_dirty_note(' M workflow/one.py')
+        (self.root / 'workflow/one.py').write_text('X = 2  # uncommitted\n', encoding='utf-8')
+        with self.assertRaisesRegex(Rejected, 'source is dirty'):
+            self.approve_op()
+
+    def test_a_side_moved_off_its_recorded_head_is_still_refused(self):
+        """Clean but at a different commit means the recording is stale, not moot."""
+        self.landed_with_dirty_note('CRLF artifact only')
+        with self.reg.transaction() as s:
+            s['lanes']['one']['root']['head'] = 'b' * 40
+        with self.assertRaisesRegex(Rejected, 'source is dirty|head is not among'):
+            self.approve_op()
+
+    def test_untracked_files_do_not_keep_a_side_dirty(self):
+        """Build output and scratch files are not what landed."""
+        self.landed_with_dirty_note('CRLF artifact only')
+        (self.root / 'scratch-build.log').write_text('noise\n', encoding='utf-8')
+        self.assertEqual([r['file'] for r in self.approve_op()], [SHARED])
+
 
 class LegacyReportTests(Base):
     def test_report_marks_unbacked_approvals_and_never_writes(self):
