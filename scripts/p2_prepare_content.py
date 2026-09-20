@@ -24,10 +24,23 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 23 Sarai: ``pikmin2_sarai_assets.extract`` for the source poses, then the
   validator-required ``sarai-attack-mouths.txt`` mouth bank is derived from that
   extraction result (mouth joints + sampled pose files + sha256); the Sarai
-  adapter itself only records the seed's generator sidecar.
+  adapter stages the eight native host files through ``pikmin2_sarai_install``.
+* 9 Kogane: ``pikmin2_kogane_assets.extract`` -> ``<out>/Kogane/``
+  (``beetles.json`` plus the pose meshes flattened beside it); the Kogane
+  adapter stages the room meshes through ``pikmin2_kogane_content``.
+* 57 Kurage: ``pikmin2_kurage_assets.extract`` -> ``<out>/Kurage/``; the Kurage
+  adapter stages the visual files through ``pikmin2_kurage_content``.
 
-Ids with no family installer (9 Kogane, 57 Kurage, 78 MiniHoudai, 79 Sokkuri)
-are reported as skipped, never fabricated.
+Extraction alone is not enough, and the difference is invisible from the native
+side: a species whose assets extract but whose adapter does not stage what the
+native loader opens boots as its P1 host with no error. That is how Sarai and
+Kogane both failed (``bound=0 reason=host``, ``P2_SETUP_SKIP Kogane
+clip_file_missing``). Wire the adapter with the extractor, and prove it with a
+launch, not a unit test.
+
+Ids with a family installer but no extractor wired here (78 MiniHoudai,
+79 Sokkuri) are reported as skipped, never fabricated -- the skip reason names
+which of the two is missing, because they send you to different files.
 
 Actor bindings map every ``p2_layout`` binding ``target`` (a slot-uid token
 from ``docs/PIKMIN2_ADMITTED_PLACEMENT.json`` via
