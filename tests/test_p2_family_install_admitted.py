@@ -91,10 +91,48 @@ def make_kogane_source(content_root):
 
 
 def make_sarai_source(content_root):
+    """A Sarai tree shaped like extracted content, with synthetic bytes.
+
+    ``_adapt_sarai`` now stages the eight native host files through
+    ``experimental.pikmin2_sarai_install``, which validates this manifest
+    strictly, so the fixture carries a real schema-1 ``sarai.json`` and the
+    pose meshes it names rather than a single placeholder line.
+    """
     source = content_root / "Sarai"
     source.mkdir(parents=True)
+    # _validate_sarai still pre-flights this bank before the install runs.
     (source / "sarai-attack-mouths.txt").write_text(
         "P2_DEMON_MOUTHS_1 deadbeef 1\n", encoding="ascii")
+    clips = []
+    for index, clip in enumerate(("wait1.bca", "move1.bca", "attack1.bca",
+                                  "waitact1.bca", "waitact2.bca")):
+        stem = clip[:-4]
+        poses = []
+        for frame in (0, 10):
+            name = f"{stem}_{frame:04d}.mod"
+            body = f"synthetic {name}".encode("ascii")
+            (source / name).write_bytes(body)
+            poses.append({
+                "frame": frame,
+                "file": name,
+                "sha256": hashlib.sha256(body).hexdigest(),
+                "mouths": [
+                    {"joint": joint, "radius": 15,
+                     "matrix": [[1.0, 0.0, 0.0, float(frame + offset)],
+                                [0.0, 1.0, 0.0, 2.0],
+                                [0.0, 0.0, 1.0, 3.0]]}
+                    for offset, joint in enumerate(("rkamujnt", "lkamujnt"))
+                ],
+            })
+        clips.append({"file": clip, "status": "converted",
+                      "source_frames": 20 + index,
+                      "sha256": hashlib.sha256(clip.encode("ascii")).hexdigest(),
+                      # kind 0 opens the loop, kind 1 closes it: a bare kind 1
+                      # is rejected as an unmatched loop by _check_events.
+                      "events": [[0, 0], [10, 1]], "poses": poses})
+    (source / "sarai.json").write_text(
+        json.dumps({"schema": 1, "species": "Sarai", "enemy_id": 23,
+                    "clips": clips}), encoding="utf-8")
     return source
 
 

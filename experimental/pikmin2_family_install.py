@@ -232,6 +232,8 @@ def _adapt_sarai(source, run, actors):
     generators = [int(generator) for generator, _species in actors]
     if not generators:
         raise StagingError('Sarai install requires at least one generator')
+    from experimental.pikmin2_sarai_install import stage_sarai_host
+    stage_sarai_host(source, run)
     path = run / SARAI_ACTORS_TXT
     existing = []
     if path.is_file():
