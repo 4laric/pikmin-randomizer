@@ -189,7 +189,7 @@ P2_PLAYABLE_POOL = (
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -222,6 +222,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if combined_captain: collection_checks = True
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
     if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
+    if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
     if p2_species == "playable": p2_species = PLAYABLE_P2_SPECIES
     if p2_species is not None and (not isinstance(p2_species, (list, tuple, set, frozenset)) or not p2_species
                                    or any(type(i) is not int for i in p2_species)):
@@ -353,7 +354,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         from experimental.pikmin2_enemy_roster import load_and_validate
         # Product path: legal targets come only from the lane 04 placement contract.
         # Explicit-cohort binding stays a diagnostic bridge API, not a seed option.
-        from experimental.pikmin2_seed_bridge import resolve_placement_layout
+        from experimental.pikmin2_seed_bridge import resolve_placement_layout, validate_density
+        # Fail closed on an unknown density token before any layout work; the
+        # default None stays the unchanged legacy all-target fill.
+        validate_density(p2_density)
         if result['schema'] != 9:
             raise ValueError("P2 enemies require the modern schema-9 catalog")
         if p2_placement is None:
@@ -362,7 +366,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             # targets and resolve_placement_layout still fails closed.
             p2_placement = _default_admitted_placement()
         result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate(),
-                                                       species=None if p2_species is None else sorted(set(p2_species)))
+                                                       species=None if p2_species is None else sorted(set(p2_species)),
+                                                       density=p2_density)
         result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)
     return result

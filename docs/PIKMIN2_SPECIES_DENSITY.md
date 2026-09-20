@@ -1,10 +1,10 @@
-# P2 species-density policy (#838)
+# P2 species-density policy (#838, wired by #841)
 
 `resolve_placement_layout` in `experimental/pikmin2_seed_bridge.py` binds lane-04
 accepted placement targets to the admitted lane-02 identities. This document
 defines the versioned density policy that decides *how many* compatible targets a
-selection replaces, and records the API change `randomizer/seed.py` needs to
-expose it (that file is owned by another lane and is read-only here).
+selection replaces, and records how `randomizer/seed.py` and the product CLI
+expose it.
 
 ## The problem
 
@@ -66,29 +66,34 @@ carry the policy. `parse_bootstrap(text, roster, density=layout["density"])`
 preserves an explicit policy; without the keyword it reconstructs a legacy
 layout.
 
-## Caller/API change required in `randomizer/seed.py` (not owned here)
+## Product API and CLI wiring (#841)
 
-`randomizer/seed.py` is read-only for this lane. To let a user actually request
-bounded coverage, its owner must:
+`randomizer/seed.py` now exposes the policy as an explicit, optional keyword and
+forwards it into the existing resolver call:
 
-1. Add a `density` parameter to `randomizer.seed.generate(...)`, e.g.
-   `density=None`, validating it through `validate_density`.
-2. Forward it into the existing call at `randomizer/seed.py:364`:
+```python
+from randomizer.seed import generate
 
-   ```python
-   result['p2_layout'] = resolve_placement_layout(
-       result['seed'], slot, p2_placement, load_and_validate(),
-       species=None if p2_species is None else sorted(set(p2_species)),
-       density=density,
-   )
-   ```
+manifest = generate(
+    "seed-a",
+    p2_enemies=True,
+    p2_species=[23],              # optional subset
+    p2_density="bounded-coverage-v1",
+)
+manifest["p2_layout"]["density"]  # -> "bounded-coverage-v1"
+```
 
-3. Surface it from the AP option layer (`apworld/pikmin_randomizer/options.py`
-   and `apworld/pikmin_randomizer/__init__.py`) if the product should expose it;
-   otherwise the seed default stays `None` (legacy all-target fill).
+- `p2_density=None` is the default and reproduces the legacy all-target fill
+  byte-for-byte, so existing seeds keep their fingerprints.
+- The token is validated through the bridge's `validate_density`; an unknown
+  token fails closed before any layout work.
+- `p2_density` requires `p2_enemies`, exactly like `p2_species`.
 
-No change to `seed.py` is made by #838; the bridge is backward compatible and
-this referral is the only wiring left.
+The `python -m randomizer generate` CLI surfaces the same value as
+`--p2-density {all-targets-v1,bounded-coverage-v1}`; omitting it keeps the legacy
+default. Exposing the option from the AP YAML layer
+(`apworld/pikmin_randomizer/options.py`) is a separate product decision and is not
+part of this slice.
 
 ## Tests
 
@@ -102,3 +107,14 @@ document and the real roster:
 - unknown-policy rejection and `p2_species` subset selection,
 - manifest/bootstrap round trips preserving the stored `density`,
 - absence of the `density` key on a legacy manifest remaining valid.
+
+`tests/test_p2_density_seed_wiring.py` covers the product wiring:
+
+- `generate(..., p2_density=...)` forwards the policy and stores it on `p2_layout`,
+- the default equals an explicit `all-targets-v1` and keeps the pinned legacy and
+  P2-legacy seed fingerprints,
+- one- and multi-species bounded coverage through the product API,
+- manifest JSON round trips, tampered-policy rejection and the legacy manifest
+  with no `density` key still validating,
+- the `--p2-density` CLI flag for a bounded and a default-legacy seed, plus
+  rejection of an unknown token.
