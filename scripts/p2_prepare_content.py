@@ -249,6 +249,66 @@ def extract_sarai(iso, dest):
     return target
 
 
+def extract_kogane(iso, dest):
+    """Build <dest>/Kogane/ via the existing kogane extractor plus a flat bank.
+
+    ``pikmin2_kogane_assets.extract`` produces the source bank
+    (``beetles.json`` + ``shared/*.mod`` sampled pose meshes); the Kogane
+    host stager (``experimental.pikmin2_kogane_content.stage_kogane_host``)
+    consumes ``beetles.json`` plus the pose meshes flattened next to it, so
+    both are copied out of the temp tree. No poses or events are fabricated.
+    """
+    from experimental import pikmin2_kogane_assets as kogane
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Kogane"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-kogane"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        result = kogane.extract(iso, tmp)
+        target.mkdir(parents=True)
+        (target / "beetles.json").write_text(json.dumps(result, indent=2) + "\n",
+                                             encoding="utf-8")
+        for clip in result.get("shared", {}).get("clips", []):
+            for pose in clip.get("poses", []):
+                name = pose.get("file")
+                if not name:
+                    continue
+                src = tmp / "shared" / name
+                if src.is_file():
+                    shutil.copyfile(src, target / name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_kurage(iso, dest):
+    """Build <dest>/Kurage/ via the kurage extractor (identity + manifest + poses).
+
+    ``experimental.pikmin2_kurage_assets.extract`` writes ``identity.json`` (the
+    family installer's pre-flight identity source), ``kurage.json`` (schema-1
+    manifest naming each native loader file) and the sampled pose meshes the
+    manifest hashes; ``experimental.pikmin2_kurage_content.stage_kurage_host``
+    carries them into the run. Nothing is derived here beyond the extraction
+    result.
+    """
+    from experimental import pikmin2_kurage_assets as kurage
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Kurage"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    kurage.extract(iso, target)
+    return target
+
+
 EXTRACTORS = {
     44: "extract_bluekochappy",
     54: "extract_miulin",
@@ -257,6 +317,8 @@ EXTRACTORS = {
     61: "extract_dweevil",
     62: "extract_dweevil",
     23: "extract_sarai",
+    9: "extract_kogane",
+    57: "extract_kurage",
 }
 
 
@@ -291,6 +353,12 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             extracted.append(source_id)
         elif source_id == 23:
             extract_sarai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 57:
+            extract_kurage(iso, out)
+            extracted.append(source_id)
+        elif source_id == 9:
+            extract_kogane(iso, out)
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here

@@ -116,14 +116,24 @@ def test_prepare_orchestrates_playable_first_with_stubs(tmp_path, monkeypatch):
     monkeypatch.setattr(prepare, "extract_bluekochappy", fake_blue)
     monkeypatch.setattr(prepare, "extract_miulin", fake_miulin)
     monkeypatch.setattr(prepare, "extract_dweevil", fake_dweevil)
-    monkeypatch.setattr(prepare, "extract_sarai", fake_sarai)
+    def fake_kogane(iso_arg, dest):
+        calls.append(9)
+        target = Path(dest) / "Kogane"
+        target.mkdir(parents=True)
+        return target
 
-    summary = prepare.prepare_content_root(iso, out, wanted=[23, 60, 9, 44, 54])
-    # Playable first (44, 54, 60), then supported admitted (23); 9 skipped.
+    monkeypatch.setattr(prepare, "extract_sarai", fake_sarai)
+    monkeypatch.setattr(prepare, "extract_kogane", fake_kogane)
+
+    # 78 MiniHoudai is the supported-but-unextractable case now: it has a family
+    # installer and no EXTRACTORS entry. 9 Kogane used to play that role and no
+    # longer can, because it is wired.
+    summary = prepare.prepare_content_root(iso, out, wanted=[23, 60, 9, 44, 54, 78])
+    # Playable first (44, 54, 60), then the supported admitted ids in order.
     assert calls[0] == 44 and calls[1] == 54 and calls[2] == "dweevil"
-    assert calls[-1] == 23
-    assert summary["extracted"] == [23, 44, 54, 60]
-    assert [s["source_id"] for s in summary["skipped"]] == [9]
+    assert set(calls[3:]) == {9, 23}
+    assert summary["extracted"] == [9, 23, 44, 54, 60]
+    assert [s["source_id"] for s in summary["skipped"]] == [78]
     assert (out / "prepared.json").is_file()
     assert (out / "BlueKochappy").is_dir() and (out / "Miulin").is_dir()
 

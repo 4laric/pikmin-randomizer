@@ -321,9 +321,15 @@ def _adapt_kogane(source, run, actors):
     if path.exists():
         raise StagingError(f'Refusing existing/conflicting Kogane native sidecar: {path}')
     path.write_bytes(payload)
+    # The sidecar selects the clips, so the host meshes stage after it is written.
+    # Without this the run holds p2-kogane-native.txt naming move/wait/damage and no
+    # kogane_*.mod at all, and setup logs `P2_SETUP_SKIP Kogane clip_file_missing`
+    # while every Kogane slot silently stays its P1 host (measured, probe 2026-09-20).
+    from experimental.pikmin2_kogane_content import stage_kogane_host
+    staged = stage_kogane_host(source, run)
     return dict(species='Kogane', source_id=9, generators=sorted(generators),
                 native_config_sha256=hashlib.sha256(payload).hexdigest(),
-                kogane_receipt=kogane_receipt)
+                kogane_receipt=kogane_receipt, host_staging=staged)
 
 
 def _validate_sokkuri(source):
@@ -394,6 +400,8 @@ def _read_identity_source(source, source_id, enum_name):
 def _validate_kurage(source):
     """Pre-flight check for the Kurage (Lesser Spotted Jellyfloat, source 57) content."""
     _read_identity_source(source, 57, 'Kurage')
+    from experimental.pikmin2_kurage_content import validate as validate_kurage_host
+    validate_kurage_host(source)
 
 
 def _parse_kurage_sidecar(text):
@@ -421,6 +429,8 @@ def _adapt_kurage(source, run, actors):
     """
     _read_identity_source(source, 57, 'Kurage')
     run = Path(run)
+    from experimental.pikmin2_kurage_content import stage_kurage_host
+    stage_kurage_host(source, run)
     generators = [int(generator) for generator, _species in actors]
     for _, species in actors:
         if species != 'Kurage':

@@ -79,6 +79,10 @@ def make_kogane_source(content_root):
             name = f"{Path(clip_name).stem}_{i:02}.mod"
             data = b"pose-bytes" + name.encode()
             (bank / "shared" / name).write_bytes(data)
+            # extract_kogane flattens the pose meshes next to beetles.json, which is
+            # where stage_kogane_host reads them; the shared/ copy is what the legacy
+            # bank installer consumes. Real extracted content carries both.
+            (bank / name).write_bytes(data)
             poses.append(dict(file=name, frame=i, sha256=kogane_sha(data), conversion={}))
         clips.append(dict(file=clip_name, events=events, sha256=kogane_sha(clip_name.encode()),
                           status="converted", source_frames=15, poses=poses))
@@ -142,6 +146,20 @@ def make_kurage_source(content_root):
     (source / "identity.json").write_text(
         json.dumps({"schema": 1, "source_id": 57, "enum_name": "Kurage"}),
         encoding="utf-8")
+    # _adapt_kurage now stages the native visual files through
+    # experimental.pikmin2_kurage_content, which validates this manifest
+    # strictly, so the fixture carries a schema-1 kurage.json and the pose
+    # meshes it names rather than only the identity source.
+    visuals = []
+    for name in ("wait", "attack"):
+        pose = f"{name}_0000.mod"
+        data = f"synthetic kurage {name}".encode("ascii")
+        (source / pose).write_bytes(data)
+        visuals.append({"name": name, "clip": f"{name}.bca", "frame": 0,
+                        "pose": pose, "sha256": hashlib.sha256(data).hexdigest()})
+    (source / "kurage.json").write_text(
+        json.dumps({"schema": 1, "species": "Kurage", "enemy_id": 57,
+                    "visuals": visuals}), encoding="utf-8")
     return source
 
 
