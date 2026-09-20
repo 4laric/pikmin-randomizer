@@ -42,6 +42,7 @@
 #include "Generator.h"
 #include "MapMgr.h"
 #include "gameflow.h"
+#include "Pellet.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -140,6 +141,7 @@ struct Mar {
     std::string clip = "move1";
     float phase = 0.0f;
     bool deadLogged = false;
+    bool corpseEmitted = false;
     float logTimer = 0.0f;
 };
 
@@ -497,6 +499,31 @@ void pc_p2_mar_setup() {
     ready = true;
 }
 
+bool pc_p2_mar_emit_corpse(BTeki* actor) {
+    if (!ready || !actor || !pelletMgr) return false;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end()) return false;
+    Mar& s = it->second;
+    if (s.corpseEmitted) return true;
+    // Family corpse convention (BTeki::dieSoon -> PelletView::becomePellet):
+    // bind a corpse Pellet to the dead actor so the #668 receipt arm can
+    // consume it. Fires once; a repeat call is a no-op. becomePellet itself is
+    // a no-op when a pellet is already bound.
+    const unsigned typeID = (unsigned)TekiMgr::getTypeId(actor->mTekiType);
+    actor->becomePellet(typeID, actor->getPosition(), actor->getDirection());
+    s.corpseEmitted = true;
+    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    Iterator scan(pelletMgr);
+    CI_LOOP(scan) {
+        Pellet* pellet = static_cast<Pellet*>(*scan);
+        if (pellet && pellet->mPelletView == static_cast<PelletView*>(actor)) {
+            std::printf("P2_MAR_CORPSE_EMITTED generator=%u source_id=29\n", generator);
+            std::fflush(stdout);
+            return true;
+        }
+    }
+    return false;
+}
 void pc_p2_mar_update(BTeki* actor) {
     if (!ready) return;
     auto it = actors.find(static_cast<PelletView*>(actor));
@@ -606,7 +633,10 @@ void pc_p2_mar_update(BTeki* actor) {
     }
     case MAR_DEAD:
         stopFlying(actor, s, dt);
-        if (s.stateTime >= clipDuration("dead")) actor->die();
+        if (s.stateTime >= clipDuration("dead")) {
+            pc_p2_mar_emit_corpse(actor);
+            actor->die();
+        }
         break;
     default:
         break;

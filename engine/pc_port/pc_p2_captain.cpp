@@ -2,6 +2,7 @@
 
 #include "NaviMgr.h"
 #include "Piki.h"
+#include "PikiAI.h"
 #include "PikiMgr.h"
 
 #include <unordered_map>
@@ -75,6 +76,19 @@ void live_set_owner_slot(void* context, void* actor, int slot)
     piki->mNavi = P2CaptainOwnershipTable::isCaptain(slot) ? naviMgr->getNavi(slot) : nullptr;
 }
 
+// Abandon the squad action while Piki::mNavi is still valid, so
+// ActCrowd::cleanup can release its formation plate slot before ownership is
+// cleared (codex/p2-lane12-review 5cbb2f351). May run reentrant engine
+// callbacks; the adapter revalidates the capture afterward.
+bool live_prepare_capture(void*, void* actor)
+{
+    if (!actor) return false;
+    Piki* piki = static_cast<Piki*>(actor);
+    if (!piki->mActiveAction) return false;
+    piki->mActiveAction->abandon(nullptr);
+    return true;
+}
+
 // Route the adapter's active/knockout selection into NaviMgr's additive
 // second-captain bookkeeping. With one Navi these simply touch slot 0/false.
 void live_notify_active(void*, int slot)
@@ -95,11 +109,10 @@ int live_enumerate(void*, P2PikiHandle* out, int capacity)
 {
     if (!pikiMgr || !out || capacity <= 0) return 0;
     int count = 0;
-    Iterator it(pikiMgr);
-    CI_LOOP(it)
-    {
+    ObjectMgr* manager = static_cast<ObjectMgr*>(pikiMgr);
+    for (int it = manager->getFirst(); !manager->isDone(it); it = manager->getNext(it)) {
         if (count >= capacity) break;
-        out[count++] = static_cast<void*>(static_cast<Piki*>(*it));
+        out[count++] = static_cast<void*>(static_cast<Piki*>(manager->getCreature(it)));
     }
     return count;
 }
@@ -112,6 +125,7 @@ P2CaptainHostOps live_ops()
     ops.setHealth    = &live_set_health;
     ops.actorId      = &live_actor_id;
     ops.ownerSlot    = &live_owner_slot;
+    ops.prepareCapture = &live_prepare_capture;
     ops.setOwnerSlot = &live_set_owner_slot;
     ops.enumerate    = &live_enumerate;
     ops.notifyActive   = &live_notify_active;
@@ -185,6 +199,21 @@ bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki)
 bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain)
 {
     return live_adapter().releaseActor(captorEpoch, piki, toCaptain);
+}
+
+bool is_captive_for(std::uint64_t captorEpoch, P2PikiHandle piki)
+{
+    return live_adapter().isCaptiveFor(captorEpoch, piki);
+}
+
+bool release_captive_free(std::uint64_t captorEpoch, P2PikiHandle piki)
+{
+    return live_adapter().releaseCaptiveFree(captorEpoch, piki);
+}
+
+void forget_actor(P2PikiHandle piki)
+{
+    live_adapter().forgetActor(piki);
 }
 
 std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch)
@@ -268,5 +297,10 @@ bool navi_dead(int captain)
 void pc_p2_captain_forget_piki(Piki* piki)
 {
     if (!piki) return;
+    // Drop any captor capture/ownership first: a re-birthed manager slot must
+    // never inherit the dead actor's id, owner or captive state
+    // (codex/p2-lane12-review c29ec8398). No engine writes: the actor is dead
+    // or being recycled.
+    live_adapter().forgetActor(static_cast<void*>(piki));
     g_actorIds.erase(static_cast<void*>(piki));
 }

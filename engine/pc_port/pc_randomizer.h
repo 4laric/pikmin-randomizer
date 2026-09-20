@@ -69,12 +69,6 @@ void pc_randomizer_p2_delivery_reset();
 // so a bound P2 corpse is never ALSO credited to the P1-proxy bestiary check.
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay);
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator);
-// Generated spawn connection: the P2 source identity bound to a live generator's
-// placement target (0 when the generator is unbound). Ordinary generated targets
-// resolve through the same slot uid the P1 slot layouts use.
-unsigned pc_randomizer_p2_bound_source(const void* generator);
-// Fail closed when a bound identity has no reviewed native actor host.
-void pc_randomizer_bad_p2_host();
 void pc_randomizer_bad_spawn_cache();
 int pc_randomizer_field_capacity();
 void pc_randomizer_observe_population(int activePikmin, bool gameplay);

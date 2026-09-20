@@ -10,6 +10,7 @@ class Creature;
 void pc_p2_mar_setup();
 void pc_p2_mar_reset();
 void pc_p2_mar_forget(BTeki*);
+bool pc_p2_mar_emit_corpse(BTeki* actor);
 void pc_p2_mar_update(BTeki*);
 float pc_p2_mar_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_mar_clip(const BTeki*, const char*& name, float& phase);

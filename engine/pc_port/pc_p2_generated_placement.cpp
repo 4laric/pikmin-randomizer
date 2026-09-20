@@ -1,8 +1,13 @@
+#include "pc_randomizer.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_campaign_placements.h"
 #include "pc_p2_generated_placement.h"
 #include "pc_p2_sarai_manager.h"
 #include "pc_p2_otakara.h"
+#include "pc_p2_bluechappy.h"
 #include "teki.h"
 #include <cstdio>
+#include <set>
 
 namespace {
 struct MuseBinding {
@@ -11,7 +16,7 @@ struct MuseBinding {
     unsigned target;
     unsigned generator;
 };
-MuseBinding g_museBindings[8];
+MuseBinding g_museBindings[64];
 int g_museBound = 0;
 
 bool museRecord(const BTeki* actor, unsigned source, unsigned target, unsigned generator)
@@ -24,7 +29,7 @@ bool museRecord(const BTeki* actor, unsigned source, unsigned target, unsigned g
             return true;
         }
     }
-    if (g_museBound >= 8) return false;
+    if (g_museBound >= 64) return false;
     g_museBindings[g_museBound].actor = actor;
     g_museBindings[g_museBound].source = source;
     g_museBindings[g_museBound].target = target;
@@ -65,6 +70,25 @@ void pc_p2_generated_placement_reset()
     g_museBound = 0;
 }
 
+bool pc_p2_generated_placement_sweep_sarai()
+{
+    if (!pc_randomizer_p2_bridge() || !tekiMgr) return false;
+    const std::set<unsigned> wanted = pc_p2_campaign_ids(23);
+    if (wanted.empty()) return false;
+    bool bound = false;
+    Iterator actors(tekiMgr);
+    CI_LOOP(actors) {
+        BTeki* actor = static_cast<BTeki*>(*actors);
+        if (!actor || !actor->mGenerator) continue;
+        const unsigned token = pc_p2_campaign_token(actor);
+        if (!wanted.count(token)) continue;
+        // The dynamic binder skips already-bound actors and actors whose
+        // sidecar is absent, quietly returning false for both.
+        if (pc_p2_sarai_manager_bind_dynamic(actor, token, token)) bound = true;
+    }
+    return bound;
+}
+
 static bool recordBind(BTeki* actor, unsigned accepted, unsigned sourceId,
                        unsigned seedTargetUid, unsigned generatorId)
 {
@@ -97,7 +121,11 @@ static bool recordBind(BTeki* actor, unsigned accepted, unsigned sourceId,
 
 static bool museBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
 {
-    return recordBind(actor, pc_p2_generated_placement_muse_slot(sourceId), sourceId, seedTargetUid, generatorId);
+    const bool campaign = pc_randomizer_p2_bridge()
+        && pc_randomizer_p2_source_for_id(seedTargetUid) == sourceId
+        && p2campaign::accepted(sourceId, seedTargetUid);
+    return recordBind(actor, campaign ? seedTargetUid : pc_p2_generated_placement_muse_slot(sourceId),
+                      sourceId, seedTargetUid, generatorId);
 }
 
 static bool waterwraithBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
@@ -112,6 +140,13 @@ bool pc_p2_generated_placement_bind(BTeki* actor, unsigned sourceId, unsigned se
     case 23: // Swooping Snitchbug (Sarai); lane 30.
         if (pc_p2_sarai_manager_bind_dynamic(actor, generatorId, seedTargetUid)) {
             std::printf("P2_GENERATED_PLACEMENT source_id=23 target=%u bound=1\n", seedTargetUid);
+            std::fflush(stdout);
+            return true;
+        }
+        return false;
+    case 42: // Orange Bulborb (BlueChappy, adult); lane 42.
+        if (pc_p2_bluechappy_bind_dynamic(actor, generatorId, sourceId)) {
+            std::printf("P2_GENERATED_PLACEMENT source_id=42 target=%u bound=1\n", seedTargetUid);
             std::fflush(stdout);
             return true;
         }

@@ -1,4 +1,6 @@
+#include "pc_p2_campaign_actor.h"
 #include "pc_p2_receipt_host.h"
+#include "pc_p2_setup_failsafe.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_kogane_policy.h"
 #include "pc_p2_enemy.h"
@@ -49,6 +51,7 @@ struct Beetle {
     unsigned rng=1;          // deterministic per-actor LCG
     unsigned generator=0;    // spawn generator id, keys the in-process flip dedupe
     int treasure=0;          // configured first-flip stand-in pellet value (0 = none)
+    bool escaped=false;      // terminal burrow/flee: corpse suppressed, delivery bind dropped
 };
 std::map<PelletView*,Beetle> beetles;
 
@@ -137,7 +140,7 @@ void doDrop(BTeki* actor,int id,Beetle& b){
         // this is a labelled P1 stand-in, never the source treasure object.
         pelletValue=b.treasure;pellets=1;nectar=0;
         std::printf("P2_KOGANE_TREASURE generator=%u value=%d\n",
-            actor->mGenerator?actor->mGenerator->_70:0u,pelletValue);
+            actor->mGenerator?pc_p2_campaign_token(actor):0u,pelletValue);
         std::fflush(stdout);
     }else dropFor(id,b.flips-1,pelletValue,pellets,nectar);
     Vector3f base=actor->getPosition();
@@ -160,16 +163,16 @@ void doDrop(BTeki* actor,int id,Beetle& b){
         drop->startAI(0);
     }
     std::printf("P2_KOGANE_DROP generator=%u source_id=%d flip=%d pellet%d=%d nectar=%d\n",
-        actor->mGenerator?actor->mGenerator->_70:0u,id,b.flips,pelletValue,pellets,nectar);
+        actor->mGenerator?pc_p2_campaign_token(actor):0u,id,b.flips,pelletValue,pellets,nectar);
     std::fflush(stdout);
-    nectarDropped[actor->mGenerator?actor->mGenerator->_70:0u]+=nectar;
+    nectarDropped[actor->mGenerator?pc_p2_campaign_token(actor):0u]+=nectar;
     // Grant the drop reward exactly-once through the lane-06 ordinary Onion
     // ledger (never the Pod). On a process restart the host ledger reloads and a
     // re-attempted drop grants nothing (Duplicate), so a farmed beetle can never
     // re-arm for another reward; the flip-count sidecar independently keeps the
     // escaped beetle from flipping again.
     if (receiptSeed.size() > 0 && koganeReceiptHandle) {
-        const unsigned gen = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+        const unsigned gen = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
         const std::string identity = "enemy:" + std::to_string(id);
         const std::string encounter = "flip" + std::to_string(b.flips);
         const P2ReceiptHostResult result = pc_p2_receipt_host_grant(
@@ -200,7 +203,7 @@ bool doFlip(BTeki* actor,int id,bool natural){
     b.recoverTimer=50.0f/30.0f;            // hold until the full damage clip completes
     b.moving=false;
     actor->stopMove();
-    const unsigned gen=actor->mGenerator?actor->mGenerator->_70:0u;
+    const unsigned gen=actor->mGenerator?pc_p2_campaign_token(actor):0u;
     std::printf("P2_KOGANE_FLIP generator=%u source_id=%d flip=%d\n",gen,id,b.flips);
     if(natural)std::printf("P2_KOGANE_NATURAL_ATTACK generator=%u source_id=%d flip=%d\n",gen,id,b.flips);
     std::fflush(stdout);
@@ -230,31 +233,36 @@ void pc_p2_kogane_setup(){
     }
     koganeReceiptHandle = pc_p2_receipt_host_open(kOnionReceiptsPath);
     if (!koganeReceiptHandle) {
-        std::fputs("P2_KOGANE = invalid receipt state\n", stderr);
-        std::abort();
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kogane", "receipt_ledger_unreadable")) return;
     }
-    p2kogane::Config config;if(!tekiMgr||!p2kogane::read(sidecar,config))std::abort();
+    p2kogane::Config config;if(!tekiMgr||!p2kogane::read(sidecar,config)){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","staged_sidecar_invalid"))return;}
+    if (pc_randomizer_p2_bridge()) {
+        config.ids.clear();
+        config.treasures.clear();
+        for (unsigned id : pc_p2_campaign_ids(9)) config.ids[id] = 9;
+        if (config.ids.empty()) return;
+    }
     auto manifest=config.clips;std::set<std::uint32_t> wanted;for(auto row:config.ids)wanted.insert(row.first);karada=config.karada;
     // Reject identity overlap and unresolved/duplicate generator IDs before loading.
     std::vector<Teki*> selected;std::set<std::uint32_t> seen;
     Iterator it(tekiMgr);CI_LOOP(it){
         Teki* actor=static_cast<Teki*>(*it);
-        if(!actor || !actor->mGenerator || !wanted.count(actor->mGenerator->_70))continue;
-        if(!seen.insert(actor->mGenerator->_70).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor))std::abort();
+        if(!actor || !actor->mGenerator || !wanted.count(pc_p2_campaign_token(actor)))continue;
+        if(!seen.insert(pc_p2_campaign_token(actor)).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor)){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","actor_identity_mismatch"))return;}
         selected.push_back(actor);
     }
-    if(seen!=wanted)std::abort();
+    if(seen!=wanted){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","actor_roster_incomplete"))return;}
     size_t total=0,poses=0;std::vector<unsigned char> reference;
     for(const auto& clip:manifest){
         size_t clipBytes=0;
         for(int i=0;i<clip.count;++i){
             char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/kogane_%s_%02d.mod",clip.name.c_str(),i);
-            std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)std::abort();auto bytes=file.tellg();
-            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total)std::abort();
+            std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","clip_file_missing"))return;}auto bytes=file.tellg();
+            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","clip_file_invalid"))return;}
             clipBytes+=size_t(bytes);total+=size_t(bytes);file.seekg(0);
             std::vector<unsigned char> data(size_t(bytes),0),resources;
-            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))std::abort();
-            if(!reference.empty() && reference!=resources)std::abort();reference=resources;
+            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources)){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","clip_file_unparsable"))return;}
+            if(!reference.empty() && reference!=resources){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","clip_resource_mismatch"))return;}reference=resources;
         }
     }
     const auto started=std::chrono::steady_clock::now();Shape* shared=nullptr;int attachments=0;
@@ -262,24 +270,24 @@ void pc_p2_kogane_setup(){
         timing[clip.name]=clip;
         for(int i=0;i<clip.count;++i){
             char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/kogane_%s_%02d.mod",clip.name.c_str(),i);
-            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
+            Shape* shape=gameflow.loadShape(path,true);if(!shape){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","shape_load_failed"))return;}
             if(!shared){shared=shape;for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture){shape->mTexAttrList[t].mTexture->attach();++attachments;}}
             else{
-                if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount || shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
+                if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount || shape->mTevInfoCount!=shared->mTevInfoCount){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","shape_layout_mismatch"))return;}
                 for(int j=0;j<shape->mTotalMatpolyCount;++j){auto* poly=shape->mMatpolyList[j];if(!poly || !poly->mMaterial)continue;int material=-1;
                     for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
-                    if(material<0)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
+                    if(material<0){if(pc_p2_setup_skip(pc_randomizer_p2_bridge(),"Kogane","shape_material_mismatch"))return;}poly->mMaterial=&shared->mMaterialList[material];}
                 shape->mMaterialList=shared->mMaterialList;shape->mTexAttrList=shared->mTexAttrList;shape->mTevInfoList=shared->mTevInfoList;
             }
             clips[clip.name].push_back(shape);++poses;
         }
     }
     for(Teki* actor:selected){
-        int id=config.ids.at(actor->mGenerator->_70);
+        int id=config.ids.at(pc_p2_campaign_token(actor));
         actors[actor]=id;
         Beetle& b=beetles[actor];
-        b.rng=(actor->mGenerator->_70*2654435761u)|1u;
-        b.generator=actor->mGenerator->_70;
+        b.rng=(pc_p2_campaign_token(actor)*2654435761u)|1u;
+        b.generator=pc_p2_campaign_token(actor);
         auto treasure=config.treasures.find(b.generator);
         if(treasure!=config.treasures.end())b.treasure=treasure->second;
         b.heading=actor->getDirection();
@@ -295,22 +303,52 @@ void pc_p2_kogane_setup(){
                 // instead of re-spawning one that can never drop again.
                 std::printf("P2_KOGANE_RESTORED_ESCAPE generator=%u flips=%d\n",b.generator,b.flips);
                 std::fflush(stdout);
+                b.escaped=true;      // #571: burrow/flee leaves no corpse and no receipt
                 actor->pcEscapeNow(); // corpse suppressed via the CorpseType hook
                 continue;
             }
         }
         actor->mHealth=actor->getParameterF(TPF_Life);
-        std::printf("P2_KOGANE_BIND generator=%u source_id=%d karada_k0=%d visual_only=0\n",actor->mGenerator->_70,id,p2kogane::karada(id));
+        // #571 ordinary-delivery bridge: bind source 9 to this live actor so a
+        // Kogane killed by the host leaves a corpse that grants onion:p2:9
+        // exactly once through pc_randomizer_p2_corpse_delivered
+        // (GoalItem::suckMe). Single-use: consumed on delivery, and dropped by
+        // the burrow/flee path / central lifetime seam so an escaped beetle can
+        // never strand a corpse or double-fire a receipt. Rejected (unbindable
+        // id) is logged by the callee, never fatal.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor),9,b.generator);
+        std::printf("P2_KOGANE_DELIVERY_BIND generator=%u source_id=9\n",b.generator);
+        std::printf("P2_KOGANE_BIND generator=%u source_id=%d karada_k0=%d visual_only=0\n",pc_p2_campaign_token(actor),id,p2kogane::karada(id));
         const auto& pos=actor->getPosition();
-        std::printf("P2_ENEMY_READY species=Kogane_family native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented drops=native gas=native_P1_approx escape=native treasure=%s cave=disabled\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life),b.treasure>0?"standin":"disabled");
+        std::printf("P2_ENEMY_READY species=Kogane_family native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented drops=native gas=native_P1_approx escape=native treasure=%s cave=disabled\n",pc_p2_campaign_token(actor),pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life),b.treasure>0?"standin":"disabled");
     }
     std::printf("P2_KOGANE_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f\n",poses,total,attachments,std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count());
 }
 // Batch-4 hooks: every hook is a no-op for unregistered actors.
-// Beetles never leave a corpse: on death/escape they burrow away (KoganeState
-// Disappear); suppress the host corpse pellet for registered actors only.
+// On burrow/flee (KoganeAi dieState scale-down) a registered beetle leaves no
+// corpse; a beetle killed by the host leaves a normal carryable corpse (#571).
 int pc_p2_kogane_corpse_type(const BTeki* actor,int fallback){
-    return pc_p2_kogane_source_id(const_cast<BTeki*>(actor))<0?fallback:TEKICORPSE_NoCorpse;
+    if(pc_p2_kogane_source_id(const_cast<BTeki*>(actor))<0)return fallback;
+    // #571: a beetle that burrows/flees leaves nothing (source vanish, KoganeAi
+    // dieState scale-down -> doKill), but a beetle killed by the host leaves a
+    // carryable corpse so the bound ordinary delivery can grant onion:p2:9
+    // exactly once. While the beetle is alive this hook is never consulted for
+    // corpse creation, so returning the fallback for a live registered actor is
+    // safe for any pre-death parameter read.
+    auto it=beetles.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    return (it!=beetles.end()&&it->second.escaped)?TEKICORPSE_NoCorpse:fallback;
+}
+// #571 receipt-boundary introspection for the receipt fixture/test. Read-only:
+// true once this beetle burrowed/fled (corpse suppressed, delivery bind dropped)
+// and true while it still holds the ordinary-delivery bind. Both false for any
+// unregistered actor.
+bool pc_p2_kogane_escaped(BTeki* actor){
+    auto it=beetles.find(static_cast<PelletView*>(actor));
+    return it!=beetles.end()&&it->second.escaped;
+}
+bool pc_p2_kogane_delivery_bound(BTeki* actor){
+    return pc_p2_kogane_source_id(static_cast<PelletView*>(actor))>=0
+        && pc_randomizer_p2_source_for(static_cast<PelletView*>(actor))!=0;
 }
 // Audited source health plus harmlessness: beetles never pursue or bite, so
 // the host's target-recognition and attack params are zeroed for registered
@@ -358,9 +396,10 @@ void pc_p2_kogane_update(BTeki* actor){
         if(b.dropTimer<0.0f){
             doDrop(actor,id,b);
             if(b.flips>=3){
-                std::printf("P2_KOGANE_ESCAPE generator=%u source_id=%d flips=%d\n",actor->mGenerator?actor->mGenerator->_70:0u,id,b.flips);
+                std::printf("P2_KOGANE_ESCAPE generator=%u source_id=%d flips=%d\n",actor->mGenerator?pc_p2_campaign_token(actor):0u,id,b.flips);
                 std::fflush(stdout);
                 saveReceipts();
+                b.escaped=true; // #571: burrow/flee leaves no corpse; central seam drops the bind
                 actor->pcEscapeNow(); // corpse suppressed via the CorpseType hook; health stays >0 so no defeat event
                 return;
             }
@@ -384,7 +423,7 @@ void pc_p2_kogane_update(BTeki* actor){
                 exposure+=dt;
                 if(exposure>=0.8f){
                     piki->stimulate(InteractKill(actor,0));
-                    std::printf("P2_KOGANE_GAS_KILL generator=%u exposure=%.3f\n",actor->mGenerator?actor->mGenerator->_70:0u,exposure);
+                    std::printf("P2_KOGANE_GAS_KILL generator=%u exposure=%.3f\n",actor->mGenerator?pc_p2_campaign_token(actor):0u,exposure);
                     std::fflush(stdout);
                     b.gasExposure.erase(piki);
                 }
@@ -395,7 +434,7 @@ void pc_p2_kogane_update(BTeki* actor){
         }
         if(b.gasTimer<=0.0f){
             b.gasExposure.clear();
-            std::printf("P2_KOGANE_GAS end generator=%u\n",actor->mGenerator?actor->mGenerator->_70:0u);
+            std::printf("P2_KOGANE_GAS end generator=%u\n",actor->mGenerator?pc_p2_campaign_token(actor):0u);
             std::fflush(stdout);
         }
     }
@@ -409,7 +448,7 @@ void pc_p2_kogane_update(BTeki* actor){
             b.heading+=randRange(b,-1.5708f,1.5708f);
             if(id==11&&b.gasTimer<=0.0f){
                 b.gasTimer=2.5f;b.gasPosition=actor->getPosition();b.gasExposure.clear();
-                std::printf("P2_KOGANE_GAS start generator=%u duration=2.500 radius=20.0\n",actor->mGenerator?actor->mGenerator->_70:0u);
+                std::printf("P2_KOGANE_GAS start generator=%u duration=2.500 radius=20.0\n",actor->mGenerator?pc_p2_campaign_token(actor):0u);
                 std::fflush(stdout);
             }
         }else{

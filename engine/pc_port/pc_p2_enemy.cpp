@@ -1,6 +1,6 @@
 #include "pc_p2_enemy.h"
+#include "pc_p2_kabuto_host.h"
 #include "pc_p2_kochappy.h"
-#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
@@ -14,6 +14,7 @@
 #include "pc_p2_preview.h"
 #include "teki.h"
 #include "Generator.h"
+#include "pc_randomizer.h"
 #include "Shape.h"
 #include "System.h"
 #include "Joint.h"
@@ -24,8 +25,8 @@
 #include "gameflow.h"
 #include "Graphics.h"
 #include "Camera.h"
-#include "pc_randomizer.h"
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 #include <string>
@@ -40,7 +41,6 @@ std::map<std::string,p2animation::Clip> timing;
 bool interpolation=false;
 bool crossfade=false;
 bool campaignMode=false;
-bool generatedMode=false;
 std::shared_ptr<const p2skin::Mesh> skin;
 std::shared_ptr<const p2attach::Bank> skeleton;
 std::map<std::string,std::vector<p2pose::Baked>> baked;
@@ -51,15 +51,91 @@ P2SnowHealthPolicy healthPolicy;
 P2SnowAttackPolicy attackPolicy;
 P2SnowTurnPolicy turnPolicy;
 P2SnowChasePolicy chasePolicy;
+// Generated-session Cannon Beetle family host (#424). Keyed by the stable
+// generator uid; bound at actor birth (pc_p2_kabuto_bind_dynamic, called from
+// genteki.cpp) and advanced from the live TekiAnimator.
+P2KabutoHost kabutoHost;
+std::shared_ptr<const p2attach::Bank> kabutoGeneratedBank;
+bool kabutoGeneratedBankLoaded=false;
+p2attach::Affine kabutoOwner(const BTeki* actor,float faceRad) {
+    p2attach::Affine owner;
+    const float c=std::cos(faceRad),s=std::sin(faceRad);
+    owner.m[0][0]=c;owner.m[0][2]=s;
+    owner.m[2][0]=-s;owner.m[2][2]=c;
+    if(actor) {
+        const Vector3f& p=actor->mSRT.t;
+        owner.m[0][3]=p.x;owner.m[1][3]=p.y;owner.m[2][3]=p.z;
+    }
+    return owner;
+}
+// Live-animator feed for one bound actor. The P1 actor's own AI owns behavior;
+// this observes its attack motion and drives the family source clock/muzzle.
+void kabutoGeneratedTick(BTeki* actor,float) {
+    if(!actor || !actor->mGenerator || !kabutoHost.size())return;
+    const unsigned generatorId=pc_randomizer_generator_id(actor->mGenerator);
+    if(!generatorId || !kabutoHost.bound(generatorId))return;
+    auto* animator=actor->mTekiAnimator;
+    if(!animator)return;
+    const int motion=animator->getCurrentMotionIndex();
+    const int frames=animator->getFrameCount();
+    P2KabutoHostAnimator sample;
+    sample.motion=motion;
+    sample.counter=double(animator->getCounter());
+    sample.frameCount=frames;
+    sample.attackMotion=(motion==TekiMotion::Attack && frames>1);
+    const float faceRad=actor->getDirection();
+    P2KabutoHostState host;
+    host.targetPresent=false;
+    host.targetAttackable=false;
+    host.flickRequested=false;
+    host.targetAngle=0.0f;
+    host.health=actor->mHealth;
+    P2KabutoAdvanceOut out;
+    if(!kabutoHost.advance(generatorId,sample,kabutoOwner(actor,faceRad),faceRad,host,out))return;
+    if(!out.fired)return;
+    std::printf("P2_KABUTO_GENERATED_FIRE generator=%u species=%s homing=%d mouth=(%.1f,%.1f,%.1f) face_deg=%.1f\n",
+                generatorId,P2KabutoHost::species_name(kabutoHost.species(generatorId)),
+                int(out.birth.homing),out.birth.mouthPosition.x,out.birth.mouthPosition.y,
+                out.birth.mouthPosition.z,faceRad*180.0f/3.14159265358979323846f);
+    std::fflush(stdout);
+}
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { interpolation=false;crossfade=false;campaignMode=false;generatedMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_reset() { interpolation=false;crossfade=false;campaignMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset();kabutoHost.reset();kabutoGeneratedBank.reset();kabutoGeneratedBankLoaded=false; }
 void pc_p2_snow_update(BTeki* actor,float seconds){
+    kabutoGeneratedTick(actor,seconds);
     if(!crossfade)return;
     auto it=instances.find(static_cast<PelletView*>(actor));
     if(it!=instances.end())it->second.transition.advance(seconds,gameflow.mPauseAll||gameflow.mIsUIOverlayActive);
 }
-void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); if(actor && actor->mGenerator)kabutoHost.release(pc_randomizer_generator_id(actor->mGenerator)); }
+// Cannon Beetle family generated-session bind (lane 20, #424). Called from
+// genteki.cpp at birth for a P2-bound actor; declared in pc_p2_kabuto_host.h.
+// The source aborted on a non-Beatle vehicle because its dispatch forced
+// TEKI_Beatle; this line's spawn routing (p2campaign::hostType, owned
+// elsewhere) has no Kabuto case, so a mismatch fails closed instead.
+bool pc_p2_kabuto_bind_dynamic(Teki* actor, unsigned generatorId, unsigned sourceId)
+{
+    P2KabutoSpecies species;
+    if(!P2KabutoHost::species_for_source(sourceId,species))return false;
+    if(!actor || !generatorId)return false;
+    if(actor->mTekiType!=TEKI_Beatle)return false;
+    if(!kabutoGeneratedBankLoaded) {
+        kabutoGeneratedBankLoaded=true;
+        std::ifstream bank("assets/p2-kabuto-attach.txt");
+        if(bank)kabutoGeneratedBank=p2attach::read(bank);
+    }
+    if(!kabutoGeneratedBank || !kabutoHost.bind(generatorId,species,kabutoGeneratedBank)) {
+        std::printf("P2_KABUTO_GENERATED_BIND generator=%u source=%u type=%d bank=%d host=0\n",
+                    generatorId,sourceId,int(actor->mTekiType),int(bool(kabutoGeneratedBank)));
+        std::fflush(stdout);
+        return false;
+    }
+    std::printf("P2_KABUTO_GENERATED_BIND generator=%u source=%u type=%d species=%s bank=1 host=1\n",
+                generatorId,sourceId,int(actor->mTekiType),P2KabutoHost::species_name(species));
+    std::fflush(stdout);
+    return true;
+}
 bool pc_p2_snow_chase(BTeki* actor,const Vector3f& target) {
     if(!actor->isAlive() || !chasePolicy.contains(actor))return false;
     const Vector3f& position=actor->getPosition();
@@ -90,9 +166,10 @@ bool pc_p2_snow_attackable(BTeki* actor,Creature& target,bool& result) {
 }
 const char* pc_p2_enemy_name(PelletView* view) { if(const char* name=pc_p2_kochappy_name(view))return name;return actors.count(view)?"Snow Bulborb":nullptr; }
 namespace {
-void bindSnow(Teki* teki,unsigned identity) {
+void bindSnow(Teki* teki) {
     if(actors.count(static_cast<PelletView*>(teki)))return;
     if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
+    const unsigned identity=campaignMode?0:teki->mGenerator->_70;
     Shape* shared=clips.begin()->second.front();
     const int previousHeap=gsys->setHeap(SYSHEAP_App);
             actors.insert(static_cast<PelletView*>(teki));
@@ -132,30 +209,10 @@ void bindSnow(Teki* teki,unsigned identity) {
 }
 }
 void pc_p2_snow_campaign_bind(Teki* teki) {
-    if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki,0);
-}
-void pc_p2_generated_bind(Teki* teki,const void* generator) {
-    if(!teki || !generator)return;
-    const unsigned source=pc_randomizer_p2_bound_source(generator);
-    if(!source)return;
-    if(source==45) {
-        if(!generatedMode || teki->mTekiType!=TEKI_Chappy)std::abort();
-        bindSnow(teki,pc_randomizer_generator_id(generator));
-        return;
-    }
-    if(source==44) {
-        if(!pc_p2_dwarf_orange_generated() || teki->mTekiType!=TEKI_Chappy)std::abort();
-        pc_p2_dwarf_orange_bind(teki,pc_randomizer_generator_id(generator));
-        return;
-    }
-    // A bound identity the generated bridge cannot host must fail closed rather
-    // than silently spawn a P1 actor under a P2 identity.
-    pc_randomizer_bad_p2_host();
+    if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki);
 }
 void pc_p2_snow_campaign_setup() {
-    if(pc_pikipelago_room_preview())return;
-    const bool generated=pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(45);
-    if(!generated && !std::ifstream("assets/p2-snow-all-dwarfs.txt"))return;
+    if(pc_pikipelago_room_preview() || !std::ifstream("assets/p2-snow-all-dwarfs.txt"))return;
     const int previousHeap=gsys->setHeap(SYSHEAP_App);
     pc_p2_snow_setup();
     gsys->setHeap(previousHeap);
@@ -165,39 +222,30 @@ void pc_p2_snow_setup() {
     pc_p2_snow_reset();
     std::ifstream campaign("assets/p2-snow-all-dwarfs.txt");
     if(campaign){std::string magic,extra;if(!(campaign>>magic)||magic!="P2_SNOW_ALL_DWARFS_1"||(campaign>>extra)||pc_pikipelago_room_preview())std::abort();campaignMode=true;}
-    // Generated sessions stage the Snow bank into the run's private asset overlay
-    // and opt in only when the ENEMY_P2 layout actually binds Snow (source 45).
-    const bool generated=pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(45);
-    if(generated && campaignMode)std::abort(); // refuse a blanket override in an exact-identity session
-    if(!pc_pikipelago_room_preview() && !campaignMode && !generated)return;
-    const char* prefix=(campaignMode || generated)?"assets/":"";
-    char pathBuffer[256];
-    auto assetPath=[&](const char* name){std::snprintf(pathBuffer,sizeof(pathBuffer),"%s%s",prefix,name);return pathBuffer;};
-    std::ifstream in(assetPath("p2-snow.txt"));
-    if(!in){if(campaignMode || generated)std::abort();return;}
-    generatedMode=generated;
+    if(!pc_pikipelago_room_preview() && !campaignMode)return;
+    std::ifstream in(campaignMode?"assets/p2-snow.txt":"p2-snow.txt");if(!in){if(campaignMode)std::abort();return;}
     const auto started=std::chrono::steady_clock::now();
-    std::ifstream blendOption(assetPath("p2-snow-interpolation.txt"));
+    std::ifstream blendOption(campaignMode?"assets/p2-snow-interpolation.txt":"p2-snow-interpolation.txt");
     if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
-    std::ifstream skinOption(assetPath("p2-snow-skeletal.txt"));
+    std::ifstream skinOption(campaignMode?"assets/p2-snow-skeletal.txt":"p2-snow-skeletal.txt");
     if(skinOption){std::string magic,extra;if(!(skinOption>>magic)||magic!="P2_SNOW_SKELETAL_1"||(skinOption>>extra)||!interpolation)std::abort();
-        std::ifstream mesh(assetPath("p2-snow-skin.txt"));
-        std::ifstream joints(assetPath("p2-snow-joints.txt"));
+        std::ifstream mesh(campaignMode?"assets/p2-snow-skin.txt":"p2-snow-skin.txt");
+        std::ifstream joints(campaignMode?"assets/p2-snow-joints.txt":"p2-snow-joints.txt");
         skin=p2skin::read(mesh);skeleton=p2attach::read(joints);
         if(!skin||!skeleton||skin->joints!=skeleton->joints.size())std::abort();}
-    std::ifstream fadeOption(assetPath("p2-snow-crossfade.txt"));
+    std::ifstream fadeOption(campaignMode?"assets/p2-snow-crossfade.txt":"p2-snow-crossfade.txt");
     if(fadeOption){std::string magic,extra;if(!(fadeOption>>magic)||magic!="P2_SNOW_CROSSFADE_1"||(fadeOption>>extra)||!skin)std::abort();crossfade=true;}
     std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
-    if(!p2animation::parse(in,manifest) || (!campaignMode && !generated && !pc_p2_preview_goal()))std::abort();
+    if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal()))std::abort();
     if(!campaignMode) {
-    std::ifstream policy(assetPath("p2-snow-policy.txt"));
+    std::ifstream policy("p2-snow-policy.txt");
     if(policy && !healthPolicy.read(policy))std::abort();
-    std::ifstream attack(assetPath("p2-snow-attack.txt"));
+    std::ifstream attack("p2-snow-attack.txt");
     if(attack && !attackPolicy.read(attack))std::abort();
-    std::ifstream turn(assetPath("p2-snow-turn.txt"));
+    std::ifstream turn("p2-snow-turn.txt");
     if(turn && !turnPolicy.read(turn))std::abort();
-    std::ifstream chase(assetPath("p2-snow-chase.txt"));
+    std::ifstream chase("p2-snow-chase.txt");
     if(chase && !chasePolicy.read(chase))std::abort();
     }
     // Validate the entire bank before allocating Shapes or uploading textures.
@@ -264,11 +312,8 @@ void pc_p2_snow_setup() {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
     std::printf("P2_SNOW_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f load_budget_seconds=5 budget_exceeded=%d\n",
                 poses,total,attachments,seconds,int(seconds>5));
-    if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor,0);++count;}}
+    if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor);++count;}}
         std::printf("P2_SNOW_CAMPAIGN_READY dwarfs=%d interpolation=%d native_rewards=1\n",count,int(interpolation));return;}
-    if(generatedMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);
-        if(actor->mTekiType==TEKI_Chappy && actor->mGenerator && pc_randomizer_p2_bound_source(actor->mGenerator)==45){bindSnow(actor,pc_randomizer_generator_id(actor->mGenerator));++count;}}
-        std::printf("P2_SNOW_GENERATED_READY dwarfs=%d interpolation=%d bridge=1\n",count,int(interpolation));return;}
     std::string word;
     std::ifstream placements("p2-snow-actors.txt");int count;
     if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100)std::abort();
@@ -279,7 +324,7 @@ void pc_p2_snow_setup() {
         Teki* teki=static_cast<Teki*>(*it);
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
             if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
-            bindSnow(teki,teki->mGenerator->_70);
+            bindSnow(teki);
         }
     }
     if(!wanted.empty())std::abort();

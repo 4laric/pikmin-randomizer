@@ -40,6 +40,8 @@
 #include "teki.h"
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <string>
 
 namespace {
 
@@ -49,6 +51,8 @@ int sWaitMarks = 0;
 int sTicks = 0;
 p2challenge::StageEntry sEntry{};
 p2challenge::HostState sState{};
+bool sProbeArmed = false;
+bool sProbeChecked = false;
 
 int countSquad(int& reds) {
     int alive = 0;
@@ -71,9 +75,60 @@ void waitMark(const char* reason, int frames) {
     }
 }
 
+// Extinction-window probe (lane kusachi-extinction-probe-native, #793;
+// consumer #780). Opt-in ONLY via a p2-kusachi-probe.txt sidecar whose first
+// word is P2_KUSACHI_PROBE_1; without it this TU emits nothing beyond the
+// pre-existing bridge lines, so production behavior is bit-identical.
+// When armed, every wiring tick emits one parseable line with per-tick
+// naviMgr/getNavi() null flags plus per-slot (first 20) alive flags, so the
+// consumer can settle navi-drop cascade vs direct manager clear around the
+// ~13 s extinction. Guarded reads only; never aborts, never changes state.
+//
+// Note on the brief's second callsite: pc_p2_challenge_content.cpp carries
+// no countSquadByColor at this pin; per-color counting lives in countSquad
+// (reds) above, so the probe covers alive + reds + slots here and that TU
+// is intentionally untouched.
+bool probeArmed() {
+    if (!sProbeChecked) {
+        sProbeChecked = true;
+        std::ifstream probe("p2-kusachi-probe.txt");
+        std::string word;
+        if (probe >> word && word == "P2_KUSACHI_PROBE_1") sProbeArmed = true;
+    }
+    return sProbeArmed;
+}
+
+void probeTick(int tick) {
+    if (!probeArmed()) return;
+    const bool hasMgrs = naviMgr && tekiMgr && pikiMgr;
+    Navi* n = hasMgrs ? naviMgr->getNavi() : nullptr;
+    int alive = 0, reds = 0, si = 0;
+    char slots[21];
+    if (hasMgrs) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            if (si >= 20) break;
+            Piki* p = static_cast<Piki*>(*it);
+            const bool ok = p && p->isAlive();
+            slots[si++] = ok ? '1' : '0';
+            if (ok) {
+                ++alive;
+                if (pc_p2_has_red_immunity(p)) ++reds;
+            }
+        }
+    }
+    slots[si] = '\0';
+    std::printf("P2_KUSACHI_PROBE tick=%d navimgr=%d navi=%d navi_alive=%d orima_dead=%d alive=%d reds=%d slots=%s\n",
+                tick, int(naviMgr != nullptr), int(n != nullptr),
+                int(n && n->isAlive()), int(GameStat::orimaDead),
+                alive, reds, slots);
+    std::fflush(stdout);
+}
+
 void update() {
     static int frames = 0;
     ++frames;
+    probeTick(frames);
     P2ChallengeStageParams params{};
     if (!p2_challenge_stage_params(params)) {
         return; // Silent inert path: no valid stage key selected.

@@ -1,3 +1,5 @@
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
 // Family-owned ground-invertebrate source behavior for the batch-2 Chappy
 // placement vehicle: Skitter Leaf (Sokkuri, EnemyID 79). Implements the source
 // SokkuriState.cpp FSM (Stay/Appear/Disappear/Wait/MoveGround/MoveWater/Flick/
@@ -100,6 +102,11 @@ struct Sokkuri {
     float phase = 0.0f;
     bool hidden = true;
     bool deadLogged = false;
+    // #578 receipt boundary: the ordinary-delivery bind is established only
+    // on reveal (STAY -> APPEAR), never at setup. A still-disguised Sokkuri
+    // therefore carries no bound source, so GoalItem::suckMe can never mint
+    // onion:p2:79 for it. Single-use: consumed on delivery, cleared on forget.
+    bool deliveryBound = false;
     float lastHealth = LIFE;
     float logTimer = 0.0f;
 };
@@ -196,6 +203,24 @@ void enter(Sokkuri& s, State state, const char* clip, float timer = 0.0f) {
     if (clip) s.clip = clip;
 }
 
+// #578 receipt boundary: bind the ordinary-delivery source at reveal time.
+// Idempotent: the first reveal establishes the single-use bind; later
+// reveals (after a disappear cycle) never re-bind. Rejected (unbindable id)
+// is logged by the callee, never fatal.
+void bindDelivery(BTeki* a, Sokkuri& s) {
+    if (s.deliveryBound) return;
+    s.deliveryBound = true;
+    // Ordinary-delivery bridge (lane 06 contract, #495): bind source 79 to
+    // this live actor so GoalItem::suckMe can grant onion:p2:79 exactly once
+    // through pc_randomizer_p2_corpse_delivered. Single-use: consumed on
+    // delivery and cleared on forget/recycle.
+    pc_randomizer_p2_bind_source(static_cast<PelletView*>(a), 79,
+                                 pc_p2_campaign_token(a));
+    std::printf("P2_SOKKURI_DELIVERY_BIND generator=%u source_id=79\n",
+                pc_p2_campaign_token(a));
+    std::fflush(stdout);
+}
+
 void setNextMoveInfo(Sokkuri& s, const Vector3f& pos) {
     s.timer = randRange(s, 0.0f, MAX_TRAVEL); // source randWeightFloat(max-min)+0
     const float deg = randRange(s, 45.0f, 90.0f); // fp04..fp03
@@ -288,6 +313,15 @@ bool pc_p2_sokkuri_registered(BTeki* actor) {
     return actors.count(static_cast<PelletView*>(actor)) != 0;
 }
 
+// #578 receipt boundary observability: read-only reveal query. True once the
+// actor's disguise has dropped at least once (delivery bind established);
+// false while still disguised. Never mutates state; false for any
+// unregistered actor.
+bool pc_p2_sokkuri_revealed(BTeki* actor) {
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    return it != actors.end() && it->second.deliveryBound;
+}
+
 float pc_p2_sokkuri_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
     if (idx == TPF_Life) return LIFE;
@@ -317,7 +351,7 @@ bool pc_p2_sokkuri_pressed(BTeki* teki, Creature*) {
     teki->mHealth = 0.0f;
     enter(s, SOKKURI_PRESS, "pdead1");
     std::printf("P2_SOKKURI_PRESS generator=%u source_id=79\n",
-                teki->mGenerator ? teki->mGenerator->_70 : 0u);
+                teki->mGenerator ? pc_p2_campaign_token(teki) : 0u);
     std::fflush(stdout);
     return true;
 }
@@ -389,6 +423,10 @@ void pc_p2_sokkuri_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "Sokkuri") wanted[unsigned(generator)] = species;
     }
+    if (pc_randomizer_p2_bridge()) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(79)) wanted[id] = "Sokkuri";
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
@@ -396,40 +434,34 @@ void pc_p2_sokkuri_setup() {
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
         if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        auto match = wanted.find(pc_p2_campaign_token(actor));
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_SOKKURI_ERROR native_type generator=%u\n", actor->mGenerator->_70);
-            std::abort();
+            std::printf("P2_SOKKURI_ERROR native_type generator=%u\n", pc_p2_campaign_token(actor));
+            if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Sokkuri", "actor_type_mismatch")) return;
         }
         Sokkuri& s = actors[static_cast<PelletView*>(actor)];
-        s.rng = (actor->mGenerator->_70 * 2654435761u) | 1u;
+        s.rng = (pc_p2_campaign_token(actor) * 2654435761u) | 1u;
         s.home = actor->getPosition();
         s.heading = actor->getDirection();
         s.targetPosition = s.home;
         actor->mHealth = LIFE;
         enter(s, SOKKURI_STAY, "appear1");
-        // Ordinary-delivery bridge (lane 06 contract, #495): bind source 79 to
-        // this live actor so GoalItem::suckMe can grant onion:p2:79 exactly once
-        // through pc_randomizer_p2_corpse_delivered. Rejected (unbindable id)
-        // is logged by the callee, never fatal. Single-use: consumed on
-        // delivery and cleared on forget/recycle.
-        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 79,
-                                     actor->mGenerator->_70);
-        std::printf("P2_SOKKURI_DELIVERY_BIND generator=%u source_id=79\n",
-                    actor->mGenerator->_70);
+        // #578: the delivery bind is NOT established here. bindDelivery()
+        // runs on the first STAY -> APPEAR reveal, so a still-disguised
+        // Sokkuri carries no bound source and cannot mint onion:p2:79.
         std::printf("P2_SOKKURI_BIND generator=%u source_id=79 visual_only=0\n",
-                    actor->mGenerator->_70);
+                    pc_p2_campaign_token(actor));
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=Sokkuri native_family=Chappy generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
                     "source_FSM=implemented disguise=native\n",
-                    actor->mGenerator->_70, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
-        found.insert(actor->mGenerator->_70);
+                    pc_p2_campaign_token(actor), pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        found.insert(pc_p2_campaign_token(actor));
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_SOKKURI_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
-        std::abort();
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Sokkuri", "actor_roster_incomplete")) return;
     }
     ready = true;
 }
@@ -451,7 +483,7 @@ void pc_p2_sokkuri_update(BTeki* actor) {
     const float previousHealth = s.lastHealth;
     if (actor->mHealth < s.lastHealth && actor->mHealth > 0.0f) {
         std::printf("P2_SOKKURI_DAMAGE generator=%u source_id=79 health=%.1f\n",
-                    actor->mGenerator ? actor->mGenerator->_70 : 0u, actor->mHealth);
+                    actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, actor->mHealth);
         std::fflush(stdout);
     }
     s.lastHealth = actor->mHealth;
@@ -459,7 +491,7 @@ void pc_p2_sokkuri_update(BTeki* actor) {
     if (actor->mHealth <= 0.0f && s.state != SOKKURI_DEAD && s.state != SOKKURI_PRESS) {
         if (!s.deadLogged) {
             std::printf("P2_SOKKURI_DEAD generator=%u source_id=79 health=0 prior_health=%.1f\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u, previousHealth);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, previousHealth);
             std::fflush(stdout);
             s.deadLogged = true;
         }
@@ -474,13 +506,16 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         if (!loggedHidden) {
             loggedHidden = true;
             std::printf("P2_SOKKURI_DISGUISE generator=%u hidden=1\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
         }
         if (isAppear(pos)) {
             std::printf("P2_SOKKURI_DISGUISE generator=%u hidden=0\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             std::printf("P2_SOKKURI_STATE generator=%u state=appear\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            // #578 receipt boundary: first reveal establishes the
+            // single-use delivery bind. Idempotent across disappear cycles.
+            bindDelivery(actor, s);
             enter(s, SOKKURI_APPEAR, "appear1");
         }
         break;
@@ -488,26 +523,26 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         s.hidden = false;
         if (shouldFlick(actor)) {
             std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_FLICK, "flick1");
         } else if (s.stateTime >= clipDuration("appear1")) {
             setNextMoveInfo(s, pos);
             std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_MOVE_GROUND, "run1", randRange(s, 0.0f, MAX_TRAVEL));
         }
         break;
     case SOKKURI_DISAPPEAR:
         if (s.stateTime >= clipDuration("hide1")) {
             std::printf("P2_SOKKURI_STATE generator=%u state=stay\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_STAY, "appear1");
         }
         break;
     case SOKKURI_WAIT:
         if (shouldFlick(actor)) {
             std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_FLICK, "flick1");
             break;
         }
@@ -519,12 +554,12 @@ void pc_p2_sokkuri_update(BTeki* actor) {
             const State next = s.nextState == SOKKURI_INVALID ? SOKKURI_MOVE_GROUND : s.nextState;
             if (next == SOKKURI_DISAPPEAR) {
                 std::printf("P2_SOKKURI_STATE generator=%u state=disappear\n",
-                            actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
                 enter(s, SOKKURI_DISAPPEAR, "hide1");
             } else {
                 setNextMoveInfo(s, pos);
                 std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
-                            actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
                 enter(s, SOKKURI_MOVE_GROUND, "run1", randRange(s, 0.0f, MAX_TRAVEL));
             }
         }
@@ -536,18 +571,18 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         s.timer += dt;
         if (shouldFlick(actor)) {
             std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_FLICK, "flick1");
             break;
         }
         if (s.timer > MAX_TRAVEL) {
             if (isDisappear(pos, s.home)) {
                 std::printf("P2_SOKKURI_STATE generator=%u state=disappear\n",
-                            actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
                 enter(s, SOKKURI_DISAPPEAR, "hide1");
             } else if (rand01(s) < WAIT_PROB) {
                 std::printf("P2_SOKKURI_STATE generator=%u state=wait\n",
-                            actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
                 enter(s, SOKKURI_WAIT, "wait1", randRange(s, 0.0f, MAX_WAIT - MIN_WAIT));
             } else {
                 setNextMoveInfo(s, pos);
@@ -564,7 +599,7 @@ void pc_p2_sokkuri_update(BTeki* actor) {
             const bool water = false; // staged arena has no water box
             setNextMoveInfo(s, pos);
             std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
             enter(s, SOKKURI_MOVE_GROUND, water ? "wrun1" : "run1", randRange(s, 0.0f, MAX_TRAVEL));
         }
         break;
@@ -592,7 +627,7 @@ void pc_p2_sokkuri_update(BTeki* actor) {
     if (s.logTimer >= 1.0f) {
         s.logTimer = 0.0f;
         std::printf("P2_SOKKURI_POS generator=%u state=%s clip=%s phase=%.2f x=%.2f z=%.2f\n",
-                    actor->mGenerator ? actor->mGenerator->_70 : 0u, stateName(s.state),
+                    actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, stateName(s.state),
                     s.clip.c_str(), s.phase, pos.x, pos.z);
         std::fflush(stdout);
     }

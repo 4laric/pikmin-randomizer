@@ -26,6 +26,15 @@ class BTeki;
 
 bool pc_p2_generated_placement_bind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId);
 
+// Seed-bridge setup sweep (rd-p2ap-sarai, #439, Otakara pattern): bind every
+// live actor the randomizer resolved to Sarai source 23 through the Sarai
+// dynamic binder. No env var is consulted and several copies may bind;
+// actors whose sidecar is absent are skipped quietly by the dynamic binder.
+// Returns true when at least one actor was claimed. Called from
+// pc_p2_sarai_manager_setup() in bridge mode; complements the birth-time
+// claim in pc_p2_generated_placement_bind (called from genteki birth).
+bool pc_p2_generated_placement_sweep_sarai();
+
 static const unsigned MUSE_GENERATED_SLOT_FUEFUKI41 = 1254096625u;
 static const unsigned MUSE_GENERATED_SLOT_KURAGE57 = 689702860u;
 static const unsigned MUSE_GENERATED_SLOT_BOMBSARAI58 = 1787125272u;

@@ -118,6 +118,9 @@ struct Armor {
     bool biteLogged = false;
     bool deadLogged = false;
     float logTimer = 0.0f;
+    // Per-frame health tracker for natural-combat observability: an incremental,
+    // still-positive decrease is real receiver damage (see pc_p2_armor_update).
+    float lastHealth = LIFE;
     // Damage-receiver / stone-flick port state (see pc_p2_armor.h).
     bool bittered = false;
     bool stone = false;
@@ -540,9 +543,23 @@ void pc_p2_armor_update(BTeki* actor) {
     const Vector3f pos = actor->getPosition();
     const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
 
+    // Natural-combat observability (#165/#407): an incremental, still-positive
+    // health decrease is real receiver damage (a Pikmin attack accepted by the
+    // source dmg1/weakpoint rule). The death marker records prior_health (the
+    // value one update before <=0) so a single fixture-injected jump to 0 is
+    // distinguishable from a combat-culminated death by its larger prior_health.
+    const float previousHealth = s.lastHealth;
+    if (actor->mHealth < s.lastHealth && actor->mHealth > 0.0f) {
+        std::printf("P2_ARMOR_DAMAGE generator=%u source_id=15 health=%.1f\n",
+                    generator, actor->mHealth);
+        std::fflush(stdout);
+    }
+    s.lastHealth = actor->mHealth;
+
     if (actor->mHealth <= 0.0f && s.state != ARMOR_DEAD) {
         if (!s.deadLogged) {
-            std::printf("P2_ARMOR_DEAD generator=%u source_id=15 health=0\n", generator);
+            std::printf("P2_ARMOR_DEAD generator=%u source_id=15 health=0 prior_health=%.1f\n",
+                        generator, previousHealth);
             std::fflush(stdout);
             s.deadLogged = true;
         }

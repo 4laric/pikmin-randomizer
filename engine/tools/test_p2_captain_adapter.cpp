@@ -31,6 +31,13 @@ struct FakeScene {
     FakePiki pikiB;
     int setHealthCalls = 0;
     int setOwnerCalls = 0;
+    int prepareCalls = 0;
+    int lastPreparedOwner = P2CaptainInvalid;
+    bool refusePrepare = false;
+    bool dieOnPrepare = false;
+    P2CaptainAdapter* activeAdapter = nullptr;
+    std::uint64_t prepareRecaptureEpoch = 0;
+    std::uint64_t recaptureReleaseEpoch = 0;
     int notifyActiveCalls = 0;
     int lastActiveSlot = P2CaptainInvalid;
     int notifyKnockoutCalls = 0;
@@ -66,6 +73,33 @@ void fake_set_owner_slot(void* ctx, P2PikiHandle actor, int slot)
     static_cast<FakePiki*>(actor)->ownerSlot = slot;
 }
 
+// Squad-action release before ownership is cleared
+// (codex/p2-lane12-review 5cbb2f351/b4ac39825, #130): runs while the captain
+// pointer is still valid, then the adapter revalidates. The double can
+// refuse, kill (predeath revocation), or reentrantly recapture under a newer
+// epoch; the stale outer capture must never touch the replacement.
+bool fake_prepare_capture(void* ctx, P2PikiHandle actor)
+{
+    FakeScene* s = static_cast<FakeScene*>(ctx);
+    FakePiki* piki = static_cast<FakePiki*>(actor);
+    s->prepareCalls++;
+    s->lastPreparedOwner = piki->ownerSlot;
+    if (s->refusePrepare) return false;
+    if (s->dieOnPrepare) {
+        // Predeath during cleanup: drop the capture without engine writes.
+        if (s->activeAdapter) s->activeAdapter->forgetActor(actor);
+        return true;
+    }
+    if (s->prepareRecaptureEpoch && s->activeAdapter) {
+        const std::uint64_t epoch = s->prepareRecaptureEpoch;
+        s->prepareRecaptureEpoch = 0;
+        // Reentrant interruption then replacement capture under a newer tick.
+        assert(s->activeAdapter->releaseActor(s->recaptureReleaseEpoch, actor, P2CaptainInvalid));
+        assert(s->activeAdapter->captureActor(epoch, actor));
+    }
+    return true;
+}
+
 int fake_enumerate(void* ctx, P2PikiHandle* out, int capacity)
 {
     FakeScene* s = static_cast<FakeScene*>(ctx);
@@ -98,6 +132,7 @@ P2CaptainHostOps fake_ops(FakeScene& scene)
     ops.setHealth    = &fake_set_health;
     ops.actorId      = &fake_actor_id;
     ops.ownerSlot    = &fake_owner_slot;
+    ops.prepareCapture = &fake_prepare_capture;
     ops.setOwnerSlot = &fake_set_owner_slot;
     ops.enumerate    = &fake_enumerate;
     ops.notifyActive   = &fake_notify_active;
@@ -146,9 +181,14 @@ void test_single_captain_slot0(FakeScene& scene)
     assert(adapter.refresh());
     assert(adapter.health(P2CaptainA) == 90.0f);
 
-    // A captor grabs a Pikmin: it leaves captain ownership and the engine
-    // ownership is cleared. Stale captor epochs cannot release it.
+    // A captor grabs a Pikmin: the squad action is abandoned while the captain
+    // pointer is still valid, then ownership is cleared. Stale captor epochs
+    // cannot release it.
+    scene.activeAdapter = &adapter;
     assert(adapter.captureActor(900, &scene.pikiA));
+    assert(scene.prepareCalls == 1 && scene.lastPreparedOwner == P2CaptainA);
+    assert(adapter.isCaptiveFor(900, &scene.pikiA));
+    assert(!adapter.isCaptiveFor(901, &scene.pikiA));
     assert(adapter.captiveCount() == 1);
     assert(scene.pikiA.ownerSlot == P2CaptainInvalid);
     assert(!adapter.ownsActor(101));
@@ -185,6 +225,72 @@ void test_single_captain_slot0(FakeScene& scene)
     assert(!adapter.ownsActor(102));
     assert(adapter.bind(fake_ops(scene)));
     assert(adapter.setup());
+    scene.activeAdapter = nullptr;
+}
+
+// Revocable squad captures bound to captor ticks
+// (codex/p2-lane12-review c29ec8398/5cbb2f351/b4ac39825, #130): action release
+// before clearing ownership, and a replacement capture made during that
+// release is preserved while the stale outer capture is revoked silently.
+void test_capture_prepare_revalidate(FakeScene& scene)
+{
+    P2CaptainAdapter adapter;
+    assert(adapter.bind(fake_ops(scene)));
+    assert(adapter.setup());
+    scene.activeAdapter = &adapter;
+
+    // Refused action release refuses the capture: no owner write, not captive.
+    scene.pikiA.ownerSlot = P2CaptainA;
+    const int writes = scene.setOwnerCalls;
+    scene.refusePrepare = true;
+    assert(!adapter.captureActor(920, &scene.pikiA));
+    assert(scene.pikiA.ownerSlot == P2CaptainA && scene.setOwnerCalls == writes);
+    assert(!adapter.isCaptiveFor(920, &scene.pikiA) && adapter.captiveCount() == 0);
+    scene.refusePrepare = false;
+
+    // Predeath during cleanup revokes without engine writes.
+    scene.dieOnPrepare = true;
+    assert(!adapter.captureActor(921, &scene.pikiA));
+    assert(scene.pikiA.ownerSlot == P2CaptainA && scene.setOwnerCalls == writes);
+    assert(!adapter.isCaptiveFor(921, &scene.pikiA) && adapter.captiveCount() == 0);
+    scene.dieOnPrepare = false;
+
+    // Ordinary capture, then a reentrant interruption + replacement capture
+    // under a newer tick during the outer release: the outer capture fails
+    // and the replacement is preserved with no further owner writes.
+    scene.pikiA.ownerSlot = P2CaptainA; // still attached after the 922 release
+    scene.recaptureReleaseEpoch = 0;
+    scene.prepareRecaptureEpoch = 0;
+    assert(adapter.captureActor(922, &scene.pikiA));
+    assert(scene.pikiA.ownerSlot == P2CaptainInvalid);
+    assert(adapter.releaseActor(922, &scene.pikiA, P2CaptainA));
+    assert(scene.pikiA.ownerSlot == P2CaptainA);
+
+    // True reentrant path: during captureActor(924)'s action release, a
+    // callback releases 924 and recaptures under 925. The outer capture is
+    // revoked without touching the replacement.
+    scene.recaptureReleaseEpoch = 924;
+    scene.prepareRecaptureEpoch = 925;
+    const int writesBeforeReentrant = scene.setOwnerCalls;
+    assert(!adapter.captureActor(924, &scene.pikiA));
+    assert(!adapter.isCaptiveFor(924, &scene.pikiA));
+    assert(adapter.isCaptiveFor(925, &scene.pikiA));
+    assert(adapter.captiveCount() == 1);
+    assert(scene.pikiA.ownerSlot == P2CaptainInvalid); // inner capture's write
+    assert(scene.setOwnerCalls == writesBeforeReentrant + 2); // inner ops only
+    assert(!adapter.releaseActor(924, &scene.pikiA, P2CaptainA)); // stale
+    assert(adapter.isCaptiveFor(925, &scene.pikiA));
+    assert(adapter.releaseActor(925, &scene.pikiA, P2CaptainA));
+    assert(scene.pikiA.ownerSlot == P2CaptainA);
+
+    // Predeath revocation performs no actor writes.
+    assert(adapter.captureActor(926, &scene.pikiA));
+    const int writesBeforeForget = scene.setOwnerCalls;
+    adapter.forgetActor(&scene.pikiA);
+    assert(scene.setOwnerCalls == writesBeforeForget);
+    assert(!adapter.isCaptiveFor(926, &scene.pikiA) && adapter.captiveCount() == 0);
+    assert(!adapter.releaseActor(926, &scene.pikiA, P2CaptainA));
+    scene.activeAdapter = nullptr;
 }
 
 // Splitting an adopted squad between two captains mirrors Piki::mNavi through
@@ -287,6 +393,13 @@ int main()
         scene.pikiA = FakePiki{101, P2CaptainA};
         scene.pikiB = FakePiki{102, P2CaptainA};
         test_two_captain_split_double(scene);
+    }
+    {
+        FakeScene scene;
+        scene.navi0.health = 100.0f;
+        scene.pikiA = FakePiki{101, P2CaptainA};
+        scene.pikiB = FakePiki{102, P2CaptainA};
+        test_capture_prepare_revalidate(scene);
     }
 
     std::puts("PASS P2_CAPTAIN_ADAPTER");

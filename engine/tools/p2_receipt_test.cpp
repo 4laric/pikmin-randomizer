@@ -24,6 +24,7 @@ int main(int argc, char** argv)
 	assert(argc == 2);
 	(void)argc;
 	std::filesystem::path directory = argv[1];
+	std::filesystem::remove_all(directory);
 	std::filesystem::create_directories(directory);
 
 	// Token validation mirrors the Python identity/coordinate contract.
@@ -125,5 +126,6 @@ int main(int argc, char** argv)
 	assert(throws([&] { reconcileOrdinary({pod}, {"corpse:floor1:5000"}); }));
 
 	std::printf("PASS p2_receipt_test\n");
+	std::filesystem::remove_all(directory);
 	return 0;
 }

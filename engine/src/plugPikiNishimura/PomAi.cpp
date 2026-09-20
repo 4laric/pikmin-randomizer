@@ -1,3 +1,4 @@
+#include "pc_p2_candypop.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
 #include "DebugLog.h"
@@ -77,6 +78,16 @@ void PomAi::initAI(Pom* pom)
         props->mPomProps.mCloseWaitTime.mValue=5.f;
         props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
         mMaxSeedCount=5; // Violet counts non-Purple inputs; same-color slots refund.
+    }
+    if(int candypopBudget=pc_p2_candypop_budget(mPom)) {
+        // Lane-23 real-engine colour bud: source ip01 budget, fp01 close wait,
+        // any-colour entry, and own-colour refund handled in createPikiHead.
+        PomProp* props=static_cast<PomProp*>(mPom->mProps);
+        props->mPomProps.mMaxPikiPerCycle.mValue=candypopBudget;
+        props->mPomProps.mCloseWaitTime.mValue=1.f;
+        props->mPomProps.mOpenOnInteractionOnly.mValue=0;
+        props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
+        mMaxSeedCount=candypopBudget;
     }
 }
 
@@ -324,6 +335,10 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    // Lane-23 real-engine colour Candypop takes precedence when this Pom is a
+    // sidecar-bound BluePom/RedPom/YellowPom; returns -1 for every other Pom.
+    int candypopUsed=pc_p2_convert_candypop(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(candypopUsed>=0){mReleasedSeedCount+=candypopUsed;playSound(3);return;}
     // The source-authored Pom cycle count owns capacity; White does not copy
     // the preview's former fixed Violet allowance.
     int whiteConverted=pc_p2_convert_ivory(mPom,mMaxSeedCount-mReleasedSeedCount);

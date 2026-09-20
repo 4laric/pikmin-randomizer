@@ -106,6 +106,18 @@ int main() {
     assert(table3.ownerOf(21) == P2CaptainInvalid);
     assert(table3.ownedBy(P2CaptainA) == 1); // 22 remains with A
     assert(!cap3.captureActor(901, 21));      // never double-claimed
+    // A whistle/adoption pass must not reclaim an actor still held by a
+    // captor (codex/p2-lane12-review 6f67ca7a5, #130). Both captain routes
+    // preserve the capture and the control squad.
+    assert(!cap3.claim(P2CaptainA, 21));
+    assert(!cap3.claim(P2CaptainB, 21));
+    assert(cap3.isCaptive(21));
+    assert(cap3.captiveEpochOf(21) == 900);
+    assert(table3.ownerOf(21) == P2CaptainInvalid);
+    assert(table3.ownerOf(22) == P2CaptainA);
+    assert(table3.ownerOf(23) == P2CaptainB);
+    assert(!cap3.releaseActor(901, 21, P2CaptainA)); // stale captor epoch
+    assert(cap3.isCaptive(21));
     assert(cap3.releaseActor(900, 21, P2CaptainB));
     assert(!cap3.isCaptive(21));
     assert(table3.ownerOf(21) == P2CaptainB);
@@ -117,12 +129,28 @@ int main() {
     std::vector<std::uint32_t> dropped = cap3.dropAllCaptured(902);
     assert(dropped.size() == 1 && dropped[0] == 22);
     assert(table3.ownerOf(22) == P2CaptainInvalid); // freed, not deleted
+    assert(cap3.claim(P2CaptainA, 22)); // reclaim only after interruption
+    assert(!cap3.releaseActor(902, 22, P2CaptainB)); // already freed
+    assert(table3.ownerOf(22) == P2CaptainA);
+    assert(cap3.dropAllCaptured(902).empty()); // repeated cleanup is inert
+    cap3.abandon(P2CaptainA, 22);
 
     // A free actor can be grabbed, and releasing to an invalid target restores
     // the (invalid) previous owner, i.e. leaves it free.
     assert(cap3.captureActor(905, 22));
     assert(cap3.releaseActor(905, 22, P2CaptainInvalid));
     assert(table3.ownerOf(22) == P2CaptainInvalid);
+
+    // Predeath revocation drops capture and ownership without restoration, and
+    // the id is never reused: a replacement lifetime starts clean
+    // (codex/p2-lane12-review c29ec8398, #130).
+    assert(cap3.captureActor(906, 23));
+    assert(cap3.isCaptive(23) && table3.ownerOf(23) == P2CaptainInvalid);
+    cap3.forgetActor(23);
+    assert(!cap3.isCaptive(23) && cap3.captiveEpochOf(23) == 0);
+    assert(table3.ownerOf(23) == P2CaptainInvalid);
+    cap3.forgetActor(23); // repeated invalidation is inert
+    assert(cap3.claim(P2CaptainB, 23)); // replacement lifetime reclaimable
 
     // Reload restores a captive to its previous captain without duplication.
     assert(cap3.captureActor(904, 23));

@@ -1,6 +1,9 @@
+#include "pc_p2_campaign_actor.h"
 #include "pc_p2_sarai_manager.h"
+#include "pc_p2_generated_placement.h"
 #include "pc_p2_sarai_host.h"
 #include "pc_p2_retail_player.h"
+#include "pc_randomizer.h"
 #include "Generator.h"
 #include "Graphics.h"
 #include "teki.h"
@@ -39,7 +42,7 @@ bool findOwnerActor(unsigned wantedGenerator, int wantedType, BTeki*& match)
     CI_LOOP(actors) {
         BTeki* actor = static_cast<BTeki*>(*actors);
         if (!actor || !actor->mGenerator) continue;
-        if (actor->mGenerator->_70 != wantedGenerator || actor->mTekiType != wantedType) continue;
+        if (pc_p2_campaign_token(actor) != wantedGenerator || actor->mTekiType != wantedType) continue;
         if (match) return false;
         match = actor;
     }
@@ -64,7 +67,21 @@ bool readRestOffsets(const char* path, Vector3f& mouthA, Vector3f& mouthB)
     return true;
 }
 
-std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId)
+// Ordinary-delivery bridge (lane 06 contract, #828): bind source 23 to this
+// live actor so GoalItem::suckMe can grant onion:p2:23 exactly once through
+// pc_randomizer_p2_corpse_delivered. Mirrors ElecBug (28), Kogane (9) and
+// Sokkuri (79). Single-use: consumed on delivery and cleared on
+// forget/recycle. Rejected (unbindable id) is logged by the callee, never
+// fatal.
+void bindDeliverySource(BTeki* actor, unsigned generator)
+{
+    if (!actor || !generator) return;
+    pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 23, generator);
+    std::printf("P2_SARAI_DELIVERY_BIND generator=%u source_id=23\n", generator);
+    std::fflush(stdout);
+}
+
+std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId, bool campaign)
 {
     Vector3f restA, restB;
     if (!readRestOffsets("sarai-attack-mouths.txt", restA, restB)) return nullptr;
@@ -111,17 +128,47 @@ std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId)
     // captain and no patrol/scan state is implemented here, so the view cone is
     // widened and the territory/sight radii cover the room (same accommodation
     // as the Demon ordinary host). Approach speed, turn cap and grab range stay
-    // at the fixture's natural values.
-    host->enableNatural(30.0f, 3.0f, 20.0f, 12.0f, 1000.0f, 360.0f, 1200.0f, home);
+    // at the fixture's natural values. Campaign seed-bridge bindings
+    // (bind_dynamic) use the retail-scale geometry instead (#834).
+    // Campaign seed-bridge bindings (#834) use the retail-scale general
+    // geometry (EnemyParmsBase defaults fp09/fp12/fp13: territory 200, sight
+    // 200, view 90) so eight Sarai no longer share one room-wide capture
+    // territory over the captain. Speeds stay fixture-tuned in both paths.
+    if (campaign) {
+        host->enableNatural(30.0f, 3.0f, 20.0f, 12.0f,
+            P2SaraiHost::kCampaignTerritoryRadius,
+            P2SaraiHost::kCampaignViewAngleDegrees,
+            P2SaraiHost::kCampaignSightRadius, home);
+        std::printf("P2_SARAI_GEOMETRY mode=campaign territory=%.0f view=%.0f sight=%.0f cooldown=%.0f\n",
+                    P2SaraiHost::kCampaignTerritoryRadius,
+                    P2SaraiHost::kCampaignViewAngleDegrees,
+                    P2SaraiHost::kCampaignSightRadius,
+                    P2SaraiHost::kReacquireCooldownSeconds);
+        std::fflush(stdout);
+    } else {
+        host->enableNatural(30.0f, 3.0f, 20.0f, 12.0f, 1000.0f, 360.0f, 1200.0f, home);
+    }
     if (!host->naturalEnabled()) return nullptr;
-    if (!host->bindNativeActor(match, match->mGenerator->_70, match->mTekiType)) return nullptr;
+    if (!host->bindNativeActor(match, pc_p2_campaign_token(match), match->mTekiType)) return nullptr;
     return host;
 }
 } // namespace
 
 void pc_p2_sarai_manager_reset()
 {
-    for (auto& entry : s) entry.second.host->unbindNativeActor(entry.first);
+    // Lane 06 single-use bindings: drop every ordinary-delivery source before
+    // clearing the maps. The central pc_randomizer_p2_delivery_reset only
+    // closes the ledger; it never clears p2TekiSources, so without this a
+    // stage teardown would strand live source-23 entries keyed by destroyed
+    // actor addresses for a recycled Teki to inherit (the exact hazard the
+    // forget path guards). Covers live bindings and death-observed corpses
+    // whose delivery may not have been consumed yet. Idempotent.
+    for (auto& entry : s) {
+        pc_randomizer_p2_forget_source(static_cast<PelletView*>(entry.first));
+        entry.second.host->unbindNativeActor(entry.first);
+    }
+    for (auto& entry : corpses)
+        pc_randomizer_p2_forget_source(static_cast<PelletView*>(entry.first));
     const std::size_t count = s.size();
     s.clear();
     hosts.clear();
@@ -133,6 +180,10 @@ void pc_p2_sarai_manager_reset()
 void pc_p2_sarai_manager_forget(BTeki* actor)
 {
     if (!actor) return;
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit source 23. The central
+    // pc_p2_forget_teki seam also clears it; this is idempotent.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     auto it = s.find(actor);
     if (it != s.end()) {
         std::printf("P2_SARAI_FORGET generator=%u phase=cleanup\n", it->second.generator);
@@ -145,6 +196,15 @@ void pc_p2_sarai_manager_forget(BTeki* actor)
 
 void pc_p2_sarai_manager_setup()
 {
+    // Seed-bridge campaign path (#439, Otakara pattern): in bridge mode the
+    // generated-placement seam claims every actor the randomizer resolved to
+    // Sarai source 23. No env var is consulted and several copies may bind;
+    // actors whose sidecar is absent are skipped quietly by the dynamic
+    // binder. The env/fixture path below is unchanged.
+    if (pc_randomizer_p2_bridge()) {
+        pc_p2_generated_placement_sweep_sarai();
+        return;
+    }
     const char* ordinary = std::getenv("PIKMIN_SARAI_ORDINARY");
     if (!ordinary || std::strcmp(ordinary, "1") != 0) return;
     if (!tekiMgr) return;
@@ -156,13 +216,18 @@ void pc_p2_sarai_manager_setup()
 
     BTeki* match = nullptr;
     if (!findOwnerActor(wantedGenerator, wantedType, match)) return;
-    auto host = buildHost(match, match->mGenerator->_70);
+    // Repeated setup is idempotent: the first bind wins, mirroring the
+    // dynamic binder's already-bound refusal. Re-binding would orphan the
+    // live host and double-print the delivery marker.
+    if (s.count(match)) return;
+    auto host = buildHost(match, pc_p2_campaign_token(match), false);
     if (!host) return;
-    s[match] = { host.get(), match->mGenerator->_70, match->mTekiType };
+    s[match] = { host.get(), pc_p2_campaign_token(match), match->mTekiType };
+    bindDeliverySource(match, pc_p2_campaign_token(match));
     std::printf("P2_SARAI_READY source_id=23 species=Sarai generator=%u type=%d health=%.1f behavior=source\n",
-                match->mGenerator->_70, match->mTekiType, match->mHealth);
+                pc_p2_campaign_token(match), match->mTekiType, match->mHealth);
     std::printf("P2_SARAI_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:sarai:%u\n",
-                match->mGenerator->_70, match->mGenerator->_70);
+                pc_p2_campaign_token(match), pc_p2_campaign_token(match));
     std::fflush(stdout);
     hosts.push_back(std::move(host));
 }
@@ -170,13 +235,14 @@ void pc_p2_sarai_manager_setup()
 bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
 {
     if (!actor || !generatorId || s.count(actor)) return false;
-    auto host = buildHost(actor, generatorId);
+    auto host = buildHost(actor, generatorId, true);
     if (!host) {
         std::printf("P2_GENERATED_PLACEMENT source_id=23 target=%u bound=0 reason=host\n", seedTargetUid);
         std::fflush(stdout);
         return false;
     }
     s[actor] = { host.get(), generatorId, actor->mTekiType };
+    bindDeliverySource(actor, generatorId);
     std::printf("P2_SARAI_READY source_id=23 species=Sarai generator=%u type=%d health=%.1f behavior=source generated=1 seed_target=%u\n",
                 generatorId, actor->mTekiType, actor->mHealth, seedTargetUid);
     std::printf("P2_SARAI_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:sarai:%u\n",

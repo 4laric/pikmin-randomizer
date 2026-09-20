@@ -1,3 +1,5 @@
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
 // Family-owned lane-22 elemental-dweevil source behavior for the batch-2 Chappy
 // placement vehicle: Fiery Dweevil (FireOtakara, EnemyID 59) and its shared-base
 // elemental siblings WaterOtakara (60), GasOtakara (61), ElecOtakara (62).
@@ -23,6 +25,7 @@
 //   * View angle is a full circle (hit angle fp23=0 on the disc).
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_otakara.h"
+#include "pc_p2_otakara_fx.h"
 #include "pc_p2_dweevil_policy.h"
 #include "pc_p2_species.h"
 #include "pc_p2_hazard_emitter.h"
@@ -138,7 +141,7 @@ unsigned nextRand(Otakara& s) {
 }
 float rand01(Otakara& s) { return float(nextRand(s) & 0xffff) / 65535.0f; }
 float randRange(Otakara& s, float lo, float hi) { return lo + (hi - lo) * rand01(s); }
-unsigned genOf(const BTeki* actor) { return actor && actor->mGenerator ? actor->mGenerator->_70 : 0u; }
+unsigned genOf(const BTeki* actor) { return actor && actor->mGenerator ? pc_p2_campaign_token(actor) : 0u; }
 
 float wrapPi(float a) {
     while (a > 3.14159265f) a -= 6.28318531f;
@@ -272,6 +275,7 @@ void doDischarge(BTeki* a, Otakara& s) {
     }
     std::printf("P2_OTAKARA_DISCHARGE generator=%u source_id=%d stimulus=%s applied=%d immune=%d\n",
                 generator, s.species, p2dweevil::stimulusName(s.stimulus), applied, immune);
+    pc_p2_otakara_fx_on_discharge(s.species, pos.x, pos.y, pos.z);
     std::fflush(stdout);
 }
 
@@ -525,6 +529,11 @@ void pc_p2_otakara_setup() {
         const int sid = speciesFromName(species);
         if (sid >= 0) wanted[unsigned(generator)] = sid;
     }
+    if (pc_randomizer_p2_bridge()) {
+        wanted.clear();
+        for (unsigned source=59; source<=62; ++source)
+            for (unsigned id : pc_p2_campaign_ids(source)) wanted[id] = speciesFromSource(source);
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
@@ -532,18 +541,18 @@ void pc_p2_otakara_setup() {
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
         if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        auto match = wanted.find(pc_p2_campaign_token(actor));
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_OTAKARA_ERROR native_type generator=%u\n", actor->mGenerator->_70);
-            std::abort();
+            std::printf("P2_OTAKARA_ERROR native_type generator=%u\n", pc_p2_campaign_token(actor));
+            if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Otakara", "actor_type_mismatch")) return;
         }
-        registerActor(actor, match->second, actor->mGenerator->_70);
-        found.insert(actor->mGenerator->_70);
+        registerActor(actor, match->second, pc_p2_campaign_token(actor));
+        found.insert(pc_p2_campaign_token(actor));
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_OTAKARA_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
-        std::abort();
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Otakara", "actor_roster_incomplete")) return;
     }
     ready = true;
 }

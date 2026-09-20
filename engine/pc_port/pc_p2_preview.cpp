@@ -1,3 +1,4 @@
+#include "pc_randomizer.h"
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
@@ -17,6 +18,7 @@
 #include "pc_p2_queen_teki.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_dwarf_orange.h"
+#include "pc_p2_bluechappy.h"
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
@@ -27,6 +29,7 @@
 #include "pc_p2_king.h"
 #include "pc_p2_flora_actor.h"
 #include "pc_p2_pom.h"
+#include "pc_p2_candypop.h"
 #include "pc_p2_plant.h"
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
@@ -50,6 +53,7 @@
 #include "pc_p2_projectiles.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_cave_items_engine.h"  // lane 46 (#484) physical cave-item placement
 #include "pc_bbft.h"
 #include "Pellet.h"
 #include "PlayerState.h"
@@ -155,7 +159,18 @@ bool pc_p2_preview_cargo_free_ready() { return pc_pikipelago_room_preview() && c
 Pellet* pc_p2_preview_treasure() { return previewTreasure; }
 
 void pc_p2_preview_setup() {
-    if (!pc_pikipelago_room_preview()) return;
+    if (!pc_pikipelago_room_preview()) {
+        if (pc_randomizer_p2_bridge()) {
+            pc_p2_dwarf_orange_setup();
+            pc_p2_kochappy_fsm_setup();
+            pc_p2_kogane_setup();
+            pc_p2_mamuta_setup();
+            pc_p2_sokkuri_setup();
+            pc_p2_otakara_setup();
+            pc_p2_batch2_setup();  // P2 models for the Otakara/Sokkuri behaviour hosts
+        }
+        return;
+    }
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;
     cargoFree=false;setupComplete=false;treasureId.clear();treasureValue=0;corpseValue=0;
     podAnchor=nullptr;podShape=nullptr;corpses.clear();
@@ -264,6 +279,7 @@ void pc_p2_preview_setup() {
     pc_p2_sheargrub_setup();
     pc_p2_kochappy_setup();
     pc_p2_dwarf_orange_setup();
+    pc_p2_bluechappy_setup();
     pc_p2_kochappy_fsm_setup();
     pc_p2_breadbug_visual_setup();
     pc_p2_giant_breadbug_visual_setup();
@@ -279,6 +295,7 @@ void pc_p2_preview_setup() {
     pc_p2_hiba_setup();
     pc_p2_flora_setup();
     pc_p2_pom_setup();
+    pc_p2_candypop_setup();
     pc_p2_plant_setup();
     pc_p2_dweevil_setup();
     pc_p2_bombotakara_setup();
@@ -336,6 +353,7 @@ void pc_p2_preview_setup() {
 
 bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
     if(!pc_pikipelago_room_preview() || !pellet)return false;
+    if(pc_p2_cave_items_draw_pellet(pellet,gfx,matrix))return true;  // lane 46 (#484)
     Cargo* c=cargoFor(pellet);Shape* shape=c?c->shape:(pellet==previewTreasure?previewShape:nullptr);
     if(!shape || pellet->mConfig->mModelId.mId!='pr05')return false;
     shape->updateAnim(gfx,matrix,nullptr,pellet);
@@ -345,6 +363,7 @@ bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
 
 bool pc_p2_preview_deliver(Pellet* pellet) {
     if(!pellet)return false;
+    if(pc_p2_cave_items_deliver(pellet))return true;  // lane 46 (#484) physical cave treasure
     if(pc_pikipelago_room_preview() && podAnchor) {
         // P1's long-idle captain can be carried like a pellet. Returning him to
         // the Pod must finish the normal wake-up path, never create money/seeds.

@@ -905,7 +905,6 @@ void Generator::write(RandomAccessStream& output)
 		output.writeInt(0);
 	}
 #if defined(PIKI_PC_PORT)
-    // P2-only sessions also bind by catalog UID, independently of ENEMY_SLOTS.
     if (ramMode && (pc_randomizer_spawn_slots() || pc_randomizer_p2_bridge()) && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
         output.writeInt(0x534c5431);
         output.writeInt(static_cast<int>(pc_randomizer_generator_id(this)));

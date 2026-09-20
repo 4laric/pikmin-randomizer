@@ -1,0 +1,70 @@
+--- a/src/plugPikiKando/navi.cpp
++++ b/src/plugPikiKando/navi.cpp
+@@ -1,3 +1,6 @@
++#if defined(PIKI_PC_PORT)
++#include "pc_p2_demon_bridge.h"
++#endif
+ #include "pc_p2_purple.h"
+ #include "Navi.h"
+ #include "pc_randomizer.h"
+@@ -1023,6 +1026,9 @@
+ 	}
+ 
+ 	mPlateMgr->update();
++	#if defined(PIKI_PC_PORT)
++	if (!pc_demon_controls_blocked(this))
++	#endif
+ 	updateWalkAnimation();
+ 	mWalkAnimPrevPos = mSRT.t;
+ 	f32 actionSpeed = mStateMachine->getCurrID(this) == NAVISTATE_Nuku ? pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) : 1.0f;
+@@ -1053,6 +1059,9 @@
+ 
+ 	mKontroller->update();
+ 	mWalkAnimPrevDir = mFaceDirection;
++	#if defined(PIKI_PC_PORT)
++	if (!pc_demon_apply(this))
++	#endif
+ 	Creature::update();
+ 
+ 	mapMgr->updatePos(mSRT.t.x, mSRT.t.z);
+@@ -1453,6 +1462,9 @@
+  */
+ void Navi::doAI()
+ {
++#if defined(PIKI_PC_PORT)
++	if (pc_demon_controls_blocked(this)) return;
++#endif
+ 	if (gameflow.mDemoFlags & CinePlayerFlags::NaviNoAI) {
+ 		return;
+ 	}
+@@ -1684,6 +1696,9 @@
+  */
+ bool Navi::isAtari()
+ {
++#if defined(PIKI_PC_PORT)
++	if (pc_demon_suppress_atari(this)) return false;
++#endif
+ 	int state = mStateMachine->getCurrID(this);
+ 	return state != NAVISTATE_Pressed && state != NAVISTATE_Bury && state != NAVISTATE_Container;
+ }
+@@ -1708,6 +1723,9 @@
+  */
+ void Navi::bounceCallback()
+ {
++#if defined(PIKI_PC_PORT)
++	pc_demon_landed(this);
++#endif
+ 	MsgBounce msg(Vector3f(0.0f, 1.0f, 0.0f));
+ 	sendMsg(&msg);
+ }
+@@ -2378,6 +2396,10 @@
+ 		mSRT.s.set(scale, scale, scale);
+ 	}
+ 
++	#if defined(PIKI_PC_PORT)
++	if (pc_demon_draw_matrix(this, mWorldMtx)) {
++	} else
++	#endif
+ 	if (mRope) {
+ 		mWorldMtx = mConstrainedMoveMtx;
+ 		mWorldMtx.setTranslation(mSRT.t.x, mSRT.t.y, mSRT.t.z);

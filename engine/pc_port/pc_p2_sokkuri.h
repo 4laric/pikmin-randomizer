@@ -30,3 +30,9 @@ bool pc_p2_sokkuri_clip(const BTeki*, const char*& name, float& phase);
 // (count returns to zero). Additive; no runtime behavior changes.
 unsigned long pc_p2_sokkuri_count();
 bool pc_p2_sokkuri_registered(BTeki*);
+
+// #578 receipt boundary observability: read-only reveal query. True once the
+// actor's disguise has dropped (delivery bind established), false while
+// still disguised. Lets the receipt fixture prove a disguised Sokkuri
+// carries no bound source. Additive; no runtime behavior changes.
+bool pc_p2_sokkuri_revealed(BTeki*);

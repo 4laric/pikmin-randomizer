@@ -1,5 +1,6 @@
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_kurage_ingestion.h"
+#include "pc_p2_captain.h"
 
 #include "Creature.h"
 #include "NaviMgr.h"
@@ -39,6 +40,11 @@ void dispose(Entry e, bool kill, bool restoreDetached)
 {
     if (!e.piki) return;
     Piki* piki = e.piki;
+    // Revoke squad authority before detach/AI callbacks can capture again. A
+    // stale epoch means a callback already revoked and recaptured the actor
+    // under a newer tick: preserve that replacement and touch nothing
+    // (codex/p2-lane12-review c29ec8398/b4ac39825, #130).
+    if (!pc_p2_captain::release_captive_free(e.generation, e.piki)) return;
     if (registered(piki)) return; // A callback established a newer reservation.
     const Vector3f capturedScale = e.capturedScale;
     const bool owned = piki->isAlive() && piki->getStickObject() == e.owner
@@ -84,7 +90,9 @@ void release(int i, bool kill)
 bool controls(const Entry& e)
 {
     if (!e.piki || !sOwner || !sMouth || e.generation != sGeneration
-        || e.owner != sOwner || e.mouth != sMouth || !e.piki->isAlive()) return false;
+        || e.owner != sOwner || e.mouth != sMouth
+        || !pc_p2_captain::is_captive_for(e.generation, e.piki)
+        || !e.piki->isAlive()) return false;
     return e.phase == Entry::Phase::MouthTravel ? !e.piki->isStickTo()
         : e.piki->getStickObject() == e.owner && e.piki->getStickPart() == e.mouth;
 }
@@ -96,7 +104,15 @@ bool reserve(Piki* piki, Entry::Phase phase)
     for (const Entry& e : sEntries) if (e.piki == piki) return false;
     for (Entry& e : sEntries) {
         if (e.piki) continue;
-        if (!e.ingestion.admit(false, false, true)) return false;
+        // Bind the squad capture to this receiver generation tick first: the
+        // captain adapter abandons the formation action, then clears squad
+        // ownership. A refused capture (already captive, dead actor) refuses
+        // admission. Requires the live captain binding (setup_from_navi_mgr).
+        if (!pc_p2_captain::capture_actor(sGeneration, piki)) return false;
+        if (!e.ingestion.admit(false, false, true)) {
+            pc_p2_captain::release_actor(sGeneration, piki, P2CaptainInvalid);
+            return false;
+        }
         e.piki = piki;
         e.owner = sOwner;
         e.mouth = sMouth;
@@ -163,6 +179,8 @@ bool pc_p2_kurage_receiver_capture(Piki* piki)
     if (!reserve(piki, Entry::Phase::Stomach)) return false;
     Entry& e = *std::find_if(sEntries.begin(), sEntries.end(), [piki](const Entry& x) { return x.piki == piki; });
     if (enterStomach(e)) return true;
+    // Roll back to the previous squad owner; the failed stomach entry is dead.
+    pc_p2_captain::release_actor(e.generation, piki, P2CaptainInvalid);
     e = {};
     return false;
 }
@@ -275,6 +293,9 @@ void pc_p2_kurage_receiver_piki_invalidated(Piki* piki)
     // Creature::kill invokes this before its own stick cleanup.  Releasing
     // here would transition a dying Piki back into FreeMode; revocation must
     // only drop receiver authority and let the normal death path continue.
+    // Predeath captain revocation: the id must never be reused by a
+    // replacement lifetime (codex/p2-lane12-review c29ec8398, #130).
+    pc_p2_captain_forget_piki(piki);
     for (Entry& entry : sEntries)
         if (entry.piki == piki) { entry = {}; return; }
 }

@@ -204,6 +204,24 @@ void testVisualEventsIgnored() {
     }
 }
 
+// A single large advance (the runtime anti-hitch clamp now caps one tick at 0.5s,
+// but a 2s hitch is exactly the kind of delta the clock must handle) delivers the
+// crossed bite exactly once and does not invent a swallow before frame 71.
+void testTwoSecondHitch() {
+    const auto bank = hanaBank();
+    Receiver receiver;
+    check(receiver.start(bank.at("attack1"), "attack1"), "hitch attack1 start");
+
+    std::vector<Dispatched> out = receiver.advance(2.0, 30.0);  // 60 source frames
+    check(count(out, Action::Bite) == 1, "hitch: bite delivered once across 2s");
+    check(count(out, Action::Swallow) == 0, "hitch: swallow not yet crossed");
+
+    out = receiver.advance(1.0, 30.0);  // 60 -> 90 source frames
+    check(count(out, Action::Swallow) == 1, "hitch: swallow delivered once on resume");
+    out = receiver.advance(1.0, 30.0);
+    check(out.empty(), "hitch: one-shot does not refire");
+}
+
 }  // namespace
 
 int main() {
@@ -215,6 +233,7 @@ int main() {
     testInterruption();
     testAddressReuse();
     testVisualEventsIgnored();
+    testTwoSecondHitch();
     if (failures == 0) {
         std::printf("PASS p2_hana_events\n");
         return 0;

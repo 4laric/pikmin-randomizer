@@ -45,6 +45,12 @@ bool ControllerMgr::keyDown(int btn)
 	return (sControllerPad[0].button & btn);
 }
 
+// TEST-ONLY (#794): scripted PAD sink. See Controller.h. Production never calls this.
+void ControllerMgr::testSinkPadButtons(unsigned short buttons)
+{
+	sControllerPad[0].button = buttons;
+}
+
 /**
  * @todo: Documentation
  */

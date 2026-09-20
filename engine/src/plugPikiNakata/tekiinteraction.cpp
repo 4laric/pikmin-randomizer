@@ -1,4 +1,4 @@
-﻿#include "DebugLog.h"
+#include "DebugLog.h"
 #include "Interactions.h"
 #include "sysNew.h"
 #include "teki.h"
@@ -10,6 +10,7 @@
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_dangomushi.h"
 #include "pc_p2_long_legs.h"
+#include "pc_p2_snakejoint.h"
 #endif
 
 /**
@@ -51,6 +52,9 @@ bool InteractAttack::actTeki(Teki* teki) immut
 	if (pc_p2_dangomushi_invulnerable(teki)) {
 		return true; // registered Crawbster is invulnerable outside the flip window
 	}
+	if (pc_p2_snakejoint_invulnerable(teki)) {
+		return true; // registered Snagret is invulnerable while buried (Stay)
+	}
 	if (pc_p2_long_legs_receiver_rejects(teki, this)) {
 		return false; // registered Long Legs rejects damage while bitter-immune (Stay/Land)
 	}
@@ -81,6 +85,9 @@ bool InteractBomb::actTeki(Teki* teki) immut
 	}
 	if (pc_p2_dangomushi_invulnerable(teki)) {
 		return true; // registered Crawbster is invulnerable outside the flip window
+	}
+	if (pc_p2_snakejoint_invulnerable(teki)) {
+		return true; // registered Snagret is invulnerable while buried (Stay)
 	}
 	if (pc_p2_long_legs_receiver_rejects(teki, &attack)) {
 		return false; // registered Long Legs is bitter-immune to bombs too

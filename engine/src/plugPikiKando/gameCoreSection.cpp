@@ -42,6 +42,7 @@
 #include "pc_p2_hiba.h"
 #include "pc_p2_flora_actor.h"
 #include "pc_p2_pom.h"
+#include "pc_p2_candypop.h"
 #include "pc_p2_plant.h"
 #include "pc_p2_tamago.h"
 #include "pc_p2_hardlanes.h"
@@ -3093,6 +3094,7 @@ void GameCoreSection::updateAI()
 				pelletMgr->update();
 				pc_p2_flora_tick();
 				pc_p2_pom_tick();
+				pc_p2_candypop_tick();
 				pc_p2_plant_tick();
 				pc_p2_tamago_tick();
 			}

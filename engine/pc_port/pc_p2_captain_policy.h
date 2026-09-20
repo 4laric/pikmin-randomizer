@@ -334,9 +334,11 @@ public:
     }
 
     // Claim a Pikmin or carried actor for a captain. Exclusivity is enforced
-    // by the shared table, so within one frame the first claim wins.
+    // by the shared table, so within one frame the first claim wins. A
+    // captor-held actor is never reclaimable until its captor releases it
+    // (codex/p2-lane12-review 6f67ca7a5, #130).
     bool claim(int captain, std::uint32_t actor) {
-        if (!bound() || !aliveIdle(captain)) return false;
+        if (!bound() || !aliveIdle(captain) || isCaptive(actor)) return false;
         return table->tryClaim(actor, captain);
     }
     void abandon(int captain, std::uint32_t actor) {
@@ -435,6 +437,24 @@ public:
 
     bool isCaptive(std::uint32_t actor) const { return captives.count(actor) != 0; }
     std::size_t captiveCount() const { return captives.size(); }
+
+    // Captor epoch currently holding `actor`, or 0 when free. Lets a caller
+    // revalidate after a reentrant engine callback: only the epoch that still
+    // holds the actor may operate on it (codex/p2-lane12-review b4ac39825).
+    std::uint64_t captiveEpochOf(std::uint32_t actor) const {
+        auto it = captives.find(actor);
+        return it == captives.end() ? 0 : it->second.captorEpoch;
+    }
+
+    // Predeath/scene revocation (codex/p2-lane12-review c29ec8398, #130). No
+    // release, restoration or engine callback: the actor's lifetime has ended
+    // and its id must never be reused for a replacement lifetime.
+    void forgetActor(std::uint32_t actor) {
+        if (!bound()) return;
+        captives.erase(actor);
+        const int owner = table->ownerOf(actor);
+        if (p2_is_captain(owner)) table->release(actor, owner);
+    }
 
     // Synchronous cancellation before scene teardown or manager-slot reuse.
     // Frees this policy's actors and clears transient capture state.

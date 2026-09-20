@@ -312,10 +312,10 @@ constexpr int kSaturationStopCount = int(sizeof(kSaturationStops) / sizeof(kSatu
 bool sInModsSubmenu = false;
 int sModsSelection = 0;
 #if PIKI_DEBUG_KEYS
-constexpr int kModsRowCount = 8;
+constexpr int kModsRowCount = 7;
 #else
 // The debug row is the last one, so leaving it off simply shortens the list.
-constexpr int kModsRowCount = 7;
+constexpr int kModsRowCount = 6;
 #endif
 
 // Field-limit stops. 100 is what the original game uses.
@@ -859,11 +859,11 @@ void loadConfig() {
         else if (key == "chainActions") {
             sConfig.chainActions = atoi(val.c_str()) ? 1 : 0;
         }
-        else if (key == "disableTutorials") {
-            sConfig.disableTutorials = atoi(val.c_str()) ? 1 : 0;
-        }
         else if (key == "holdToPluck") {
             sConfig.holdToPluck = atoi(val.c_str()) ? 1 : 0;
+        }
+        else if (key == "disableTutorials") {
+            sConfig.disableTutorials = atoi(val.c_str()) ? 1 : 0;
         }
         else if (key == "mouseWheelAction") {
             sConfig.mouseWheelAction = atoi(val.c_str());
@@ -1549,12 +1549,8 @@ void pollMenuInput() {
             else if (right) idx = (idx + 1) % kDayMinutesCount;
             sPending.dayMinutes = kDayMinutes[idx];
         }
-        // Informational tutorial popups.
-        else if (sModsSelection == 6) {
-            if (left || right) sPending.disableTutorials = sPending.disableTutorials ? 0 : 1;
-        }
         // Debug shortcuts.
-        else if (sModsSelection == 7) {
+        else if (sModsSelection == 6) {
             if (left || right) sPending.debugKeys = sPending.debugKeys ? 0 : 1;
         }
         return;
@@ -2675,7 +2671,6 @@ void pc_settings_draw(void) {
             "Mouse Wheel",
             "Pikmin Limit",
             "Day Length",
-            "Disable Tutorials",
 #if PIKI_DEBUG_KEYS
             "Debug Keys (F5/F6)",
 #endif
@@ -2703,9 +2698,6 @@ void pc_settings_draw(void) {
                 snprintf(value, sizeof(value), "%s",
                          sPending.mouseWheelAction ? "Camera Zoom" : "Pikmin Colour");
             } else if (i == 6) {
-                snprintf(value, sizeof(value), "%s",
-                         sPending.disableTutorials ? "On" : "Off (original)");
-            } else if (i == 7) {
                 snprintf(value, sizeof(value), "%s",
                          sPending.debugKeys ? "On" : "Off");
             } else if (i == 5) {
@@ -2755,12 +2747,12 @@ int pc_settings_get_chain_actions(void) {
     return sConfig.chainActions;
 }
 
-int pc_settings_get_disable_tutorials(void) {
-    return sConfig.disableTutorials;
-}
-
 int pc_settings_get_hold_to_pluck(void) {
     return sConfig.holdToPluck;
+}
+
+int pc_settings_get_disable_tutorials(void) {
+    return sConfig.disableTutorials;
 }
 
 int pc_settings_get_mouse_wheel_action(void) {

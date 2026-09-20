@@ -170,8 +170,10 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_demon_bridge.cpp
     pc_port/pc_p2_demon_host.cpp
     pc_port/pc_p2_sarai_host.cpp
+    pc_port/pc_p2_sarai_capture_bridge.cpp
     pc_port/pc_p2_sarai_manager.cpp
     pc_port/pc_p2_generated_placement.cpp
+    pc_port/pc_p2_campaign_goal_probe.cpp
     pc_port/pc_bbft.cpp
     # Challenge host-mode engine runtime bridge (#722, ported from #710
     # db245877; #186 review before shared-line landing): the per-tick runtime
@@ -223,10 +225,17 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_white_poison.cpp
     pc_port/pc_p2_cave.cpp
     pc_port/pc_p2_cave_generate.cpp
+    pc_port/pc_p2_cave_generator.cpp
+    pc_port/pc_p2_cave_rooms.cpp
+    pc_port/pc_p2_cave_geometry.cpp
+    pc_port/pc_p2_cave_items.cpp
+    pc_port/pc_p2_cave_bud_actor.cpp
+    pc_port/pc_p2_cave_carry.cpp
     pc_port/pc_p2_enemy.cpp
     pc_port/pc_p2_sheargrub.cpp
     pc_port/pc_p2_kochappy.cpp
     pc_port/pc_p2_dwarf_orange.cpp
+    pc_port/pc_p2_bluechappy.cpp
     pc_port/pc_p2_kochappy_fsm.cpp
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_giant_breadbug_visual.cpp
@@ -248,6 +257,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_receipt_host.cpp
     pc_port/pc_p2_delivery_host.cpp
     pc_port/pc_p2_pom.cpp
+    pc_port/pc_p2_candypop.cpp
     pc_port/pc_p2_plant.cpp
     pc_port/pc_p2_waterwraith_visual.cpp
     pc_port/pc_p2_waterwraith_host.cpp
@@ -261,6 +271,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_sokkuri.cpp
     pc_port/pc_p2_armor.cpp
     pc_port/pc_p2_otakara.cpp
+    pc_port/pc_p2_otakara_fx.cpp
     pc_port/pc_p2_elecbug.cpp
     pc_port/pc_p2_tamago.cpp
     pc_port/pc_p2_imomushi.cpp
@@ -286,6 +297,7 @@ pc_port/pc_p2_kabuto_cannon.cpp
 pc_port/pc_p2_kabuto_events.cpp
 pc_port/pc_p2_kabuto_muzzle.cpp
 pc_port/pc_p2_kabuto_binding.cpp
+pc_port/pc_p2_kabuto_host.cpp
 pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
     pc_port/pc_p2_rock_host.cpp
@@ -547,7 +559,7 @@ if(WIN32)
     add_library(bbft_transport STATIC pc_port/bbft/bbft_transport.c)
     target_link_libraries(pikmin_pc PRIVATE bbft_transport ws2_32)
     target_link_libraries(p2_kurage_runtime PRIVATE bbft_transport ws2_32)
-    add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp)
+    add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp pc_port/pc_p2_delivery_host.cpp)
     add_test(NAME pc_bbft_test COMMAND pc_bbft_test)
     add_test(NAME pc_bbft_background_test COMMAND pc_bbft_test --background)
     add_executable(jaudio_bbft_test pc_port/audio/jaudio_bbft_test.cpp pc_port/audio/jaudio_sink.cpp)
@@ -785,6 +797,18 @@ target_include_directories(p2_challenge_mode_fixture PRIVATE
 target_compile_options(p2_challenge_mode_fixture PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_challenge_mode_fixture COMMAND p2_challenge_mode_fixture)
 
+# P2 challenge boot fixture with argv stage select (#672 / lane rd-p2-fixture-cmake #674).
+# Registration-only: the tool TU rides along via include of the module TU, so
+# only the tool source is listed. Guard header comes from the validated
+# P2_CHALLENGE_GUARD_INCLUDE_DIR cache PATH above (no vendored copy).
+add_executable(p2_challenge_boot_fixture
+    tools/p2_challenge_boot_fixture.cpp)
+target_include_directories(p2_challenge_boot_fixture PRIVATE
+    pc_port
+    ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+target_compile_options(p2_challenge_boot_fixture PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_challenge_boot_fixture COMMAND p2_challenge_boot_fixture)
+
 # Host software DSP test (not linked into main game)
 add_executable(pc_dsp_host_test
     pc_port/audio/pc_dsp_host_test.cpp
@@ -832,7 +856,7 @@ add_executable(p2_dangomushi_hazard_test
     tools/p2_dangomushi_hazard_test.cpp
     pc_port/pc_p2_dangomushi_hazard.cpp)
 target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
-target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
 add_executable(p2_mar_receipt_registration_test
     tools/p2_mar_receipt_registration_test.cpp
@@ -840,6 +864,74 @@ add_executable(p2_mar_receipt_registration_test
 target_include_directories(p2_mar_receipt_registration_test PRIVATE pc_port)
 target_compile_options(p2_mar_receipt_registration_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_mar_receipt_registration_test COMMAND p2_mar_receipt_registration_test)
+
+# Visible Otakara discharge attacks (#170, rd-p2-otakara-fx). Engine-free
+# mapping + slot-lifecycle test; the game TU compiles with the real
+# effectMgr seam, the test with P2_OTAKARA_FX_NO_ENGINE stubs.
+add_executable(p2_otakara_fx_test
+    tools/test_p2_otakara_fx.cpp
+    pc_port/pc_p2_otakara_fx.cpp)
+target_include_directories(p2_otakara_fx_test PRIVATE pc_port)
+target_compile_definitions(p2_otakara_fx_test PRIVATE P2_OTAKARA_FX_NO_ENGINE)
+target_compile_options(p2_otakara_fx_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_otakara_fx_test COMMAND p2_otakara_fx_test)
+
+# Lane 35 cave unit-pool partition + phased trunk growth (#474). Header-only
+# engine-free policy; no shared generator source is claimed or ported here.
+add_executable(p2_cave_growth_test
+    tools/p2_cave_growth_test.cpp)
+target_include_directories(p2_cave_growth_test PRIVATE pc_port)
+target_compile_options(p2_cave_growth_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_cave_growth_test COMMAND p2_cave_growth_test)
+
+# Lane 41 cave-generator port (#480). One-consumer gate over the header-only
+# generator plus the engine-linked facade source (pc_p2_cave_generator.cpp).
+add_executable(p2_cave_generator_test
+    tools/p2_cave_generator_test.cpp
+    pc_port/pc_p2_cave_generator.cpp)
+target_include_directories(p2_cave_generator_test PRIVATE pc_port)
+target_compile_options(p2_cave_generator_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_generator_test COMMAND p2_cave_generator_test)
+
+# Lane 44 proxy cave-room instantiation (#482). Header-only engine-free logic;
+# the engine glue (pc_p2_cave_rooms.cpp) is linked into pikmin_pc separately.
+add_executable(p2_cave_rooms_test
+tools/p2_cave_rooms_test.cpp)
+target_include_directories(p2_cave_rooms_test PRIVATE pc_port)
+target_compile_options(p2_cave_rooms_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_rooms_test COMMAND p2_cave_rooms_test)
+
+# Lane 45 real cave-unit geometry + electric-gate actor (#483). Header-only
+# engine-free plan logic; the engine glue (pc_p2_cave_geometry.cpp) is linked
+# into pikmin_pc separately.
+add_executable(p2_cave_geometry_test
+    tools/p2_cave_geometry_test.cpp)
+target_include_directories(p2_cave_geometry_test PRIVATE pc_port)
+target_compile_options(p2_cave_geometry_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_geometry_test COMMAND p2_cave_geometry_test)
+
+# Lane 46 (#484): physical cave-item placement gate (header-only; the engine
+# glue pc_p2_cave_items.cpp is linked into pikmin_pc separately).
+add_executable(p2_cave_items_test
+    tools/p2_cave_items_test.cpp)
+target_include_directories(p2_cave_items_test PRIVATE pc_port)
+target_compile_options(p2_cave_items_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_items_test COMMAND p2_cave_items_test)
+
+# Lane 48 (#486): seeded Candypop bud actor instantiation gate (header-only;
+# the engine glue pc_p2_cave_bud_actor.cpp is linked into pikmin_pc separately).
+add_executable(p2_cave_bud_test
+    tools/p2_cave_bud_test.cpp)
+target_include_directories(p2_cave_bud_test PRIVATE pc_port)
+target_compile_options(p2_cave_bud_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_bud_test COMMAND p2_cave_bud_test)
+# Lane 50 (#488): carry-blocking gate (header-only engine-free plan/verdict; the
+# engine glue pc_p2_cave_carry.cpp is linked into pikmin_pc separately).
+add_executable(p2_cave_carry_test
+    tools/p2_cave_carry_test.cpp)
+target_include_directories(p2_cave_carry_test PRIVATE pc_port)
+target_compile_options(p2_cave_carry_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cave_carry_test COMMAND p2_cave_carry_test)
 
 add_executable(p2_long_legs_fsm_test
     tools/p2_long_legs_fsm_test.cpp
@@ -854,6 +946,38 @@ add_executable(p2_snagret_fsm_test
 target_include_directories(p2_snagret_fsm_test PRIVATE pc_port)
 target_compile_options(p2_snagret_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_snagret_fsm_test COMMAND p2_snagret_fsm_test)
+
+# rd-snakecrow-gate (#174): SnakeCrow/SnakeWhole emerged-vulnerability gate.
+# Header-only engine-free predicate shared with pc_p2_snakejoint_invulnerable;
+# the engine glue (pc_p2_snakejoint.cpp) is linked into pikmin_pc separately.
+add_executable(p2_snakejoint_gate_test
+    tools/test_p2_snakejoint_gate.cpp)
+target_include_directories(p2_snakejoint_gate_test PRIVATE pc_port)
+target_compile_options(p2_snakejoint_gate_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_snakejoint_gate_test COMMAND p2_snakejoint_gate_test)
+
+# rd-onikurage-policy (#243): the shared OniKurage (Greater Spotted Jellyfloat)
+# captain-capture/Drop sources shipped on the approved line without ctest
+# registration. Register the existing engine-free suite so `ctest -R onikurage`
+# exercises it; no policy code is (re)added here.
+add_executable(p2_onikurage_fsm_test
+    tools/p2_onikurage_fsm_test.cpp)
+target_include_directories(p2_onikurage_fsm_test PRIVATE pc_port)
+target_compile_options(p2_onikurage_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_onikurage_fsm_test COMMAND p2_onikurage_fsm_test)
+
+add_executable(p2_onikurage_mouth_test
+    tools/test_p2_onikurage_mouth.cpp
+    pc_port/pc_p2_onikurage_mouth.cpp)
+target_include_directories(p2_onikurage_mouth_test PRIVATE pc_port)
+target_compile_options(p2_onikurage_mouth_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_onikurage_mouth_test COMMAND p2_onikurage_mouth_test)
+
+add_executable(p2_onikurage_teki_policy_test
+    tools/test_p2_onikurage_teki_policy.cpp)
+target_include_directories(p2_onikurage_teki_policy_test PRIVATE pc_port)
+target_compile_options(p2_onikurage_teki_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_onikurage_teki_policy_test COMMAND p2_onikurage_teki_policy_test)
 
 # Lane 27 BombSarai (Careening Dirigibug) engine-free source-policy gates. The
 # sources shipped on the approved line without ctest registration.
@@ -1034,6 +1158,12 @@ target_include_directories(p2_hana_events_test PRIVATE pc_port)
 target_compile_options(p2_hana_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_hana_events_test COMMAND p2_hana_events_test)
 
+add_executable(p2_catfish_events_test
+    tools/test_p2_catfish_events.cpp)
+target_include_directories(p2_catfish_events_test PRIVATE pc_port)
+target_compile_options(p2_catfish_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_catfish_events_test COMMAND p2_catfish_events_test)
+
 add_executable(p2_billboard_test
     tools/test_p2_billboard.cpp)
 target_include_directories(p2_billboard_test PRIVATE pc_port)
@@ -1045,6 +1175,15 @@ add_executable(p2_specular_dir_test
 target_include_directories(p2_specular_dir_test PRIVATE pc_port)
 target_compile_options(p2_specular_dir_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_specular_dir_test COMMAND p2_specular_dir_test)
+
+# rd-p2-material-tint (#207) per-species batch-2 tint probe. Engine-free: the
+# tint table is inline in pc_port/pc_p2_batch2.h, so the test needs only its own
+# source plus the pc_port include dir.
+add_executable(p2_batch2_tint_test
+    tools/test_p2_batch2_tint.cpp)
+target_include_directories(p2_batch2_tint_test PRIVATE pc_port)
+target_compile_options(p2_batch2_tint_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_batch2_tint_test COMMAND p2_batch2_tint_test)
 
 # Lane 30 (#242) standalone policy tests. The drop/host-clock and Sarai
 # captor/lifecycle/identity harnesses are dependency-free headers: a test source
@@ -1062,23 +1201,91 @@ add_test(NAME p2_demon_host_clock_test COMMAND p2_demon_host_clock_test)
 
 add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
 target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
-target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
 
 # Lane 30 (#457/#242) Sarai capture-lifecycle test. Engine-free: the shared
 # escape window and the lane's capture/detach model are dependency-free headers.
 add_executable(p2_sarai_captor_lifecycle_test tools/p2_sarai_captor_lifecycle_test.cpp)
 target_include_directories(p2_sarai_captor_lifecycle_test PRIVATE pc_port)
-target_compile_options(p2_sarai_captor_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+target_compile_options(p2_sarai_captor_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_sarai_captor_lifecycle_test COMMAND p2_sarai_captor_lifecycle_test)
+
+# rd-p2ap-sarai (#439) Sarai seed-bridge campaign test. Engine-free: stub
+# engine headers shadow the real ones (BEFORE pc_port), so the real
+# pc_p2_generated_placement.cpp compiles against doubles (same mechanics as
+# p2_purple_flight_actual_test). The Sarai dynamic binder is doubled with its
+# real claim contract; the real binder ships in pc_p2_sarai_manager.cpp.
+add_executable(p2_sarai_seed_bridge_test tools/test_p2_sarai_campaign.cpp
+    pc_port/pc_p2_generated_placement.cpp)
+target_include_directories(p2_sarai_seed_bridge_test BEFORE PRIVATE tools/p2_sarai_campaign_stubs pc_port)
+target_compile_options(p2_sarai_seed_bridge_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_seed_bridge_test COMMAND p2_sarai_seed_bridge_test)
+
+# rd-p2-sarai-campaign (#457) Sarai campaign capture/teardown proof. Engine-free:
+# the two stub dirs shadow the real Piki/Creature/CollPart/Interaction and
+# Generator/teki headers (BEFORE pc_port), so the SHIPPED
+# pc_p2_sarai_capture_bridge.cpp is compiled and driven directly against
+# campaign-shaped hosts (pc_p2_campaign_policy.h vehicle + pc_p2_campaign_actor.h
+# token). Asserts a capture and a teardown strand no Pikmin.
+add_executable(p2_sarai_campaign_test tools/p2_sarai_campaign_test.cpp
+    pc_port/pc_p2_sarai_capture_bridge.cpp)
+target_include_directories(p2_sarai_campaign_test BEFORE PRIVATE
+    tools/p2_sarai_capture_stubs tools/p2_sarai_campaign_stubs pc_port)
+target_compile_options(p2_sarai_campaign_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_campaign_test COMMAND p2_sarai_campaign_test)
+
+# rd-p2-sarai-campaign-behavior (#834) Sarai campaign targeting/reacquisition
+# proof. Engine-free: header-only policy/capture/fsm suites plus the SHIPPED
+# capture bridge against the same stub dirs as p2_sarai_campaign_test, and
+# the roster header. Pins retail eligibility, nearest-first selection,
+# bounded FSM reacquisition, receivers, teardown and the unchanged source-23
+# binding; optional log mode classifies a campaign-behavior run
+# (shared-review registration only).
+add_executable(p2_sarai_campaign_behavior_test tools/p2_sarai_campaign_behavior_test.cpp
+    pc_port/pc_p2_sarai_capture_bridge.cpp)
+target_include_directories(p2_sarai_campaign_behavior_test BEFORE PRIVATE
+    tools/p2_sarai_capture_stubs tools/p2_sarai_campaign_stubs pc_port)
+target_compile_options(p2_sarai_campaign_behavior_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_campaign_behavior_test COMMAND p2_sarai_campaign_behavior_test)
 
 # Lane 30 (#242) dedicated captor spawn-identity test. Engine-free: it asserts
 # the identity/selection seam; the constant is static_asserted against
 # TEKI_P2Demon in the engine build (pc_port/pc_p2_demon_host.cpp).
 add_executable(p2_demon_identity_test tools/p2_demon_identity_test.cpp)
 target_include_directories(p2_demon_identity_test PRIVATE pc_port)
-target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_demon_identity_test COMMAND p2_demon_identity_test)
+
+# rd-captain-kurage (#130): port of the codex/p2-lane12-review captain/Kurage
+# review fixes onto the line captain API. The adapter and policy harnesses are
+# engine-free (header + doubles only). The Kurage receiver harness is a single
+# TU: it drives the production receiver + captain glue against the stub engine
+# doubles (tools/kurage_receiver_stubs/engine.h) with the real engine headers
+# neutralized by include-guard defines inside the test source.
+add_executable(p2_captain_adapter_test tools/test_p2_captain_adapter.cpp)
+target_include_directories(p2_captain_adapter_test PRIVATE pc_port)
+target_compile_options(p2_captain_adapter_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_captain_adapter_test COMMAND p2_captain_adapter_test)
+
+add_executable(p2_captain_policy_test tools/test_p2_captain_policy.cpp)
+target_include_directories(p2_captain_policy_test PRIVATE pc_port)
+target_compile_options(p2_captain_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_captain_policy_test COMMAND p2_captain_policy_test)
+
+add_executable(p2_kurage_receiver_test tools/test_p2_kurage_receiver.cpp)
+target_include_directories(p2_kurage_receiver_test PRIVATE pc_port tools/kurage_receiver_stubs)
+target_compile_options(p2_kurage_receiver_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kurage_receiver_test COMMAND p2_kurage_receiver_test)
+
+# Lane 12 captain/Kurage real-GL diagnostic (codex/p2-lane12-review
+# tools/p2_captain_kurage_runtime.cpp, adapted to the line epoch API).
+# Compile-only isolated target, mirroring p2_fuefuki_combat_runtime_compile:
+# the replacement-main executable is produced by scripts/build_pikmin2_fixture.py
+# against a completed pikmin_pc build.
+add_library(p2_captain_kurage_runtime_compile OBJECT tools/p2_captain_kurage_runtime.cpp)
+target_include_directories(p2_captain_kurage_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_captain_kurage_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
 
 # Engine-including admission test: it includes Navi/NaviState through
 # pc_port/pc_p2_demon_admission.h and uses _putenv_s/_spawnl to prove both
@@ -1089,6 +1296,29 @@ if(WIN32)
     target_compile_options(p2_demon_admission_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME p2_demon_admission_test COMMAND p2_demon_admission_test)
 endif()
+
+# rd-demon-chain-b: standalone policy tests from codex/p2-demon-drop-interruption
+# commits 22..43. Dependency-free headers; test source + pc_port include dir
+# are all they need. Verified -fsyntax-only clean against the line's headers.
+add_executable(p2_demon_capture_test tools/p2_demon_capture_test.cpp)
+target_include_directories(p2_demon_capture_test PRIVATE pc_port)
+target_compile_options(p2_demon_capture_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_capture_test COMMAND p2_demon_capture_test)
+
+add_executable(p2_demon_attack_window_test tools/p2_demon_attack_window_test.cpp)
+target_include_directories(p2_demon_attack_window_test PRIVATE pc_port)
+target_compile_options(p2_demon_attack_window_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_attack_window_test COMMAND p2_demon_attack_window_test)
+
+add_executable(p2_demon_policy_scenario_test tools/p2_demon_policy_scenario_test.cpp)
+target_include_directories(p2_demon_policy_scenario_test PRIVATE pc_port)
+target_compile_options(p2_demon_policy_scenario_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_policy_scenario_test COMMAND p2_demon_policy_scenario_test)
+
+add_executable(p2_demon_attachment_test tools/p2_demon_attachment_test.cpp)
+target_include_directories(p2_demon_attachment_test PRIVATE pc_port)
+target_compile_options(p2_demon_attachment_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_attachment_test COMMAND p2_demon_attachment_test)
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
@@ -1177,7 +1407,7 @@ if(PIKMIN_RANDOMIZER_TEST_HOOKS)
 endif()
 
 # Integration gates: keep assertions active for these engine-free contracts.
-foreach(policy IN ITEMS species_schema hazard_reaction hazard_emitter cave_transfer bulbmin_cave_filter captain_roster squad_policy)
+foreach(policy IN ITEMS species_schema hazard_reaction hazard_emitter elemental_attack cave_transfer bulbmin_cave_filter cave_item_gate_placement cave_bud_policy captain_roster squad_policy mamuta_policy)
     add_executable(p2_${policy}_test tools/test_p2_${policy}.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -1221,6 +1451,90 @@ target_include_directories(p2_delivery_host_test PRIVATE pc_port)
 target_compile_options(p2_delivery_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_delivery_host_test COMMAND p2_delivery_host_test)
 
+# rd-p2-elecbug-admit (#585): ElecBug28 corpse -> carried -> exactly one Onion
+# receipt over the real delivery-host bridge (registration only).
+add_executable(p2_elecbug_transport_test tools/p2_elecbug_transport_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_elecbug_transport_test PRIVATE pc_port)
+target_compile_options(p2_elecbug_transport_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_elecbug_transport_test COMMAND p2_elecbug_transport_test)
+
+# rd-p2-kurage-transport (#768): Kurage57 corpse -> carried -> exactly one
+# Onion receipt over the real delivery-host bridge (registration only).
+add_executable(p2_kurage_transport_test tools/p2_kurage_transport_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_kurage_transport_test PRIVATE pc_port)
+target_compile_options(p2_kurage_transport_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kurage_transport_test COMMAND p2_kurage_transport_test)
+# rd-p2-kurage-natural (#832): engine-free reachability audit for the
+# private-adapter Kurage (source 57) natural-kill gate (registration only).
+add_executable(p2_kurage_natural_test tools/p2_kurage_natural_test.cpp pc_port/pc_p2_kurage_natural.cpp)
+target_include_directories(p2_kurage_natural_test PRIVATE pc_port)
+target_compile_options(p2_kurage_natural_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kurage_natural_test COMMAND p2_kurage_natural_test)
+# rd-p2-kurage-natural (#832): guarded replacement-main natural-engagement
+# observation fixture. Compile-only here; the replacement-main executable is
+# produced by scripts/build_pikmin2_fixture.py against a completed pikmin_pc build.
+add_library(p2_kurage_natural_runtime_compile OBJECT tools/p2_kurage_natural_runtime.cpp)
+target_include_directories(p2_kurage_natural_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_kurage_natural_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
+# rd-p2-kogane-receipt (#571): Kogane9 corpse -> carried -> exactly one Onion
+# receipt over the real delivery-host bridge (registration only).
+add_executable(p2_kogane_receipt_test tools/p2_kogane_receipt_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_kogane_receipt_test PRIVATE pc_port)
+target_compile_options(p2_kogane_receipt_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kogane_receipt_test COMMAND p2_kogane_receipt_test)
+# rd-p2-kogane-engagement (#835): finite flip/drop/escape engagement contract.
+# Engine-free truth tables over the owned policy header (registration only).
+add_executable(p2_kogane_engagement_test tools/p2_kogane_engagement_test.cpp)
+target_include_directories(p2_kogane_engagement_test PRIVATE pc_port)
+target_compile_options(p2_kogane_engagement_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kogane_engagement_test COMMAND p2_kogane_engagement_test)
+# Guarded natural-throw replacement-main fixture. Compile-only here; the
+# replacement-main executable is produced by scripts/build_pikmin2_fixture.py
+# against a completed pikmin_pc build.
+add_library(p2_kogane_engagement_runtime_compile OBJECT tools/p2_kogane_engagement_runtime.cpp)
+target_include_directories(p2_kogane_engagement_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_kogane_engagement_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
+# rd-p2-sokkuri-receipt (#578): Sokkuri79 corpse -> carried -> exactly one
+# Onion receipt over the real delivery-host bridge (registration only).
+add_executable(p2_sokkuri_receipt_test tools/p2_sokkuri_receipt_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_sokkuri_receipt_test PRIVATE pc_port)
+target_compile_options(p2_sokkuri_receipt_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sokkuri_receipt_test COMMAND p2_sokkuri_receipt_test)
+# rd-p2-sarai-combat-repair (#828): Sarai23 corpse -> carried -> exactly one
+# Onion receipt over the real delivery-host bridge plus the weigh-down policy
+# the repaired host now feeds with live anchor facts (registration only).
+add_executable(p2_sarai_combat_repair_test tools/p2_sarai_combat_repair_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_sarai_combat_repair_test PRIVATE pc_port)
+target_compile_options(p2_sarai_combat_repair_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_combat_repair_test COMMAND p2_sarai_combat_repair_test)
+# rd-p2-sarai-combat-repair (#828): guarded replacement-main combat-repair
+# observation fixture with controller-driven throws. Compile-only here; the
+# replacement-main executable is produced by scripts/build_pikmin2_fixture.py
+# against a completed pikmin_pc build.
+add_library(p2_sarai_combat_repair_runtime_compile OBJECT tools/p2_sarai_combat_repair_runtime.cpp)
+target_include_directories(p2_sarai_combat_repair_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_sarai_combat_repair_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
+# rd-p2-sarai-campaign-behavior (#834): guarded replacement-main
+# campaign-behavior observation fixture (campaign-seam bind, protected
+# captain observation, reset/teardown). Compile-only here; the
+# replacement-main executable is produced by scripts/build_pikmin2_fixture.py
+# against a completed pikmin_pc build (shared-review registration only).
+add_library(p2_sarai_campaign_behavior_runtime_compile OBJECT tools/p2_sarai_campaign_behavior_runtime.cpp)
+target_include_directories(p2_sarai_campaign_behavior_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_sarai_campaign_behavior_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
+# rd-p2-sarai-combat-repair (#828, supervisor finding 2): manager/central-seam
+# lifecycle over the real pc_p2_sarai_manager.cpp TU (engine headers shadowed
+# by tools/p2_sarai_lifecycle_stubs; real host class, token logic, roster and
+# delivery ledger) covering setup/rebind idempotency, dynamic refusal,
+# forget, death retention, reset central-drop, rebind exactly-once and bridge
+# routing (registration only).
+add_executable(p2_sarai_lifecycle_test tools/p2_sarai_lifecycle_test.cpp
+    pc_port/pc_p2_sarai_manager.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_sarai_lifecycle_test BEFORE PRIVATE
+    tools/p2_sarai_lifecycle_stubs pc_port)
+target_compile_options(p2_sarai_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_lifecycle_test COMMAND p2_sarai_lifecycle_test)
+
 # Lane 06: engine-free provider unit tests (header-only; previously present but unregistered).
 add_executable(p2_receipt_test tools/p2_receipt_test.cpp)
 target_include_directories(p2_receipt_test PRIVATE pc_port)
@@ -1237,7 +1551,7 @@ target_include_directories(test_p2_cargo PRIVATE pc_port)
 target_compile_options(test_p2_cargo PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME test_p2_cargo COMMAND test_p2_cargo)
 
-foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy fuefuki_follow fuefuki_follow_binding)
+foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy sarai_capture fuefuki_follow fuefuki_follow_binding)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -1254,6 +1568,11 @@ foreach(policy IN ITEMS kabuto_muzzle kabuto_chain kabuto_binding)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
     add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
 endforeach()
+# Lane 20 (#424) generated-session live-animator family host.
+add_executable(p2_kabuto_host_test tools/p2_kabuto_host_test.cpp ${P2_KABUTO_TEST_DEPS} pc_port/pc_p2_kabuto_host.cpp)
+target_include_directories(p2_kabuto_host_test PRIVATE pc_port)
+target_compile_options(p2_kabuto_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kabuto_host_test COMMAND p2_kabuto_host_test)
 
 foreach(policy IN ITEMS bigtreasure_ordinary bigtreasure_animclock bigtreasure_natural bigtreasure_elements)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp ${P2_BIGTREASURE_TEST_DEPS}
@@ -1341,3 +1660,24 @@ add_executable(p2_purple_flight_actual_test tools/test_p2_purple_flight_actual.c
 target_include_directories(p2_purple_flight_actual_test BEFORE PRIVATE tools/p2_purple_flight_stubs pc_port)
 target_compile_options(p2_purple_flight_actual_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_purple_flight_actual_test COMMAND p2_purple_flight_actual_test)
+
+# #440 campaign setup failsafe: in bridge mode a species setup that cannot stage
+# its files logs P2_SETUP_SKIP and leaves the P1 stand-ins instead of aborting;
+# fixture mode stays fail-closed. Engine-free guard test.
+add_executable(p2_setup_failsafe_test tools/test_p2_setup_failsafe.cpp)
+target_include_directories(p2_setup_failsafe_test PRIVATE pc_port)
+target_compile_options(p2_setup_failsafe_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_setup_failsafe_test COMMAND p2_setup_failsafe_test)
+
+# rd-p2-campaign-goal-lifecycle (#836; CMake registration shared review):
+# read-only Onion GoalItem lifecycle probe linked into pikmin_pc so campaign
+# fixtures resolve the census; engine-free format/parse/classify regression;
+# guarded replacement-main campaign observer (compile-only here, executable
+# via scripts/build_pikmin2_fixture.py against a completed pikmin_pc build).
+add_executable(p2_campaign_goal_lifecycle_test tools/p2_campaign_goal_lifecycle_test.cpp)
+target_include_directories(p2_campaign_goal_lifecycle_test PRIVATE pc_port)
+target_compile_options(p2_campaign_goal_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_campaign_goal_lifecycle_test COMMAND p2_campaign_goal_lifecycle_test)
+add_library(p2_campaign_goal_lifecycle_runtime_compile OBJECT tools/p2_campaign_goal_lifecycle_runtime.cpp)
+target_include_directories(p2_campaign_goal_lifecycle_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_campaign_goal_lifecycle_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)

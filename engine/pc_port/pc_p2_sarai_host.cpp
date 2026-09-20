@@ -1,9 +1,14 @@
+#include "pc_p2_campaign_actor.h"
 #include "pc_p2_sarai_host.h"
 #include "pc_p2_demon_bridge.h"
+#include "pc_p2_sarai_capture_bridge.h"
 #include "Collision.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "Piki.h"
+#include "PikiMgr.h"
 #include "Shape.h"
+#include "Stickers.h"
 #include "Graphics.h"
 #include "Texture.h"
 #include "gameflow.h"
@@ -35,6 +40,10 @@ P2SaraiHost::P2SaraiHost()
 
 P2SaraiHost::~P2SaraiHost()
 {
+    // Teardown revokes before disposal: manager reset destroys bound hosts,
+    // and without this the Pikmin mouth bridge would keep a mouth link (and
+    // claim) against a freed owner. sceneExit() is idempotent.
+    sceneExit();
     // The private host owns its two mouth parts and never registers them with
     // the engine, so teardown deletes them explicitly.
     delete mMouths[0];
@@ -131,14 +140,31 @@ void P2SaraiHost::update()
 
 void P2SaraiHost::sceneExit()
 {
+    if (mSceneExited) return;
+    pc_p2_sarai_owner_lost(mOwnerToken);
     mSceneExited = true;
     mRenderedFrame = -1;
     mNaturalMotionStarted = false;
     mPlayer.cancel();
     pc_demon_owner_lost(mOwnerToken);
     mLifecycle.sceneExit();
+    mPikminTarget = nullptr;
+    mReacquireCooldown = 0.0f;
     resetMouthPose();
 }
+
+// Mouth capture/attachment receiver (source eatPikmin admission against the
+// live mouth CollPart; carried, never swallowed). Delegates the stick binding
+// to the bridge, which owns exactly-once/address-reuse safety.
+bool P2SaraiHost::capturePiki(Piki* piki, unsigned slot)
+{
+    if (!mLoaded || slot >= 2 || !mMouths[slot]) return false;
+    return pc_p2_sarai_piki_capture(piki, this, mMouths[slot], mOwnerToken, slot);
+}
+bool P2SaraiHost::releasePiki(Piki* piki) { return pc_p2_sarai_piki_release(piki); }
+unsigned P2SaraiHost::carriedCount() const { return pc_p2_sarai_carried_count(const_cast<P2SaraiHost*>(this)); }
+unsigned P2SaraiHost::dropOwned(float damage, float downSpeed) { return pc_p2_sarai_drop_owned(this, damage, downSpeed); }
+unsigned P2SaraiHost::flickOwned() { return pc_p2_sarai_flick_owned(this); }
 
 void P2SaraiHost::doKill() { sceneExit(); }
 
@@ -267,6 +293,9 @@ void P2SaraiHost::enableNatural(float moveSpeed, float turnSpeed, float maxTurnA
     mNaturalMotionStarted = false;
     mLifecycle.reset();
     mCaptureWindowTicks = 0;
+    mPikminTarget = nullptr;
+    mReacquireCooldown = 0.0f;
+    mStatusTicks = 0;
     mNatKeyEvent = p2sarai::KeyEvent::None;
     // Deterministic Wait spawn so the approach route is reproducible.
     mFsm.spawn(0.1f);
@@ -318,7 +347,10 @@ bool P2SaraiHost::forceDrop(Navi* target, float damage, float speed)
         return false;
     }
     const bool released = pc_demon_forced_release(target, damage, speed);
-    if (released) mLifecycle.interrupt(captain);
+    if (released) {
+        mLifecycle.interrupt(captain);
+        armReacquireCooldown();
+    }
     return released;
 }
 
@@ -326,6 +358,7 @@ void P2SaraiHost::release(Navi* target)
 {
     if (target && pc_demon_owned_by(target, this)) pc_demon_release(target);
     mLifecycle.detach();
+    mPikminTarget = nullptr;
     mNaturalMotionStarted = false;
     mPlayer.cancel();
 }
@@ -366,10 +399,72 @@ void P2SaraiHost::applyNaturalPose()
     if (selected) applyPoseFrame(selected->frame);
 }
 
-// Ordinary captor front end: source target acquisition, capped-turn approach,
-// the isolated Sarai FSM (Wait/Move/Attack/CatchFly/FallMeck), source Attack
-// capture window and the shared registered damaging drop. Capture delivery goes
-// through pc_demon_capture; this method never writes captain stick fields.
+// Post-drop reacquisition arm (FallMeck::cleanup resetAttackableTimer(0)
+// analogue): suppress acquisition/catch for kReacquireCooldownSeconds and
+// re-arm the captor 3 s acquisition gate, so the next approach is a fresh
+// retail Wait/Move scan instead of an instant recapture.
+void P2SaraiHost::armReacquireCooldown()
+{
+    mReacquireCooldown = kReacquireCooldownSeconds;
+    mPikminTarget = nullptr;
+    mCaptor.reset();
+}
+
+// Retail getAttackableTarget() (Sarai.cpp) transcribed against the P1 Pikmin
+// manager: inside-territory gate, then alive Pikmin that are not mouth-stuck
+// anywhere, not stuck to this host or its bound anchor (retail mSticker !=
+// this), within the source view half-angle (PI * DEG2RAD * mViewAngle) and
+// sight radius. Nearest-first selection spreads multiple Sarai across the
+// squad (the lane's capture.h mouth-selection order); eligibility itself is
+// verbatim retail. Floor-triangle check has no P1-port equivalent and is
+// treated as true (labelled accommodation: P1 Pikmin are always grounded).
+// The captain is NEVER a candidate here: retail scans pikiMgr only.
+Piki* P2SaraiHost::acquirePikminTarget(int& enumerated)
+{
+    enumerated = 0;
+    if (!pikiMgr) return nullptr;
+    const float homeX = mSRT.t.x - mNatHome.x, homeZ = mSRT.t.z - mNatHome.z;
+    const p2sarai::TargetQuery query{
+        homeX * homeX + homeZ * homeZ, mNatTerritoryRadius, mNatViewAngle, mNatSightRadius};
+    Piki* best = nullptr;
+    float bestDist = 0.0f;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p) continue;
+        ++enumerated;
+        if (!p->isAlive() || p->isStickToMouth()) continue;
+        Creature* stick = p->getStickObject();
+        if (stick == static_cast<Creature*>(this)) continue;
+        if (mBoundActor && stick == static_cast<Creature*>(mBoundActor)) continue;
+        const Vector3f delta = p->getPosition() - mMouths[0]->mCentre;
+        const float sqrDistXZ = delta.x * delta.x + delta.z * delta.z;
+        float bearing = std::atan2(delta.x, delta.z) - mFacingRadians;
+        while (bearing > p2sarai::kPi) bearing -= 2.0f * p2sarai::kPi;
+        while (bearing < -p2sarai::kPi) bearing += 2.0f * p2sarai::kPi;
+        p2sarai::TargetCandidate candidate;
+        candidate.alive = true;
+        candidate.isPikmin = true;
+        candidate.stickToMouth = false;
+        candidate.stickerIsSelf = false;
+        candidate.floorTriangle = true;
+        candidate.angleRad = bearing;
+        candidate.sqrDistXZ = sqrDistXZ;
+        if (!p2sarai::targetable(query, candidate)) continue;
+        if (!best || sqrDistXZ < bestDist) {
+            best = p;
+            bestDist = sqrDistXZ;
+        }
+    }
+    return best;
+}
+
+// Ordinary captor front end: retail Pikmin-first target acquisition,
+// capped-turn approach, the isolated Sarai FSM (Wait/Move/Attack/CatchFly/
+// FallMeck), source Attack capture window and the registered Pikmin
+// damaging drop (fallMeckGround). Pikmin capture delivery goes through the
+// Pikmin mouth bridge; the captain path below runs only for zero-Pikmin
+// rooms and never writes captain stick fields itself.
 void P2SaraiHost::updateNatural()
 {
     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
@@ -380,7 +475,7 @@ void P2SaraiHost::updateNatural()
     if (mBoundActor && !mBoundActor->isAlive()) {
         if (!mDead) {
             mDead = true;
-            const unsigned generator = mBoundActor->mGenerator ? mBoundActor->mGenerator->_70 : 0u;
+            const unsigned generator = mBoundActor->mGenerator ? pc_p2_campaign_token(mBoundActor) : 0u;
             std::printf("P2_SARAI_DEAD source_id=23 generator=%u\n", generator);
             std::fflush(stdout);
         }
@@ -395,6 +490,13 @@ void P2SaraiHost::updateNatural()
     Navi* target = naviMgr ? naviMgr->getNavi() : nullptr;
     const bool haveCaptain = target && target->isAlive();
     if (mLifecycle.occupied() && (!target || !pc_demon_owned_by(target, this))) mLifecycle.observeDetached();
+    // Validate the chased Pikmin every tick (Attack mTargetCreature analogue):
+    // a dead target, or one mouth-held by another owner, ends the hunt and the
+    // FSM returns to Move. A captive WE hold stays targeted through Attack END
+    // so the success path reaches CatchFly (retail mTargetCreature lifetime).
+    if (mPikminTarget && (!mPikminTarget->isAlive()
+        || (mPikminTarget->isStickToMouth() && !pc_p2_sarai_piki_owned_by(mPikminTarget, this))))
+        mPikminTarget = nullptr;
 
     // Advance the current source motion and collect its due key events.
     bool ended = false;
@@ -414,9 +516,66 @@ void P2SaraiHost::updateNatural()
 
     // Acquisition/approach runs against the stable rest effector; the Attack,
     // CatchFly and FallMeck states keep the sampled animated mouth pose.
-    const bool approachPhase = !mLifecycle.occupied() && mFsm.state() != p2sarai::State::Attack;
+    // Retail scans Pikmin first: while the post-drop cooldown runs, or both
+    // mouths are full, no acquisition is attempted (bounded reacquisition).
+    if (mReacquireCooldown > 0.0f) {
+        mReacquireCooldown -= dt;
+        if (mReacquireCooldown < 0.0f) mReacquireCooldown = 0.0f;
+    }
+    const unsigned mouthHeld = carriedCount();
+    const bool cooldownFree = mReacquireCooldown <= 0.0f;
+    // `scanned` records whether the Pikmin pass ran, so the captain fallback
+    // below can tell "empty room" from "suppressed pass".
+    Piki* pikmin = nullptr;
+    int pikminEnumerated = 0;
+    bool scanned = false;
+    if (mPikminTargeting && cooldownFree && mouthHeld < p2sarai::kMouthSlots) {
+        scanned = true;
+        if (mPikminTarget && mPikminTarget->isAlive()) {
+            pikmin = mPikminTarget;
+        } else {
+            pikmin = acquirePikminTarget(pikminEnumerated);
+            mPikminTarget = pikmin;
+        }
+        if (pikmin) pikminEnumerated = pikminEnumerated > 0 ? pikminEnumerated : 1;
+    } else if (mPikminTarget && !mPikminTarget->isAlive()) {
+        mPikminTarget = nullptr;
+    }
+    // Captain fallback ONLY for rooms that stage zero Pikmin (private-room
+    // fixture accommodation). Any enumerated Pikmin disables it: retail never
+    // targets captains, and the #834 campaign loop was eight Sarai holding one
+    // captain while ignoring twenty Pikmin.
+    const bool useCaptain = !mPikminTargeting
+        || (mPikminTargeting && scanned && pikminEnumerated == 0 && pikmin == nullptr);
+    const bool approachPhase = useCaptain
+        ? (!mLifecycle.occupied() && mFsm.state() != p2sarai::State::Attack)
+        : (mouthHeld == 0 && mFsm.state() != p2sarai::State::Attack);
     P2SaraiCaptor::Output captorOut;
-    if (approachPhase) {
+    // Pikmin approach drive: capped-turn toward the live target bearing,
+    // advance while outside grab range (retail walkToTarget shape at the
+    // fixture-tuned speed; the captor struct stays the captain path's).
+    float pikminVelX = 0.0f, pikminVelZ = 0.0f;
+    if (approachPhase && !useCaptain && pikmin) {
+        const Vector3f delta = pikmin->getPosition() - mMouths[0]->mCentre;
+        const float sqrDistXZ = delta.x * delta.x + delta.z * delta.z;
+        float bearing = std::atan2(delta.x, delta.z) - mFacingRadians;
+        while (bearing > p2sarai::kPi) bearing -= 2.0f * p2sarai::kPi;
+        while (bearing < -p2sarai::kPi) bearing += 2.0f * p2sarai::kPi;
+        const float cap = mNatMaxTurnDegrees * p2sarai::kDeg2Rad;
+        const float turn = std::min(std::fabs(bearing) * mNatTurnSpeed, cap);
+        if (std::isfinite(turn)) {
+            mFacingRadians += bearing < 0.0f ? -turn : turn;
+            mSRT.r.y = mFacingRadians;
+        }
+        if (sqrDistXZ <= mNatAttackRange * mNatAttackRange) {
+            // Inside grab range: hold position so the Attack window runs
+            // against a stable mouth (retail turnToTarget-only close-in).
+        } else if (mNatMoveSpeed > 0.0f) {
+            pikminVelX = std::sin(mFacingRadians) * mNatMoveSpeed;
+            pikminVelZ = std::cos(mFacingRadians) * mNatMoveSpeed;
+        }
+    }
+    if (approachPhase && useCaptain) {
         resetMouthPose();
         P2SaraiCaptor::Input captor;
         captor.faceDirection = mFacingRadians;
@@ -445,21 +604,45 @@ void P2SaraiHost::updateNatural()
         }
         captor.active = true;
         captorOut = mCaptor.step(captor);
+    } else if (approachPhase) {
+        resetMouthPose();
     }
-    const bool targetPresent = captorOut.valid && captorOut.targetFound;
+    const bool targetPresent = useCaptain
+        ? (captorOut.valid && captorOut.targetFound)
+        : (pikmin != nullptr);
+    const bool hasTargetCreature = useCaptain ? haveCaptain : (pikmin != nullptr);
 
     // Isolated source FSM tick with live facts. This private host owns no health
-    // model; the captain is the only damageable actor in the chain.
+    // model; the bound anchor actor is the damage/lifetime anchor (real engine
+    // health, Pikmin receivers, engine corpse on death).
     p2sarai::In in;
     in.deltaTime = dt;
     in.health = mBoundActor ? mBoundActor->mHealth : 100.0f;
-    in.bodyStuckCount = 0;
-    in.mouthCarried = mLifecycle.occupied() ? 1 : 0;
+    // Source Sarai.cpp: the climb/escape decisions read the live body-latched
+    // Pikmin count (mStuckPikminCount) and the mouth-carried captives
+    // (getCatchTargetNum). A hardcoded zero body count pins the FSM out of
+    // Fall/Damage/Flick forever, so no amount of normally-thrown Pikmin could
+    // ever weigh the host down. Feed the anchor's real sticker count; the
+    // anchor only ever carries body-latched Pikmin (mouth captives bind to
+    // this host, never to the anchor). No combat causality is claimed for
+    // this input: guarded runs show zero anchor sticks, so the observed kills
+    // come from the formation swarm bites, not from this path (which only
+    // unblocks future Fall/Damage/Flick transitions once latches occur).
+    int bodyStuck = 0;
+    if (mBoundActor && mBoundActor->isAlive()) {
+        Stickers stuck(mBoundActor);
+        bodyStuck = stuck.getNumStickers();
+        if (bodyStuck < 0) bodyStuck = 0;
+    }
+    in.bodyStuckCount = bodyStuck;
+    // Mouth captives are the bridge-bound Pikmin (getCatchTargetNum); the
+    // captain occupancy only counts on the legacy captain fallback path.
+    in.mouthCarried = int(carriedCount()) + (mLifecycle.occupied() ? 1 : 0);
     in.purpleLatched = false;
     in.mapY = 0.0f;
     in.positionY = mSRT.t.y;
     in.targetPresent = targetPresent;
-    in.hasTargetCreature = haveCaptain;
+    in.hasTargetCreature = hasTargetCreature;
     in.targetFrame = mPlayer.frame();
     in.distToPatrolTargetXZ = 1.0e9f;
     in.keyEvent = mNatKeyEvent;
@@ -472,9 +655,26 @@ void P2SaraiHost::updateNatural()
     // finishMotion decision is forwarded.
     if (out.finishing) mPlayer.finishMotion();
 
-    // Source Attack capture window: 16 < frame <= 30. Admission only via the
-    // shared pc_demon_capture bridge against a real live mouth CollPart.
-    if (out.attemptCatch && !mLifecycle.occupied() && haveCaptain && !target->isStickTo()) {
+    // Source Attack capture window: 16 < frame <= 30 (retail catchTarget() ->
+    // EnemyFunc::eatPikmin against the mouth slots). Pikmin admission goes
+    // through the Pikmin mouth bridge into the first free slot; the captain
+    // window below runs ONLY on the zero-Pikmin fallback path.
+    if (out.attemptCatch && !useCaptain && pikmin && cooldownFree
+        && carriedCount() < p2sarai::kMouthSlots && !pikmin->isStickTo()) {
+        ++mCaptureWindowTicks;
+        const unsigned slot = carriedCount() == 0 ? 0u : 1u;
+        const Vector3f delta = pikmin->getPosition() - staticMouthCentre(slot);
+        if (delta.squaredLength() < p2sarai::kMouthRadius * p2sarai::kMouthRadius
+            && capturePiki(pikmin, slot)) {
+            ++mPikminCaptures;
+            const unsigned generator = mBoundActor && mBoundActor->mGenerator
+                ? pc_p2_campaign_token(mBoundActor) : 0u;
+            std::printf("P2_SARAI_PIKMIN_CAPTURE source_id=23 generator=%u slot=%u owner_exact=1\n",
+                        generator, slot);
+            std::fflush(stdout);
+        }
+    }
+    if (out.attemptCatch && useCaptain && !mLifecycle.occupied() && haveCaptain && !target->isStickTo()) {
         ++mCaptureWindowTicks;
         const Vector3f delta = target->mSRT.t - staticMouthCentre(0);
         if (delta.squaredLength() < 15.0f * 15.0f
@@ -482,13 +682,38 @@ void P2SaraiHost::updateNatural()
             mLifecycle.capture(saraiCaptainId(target), mOwnerToken, 0);
         }
     }
-    // FallMeck Key3 owns the one-shot damaging drop through the registered
-    // receiver; ownership is revoked by the bridge itself.
-    if (out.drop && mLifecycle.occupied() && target) {
+    // Retail Dead/Fall/Damage entry calls flickStickTarget(): harmlessly
+    // detach mouth captives (escape receiver, no damage). FallMeck Key3 owns
+    // the one-shot damaging drop (fallMeckGround) through the registered
+    // receiver; ownership is revoked by the bridge itself. Every damaging or
+    // detaching release arms the reacquisition cooldown (bounded, no instant
+    // recapture: the #834 loop).
+    if (out.flickAttackers && carriedCount() > 0) {
+        const unsigned detached = flickOwned();
+        if (detached > 0) {
+            std::printf("P2_SARAI_PIKMIN_FLICK source_id=23 detached=%u\n", detached);
+            std::fflush(stdout);
+            armReacquireCooldown();
+        }
+    }
+    if (out.drop && carriedCount() > 0) {
+        const unsigned released = dropOwned(10.0f, p2sarai::Parms().fallMeckSpeed);
+        std::printf("P2_SARAI_PIKMIN_DROP source_id=23 released=%u\n", released);
+        std::fflush(stdout);
+        armReacquireCooldown();
+    } else if (out.drop && mLifecycle.occupied() && target) {
         if (pc_demon_forced_release(target, 10.0f, p2sarai::Parms().fallMeckSpeed)) mLifecycle.detach();
+        armReacquireCooldown();
     }
 
-    if (approachPhase && captorOut.valid && captorOut.targetFound) {
+    if (approachPhase && !useCaptain && pikmin) {
+        mSRT.t.x += pikminVelX * dt;
+        mSRT.t.z += pikminVelZ * dt;
+        // Keep the mouth at target height so the 3D capture proximity can
+        // actually be satisfied, mirroring the captain path.
+        mSRT.t.y += pikmin->getPosition().y - mMouths[0]->mCentre.y;
+    }
+    if (approachPhase && useCaptain && captorOut.valid && captorOut.targetFound) {
         mFacingRadians = captorOut.faceDirection;
         mSRT.r.y = mFacingRadians;
         if (!captorOut.beginAttack) {
@@ -499,12 +724,23 @@ void P2SaraiHost::updateNatural()
             if (target) mSRT.t.y += target->mSRT.t.y - mMouths[0]->mCentre.y;
         }
     }
+    // Carriage/cooldown census for the campaign log (host-side so the
+    // engine-free manager lifecycle test, which links test-owned host
+    // bodies, is untouched).
+    if (++mStatusTicks % 90 == 0) {
+        const unsigned generator = mBoundActor && mBoundActor->mGenerator
+            ? pc_p2_campaign_token(mBoundActor) : 0u;
+        std::printf("P2_SARAI_CARRY tick=%d generator=%u state=%d pikmin=%u captures=%u cooldown=%.1f\n",
+                    mStatusTicks, generator, int(mFsm.state()), carriedCount(),
+                    mPikminCaptures, mReacquireCooldown);
+        std::fflush(stdout);
+    }
     updateMouths();
 }
 
 bool P2SaraiHost::bindNativeActor(BTeki* actor, unsigned generatorId, int tekiType)
 {
-    if (!actor || !actor->mGenerator || actor->mGenerator->_70 != generatorId || actor->mTekiType != tekiType)
+    if (!actor || !actor->mGenerator || pc_p2_campaign_token(actor) != generatorId || actor->mTekiType != tekiType)
         return false;
     if (mBoundActor && mBoundActor != actor) return false;
     mBoundActor = actor;
@@ -520,7 +756,7 @@ void P2SaraiHost::unbindNativeActor(BTeki* actor)
 bool P2SaraiHost::revalidateNativeActor(BTeki* actor, unsigned generatorId, int tekiType)
 {
     if (!actor || mBoundActor != actor) return false;
-    if (!actor->mGenerator || actor->mGenerator->_70 != generatorId || actor->mTekiType != tekiType) {
+    if (!actor->mGenerator || pc_p2_campaign_token(actor) != generatorId || actor->mTekiType != tekiType) {
         mBoundActor = nullptr;
         return false;
     }

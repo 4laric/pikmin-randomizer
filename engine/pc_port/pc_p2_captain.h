@@ -50,6 +50,13 @@ struct P2CaptainHostOps {
     std::uint32_t (*actorId)(void* context, P2PikiHandle actor) = nullptr;
     // Current owning captain slot, or P2CaptainInvalid when free/unowned.
     int (*ownerSlot)(void* context, P2PikiHandle actor) = nullptr;
+    // Abandon the actor's current squad action while its captain pointer is
+    // still valid (ActCrowd::cleanup needs mNavi to release its formation
+    // plate slot). May invoke reentrant engine callbacks; the adapter
+    // revalidates its capture afterward. Nullable for existing doubles;
+    // when null the capture path refuses rather than clearing ownership
+    // under a live formation action (codex/p2-lane12-review 5cbb2f351).
+    bool (*prepareCapture)(void* context, P2PikiHandle actor) = nullptr;
     // Write the actor's owner slot back into the engine (Piki::mNavi).
     void (*setOwnerSlot)(void* context, P2PikiHandle actor, int slot) = nullptr;
 
@@ -274,11 +281,25 @@ public:
 
     // --- Captor-held actors (Pikmin / carried items) ---
 
+    // Revocable squad capture bound to the captor's epoch tick
+    // (codex/p2-lane12-review c29ec8398/5cbb2f351/b4ac39825, #130): the
+    // formation action is abandoned while the captain pointer is still valid,
+    // then the capture is revalidated before ownership is cleared. A reentrant
+    // callback that released and recaptured the actor (or killed it) wins; the
+    // stale outer capture is revoked without touching the replacement.
     bool captureActor(std::uint64_t captorEpoch, P2PikiHandle actor)
     {
-        if (!mBound) return false;
+        if (!mBound || !mHost.prepareCapture) return false;
         std::uint32_t id = mHost.actorId(mHost.context, actor);
         if (!id || !mPolicy.captureActor(captorEpoch, id)) return false;
+        if (!mHost.prepareCapture(mHost.context, actor)
+            || mPolicy.captiveEpochOf(id) != captorEpoch) {
+            // Cleanup killed/recycled the actor, or a callback established a
+            // newer capture. Revoke only when this epoch still holds the id;
+            // never restore a cached captain into the replacement lifetime.
+            if (mPolicy.captiveEpochOf(id) == captorEpoch) mPolicy.forgetActor(id);
+            return false;
+        }
         mHost.setOwnerSlot(mHost.context, actor, P2CaptainInvalid);
         return true;
     }
@@ -305,7 +326,40 @@ public:
         return out;
     }
 
+    // Revoke one capture without restoring or writing any owner. The engine
+    // handle is already free (ownership was cleared at capture time); the
+    // caller owns the subsequent detach/AI transition. Returns false when
+    // this epoch no longer holds the actor, so a stale disposer never
+    // touches a replacement capture (codex/p2-lane12-review c29ec8398).
+    bool releaseCaptiveFree(std::uint64_t captorEpoch, P2PikiHandle actor)
+    {
+        if (!mBound || !captorEpoch) return false;
+        const std::uint32_t id = mHost.actorId(mHost.context, actor);
+        if (!id || mPolicy.captiveEpochOf(id) != captorEpoch) return false;
+        mPolicy.forgetActor(id);
+        return true;
+    }
+
     std::size_t captiveCount() const { return mPolicy.captiveCount(); }
+
+    // True while `actor` is still held under `captorEpoch`. Kurage receiver
+    // authority (and any captor tick) binds to this, not to a stale pointer.
+    bool isCaptiveFor(std::uint64_t captorEpoch, P2PikiHandle actor)
+    {
+        if (!mBound || !captorEpoch) return false;
+        const std::uint32_t id = mHost.actorId(mHost.context, actor);
+        return id && mPolicy.captiveEpochOf(id) == captorEpoch;
+    }
+
+    // Predeath/invalidation revocation without engine writes. Call before the
+    // manager recycles the slot so a re-birthed actor never inherits the dead
+    // actor's capture or owner (codex/p2-lane12-review c29ec8398).
+    void forgetActor(P2PikiHandle actor)
+    {
+        if (!mBound) return;
+        const std::uint32_t id = mHost.actorId(mHost.context, actor);
+        if (id) mPolicy.forgetActor(id);
+    }
 
     // --- Lifecycle ---
 
@@ -376,6 +430,12 @@ bool navi_dead(int captain);
 // Captor-held squad actor (Piki*) operations. `piki` is a live Piki*.
 bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki);
 bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain);
+// True while `piki` is still held under `captorEpoch` (revocable ticket check).
+bool is_captive_for(std::uint64_t captorEpoch, P2PikiHandle piki);
+// Revoke one capture without restoring or writing any owner.
+bool release_captive_free(std::uint64_t captorEpoch, P2PikiHandle piki);
+// Predeath/invalidation revocation without engine writes.
+void forget_actor(P2PikiHandle piki);
 std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch);
 
 // Lane 12 two-captain follow-up (#130): move up to `count` adopted Pikmin from

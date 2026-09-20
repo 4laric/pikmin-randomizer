@@ -466,8 +466,13 @@ void pc_p2_hana_update(BTeki* actor) {
     auto it = actors.find(static_cast<PelletView*>(actor));
     if (it == actors.end()) return;
     Hana& s = it->second;
-    const float dt = gsys->getFrameTime();
-    if (dt <= 0.0f || dt > 0.5f) return;
+    float dt = gsys->getFrameTime();
+    if (dt <= 0.0f) return;
+    // Clamp a pathological single-frame hitch (e.g. a debugger pause) so one
+    // tick cannot cause a giant simulation step, but still advance the sampled
+    // clock by the clamped delta instead of dropping the whole update: dropping
+    // it would discard crossed animation events and break exactly-once timing.
+    if (dt > 0.5f) dt = 0.5f;
     const Vector3f pos = actor->getPosition();
     const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
 

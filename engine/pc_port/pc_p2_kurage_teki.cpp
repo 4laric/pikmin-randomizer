@@ -1,3 +1,5 @@
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_kurage_fsm.h"
 #include "pc_p2_kurage_receiver.h"
@@ -221,6 +223,24 @@ bool corpseTail()
     if (!sCorpseTeki) return false;
     if (!sCorpsePellet) {
         sCorpsePellet = sCorpseTeki->mPellet;
+        if (sCorpsePellet) {
+            // Death-drop-to-ground (flyer): a Kurage killed mid-air spawns its
+            // corpse Pellet at altitude. FreeMode Pikmin only grasp grounded
+            // corpses, so settle the fresh Pellet onto the floor before the
+            // carry can latch. Natural gravity settle, one marker.
+            if (mapMgr) {
+                const float groundY = mapMgr->getMinY(sCorpsePellet->mSRT.t.x,
+                    sCorpsePellet->mSRT.t.z, true);
+                if (std::isfinite(groundY) && sCorpsePellet->mSRT.t.y > groundY + 1.0f) {
+                    std::printf("P2_KURAGE_CORPSE_DROP from_y=%.3f ground_y=%.3f\n",
+                        sCorpsePellet->mSRT.t.y, groundY);
+                    std::fflush(stdout);
+                    sCorpsePellet->mSRT.t.y = groundY;
+                    sCorpsePellet->mVelocity.set(0.0f, 0.0f, 0.0f);
+                    sCorpsePellet->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+                }
+            }
+        }
         if (sCorpsePellet && sCorpsePellet->mConfig) {
             std::printf("P2_KURAGE_TEKI_CORPSE_CONFIG carry_min=%d carry_max=%d min_free_slot=%d alive=%d\n",
                         sCorpsePellet->mConfig->mCarryMinPikis.mValue,
@@ -360,15 +380,19 @@ void pc_p2_kurage_teki_setup()
     std::ifstream in("p2-kurage-teki.txt");
     if (!in) return;
     p2kurage::Binding cfg{};
-    if (!p2kurage::read(in, cfg) || !tekiMgr) std::abort();
+    if (!p2kurage::read(in, cfg) || !tekiMgr) { if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kurage", "staged_config_invalid")) return; }
     unsigned gen = cfg.generator;
     int type = cfg.type;
     Iterator it(tekiMgr);
     CI_LOOP(it)
     {
         auto* t = static_cast<Teki*>(*it);
-        if (!t || !t->mGenerator || t->mGenerator->_70 != gen) continue;
-        if (t->mTekiType != type || s.size()) std::abort();
+        if (!t || !t->mGenerator) continue;
+        if (pc_randomizer_p2_bridge()) {
+            if (pc_p2_campaign_source(t) != 57) continue;
+            gen = pc_p2_campaign_token(t);
+        } else if (pc_p2_campaign_token(t) != gen) continue;
+        if (t->mTekiType != type || (!pc_randomizer_p2_bridge() && s.size())) { if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kurage", "actor_type_mismatch")) return; }
         // Optional visual poses: the corpse/receipt path must not require the
         // converted kurage_*.mod files. When they are absent the P1 host body
         // draws instead (pc_p2_kurage_visual_draw returns false).
@@ -378,7 +402,7 @@ void pc_p2_kurage_teki_setup()
         Binding& b = inserted.first->second;
         b.spawnPos = t->mSRT.t;
         refresh(t, b);
-        if (!pc_p2_kurage_receiver_setup(t, &b.mouth)) std::abort();
+        if (!pc_p2_kurage_receiver_setup(t, &b.mouth)) { if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kurage", "receiver_setup_failed")) return; }
         std::printf("P2_KURAGE_TEKI_READY generator=%u type=%d binding=private_adapter\n", gen, type);
         std::printf("P2_KURAGE_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:kurage:%u\n", gen, gen);
         if (std::getenv("PIKMIN_P2_KURAGE_SHOWCASE")) {
@@ -404,6 +428,20 @@ void pc_p2_kurage_teki_tick(BTeki* t)
         corpses[t] = i->second.generator;
         sCorpseTeki = t;
         sCorpsePellet = nullptr;
+        // Death-drop-to-ground (flyer): an FSM-driven Kurage can die at
+        // altitude. Pin the dead body to the floor so the corpse Pellet spawns
+        // where FreeMode Pikmin can grasp it. Natural settle, one marker.
+        if (mapMgr) {
+            const float groundY = mapMgr->getMinY(t->mSRT.t.x, t->mSRT.t.z, true);
+            if (std::isfinite(groundY) && t->mSRT.t.y > groundY + 1.0f) {
+                std::printf("P2_KURAGE_DEATH_DROP generator=%u from_y=%.3f ground_y=%.3f\n",
+                    i->second.generator, t->mSRT.t.y, groundY);
+                std::fflush(stdout);
+                t->finishFlying();
+                t->mSRT.t.y = groundY;
+                t->mVelocity.set(0.0f, 0.0f, 0.0f);
+            }
+        }
         sCorpseOrigin = t->mSRT.t;
         sCorpseProbeTick = 0;
         sCorpseDelivered = false;

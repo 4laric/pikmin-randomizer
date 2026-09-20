@@ -21,3 +21,8 @@ int pc_p2_kogane_gas_state(BTeki*,float* x,float* z,float* remaining);
 int pc_p2_kogane_onion_ledger_rows();
 int pc_p2_kogane_reprobe_duplicates(unsigned generator,int id);
 int pc_p2_kogane_nectar_dropped(unsigned generator);
+// #571 receipt-boundary introspection: true once this beetle burrowed/fled
+// (terminal escape: corpse suppressed, delivery bind dropped) and true while it
+// still holds the ordinary-delivery bind. Read-only; false when unregistered.
+bool pc_p2_kogane_escaped(BTeki*);
+bool pc_p2_kogane_delivery_bound(BTeki*);

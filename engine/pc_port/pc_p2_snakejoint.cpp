@@ -167,6 +167,9 @@ struct Snake {
     unsigned rng = 1;
     bool deadLogged = false;
     float logTimer = 0.0f;
+    // Slice-2 vulnerability gate: EB_Invulnerable only while buried (Stay).
+    bool rejectLogged = false;  // first rejected attack per buried period
+    bool acceptLogged = false;  // first admitted attack per emerged period
 };
 
 std::map<PelletView*, Snake> actors;
@@ -349,7 +352,19 @@ void pc_p2_snakejoint_reset() {
     clipBank.clear();
     ready = false;
 }
-void pc_p2_snakejoint_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_snakejoint_forget(BTeki* actor) {
+    // Slice-2 cleanup observability: the centralized forget seam is the P1
+    // analogue of scene exit/death teardown; log the release so the fixture can
+    // prove the dead snagret is removed without a stale reference.
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it != actors.end()) {
+        std::printf("P2_SNAKEJOINT_FORGET generator=%u source_id=%d\n",
+                    actor->mGenerator ? actor->mGenerator->_70 : 0u,
+                    it->second.parms->sourceId);
+        std::fflush(stdout);
+    }
+    actors.erase(static_cast<PelletView*>(actor));
+}
 
 float pc_p2_snakejoint_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready) return fallback;
@@ -379,6 +394,37 @@ bool pc_p2_snakejoint_clip(const BTeki* actor, const char*& name, float& phase) 
     if (it == actors.end()) return false;
     name = it->second.clip.c_str();
     phase = it->second.phase;
+    return true;
+}
+
+bool pc_p2_snakejoint_invulnerable(const BTeki* actor) {
+    if (!ready || !actor)
+        return pc_p2_snakejoint_attack_rejected(false, false);
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    if (it == actors.end())
+        return pc_p2_snakejoint_attack_rejected(false, false);
+    Snake& s = it->second;
+    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const bool buriedStay = (s.state == SNAKE_STAY);
+    if (!pc_p2_snakejoint_attack_rejected(true, buriedStay)) {
+        // Emerged: EB_Invulnerable cleared (StateStay::cleanup); admit damage.
+        if (!s.acceptLogged) {
+            s.acceptLogged = true;
+            std::printf("P2_SNAKEJOINT_DAMAGE_ACCEPTED generator=%u state=%s\n",
+                        generator, stateName(s.state));
+            std::fflush(stdout);
+        }
+        s.rejectLogged = false;
+        return false;
+    }
+    // Buried (Stay): report the first rejection per buried period and swallow.
+    if (!s.rejectLogged) {
+        s.rejectLogged = true;
+        std::printf("P2_SNAKEJOINT_DAMAGE_REJECTED generator=%u state=%s\n",
+                    generator, stateName(s.state));
+        std::fflush(stdout);
+    }
+    s.acceptLogged = false;
     return true;
 }
 
@@ -471,6 +517,14 @@ void pc_p2_snakejoint_setup() {
         enter(s, SNAKE_STAY, "appear1");
         std::printf("P2_SNAKEJOINT_BIND generator=%u species=%s source_id=%d visual_only=0\n",
                     actor->mGenerator->_70, s.parms->name, s.parms->sourceId);
+        // Slice-2 joint-fidelity measurement: the source rig drives six spinal
+        // joints (bodyjnt3-bodyjnt8, SnakeJointMgr.cpp:47) feeding the head; the
+        // P1 Chappy host drives a single flat translation-only body, so the drawn
+        // pose comes from the per-species clip override, not the spinal matrices.
+        std::printf("P2_SNAKEJOINT_JOINTS generator=%u species=%s source_joints=6 "
+                    "host_joints=1 pose=clip_override\n",
+                    actor->mGenerator->_70, s.parms->name);
+        std::fflush(stdout);
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=%s native_family=Chappy generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
