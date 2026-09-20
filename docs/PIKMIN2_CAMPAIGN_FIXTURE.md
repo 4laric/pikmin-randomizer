@@ -65,7 +65,7 @@ production boot command (never a preview flag), and the species contract.
 | Staged bootstrap `ENEMY_P2` not byte-equal to the production derivation for the manifest | rejected as hand-written/stale rows |
 | Stale content (`prepared.json` missing/unreadable/empty) or stale executable (sha mismatch) | rejected before staging/launch |
 | Missing session handshake in the log | `FAIL` (preview logs never emit it) |
-| Unsafe session path (relative, `..`, NUL, >100 chars, inside assets) | rejected |
+| Unsafe session path (relative, `..`, NUL, >100 chars, inside assets, or already existing) | rejected without deleting anything |
 | Missing captain guard header | rejected; a guard trip is `BLOCKED` (exit 86) |
 | Launch budget outside 1..600 s | rejected as unbounded |
 

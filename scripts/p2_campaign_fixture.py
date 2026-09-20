@@ -41,7 +41,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -155,6 +154,9 @@ def require_safe_session_dir(session_dir, assets_dir=None):
         raise FixtureRejected(
             "session path too long for the Windows 260-char run tree "
             "(%d > %d): %s" % (len(str(resolved)), SESSION_DIR_MAX_LEN, raw))
+    if resolved.exists():
+        raise FixtureRejected(
+            "session path must be a fresh private directory: " + str(resolved))
     if assets_dir is not None:
         assets = Path(os.path.normpath(str(Path(assets_dir).resolve())))
         if resolved == assets or assets in resolved.parents:
@@ -351,8 +353,6 @@ def stage_campaign(seed_name, session_dir, content_root, assets_dir, exe=None,
     bindings = manifest["p2_layout"]["bindings"]
     actors = actor_bindings_for_manifest(manifest)
 
-    if session_dir.exists():
-        shutil.rmtree(session_dir, ignore_errors=True)
     session_dir.mkdir(parents=True, exist_ok=False)
     session = Session(manifest, session_dir)
     (session_dir / "seed-manifest.json").write_text(
