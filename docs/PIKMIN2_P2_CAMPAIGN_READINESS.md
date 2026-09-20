@@ -35,7 +35,7 @@ A species must clear **three** gates, in this order:
 | 44 | BlueKochappy | ✓ | `TEKI_Chappy` 3 | own module | **in pool** |
 | 54 | Miulin / Mamuta | ✓ | `TEKI_Miurin` 24 | own module | **in pool** |
 | 59–62 | Fire/Water/Gas/Elec Otakara | ✓ | `TEKI_Chappy` 3 | batch2 `dweevil` | **in pool** |
-| 23 | Sarai | ✓ | `TEKI_Chappy` 3 ✓ | own module, bridge sweep | **yes** — next in line |
+| 23 | Sarai | ✓ extract, **install incomplete** | `TEKI_Chappy` 3 ✓ | own module, bridge sweep | no — see below |
 | 9 | Kogane | **no extractor** | `TEKI_Chappy` 3 ✓ | own module, bridge-aware | blocked on content |
 | 79 | Sokkuri | **no extractor** | `TEKI_Chappy` 3 ✓ | batch2 `ground\|Sokkuri` | blocked on content |
 | 57 | Kurage | **no extractor** | `TEKI_Frog` 0 ✓ | own module, bridge-aware | blocked on content; AI also gated |
@@ -46,7 +46,42 @@ A species must clear **three** gates, in this order:
 
 ✓ = present and matching what that species' own setup actually requires.
 
-**So the binding constraint today is content, not native code.** `EXTRACTORS`
+## Measured: Sarai 23 does not bind (2026-09-19)
+
+A seed of the playable six plus Sarai (`--p2-species 44,54,59,60,61,62,23`, 33 enemies, 5 of
+them Sarai) was staged and launched headless against native `5e175953`. It boots and runs at
+~30 FPS, and the log settles it:
+
+```
+P2_GENERATED_PLACEMENT source_id=61 target=3138990329 bound=1
+P2_GENERATED_PLACEMENT source_id=60 target=4222852521 bound=1
+P2_GENERATED_PLACEMENT source_id=23 target=3640055869 bound=0 reason=host
+```
+
+`reason=host` is `buildHost` returning nullptr (`pc_p2_sarai_manager.cpp:70-81`) because the
+files it loads are not in the run directory. The install stages `p2-sarai-actors.txt` — correctly,
+with all five generator ids — and **none of the eight files the host needs**:
+
+| Needed by `buildHost` | In run dir |
+| --- | --- |
+| `assets/dataDir/courses/pikmin2room/sarai0.mod` | missing |
+| `sarai-wait-poses.txt`, `-move-`, `-attack-`, `-waitact1-`, `-waitact2-` | missing |
+| `sarai-attack-mouths.txt` | missing |
+| `sarai-retail-events.txt` | missing |
+
+The pose `.mod` files *are* extracted, under `<content>/Sarai/` — so the gap is in the install
+step, not extraction: nothing copies them into the run directory or derives the pose/mouth/event
+tables there. That is root-line work (`experimental/pikmin2_family_install.py` and
+`scripts/p2_prepare_content.py`), not native work.
+
+Note the failure is silent in-game: the five Sarai slots stay Dwarf Bulborbs and nothing
+crashes. `bound=0 reason=host` in `native.log` is the only signal.
+
+**So a fourth gate exists: install.** Extraction producing the assets is not the same as the
+installer staging what the native loader opens. Check `bound=1` per source id in `native.log`
+before calling a species ready.
+
+**Beyond that, the binding constraint is content, not native code.** `EXTRACTORS`
 (`scripts/p2_prepare_content.py:252`) covers exactly 44, 54, 59–62 and 23. Seven of the eleven
 species have an installer but no way to produce what it installs, so native work on them cannot
 be proven in a seed until an extractor exists. Sarai (23) is the only un-pooled species that

@@ -275,6 +275,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
     out.mkdir(parents=True, exist_ok=True)
     research = Path(research) if research is not None else DEFAULT_RESEARCH
     extracted = []
+    no_extractor = []
     dweevil_done = False
     for source_id in supported:
         if source_id == 44:
@@ -295,11 +296,21 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             # Supported by the family map but with no extractor wired here
             # (e.g. Kochappy 1 / Snow 45 / BombSarai 58): report, don't invent.
             if source_id not in unsupported:
-                unsupported.append(source_id)
+                no_extractor.append(source_id)
+    # Two distinct causes, and conflating them sends people to the wrong file:
+    # no installer means IDENTITY_FAMILY cannot lay the content down; no
+    # extractor means the installer exists but nothing produces what it installs.
     skipped = [{"source_id": i,
                 "enum_name": ENUM_FOR_SOURCE.get(i),
                 "reason": "no family installer; staged through no shared-contract path"}
                for i in unsupported]
+    skipped += [{"source_id": i,
+                 "enum_name": ENUM_FOR_SOURCE.get(i),
+                 "reason": "family installer exists but no ISO extractor is wired "
+                           "here; add one to EXTRACTORS before this species can "
+                           "be staged"}
+                for i in no_extractor]
+    skipped.sort(key=lambda row: row["source_id"])
     # Keep extractor-wired-but-unrequested ids out of the skipped list noise.
     summary = {"iso": str(iso),
                "out": str(out),
