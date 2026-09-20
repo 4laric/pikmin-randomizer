@@ -83,6 +83,130 @@ CAPTAIN_DOWN_MARKERS = ("P2_FIXTURE_CAPTAIN_DOWN", "CAPTAIN_DOWN")
 WORLD_RENDERED_MARKER = "PIKMIN_WORLD_RENDERED"
 SESSION_HANDSHAKE_RE = re.compile(r"SESSION\s+enabled=1\s+ready=1\b")
 
+# Reusable species marker contracts (issue #842 adoption).
+#
+# ``setup_markers`` prove staging/binding only: generic bind/ready shapes the
+# smoke parser counts toward ``bound`` (``P2_<X>_BIND generator=``,
+# ``P2_ENEMY_READY species=``) plus species ready/staging markers. They never
+# prove gameplay.
+# ``behavior_markers`` prove natural gameplay beyond setup (delivery, collect,
+# corpse receipt, natural attack/death). Consumers require them via
+# ``pass_markers``; a setup-only log (bound, handshake, boot, but no behavior
+# marker) then fails closed with "no species pass marker observed". Some
+# behavior markers (notably ``*_DELIVERY_BIND``) additionally match the generic
+# bind shape; the setup/behavior distinction is enforced by the pass-marker
+# requirement, not by bind accounting.
+# ``block_markers`` are species setup aborts/skips; any hit is FAIL.
+# Marker strings below are transcribed from the species lanes; the Sarai
+# delivery-bind entry is the campaign delivery analogue of the Sokkuri
+# delivery bind (consumer regex; setup-only logs without it fail closed).
+SPECIES_MARKER_CONTRACTS = {
+    "sarai": {
+        "source_ids": (23,),
+        "setup_markers": (
+            r"P2_SARAI_READY\s+source_id=23\b",
+            r"P2_SARAI_BIND\b.*?generator=\d+",
+            r"P2_ENEMY_READY\s+species=Sarai\b.*?generator=\d+",
+        ),
+        "behavior_markers": (
+            r"P2_SARAI_CORPSE_READY\b",
+            r"P2_SARAI_DELIVERY_BIND\b.*?generator=\d+",
+        ),
+        "block_markers": (
+            r"P2_SETUP_ABORT\s+Sarai\b",
+            r"P2_SETUP_SKIP\s+Sarai\b",
+        ),
+    },
+    "kogane": {
+        "source_ids": (9, 10, 11),
+        "setup_markers": (
+            r"P2_KOGANE_BIND\b.*?generator=\d+",
+            r"P2_ENEMY_READY\s+species=Kogane\b.*?generator=\d+",
+        ),
+        "behavior_markers": (
+            r"P2_KOGANE_COLLECT_PASS\b",
+            r"P2_KOGANE_NATURAL_ATTACK\b",
+        ),
+        "block_markers": (
+            r"P2_SETUP_ABORT\s+Kogane\b",
+            r"P2_SETUP_SKIP\s+Kogane\b",
+        ),
+    },
+    "kurage": {
+        "source_ids": (57,),
+        "setup_markers": (
+            r"P2_KURAGE_TEKI_READY\b",
+            r"P2_KURAGE_TEKI_CORPSE\b",
+            r"P2_ENEMY_READY\s+species=Kurage\b.*?generator=\d+",
+        ),
+        "behavior_markers": (
+            r"P2_KURAGE_CORPSE_RECEIPT_PASS\s+generator=\d+",
+            r"P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS\s+generator=\d+",
+            r"P2_KURAGE_CORPSE_CLEANUP_PASS\b",
+        ),
+        "block_markers": (
+            r"P2_SETUP_ABORT\s+Kurage\b",
+            r"P2_SETUP_SKIP\s+Kurage\b",
+        ),
+    },
+    "sokkuri": {
+        "source_ids": (79,),
+        "setup_markers": (
+            r"P2_SOKKURI_BIND\b.*?generator=\d+",
+            r"P2_ENEMY_READY\s+species=Sokkuri\b.*?generator=\d+",
+        ),
+        "behavior_markers": (
+            r"P2_SOKKURI_DELIVERY_BIND\b.*?generator=\d+",
+            r"P2_SOKKURI_DEAD\b",
+            r"P2_SOKKURI79_DELIVERED_TO_GOAL\b",
+            r"P2_ORDINARY_P2_RECEIPT\b.*?id=onion:p2:79\b",
+        ),
+        "block_markers": (
+            r"P2_SETUP_ABORT\s+Sokkuri\b",
+            r"P2_SETUP_SKIP\s+Sokkuri\b",
+        ),
+    },
+}
+
+
+def species_contract(name):
+    """Return the reusable marker contract for a species (case-insensitive).
+
+    Raises ``FixtureRejected`` on an unknown species so consumers cannot
+    silently run with an empty contract.
+    """
+    key = str(name).strip().lower()
+    if key not in SPECIES_MARKER_CONTRACTS:
+        raise FixtureRejected(
+            "unknown species contract: %r (expected one of: %s)"
+            % (name, ", ".join(sorted(SPECIES_MARKER_CONTRACTS))))
+    contract = SPECIES_MARKER_CONTRACTS[key]
+    return {
+        "species": key,
+        "source_ids": tuple(contract["source_ids"]),
+        "setup_markers": list(contract["setup_markers"]),
+        "behavior_markers": list(contract["behavior_markers"]),
+        "block_markers": list(contract["block_markers"]),
+    }
+
+
+def consumer_markers(name):
+    """Return the consumer referral for a species: behavior pass markers plus
+    species block markers.
+
+    Consumers pass these straight into ``launch --pass-marker/--block-marker``
+    (or ``parse_native_log``/``evaluate``). Setup markers are returned for
+    documentation only; the fixture already counts binds generically.
+    """
+    contract = species_contract(name)
+    return {
+        "species": contract["species"],
+        "source_ids": contract["source_ids"],
+        "pass_markers": list(contract["behavior_markers"]),
+        "block_markers": list(contract["block_markers"]),
+        "setup_markers": list(contract["setup_markers"]),
+    }
+
 MAX_SECONDS = 600.0
 SESSION_DIR_MAX_LEN = 100
 BOOTSTRAP_PATH_MAX_LEN = 200

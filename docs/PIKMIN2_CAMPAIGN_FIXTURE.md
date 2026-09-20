@@ -78,3 +78,70 @@ captain outside attack reach when not testing captain hits; no blanket
 invincibility. Protected observation is labelled and cannot prove captain
 damage. This tooling records the guard hash and maps any guard marker to
 `BLOCKED`, never to a pass.
+
+## Adoption contracts (issue #842)
+
+Reusable consumer contracts live in `scripts/p2_campaign_fixture.py`
+(`SPECIES_MARKER_CONTRACTS`, `species_contract()`, `consumer_markers()`).
+Setup markers prove staging/binding only; behavior markers prove natural
+gameplay beyond setup and are required as `pass_markers`, so setup-only
+evidence fails closed (`FAIL: no species pass marker observed`). The fixture
+parser already counts binds generically; consumers only supply behavior +
+block markers. Offline proof:
+`tests/test_p2_campaign_fixture_adoption.py` (pure, never boots the game).
+
+| Species (sources) | Setup markers (bind/stage only) | Behavior markers (pass) | Block markers |
+|---|---|---|---|
+| Sarai (23) | `P2_SARAI_READY source_id=23`, `P2_SARAI_BIND generator=`, `P2_ENEMY_READY species=Sarai generator=` | `P2_SARAI_CORPSE_READY`, `P2_SARAI_DELIVERY_BIND generator=` (campaign delivery analogue) | `P2_SETUP_ABORT Sarai`, `P2_SETUP_SKIP Sarai` |
+| Kogane (9, 10, 11) | `P2_KOGANE_BIND generator=`, `P2_ENEMY_READY species=Kogane generator=` | `P2_KOGANE_COLLECT_PASS`, `P2_KOGANE_NATURAL_ATTACK` | `P2_SETUP_ABORT Kogane`, `P2_SETUP_SKIP Kogane` |
+| Kurage (57) | `P2_KURAGE_TEKI_READY`, `P2_KURAGE_TEKI_CORPSE`, `P2_ENEMY_READY species=Kurage generator=` | `P2_KURAGE_CORPSE_RECEIPT_PASS generator=`, `P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS generator=`, `P2_KURAGE_CORPSE_CLEANUP_PASS` | `P2_SETUP_ABORT Kurage`, `P2_SETUP_SKIP Kurage` |
+| Sokkuri (79) | `P2_SOKKURI_BIND generator=`, `P2_ENEMY_READY species=Sokkuri generator=` | `P2_SOKKURI_DELIVERY_BIND generator=`, `P2_SOKKURI_DEAD`, `P2_SOKKURI79_DELIVERED_TO_GOAL`, `P2_ORDINARY_P2_RECEIPT id=onion:p2:79` | `P2_SETUP_ABORT Sokkuri`, `P2_SETUP_SKIP Sokkuri` |
+
+Pinned requirements (asserted offline): fresh absolute private session path
+(`require_safe_session_dir`, <=100 chars, never inside assets, never
+pre-existing); source/executable/content hashes (guard + exe + prepared.json
+sha256, stale pins rejected); 960x540 centred startup
+(`PIKMIN_P2_ROOM_WINDOW=960x540`); #632 captain guard (trip -> `BLOCKED`,
+exit 86); bounded supervision (1..600 s, preview flags refused, nothing
+spawns on rejection).
+
+## Consumer referrals (referrals only; this tooling lane never boots the game)
+
+Stage once, then launch per species against its contract (same manifest;
+`--species` selects the cohort). Consumers may also call
+`consumer_markers(<species>)` to obtain the exact pass/block lists.
+
+```powershell
+py -3.12 scripts/p2_campaign_fixture.py stage --seed p2-campaign-23 `
+  --session-dir C:/p2fix/sess --content-root <prepared p2-content> `
+  --assets C:/path/to/assets --exe <nectar.exe> --species 23 `
+  --out C:/p2fix/fixture-manifest.json
+py -3.12 scripts/p2_campaign_fixture.py launch --manifest C:/p2fix/fixture-manifest.json `
+  --exe <nectar.exe> --seconds 173 `
+  --pass-marker 'P2_SARAI_CORPSE_READY\b' `
+  --pass-marker 'P2_SARAI_DELIVERY_BIND\b.*?generator=\d+' `
+  --block-marker 'P2_SETUP_ABORT\s+Sarai\b' --block-marker 'P2_SETUP_SKIP\s+Sarai\b' `
+  --report-out C:/p2fix/report-sarai.json
+py -3.12 scripts/p2_campaign_fixture.py launch --manifest C:/p2fix/fixture-manifest.json `
+  --exe <nectar.exe> --seconds 173 `
+  --pass-marker 'P2_KOGANE_COLLECT_PASS\b' `
+  --pass-marker 'P2_KOGANE_NATURAL_ATTACK\b' `
+  --block-marker 'P2_SETUP_ABORT\s+Kogane\b' --block-marker 'P2_SETUP_SKIP\s+Kogane\b' `
+  --report-out C:/p2fix/report-kogane.json
+py -3.12 scripts/p2_campaign_fixture.py launch --manifest C:/p2fix/fixture-manifest.json `
+  --exe <nectar.exe> --seconds 173 `
+  --pass-marker 'P2_KURAGE_CORPSE_RECEIPT_PASS\s+generator=\d+' `
+  --pass-marker 'P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS\s+generator=\d+' `
+  --pass-marker 'P2_KURAGE_CORPSE_CLEANUP_PASS\b' `
+  --block-marker 'P2_SETUP_ABORT\s+Kurage\b' --block-marker 'P2_SETUP_SKIP\s+Kurage\b' `
+  --report-out C:/p2fix/report-kurage.json
+py -3.12 scripts/p2_campaign_fixture.py launch --manifest C:/p2fix/fixture-manifest.json `
+  --exe <nectar.exe> --seconds 173 `
+  --pass-marker 'P2_SOKKURI_DELIVERY_BIND\b.*?generator=\d+' `
+  --pass-marker 'P2_SOKKURI_DEAD\b' `
+  --pass-marker 'P2_SOKKURI79_DELIVERED_TO_GOAL\b' `
+  --pass-marker 'P2_ORDINARY_P2_RECEIPT\b.*?id=onion:p2:79\b' `
+  --block-marker 'P2_SETUP_ABORT\s+Sokkuri\b' --block-marker 'P2_SETUP_SKIP\s+Sokkuri\b' `
+  --report-out C:/p2fix/report-sokkuri.json
+py -3.12 scripts/p2_campaign_fixture.py validate --manifest C:/p2fix/fixture-manifest.json
+```
