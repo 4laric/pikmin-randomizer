@@ -150,6 +150,20 @@ class DeliveryMixin:
             self.event(state, 'shared_review_applied', key, file=file, status=status, version=version)
             return record
 
+    def dispose_sole_review(self, config, key, generation, revision, version, handoff_sha256,
+                            file, status, reviewer, evidence, source=None):
+        """Reduced-mode sole-integrator disposition into a new immutable handoff.
+
+        The configured sole_integrator records each per-file decision
+        explicitly while delegated review workers are disabled; the single
+        fenced dispose_review writer, generation fencing, stopped-producer
+        fence and gameplay non-promotion are preserved.
+        """
+        from .review_decisions import apply_sole_disposition
+        return apply_sole_disposition(self, config, key, generation, revision, version,
+                                      handoff_sha256, file, status, reviewer, evidence,
+                                      source=source)
+
     def publish_candidate(self, key, generation, revision, version):
         require(nonempty(version), 'Candidate version required')
         with self.transaction() as state:

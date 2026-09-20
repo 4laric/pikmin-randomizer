@@ -417,4 +417,54 @@ class ControllerTests(unittest.TestCase):
         self.assertIsNone(decisions_from_text('```json\n[]\n```\n```json\n[]\n```'))
 
 
+    def sole_handoff(self, files=('consumer-shared.cpp',)):
+        from workflow.handoff import GATES
+        lane=self.reg.status()['lanes']['consumer']
+        data={key:lane[key] for key in ('lane','owner','task_id','issue','generation','scope',
+                                        'target_level','owned_files','root','native')}
+        data.update(schema=1,parent_issue=186,kind='tooling',next_action='Review',
+            changed_files=list(lane['owned_files'])+list(files),evidence={'decision-log':self.ev},
+            remaining_work=[],shared_reviews=[dict(file=name,reason='shared behavior',
+                issue_url='https://github.com/4laric/pikmin-randomizer/issues/526',
+                status='requested',evidence=['decision-log']) for name in files],
+            source_mapping=[{'description':'Workflow contract','evidence':['decision-log']}],
+            tests=[{'command':'python -m unittest','exit_code':0,'evidence':['decision-log']}],
+            gates={g:{'status':'UNTESTED','method':'unobserved','detail':'Tooling-only slice'} for g in GATES},
+            slice_acceptance=[{'criterion':lane['acceptance'][0],'status':'PASS','evidence':['decision-log']}],
+            fixture_adoption={'status':'N/A','reason':'No native runtime change'})
+        path=self.out/'sole-handoff.json';write(path,data)
+        return self.reg.submit_handoff('consumer',1,lane['revision'],str(path))
+
+    def test_controller_sole_disposition_records_explicit_decision(self):
+        lane=self.sole_handoff();original=lane['handoff']['sha256']
+        self.controller.config['sole_integrator']='Codex'
+        record=self.controller.sole_disposition('consumer',1,lane['revision'],'sole-1',original,
+            'consumer-shared.cpp','approved','Codex',self.ev)
+        updated=self.reg.status()['lanes']['consumer']
+        self.assertNotEqual(original,updated['handoff']['sha256'])
+        self.assertEqual(record['request'],dict(file='consumer-shared.cpp',status='approved',
+            reviewer='Codex',evidence=self.ev,handoff_sha256=original))
+        self.assertEqual([],self.reg.check_handoff(updated)['pending_reviews'])
+        self.assertFalse(updated['handoff']['result']['gameplay_accepted'])
+
+    def test_controller_sole_disposition_rejects_non_owner_and_unconfigured(self):
+        lane=self.sole_handoff();original=lane['handoff']['sha256']
+        self.controller.config['sole_integrator']='Codex'
+        with self.assertRaises(Rejected):
+            self.controller.sole_disposition('consumer',1,lane['revision'],'sole-1',original,
+                'consumer-shared.cpp','approved','someone-else',self.ev)
+        del self.controller.config['sole_integrator']
+        with self.assertRaises(Rejected):
+            self.controller.sole_disposition('consumer',1,lane['revision'],'sole-1',original,
+                'consumer-shared.cpp','approved','Codex',self.ev)
+        self.assertEqual(lane,self.reg.status()['lanes']['consumer'])
+
+    def test_controller_sole_disposition_replays_idempotently(self):
+        lane=self.sole_handoff();original=lane['handoff']['sha256']
+        self.controller.config['sole_integrator']='Codex'
+        args=('consumer',1,lane['revision'],'sole-1',original,'consumer-shared.cpp','approved','Codex',self.ev)
+        first=self.controller.sole_disposition(*args)
+        self.assertEqual(first,self.controller.sole_disposition(*args))
+
+
 if __name__=='__main__':unittest.main()

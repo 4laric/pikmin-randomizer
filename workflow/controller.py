@@ -492,6 +492,19 @@ class Controller:
         self.deliver_notifications()
         write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()))
 
+    def sole_disposition(self, key, generation, revision, version, handoff_sha256,
+                         file, status, reviewer, evidence, source=None):
+        """Reduced-mode sole-integrator shared-review disposition.
+
+        Delegated review workers are disabled in reduced mode, so the
+        configured sole_integrator records each per-file decision explicitly
+        through the single fenced dispose_review writer. No ADMIT, gameplay
+        promotion or inferred approval.
+        """
+        return self.reg.dispose_sole_review(self.config, key, generation, revision, version,
+                                            handoff_sha256, file, status, reviewer, evidence,
+                                            source=source)
+
     def deliver_notifications(self):
         inbox = self.config.get('integrator_inbox')
         if not inbox: return
