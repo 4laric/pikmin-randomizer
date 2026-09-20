@@ -335,12 +335,17 @@ def _adapt_kogane(source, run, actors):
 def _validate_sokkuri(source):
     """Pre-flight check for the Sokkuri (Skitter Leaf, source 79) content.
 
-    The source is the ground-invertebrate import dir
-    (``ground_inverts.json``) consumed as-is by
+    Accepts the Sokkuri extraction tree (``sokkuri.json``) staged through
+    ``experimental.pikmin2_sokkuri_content``, as well as the legacy
+    ground-invertebrate import dir (``ground_inverts.json``) consumed as-is by
     ``experimental.pikmin2_ground_inverts_install``; the full schema/policy
-    contract stays authoritative inside that installer.
+    contract stays authoritative inside the respective installer.
     """
+    from experimental import pikmin2_sokkuri_content as sokkuri_content
     source = Path(source)
+    if (source / 'sokkuri.json').is_file():
+        sokkuri_content.validate_source(source)
+        return
     manifest = source / 'ground_inverts.json'
     if not manifest.is_file():
         raise StagingError(f'Sokkuri ground manifest missing for identity content: {manifest}')
@@ -359,21 +364,29 @@ def _validate_sokkuri(source):
 
 
 def _adapt_sokkuri(source, run, actors):
-    """Adapter for Sokkuri (source 79) via the ground-invertebrate installer.
+    """Adapter for Sokkuri (source 79) via the Sokkuri content stager.
 
     Writes ``p2-ground-actors.txt`` + ``p2-ground-bank.txt`` (plus profile and
     visuals) in the exact batch-2 shape the native ``pc_p2_sokkuri_setup``
     parses (``P2_GROUND_ACTORS_1`` + ``P2_GROUND_BANK_1``). In bridge mode the
     native setup replaces the filed ids from the seed (``pc_p2_campaign_ids``),
     so filed generators are placeholders there; outside bridge mode they bind.
+
+    A ``sokkuri.json`` tree (what ``extract_sokkuri`` produces) stages through
+    ``experimental.pikmin2_sokkuri_content``; a legacy ``ground_inverts.json``
+    import dir keeps the shared ground-installer path unchanged. The ground
+    file shapes are identical either way.
     """
-    from experimental import pikmin2_ground_inverts_install as ground
+    from experimental import pikmin2_sokkuri_content as sokkuri_content
     pairs = [(int(generator), species) for generator, species in actors]
     for _, species in pairs:
         if species != 'Sokkuri':
             raise StagingError(f'Sokkuri adapter got non-Sokkuri species: {species!r}')
     if not pairs:
         raise StagingError('Sokkuri install requires at least one generator')
+    if (Path(source) / 'sokkuri.json').is_file():
+        return sokkuri_content.stage_sokkuri_ground(Path(source), run, pairs)
+    from experimental import pikmin2_ground_inverts_install as ground
     try:
         receipt = ground.install(Path(source), run, pairs)
     except ValueError as error:

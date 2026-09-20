@@ -30,6 +30,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   adapter stages the room meshes through ``pikmin2_kogane_content``.
 * 57 Kurage: ``pikmin2_kurage_assets.extract`` -> ``<out>/Kurage/``; the Kurage
   adapter stages the visual files through ``pikmin2_kurage_content``.
+* 79 Sokkuri: ``pikmin2_sokkuri_assets.extract`` -> ``<out>/Sokkuri/``
+  (``sokkuri.json`` + ``ginv_Sokkuri_<clip>_<ii>.mod``); the Sokkuri adapter
+  stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
+  ``ground_inverts.json`` import dir still stages through the shared ground
+  installer unchanged.
 
 Extraction alone is not enough, and the difference is invisible from the native
 side: a species whose assets extract but whose adapter does not stage what the
@@ -38,9 +43,9 @@ Kogane both failed (``bound=0 reason=host``, ``P2_SETUP_SKIP Kogane
 clip_file_missing``). Wire the adapter with the extractor, and prove it with a
 launch, not a unit test.
 
-Ids with a family installer but no extractor wired here (78 MiniHoudai,
-79 Sokkuri) are reported as skipped, never fabricated -- the skip reason names
-which of the two is missing, because they send you to different files.
+Ids with a family installer but no extractor wired here (78 MiniHoudai) are
+reported as skipped, never fabricated -- the skip reason names which of the two
+is missing, because they send you to different files.
 
 Actor bindings map every ``p2_layout`` binding ``target`` (a slot-uid token
 from ``docs/PIKMIN2_ADMITTED_PLACEMENT.json`` via
@@ -322,6 +327,35 @@ def extract_kurage(iso, dest):
     return target
 
 
+def extract_sokkuri(iso, dest, pose_limit=6):
+    """Build <dest>/Sokkuri/ via the Sokkuri extractor.
+
+    ``pikmin2_sokkuri_assets.extract`` produces the source poses
+    (``sokkuri.json`` + ``ginv_Sokkuri_<clip>_<ii>.mod``); the Sokkuri
+    adapter stages the batch-2 ground files from that tree via
+    ``experimental.pikmin2_sokkuri_content.stage_sokkuri_ground``.
+    """
+    from experimental import pikmin2_sokkuri_assets as sokkuri
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "Sokkuri"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-sokkuri"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        sokkuri.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 EXTRACTORS = {
     44: "extract_bluekochappy",
     54: "extract_miulin",
@@ -332,6 +366,7 @@ EXTRACTORS = {
     23: "extract_sarai",
     9: "extract_kogane",
     57: "extract_kurage",
+    79: "extract_sokkuri",
 }
 
 
@@ -372,6 +407,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out)
+            extracted.append(source_id)
+        elif source_id == 79:
+            extract_sokkuri(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here
