@@ -1381,14 +1381,16 @@
       "native_module": "pc_p2_sokkuri",
       "owner_lane": "14",
       "eligibility": "admitted",
-      "eligibility_reason": "native source FSM + flick/press receivers present; transport/reward ordinary receipt observed on the pinned pair; other gates from prior evidence",
+      "eligibility_reason": "native source FSM + flick/press receivers present; reviewed gen-5 enabled-session exactly-once Onion receipt credits transport_reward; six-gate admission preserved from the user-approved 2026-09-17 admit (gate 6 roster value is pre-existing, this lane adds no cleanup evidence)",
       "source": [
         "PIKMIN2_SOKKURI_NATIVE.md"
       ],
       "notes": [
         "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
-        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407).",
-        "Gate 5 transport_reward credited from the #578 two-run ordinary receipt: run1 onion:p2:79:0 new=1 (native.log:1307), run2 duplicate new=0 (native.log:1346), with a natural 567.61u combat-carried haul to the container; remaining gates unchanged from prior evidence."
+        "Open: water/press/death, cleanup/re-entry (#165/#407).",
+        "Gate 5 transport_reward credited from the reviewed immutable gen-5 enabled-session run (lane rd-p2-sokkuri-receipt, generation 5, native head a76341272573ed7be4a1173f139ee4cd307d99ce, reviewed as output/reduced/integration/sokkuri-578-shared-review.txt): natural reveal P2_SOKKURI_DISGUISE hidden=1 then hidden=0 (:822/:823), delivery bind only after reveal (:825), 7 natural InteractAttack hits 105.0->15.0 (:833-:914), P2_SOKKURI_DEAD prior_health=15.0 (:915), P2_SOKKURI79_CORPSE pellet=1 (:974), natural free-Pikmin haul 20.20->566.31u (:998-:1269), then exactly-once Onion receipt onion:p2:79:0 new=1 (run1 native.log:1271) and same-ledger duplicate new=0 (run2 native.log:1265). Exact receipt citations: output/reduced/rd-p2-sokkuri-receipt/campaign-g5-01/runs/run1/ee61caf5c5344b428df4eac95592b112/capture/native.log:1271 and output/reduced/rd-p2-sokkuri-receipt/campaign-g5-01/runs/run2/9cc6e022732a41beaf6f7b7df6753234/capture/native.log:1265; run1 native.log sha256 bb98dcfe9df9acce7c2361b3c8204ea2d7ba1990cb16503164ff5639b8a4ff06, run2 sha256 21c2ce73e65c642a65f9ee2535a7d097d301c77bab35fa929155d96355082d25.",
+        "Gate 6 cleanup_reentry remains UNTESTED in the reviewed source evidence: re-bind is not scene re-entry and no forget/re-entry was observed; this lane credits transport_reward only and adds no cleanup/re-entry evidence.",
+        "Roster evidence is not P2_PLAYABLE_POOL admission: P2_PLAYABLE_POOL in randomizer/seed.py is unchanged and does not include source 79; the reviewed decision is explicitly not pool admission."
       ],
       "gates": {
         "identity_spawn": "PASS",
@@ -1398,7 +1400,7 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:79:0 (P2_ORDINARY_P2_RECEIPT new=1 then duplicate new=0) output/workflow/autofill/enemy-sokkuri79-receipt/runs/run1/b643942fa892401b879fc70ce3f0da4b/capture/native.log:1307"
+      "delivery_receipt": "onion:p2:79:0 (P2_ORDINARY_P2_RECEIPT new=1 then duplicate new=0) output/reduced/rd-p2-sokkuri-receipt/campaign-g5-01/runs/run1/ee61caf5c5344b428df4eac95592b112/capture/native.log:1271"
     },
     "82": {
       "native_module": "pc_p2_pom",
