@@ -68,6 +68,16 @@ class RegistryTests(Base):
             self.reg.plan_launch('rd-test', 'operator: retry', 'Try', self.models,
                                  carry={'operator_retry_evidence': {'path': 'absent', 'sha256': 'bad'}})
 
+    def test_changed_source_is_not_vetoed_by_legacy_timed_guard(self):
+        self.reg.finish('rd-test', 1, 'blocked', 'Need producer', self.f.ev, ['#900'])
+        self.stop('rd-test')
+        with self.reg.transaction() as state:
+            lane = state['lanes']['rd-test']
+            lane.update(stall_streak=5, wake_after=self.f.now+999999)
+            lane['root']['head'] = 'f' * 40
+        item = self.reg.plan_launch('rd-test', 'consumer-prerequisite:new', 'Try', self.models)
+        self.assertEqual(item['status'], 'intent')
+
 
 class ReconcileTests(Base):
     def test_real_partitioned_snapshot(self):

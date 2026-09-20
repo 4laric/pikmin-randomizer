@@ -276,7 +276,9 @@ class ControlMixin:
         from . import no_progress
         from .storage import read_record
         inputs = sorted(set(inputs or []))
-        wake = no_progress.guarded(reason) and not obligation
+        # Reduced lanes use the transaction-fenced semantic-input guard below;
+        # the legacy timed guard must not veto a genuinely changed input first.
+        wake = no_progress.guarded(reason) and not obligation and not key.startswith('rd-')
         if wake:  # An already parked lane refuses from committed rows, without the writer lock.
             row = read_record(self, ('lanes',), key)
             refusal = row and no_progress.verdict(row, inputs, self.clock())
