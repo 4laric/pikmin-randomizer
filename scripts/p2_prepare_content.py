@@ -43,9 +43,13 @@ Kogane both failed (``bound=0 reason=host``, ``P2_SETUP_SKIP Kogane
 clip_file_missing``). Wire the adapter with the extractor, and prove it with a
 launch, not a unit test.
 
-Ids with a family installer but no extractor wired here (78 MiniHoudai) are
-reported as skipped, never fabricated -- the skip reason names which of the two
-is missing, because they send you to different files.
+An id with a family installer but no extractor wired here is reported as
+skipped, never fabricated -- the skip reason names which of the two is missing,
+because they send you to different files. That set is not enumerated in prose:
+it is ``set(ENUM_FOR_SOURCE) - set(EXTRACTORS)``, and it shrinks every time a
+species is wired. ``test_docstring_bullets_match_extractors`` keeps the bullet
+list above honest; twice now this docstring has gone stale the same day a
+species landed.
 
 Actor bindings map every ``p2_layout`` binding ``target`` (a slot-uid token
 from ``docs/PIKMIN2_ADMITTED_PLACEMENT.json`` via

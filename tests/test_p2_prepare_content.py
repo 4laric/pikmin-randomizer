@@ -159,3 +159,52 @@ def test_cli_requires_paired_actor_args():
 def test_cli_rejects_bad_pose_limit():
     with pytest.raises(SystemExit):
         prepare.main(["--iso", "a.iso", "--out", "o", "--pose-limit", "99"])
+
+
+def test_docstring_bullets_match_extractors():
+    """The module docstring must document exactly the wired extractors.
+
+    This docstring has gone stale twice, both times on the day a species landed
+    (7a165697, then again when Sokkuri was wired), and both times it asserted
+    the opposite of the truth: that a wired species had no extractor. A reader
+    trusting it would go looking in the wrong file. The bullet list is the one
+    part that has to be maintained by hand, so it is the part under test.
+    """
+    import re
+
+    bullets = set()
+    for line in prepare.__doc__.splitlines():
+        match = re.match(r"\* (\d+(?:-\d+)?) ", line.strip())
+        if not match:
+            continue
+        token = match.group(1)
+        if "-" in token:
+            first, last = (int(part) for part in token.split("-"))
+            bullets.update(range(first, last + 1))
+        else:
+            bullets.add(int(token))
+
+    wired = set(prepare.EXTRACTORS)
+    assert bullets == wired, (
+        f"docstring documents {sorted(bullets)} but EXTRACTORS wires "
+        f"{sorted(wired)}; undocumented={sorted(wired - bullets)}, "
+        f"stale={sorted(bullets - wired)}"
+    )
+
+
+def test_every_wired_extractor_has_a_dispatch_arm(tmp_path):
+    """EXTRACTORS and prepare_content_root's dispatch must not drift apart.
+
+    A species can be listed in EXTRACTORS and still never run if nobody adds the
+    matching branch -- it would then be reported as skipped with a reason that
+    says an extractor is missing, which would be false.
+    """
+    import inspect
+
+    dispatch = inspect.getsource(prepare.prepare_content_root)
+    missing = [
+        source_id for source_id in prepare.EXTRACTORS
+        if f"source_id == {source_id}" not in dispatch
+        and source_id not in (59, 60, 61, 62)  # shared dweevil arm, matched as a set
+    ]
+    assert not missing, f"wired in EXTRACTORS but never dispatched: {missing}"
