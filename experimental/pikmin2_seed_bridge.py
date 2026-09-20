@@ -36,6 +36,14 @@ LAYOUT_VERSION = "p2-enemy-layout-v1"
 PROTOCOL_HEADER = "ENEMY_P2"
 PROTOCOL_VERSION = 1
 
+# Density policy for `resolve_placement_layout` (#838). The policy is stored in
+# the manifest's ``p2_layout`` so a loaded seed can be rederived/rejected, and it
+# keeps legacy manifests (which carry no ``density`` key) unchanged.
+DENSITY_POLICY_KEY = "density"
+DENSITY_LEGACY = "all-targets-v1"
+DENSITY_BOUNDED = "bounded-coverage-v1"
+DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED)
+
 
 class SeedBridgeError(ValueError):
     """Raised when a P2 seed layout or bootstrap line is invalid."""
@@ -84,6 +92,32 @@ def validate_targets(targets) -> list[str]:
     if len(values) != len(set(values)):
         raise SeedBridgeError("binding targets contain duplicates")
     return values
+
+
+def validate_density(density) -> str:
+    """Return a recognised density policy token.
+
+    ``None`` is the product default and means the unchanged all-target fill; a
+    caller that wants bounded coverage must ask for it explicitly by token.
+    """
+    if density is None:
+        return DENSITY_LEGACY
+    if density not in DENSITY_POLICIES:
+        raise SeedBridgeError(
+            f"unknown P2 density policy {density!r}; expected one of {list(DENSITY_POLICIES)}")
+    return density
+
+
+def _layout_density(layout) -> str:
+    """Density policy stored on a layout; absent/None means the legacy default."""
+    if not isinstance(layout, dict):
+        raise SeedBridgeError("P2 layout must be a mapping")
+    density = layout.get(DENSITY_POLICY_KEY)
+    if density is None:
+        return DENSITY_LEGACY
+    if density not in DENSITY_POLICIES:
+        raise SeedBridgeError(f"unsupported P2 layout density policy: {density!r}")
+    return density
 
 
 def resolve_admitted_layout(seed, slot, targets, roster: list[RosterEntry] | None = None) -> dict:
@@ -143,17 +177,29 @@ def binding_targets_from_placement(document, roster: list[RosterEntry] | None = 
     return targets
 
 
-def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *, species=None) -> dict:
+def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *,
+                             species=None, density=None) -> dict:
     """Bind lane 04 targets to admitted identities that the document *accepts*.
 
     Targets come from lane 04's constraint catalog; each is then bound only to an
-    identity with accepted placement evidence for it. Every admitted identity must
-    have an accepted target, and each is guaranteed at least one binding. Fails
-    closed while the admission set is empty or no pair is accepted.
+    identity with accepted placement evidence for it. Every admitted identity
+    must have an accepted target, and each is guaranteed at least one binding.
+    Fails closed while the admission set is empty or no pair is accepted.
 
     ``species`` optionally narrows the pool to a subset of the admitted ids;
     targets only those excluded species could fill stay vanilla (unbound).
+
+    ``density`` selects the versioned fill policy recorded as
+    ``layout["density"]``. The default ``None`` is the legacy all-target fill
+    (:data:`DENSITY_LEGACY`): every accepted target is bound, so a one-species
+    request still replaces every compatible target. :data:`DENSITY_BOUNDED`
+    binds the minimum number of targets that gives every selected species at
+    least one binding and leaves the remaining compatible targets vanilla. Both
+    policies share the same RNG stream prefix, so bounded role assignment is a
+    stable function of the same roll. Insufficient unique accepted targets still
+    fail closed under either policy; there is no species special case.
     """
+    policy = validate_density(density)
     roster = roster if roster is not None else load_roster()
     admitted = list(admitted_ids(roster))
     if species is not None:
@@ -184,19 +230,24 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     revision = roster_revision(roster)
     by_source = by_id(roster)
     rng = SeedRandom(f"{seed}/p2-placement-layout-v1/{slot}")
-    assigned: dict[str, int] = {}
+    # Shared with the legacy fill below: the identity order and the target sort
+    # are pinned so bounded mode reuses the same deterministic roll.
+    identity_order = rng.shuffle(admitted)
     remaining = sorted(eligible, key=lambda item: (len(item), item))
-    # Cover every admitted identity first, then fill leftover targets. A
-    # target is only ever bound to an identity the document accepts for it.
-    for source_id in rng.shuffle(admitted):
+    # Assign the first unique target to each identity in turn. The legacy
+    # all-target fill continues the same roll, so both policies share coverage
+    # and remain stable functions of ``(seed, slot, document, species)``.
+    assigned: dict[str, int] = {}
+    for source_id in identity_order:
         choices = [target for target in remaining if source_id in eligible[target]]
         if not choices:
             continue
         target = rng.shuffle(choices)[0]
         assigned[target] = source_id
         remaining.remove(target)
-    for target in remaining:
-        assigned[target] = rng.shuffle(eligible[target])[0]
+    if policy == DENSITY_LEGACY:
+        for target in remaining:
+            assigned[target] = rng.shuffle(eligible[target])[0]
     # Fail closed: every admitted identity must end up bound to at least one
     # target. A target is assigned to exactly one identity, so when two admitted
     # identities share only one accepted slot (e.g. Snow 45 and Dwarf Orange 44
@@ -211,18 +262,26 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
                  "enum_name": by_source[source_id].enum_name}
                 for target, source_id in sorted(assigned.items(), key=lambda item: (len(item[0]), item[0]))]
     return {"version": LAYOUT_VERSION, "roster_schema": ROSTER_SCHEMA,
-            "roster_revision": revision, "bindings": bindings}
+            "roster_revision": revision, DENSITY_POLICY_KEY: policy,
+            "bindings": bindings}
 
 
 def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None = None, *,
-                   admitted=None) -> dict:
+                   admitted=None, density=None) -> dict:
     """Deterministically bind each target to an identity from ``cohort``.
 
     ``admitted`` is an optional allowlist; when supplied every cohort id must be
     in it. The product path supplies lane 02's admission set through
     :func:`resolve_admitted_layout`; tests and lane 04 placement may pass an
     explicit cohort.
+
+    ``density`` is stored on the layout and honoured when rederived. The legacy
+    default (:data:`DENSITY_LEGACY`) fills every ordered target; the bounded
+    policy binds the minimum number of leading targets that gives every cohort
+    identity at least one binding and leaves the rest vanilla. Insufficient
+    targets still fail closed.
     """
+    policy = validate_density(density)
     roster = roster if roster is not None else load_roster()
     revision = roster_revision(roster)
     target_ids = validate_targets(targets)
@@ -238,18 +297,23 @@ def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None
         raise SeedBridgeError("not enough binding targets to cover the admitted cohort")
 
     rng = SeedRandom(f"{seed}/p2-enemy-layout-v1/{slot}")
-    values = list(cohort_ids)
-    while len(values) < len(target_ids):
-        values.append(rng.shuffle(list(cohort_ids))[0])
-    values = rng.shuffle(values)
+    values = list(rng.shuffle(cohort_ids))
+    used_targets = target_ids
+    if policy == DENSITY_BOUNDED:
+        used_targets = target_ids[:len(cohort_ids)]
+    else:
+        while len(values) < len(target_ids):
+            values.append(rng.shuffle(list(cohort_ids))[0])
+        values = rng.shuffle(values)
     by_source = by_id(roster)
     return {
         "version": LAYOUT_VERSION,
         "roster_schema": ROSTER_SCHEMA,
         "roster_revision": revision,
+        DENSITY_POLICY_KEY: policy,
         "bindings": [
             {"target": target, "source_id": source_id, "enum_name": by_source[source_id].enum_name}
-            for target, source_id in zip(target_ids, values)
+            for target, source_id in zip(used_targets, values)
         ],
     }
 
@@ -263,6 +327,9 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
     roster = roster if roster is not None else load_roster()
     if layout.get("version") != LAYOUT_VERSION:
         raise SeedBridgeError(f"unsupported P2 layout version: {layout.get('version')!r}")
+    # Absent/None means the legacy all-target fill; any other value must be a
+    # recognised token so a tampered manifest is rejected rather than re-rolled.
+    _layout_density(layout)
     if layout.get("roster_schema") != ROSTER_SCHEMA:
         raise SeedBridgeError(f"unsupported roster schema: {layout.get('roster_schema')!r}")
     if layout.get("roster_revision") != roster_revision(roster):
@@ -300,8 +367,15 @@ def build_bootstrap(layout: dict, roster: list[RosterEntry] | None = None) -> st
     return " ".join(parts) + "\n"
 
 
-def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None) -> dict:
-    """Parse a native ``ENEMY_P2`` line back into a layout; rejects malformed input."""
+def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None, *,
+                    density=None) -> dict:
+    """Parse a native ``ENEMY_P2`` line back into a layout; rejects malformed input.
+
+    The wire format carries only the bindings, so the density policy is not on
+    the line. ``density`` lets a caller reconstruct the policy the manifest
+    stored; it defaults to the legacy all-target fill.
+    """
+    policy = validate_density(density)
     tokens = text.split()
     if not tokens or tokens[0] != PROTOCOL_HEADER:
         raise SeedBridgeError(f"missing {PROTOCOL_HEADER} header")
@@ -330,6 +404,7 @@ def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None) -> dict:
         "version": LAYOUT_VERSION,
         "roster_schema": ROSTER_SCHEMA,
         "roster_revision": revision,
+        DENSITY_POLICY_KEY: policy,
         "bindings": [
             {"target": b["target"], "source_id": b["source_id"],
              "enum_name": eligible_identity(roster, b["source_id"]).enum_name}
