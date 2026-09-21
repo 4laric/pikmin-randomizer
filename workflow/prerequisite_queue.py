@@ -122,7 +122,7 @@ def collect(reg, settings):
             # Give newly accepted providers to discovery before promoting more work.
             if linked and linked_ready and record.get('prerequisite_snapshot') != prerequisites(state, linked)[1]: continue
             try:
-                reg.evidence(observation['report'])
+                reg.recovery_evidence(observation['report'])
             except (OSError, ValueError) as exc:
                 data.setdefault('prerequisite_errors', {})[helper['scope']] = str(exc)
                 continue
@@ -199,7 +199,7 @@ def resolve(reg, coordinator, generation, request_id, outcome, lanes, reason, ev
         require(request['status'] in ('pending', 'dispatched'), 'Request already dispositioned, superseded or exhausted')
         record = data.get('planner_pool', {}).get('scopes', {}).get(request['scope'], {})
         require((record.get('no_work') or {}).get('report') == request['report'], 'Planning report changed')
-        reg.evidence(request['report'])
+        reg.recovery_evidence(request['report'])
         blocked = [k for k in request.get('lanes', []) if
                    state['lanes'].get(k, {}).get('state') == 'blocked' and not is_helper(k)]
         require(outcome != 'no_action' or not blocked or external_input is not None,

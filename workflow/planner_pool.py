@@ -251,7 +251,7 @@ def tick(controller, settings, issue_reader):
                     sleeping[helper['scope']] = dict(reason='Same blocked chain already assigned to a repair planner')
                     continue
                 try:
-                    reg.evidence(recovery['request']['report'])
+                    reg.recovery_evidence(recovery['request']['report'])
                 except (Rejected,OSError,ValueError) as exc:
                     sleeping[helper['scope']]=dict(reason='Repair evidence unavailable',error=str(exc))
                     continue

@@ -118,6 +118,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(lane['revision'], 2)
         with self.assertRaises(Rejected):
             self.reg.checkpoint('one', 1, 1, {'next_action': 'stale'})
+
+    def test_review_ready_rejects_stale_real_worktree_head(self):
+        tree = self.root / 'output/review-source'
+        tree.mkdir()
+        subprocess.run(['git','init'],cwd=tree,check=True,capture_output=True)
+        subprocess.run(['git','config','user.email','test@example.invalid'],cwd=tree,check=True)
+        subprocess.run(['git','config','user.name','Workflow Test'],cwd=tree,check=True)
+        source = tree / 'proof.txt'
+        source.write_text('base')
+        subprocess.run(['git','add','proof.txt'],cwd=tree,check=True)
+        subprocess.run(['git','commit','-m','base'],cwd=tree,check=True,capture_output=True)
+        base = subprocess.run(['git','rev-parse','HEAD'],cwd=tree,check=True,
+                              capture_output=True,text=True).stdout.strip()
+        source.write_text('reviewed')
+        subprocess.run(['git','commit','-am','reviewed'],cwd=tree,check=True,capture_output=True)
+        head = subprocess.run(['git','rev-parse','HEAD'],cwd=tree,check=True,
+                              capture_output=True,text=True).stdout.strip()
+        data = self.data()
+        data['root'] = dict(base=base,head=base,commits=[],dirty='',worktree=str(tree))
+        self.reg.register(data)
+        self.reg.checkpoint('one',1,1,{'state':'running'})
+        with self.assertRaisesRegex(Rejected, 'HEAD differs'):
+            self.reg.finish('one',1,'review-ready','Reviewed proof',self.evidence)
+        self.reg.checkpoint('one',1,2,{'root':dict(base=base,head=head,commits=[head],
+            dirty='',worktree=str(tree))})
+        lane = self.reg.finish('one',1,'review-ready','Reviewed proof with current pins',self.evidence)
+        self.assertEqual(lane['state'],'review_ready')
         with self.assertRaises(Rejected):
             self.reg.heartbeat('one', 99)
 
