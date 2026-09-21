@@ -42,7 +42,13 @@ PROTOCOL_VERSION = 1
 DENSITY_POLICY_KEY = "density"
 DENSITY_LEGACY = "all-targets-v1"
 DENSITY_BOUNDED = "bounded-coverage-v1"
-DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED)
+DENSITY_SAMPLED = "sampled-v1"
+DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
+
+# Playable P2 species assigned first under the sampled proxy policy so they
+# are always present when selected. Mirrors randomizer.seed.PLAYABLE_P2_SPECIES
+# without importing the seed module (which imports this bridge lazily).
+PLAYABLE_IDS = (44, 54, 59, 60, 61, 62)
 
 
 class SeedBridgeError(ValueError):
@@ -177,8 +183,31 @@ def binding_targets_from_placement(document, roster: list[RosterEntry] | None = 
     return targets
 
 
+def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry]) -> dict[int, set[str]]:
+    """Map each proxy source id to its accepted target tokens.
+
+    A proxy row is accepted on every target that is accepted for at least one
+    roster-admitted identity AND whose slot terrain is in the row's
+    ``terrains``. Slots and terrains come from the validated placement
+    document; today all committed slots are ``ground``.
+    """
+    from randomizer.p2_placement import validate_document
+    accepted = _accepted_placement_targets(document, roster)
+    union: set[str] = set()
+    for tokens in accepted.values():
+        union.update(tokens)
+    validated = validate_document(document)
+    terrain_by_uid = {str(item["uid"]): item["terrain"] for item in validated["slots"]}
+    result: dict[int, set[str]] = {}
+    for row in proxy_rows or []:
+        source_id = row.get("source_id")
+        terrains = row.get("terrains") or ["ground"]
+        result[source_id] = {uid for uid in union if terrain_by_uid.get(uid) in set(terrains)}
+    return result
+
+
 def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *,
-                             species=None, density=None) -> dict:
+                             species=None, density=None, proxy_rows=None) -> dict:
     """Bind lane 04 targets to admitted identities that the document *accepts*.
 
     Targets come from lane 04's constraint catalog; each is then bound only to an
@@ -198,10 +227,98 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     policies share the same RNG stream prefix, so bounded role assignment is a
     stable function of the same roll. Insufficient unique accepted targets still
     fail closed under either policy; there is no species special case.
+
+    ``proxy_rows`` (keyword-only, a list of proxy row dicts for the tier ids in
+    play) switches to the :data:`DENSITY_SAMPLED` policy automatically: the
+    species subset check allows roster-admitted ids plus those proxy ids, a
+    proxy row is accepted on every target accepted for at least one
+    roster-admitted identity whose slot terrain is in the row's ``terrains``,
+    and the sampled fill below never raises. With ``proxy_rows`` empty/None
+    this function is unchanged.
     """
-    policy = validate_density(density)
     roster = roster if roster is not None else load_roster()
-    admitted = list(admitted_ids(roster))
+    roster_admitted = list(admitted_ids(roster))
+    proxy_ids: list[int] = []
+    if proxy_rows:
+        seen_proxy: set[int] = set()
+        for row in proxy_rows:
+            source_id = row.get("source_id")
+            if type(source_id) is not int or isinstance(source_id, bool):
+                raise SeedBridgeError(f"proxy row has an invalid source id: {source_id!r}")
+            if source_id in seen_proxy:
+                raise SeedBridgeError(f"proxy rows contain a duplicate source id: {source_id}")
+            seen_proxy.add(source_id)
+            proxy_ids.append(source_id)
+        if density is not None and density != DENSITY_SAMPLED:
+            raise SeedBridgeError(
+                f"proxy rows force the {DENSITY_SAMPLED} policy, not {density!r}")
+        policy = DENSITY_SAMPLED
+    else:
+        policy = validate_density(density)
+    if proxy_rows:
+        allowed = set(roster_admitted) | set(proxy_ids)
+        if species is not None:
+            wanted = set(species)
+            if not wanted or not wanted <= allowed:
+                raise SeedBridgeError(
+                    f"P2 species subset must be a nonempty subset of the admitted ids {sorted(allowed)}: {sorted(wanted)}")
+            pool = ([source_id for source_id in roster_admitted if source_id in wanted]
+                    + sorted(source_id for source_id in proxy_ids
+                             if source_id in wanted and source_id not in set(roster_admitted)))
+        else:
+            pool = list(roster_admitted) + sorted(
+                source_id for source_id in proxy_ids if source_id not in set(roster_admitted))
+        if not pool:
+            raise SeedBridgeError(
+                "no admitted P2 identities; refusing to seed an unadmitted pool (lane 02 admission set is empty)"
+            )
+        targets = binding_targets_from_placement(document, roster)
+        accepted = _accepted_placement_targets(document, roster)
+        proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster)
+        pool_set = set(pool)
+        eligible: dict[str, list[int]] = {}
+        for target in targets:
+            ids = sorted(source_id for source_id, tokens in accepted.items()
+                         if source_id in pool_set and target in tokens)
+            ids += sorted(source_id for source_id, tokens in proxy_accepted.items()
+                          if source_id in pool_set and target in tokens
+                          and source_id not in set(ids))
+            if ids:
+                eligible[target] = ids
+        if not eligible:
+            raise SeedBridgeError("no admitted identity has accepted placement evidence in the document")
+        revision = roster_revision(roster)
+        by_source = by_id(roster)
+        rng = SeedRandom(f"{seed}/p2-placement-layout-v1/{slot}")
+        shuffled = rng.shuffle(pool)
+        playable = set(PLAYABLE_IDS)
+        identity_order = ([source_id for source_id in shuffled if source_id in playable]
+                          + [source_id for source_id in shuffled if source_id not in playable])
+        remaining = sorted(eligible, key=lambda item: (len(item), item))
+        assigned: dict[str, int] = {}
+        for source_id in identity_order:
+            choices = [target for target in remaining if source_id in eligible[target]]
+            if not choices:
+                continue
+            target = rng.shuffle(choices)[0]
+            assigned[target] = source_id
+            remaining.remove(target)
+            if not remaining:
+                break
+        for target in list(remaining):
+            assigned[target] = rng.shuffle(eligible[target])[0]
+        covered = set(assigned.values())
+        unplaced = sorted(set(pool) - covered)
+        bindings = [{"target": target, "source_id": source_id,
+                     "enum_name": by_source[source_id].enum_name}
+                    for target, source_id in sorted(assigned.items(), key=lambda item: (len(item[0]), item[0]))]
+        layout = {"version": LAYOUT_VERSION, "roster_schema": ROSTER_SCHEMA,
+                  "roster_revision": revision, DENSITY_POLICY_KEY: policy,
+                  "bindings": bindings}
+        if unplaced:
+            layout["unplaced"] = unplaced
+        return layout
+    admitted = list(roster_admitted)
     if species is not None:
         wanted = set(species)
         if not wanted or not wanted <= set(admitted):
@@ -214,7 +331,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     targets = binding_targets_from_placement(document, roster)
     accepted = _accepted_placement_targets(document, roster)
     admitted_set = set(admitted)
-    eligible: dict[str, list[int]] = {}
+    eligible = {}
     for target in targets:
         ids = sorted(source_id for source_id, tokens in accepted.items()
                      if source_id in admitted_set and target in tokens)
@@ -237,7 +354,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     # Assign the first unique target to each identity in turn. The legacy
     # all-target fill continues the same roll, so both policies share coverage
     # and remain stable functions of ``(seed, slot, document, species)``.
-    assigned: dict[str, int] = {}
+    assigned = {}
     for source_id in identity_order:
         choices = [target for target in remaining if source_id in eligible[target]]
         if not choices:
@@ -329,7 +446,17 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         raise SeedBridgeError(f"unsupported P2 layout version: {layout.get('version')!r}")
     # Absent/None means the legacy all-target fill; any other value must be a
     # recognised token so a tampered manifest is rejected rather than re-rolled.
-    _layout_density(layout)
+    policy = _layout_density(layout)
+    unplaced = layout.get("unplaced")
+    if unplaced is not None:
+        if policy != DENSITY_SAMPLED:
+            raise SeedBridgeError("P2 layout unplaced list requires the sampled-v1 density policy")
+        if (not isinstance(unplaced, list)
+                or any(type(source_id) is not int or isinstance(source_id, bool)
+                       for source_id in unplaced)
+                or len(set(unplaced)) != len(unplaced)
+                or unplaced != sorted(unplaced)):
+            raise SeedBridgeError(f"invalid P2 layout unplaced list: {unplaced!r}")
     if layout.get("roster_schema") != ROSTER_SCHEMA:
         raise SeedBridgeError(f"unsupported roster schema: {layout.get('roster_schema')!r}")
     if layout.get("roster_revision") != roster_revision(roster):
@@ -349,6 +476,10 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         entry = eligible_identity(roster, source_id)
         if binding.get("enum_name") != entry.enum_name:
             raise SeedBridgeError(f"binding {target} enum mismatch: {binding.get('enum_name')!r} != {entry.enum_name!r}")
+    if unplaced is not None:
+        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings})
+        if overlap:
+            raise SeedBridgeError(f"P2 layout unplaced ids overlap bound ids: {overlap}")
     if admitted is not None:
         allowed = set(admitted)
         unadmitted = sorted({binding["source_id"] for binding in bindings if binding["source_id"] not in allowed})

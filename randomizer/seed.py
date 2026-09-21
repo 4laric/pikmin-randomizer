@@ -189,7 +189,7 @@ P2_PLAYABLE_POOL = (
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -221,12 +221,37 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if type(combined_captain) is not bool: raise ValueError("invalid combined_captain")
     if combined_captain: collection_checks = True
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
+    if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
+        raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
     if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
     if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
+    if p2_proxy_tier is not None and not p2_enemies: raise ValueError("p2_proxy_tier requires p2_enemies")
     if p2_species == "playable": p2_species = PLAYABLE_P2_SPECIES
+    if p2_species == "full":
+        if p2_proxy_tier is None:
+            raise ValueError("p2_species 'full' requires p2_proxy_tier")
+        from .p2_proxy import tier_ids as _tier_ids
+        p2_species = tuple(PLAYABLE_P2_SPECIES) + tuple(_tier_ids(p2_proxy_tier))
     if p2_species is not None and (not isinstance(p2_species, (list, tuple, set, frozenset)) or not p2_species
                                    or any(type(i) is not int for i in p2_species)):
-        raise ValueError("p2_species must be 'playable' or a nonempty list of admitted source ids")
+        raise ValueError("p2_species must be 'playable', 'full' or a nonempty list of admitted source ids")
+    if p2_species is not None and p2_proxy_tier is not None:
+        from .p2_proxy import tier_ids as _tier_ids
+        allowed_proxy = set(_tier_ids(p2_proxy_tier))
+        declared_proxy = set(_tier_ids("declared"))
+        for source_id in p2_species:
+            if source_id in declared_proxy and source_id not in allowed_proxy:
+                raise ValueError(
+                    f"p2_species proxy id {source_id} is not in the {p2_proxy_tier!r} tier")
+    if p2_proxy_tier is not None and p2_species is not None:
+        from .p2_proxy import tier_ids as _tier_ids
+        declared_proxy = set(_tier_ids("declared"))
+        if any(source_id in declared_proxy for source_id in p2_species):
+            if p2_density is not None:
+                from experimental.pikmin2_seed_bridge import DENSITY_SAMPLED
+                if p2_density != DENSITY_SAMPLED:
+                    raise ValueError(
+                        f"p2_proxy_tier forces the {DENSITY_SAMPLED} policy, not {p2_density!r}")
     if p2_placement is not None and type(p2_placement) is not dict:
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
@@ -365,10 +390,26 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             # option; the committed accepted-placement document supplies the legal
             # targets and resolve_placement_layout still fails closed.
             p2_placement = _default_admitted_placement()
+        proxy_rows = None
+        if p2_proxy_tier is not None:
+            from .p2_proxy import load_rows as _load_proxy_rows, tier_ids as _tier_ids
+            tier_set = set(_tier_ids(p2_proxy_tier))
+            wanted_proxy = set()
+            if p2_species is not None:
+                declared_proxy = set(_tier_ids("declared"))
+                wanted_proxy = {source_id for source_id in set(p2_species)
+                                if source_id in declared_proxy}
+            rows_by_id = {row["source_id"]: row for row in _load_proxy_rows()}
+            proxy_rows = [rows_by_id[source_id] for source_id in sorted(wanted_proxy)
+                          if source_id in tier_set and source_id in rows_by_id]
         result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate(),
                                                        species=None if p2_species is None else sorted(set(p2_species)),
-                                                       density=p2_density)
+                                                       density=p2_density,
+                                                       proxy_rows=proxy_rows)
         result['capabilities'].append('p2-enemy-bridge-v1')
+        if p2_proxy_tier is not None:
+            result['p2_proxy_tier'] = p2_proxy_tier
+            result['capabilities'].append('p2-proxy-tier-v1')
     validate(result)
     return result
 
@@ -485,6 +526,12 @@ def validate(m):
         validate_upgrade_limits(m['stat_upgrade_counts'])
         if not m.get('progressive_color_stats') or 'progressive-color-stats-v2' not in m.get('capabilities', []):
             raise ValueError('custom upgrade counts require progressive stats v2')
+    if type(m) is dict and 'p2_proxy_tier' in m:
+        expected.add('p2_proxy_tier')
+        if m.get('schema') != 9 or m['p2_proxy_tier'] not in ('proven', 'declared'):
+            raise ValueError('invalid p2_proxy_tier')
+        if 'p2_layout' not in m:
+            raise ValueError('p2_proxy_tier requires a p2_layout')
     if type(m) is dict and 'p2_layout' in m:
         expected.add('p2_layout')
         from experimental.pikmin2_enemy_roster import load_and_validate
@@ -498,7 +545,12 @@ def validate(m):
         try:
             roster = load_and_validate()
             # Product path: a loaded seed must still satisfy the *current* admission set.
-            validate_p2_layout(m['p2_layout'], roster, admitted=admitted_ids(roster))
+            # With an opt-in proxy tier the admitted set is extended by that tier's ids.
+            admitted = admitted_ids(roster)
+            if m.get('p2_proxy_tier') is not None:
+                from .p2_proxy import tier_ids as _tier_ids
+                admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
+            validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
         except SeedBridgeError as exc:
             raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:
@@ -562,6 +614,7 @@ def validate(m):
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
+    if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
