@@ -12,7 +12,7 @@ def tick(controller):
     settings = controller.config.get('throughput', {}).get('autofill', {})
     key = settings.get('planner_lane')
     if not settings.get('enabled') or not key or key not in controller.config['lanes']: return
-    with reg.transaction() as state: state = copy.deepcopy(state)
+    state = reg.snapshot()  # Read-only: never hold the exclusive writer lock to inspect state.
     owner = state['lanes'].get(key, {})
     if owner.get('state') not in ('blocked', 'ready', 'reconciling'): return
     launches = list(state.get('control', {}).get('launches', {}).values())

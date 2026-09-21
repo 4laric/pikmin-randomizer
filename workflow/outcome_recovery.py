@@ -1,5 +1,4 @@
 """One artifact-preserving reconciliation attempt per unchanged source pair."""
-import copy
 from .control import fingerprint
 from .handoff import Rejected
 from .no_progress import Parked
@@ -7,7 +6,7 @@ from .no_progress import Parked
 
 def tick(controller):
     reg = controller.reg
-    with reg.transaction() as state: state = copy.deepcopy(state)
+    state = reg.snapshot()  # Read-only: never hold the exclusive writer lock to inspect state.
     launches = list(state.get('control', {}).get('launches', {}).values())
     for key, lane in state['lanes'].items():
         if lane['state'] != 'reconciling' or key not in controller.config['lanes']: continue

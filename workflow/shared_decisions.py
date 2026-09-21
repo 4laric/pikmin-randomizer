@@ -1,6 +1,5 @@
 """Pinned shared-file decisions for producers that cannot yet submit a handoff."""
 import argparse
-import copy
 import json
 import re
 from pathlib import Path
@@ -97,7 +96,7 @@ def tick(controller):
 
     Every other decision stays a recorded ledger fact and launches nothing."""
     reg=controller.reg
-    with reg.transaction() as state: state=copy.deepcopy(state)
+    state=reg.snapshot()  # Read-only: never hold the exclusive writer lock to inspect state.
     launches=list(state.get('control',{}).get('launches',{}).values())
     decisions=state.get('shared_preflight_decisions',{})
     consumed={}
