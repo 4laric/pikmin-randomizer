@@ -1,0 +1,65 @@
+{
+  "schema": "p2-proxy-placement-v1",
+  "slots": [
+    {
+      "uid": 1849273021,
+      "label": "hope_0-29_4189",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 4,
+      "evidence": {
+        "xyz": true,
+        "terrain": false,
+        "route": false
+      },
+      "source_identity": "campaign:dwarf:3",
+      "cohort": "dwarf",
+      "proxy_only": true,
+      "evidence_level": "mechanical-only: xyz from game data; terrain/route unprobed"
+    },
+    {
+      "uid": 2049888785,
+      "label": "hope_0-29_3592",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 4,
+      "evidence": {
+        "xyz": true,
+        "terrain": false,
+        "route": false
+      },
+      "source_identity": "campaign:dwarf:3",
+      "cohort": "dwarf",
+      "proxy_only": true,
+      "evidence_level": "mechanical-only: xyz from game data; terrain/route unprobed"
+    }
+  ],
+  "reserved_vanilla": [
+    3640055869,
+    328297937,
+    3886812794
+  ],
+  "notes": "Stage A proxy-tier-only expansion (issue #871): 2 Hope singleton dwarf ground slots (count == 1, unprotected, day-2 renewable). Pack generators excluded: shared campaign tokens abort the proxy binder on duplicate tokens (pc_p2_batch2.cpp). Never passed to audit()/validate_document(); six-gate species never use these slots. Reserved vanilla slots stay vanilla under the proxy tier."
+}

@@ -183,13 +183,20 @@ def binding_targets_from_placement(document, roster: list[RosterEntry] | None = 
     return targets
 
 
-def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry]) -> dict[int, set[str]]:
+def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], proxy_document=None) -> dict[int, set[str]]:
     """Map each proxy source id to its accepted target tokens.
 
     A proxy row is accepted on every target that is accepted for at least one
     roster-admitted identity AND whose slot terrain is in the row's
     ``terrains``. Slots and terrains come from the validated placement
     document; today all committed slots are ``ground``.
+
+    ``proxy_document`` is an optional validated stage-A sibling
+    (``p2-proxy-placement-v1``): when supplied, its slot uids extend the
+    audit union for proxy rows only (filtered by row terrains, minus
+    ``reserved_vanilla``). Six-gate identities keep exactly today's targets
+    because their ``accepted`` mapping never sees the sibling. When ``None``
+    (diagnostic callers) the behaviour is exactly the pre-stage-A union.
     """
     from randomizer.p2_placement import validate_document
     accepted = _accepted_placement_targets(document, roster)
@@ -198,16 +205,24 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry]) -> 
         union.update(tokens)
     validated = validate_document(document)
     terrain_by_uid = {str(item["uid"]): item["terrain"] for item in validated["slots"]}
+    reserved: set[str] = set()
+    if proxy_document is not None:
+        from randomizer.p2_placement import validate_proxy_document
+        validated_proxy = validate_proxy_document(proxy_document)
+        for item in validated_proxy["slots"]:
+            terrain_by_uid.setdefault(str(item["uid"]), item["terrain"])
+        union = set(union) | {str(item["uid"]) for item in validated_proxy["slots"]}
+        reserved = {str(uid) for uid in validated_proxy["reserved_vanilla"]}
     result: dict[int, set[str]] = {}
     for row in proxy_rows or []:
         source_id = row.get("source_id")
         terrains = row.get("terrains") or ["ground"]
-        result[source_id] = {uid for uid in union if terrain_by_uid.get(uid) in set(terrains)}
+        result[source_id] = {uid for uid in union if terrain_by_uid.get(uid) in set(terrains)} - reserved
     return result
 
 
 def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *,
-                             species=None, density=None, proxy_rows=None) -> dict:
+                             species=None, density=None, proxy_rows=None, proxy_document=None) -> dict:
     """Bind lane 04 targets to admitted identities that the document *accepts*.
 
     Targets come from lane 04's constraint catalog; each is then bound only to an
@@ -234,7 +249,12 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     proxy row is accepted on every target accepted for at least one
     roster-admitted identity whose slot terrain is in the row's ``terrains``,
     and the sampled fill below never raises. With ``proxy_rows`` empty/None
-    this function is unchanged.
+    this function is unchanged (``proxy_document`` is ignored).
+
+    ``proxy_document`` (keyword-only, a ``p2-proxy-placement-v1`` sibling) adds
+    the stage-A proxy-only slots to the proxy union and to the sampled target
+    list. Six-gate identities never see it: their ``accepted`` mapping is
+    untouched, so they keep byte-identical targets and layouts.
     """
     roster = roster if roster is not None else load_roster()
     roster_admitted = list(admitted_ids(roster))
@@ -274,7 +294,14 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
             )
         targets = binding_targets_from_placement(document, roster)
         accepted = _accepted_placement_targets(document, roster)
-        proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster)
+        proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster,
+                                                 proxy_document=proxy_document)
+        if proxy_document is not None:
+            from randomizer.p2_placement import validate_proxy_document
+            sibling = validate_proxy_document(proxy_document)
+            extra = sorted({str(item["uid"]) for item in sibling["slots"]} - set(targets),
+                           key=int)
+            targets = sorted(set(targets) | set(extra), key=int)
         pool_set = set(pool)
         eligible: dict[str, list[int]] = {}
         for target in targets:
@@ -307,6 +334,10 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
                 break
         for target in list(remaining):
             assigned[target] = rng.shuffle(eligible[target])[0]
+        if len(assigned) > 64:
+            raise SeedBridgeError(
+                "P2 layout exceeds the native 64-binding cap "
+                "(pc_randomizer.cpp:256,644; pc_p2_proxy_table.h:63)")
         covered = set(assigned.values())
         unplaced = sorted(set(pool) - covered)
         bindings = [{"target": target, "source_id": source_id,
