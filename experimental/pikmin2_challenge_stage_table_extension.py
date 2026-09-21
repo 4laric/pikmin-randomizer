@@ -41,8 +41,8 @@ RESOLVED_RE = re.compile(
     r"legacy=([\d.]+) treasure=(\d+) sha=(\S+)")
 ENGINE_UNTOUCHED_RE = re.compile(
     r"P2_CHALLENGE_STAGE_EXT_ENGINE_UNTOUCHED cave=ch_NARI_01kusachi ui_index=3")
-ENGINE_REFUSES_RE = re.compile(
-    r"P2_CHALLENGE_STAGE_EXT_ENGINE_REFUSES cave=(\S+)")
+FALLTHROUGH_RE = re.compile(
+    r"P2_CHALLENGE_STAGE_EXT_FALLTHROUGH cave=(\S+) ui_index=(\d+)")
 WINDOW_RE = re.compile(
     r"P2_CHALLENGE_STAGE_EXT_WINDOW size=960x540 .* centered=1")
 READY_RE = re.compile(r"P2_CHALLENGE_STAGE_EXT_READY observed=(\d+)")
@@ -56,7 +56,7 @@ CAPTAIN_DOWN_RE = re.compile(r"P2_FIXTURE_CAPTAIN_DOWN")
 def validate(text: str, cave: str) -> dict:
     """Validate a fixture log for one stage key. JSON-serializable verdict."""
     verdict: dict = {"cave": cave, "resolved": False, "engine_untouched": False,
-                     "engine_refuses_new": False, "window": False, "ready": False,
+                     "fallthrough_wired": False, "window": False, "ready": False,
                      "gates_untested": False, "passed": False, "captain_down": False,
                      "refusals": [], "failures": []}
     lines = text.splitlines()
@@ -104,14 +104,14 @@ def validate(text: str, cave: str) -> dict:
         return verdict
     verdict["resolved"] = True
     verdict["engine_untouched"] = ENGINE_UNTOUCHED_RE.search(text) is not None
-    refused = set(ENGINE_REFUSES_RE.findall(text))
-    verdict["engine_refuses_new"] = refused == set(ROWS)
+    wired = {m.group(1): int(m.group(2)) for m in FALLTHROUGH_RE.finditer(text)}
+    verdict["fallthrough_wired"] = wired == {name: pin["ui_index"] for name, pin in ROWS.items()}
     verdict["window"] = WINDOW_RE.search(text) is not None
     verdict["ready"] = READY_RE.search(text) is not None
     verdict["gates_untested"] = GATES_RE.search(text) is not None
     verdict["passed"] = (PASS_RE.search("\n".join(
         line.strip() for line in lines)) is not None
-        and verdict["engine_untouched"] and verdict["engine_refuses_new"]
+        and verdict["engine_untouched"] and verdict["fallthrough_wired"]
         and verdict["window"] and verdict["ready"] and verdict["gates_untested"])
     if not verdict["passed"]:
         verdict["failures"].append("incomplete-chain")
@@ -125,8 +125,8 @@ def main(argv: list) -> int:
     parser.add_argument("--json", default="")
     args = parser.parse_args(argv)
     verdict = validate(Path(args.log).read_text(encoding="utf-8", errors="replace"), args.cave)
-    print("resolved=%s engine_untouched=%s engine_refuses_new=%s window=%s ready=%s passed=%s" % (
-        verdict["resolved"], verdict["engine_untouched"], verdict["engine_refuses_new"],
+    print("resolved=%s engine_untouched=%s fallthrough_wired=%s window=%s ready=%s passed=%s" % (
+        verdict["resolved"], verdict["engine_untouched"], verdict["fallthrough_wired"],
         verdict["window"], verdict["ready"], verdict["passed"]))
     for failure in verdict["failures"]:
         print("FAIL " + failure)

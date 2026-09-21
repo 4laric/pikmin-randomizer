@@ -37,8 +37,8 @@ def good_log(cave, **overrides):
            pin["bitter"], pin["spicy"], pin["legacy"], pin["treasure"],
            pin["sha256"][:8]),
         "P2_CHALLENGE_STAGE_EXT_ENGINE_UNTOUCHED cave=ch_NARI_01kusachi ui_index=3",
-        "P2_CHALLENGE_STAGE_EXT_ENGINE_REFUSES cave=ch_ABEM_LeafChappy",
-        "P2_CHALLENGE_STAGE_EXT_ENGINE_REFUSES cave=ch_NARI_02tile",
+        "P2_CHALLENGE_STAGE_EXT_FALLTHROUGH cave=ch_ABEM_LeafChappy ui_index=17",
+        "P2_CHALLENGE_STAGE_EXT_FALLTHROUGH cave=ch_NARI_02tile ui_index=4",
         "P2_CHALLENGE_STAGE_EXT_WINDOW size=960x540 pos=100,100 display=1920x1080 centered=1",
         "P2_CHALLENGE_STAGE_EXT_READY observed=12",
         "P2_CHALLENGE_STAGE_EXT_GATES all=UNTESTED content_wired=0",
@@ -83,7 +83,7 @@ class TestValidator(unittest.TestCase):
             verdict = observer.validate(good_log(cave), cave)
             self.assertTrue(verdict["passed"], (cave, verdict["failures"]))
             self.assertTrue(verdict["engine_untouched"])
-            self.assertTrue(verdict["engine_refuses_new"])
+            self.assertTrue(verdict["fallthrough_wired"])
 
     def test_wrong_pin_fails(self):
         verdict = observer.validate(good_log("ch_ABEM_LeafChappy", ui_index=99),
