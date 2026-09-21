@@ -86,30 +86,45 @@ They are staged for the existing controller/coordinator, which must park/reuse
 the candidate worker, register the lane and bind it. Central integrator approval
 is pending. No running lane is stolen or reassigned.
 
+The unsupported stream-owner role itself is tracked as bounded follow-on #864
+(controller worker adaptation). Until that lands, streams stay provisioned-only.
+The three streams are also recorded **inactive** in the shared
+`development_streams` section (`status: awaiting-owner`, zero active, zero ready
+batches) using the verified `configure` operation; no owner is bound and no
+controller configuration is changed.
+
 ## Module contract (v1)
 
 Operations (`python -m workflow.development_streams --root <root> --request <json>`):
 
 | Operation | Effect |
 |---|---|
-| `configure` | Upsert stream definitions; refuses a silent maintained-base move unless `supersede=true`, which stales older candidates and clears the ready slot |
+| `configure` | Upsert stream definitions (worktree paths + expected branches); refuses a silent maintained-base move unless `supersede=true`, which stales older candidates and clears the ready slot |
 | `bind-owner` | Bind one existing **live** lane at its **mandatory current generation**; one owner per stream, one stream per lane |
-| `submit-candidate` | Record a stream-local candidate; observes real Git HEAD, rejects stale maintained base, rejects a second `ready` batch |
-| `retire-ready` | Fenced close of the ready batch: `abandoned` (reason required) releases the slot without claiming delivery; `maintained` stores a read-only reference to an existing canonical `lane.integration` record |
-| `validate-sources` | Fail-closed check of observed maintained HEAD and stream worktree ancestry |
-| `receipts` | Read-only maintained receipt references |
+| `submit-candidate` | Record a stream-local candidate; the caller must name the current bound owner lane and integer generation; observes real Git HEAD, rejects stale maintained base, rejects resealed maintain/pin drift, and rejects duplicate candidate IDs |
+| `retire-ready` | Fenced **abandon** of the ready batch (reason required); releases the slot without claiming delivery; idempotent for the exact reason, conflicting replay refused |
+| `validate-sources` | Fail-closed check of observed maintained HEAD and both stream worktree identities |
+| `canonical-receipt` | Read-only snapshot of a lane's real canonical `lane.integration` record, if any |
+| `receipts` | Read-only historical receipt references for a stream (normally empty) |
 | `status` / `manifest` | Inventory with `owner_state` (`awaiting-controller-assignment`, `assigned-live`, `assigned-not-live`, `assigned-stale-generation`, `assigned-terminal`) |
 
 Fail-closed guarantees:
 
-* every owner operation names an existing, live, unfinished lane at its current
-  generation; a stored owner label is not authority;
-* the ready slot can always be released (`retire-ready`), so a stream can accept
-  a second batch;
-* no caller supplies maintained hashes: `maintained` references only an existing
-  canonical `lane.integration` record and never marks the lane `done`;
-* replay of a close is idempotent for the exact disposition/reason and rejected
-  otherwise; candidate/receipt IDs are never rewritten;
+* every owner operation names an existing, live, unfinished lane and its current
+  integer generation; a request from an older generation cannot write after an
+  owner rebind, and a stored owner label is not authority;
+* candidate IDs are immutable: a recorded ID can never be overwritten, so a
+  ready candidate cannot be demoted to draft and a closed ID cannot be reused;
+* the ready slot can always be released through a reasoned `retire-ready`
+  abandon, so a stream can accept a second batch;
+* v1 has **no writable maintained-delivery disposition**: an unrelated valid
+  canonical integration cannot be attached to a stream candidate. Canonical
+  maintained receipts are exposed read-only via `canonical-receipt`, and
+  abandonment grants no acceptance;
+* both paired stream worktrees must exist as real git worktrees on their
+  recorded branch and descend from the maintained base; the observed maintained
+  HEAD must equal the configured ref, and dirty state is recorded, never
+  required clean;
 * stream-local status never records canonical integration, dispatches or wakes a
   maintained consumer.
 
