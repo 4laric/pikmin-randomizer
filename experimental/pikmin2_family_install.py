@@ -101,6 +101,11 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # Data-driven campaign proxy family (#871): Chappy (Red Bulborb, source 2)
+    # and Frog (Yellow Wollywog, source 17) stage through the generic
+    # ``experimental.pikmin2_proxy_content.stage_proxy`` grouped call below.
+    2: 'proxy', 'chappy': 'proxy',
+    17: 'proxy', 'frog': 'proxy',
 }
 
 
@@ -513,6 +518,50 @@ def _adapt_minihoudai(source, run, actors):
                 placeholder_generator=True)
 
 
+def _proxy_content_root(source, actors):
+    """Resolve the identity-keyed content root for a proxy install.
+
+    ``install_layout`` groups by family, so this adapter runs once per layout
+    with every proxy actor while ``source`` is only the first binding's
+    ``<content_root>/<enum>`` species dir. The content root is the directory
+    whose per-species children hold every bound species' ``proxy.json``.
+    """
+    species = {species for _, species in actors}
+    candidates = [Path(source), Path(source).parent]
+    for candidate in candidates:
+        if all((candidate / name / 'proxy.json').is_file() for name in species):
+            return candidate
+    raise StagingError(
+        f'Proxy content root missing proxy.json for {sorted(species)} under {source}')
+
+
+def _validate_proxy(source):
+    """Pre-flight check for one proxy species dir (full plan runs at install)."""
+    from experimental import pikmin2_proxy_content as proxy_content
+    proxy_content.validate_species_dir(source)
+
+
+def _adapt_proxy(source, run, actors):
+    """Adapter for the data-driven proxy family (sources 2, 17, ...).
+
+    Stages all proxy actors through ``experimental.pikmin2_proxy_content``
+    in one grouped call: one shared campaign/actors/bank file plus every
+    bound species' pose meshes. ``install_layout`` already groups bindings
+    by family, so this runs once per layout with all proxy generators.
+    """
+    from experimental import pikmin2_proxy_content as proxy_content
+    from randomizer.p2_proxy import load_rows
+    pairs = [(int(generator), species) for generator, species in actors]
+    rows = {row['enum_name']: row for row in load_rows()}
+    for _, species in pairs:
+        if species not in rows:
+            raise StagingError(f'Proxy adapter got non-proxy species: {species!r}')
+    if not pairs:
+        raise StagingError('Proxy install requires at least one generator')
+    content_root = _proxy_content_root(source, pairs)
+    return proxy_content.stage_proxy(content_root, run, pairs)
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
@@ -525,6 +574,7 @@ ADAPTERS = {
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 
 

@@ -40,6 +40,14 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 2 Chappy: ``pikmin2_proxy_assets.extract`` -> ``<out>/Chappy/``
+  (``proxy.json`` + ``px_Chappy_<clip>_<ii>.mod``); the proxy adapter stages
+  the campaign/actors/bank sidecars plus the pose files through
+  ``pikmin2_proxy_content``.
+* 17 Frog: ``pikmin2_proxy_assets.extract`` -> ``<out>/Frog/``
+  (``proxy.json`` + ``px_Frog_<clip>_<ii>.mod``); the proxy adapter stages
+  the campaign/actors/bank sidecars plus the pose files through
+  ``pikmin2_proxy_content``.
 
 Extraction alone is not enough, and the difference is invisible from the native
 side: a species whose assets extract but whose adapter does not stage what the
@@ -81,7 +89,9 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
+    2: "Chappy",
     9: "Kogane",
+    17: "Frog",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -388,6 +398,45 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
+def extract_proxy(iso, dest, source_id, pose_limit=4):
+    """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
+
+    ``pikmin2_proxy_assets.extract`` produces the source poses (``proxy.json``
+    + ``px_<Enum>_<clip>_<ii>.mod``); the proxy adapter stages the
+    campaign/actors/bank sidecars plus the pose files from that tree via
+    ``experimental.pikmin2_proxy_content.stage_proxy``. The species (enum
+    name, host vehicle, pose default) comes from ``randomizer/p2_proxy/``.
+    """
+    from experimental import pikmin2_proxy_assets as proxy
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(source_id) is not int or isinstance(source_id, bool):
+        raise ValueError(f"proxy source id must be an int: {source_id!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    enum_name = ENUM_FOR_SOURCE.get(source_id)
+    if enum_name is None:
+        raise ValueError(f"unknown enum name for source id {source_id!r}")
+    from randomizer.p2_proxy import load_rows
+    declared = {row["source_id"]: row for row in load_rows()}
+    if source_id not in declared or declared[source_id]["enum_name"] != enum_name:
+        raise ValueError(f"source id {source_id!r} is not a declared proxy species")
+    target = dest / enum_name
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / f".tmp-proxy-{source_id}"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        proxy.extract(iso, enum_name, source_id, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 EXTRACTORS = {
     44: "extract_bluekochappy",
     54: "extract_miulin",
@@ -400,6 +449,8 @@ EXTRACTORS = {
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
+    2: "extract_proxy",
+    17: "extract_proxy",
 }
 
 
@@ -446,6 +497,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 2 or source_id == 17:
+            extract_proxy(iso, out, source_id, pose_limit=pose_limit)
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here
