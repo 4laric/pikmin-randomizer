@@ -179,6 +179,34 @@ def parked_scope_action(diagnoses, controller_sleeping, repairs=None):
                      'not a licence for another recovery tool.'))
 
 
+def strand_reclaim_action(state):
+    """Surface prerequisite-recovery chains stranded by a terminated planner attempt.
+
+    A helper that ends without recording the expected classification or follow-up leaves
+    a permanent "once per input" attempt that every allocation function skips, so the
+    blocked consumer ages as a non-actionable ``needs_attention`` row. Read-only; the
+    bounded reclaim is an explicit operator action via ``workflow.planner_strand_reclaim``.
+    """
+    try:
+        from .planner_strand_reclaim import plan as strand_plan
+        strands = strand_plan(state)
+    except (ValueError, TypeError, KeyError, OSError):
+        return None
+    if not strands:
+        return None
+    return dict(
+        priority=1, lane='planner-strand-reclaim',
+        reason=(f"{len(strands)} prerequisite classification/follow-up chains are stranded by a "
+                'terminated planner attempt'),
+        strands=strands,
+        next_action=('Re-arm the stranded chains once with '
+                     '`py -3.12 -m workflow.planner_strand_reclaim --root <canonical> --apply` '
+                     '(bounded, fail-closed) or deploy the bounded reclaim on the controller line; a '
+                     'terminal planner helper that recorded no classification/follow-up otherwise '
+                     'suppresses its consumer chain forever. Reclaiming is not classification and never '
+                     'unblocks a consumer.'))
+
+
 def report(state, now, root=None):
     from .delivery_contracts import audit
     lanes = state.get('lanes', {})
@@ -296,6 +324,9 @@ def report(state, now, root=None):
                                  pool.get('sleeping_scopes'), repairs)
     if parked:
         actions.append(parked)
+    strands = strand_reclaim_action(state)
+    if strands:
+        actions.append(strands)
     return dict(at=now, delivery_audit=audit(state), export_repairs=export_repairs,
                 export_reconciled=export_reconciled,
                 actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
