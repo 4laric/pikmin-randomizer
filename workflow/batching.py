@@ -308,12 +308,13 @@ class BatchingMixin:
             self.event(state, 'batch_closed', integrator, batch_id=batch_id)
             return copy.deepcopy(batch)
 
-    def _report_cost(self, state, event_id, lane, amount, currency='USD', at=None):
+    def _report_cost(self, state, event_id, lane, amount, currency='USD', at=None, validate_lane=True):
         require(nonempty(event_id) and isinstance(currency, str) and len(currency) == 3 and currency.isalpha() and currency.isupper(), 'Cost ID and ISO currency required')
         finite_number(amount, 'amount', minimum=0)
         if at is not None:
             finite_number(at, 'at', minimum=0)
-        self.lane(state, lane)
+        if validate_lane:
+            self.lane(state, lane)
         costs = state.setdefault('throughput', {}).setdefault('costs', {})
         prior = costs.get(event_id)
         value = dict(id=event_id, lane=lane, amount=amount, currency=currency,
@@ -324,18 +325,33 @@ class BatchingMixin:
             self.event(state, 'cost_reported', lane, event_id=event_id)
         return copy.deepcopy(value), prior is None
 
+    def _known_lanes(self, lanes):
+        """Validate lanes against single named rows so the write stays section-scoped.
+
+        Cost ingestion only touches ``throughput.costs`` (and appends to ``events``);
+        loading every lane record for the whole registry would defeat that. Reading one
+        named row per distinct lane preserves the "unknown lane is refused" contract
+        without decoding an undeclared partition inside the sectioned transaction.
+        """
+        from .storage import read_record
+        for lane in set(lanes):
+            require(read_record(self, ('lanes',), lane) is not None, 'Unknown lane: ' + str(lane))
+
     def report_cost(self, event_id, lane, amount, currency='USD', at=None):
-        with self.transaction() as state:
-            return self._report_cost(state, event_id, lane, amount, currency, at)[0]
+        self._known_lanes([lane])
+        with self.transaction(sections=[('throughput', 'costs')], append=[('events',)]) as state:
+            return self._report_cost(state, event_id, lane, amount, currency, at, validate_lane=False)[0]
 
     def report_cost_batch(self, events):
         """Atomic ingestion; one invalid/conflicting event rolls back the batch."""
         require(isinstance(events, list), 'Cost events must be a list')
-        with self.transaction() as state:
+        for item in events:
+            require(isinstance(item, dict) and {'event_id', 'lane', 'amount'} <= set(item) and
+                    set(item) <= {'event_id', 'lane', 'amount', 'currency', 'at'}, 'Invalid cost event')
+        self._known_lanes([item['lane'] for item in events])
+        with self.transaction(sections=[('throughput', 'costs')], append=[('events',)]) as state:
             count = 0
             for item in events:
-                require(isinstance(item, dict) and {'event_id', 'lane', 'amount'} <= set(item) and
-                        set(item) <= {'event_id', 'lane', 'amount', 'currency', 'at'}, 'Invalid cost event')
-                _, added = self._report_cost(state, **item)
+                _, added = self._report_cost(state, **item, validate_lane=False)
                 count += int(added)
             return count

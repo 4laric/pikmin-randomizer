@@ -2,6 +2,7 @@
 from contextlib import contextmanager, nullcontext
 import copy
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import sqlite3
@@ -29,9 +30,34 @@ TRANSITIONS = {
 DEFAULTS = dict(max_heavy_builds=2, heartbeat_seconds=300, progress_seconds=1800,
                 failure_limit=3, handoff_limit=2, handoff_age_seconds=3600)
 
+# The slow-transaction log is diagnostic only. Bound it so a long-lived controller
+# cannot accumulate an unbounded file; keep the most recent rotations.
+SLOW_LOG_MAX_BYTES = 8 * 1024 * 1024
+SLOW_LOG_KEEP = 2
+
 
 def new_id():
     return uuid.uuid4().hex
+
+
+def rotate_slow_log(path, max_bytes=SLOW_LOG_MAX_BYTES, keep=SLOW_LOG_KEEP):
+    """Rotate an oversized slow-transaction log, keeping at most `keep` older files.
+
+    Rotation is best-effort and never raises: a diagnostic log must not fail the
+    transaction that produced it. Returns True when a rotation was attempted.
+    """
+    try:
+        if keep < 1 or not path.exists() or path.stat().st_size < max_bytes:
+            return False
+        for index in range(keep, 1, -1):
+            source = path.with_name(path.name + '.' + str(index - 1))
+            target = path.with_name(path.name + '.' + str(index))
+            if source.exists():
+                os.replace(source, target)
+        os.replace(path, path.with_name(path.name + '.1'))
+        return True
+    except OSError:
+        return False
 
 
 from .control import ControlMixin
@@ -122,7 +148,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                         elapsed_seconds=elapsed, wait_seconds=(acquired-started) if acquired else elapsed,
                         sections=None if sections is None else ['.'.join(p) for p in sections],
                         stack=traceback.format_stack(limit=8))
-                    with self.path.with_name('slow-transactions.jsonl').open('a', encoding='utf-8') as log:
+                    log_path = self.path.with_name('slow-transactions.jsonl')
+                    rotate_slow_log(log_path)
+                    with log_path.open('a', encoding='utf-8') as log:
                         log.write(json.dumps(record) + '\n')
                 except OSError:
                     pass

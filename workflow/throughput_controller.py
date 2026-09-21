@@ -27,9 +27,9 @@ def capture_costs(controller):
         path = controller.launch_directory(launch['id']) / 'events.jsonl'
         if path.is_file():
             paths.append((launch['lane'], path))
-    with reg.transaction() as state:
-        offsets = dict(state.setdefault('throughput_runtime', {}).setdefault('cost_offsets', {}))
-        known = dict(state.get('throughput', {}).get('costs', {}))
+    state = reg.snapshot(sections=[('throughput', 'costs')])
+    offsets = dict(state.setdefault('throughput_runtime', {}).setdefault('cost_offsets', {}))
+    known = dict(state.get('throughput', {}).get('costs', {}))
     for key, path in paths:
         identity = str(path.resolve())
         offset = offsets.get(identity, 0)
@@ -75,7 +75,7 @@ def capture_costs(controller):
             known[event_id] = {'amount': amount, 'at': timestamp / 1000}
         if records:
             reg.report_cost_batch(records)
-        with reg.transaction() as state:
+        with reg.transaction(sections=()) as state:
             state.setdefault('throughput_runtime', {}).setdefault('cost_offsets', {})[identity] = offset + complete
 
 
