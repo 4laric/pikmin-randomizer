@@ -45,6 +45,7 @@ class StreamOwnerTests(unittest.TestCase):
                           worktree='output/development-streams/actors-assets/root'),
                 native=None, state='blocked', revision=3, generation=2,
                 process=dict(host=socket.gethostname(), pid=DEAD_PID, started='1'),
+                capacity_parked=dict(generation=2, at=1.0),
                 dependencies=['#9'], heartbeat_at=1.0, progress_at=1.0, created_at=1.0)
         self.observed = dict(root=dict(commit=ROOT_COMMIT), native=dict(commit=NATIVE_COMMIT))
         self.worktrees = dict(
@@ -76,6 +77,12 @@ class StreamOwnerTests(unittest.TestCase):
         self.assertEqual(packet['root']['head'], ROOT_COMMIT)
         self.assertEqual(packet['maintained_base'],
                          dict(root=ROOT_COMMIT, native=NATIVE_COMMIT))
+
+    def test_prepare_rejects_unparked_blocked_lane(self):
+        with self.reg.transaction() as state:
+            state['lanes']['previous-lane'].pop('capacity_parked')
+        with self.assertRaises(Rejected):
+            self.prepare()
 
     def test_prepare_rejects_unknown_worker_and_missing_implementation_role(self):
         with self.assertRaises(Rejected):
