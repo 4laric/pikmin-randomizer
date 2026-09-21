@@ -3,7 +3,7 @@ import copy
 import json
 from .control import fingerprint
 from .provenance import cli
-from .handoff import require, Rejected
+from .handoff import nonempty, require, Rejected
 from . import approvals
 from .approvals import INSTRUCTION as APPROVALS, delegated  # noqa: F401 (delegated is re-exported)
 
@@ -90,6 +90,96 @@ def tick(controller):
                 row=state['shared_review_decisions'][item['id']]
                 if row['status']=='pending':row['waiting_reason']=str(exc)
 
+
+def delegated_review_enabled(config):
+    """True while a delegated review worker still owns shared decisions."""
+    config = config or {}
+    if config.get('shared_review_routing', {}).get('enabled'):
+        return True
+    throughput = config.get('throughput', {})
+    if throughput.get('autofill', {}).get('delegate_shared_reviews'):
+        return True
+    if config.get('delegate_shared_reviews'):
+        return True
+    return False
+
+
+def sole_integrator(config):
+    """Explicitly configured sole integration owner, or '' when unset."""
+    value = (config or {}).get('sole_integrator', '')
+    return value if isinstance(value, str) else ''
+
+
+def require_sole_authority(config, reviewer):
+    """Gate the reviewer identity; delegated mode keeps existing behavior."""
+    if delegated_review_enabled(config):
+        require(nonempty(reviewer), 'Version, reviewer and explicit review disposition required')
+        return 'delegated'
+    owner = sole_integrator(config)
+    require(nonempty(owner), 'Sole integrator not configured (set sole_integrator)')
+    require(reviewer == owner, 'Reviewer is not the configured sole integrator')
+    return 'sole'
+
+
+def check_source_pins(lane, generation, source):
+    """Exact producer generation/source pins before touching the writer."""
+    require(lane is not None, 'Unknown producer lane')
+    require(lane['generation'] == generation, 'Stale producer generation')
+    if source is None:
+        return
+    require(isinstance(source, dict), 'Source pins required')
+    if 'root' in source:
+        require(source['root'] == lane['root'], 'Producer root source changed')
+    if 'native' in source:
+        require(source['native'] == lane['native'], 'Producer native source changed')
+
+
+def apply_sole_disposition(registry, config, key, generation, revision, version,
+                           handoff_sha256, file, status, reviewer, evidence, source=None):
+    """Record one explicit per-file decision into a new immutable handoff.
+
+    Reduced mode (delegated review workers disabled) authenticates the
+    configured sole integration owner from config instead of a live reviewer
+    lane, then reuses the single fenced dispose_review writer. The decision is
+    appended to the approvals ledger so integration still reads authenticated
+    truth, and gameplay acceptance is never promoted.
+    """
+    from .storage import read_record
+    from .provenance import stamp
+    require(status in ('approved', 'rejected') and nonempty(version),
+            'Version and explicit review disposition required')
+    mode = require_sole_authority(config, reviewer)
+    check_source_pins(registry.status()['lanes'].get(key), generation, source)
+    registry.evidence(evidence)
+    request = dict(file=file, status=status, reviewer=reviewer, evidence=evidence,
+                   handoff_sha256=handoff_sha256)
+    code = stamp()  # Warm the per-process revision before taking the writer lock.
+    before = read_record(registry, ('lanes',), key)
+    require(isinstance(before, dict), 'Unknown lane: ' + str(key))
+    # The reviewed-diff digest is supporting evidence; reduced mode must also work
+    # where the canonical root is not a git checkout (e.g. isolated fixtures).
+    try:
+        digest = approvals.diff(registry.root, before, file)
+    except (Rejected, OSError, ValueError):
+        name, path = approvals.split(before, file)
+        digest = (name, path, None)
+    identity = dict(lane=reviewer, source=mode, generation=generation, launch=None,
+                    models=[], model=None, session=None)
+    with registry.transaction() as state:
+        lane = registry.lane(state, key, generation)
+        if fingerprint([key, generation, version]) in registry.delivery(state)['dispositions']:
+            return registry._dispose_review(state, key, generation, revision, version, request)
+        require(approvals.pins(lane) == approvals.pins(before),
+                'Producer pins changed while hashing the reviewed diff')
+        require(lane['state'] in ('running', 'handoff_ready', 'integrating') and lane.get('handoff') and
+                lane['handoff']['sha256'] == handoff_sha256, 'Review source hash changed')
+        row = approvals.review_row(registry, state, 'dispose_review', lane, file, digest, status,
+                                   evidence, identity, code, handoff_sha256=handoff_sha256)
+        record = registry._dispose_review(state, key, generation, revision, version, request, row['id'])
+    lane = registry.status()['lanes'][key]
+    require(lane['handoff']['result']['gameplay_accepted'] is False,
+            'Disposition must never promote gameplay acceptance')
+    return record
 
 
 def main():
