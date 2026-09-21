@@ -1,0 +1,11 @@
+{
+ "clips": {
+  "wait1": "move1"
+ },
+ "enum_name": "Imomushi",
+ "host_teki": 3,
+ "notes": "Ravenous Whiskerpillar; proxy over TEKI_Chappy; wait1 poses sampled from move1 (no idle clip on disc)",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 65
+}

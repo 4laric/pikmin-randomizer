@@ -1,0 +1,13 @@
+{
+ "asset_dir": "UmiMushi",
+ "clips": {
+  "wait1": "search1"
+ },
+ "enum_name": "UmiMushiBlind",
+ "host_teki": 3,
+ "notes": "Toady Bloyster; proxy over TEKI_Chappy; shares UmiMushi model/anim with parent (identical look); wait1 poses sampled from search1; sturn1 skipped: 40-joint clip vs 25-joint model skeleton",
+ "param_dir": "umimushi",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 101
+}

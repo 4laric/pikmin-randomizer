@@ -1,0 +1,11 @@
+{
+ "clips": {
+  "wait1": "move"
+ },
+ "enum_name": "Tobi",
+ "host_teki": 20,
+ "notes": "Shearwig; proxy over TEKI_KabekuiC; wait1 poses sampled from move (no idle clip on disc)",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 14
+}

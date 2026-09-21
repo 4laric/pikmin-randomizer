@@ -25,8 +25,13 @@ def _proxy_rows_for(ids):
 
 
 def test_tier_ids_declared_vs_proven():
-    assert tier_ids("declared") == [2, 17]
-    assert tier_ids("proven") == []
+    rows = load_rows()
+    declared = tier_ids("declared")
+    assert declared == sorted(row["source_id"] for row in rows)
+    assert {2, 17} <= set(declared)
+    # Proven is exactly the rows that carry a probe evidence block.
+    assert tier_ids("proven") == sorted(row["source_id"] for row in rows if "evidence" in row)
+    assert set(tier_ids("proven")) <= set(declared)
     with pytest.raises(ValueError):
         tier_ids("bogus")
 

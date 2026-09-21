@@ -1,0 +1,13 @@
+{
+ "asset_dir": "Tank",
+ "clips": {
+  "wait1": "waitact1"
+ },
+ "enum_name": "Wtank",
+ "host_teki": 15,
+ "notes": "Watery Blowhog; proxy over TEKI_Tank; shares Tank model/anim with parent (identical look); wait1 poses sampled from waitact1",
+ "param_dir": "tank",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 25
+}

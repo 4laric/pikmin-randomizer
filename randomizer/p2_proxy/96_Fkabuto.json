@@ -1,0 +1,10 @@
+{
+ "asset_dir": "Kabuto",
+ "enum_name": "Fkabuto",
+ "host_teki": 17,
+ "notes": "Armored Cannon Beetle Larva (burrowed); proxy over TEKI_Beatle; shares Kabuto model/anim with parent (identical look)",
+ "param_dir": "kabuto",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 96
+}

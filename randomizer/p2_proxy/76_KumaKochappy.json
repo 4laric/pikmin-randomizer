@@ -1,0 +1,10 @@
+{
+ "asset_dir": "Kochappy",
+ "enum_name": "KumaKochappy",
+ "host_teki": 31,
+ "notes": "Dwarf Bulbear; proxy over TEKI_Chappb; shares Kochappy model/anim with parent (identical look)",
+ "param_dir": "kochappy",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 76
+}

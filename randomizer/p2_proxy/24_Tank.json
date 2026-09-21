@@ -1,0 +1,11 @@
+{
+ "clips": {
+  "wait1": "waitact1"
+ },
+ "enum_name": "Tank",
+ "host_teki": 15,
+ "notes": "Fiery Blowhog; proxy over TEKI_Tank; wait1 poses sampled from waitact1 (no wait1/wait/wait2 on disc)",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 24
+}

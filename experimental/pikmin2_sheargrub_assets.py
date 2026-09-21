@@ -13,16 +13,70 @@ from experimental.pikmin2_animation import sample_frames
 def sha(data):return hashlib.sha256(data).hexdigest()
 
 
-def animation_rows(text):
+def animation_rows(text, *, allow_uppercase=False, dedupe_duplicates=False,
+                    allow_braceless=False, notes=None):
+    """Parse an ``enemyanimmgr.txt`` registry into ``[{file, events}]`` rows.
+
+    Strict by default (the admitted-species contract): lowercase
+    ``[a-z0-9_]+\\.bca`` filenames, brace-delimited blocks, and a header
+    count matching both the block count and the distinct-file count.
+
+    The proxy extractor opts into tolerances explicitly (no species checks
+    here; every tolerance is data-driven through these parameters):
+
+    * ``allow_uppercase`` accepts ``[A-Za-z0-9_]+\\.bca`` filenames
+      (Kabuto ``K_wait`` stems, Titan Dweevil ``preattackF`` variants).
+    * ``dedupe_duplicates`` skips repeat registrations of an already-seen
+      file, keeping the first (Catfish registers ``wait1.bca`` 3x against
+      a header count of 9; Titan Dweevil registers ``wait2.bca`` 2x
+      against 30). The parsed block total must still equal the header.
+    * ``allow_braceless`` accepts a registration block whose opening ``{``
+      line is missing from the source text (DangoMushi ``attack_2.bca``).
+    * ``notes`` (a list, or ``None``) collects one human-readable string
+      per tolerance actually exercised, so proxy manifests can record
+      under ``registry_notes`` that nothing was silent.
+    """
     clean=re.sub(r'#[^\r\n]*','',text)
     count=int(clean.split()[0]);rows=[]
-    for block in re.findall(r'\{([^{}]*)\}',clean):
-        fields=block.split()
-        if len(fields)<3 or not re.fullmatch(r'[a-z0-9_]+\.bca',fields[1]) or fields[-1]!='-1':raise ValueError('Invalid animation registration')
+    name_pattern=r'[A-Za-z0-9_]+\.bca' if allow_uppercase else r'[a-z0-9_]+\.bca'
+    if allow_braceless:
+        # Blocks are `}`-terminated; the header count token sits ahead of the
+        # first block's `{`, so segment 0 still yields its block from the
+        # text after the last `{`. The trailing segment past the final `}`
+        # carries no fields and is skipped below.
+        segments=clean.split('}')
+        raw_blocks=[]
+        for segment in segments:
+            if not segment.split():
+                continue
+            content=segment.rsplit('{',1)[1] if '{' in segment else segment
+            raw_blocks.append((content, '{' not in segment))
+    else:
+        raw_blocks=[(block, False) for block in re.findall(r'\{([^{}]*)\}',clean)]
+    parsed=0
+    for content, braceless in raw_blocks:
+        fields=content.split()
+        if len(fields)<3 or not re.fullmatch(name_pattern,fields[1]) or fields[-1]!='-1':raise ValueError('Invalid animation registration')
         events=fields[2:-1]
         if len(events)%2:raise ValueError('Invalid animation event pairs')
+        parsed+=1
+        if fields[1] in {row['file'] for row in rows}:
+            if not dedupe_duplicates:
+                rows.append({'file':fields[1],'events':[[int(events[i]),int(events[i+1])] for i in range(0,len(events),2)]})
+                continue
+            if notes is not None:
+                notes.append(f'duplicate-file registration skipped: {fields[1]}')
+            continue
+        if braceless and notes is not None:
+            notes.append(f'brace-less registration block accepted: {fields[1]}')
         rows.append({'file':fields[1],'events':[[int(events[i]),int(events[i+1])] for i in range(0,len(events),2)]})
-    if len(rows)!=count or len({r['file'] for r in rows})!=count:raise ValueError('Animation registry count/identity mismatch')
+    if dedupe_duplicates:
+        if parsed!=count:raise ValueError('Animation registry count/identity mismatch')
+    elif len(rows)!=count or len({r['file'] for r in rows})!=count:raise ValueError('Animation registry count/identity mismatch')
+    if allow_uppercase and notes is not None:
+        mixed=sorted({row['file'] for row in rows if row['file'] != row['file'].lower()})
+        if mixed:
+            notes.append(f'mixed-case animation filenames accepted: {", ".join(mixed)}')
     return rows
 
 
