@@ -28,6 +28,7 @@ LIVE_HELPER_STATES = (None, 'done', 'blocked')
 DELIVERED_ACTIONS = ('proposal', 'producer', 'integration_packet')
 RECLAIM_HISTORY = 'strand_reclaims'
 HISTORY_LIMIT = 200
+ORPHAN_MIN_AGE = 300
 
 
 def _autofill(state):
@@ -95,30 +96,87 @@ def _internal_strands(state, attempts, history):
     return strands
 
 
-def plan(state):
-    """Read-only list of stranded prerequisite-recovery chains, sorted by kind/consumer."""
+def _orphan_scopes(state, now, history):
+    """Planner scopes whose helper lane vanished and whose reservation never completed.
+
+    The controller only completes a scope record when its helper lane reaches ``done``
+    and only counts records without ``completed_at`` as active. A record whose helper
+    lane no longer exists therefore pins ``active`` forever and denies the pool a free
+    scope to re-allocate the re-armed chains. Reclaim only an old record whose lane is
+    strictly absent; a live or just-created lane is never touched.
+    """
+    autofill = state.get('throughput_runtime', {}).get('autofill', {})
+    pool = autofill.get('planner_pool', {}).get('scopes', {})
+    items = autofill.get('items', {})
+    lanes = state.get('lanes', {})
+    orphans = []
+    for scope, record in pool.items():
+        if not isinstance(record, dict) or 'completed_at' in record:
+            continue
+        spec = record.get('spec') or {}
+        lane_id = (spec.get('lane') or {}).get('lane')
+        if not lane_id or lane_id in lanes:
+            continue
+        started = record.get('started_at')
+        if not isinstance(started, (int, float)) or now - started < ORPHAN_MIN_AGE:
+            continue
+        item = items.get(spec.get('id'), {})
+        if item.get('status') in ('completed', 'superseded'):
+            continue
+        key = 'orphan:' + scope
+        if key in history:
+            continue
+        orphans.append(dict(kind='orphaned-scope', scope=scope, lane=lane_id, item=spec.get('id'),
+                            started_at=started, age_seconds=int(now - started)))
+    return orphans
+
+
+def plan(state, now=None):
+    """Read-only list of stranded prerequisite-recovery chains and orphaned scopes."""
+    import time as _time
     attempts = _attempts(state)
     history = _history_read(state)
     if not isinstance(attempts, dict):
         return []
     strands = _classification_strands(state, attempts, history)
     strands.extend(_internal_strands(state, attempts, history))
-    return sorted(strands, key=lambda s: (s['kind'], s['consumer']))
+    strands.extend(_orphan_scopes(state, _time.time() if now is None else now, history))
+    return sorted(strands, key=lambda s: (s['kind'], s.get('consumer') or s.get('scope') or ''))
 
 
 def apply(reg):
-    """Re-arm every planned stranded chain once; return the reclaimed chains.
+    """Re-arm every planned stranded chain / orphaned scope once; return the reclaims.
 
     The transaction recomputes the plan so a concurrent change cannot be reclaimed
-    from stale reads. Each removal records the prior attempt and appends a bounded
-    history entry plus an audit event.
+    from stale reads. Each removal records the prior attempt (or scope reservation) and
+    appends a bounded history entry plus an audit event.
     """
     with reg.transaction() as state:
-        strands = plan(state)
+        strands = plan(state, now=reg.clock())
         autofill = _autofill(state)
         attempts = autofill.setdefault('prerequisite_recovery', {})
+        pool = autofill.setdefault('planner_pool', {}).setdefault('scopes', {})
+        items = autofill.setdefault('items', {})
         history = autofill.setdefault(RECLAIM_HISTORY, {})
         for strand in strands:
+            if strand['kind'] == 'orphaned-scope':
+                key = 'orphan:' + strand['scope']
+                record = pool.get(strand['scope'])
+                if not isinstance(record, dict) or 'completed_at' in record:
+                    continue
+                spec = record.get('spec') or {}
+                lane_id = (spec.get('lane') or {}).get('lane')
+                if not lane_id or lane_id in state.get('lanes', {}):
+                    continue
+                record.update(completed_at=reg.clock(), no_work_checked=True, no_work=None,
+                              orphaned_reclaim=True)
+                item = items.get(spec.get('id'))
+                if isinstance(item, dict) and item.get('status') not in ('completed', 'superseded'):
+                    item.update(status='needs_attention', ready=False)
+                history[key] = dict(strand, at=reg.clock())
+                reg.event(state, 'planner_scope_orphan_reclaimed', strand['lane'],
+                          scope=strand['scope'], item=strand.get('item'))
+                continue
             identity = strand['identity']
             prior = attempts.pop(identity, None)
             if prior is None:

@@ -112,12 +112,60 @@ class PlannerStrandReclaimTests(unittest.TestCase):
 
     def test_operator_action_surfaces_strands(self):
         state, identity, _ = self.classification_state()
-        action = strand_reclaim_action(state)
+        action = strand_reclaim_action(state, 50)
         self.assertEqual(action['priority'], 1)
         self.assertEqual(action['lane'], 'planner-strand-reclaim')
         self.assertEqual(len(action['strands']), 1)
         self.assertIn('workflow.planner_strand_reclaim', action['next_action'])
-        self.assertIsNone(strand_reclaim_action(dict(lanes={}, throughput_runtime={})))
+        self.assertIsNone(strand_reclaim_action(dict(lanes={}, throughput_runtime={}), 0))
+
+    def orphan_state(self, lane_present=False, started_at=1):
+        consumer = lane_record('consumer-y', 7, ['#7 missing'], state='blocked')
+        lanes = {'consumer-y': consumer}
+        if lane_present:
+            lanes['planning-shard-e-1-cycle-9'] = lane_record(
+                'planning-shard-e-1-cycle-9', 7, [], state='ready')
+        state = dict(
+            lanes=lanes,
+            throughput=dict(workstreams={}),
+            throughput_runtime={'autofill': {
+                'prerequisite_recovery': {},
+                'items': {'planning-shard-e-1-cycle-9': dict(status='pending', phase='pending',
+                                                             lane='planning-shard-e-1-cycle-9')},
+                'planner_pool': {'scopes': {'enemies-1': dict(
+                    started_at=started_at,
+                    spec=dict(id='planning-shard-e-1-cycle-9',
+                              lane=dict(lane='planning-shard-e-1-cycle-9')))}}
+            }},
+            dependency_classifications={}, delivery_contracts={},
+            support_actions={}, consumer_verifications={})
+        return state
+
+    def test_orphaned_scope_is_released_once(self):
+        state = self.orphan_state()
+        strands = plan(state, now=1000)
+        self.assertEqual([s['kind'] for s in strands], ['orphaned-scope'])
+        self.seed_registry(state)
+        applied = apply(self.reg)
+        self.assertEqual([s['kind'] for s in applied], ['orphaned-scope'])
+        after = self.reg.snapshot()
+        scope = after['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies-1']
+        self.assertIn('completed_at', scope)
+        self.assertEqual(after['throughput_runtime']['autofill']['items']
+                         ['planning-shard-e-1-cycle-9']['status'], 'needs_attention')
+        self.assertIn('orphan:enemies-1',
+                      after['throughput_runtime']['autofill'][RECLAIM_HISTORY])
+        self.assertIn('planner_scope_orphan_reclaimed', [e['kind'] for e in after['events']])
+        self.assertEqual(plan(after, now=1000), [])
+        self.assertEqual(apply(self.reg), [])
+
+    def test_live_helper_lane_is_not_orphaned(self):
+        state = self.orphan_state(lane_present=True)
+        self.assertEqual(plan(state, now=1000), [])
+
+    def test_recent_scope_is_not_orphaned(self):
+        state = self.orphan_state(started_at=990)
+        self.assertEqual(plan(state, now=1000), [])
 
     def test_report_includes_strand_action(self):
         state, _, _ = self.classification_state()

@@ -9,6 +9,7 @@ from .integration_wakeup import receipt_gaps
 from .registry import Registry
 from .handoff import local_path
 from .processes import probe
+from .planner_evidence_disposition import dispositions
 from .review_acceptance import review_errors
 
 
@@ -143,31 +144,40 @@ def parked_scope_diagnoses(root, state, now):
         return []
 
 
-def parked_scope_action(diagnoses, controller_sleeping, repairs=None):
+def parked_scope_action(diagnoses, controller_sleeping, repairs=None, disposed=None):
     """Aggregate parked recovery scopes and controller-summary divergence into one action.
 
     Priority 0 when at least one scope is archive-refreshable (the #855 fallback would
     recover it) or a blocked lane has repairable dead-but-archived evidence, else 1.
-    Reports the exact owner action per scope and the divergence between the controller's
-    stored summary and the canonical reproduction.
+    Scopes with an explicit coordinator historical-unavailable disposition
+    (workflow.planner_evidence_disposition) are reported as history and no longer
+    presented as actionable; their recorded hashes and lane dependencies are untouched.
     """
-    if not diagnoses:
+    disposed = disposed or {}
+    diagnosed = {d['scope'] for d in diagnoses}
+    active = [d for d in diagnoses if d.get('scope') not in disposed]
+    if not active:
         return None
-    refreshable = sorted(d['scope'] for d in diagnoses if d.get('status') == 'refreshable')
-    reproduced = {d['scope'] for d in diagnoses}
+    refreshable = sorted(d['scope'] for d in active if d.get('status') == 'refreshable')
+    reproduced = {d['scope'] for d in active}
     declared = set(controller_sleeping or {})
     repairable = len(repairs or [])
     rows = [dict(scope=d['scope'], status=d.get('status'), lanes=d.get('lanes') or [],
                  owner_action=d.get('owner_action'),
                  refreshed_path=((d.get('refreshed') or {}).get('report') or {}).get('path'))
-            for d in sorted(diagnoses, key=lambda d: d['scope'])]
+            for d in sorted(active, key=lambda d: d['scope'])]
+    history = [dict(scope=scope, status=disposed[scope].get('status'),
+                    reason=disposed[scope].get('reason'))
+               for scope in sorted(disposed) if scope in diagnosed]
     return dict(
         priority=0 if (refreshable or repairable) else 1,
         lane='planner-repair-evidence-parked',
-        reason=(f"{len(diagnoses)} planner scopes are parked for unavailable repair evidence"
+        reason=(f"{len(active)} planner scopes are parked for unavailable repair evidence"
                 + (f"; {len(refreshable)} archive-refreshable" if refreshable else '')
-                + (f"; {repairable} blocked-lane pointers repairable" if repairable else '')),
+                + (f"; {repairable} blocked-lane pointers repairable" if repairable else '')
+                + (f"; {len(history)} disposed historical-unavailable" if history else '')),
         scopes=rows, refreshable=refreshable, repairable_blocked_lanes=repairable,
+        disposed=history,
         canonical_only=sorted(reproduced - declared), controller_only=sorted(declared - reproduced),
         next_action=('Repair dead-but-archived recovery pointers now with '
                      '`py -3.12 -m workflow.recovery_evidence_repair --root <canonical> --apply` '
@@ -175,35 +185,42 @@ def parked_scope_action(diagnoses, controller_sleeping, repairs=None):
                      'controller line: archive-refreshable scopes then resolve automatically without weakening the '
                      'recorded hash. For unavailable scopes the named owner lane must re-submit or re-archive the '
                      'exact outcome evidence (or the coordinator must re-run the recovery with fresh evidence); never '
-                     'substitute changed bytes. Divergence from the controller summary is a deployed-line difference, '
+                     'substitute changed bytes. Record one coordinator historical-unavailable disposition per scope '
+                     '(`py -3.12 -m workflow.planner_evidence_disposition --root <canonical> --request <json>`) when '
+                     'the exact bytes are confirmed lost, preserving every recorded hash and dependency. '
+                     'Divergence from the controller summary is a deployed-line difference, '
                      'not a licence for another recovery tool.'))
 
 
-def strand_reclaim_action(state):
+def strand_reclaim_action(state, now):
     """Surface prerequisite-recovery chains stranded by a terminated planner attempt.
 
     A helper that ends without recording the expected classification or follow-up leaves
-    a permanent "once per input" attempt that every allocation function skips, so the
-    blocked consumer ages as a non-actionable ``needs_attention`` row. Read-only; the
-    bounded reclaim is an explicit operator action via ``workflow.planner_strand_reclaim``.
+    a permanent "once per input" attempt that every allocation function skips, and a
+    scope whose helper lane no longer exists pins the planning pool active forever. Both
+    leave the blocked consumer as a non-actionable ``needs_attention`` row. Read-only;
+    the bounded reclaim is an explicit operator action via ``workflow.planner_strand_reclaim``.
     """
     try:
         from .planner_strand_reclaim import plan as strand_plan
-        strands = strand_plan(state)
+        strands = strand_plan(state, now=now)
     except (ValueError, TypeError, KeyError, OSError):
         return None
     if not strands:
         return None
+    orphans = sum(1 for s in strands if s.get('kind') == 'orphaned-scope')
+    chains = len(strands) - orphans
     return dict(
         priority=1, lane='planner-strand-reclaim',
-        reason=(f"{len(strands)} prerequisite classification/follow-up chains are stranded by a "
-                'terminated planner attempt'),
+        reason=(f"{chains} prerequisite classification/follow-up chains are stranded and {orphans} "
+                'planner scopes are orphaned by a terminated planner attempt'),
         strands=strands,
-        next_action=('Re-arm the stranded chains once with '
+        next_action=('Re-arm the stranded chains and release the orphaned scopes once with '
                      '`py -3.12 -m workflow.planner_strand_reclaim --root <canonical> --apply` '
                      '(bounded, fail-closed) or deploy the bounded reclaim on the controller line; a '
                      'terminal planner helper that recorded no classification/follow-up otherwise '
-                     'suppresses its consumer chain forever. Reclaiming is not classification and never '
+                     'suppresses its consumer chain forever, and a scope whose helper lane vanished pins '
+                     'the planning pool active forever. Reclaiming is not classification and never '
                      'unblocks a consumer.'))
 
 
@@ -321,10 +338,11 @@ def report(state, now, root=None):
         except (OSError, ValueError, TypeError):
             repairs = []
     parked = parked_scope_action(parked_scope_diagnoses(root, state, now),
-                                 pool.get('sleeping_scopes'), repairs)
+                                 pool.get('sleeping_scopes'), repairs,
+                                 disposed=dispositions(state))
     if parked:
         actions.append(parked)
-    strands = strand_reclaim_action(state)
+    strands = strand_reclaim_action(state, now)
     if strands:
         actions.append(strands)
     return dict(at=now, delivery_audit=audit(state), export_repairs=export_repairs,
