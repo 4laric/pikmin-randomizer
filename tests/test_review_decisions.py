@@ -159,6 +159,17 @@ class SoleDispositionTests(unittest.TestCase):
         self.assertEqual(record['request']['reviewer'], 'any-owner')
         self.assertFalse(self.reg.status()['lanes']['one']['handoff']['result']['gameplay_accepted'])
 
+    def test_delegated_mode_detects_live_planner_pool_config_shape(self):
+        config = {
+            'throughput': {
+                'autofill': {
+                    'planner_pool': {'delegate_shared_reviews': True},
+                },
+            },
+        }
+        self.assertTrue(delegated_review_enabled(config))
+        self.assertEqual(require_sole_authority(config, 'review-worker'), 'delegated')
+
 
 if __name__ == '__main__':
     unittest.main()

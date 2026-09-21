@@ -15,7 +15,10 @@ def delegated_review_enabled(config):
     if config.get('shared_review_routing', {}).get('enabled'):
         return True
     throughput = config.get('throughput', {})
-    if throughput.get('autofill', {}).get('delegate_shared_reviews'):
+    autofill = throughput.get('autofill', {})
+    if autofill.get('delegate_shared_reviews'):
+        return True
+    if autofill.get('planner_pool', {}).get('delegate_shared_reviews'):
         return True
     if config.get('delegate_shared_reviews'):
         return True
