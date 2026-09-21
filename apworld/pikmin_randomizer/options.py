@@ -52,10 +52,13 @@ class P2EnemyRandomizer(Toggle):
 class P2EnemyPool(Choice):
     """Which admitted Pikmin 2 enemies the bridge may place. playable: only species the
     launcher can stage and run today (Blue Kochappy, Mamuta, the four elemental Otakara);
-    slots only other species could fill stay vanilla. all: every admitted species."""
+    slots only other species could fill stay vanilla. all: every admitted species.
+    full: every proven proxy species (Pikmin 2 models over Pikmin 1 enemy behaviour,
+    never six-gate P2 identities) plus the playable six."""
     display_name = 'Pikmin 2 enemy pool'
     option_playable = 0
     option_all = 1
+    option_full = 2
     default = 0
 
 
