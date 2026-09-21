@@ -48,6 +48,10 @@ campaign/actors/bank sidecars plus the pose files through
 ``pikmin2_proxy_content``. Adding a species is one new declaration file;
 the ``ENUM_FOR_SOURCE``/``EXTRACTORS`` rows and the dispatch arm below derive
 from ``randomizer.p2_proxy.load_rows()`` instead of naming any species.
+When ``--seed-manifest`` is given, every proxy id its ``p2_layout``
+bindings actually bind (and its ``p2_proxy_tier`` covers) joins the
+extraction set automatically; manifests without proxy bindings extract
+exactly today's default list.
 
 Extraction alone is not enough, and the difference is invisible from the native
 side: a species whose assets extract but whose adapter does not stage what the
@@ -159,6 +163,41 @@ def content_dir_for(out, source_id):
     if enum_name is None:
         raise ValueError(f"unknown enum name for source id {source_id!r}")
     return Path(out) / enum_name
+
+
+def proxy_ids_for_manifest(manifest_path):
+    """Proxy source ids a seed manifest binds that the tier covers.
+
+    Reads ``p2_layout.bindings`` from the manifest and returns the bound
+    proxy source ids (see ``PROXY_SOURCE_IDS``) in binding order, failing
+    closed when a bound proxy id is not covered by the manifest's
+    ``p2_proxy_tier``. Manifests without proxy bindings return ``[]`` so
+    today's default extraction list is unchanged byte-for-byte.
+    """
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    layout = manifest.get("p2_layout")
+    if not isinstance(layout, dict):
+        return []
+    bound = []
+    for binding in layout.get("bindings", []):
+        if isinstance(binding, dict) and binding.get("source_id") in PROXY_SOURCE_IDS:
+            if binding["source_id"] not in bound:
+                bound.append(binding["source_id"])
+    if not bound:
+        return []
+    tier = manifest.get("p2_proxy_tier")
+    if tier is None:
+        raise ValueError(
+            f"seed manifest binds proxy species {bound} without a "
+            f"p2_proxy_tier key; regenerate with --p2-proxy-tier")
+    from randomizer.p2_proxy import tier_ids
+    covered = set(tier_ids(tier))
+    uncovered = [source_id for source_id in bound if source_id not in covered]
+    if uncovered:
+        raise ValueError(
+            f"seed manifest binds proxy species {uncovered} outside the "
+            f"{tier!r} tier; regenerate with a covering --p2-proxy-tier")
+    return bound
 
 
 def extract_bluekochappy(iso, research, dest, pose_limit=3):
@@ -409,14 +448,16 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
-def extract_proxy(iso, dest, source_id, pose_limit=4):
+def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
     ``pikmin2_proxy_assets.extract`` produces the source poses (``proxy.json``
     + ``px_<Enum>_<clip>_<ii>.mod``); the proxy adapter stages the
     campaign/actors/bank sidecars plus the pose files from that tree via
     ``experimental.pikmin2_proxy_content.stage_proxy``. The species (enum
-    name, host vehicle, pose default) comes from ``randomizer/p2_proxy/``.
+    name, host vehicle, pose default) comes from ``randomizer/p2_proxy/``:
+    a ``None`` pose limit takes the declaration's ``pose_limit`` so editing
+    the row JSON changes the extraction.
     """
     from experimental import pikmin2_proxy_assets as proxy
 
@@ -425,13 +466,17 @@ def extract_proxy(iso, dest, source_id, pose_limit=4):
         raise ValueError(f"ISO not found: {iso}")
     if type(source_id) is not int or isinstance(source_id, bool):
         raise ValueError(f"proxy source id must be an int: {source_id!r}")
+    from randomizer.p2_proxy import load_rows
+    declared = {row["source_id"]: row for row in load_rows()}
+    if pose_limit is None:
+        if source_id not in declared:
+            raise ValueError(f"source id {source_id!r} is not a declared proxy species")
+        pose_limit = declared[source_id]["pose_limit"]
     if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
         raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
     enum_name = ENUM_FOR_SOURCE.get(source_id)
     if enum_name is None:
         raise ValueError(f"unknown enum name for source id {source_id!r}")
-    from randomizer.p2_proxy import load_rows
-    declared = {row["source_id"]: row for row in load_rows()}
     if source_id not in declared or declared[source_id]["enum_name"] != enum_name:
         raise ValueError(f"source id {source_id!r} is not a declared proxy species")
     target = dest / enum_name
@@ -441,7 +486,11 @@ def extract_proxy(iso, dest, source_id, pose_limit=4):
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
-        proxy.extract(iso, enum_name, source_id, tmp, pose_limit=pose_limit)
+        # The declaration row travels with the call: override species
+        # (asset_dir/param_dir/clips/param_files/missing_normals) extract
+        # from the wrong disc paths without it.
+        proxy.extract(iso, enum_name, source_id, tmp, pose_limit=pose_limit,
+                      row=declared[source_id])
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -624,6 +673,15 @@ def main(argv=None):
             parser.error("--species must be 'playable', 'admitted' or comma-separated ints")
         if not wanted or any(type(i) is not int for i in wanted):
             parser.error("--species must be a nonempty list of source ids")
+
+    if args.seed_manifest is not None:
+        # The manifest's proxy bindings join the extraction set (at the
+        # global pose limit) so no manual extract_proxy call is needed.
+        # Manifests without proxy bindings add nothing: the default
+        # extraction list is unchanged byte-for-byte.
+        for source_id in proxy_ids_for_manifest(args.seed_manifest):
+            if source_id not in wanted:
+                wanted.append(source_id)
 
     summary = prepare_content_root(args.iso, args.out,
                                    research=args.research,

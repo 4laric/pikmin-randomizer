@@ -38,7 +38,12 @@ def test_tier_ids_declared_vs_proven():
 
 def test_row_schema_defaults_and_validation(tmp_path):
     rows = load_rows()
-    assert all(row["terrains"] == ["ground"] for row in rows)
+    by_id = {row["source_id"]: row for row in rows}
+    # Catfish/Tadpole hosts are land-capable, so they accept water too.
+    assert by_id[26]["terrains"] == ["ground", "water"]
+    assert by_id[27]["terrains"] == ["ground", "water"]
+    assert all(row["terrains"] == ["ground"] for row in rows
+               if row["source_id"] not in (26, 27))
     assert all("evidence" not in row for row in rows)
     # Bad terrains fail closed.
     bad = tmp_path / "2_Chappy.json"
@@ -115,7 +120,10 @@ def test_declared_admits_chappy_frog():
     manifest = generate("tier-declared", p2_enemies=True,
                         p2_proxy_tier="declared", p2_species="full")
     bound = {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
-    assert {2, 17} <= bound
+    # The 50-species declared pool overflows the 33 ground slots, so some
+    # species land in `unplaced`; the pool as a whole still covers Chappy/Frog.
+    pool = bound | set(manifest["p2_layout"].get("unplaced", []))
+    assert {2, 17} <= pool
     assert manifest["p2_layout"]["density"] == "sampled-v1"
     assert manifest["p2_proxy_tier"] == "declared"
     validate(manifest)

@@ -55,12 +55,30 @@ BANK_HEADER = 'P2_PROXY_BANK_1'
 ROOM = Path('assets/dataDir/courses/pikmin2room')
 
 _ENUM_RE = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,31}')
-_CLIP_RE = re.compile(r'[a-z0-9_]+\.bca')
+# Clip stems keep the retail registry spelling, including the uppercase
+# stems real species ship (BigTreasure preattackF/attackF/..., Kabuto
+# K_wait/...). The native bank reader takes the clip name as an
+# unrestricted whitespace-separated token (parseBank: `in >> name`) and
+# formats it back into the pose filename, so anything but whitespace
+# survives; this class matches the extractor's CLIP_STEM_RE so extraction
+# output always passes staging.
+_CLIP_RE = re.compile(r'[A-Za-z0-9_]+\.bca')
 _HEX64_RE = re.compile(r'[0-9a-f]{64}')
-_POSE_RE = re.compile(r'px_([A-Za-z][A-Za-z0-9_]{0,31})_([a-z0-9_]+)_([0-9]{2})\.mod')
 
 # Native bank clip-row budget (pc_p2_batch2.cpp:152-155): poses in 0..64.
 _MAX_BANK_POSES = 64
+
+# Native sidecar caps (fail-closed here so staging never writes a file the
+# native loader aborts on): p2-proxy-actors.txt holds at most 100 generator
+# rows (pc_p2_batch2.cpp parseActors: count 1..100 else fail, and fail
+# aborts), p2-proxy-campaign.txt at most 64 species rows
+# (pc_p2_proxy_table.h: countValue 1..64 else the whole table is invalid and
+# every proxy species silently unbinds). Anything past the cap is refused
+# with StagingError -- never silently truncated -- whether or not the
+# campaign path still reads the actors file (the table drives binding in
+# campaign mode; the actors file is still written for the probe path).
+_MAX_ACTORS_ROWS = 100
+_MAX_CAMPAIGN_SPECIES = 64
 
 # The native proxy path picks the clip from host state and falls back across
 # these groups, so a staged species without a wait or a dead clip cannot
@@ -106,6 +124,9 @@ def _normalize_actors(actors):
         raise StagingError('Proxy install requires at least one actor')
     if len({generator for generator, _ in normalized}) != len(normalized):
         raise StagingError('Proxy actor generators are not unique')
+    if len(normalized) > _MAX_ACTORS_ROWS:
+        raise StagingError(
+            f'Proxy actor rows exceed the native 100-row cap: {len(normalized)}')
     return normalized
 
 
@@ -120,28 +141,32 @@ def _check_events(species, clip_name, duration, events):
     """Mirror the native bank/event grammar so every staged row always parses.
 
     Covers ``parseEvents`` (``pc_p2_batch2_clock.h:102-136``: ``-`` or
-    ``frame:key,...`` with frame in 0..100000) and the per-species consumer
-    (``pc_p2_sokkuri.cpp:357-371``: comma/colon split, ``atoi`` both sides),
-    plus the loop-pairing rule the Sarai adapter enforces for kinds 0/1.
+    ``frame:key,...`` with a digit frame in 0..100000 and any non-empty
+    string key) and the per-species consumer
+    (``pc_p2_sokkuri.cpp:357-371``: comma/colon split, ``atoi`` both sides).
+    The native parser accepts unordered frames, any key string, and events
+    at any frame regardless of the clip duration, and ``makeClip`` never
+    validates events against duration -- so this check enforces no
+    duration relation and no kind-0/1 loop-pairing rule. What stays is
+    fail-closed in the safe direction: frames must be non-negative
+    100000-bounded digits in strictly increasing order, kinds must be
+    0..999 (written as ``frame:kind`` string keys the native side
+    accepts), at most 4096 events per clip.
     """
     if type(duration) is not int or not 1 <= duration <= 10000:
         raise StagingError(f'{species} clip duration out of native range: {clip_name}')
     if not isinstance(events, list) or len(events) > 4096:
         raise StagingError(f'{species} clip event budget exceeded: {clip_name}')
-    previous, loop_start = -1, None
+    previous = -1
     for entry in events:
         if (not isinstance(entry, list) or len(entry) != 2
                 or type(entry[0]) is not int or type(entry[1]) is not int):
             raise StagingError(f'{species} clip event malformed: {clip_name}')
         frame, kind = entry
-        if frame < previous or frame < 0 or frame >= duration or frame > 100000:
+        if frame < previous or frame < 0 or frame > 100000:
             raise StagingError(f'{species} clip event outside the native clip: {clip_name}')
         if not 0 <= kind < 1000:
             raise StagingError(f'{species} clip event kind outside the native range: {clip_name}')
-        if kind == 0:
-            loop_start = frame
-        if kind == 1 and (loop_start is None or frame <= loop_start):
-            raise StagingError(f'{species} clip event loop unmatched: {clip_name}')
         previous = frame
 
 
@@ -195,9 +220,12 @@ def _clip_poses(species, document):
                     f'{species} pose frames are not strictly increasing in {name}')
             previous = frame
             filename = pose.get('file')
-            match = _POSE_RE.fullmatch(filename) if isinstance(filename, str) else None
-            if (match is None or match.group(1) != species
-                    or match.group(2) != stem or int(match.group(3)) != index):
+            # The native loadPose opens exactly px_<species>_<clip>_%02d.mod
+            # for 0..poseCount-1, so the manifest must name that exact
+            # sequence. An exact comparison (not a regex) is required here:
+            # clip stems legitimately contain underscores (Kabuto K_pivot,
+            # hit_start), which a greedy species/clip split misparses.
+            if filename != f'px_{species}_{stem}_{index:02}.mod':
                 raise StagingError(
                     f'{species} pose filename breaks the native loadPose sequence: {filename!r}')
             digest = pose.get('sha256')
@@ -296,6 +324,9 @@ def plan(content_root, actors):
     actors = _normalize_actors(actors)
     present = sorted({species for _, species in actors},
                      key=lambda name: rows[name][0])
+    if len(present) > _MAX_CAMPAIGN_SPECIES:
+        raise StagingError(
+            f'Proxy species exceed the native 64-species cap: {len(present)}')
     documents = {}
     digests = {}
     mesh_files = {}
@@ -345,6 +376,11 @@ def stage_proxy(content_root, run, actors):
     targets = {CAMPAIGN_TXT: campaign_payload, ACTORS_TXT: actors_payload,
                BANK_TXT: bank_payload}
     targets.update({str(ROOM / name): payload for name, payload in mesh_files.items()})
+    blocked = sorted(name for name in targets
+                     if (run / name).exists() and not (run / name).is_file())
+    if blocked:
+        raise StagingError(
+            'Refusing proxy staging over non-file targets: ' + ', '.join(blocked))
     conflicts = sorted(name for name, payload in targets.items()
                        if (run / name).is_file() and (run / name).read_bytes() != payload)
     if conflicts:
