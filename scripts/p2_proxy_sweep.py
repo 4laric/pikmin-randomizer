@@ -9,6 +9,10 @@ JSON with one record per species.
 If a species fails ONLY on a byte budget (a clip over 512 KiB of pose
 bytes or a bank over 8 MiB), retry automatically with ``pose_limit`` 3
 then 2 and record the limit that worked.
+
+Plan entries may carry the declaration override fields (``asset_dir``,
+``param_dir``, ``clips``); they are passed through to
+:func:`experimental.pikmin2_proxy_assets.extract` via ``row=``.
 """
 
 from __future__ import annotations
@@ -195,7 +199,7 @@ def sweep_species(iso: Path, row: dict, out_root: Path) -> dict:
         try:
             result = extract(
                 iso, row["enum_name"], row["source_id"], target,
-                pose_limit=limit)
+                pose_limit=limit, row=row)
         except Exception as error:  # noqa: BLE001 - sweep catches everything
             last_error = f"{type(error).__name__}: {error}"
             last_limit = limit

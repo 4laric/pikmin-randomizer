@@ -54,6 +54,12 @@ ENUM_RE = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,31}')
 # cannot serve the proxy family.
 WAIT_CLIPS = ('wait1', 'wait', 'wait2')
 DEAD_CLIPS = ('dead', 'dead1', 'pdead1')
+MOVE_CLIPS = ('move1', 'move', 'move2', 'run1', 'walk')
+ATTACK_CLIPS = ('attack1', 'attack', 'attack2', 'charge', 'hit_start')
+CANONICAL_CLIPS = frozenset(WAIT_CLIPS + DEAD_CLIPS + MOVE_CLIPS + ATTACK_CLIPS)
+
+CLIP_STEM_RE = re.compile(r'[A-Za-z0-9_]+')
+PARAM_DIR_RE = re.compile(r'[a-z][a-z0-9_]{0,31}')
 
 CLIP_BYTES = 512 * 1024
 TOTAL_BYTES = 8 * 1024 * 1024
@@ -99,7 +105,79 @@ def _asset_names(enum_name, assets):
     return model, anim, param.lower()
 
 
-def extract(iso, enum_name, source_id, output, pose_limit=4):
+def _row_overrides(row, enum_name):
+    """Resolve the optional data-driven row overrides for one extraction.
+
+    ``row`` is ``None`` (roster defaults, the pre-existing callers) or a
+    declaration/plan mapping carrying any of ``asset_dir`` (disc directory
+    under ``enemy/data/`` holding ``model.szs``/``anim.szs`` when it is not
+    the enum name), ``param_dir`` (lowercase prefix inside the enemy
+    parameter archive when it is not ``enum.lower()``) and     ``clips``
+    (``{canonical_output: source_stem}`` aliases; the aliased source clip
+    is written under the canonical name and not under its own) and
+    ``param_files`` (``{metadata_filename: prefix}`` per-file parameter
+    prefixes for split families such as the dweevils, whose shared
+    ``otakara/`` folder carries the anim mgr/collision/stone tables while
+    each colour keeps its own ``<species>/enemyparm.txt``). Every
+    violation fails closed with a clear ``ValueError``; registry
+    membership of alias sources is checked later against the parsed
+    registry so the error can name the species' actual stems.
+    """
+    asset_dir, param_dir, clips, param_files = None, None, {}, {}
+    if row is None:
+        return asset_dir, param_dir, clips, param_files
+    if not isinstance(row, dict):
+        raise ValueError(f'Proxy row overrides must be a mapping: {row!r}')
+    if row.get('asset_dir') is not None:
+        asset_dir = row['asset_dir']
+        if not isinstance(asset_dir, str) or not ENUM_RE.fullmatch(asset_dir):
+            raise ValueError(
+                f'Proxy asset_dir invalid for {enum_name!r}: {asset_dir!r}')
+    if row.get('param_dir') is not None:
+        param_dir = row['param_dir']
+        if not isinstance(param_dir, str) or not PARAM_DIR_RE.fullmatch(param_dir):
+            raise ValueError(
+                f'Proxy param_dir invalid for {enum_name!r}: {param_dir!r}')
+    if row.get('clips'):
+        raw = row['clips']
+        if not isinstance(raw, dict) or not raw:
+            raise ValueError(
+                f'Proxy clips must be a non-empty object for {enum_name!r}')
+        for canonical, source in raw.items():
+            if canonical not in CANONICAL_CLIPS:
+                raise ValueError(
+                    f'Proxy clips key not a native clip name for {enum_name!r}: '
+                    f'{canonical!r}')
+            if not isinstance(source, str) or not CLIP_STEM_RE.fullmatch(source):
+                raise ValueError(
+                    f'Proxy clips source invalid for {enum_name!r}: {source!r}')
+            if source == canonical:
+                raise ValueError(
+                    f'Proxy clips alias is a no-op for {enum_name!r}: '
+                    f'{canonical!r}')
+        if len(set(raw.values())) != len(raw):
+            raise ValueError(
+                f'Proxy clips sources must be distinct for {enum_name!r}')
+        clips = dict(raw)
+    if row.get('param_files'):
+        raw_files = row['param_files']
+        if not isinstance(raw_files, dict) or not raw_files:
+            raise ValueError(
+                f'Proxy param_files must be a non-empty object for {enum_name!r}')
+        for filename, prefix in raw_files.items():
+            if filename not in METADATA_FILES:
+                raise ValueError(
+                    f'Proxy param_files key not a metadata file for '
+                    f'{enum_name!r}: {filename!r}')
+            if not isinstance(prefix, str) or not PARAM_DIR_RE.fullmatch(prefix):
+                raise ValueError(
+                    f'Proxy param_files prefix invalid for {enum_name!r}: '
+                    f'{prefix!r}')
+        param_files = dict(raw_files)
+    return asset_dir, param_dir, clips, param_files
+
+
+def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
     if not isinstance(enum_name, str) or not ENUM_RE.fullmatch(enum_name):
         raise ValueError(f'Proxy enum name invalid: {enum_name!r}')
     if type(source_id) is not int or isinstance(source_id, bool):
@@ -112,9 +190,16 @@ def extract(iso, enum_name, source_id, output, pose_limit=4):
             f'Proxy enum mismatch for source {source_id}: '
             f'{enum_name!r} != roster {roster_enum!r}')
     model_name, anim_name, param_dir = _asset_names(enum_name, roster_assets)
+    row_asset, row_param, aliases, param_files = _row_overrides(row, enum_name)
+    if row_asset is not None:
+        # A row override names the disc directory directly (verified
+        # against the ISO listing per species); the roster assets block is
+        # the fallback for rows that predate the override fields.
+        model_name = anim_name = row_asset
+    if row_param is not None:
+        param_dir = row_param
     model_path = f'enemy/data/{model_name}/model.szs'
     anim_path = f'enemy/data/{anim_name}/anim.szs'
-    parm_prefix = f'{param_dir}/'
     iso, output = Path(iso), Path(output)
     if not iso.is_file():
         raise ValueError(f'ISO not found: {iso}')
@@ -157,34 +242,85 @@ def extract(iso, enum_name, source_id, output, pose_limit=4):
         raise ValueError(f'Invalid {enum_name} model skinning blocks: {error}') from None
 
     metadata = {}
+    missing_metadata = []
     for filename in METADATA_FILES:
+        prefix = param_files.get(filename, param_dir)
         try:
-            raw = params[parm_prefix + filename]
+            raw = params[f'{prefix}/{filename}']
         except KeyError:
+            if filename == 'enemystoneinfo.txt':
+                # Optional metadata: absent from the disc for Qurione.
+                missing_metadata.append(filename)
+                continue
             raise ValueError(
-                f'{enum_name} parameter entry missing: {parm_prefix + filename}') from None
+                f'{enum_name} parameter entry missing: {prefix}/{filename}') from None
         metadata[filename] = sha(raw)
         (output / filename).write_bytes(raw)
     (output / 'enemy.bmd').write_bytes(model)
 
-    rows = animation_rows(params[parm_prefix + 'enemyanimmgr.txt'].decode('shift_jis'))
+    registry_notes = []
+    animmgr_prefix = param_files.get('enemyanimmgr.txt', param_dir)
+    rows = animation_rows(params[f'{animmgr_prefix}/enemyanimmgr.txt'].decode('shift_jis'),
+                          allow_uppercase=True, dedupe_duplicates=True,
+                          allow_braceless=True, notes=registry_notes)
     if not 1 <= len(rows) <= 32:
         raise ValueError(f'{enum_name} clip budget exceeded: {len(rows)}')
+    registry_stems = {Path(item['file']).stem for item in rows}
+    by_source = {}
+    for canonical, source in aliases.items():
+        if source not in registry_stems:
+            raise ValueError(
+                f'{enum_name} clips source {source!r} not in the species '
+                f'registry: {sorted(registry_stems)}')
+        by_source[source] = canonical
+    native_stems = registry_stems - set(by_source)
+    for canonical in aliases:
+        if canonical in native_stems:
+            raise ValueError(
+                f'{enum_name} clips output {canonical!r} collides with a '
+                f'native registry clip')
+    lower_motions = {}
+    for key in motions:
+        lowered = key.lower()
+        if lowered in lower_motions and lower_motions[lowered] != key:
+            raise ValueError(
+                f'{enum_name} motion archive has case-ambiguous entries: '
+                f'{key!r}')
+        lower_motions[lowered] = key
 
     clips = []
+    unsupported_clips = []
+    case_resolved = []
     reference = None
     total_pose_bytes = 0
     for row in rows:
         stem = Path(row['file']).stem
+        out_stem = by_source.get(stem, stem)
+        out_file = f'{out_stem}.bca'
         try:
             raw = motions[row['file']]
         except KeyError:
-            raise ValueError(f'{enum_name} motion missing: {row["file"]}') from None
-        (output / row['file']).write_bytes(raw)
-        duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
-        clip = dict(file=row['file'], events=[list(event) for event in row['events']],
+            actual = lower_motions.get(row['file'].lower())
+            if actual is None:
+                raise ValueError(f'{enum_name} motion missing: {row["file"]}') from None
+            raw = motions[actual]
+            case_resolved.append(f'{row["file"]}->{actual}')
+        (output / out_file).write_bytes(raw)
+        try:
+            duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
+        except (ValueError, KeyError, ArithmeticError) as error:
+            # A clip whose sampling raises is skipped with its error
+            # recorded instead of aborting the species, as long as wait +
+            # dead cover survives on the remaining clips.
+            unsupported_clips.append(dict(file=row['file'], out_file=out_file,
+                                          error=f'{type(error).__name__}: {error}',
+                                          sha256=sha(raw)))
+            continue
+        clip = dict(file=out_file, events=[list(event) for event in row['events']],
                     source_frames=duration, sha256=sha(raw),
                     poses=[], unsupported_frames=[], status='unsupported')
+        if out_stem != stem:
+            clip['source_file'] = row['file']
         # Bank slots are assigned to converted poses only, contiguously from
         # zero: an unconvertible sampled frame is recorded under
         # unsupported_frames (never replaced with a placeholder) and never
@@ -194,7 +330,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4):
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 matrices = draw_matrices(model_blocks, pose)
                 decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
-                name = pose_name(enum_name, stem, len(clip['poses']))
+                name = pose_name(enum_name, out_stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name,
                                   weighted_pose_baked=envelopes > 0,
@@ -238,16 +374,25 @@ def extract(iso, enum_name, source_id, output, pose_limit=4):
             f'{enum_name} bank exceeds 8 MiB of pose bytes '
             f'({total_pose_bytes} bytes); lower pose_limit (now {pose_limit})')
 
+    if case_resolved:
+        registry_notes.append(
+            f'case-insensitive motion lookup for {len(case_resolved)} clips '
+            f'(e.g. {case_resolved[0]})')
     result = dict(
         schema=1, species=enum_name, enemy_id=source_id,
         disc_id=header[:6].decode(), disc_revision=header[7],
         source_sha256=hashes, model_sha256=sha(model), joints=names,
         pose_limit=pose_limit,
+        asset_dir=model_name, param_dir=param_dir,
+        clips_alias=dict(aliases), param_files=dict(param_files),
         metadata_sha256=metadata,
+        missing_metadata=list(missing_metadata),
+        registry_notes=list(registry_notes),
         skinning=dict(envelopes=envelopes, draw_matrices=draws,
                       weighted_baking=envelopes > 0,
                       self_contained_resources=draws > 0),
-        clips=clips, total_pose_bytes=total_pose_bytes,
+        clips=clips, unsupported_clips=unsupported_clips,
+        total_pose_bytes=total_pose_bytes,
         limitations=list(LIMITATIONS))
     (output / MANIFEST).write_text(
         json.dumps(result, sort_keys=True, indent=2) + '\n', encoding='utf-8')

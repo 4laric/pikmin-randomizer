@@ -18,6 +18,86 @@ SCHEMA = 1
 
 ENUM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}")
 
+# --- BEGIN proxy-extract2 optional override fields (issue #871) ---
+# Small self-contained block validating the data-driven extractor
+# overrides; kept delimited so the parallel proxy worker's change to this
+# file merges cleanly. Shapes only: registry membership of ``clips``
+# sources is checked by the extractor against the ISO (clear error naming
+# the species' actual stems).
+PARAM_DIR_RE = re.compile(r"[a-z][a-z0-9_]{0,31}")
+CLIP_STEM_RE = re.compile(r"[A-Za-z0-9_]+")
+METADATA_FILES = ("enemyanimmgr.txt", "enemyparm.txt", "enemycoll.txt",
+                  "enemystoneinfo.txt")
+# Native clip-name lists the extractor requires cover from (dead/attack /
+# move / wait groups); alias keys must come from these.
+CANONICAL_CLIPS = frozenset({
+    "dead", "dead1", "pdead1",
+    "attack1", "attack", "attack2", "charge", "hit_start",
+    "move1", "move", "move2", "run1", "walk",
+    "wait1", "wait", "wait2",
+})
+
+
+def _optional_overrides(document, path_name):
+    """Validate ``asset_dir`` / ``param_dir`` / ``clips`` / ``param_files``.
+
+    Returns ``(asset_dir, param_dir, clips, param_files)`` with ``None`` /
+    ``None`` / ``{}`` / ``{}`` defaults. Fails closed on any malformed
+    field. ``param_files`` maps a metadata filename to its parameter
+    prefix for split families (Volatile Dweevil: shared ``otakara/`` anim
+    mgr/collision/stone plus its own ``bombotakara/enemyparm.txt``).
+    """
+    asset_dir = document.get("asset_dir")
+    if asset_dir is not None and (
+            not isinstance(asset_dir, str) or not ENUM_RE.fullmatch(asset_dir)):
+        raise ValueError(
+            f"proxy declaration asset_dir invalid: {path_name}")
+    param_dir = document.get("param_dir")
+    if param_dir is not None and (
+            not isinstance(param_dir, str) or not PARAM_DIR_RE.fullmatch(param_dir)):
+        raise ValueError(
+            f"proxy declaration param_dir invalid: {path_name}")
+    clips = document.get("clips")
+    if clips is None:
+        clips = {}
+    else:
+        if not isinstance(clips, dict) or not clips:
+            raise ValueError(
+                f"proxy declaration clips must be a non-empty object: {path_name}")
+        for canonical, source in clips.items():
+            if canonical not in CANONICAL_CLIPS:
+                raise ValueError(
+                    f"proxy declaration clips key not a native clip name: "
+                    f"{canonical!r} ({path_name})")
+            if not isinstance(source, str) or not CLIP_STEM_RE.fullmatch(source):
+                raise ValueError(
+                    f"proxy declaration clips source invalid: {source!r} ({path_name})")
+            if source == canonical:
+                raise ValueError(
+                    f"proxy declaration clips alias is a no-op: {canonical!r} ({path_name})")
+        if len(set(clips.values())) != len(clips):
+            raise ValueError(
+                f"proxy declaration clips sources must be distinct: {path_name}")
+        clips = dict(clips)
+    param_files = document.get("param_files")
+    if param_files is None:
+        return asset_dir, param_dir, clips, {}
+    if not isinstance(param_files, dict) or not param_files:
+        raise ValueError(
+            f"proxy declaration param_files must be a non-empty object: {path_name}")
+    for filename, prefix in param_files.items():
+        if filename not in METADATA_FILES:
+            raise ValueError(
+                f"proxy declaration param_files key not a metadata file: "
+                f"{filename!r} ({path_name})")
+        if not isinstance(prefix, str) or not PARAM_DIR_RE.fullmatch(prefix):
+            raise ValueError(
+                f"proxy declaration param_files prefix invalid: {prefix!r} ({path_name})")
+    return asset_dir, param_dir, clips, dict(param_files)
+
+
+# --- END proxy-extract2 optional override fields ---
+
 # Safe Pikmin 1 vehicles a proxy host may use. The placeholder types 26-29 and
 # 34 crash the game and are never allowed.
 HOST_ALLOW = frozenset({
@@ -120,6 +200,7 @@ def load_rows(directory=None):
         if type(host_teki) is not int or isinstance(host_teki, bool) \
                 or host_teki not in HOST_ALLOW:
             raise ValueError(f"proxy declaration host_teki not an allowed vehicle: {path.name}")
+        asset_dir, param_dir, clips, param_files = _optional_overrides(document, path.name)
         rows.append({
             "schema": SCHEMA,
             "source_id": source_id,
@@ -127,6 +208,10 @@ def load_rows(directory=None):
             "host_teki": host_teki,
             "pose_limit": pose_limit,
             "notes": document.get("notes", ""),
+            "asset_dir": asset_dir,
+            "param_dir": param_dir,
+            "clips": clips,
+            "param_files": param_files,
         })
     rows.sort(key=lambda row: row["source_id"])
     return rows
