@@ -28,9 +28,10 @@ DEAD = {"dead", "dead1", "pdead1"}
 
 
 def write_decl(directory, source_id, enum_name, host_teki=4, pose_limit=4,
-               schema=1, filename=None, notes="test"):
+               schema=1, filename=None, notes="test", **extra):
     document = {"schema": schema, "source_id": source_id, "enum_name": enum_name,
                 "host_teki": host_teki, "pose_limit": pose_limit, "notes": notes}
+    document.update(extra)
     path = directory / (filename or f"{source_id}_{enum_name}.json")
     path.write_text(json.dumps(document), encoding="utf-8")
     return path
@@ -38,9 +39,11 @@ def write_decl(directory, source_id, enum_name, host_teki=4, pose_limit=4,
 
 def test_load_rows_happy_path_real_dir():
     rows = load_rows()
-    assert [(row["source_id"], row["enum_name"], row["host_teki"])
-            for row in rows] == [(2, "Chappy", 4), (17, "Frog", 0)]
     assert rows == sorted(rows, key=lambda row: row["source_id"])
+    by_id = {row["source_id"]: row for row in rows}
+    assert by_id[2]["enum_name"] == "Chappy"
+    assert by_id[17]["enum_name"] == "Frog"
+    assert len(rows) == len(list((ROOT / "randomizer" / "p2_proxy").glob("*.json")))
 
 
 def test_load_rows_rejects_bad_schema(tmp_path):
@@ -93,6 +96,82 @@ def test_load_rows_rejects_bad_host(tmp_path):
     write_decl(tmp_path, 2, "Chappy", host_teki=27)
     with pytest.raises(ValueError, match="host_teki"):
         load_rows(tmp_path)
+
+
+def test_load_rows_accepts_full_overrides(tmp_path):
+    write_decl(tmp_path, 2, "Chappy", asset_dir="Kogane", param_dir="kogane",
+               clips={"wait1": "waitact1"},
+               param_files={"enemyparm.txt": "bombotakara"})
+    (rows,) = load_rows(tmp_path)
+    assert rows["asset_dir"] == "Kogane"
+    assert rows["param_dir"] == "kogane"
+    assert rows["clips"] == {"wait1": "waitact1"}
+    assert rows["param_files"] == {"enemyparm.txt": "bombotakara"}
+
+
+def test_load_rows_defaults_overrides_to_empty(tmp_path):
+    write_decl(tmp_path, 2, "Chappy")
+    (rows,) = load_rows(tmp_path)
+    assert rows["asset_dir"] is None
+    assert rows["param_dir"] is None
+    assert rows["clips"] == {}
+    assert rows["param_files"] == {}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("asset_dir", 7),
+    ("asset_dir", ""),
+    ("asset_dir", "../Kogane"),
+    ("asset_dir", "kogane!"),
+    ("param_dir", 7),
+    ("param_dir", ""),
+    ("param_dir", "Kogane"),
+    ("param_dir", "kogane/.."),
+    ("clips", []),
+    ("clips", {}),
+    ("clips", {"nap1": "move"}),
+    ("clips", {"wait1": "wait1"}),
+    ("clips", {"wait1": "not a stem!"}),
+    ("clips", {"wait1": "move", "dead": "move"}),
+    ("param_files", []),
+    ("param_files", {}),
+    ("param_files", {"enemyparm.bin": "kogane"}),
+    ("param_files", {"enemyparm.txt": "Kogane"}),
+])
+def test_load_rows_rejects_bad_overrides(tmp_path, field, value):
+    write_decl(tmp_path, 2, "Chappy", **{field: value})
+    with pytest.raises(ValueError, match=field):
+        load_rows(tmp_path)
+
+
+def test_registry_tolerances_unit():
+    from experimental.pikmin2_sheargrub_assets import animation_rows
+    upper = ("2 { Z:\\a\\K_wait.bca K_wait.bca -1 } "
+             "{ Z:\\a\\wait.bca wait.bca -1 }")
+    with pytest.raises(ValueError, match="Invalid animation registration"):
+        animation_rows(upper)
+    notes = []
+    rows = animation_rows(upper, allow_uppercase=True, notes=notes)
+    assert [row["file"] for row in rows] == ["K_wait.bca", "wait.bca"]
+    assert any("K_wait.bca" in note for note in notes)
+    dup = ("2 { Z:\\a\\wait1.bca wait1.bca -1 } "
+           "{ Z:\\a\\wait1.bca wait1.bca -1 }")
+    with pytest.raises(ValueError, match="count/identity"):
+        animation_rows(dup)
+    notes = []
+    rows = animation_rows(dup, dedupe_duplicates=True, notes=notes)
+    assert [row["file"] for row in rows] == ["wait1.bca"]
+    assert any("wait1.bca" in note for note in notes)
+    braceless = ("2 { Z:\\a\\wait.bca wait.bca -1 } "
+                 "# attack_2.bca\r\n Z:\\a\\attack_2.bca attack_2.bca -1 }")
+    with pytest.raises(ValueError, match="count/identity"):
+        animation_rows(braceless)
+    notes = []
+    rows = animation_rows(braceless, allow_braceless=True, notes=notes)
+    assert [row["file"] for row in rows] == ["wait.bca", "attack_2.bca"]
+    assert any("attack_2.bca" in note for note in notes)
+    # Strict behaviour without flags is unchanged.
+    assert animation_rows("1 { a\\attack1.bca attack1.bca 15 2 -1 }")[0]["events"] == [[15, 2]]
 
 
 def make_species_tree(content_root, species, source_id, clips=(("wait1", []),
@@ -230,3 +309,52 @@ def test_extract_real_species(tmp_path, species, source_id):
     assert 0 < total <= 8 * 1024 * 1024
     assert result["total_pose_bytes"] == total
     assert (tmp_path / species / "proxy.json").is_file()
+
+
+def test_extract_tank_alias_iso(tmp_path):
+    if not ISO.is_file():
+        pytest.skip("P2 ISO not present")
+    from experimental import pikmin2_proxy_assets as assets
+    result = assets.extract(ISO, "Tank", 24, tmp_path / "Tank", pose_limit=4,
+                            row={"clips": {"wait1": "waitact1"}})
+    stems = {Path(clip["file"]).stem
+             for clip in result["clips"] if clip["status"] == "converted"}
+    assert "wait1" in stems and "dead" in stems
+    aliased = [clip for clip in result["clips"]
+               if clip["file"] == "wait1.bca"]
+    assert len(aliased) == 1 and aliased[0]["source_file"] == "waitact1.bca"
+    assert not (tmp_path / "Tank" / "waitact1.bca").exists()
+    assert (tmp_path / "Tank" / "wait1.bca").is_file()
+    assert sorted((tmp_path / "Tank").glob("px_Tank_wait1_*.mod"))
+    assert not list((tmp_path / "Tank").glob("px_Tank_waitact1_*.mod"))
+    with pytest.raises(ValueError, match="not in the species"):
+        assets.extract(ISO, "Tank", 24, tmp_path / "Tank-bad", pose_limit=4,
+                       row={"clips": {"wait1": "nosuchclip"}})
+
+
+def test_extract_fuefuki_skips_singular_clips_iso(tmp_path):
+    if not ISO.is_file():
+        pytest.skip("P2 ISO not present")
+    from experimental import pikmin2_proxy_assets as assets
+    result = assets.extract(ISO, "Fuefuki", 41, tmp_path / "Fuefuki",
+                            pose_limit=4)
+    skipped = {entry["file"] for entry in result["unsupported_clips"]}
+    assert skipped == {"landing.bca", "landfail.bca"}
+    assert all("Singular animation scale" in entry["error"]
+               for entry in result["unsupported_clips"])
+    stems = {Path(clip["file"]).stem
+             for clip in result["clips"] if clip["status"] == "converted"}
+    assert stems & WAIT and stems & DEAD
+
+
+def test_extract_qurione_stone_optional_iso(tmp_path):
+    if not ISO.is_file():
+        pytest.skip("P2 ISO not present")
+    from experimental import pikmin2_proxy_assets as assets
+    result = assets.extract(
+        ISO, "Qurione", 16, tmp_path / "Qurione", pose_limit=4,
+        row={"clips": {"wait1": "waitl", "dead": "damage"}})
+    assert result["missing_metadata"] == ["enemystoneinfo.txt"]
+    stems = {Path(clip["file"]).stem
+             for clip in result["clips"] if clip["status"] == "converted"}
+    assert "wait1" in stems and "dead" in stems
