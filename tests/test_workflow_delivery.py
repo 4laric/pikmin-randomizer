@@ -7,12 +7,22 @@ from workflow.delivery import DeliveryMixin
 from workflow.handoff import Rejected, digest
 from workflow.registry import Registry
 from tests import test_pikmin2_workflow as baseline
+from tests.approval_auth import reviewer
 
 
 DeliveryRegistry = Registry
 
 
 class DeliveryTests(unittest.TestCase):
+    def test_submission_freezes_evidence_before_it_can_be_rotated(self):
+        with self.reg.transaction() as state:state['settings']['freeze_handoffs_on_submit']=True
+        lane=self.ready(runtime=True)
+        original=copy.deepcopy(lane['handoff'])
+        self.log.write_text('rotated')
+        self.assertTrue(self.reg.check_handoff(lane)['slice_passed'])
+        self.assertEqual(original,self.reg.snapshot()['lanes']['one']['handoff'])
+        self.assertIn('delivery',original['path'])
+
     setUp = baseline.WorkflowTests.setUp
     data = baseline.WorkflowTests.data
     register = baseline.WorkflowTests.register
@@ -20,19 +30,40 @@ class DeliveryTests(unittest.TestCase):
     handoff = baseline.WorkflowTests.handoff
     save_handoff = baseline.WorkflowTests.save_handoff
 
-    def ready(self, runtime=False, reviews=False):
+    def ready(self, runtime=False, reviews=False, null_build=False):
         self.reg = DeliveryRegistry(self.db, self.root, clock=lambda: self.now,
                                     process_probe=lambda _: self.health)
         lane = self.running()
         if runtime:
             lane = self.reg.checkpoint('one', 1, lane['revision'], {'native': copy.deepcopy(lane['root'])})
         data = self.handoff(lane, runtime)
+        if null_build:data['build']=None
         if reviews:
             data['shared_reviews'] = [dict(file='shared.cpp', reason='shared behavior', issue_url='https://github.com/4laric/pikmin-randomizer/issues/526', status='requested', evidence=['log'])]
             data['changed_files'].append('shared.cpp')
         self.reg.submit_handoff('one', 1, lane['revision'], self.save_handoff(data))
         self.health = 'dead'
         return self.reg.status()['lanes']['one']
+
+    def reviewer(self):
+        """Lane two: an authenticated live reviewer owning lane one's workstream."""
+        self.running('two')
+        reviewer(self, self.reg, 'two', owns=['one'], fake_diff=True)
+
+    def test_null_build_tooling_snapshot_and_review(self):
+        lane=self.ready(reviews=True,null_build=True);self.reviewer()
+        original=lane['handoff']['sha256']
+        snapshot=self.reg.snapshot_handoff('one',1,lane['revision'],'null-build')
+        frozen=json.loads(self.reg.evidence(snapshot['handoff']).read_text())
+        self.assertIsNone(frozen['build'])
+        self.reg.dispose_review('one',1,lane['revision'],'null-approved',original,
+                                'shared.cpp','approved','two',self.evidence,reviewer_generation=1)
+        updated=self.reg.status()['lanes']['one']
+        self.assertEqual([],self.reg.check_handoff(updated)['pending_reviews'])
+        self.assertFalse(updated['handoff']['result']['gameplay_accepted'])
+
+    def test_runtime_still_requires_build(self):
+        with self.assertRaises(Rejected):self.ready(runtime=True,null_build=True)
 
     def test_snapshot_retains_evidence_after_original_changes_and_rejects_drift(self):
         lane = self.ready(runtime=True)
@@ -46,19 +77,24 @@ class DeliveryTests(unittest.TestCase):
             self.reg.snapshot_handoff('one', 1, lane['revision'], 'v1')
 
     def test_disposition_applies_new_handoff_replays_and_preserves_gates(self):
-        lane = self.ready(reviews=True)
+        lane = self.ready(reviews=True); self.reviewer()
         original = lane['handoff']['sha256']
+        with self.assertRaisesRegex(Rejected, 'free-text reviewers are refused'):
+            self.reg.dispose_review('one', 1, lane['revision'], 'approved-1', original,
+                                    'shared.cpp', 'approved', 'Codex through shared account', self.evidence)
         result = self.reg.dispose_review('one', 1, lane['revision'], 'approved-1', original,
-                                         'shared.cpp', 'approved', 'reviewer', self.evidence)
+                                         'shared.cpp', 'approved', 'two', self.evidence, reviewer_generation=1)
         updated = self.reg.status()['lanes']['one']
         self.assertNotEqual(original, updated['handoff']['sha256'])
         self.assertEqual([], self.reg.check_handoff(updated)['pending_reviews'])
         self.assertFalse(updated['handoff']['result']['gameplay_accepted'])
         self.assertEqual(result, self.reg.dispose_review('one', 1, lane['revision'], 'approved-1', original,
-                                                       'shared.cpp', 'approved', 'reviewer', self.evidence))
+                                                       'shared.cpp', 'approved', 'two', self.evidence,
+                                                       reviewer_generation=1))
+        self.assertEqual(self.reg.snapshot()['approvals'][result['approval']]['status'], 'approved')
         with self.assertRaises(Rejected):
             self.reg.dispose_review('one', 1, updated['revision'], 'approved-1', original,
-                                    'shared.cpp', 'rejected', 'reviewer', self.evidence)
+                                    'shared.cpp', 'rejected', 'two', self.evidence, reviewer_generation=1)
 
     def test_frozen_submission_survives_original_log_rotation(self):
         lane = self.ready(runtime=True)
@@ -69,10 +105,10 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(lane['handoff']['sha256'], snapshot['handoff']['sha256'])
 
     def test_disposition_fences_owner_generation_revision_and_source(self):
-        lane = self.ready(reviews=True)
+        lane = self.ready(reviews=True); self.reviewer()
         def apply(generation=1, revision=lane['revision'], sha=lane['handoff']['sha256']):
             return self.reg.dispose_review('one', generation, revision, 'v1', sha,
-                                           'shared.cpp', 'approved', 'reviewer', self.evidence)
+                                           'shared.cpp', 'approved', 'two', self.evidence, reviewer_generation=1)
         for health in ('alive', 'unknown'):
             self.health = health
             with self.assertRaises(Rejected):

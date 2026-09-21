@@ -341,7 +341,9 @@ class WorkflowTests(unittest.TestCase):
             validate_handoff(self.root, data)
 
     def test_handoff_review_and_integration_metrics(self):
-        lane = self.running()
+        from tests.landing_git import source
+        self.running()
+        lane = source(self.reg, 'one', {'workflow/one.py': 'X = 1\n'})
         self.now += 40
         path = self.save_handoff(self.handoff(lane))
         lane = self.reg.submit_handoff('one', 1, 2, path)
@@ -352,7 +354,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(status['dispatch']['pause_new_slices'])
         self.assertEqual(status['metrics']['handoff_queue'][0]['age_seconds'], 3601)
         self.reg.checkpoint('one', 1, 3, {'state': 'integrating'})
-        self.reg.integrate('one', 1, 4, {'root_commit': 'b'*40, 'validation_path': str(self.log),
+        self.reg.integrate('one', 1, 4, {'root_commit': lane['root']['head'], 'validation_path': str(self.log),
                                       'validation_sha256': digest(self.log)})
         self.assertEqual(self.reg.status()['metrics']['integrated_lead_seconds'], [3641])
 
@@ -365,6 +367,21 @@ class WorkflowTests(unittest.TestCase):
         Path(path).write_text('{}')
         with self.assertRaises(Rejected):
             self.reg.checkpoint('one', 1, 3, {'state': 'integrating'})
+
+    def test_native_receipt_rejects_explicit_non_export_and_rolls_back(self):
+        from unittest.mock import patch
+        self.running()
+        with self.reg.transaction() as state:
+            state['lanes']['one'].update(state='integrating', native={'head':'a'*40})
+        evidence=self.root/'output/no-export.json'
+        evidence.write_text(json.dumps({'action':'none-performed'}))
+        record=dict(root_commit='b'*40,native_commit='a'*40,native_dirty='',
+                    validation_path=str(self.log),validation_sha256=digest(self.log),
+                    export_evidence=str(evidence),export_sha256=digest(evidence))
+        with patch.object(self.reg,'check_handoff',return_value={'pending_reviews':[]}),                 patch('workflow.landing.prove',return_value={}):  # Landing proof has its own tests.
+            with self.assertRaisesRegex(Rejected,'explicitly records no export'):
+                self.reg.integrate('one',1,2,record)
+        self.assertEqual(self.reg.snapshot()['lanes']['one']['state'],'integrating')
 
     def test_cli_and_persistent_reopen(self):
         script = Path(__file__).resolve().parents[1] / 'scripts/pikmin2_workflow.py'
@@ -441,19 +458,30 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.reg.status()['metrics']['completed_wait_seconds'][-1], 20)
 
     def test_pending_review_refresh_preserves_age_then_integrates(self):
-        lane = self.running()
+        from tests.landing_git import source
+        self.running()
+        lane = source(self.reg, 'one', {'workflow/one.py': 'X = 1\n'})
         data = self.handoff(lane)
         data['changed_files'] += ['native/shared.cpp']
         data['shared_reviews'] = [dict(file='native/shared.cpp', reason='Receiver semantics',
             issue_url='https://github.com/4laric/pikmin-randomizer/issues/186', status='requested', evidence=['log'])]
         self.reg.submit_handoff('one', 1, 2, self.save_handoff(data))
         self.reg.checkpoint('one', 1, 3, {'state': 'integrating'})
-        record = dict(root_commit='b'*40, validation_path=str(self.log), validation_sha256=digest(self.log))
+        record = dict(root_commit=lane['root']['head'], validation_path=str(self.log), validation_sha256=digest(self.log))
         with self.assertRaisesRegex(Rejected, 'shared reviews'):
             self.reg.integrate('one', 1, 4, record)
         self.now += 99
         data['shared_reviews'][0]['status'] = 'approved'
-        self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))
+        with self.assertRaisesRegex(Rejected, 'no matching authenticated decision'):  # A producer cannot approve itself.
+            self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))
+        from tests.approval_auth import reviewer
+        from workflow import review_decisions
+        self.register('two'); reviewer(self, self.reg, 'two', owns=['one'])
+        handoff = self.reg.status()['lanes']['one']['handoff']
+        self.save_handoff(dict(data, shared_reviews=[dict(data['shared_reviews'][0], status='requested')]))
+        review_decisions.record(self.reg, 'two', 1, 'one', 1, handoff['sha256'],
+                                [dict(file='native/shared.cpp', status='approved', evidence=self.evidence)])
+        self.reg.submit_handoff('one', 1, 4, self.save_handoff(data))  # Stamped from the ledger row.
         self.assertEqual(self.reg.status()['metrics']['handoff_queue'][0]['age_seconds'], 99)
         self.reg.checkpoint('one', 1, 5, {'state': 'integrating'})
         self.assertEqual(self.reg.integrate('one', 1, 6, record)['state'], 'done')

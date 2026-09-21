@@ -264,8 +264,32 @@ class AutofillTests(unittest.TestCase):
             state['lanes']['planner']['generation']+=1
             state['lanes']['planner']['state']='blocked'
         self.tick();self.assertEqual(len(self.reg.control_status()['launches']),1)
-        self.now+=301;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
+        self.now+=301;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),1)  # Unchanged inputs: 2x cooldown.
+        self.now+=300;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
         self.assertFalse(list(self.inbox.glob('*.md')))
+
+    def test_parked_planner_waits_without_writes_and_wakes_on_a_new_input(self):
+        import workflow.autofill as autofill
+        self.save([]);self.planner();self.tick()
+        first=next(iter(self.reg.control_status()['launches'].values()))
+        with self.reg.transaction() as state:
+            state['control']['launches'][first['id']]['status']='exited'
+            state['lanes']['planner'].update(state='blocked',stall_streak=2,wake_inputs=list(first['inputs']))
+            state['lanes']['planner']['generation']+=1
+        self.now+=4000;self.tick()
+        status=autofill_status(self.reg)
+        self.assertEqual(status['last_planner_request']['status'],'parked')
+        self.assertIn('No progress',status['coordinator_wait_reason'])
+        self.assertEqual(len(self.reg.control_status()['launches']),1)
+        with patch.object(autofill,'_planner_launch',side_effect=AssertionError('parked tick re-offered')):
+            self.tick()  # Same inputs before wake_after: no launch attempt, no park write.
+        self.assertIn('No progress',autofill_status(self.reg)['coordinator_wait_reason'])
+        write(self.manifest,dict(schema=1,repository='4laric/pikmin-randomizer',assignee='4laric',items=[],note='new'))
+        self.tick()
+        launches=self.reg.control_status()['launches']
+        self.assertEqual(len(launches),2)
+        self.assertNotEqual(max(launches.values(),key=lambda x:x['created_at'])['inputs'],first['inputs'])
+        self.assertIsNone(autofill_status(self.reg)['coordinator_wait_reason'])
 
     def test_planner_live_or_inflight_is_normal_but_unknown_stays_visible(self):
         self.save([]);self.planner();self.tick()
@@ -333,6 +357,15 @@ class AutofillTests(unittest.TestCase):
         self.assertEqual(report['ready_count'],1)
         self.assertEqual(report['active_enemy_count'],0)
         self.assertEqual(report['starvation_seconds'],0)
+
+    def test_foreign_owner_acceptance_is_linted_but_never_refused(self):
+        from workflow.autofill import validate_spec
+        self.spec['lane']['acceptance'] = ['Verified disposition', 'Guard landed with #186 review']
+        self.save([self.spec])
+        lint = validate_spec(self.reg, self.spec, lambda n: copy.deepcopy(self.remote[n]))
+        self.assertEqual([(f['index'], f['move_to']) for f in lint], [(1, 'shared_reviews')])
+        self.tick()
+        self.assertIn('next', self.reg.status()['lanes'])  # Admitted: the lint is advisory.
 
     def test_malformed_sibling_does_not_block_valid_spec(self):
         self.save([{'missing':'id'},dict(self.spec,id='malformed',priority='invented',lane={}),self.spec])

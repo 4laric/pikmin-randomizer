@@ -5,6 +5,18 @@ from workflow.dashboard import render_dashboard
 
 
 class AutofillDashboardTests(unittest.TestCase):
+    def test_helpers_have_one_total_with_subordinate_parts(self):
+        report = self.report()
+        report['autofill']['planner_pool'] = dict(active=7, target=9, running=3,
+            queued=1, report_ready=2, recovery=1, integration_support_active=1)
+        html = render_dashboard(report)
+        self.assertIn('Helper reservations: 7</strong><span> / 9 target', html)
+        self.assertIn('Of that total:', html)
+        for text in ('3 running', '1 queued', '2 reports ready', '1 recovering'):
+            self.assertIn(text, html)
+        self.assertNotIn('Helper sessions running / queued', html)
+        self.assertNotIn('Reports ready / recovering', html)
+        self.assertNotIn('Integration assistance / target', html)
     def test_enemy_domain_override_preserves_state_and_helper_filters(self):
         from workflow.autofill import active_enemy_lanes
         state={'settings':{'enemy_acceptance_lanes':['armor','tadpole','helper']},'lanes':{
@@ -26,8 +38,8 @@ class AutofillDashboardTests(unittest.TestCase):
     def test_backlog_capacity_blockers_and_starvation_are_visible(self):
         html = render_dashboard(self.report())
         self.assertIn('Ready backlog</span><strong>3', html)
-        self.assertIn('Active enemy work</span><strong>1', html)
-        self.assertIn('Idle authorized workers</span><strong>2', html)
+        self.assertIn('Active enemy work</th><td>1', html)
+        self.assertIn('Verified consumer unblocks / hour</span><strong>', html)
         self.assertIn('Queue starvation', html)
         self.assertIn('3.0 min', html)
         self.assertIn('Missing source-bound build', html)
@@ -36,7 +48,7 @@ class AutofillDashboardTests(unittest.TestCase):
     def test_missing_status_is_unknown_not_zero_or_starvation(self):
         html = render_dashboard({})
         self.assertIn('Ready backlog</span><strong>Unavailable', html)
-        self.assertIn('Active enemy work</span><strong>Unavailable', html)
+        self.assertIn('Active enemy work</th><td>Unavailable', html)
         self.assertIn('Unavailable: no autofill observation', html)
         self.assertNotIn('Queue starvation:', html)
 
@@ -65,14 +77,15 @@ class AutofillDashboardTests(unittest.TestCase):
         self.assertIn('Disabled', html)
         self.assertNotIn('Queue starvation:', html)
 
-    def test_malformed_counter_is_unavailable_and_blocker_list_is_bounded(self):
+    def test_malformed_counter_is_unavailable_and_attention_counts_every_blocker(self):
         report = self.report()
         report['autofill']['ready_count'] = True
         report['autofill']['starvation_seconds'] = float('nan')
         report['autofill']['items'] = {str(i): {'lane': str(i), 'status': 'blocked', 'reason': 'test'} for i in range(12)}
         html = render_dashboard(report)
         self.assertIn('Ready backlog</span><strong>Unavailable', html)
-        self.assertIn('additional blocked items', html)
+        self.assertIn('Needs attention <span>12 items</span>', html)
+        self.assertIn('<strong>11</strong>', html)
         self.assertNotIn('Queue starvation:', html)
 
 

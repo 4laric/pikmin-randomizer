@@ -5,7 +5,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from .handoff import digest, local_path, require, nonempty, validate_review
+from .handoff import Rejected, digest, local_path, require, nonempty, validate_review
 
 
 def fingerprint(value):
@@ -13,7 +13,11 @@ def fingerprint(value):
 
 
 def git(tree, *args):
-    p = subprocess.run(['git', '-C', str(tree), *args], capture_output=True, text=True)
+    """Bounded; a git that cannot run or finish refuses like a failed check."""
+    try:
+        p = subprocess.run(['git', '-C', str(tree), *args], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Rejected('Git verification failed: ' + (str(exc) or type(exc).__name__))
     require(p.returncode == 0, 'Git verification failed: ' + p.stderr.strip())
     return p.stdout.strip()
 
@@ -24,8 +28,13 @@ class ControlMixin:
             notices={}, consumed={}, controller=None, decisions={}, ram_paused=False))
 
     def control_status(self):
-        with self.transaction() as state:
-            return self.control(state)
+        control=self.snapshot(section=('control',))
+        return self.control({'control':control} if control else {})
+
+    def control_meta(self):
+        """Control scalars (RAM, providers, model limits) from the meta row alone; never its partitions."""
+        from .storage import read_record
+        return self.control(read_record(self, (), '') or {})
 
     def evidence(self, value):
         require(isinstance(value, dict), 'Hashed evidence required')
@@ -33,10 +42,17 @@ class ControlMixin:
         require(path.is_file() and digest(path) == value.get('sha256'), 'Missing or changed evidence')
         return path
 
-    def finish(self, key, generation, outcome, summary, evidence, dependencies=None, path=None):
-        """A small terminal API; runtime handoffs still go through full validation."""
+    def finish(self, key, generation, outcome, summary, evidence, dependencies=None, path=None, shared_hooks=None):
+        """A small terminal API; runtime handoffs still go through full validation.
+
+        blocked may also carry structured shared_hooks [{kind:'shared_hook', issue, files|item_id}] next to its
+        text dependencies; approvals.shared_hook_decision records decisions against them."""
         require(nonempty(summary), 'Outcome summary required')
         require(outcome in ('blocked', 'review-ready', 'implementation-ready', 'reconcile'), 'Unknown outcome')
+        require(shared_hooks is None or outcome == 'blocked', 'shared_hooks belong to a blocked outcome')
+        if shared_hooks is not None:
+            from .approvals import hooks
+            shared_hooks = hooks(shared_hooks)
         self.evidence(evidence)
         if outcome == 'implementation-ready':
             require(path is not None, 'implementation-ready requires a validated handoff path')
@@ -47,15 +63,26 @@ class ControlMixin:
             require(lane['state'] != 'done', 'Completed slice cannot be reopened')
             value = dict(outcome=outcome, summary=summary, evidence=evidence,
                          dependencies=dependencies or [])
-            if lane.get('outcome') == value:
+            if shared_hooks:
+                value['shared_hooks'] = shared_hooks
+            if lane.get('outcome') == value and lane.get('shared_hooks', []) == (shared_hooks or []):
                 return lane
             if outcome == 'blocked':
                 require(dependencies and all(nonempty(d) for d in dependencies), 'Blocked needs explicit dependencies')
+            if outcome == 'review-ready':
+                from .support_actions import require_outcomes
+                require_outcomes(state,key)
+                from .review_followup import require_dispositions
+                require_dispositions(state, key, generation)
             lane.update(state={'blocked': 'blocked', 'review-ready': 'review_ready',
                                'reconcile': 'reconciling'}[outcome], outcome=value,
                         next_action=summary, revision=lane['revision'] + 1,
                         dependencies=dependencies or [], progress_at=self.clock(),
                         progress_detail=summary, progress_evidence=evidence)
+            if outcome == 'blocked' and (shared_hooks or 'shared_hooks' in lane):
+                lane['shared_hooks'] = shared_hooks or []  # Each blocked finish replaces the structured hooks.
+            elif outcome != 'blocked':
+                lane.pop('shared_hooks', None)
             if outcome == 'review-ready':
                 # Review is a terminal worker outcome, not runtime acceptance or source integration.
                 lane['handoff_at'] = lane['handoff_at'] or self.clock()
@@ -63,6 +90,8 @@ class ControlMixin:
                     evidence={'review': evidence}, **{k: lane[k] for k in ('lane', 'owner', 'task_id', 'issue', 'generation')})
                 lane['review'] = review
                 validate_review(self.root, review, lane)
+            from .no_progress import record
+            record(self, state, lane, outcome)  # The substantive signal sits next to the outcome it describes.
             self.check_wip(state, lane)
             self.event(state, 'outcome', key, outcome=outcome)
             return lane
@@ -86,22 +115,45 @@ class ControlMixin:
 
     def accept_review(self, key, generation, summary, evidence):
         """Integrator acknowledges a completed review without promoting gameplay gates."""
-        self.evidence(evidence)
         require(nonempty(summary), 'Review disposition required')
         with self.transaction() as state:
             lane = self.lane(state, key, generation)
             record = dict(summary=summary, evidence=evidence)
             if lane['state'] == 'done':
-                require(lane.get('review_disposition') == record, 'Conflicting review disposition')
+                previous = lane.get('review_disposition') or {}
+                require(all(previous.get(k) == v for k, v in record.items()), 'Conflicting review disposition')
+                if previous.get('archived_evidence'):
+                    self.evidence(previous['archived_evidence'])
+                else:
+                    previous['archived_evidence'] = self.archive_evidence(evidence)
+                    self.event(state, 'review_evidence_archived', key, evidence=previous['archived_evidence'])
                 return lane
             require(lane['state'] == 'review_ready' and lane.get('review'), 'Completed review required')
             validate_review(self.root, lane['review'], lane)
+            record['archived_evidence'] = self.archive_evidence(evidence)
             lane.update(state='done', review_disposition=record, revision=lane['revision'] + 1)
             self.event(state, 'review_accepted', key)
             return lane
 
-    def receipt(self, key, generation, record, root_worktree, native_worktree=None):
-        """Verify an existing integration, then replay its completion safely."""
+    def archive_evidence(self, evidence):
+        """Keep verified bytes independent of mutable worker inbox lifetimes."""
+        source = local_path(self.root, evidence.get('path'))
+        content = source.read_bytes()
+        expected = evidence.get('sha256')
+        require(hashlib.sha256(content).hexdigest() == expected, 'Missing or changed evidence')
+        target = self.root / 'output/workflow/evidence' / expected
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with target.open('xb') as stream:
+                stream.write(content)
+        except FileExistsError:
+            require(digest(target) == expected, 'Evidence archive is corrupt')
+        return dict(path=str(target), sha256=expected)
+
+    def receipt(self, key, generation, record, root_worktree, native_worktree=None, lander=None):
+        """Verify an existing integration, then replay its completion safely.
+
+        Ancestry here is an extra, stricter gate; integrate() still proves the landed bytes."""
         self.evidence(dict(path=record.get('validation_path'), sha256=record.get('validation_sha256')))
         lane = self.status()['lanes'][key]
         require(lane['generation'] == generation, 'Stale ownership generation')
@@ -118,7 +170,7 @@ class ControlMixin:
         require(lane['state'] in ('handoff_ready', 'integrating'), 'Validated implementation handoff required')
         if lane['state'] != 'integrating':
             lane = self.checkpoint(key, generation, lane['revision'], {'state': 'integrating'})
-        return self.integrate(key, generation, lane['revision'], record)
+        return self.integrate(key, generation, lane['revision'], record, lander)
 
     def reconcile_handoff(self, key, generation, revision, summary, evidence):
         """Return a blocked lane with a still-valid handoff to handoff_ready.
@@ -153,7 +205,7 @@ class ControlMixin:
             require(not any(item['lane'] == key and item['generation'] == generation and
                             item['status'] in ('intent', 'spawned', 'running')
                             for item in launches.values()), 'Controller dispatch in flight for this lane')
-            result = self.check_handoff(lane)
+            result = self.check_handoff(lane, state)
             lane.update(state='handoff_ready', revision=revision + 1,
                         outcome=None, dependencies=[],
                         next_action=summary, progress_at=self.clock(), progress_detail=summary,
@@ -164,37 +216,139 @@ class ControlMixin:
             self.event(state, 'handoff_reconciled', key)
             return lane
 
-    def notice(self, key, kind, detail):
+    def notice(self, key, kind, detail, status='pending'):
+        """One open notice per (lane, kind, error); a repeat bumps its counter at most every ten minutes.
+
+        Only a still-open row (same status) absorbs repeats: once the shepherd resolves it, a distinct
+        detail is a new notice and an identical one stays suppressed, as with exact-detail identities.
+        A notice naming a launch (action) stays one per launch. status='info' is recorded for
+        visibility but never offered to the shepherd. A row written under the older exact-detail
+        identity still counts when the collapsed one has none, so a resolved notice stays resolved."""
+        exact = fingerprint([key, kind, detail])
+        error = detail.get('error') if isinstance(detail, dict) and 'action' not in detail else None
+        identity = fingerprint([key, kind, error]) if isinstance(error, str) else exact
+        from .storage import read_record, selected
+        old = read_record(self, ('control', 'notices'), identity)
+        if old is None and identity != exact:
+            legacy = read_record(self, ('control', 'notices'), exact)
+            if legacy is not None: identity, old = exact, legacy
+        if old is not None and old.get('status') != status:
+            if old.get('detail') == detail: return identity
+            identity, old = exact, read_record(self, ('control', 'notices'), exact)
+        if old is not None:
+            if old.get('status') == status and self.clock() - old.get('last_at', old.get('at', 0)) >= 600:
+                with selected(self, [(('control', 'notices'), identity)]) as rows:
+                    row = rows[(('control', 'notices'), identity)]
+                    if row is not None:
+                        row.update(repeats=row.get('repeats', 0) + 1, last_at=self.clock(), last_detail=detail)
+            return identity
         with self.transaction() as state:
             c = self.control(state)
-            identity = fingerprint([key, kind, detail])
             c['notices'].setdefault(identity, dict(id=identity, lane=key, kind=kind,
-                detail=detail, status='pending', at=self.clock()))
+                detail=detail, status=status, at=self.clock()))
             return identity
 
-    def plan_launch(self, key, reason, instruction, models, version=None):
-        """Commit intent before external spawn; repeat requests return the same intent."""
+    def _resumable_integration_batches(self, state, lane):
+        """Fence ownership, not candidate validity: invalid candidates need isolation."""
+        pool = state.get('throughput', {})
+        batches = [b for b in pool.get('batches', {}).values()
+                   if b.get('integrator') == lane['lane'] and b.get('state') == 'claimed']
+        for batch in batches:
+            require(batch.get('generation') == lane['generation'], 'Stale integration batch generation')
+            require(pool.get('workstreams', {}).get(batch.get('workstream'), {}).get('owner_lane') == lane['lane'],
+                    'Integration batch workstream ownership changed')
+        return batches
+
+    def plan_launch(self, key, reason, instruction, models, version=None, inputs=None, obligation=False, supersedes=None,
+                    carry=None):
+        """Commit intent before external spawn; repeat requests return the same intent.
+
+        Wake-type reasons pass the substantive inputs they carry; no_progress parks a stalled lane
+        whose wake brings none it has not already been offered (Parked). obligation marks a wake
+        that carries a non-deferrable duty (disposition_required reviews) and is never parked.
+        supersedes names the stopped launch a recovery continues: it is marked exited in the same
+        transaction, so a refused plan leaves it unexited for the next completion sweep. carry adds
+        fields (obligations, retry counters) to a new intent without overriding its own. Whatever the
+        planner, a lane whose provisioned fresh session was never adopted (session_pending) starts
+        fresh again: its task_id is still the worker's previous, unrelated lane's session."""
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
         require(nonempty(instruction), 'Resume instruction required')
+        from . import no_progress
+        from .storage import read_record
+        inputs = sorted(set(inputs or []))
+        # Reduced lanes use the transaction-fenced semantic-input guard below;
+        # the legacy timed guard must not veto a genuinely changed input first.
+        wake = no_progress.guarded(reason) and not obligation and not key.startswith('rd-')
+        if wake:  # An already parked lane refuses from committed rows, without the writer lock.
+            row = read_record(self, ('lanes',), key)
+            refusal = row and no_progress.verdict(row, inputs, self.clock())
+            if (refusal and row.get('wake_after') == refusal['wake_after'] and read_record(
+                    self, ('control', 'launches'), fingerprint([key, reason, version, row['generation']])) is None):
+                raise no_progress.Parked(refusal['message'])
+        from .provenance import stamp
+        code = stamp()
+        refusal = None
         with self.transaction() as state:
             c = self.control(state)
             lane = self.lane(state, key)
             identity = fingerprint([key, reason, version, lane['generation']])
             old = c['launches'].get(identity)
+            stopped = c['launches'].get(supersedes) if supersedes else None
+            require(supersedes is None or (stopped and stopped['lane'] == key and
+                    stopped['status'] in ('running', 'exiting', 'exited')), 'Superseded launch must belong to this lane')
             if old:
+                if stopped: stopped['status'] = 'exited'
                 return old
-            require(lane['state'] in ('blocked', 'ready', 'running', 'reconciling'), 'Lane cannot resume')
+            if reason.startswith('internal-owner-resume:'):
+                from .action_routing import validate_resume
+                validate_resume(state,key,reason)
+            owner_wakeup = reason.startswith('integration-demand:') and lane['state'] == 'review_ready'
+            repair_wakeup = reason.startswith('integration-repair:')
+            if repair_wakeup:
+                from .integration_repair import repair_pin
+                repair_pin(state, lane, reason, self)
+            if owner_wakeup:
+                require(any(s.get('owner_lane') == key for s in state.get('throughput', {}).get('workstreams', {}).values()),
+                        'Only registered integration owners can wake from review')
+            if reason.startswith('integration-demand:'):
+                self._resumable_integration_batches(state, lane)
+            require(owner_wakeup or repair_wakeup or lane['state'] in ('blocked', 'ready', 'running', 'reconciling'), 'Lane cannot resume')
+            from .reduced_supervision import check_retry
+            retry_evidence = (carry or {}).get('operator_retry_evidence')
+            if retry_evidence is not None:
+                require(reason.startswith('operator:'), 'Explicit operator retry reason required')
+                self.evidence(retry_evidence)
+                self.event(state, 'operator_retry', key, evidence=retry_evidence, reason=reason)
+            else:
+                check_retry(state, lane)
             require(self.recovery_safe(state, lane), 'Old worker or protected child still live/unknown')
+            self.check_wip(state, dict(lane, state='running'))
             require(not any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')
-                            for l in c['launches'].values()), 'Dispatch already in flight')
-            item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
-                instruction=instruction, models=models, model_index=0, version=version,
-                session=lane['task_id'].removeprefix('opencode:'), status='intent',
-                process=None, created_at=self.clock(), attempts=0)
+                            and l['id'] != supersedes for l in c['launches'].values()), 'Dispatch already in flight')
             require(lane['task_id'].startswith('opencode:'), 'Only known OpenCode sessions can resume')
-            c['launches'][identity] = item
-            self.event(state, 'launch_intent', key, action=identity)
-            return item
+            refusal = wake and no_progress.verdict(lane, inputs, self.clock())
+            if refusal:
+                no_progress.park(self, state, lane, reason, refusal)
+            else:
+                if wake:
+                    no_progress.admit(self, state, lane, reason)
+                if stopped:
+                    stopped['status'] = 'exited'
+                item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
+                    instruction=instruction, models=models, model_index=0, version=version,
+                    session=lane['task_id'].removeprefix('opencode:'), status='intent',
+                    process=None, created_at=self.clock(), attempts=0, code_revision=code)
+                if inputs:
+                    item['inputs'] = inputs
+                item.update({k: v for k, v in (carry or {}).items() if k not in item})
+                if lane.get('session_pending') and not lane.get('session_lane'):
+                    item['fresh_session'] = True
+                c['launches'][identity] = item
+                self.event(state, 'launch_intent', key, action=identity)
+                return item
+        # Informational: field, event and dashboard carry it; a pending notice would invite a shepherd resume.
+        self.notice(key, 'no_progress_parked', dict(error=refusal['message']), status='info')
+        raise no_progress.Parked(refusal['message'])
 
     def _rebind_pool_recovery(self, state, item, lane):
         """Move one dispatched assignment across a verified same-session recovery."""
@@ -251,25 +405,70 @@ class ControlMixin:
             require(item['status'] in ('intent', 'spawned'), 'Launch is not awaiting registration')
             lane = self.lane(state, item['lane'], item['generation'])
             require(self.recovery_safe(state, lane), 'Previous execution is not stopped')
+            self.check_wip(state, dict(lane, state='running'))
             require(self.probe(process) == 'alive', 'New runner must be alive')
+            resumed_batches = []
+            if item['reason'].startswith('integration-demand:'):
+                require(item['session'] == lane['task_id'].removeprefix('opencode:'),
+                        'Integration session changed before recovery')
+                resumed_batches = self._resumable_integration_batches(state, lane)
+            if item['reason'].startswith('integration-repair:'):
+                from .integration_repair import repair_pin
+                pin = repair_pin(state, lane, item['reason'], self)
+                lane.setdefault('repair_history', []).append(dict(isolation=pin, handoff=lane['handoff'],
+                    root=lane['root'], native=lane.get('native'), handoff_at=lane.get('handoff_at'),
+                    launch_id=action_id, at=self.clock(), handoff_code_revision=lane.pop('handoff_code_revision', None)))
+                lane.update(handoff=None, handoff_at=None)
+            if lane['state'] == 'review_ready':
+                require(item['reason'].startswith('integration-demand:') and
+                        any(s.get('owner_lane') == lane['lane'] for s in state.get('throughput', {}).get('workstreams', {}).values()),
+                        'Review ownership changed before wakeup')
+                lane.setdefault('completed_turns', []).append(dict(generation=lane['generation'],
+                    outcome=lane.get('outcome'), review=lane.get('review'), handoff_at=lane.get('handoff_at')))
+                lane.update(review=None, handoff_at=None)
+            claims = [v for v in state.get('planning_claims', {}).values() if v['lane'] == lane['lane']]
+            for claim in claims:
+                require(self.probe(claim['process']) == 'dead', 'Original planning claim owner must be stopped')
+            for claim in claims:
+                claim.update(generation=lane['generation'] + 1, process=dict(process))
+            if claims:
+                self.event(state, 'planning_claims_rebound', lane['lane'], action=action_id)
             lane.update(generation=lane['generation'] + 1, revision=lane['revision'] + 1,
                 process=process, state='running', heartbeat_at=self.clock(), progress_at=self.clock(),
                 next_action=item['instruction'], progress_detail='Resumed: ' + item['reason'],
                 outcome=None, failure_streak=0, recovery_count=0)
             item.update(status='running', process=process, bound_generation=lane['generation'])
+            from .no_progress import bound
+            bound(lane, item)  # stall_streak survives bind; only a changed terminal signal resets it.
+            from .consumer_verification import bind_context
+            bind_context(self,state,item,lane)
+            lane['next_action']=item['instruction']
+            for batch in resumed_batches:
+                batch.setdefault('recovery_history', []).append(dict(
+                    generation=batch['generation'], revision=batch['revision'],
+                    launch_id=action_id, at=self.clock()))
+                batch.update(generation=lane['generation'], revision=batch['revision'] + 1)
+                self.event(state, 'integration_batch_resumed', lane['lane'],
+                           batch_id=batch['id'], action=action_id)
             self._rebind_pool_recovery(state, item, lane)
             if item['version']:
                 c['consumed'][item['lane']] = item['version']
-            state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
+            self.drop_leases(state, lane['lane'], 'launch_bound')
             state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}
             self.event(state, 'launch_bound', lane['lane'], action=action_id)
             return lane
 
     def controller_claim(self, process):
+        """The identity stays exact for probing; its revision names the claiming process."""
+        from .provenance import code_revision
+        code = code_revision()  # Git runs before the writer lock is taken.
         with self.transaction() as state:
             c = self.control(state); old = c['controller']
             require(old is None or old == process or self.probe(old) == 'dead', 'Controller already live/unknown')
             c['controller'] = process
+            if old != process or c.get('controller_code_revision') != dict(code, process=process):
+                c['controller_code_revision'] = dict(code, process=process)  # Older claims never touch it.
+                self.event(state, 'controller_started', None, process=process, code_revision=code)
 
     def cool_provider(self, provider, seconds):
         with self.transaction() as state:
@@ -277,7 +476,7 @@ class ControlMixin:
             c['providers'][provider] = max(c['providers'].get(provider, 0), self.clock() + seconds)
 
     def select_model(self, models):
-        c = self.control_status()
+        c = self.control_meta()
         now = self.clock()
         return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= now
                      and c.get('model_limits', {}).get(m, {}).get('until', 0) <= now

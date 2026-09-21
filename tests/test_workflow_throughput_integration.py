@@ -5,6 +5,7 @@ import unittest
 from tests import test_pikmin2_controller as fixtures
 from workflow.dashboard import render_dashboard
 from workflow.throughput_controller import capture_costs, pool_tick
+from workflow.planner_pool import helper_target
 
 
 class ThroughputIntegrationTests(unittest.TestCase):
@@ -24,6 +25,40 @@ class ThroughputIntegrationTests(unittest.TestCase):
         self.reg.register_pool_worker('consumer', ['review'], ['python'], 'test orchestrator')
         self.reg.enqueue_job(dict(id='review-one', lane='consumer', issue=2, workstream='p2', role='review',
                                   capabilities=['python'], instruction='Apply review disposition'))
+
+    def test_helper_target_yields_to_ready_and_integration_backlog(self):
+        config = dict(max_active=24, reserve_workers=0, use_idle_capacity=True, pause_integration_depth=2)
+        self.assertEqual(helper_target(config, helper_count=9, ready=2, unclaimed_ready=2,
+                                       idle=2, active=9, integration={'depth': 2, 'oldest_seconds': 10}), 0)
+        self.assertEqual(helper_target(config, helper_count=9, ready=0, unclaimed_ready=0,
+                                       idle=4, active=0, integration={'depth': 2, 'oldest_seconds': 10}), 0)
+        self.assertEqual(helper_target(config, helper_count=9, ready=0, unclaimed_ready=0,
+                                        idle=6, active=0, integration={}), 6)
+
+    def test_fresh_handoff_does_not_starve_planning_but_backpressure_remains(self):
+        config = dict(max_active=24, reserve_workers=0, use_idle_capacity=True)
+        args = dict(helper_count=24, ready=1, unclaimed_ready=1, idle=7, active=3)
+        self.assertEqual(helper_target(config, **args, integration={'depth': 1, 'oldest_seconds': 120}), 9)
+        self.assertEqual(helper_target(config, **args, integration={'depth': 4, 'oldest_seconds': 120}), 0)
+        self.assertEqual(helper_target(config, **args, integration={'depth': 1, 'oldest_seconds': 3600}), 0)
+
+    def test_dynamic_planning_expands_and_reserves_execution_capacity(self):
+        config = dict(max_active=24, reserve_workers=2, use_idle_capacity=True)
+        args = dict(helper_count=30, ready=0, unclaimed_ready=0,
+                    idle=9, active=3, integration={})
+        self.assertEqual(helper_target(config, **args), 10)
+        self.assertEqual(helper_target(config, **dict(args, idle=4)), 5)
+        self.assertEqual(helper_target(config, **dict(args, ready=8, unclaimed_ready=8)), 2)
+        self.assertEqual(helper_target(config, **dict(args, idle=40)), 24)
+        self.assertEqual(helper_target(config, **dict(args, helper_count=4)), 4)
+        self.assertEqual(helper_target(dict(config, max_active=0), **args), 0)
+
+    def test_demand_mode_remains_bounded_by_low_watermark(self):
+        config = dict(max_active=24, reserve_workers=2, items_per_helper=3, low_watermark=8)
+        args = dict(helper_count=30, ready=0, unclaimed_ready=0,
+                    idle=20, active=0, integration={})
+        self.assertEqual(helper_target(config, **args), 3)
+        self.assertEqual(helper_target(config, **dict(args, ready=8)), 0)
 
     def test_enabled_pool_plans_and_dispatches_once(self):
         pool_tick(self.controller)

@@ -10,6 +10,126 @@ from workflow.runner import write
 
 
 class PlannerPoolTests(unittest.TestCase):
+    def test_typed_delivery_recovery_bypasses_unrelated_publication_wait(self):
+        self.settings['planner_pool']['cross_partition_recovery']=True
+        self.settings['planner_pool']['helpers'][0]['defer_for_review']=[str(self.f.inbox)]
+        with self.reg.transaction() as s:
+            original=s['lanes']['one']
+            s['lanes']['gap']=dict(copy.deepcopy(original),lane='gap',worker_id='outside',state='blocked',issue=701,
+                dependencies=['source'],outcome={'outcome':'blocked','evidence':{'path':str(self.f.brief),'sha256':digest(self.f.brief)}})
+            s['lanes']['source']=dict(copy.deepcopy(original),lane='source',worker_id='outside-source',issue=702)
+            s['throughput']['workstreams']['p2']['lanes'].append('gap')
+            owner=s['throughput']['workstreams']['p2']['owner_lane']
+            s['delivery_contracts']={'c':dict(id='c',consumer='gap',producer='source',owner=owner,
+                kind='source_integration',requirement='source',acceptance_check='compile original consumer')}
+        with patch('workflow.planner_pool.review_pending',return_value=True):self.tick()
+        state=self.reg.snapshot()
+        row=state['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies']
+        self.assertTrue(row['prerequisite_recovery'].startswith('delivery-recovery:'))
+        self.assertIn('next-cycle-1',state['lanes'])
+
+    def test_classification_uses_normal_queue_and_enforces_completion(self):
+        self.settings['planner_pool']['cross_partition_recovery']=True
+        self.settings['planner_pool']['helpers'][0]['defer_for_review']=[str(self.f.inbox)]
+        with self.reg.transaction() as s:
+            s['lanes']['gap']=dict(copy.deepcopy(s['lanes']['one']),lane='gap',worker_id='outside',
+                state='blocked',issue=701,dependencies=['unknown input'],
+                outcome={'outcome':'blocked','evidence':{'path':str(self.f.brief),'sha256':digest(self.f.brief)}})
+        with patch('workflow.planner_pool.review_pending',return_value=True):self.tick()
+        s=self.reg.snapshot();row=s['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies']
+        self.assertEqual(row['classification_target']['consumer'],'gap')
+        self.assertTrue(row['actionable_support'])
+        self.assertIn('next-cycle-1',s['lanes'])
+        from workflow.support_actions import require_outcomes
+        with self.assertRaisesRegex(Rejected,'complete dependency classification'):
+            require_outcomes(s,'next-cycle-1')
+
+    def test_internal_followup_uses_normal_queue_with_action_gate(self):
+        self.settings['planner_pool']['cross_partition_recovery']=True
+        self.settings['planner_pool']['helpers'][0]['defer_for_review']=[str(self.f.inbox)]
+        with self.reg.transaction() as s:
+            s['lanes']['gap']=dict(copy.deepcopy(s['lanes']['one']),lane='gap',worker_id='outside',
+                state='blocked',issue=701,dependencies=['unknown input'],
+                outcome={'outcome':'blocked','evidence':{'path':str(self.f.brief),'sha256':digest(self.f.brief)}})
+            from workflow.dependency_classification import signature
+            s['dependency_classifications']={'finding':dict(id='finding',at=1,consumer='gap',
+                snapshot=signature(s['lanes']['gap']),evidence=s['lanes']['gap']['outcome']['evidence'],
+                dispositions=[dict(requirement='unknown input',check='run original check',reason='missing wiring',
+                    internal_blocker=dict(kind='missing_producer',missing='engine wiring',
+                        next_action='prepare private engine repair',inspected_lanes=[]))])}
+        with patch('workflow.planner_pool.review_pending',return_value=True):self.tick()
+        s=self.reg.snapshot();row=s['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies']
+        self.assertTrue(row['prerequisite_recovery'].startswith('internal-followup:'))
+        self.assertNotIn('classification_target',row)
+        self.assertTrue(row['actionable_support'])
+        self.assertIn('next-cycle-1',s['lanes'])
+        from workflow.support_actions import require_outcomes
+        with self.assertRaisesRegex(Rejected,'actionable outcome'):
+            require_outcomes(s,'next-cycle-1')
+
+    def test_uncapped_helpers_follow_demand_and_execution_reserve(self):
+        from workflow.planner_pool import helper_target, support_target
+        config=dict(max_active=None,backpressure_planning_limit=None,
+                    integration_support_max_active=None,use_idle_capacity=True,reserve_workers=2)
+        args=dict(helper_count=40,ready=0,unclaimed_ready=3,idle=35,active=0,integration={'depth':10})
+        self.assertEqual(helper_target(config,**args),30)
+        self.assertEqual(helper_target(config,**dict(args,helper_count=7)),7)
+        self.assertEqual(helper_target(config,**dict(args,idle=5)),0)
+        self.assertEqual(support_target(config,demanded=40,idle=35,active=0,unclaimed_ready=3),30)
+        self.assertEqual(support_target(config,demanded=0,idle=35,active=0,unclaimed_ready=0),0)
+
+    def test_backpressure_planning_is_bounded_and_preserves_ready_capacity(self):
+        from workflow.planner_pool import helper_target
+        config=dict(max_active=12,use_idle_capacity=True,reserve_workers=2,
+                    backpressure_planning_limit=2)
+        args=dict(helper_count=10,ready=0,unclaimed_ready=0,idle=20,active=0,
+                  integration={'depth':4})
+        self.assertEqual(helper_target(config,**args),2)
+        self.assertEqual(helper_target(config,**dict(args,idle=3,unclaimed_ready=1)),0)
+        self.assertEqual(helper_target(dict(config,backpressure_planning_limit=0),**args),0)
+        self.assertEqual(helper_target(config,**dict(args,helper_count=0)),0)
+
+    def test_support_capacity_preserves_execution_reserve_and_limit(self):
+        from workflow.planner_pool import support_target
+        config=dict(integration_support_max_active=2,reserve_workers=2)
+        self.assertEqual(support_target(config,demanded=5,idle=10,active=0,unclaimed_ready=0),2)
+        self.assertEqual(support_target(config,demanded=5,idle=3,active=0,unclaimed_ready=1),0)
+        self.assertEqual(support_target(config,demanded=0,idle=10,active=0,unclaimed_ready=0),0)
+
+    def test_support_provisions_and_dispatches_with_stopped_integrator(self):
+        spec=self.f.make_spec('integration-support-test',999)
+        spec['lane']['target_level']='planning-only'
+        write(self.template,spec)
+        self.settings['planner_pool']['helpers'][0]['sha256']=digest(self.template)
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['process']={'health':'dead'}
+        self.tick()
+        lane='integration-support-test-cycle-1'
+        self.assertIn(lane,self.reg.status()['lanes'])
+        assignment=self.reg.assign_job('one',60)
+        self.assertEqual(assignment['lane'],lane)
+        launch=self.reg.plan_assignment(assignment['id'],['paid/muse'],60)
+        self.assertEqual(launch['status'],'intent')
+
+    def test_bounded_parallel_preparation_keeps_reserve_and_is_replay_safe(self):
+        for i in range(4):
+            key='spare-burst-'+str(i)
+            self.f.f.add_lane(key)
+            with self.reg.transaction() as state:
+                state['lanes'][key].update(state='done',review_disposition={'summary':'accepted'})
+            self.reg.register_pool_worker(key,['review'],['python'],'operator')
+            spec=self.f.make_spec('planning-burst-'+str(i),970+i)
+            spec['lane']['target_level']='planning-only'
+            path=self.f.out/('burst-'+str(i)+'.json');write(path,spec)
+            self.settings['planner_pool']['helpers'].append(dict(scope=key,template=str(path),sha256=digest(path)))
+        self.settings['planner_pool']['helpers']=self.settings['planner_pool']['helpers'][1:]
+        self.settings['planner_pool'].update(use_idle_capacity=True,max_active=10,provisions_per_tick=4,reserve_workers=2)
+        with self.reg.transaction() as state:state['lanes']['owner']['process']={'health':'dead'}
+        self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']),3)
+        self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']),3)
+
     def setUp(self):
         self.f = fixtures.AutofillTests(); self.f.setUp(); self.addCleanup(self.f.doCleanups)
         self.reg, self.root, self.controller = self.f.reg, self.f.root, self.f.controller
@@ -86,6 +206,25 @@ class PlannerPoolTests(unittest.TestCase):
         with self.reg.transaction() as s:
             _state(s)['items']['implementation']=dict(ready=True,lane='not-provisioned')
         self.tick(); self.assertFalse(self.reg.scheduling_status()['jobs'])
+
+    def test_idle_capacity_provisions_more_than_three_and_keeps_reserve(self):
+        for i in range(6):
+            key = 'spare-' + str(i)
+            self.f.f.add_lane(key)
+            with self.reg.transaction() as state:
+                state['lanes'][key].update(state='done', review_disposition={'summary': 'accepted'})
+            self.reg.register_pool_worker(key, ['review'], ['python'], 'operator')
+            spec = self.f.make_spec('partition-' + str(i), 910 + i)
+            path = self.f.out / ('template-' + str(i) + '.json')
+            write(path, spec)
+            self.settings['planner_pool']['helpers'].append(
+                dict(scope=key, template=str(path), sha256=digest(path)))
+        self.settings['planner_pool'].update(use_idle_capacity=True, max_active=24, reserve_workers=2)
+        for _ in range(9): self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']), 5)
+        with self.reg.transaction() as state:
+            self.assertEqual(_state(state)['planner_pool']['target'], 5)
+            self.assertEqual(_state(state)['planner_pool']['active'], 5)
 
     def test_legacy_coordinator_must_exit_before_partition_handover(self):
         self.settings['planner_pool']['wait_for_launches']=['old']

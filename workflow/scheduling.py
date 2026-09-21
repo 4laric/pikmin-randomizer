@@ -4,11 +4,12 @@ Queue records never transfer lane ownership or manufacture sessions. An assignme
 reserves a worker and (where requested) heavy capacity until completed or safely
 released. SQLite transactions serialize selectors across controller processes.
 """
+from .worker_capacity import reusable
 import copy
 import math
 import uuid
 
-from .handoff import nonempty, require
+from .handoff import nonempty, require, Rejected, validate_review
 
 ROLES = {'implementation', 'review', 'repair', 'integration', 'qa'}
 PRIORITY = {'repair': 0, 'review': 1, 'integration': 2, 'qa': 3, 'implementation': 4}
@@ -50,6 +51,32 @@ def pending_heavy_lanes(state, pool, process_probe=None):
 
 
 class SchedulingMixin:
+    def integration_assistance(self, state, lane, role):
+        """Registered advisory helpers do not require an available integration writer."""
+        return (role == 'review' and lane.get('target_level') == 'planning-only'
+                and lane.get('lane', '').startswith(('integration-support-', 'planning-', 'publication-review-'))
+                and any(i.get('lane') == lane['lane'] and i.get('planner_helper')
+                        for i in state.get('throughput_runtime', {}).get('autofill', {}).get('items', {}).values()))
+
+    def integration_owner_available(self, state, owner):
+        """A verified parked owner retains authority between integration turns."""
+        if owner['state'] == 'done':
+            return False
+        if self.probe(owner['process']) == 'alive':
+            return True
+        if owner['state'] != 'review_ready' or not self.recovery_safe(state, owner):
+            return False
+        if not any(s.get('owner_lane') == owner['lane'] for s in state.get('throughput', {}).get('workstreams', {}).values()):
+            return False
+        if any(b.get('integrator') == owner['lane'] and b.get('state') == 'claimed'
+               for b in state.get('throughput', {}).get('batches', {}).values()):
+            return False
+        try:
+            validate_review(self.root, owner.get('review'), owner)
+        except (Rejected, OSError, ValueError, TypeError, KeyError):
+            return False
+        return True
+
     @staticmethod
     def scheduling(state):
         data = state.setdefault('throughput', {})
@@ -58,8 +85,7 @@ class SchedulingMixin:
         return data
 
     def scheduling_status(self):
-        with self.transaction() as state:
-            return copy.deepcopy(self.scheduling(state))
+        return self.scheduling(self.snapshot())
 
     def set_workstream(self, name, owner_lane, lanes=None):
         require(nonempty(name), 'Workstream name required')
@@ -102,6 +128,40 @@ class SchedulingMixin:
                 a['worker_id'] == worker_id and a['status'] in OPEN for a in data['assignments'].values()),
                 'Cannot change authorizations during an assignment')
             data['workers'][worker_id] = record
+            return record
+
+    def reassign_pool_worker(self, worker_id, roles, capabilities, authorized_by, reason):
+        """Change an idle worker's role/capability contract in place.
+
+        Reassignment is explicit and fenced on the worker's lanes as a set: no open assignment, no
+        launch in flight for any of them, and every unfinished one stopped (recovery-safe). An idle
+        pool worker has no live process, so liveness is not required. The event keeps both contracts.
+        """
+        require(nonempty(reason) and nonempty(authorized_by), 'Reassignment reason and authorization required')
+        require(isinstance(roles, list) and isinstance(capabilities, list), 'Explicit role and capability lists required')
+        with self.transaction() as state:
+            data = self.scheduling(state)
+            old = data['workers'].get(worker_id)
+            require(old is not None, 'Unknown pool worker')
+            require(not any(a['worker_id'] == worker_id and a['status'] in OPEN
+                            for a in data['assignments'].values()),
+                    'Cannot reassign worker with an open assignment')
+            lanes = [l for l in state['lanes'].values() if l.get('worker_id') == worker_id]
+            require(lanes, 'Worker lane is not registered')
+            keys = {l['lane'] for l in lanes}
+            require(not any(x.get('lane') in keys and x.get('status') in ('intent', 'spawned', 'running', 'exiting')
+                            for x in state.get('control', {}).get('launches', {}).values()),
+                    'Worker has a launch in flight')
+            require(all(self.recovery_safe(state, l) for l in lanes if l['state'] != 'done'),
+                    'Worker lane or protected child is live/unknown')
+            record = dict(worker_id=worker_id, roles=sorted(set(roles)),
+                          capabilities=sorted(set(capabilities)), authorized_by=authorized_by)
+            require(record['roles'] and set(record['roles']) <= ROLES, 'Explicit known roles required')
+            require(all(nonempty(c) for c in record['capabilities']), 'Explicit capability strings required')
+            data['workers'][worker_id] = record
+            latest = max(lanes, key=lambda l: (l['state'] != 'done', l.get('created_at') or 0))
+            self.event(state, 'pool_worker_reassigned', latest['lane'], worker_id=worker_id, reason=reason,
+                       roles=record['roles'], capabilities=record['capabilities'], previous=copy.deepcopy(old))
             return record
 
     def enqueue_job(self, record):
@@ -156,7 +216,7 @@ class SchedulingMixin:
                              if a['worker_id'] == worker_id and a['status'] in OPEN), None)
             if existing:
                 return existing
-            if ram_percent >= 90:
+            if ram_percent >= state['settings'].get('ram_ceiling_percent', 90):
                 return None
             jobs = sorted(data['jobs'].values(), key=job_priority)
             for job in jobs:
@@ -166,7 +226,7 @@ class SchedulingMixin:
                     continue
                 lane = self.lane(state, job['lane'])
                 owner = self.lane(state, data['workstreams'][job['workstream']]['owner_lane'])
-                if owner['state'] == 'done' or self.probe(owner['process']) != 'alive':
+                if not (self.integration_assistance(state, lane, job['role']) or self.integration_owner_available(state, owner)):
                     continue
                 if lane['generation'] != job['generation'] or lane['worker_id'] != worker_id:
                     continue
@@ -175,19 +235,20 @@ class SchedulingMixin:
                 if lane.get('dependencies'):
                     continue  # Dependency controller must consume an explicit ready version.
                 if any(l['lane'] != lane['lane'] and l['worker_id'] == worker_id and
-                       l['state'] in ('ready', 'running', 'waiting_resource', 'blocked', 'reconciling')
+                       l['state'] in ('ready', 'running', 'waiting_resource', 'blocked', 'reconciling') and not reusable(self, state, l)
                        for l in state['lanes'].values()):
                     continue
                 launches = state.get('control', {}).get('launches', {})
                 if any(l['lane'] == lane['lane'] and l['status'] in ('intent', 'spawned', 'running') for l in launches.values()):
                     continue
                 # Count each assigned lane once even after it acquires its build lease.
-                heavy_leases = [v for r, v in state['leases'].items() if self.heavy(r)]
-                heavy_lanes = {v['lane'] for v in heavy_leases}
-                pending = pending_heavy_lanes(state, data, self.probe)
-                pending.difference_update(heavy_lanes)
-                if not state.get('build_capacity', {}).get('lease_only') and job['heavy'] and lane['lane'] not in heavy_lanes and len(heavy_leases) + len(pending) >= state['settings']['max_heavy_builds']:
-                    continue
+                if job['heavy'] and not state.get('build_capacity', {}).get('lease_only'):
+                    heavy_leases = [v for r, v in state['leases'].items() if self.heavy(r)]
+                    heavy_lanes = {v['lane'] for v in heavy_leases}
+                    pending = pending_heavy_lanes(state, data, self.probe)
+                    pending.difference_update(heavy_lanes)
+                    if lane['lane'] not in heavy_lanes and len(heavy_leases) + len(pending) >= state['settings']['max_heavy_builds']:
+                        continue
                 item = dict(id=uuid.uuid4().hex, job=job['id'], lane=lane['lane'], worker_id=worker_id,
                             generation=lane['generation'], revision=lane['revision'], instruction=job['instruction'],
                             heavy=job['heavy'], status='assigned', assigned_at=self.clock(), launch_id=None)
@@ -247,14 +308,62 @@ class SchedulingMixin:
             data['jobs'][item['job']].update(status='queued', assignment=None)
             return item
 
+    def supersede_planning_assignment(self, assignment_id, stopped_child):
+        """Retire an interrupted old planning cycle without accepting its output."""
+        with self.transaction() as state:
+            data = self.scheduling(state)
+            item = data['assignments'][assignment_id]
+            if item['status'] == 'superseded':
+                return item
+            lane = self.lane(state, item['lane'])
+            prefix, separator, cycle = lane['lane'].rpartition('-cycle-')
+            require(separator and cycle.isdigit() and prefix.startswith('planning-shard-'), 'Partition planner required')
+            require(item['status'] == 'dispatched' and lane['state'] == 'done' and
+                    lane.get('target_level') == 'planning-only' and not lane.get('integration') and
+                    not lane.get('review_disposition') and (lane.get('outcome') or {}).get('outcome') == 'reconcile',
+                    'Only interrupted unaccepted planning completion can be superseded')
+            require(data['jobs'][item['job']]['role'] == 'review', 'Planning review assignment required')
+            require(self.recovery_safe(state, lane) and self.probe(stopped_child) == 'dead',
+                    'Planner or protected child remains live/unknown')
+            launches = state.get('control', {}).get('launches', {})
+            launch = launches.get(item['launch_id'], {})
+            require(launch.get('status') == 'exited' and launch.get('bound_generation') == lane['generation'] and
+                    self.probe(launch.get('process')) == 'dead', 'Original launch must be confirmed exited')
+            require(not any(x['lane'] == lane['lane'] and x['status'] in ('intent', 'spawned', 'running', 'exiting')
+                            for x in launches.values()), 'Planning dispatch still in flight')
+            require(not any(v['lane'] == lane['lane'] for v in state.get('planning_claims', {}).values()),
+                    'Planning claims require coordinator disposition')
+            successors = []
+            for candidate in state['lanes'].values():
+                other_prefix, _, other_cycle = candidate['lane'].rpartition('-cycle-')
+                if other_prefix != prefix or not other_cycle.isdigit() or int(other_cycle) <= int(cycle):
+                    continue
+                if candidate['state'] != 'done' or not candidate.get('review_disposition'):
+                    continue
+                if all(candidate.get(k) == lane.get(k) for k in ('issue', 'scope', 'owned_files', 'target_level')):
+                    successors.append((int(other_cycle), candidate))
+            require(successors, 'Accepted same-scope successor required')
+            successor = max(successors, key=lambda pair: pair[0])[1]
+            disposition = successor['review_disposition']
+            proof = self.archive_evidence(disposition.get('archived_evidence') or disposition['evidence'])
+            record = dict(successor=successor['lane'], evidence=proof, previous_outcome=lane['outcome'],
+                          summary='Interrupted planning attempt superseded by reviewed later cycle; no output accepted')
+            lane['superseded_planning'] = record
+            lane['outcome'] = dict(outcome='superseded', summary=record['summary'], evidence=proof)
+            item.update(status='superseded', superseded_at=self.clock(), supersession=record)
+            data['jobs'][item['job']]['status'] = 'superseded'
+            self.event(state, 'planning_assignment_superseded', lane['lane'], successor=successor['lane'])
+            return item
+
     def validate_assignment(self, assignment_id, ram_percent):
         """Read-only preflight; plan_assignment also performs it under the launch lock."""
         with self.transaction() as state:
             return self._validate_assignment(state, assignment_id, ram_percent)
 
     def _validate_assignment(self, state, assignment_id, ram_percent):
-        require(type(ram_percent) in (int, float) and math.isfinite(ram_percent) and 0 <= ram_percent < 90,
-                'Fresh RAM measurement must be below 90 percent')
+        ceiling = state['settings'].get('ram_ceiling_percent', 90)
+        require(type(ram_percent) in (int, float) and math.isfinite(ram_percent) and 0 <= ram_percent < ceiling,
+                f'Fresh RAM measurement must be below {ceiling} percent')
         data = self.scheduling(state)
         item = data['assignments'][assignment_id]
         require(item['status'] == 'assigned', 'Assignment is no longer awaiting dispatch')
@@ -265,7 +374,8 @@ class SchedulingMixin:
         require(job['role'] in worker['roles'] and set(job['capabilities']) <= set(worker['capabilities']),
                 'Worker authorization changed')
         owner = self.lane(state, data['workstreams'][job['workstream']]['owner_lane'])
-        require(owner['state'] != 'done' and self.probe(owner['process']) == 'alive', 'Integration owner is unavailable')
+        require(self.integration_assistance(state, lane, job['role']) or
+                self.integration_owner_available(state, owner), 'Integration owner is unavailable')
         require(lane['state'] in ('ready', 'running', 'blocked', 'reconciling') and not lane.get('dependencies'),
                 'Lane state or dependency changed')
         require(self.recovery_safe(state, lane), 'Lane or protected child is live/unknown')
@@ -278,10 +388,16 @@ class SchedulingMixin:
             require(len(leases) + len(pending) <= state['settings']['max_heavy_builds'], 'Heavy-build capacity exhausted')
         return item
 
-    def plan_assignment(self, assignment_id, models, ram_percent):
-        """Atomic validation + existing controller launch-intent schema, never spawn."""
+    def plan_assignment(self, assignment_id, models, ram_percent, fresh_session=True):
+        """Atomic validation + existing controller launch-intent schema, never spawn.
+
+        A provisioned lane's first launch starts a fresh OpenCode session (fresh_session): the worker's
+        inherited session belongs to its previous, unrelated lane. The controller adopts the new session
+        as the lane's task once the runner publishes it; later launches of the lane resume it."""
         from .control import fingerprint
+        from .provenance import stamp
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
+        code = stamp()
         with self.transaction() as state:
             data = self.scheduling(state)
             item = data['assignments'][assignment_id]
@@ -300,7 +416,10 @@ class SchedulingMixin:
                           model_index=0, version=None, session=lane['task_id'].removeprefix('opencode:'),
                           status='intent', process=None, created_at=self.clock(), attempts=0,
                           work_class=data['jobs'][item['job']].get('work_class', 'existing'),
-                          focus=data['jobs'][item['job']].get('focus', 'existing_content'))
+                          focus=data['jobs'][item['job']].get('focus', 'existing_content'), code_revision=code)
+            if fresh_session and lane.get('previous_lane') and lane['generation'] == 1 and not lane.get('session_lane'):
+                # session_pending lets every later planner keep the lane fresh until adopt_sessions clears it.
+                launch['fresh_session'] = lane['session_pending'] = True
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)
@@ -342,7 +461,7 @@ class SchedulingMixin:
         with self.transaction() as state:
             data = self.scheduling(state)
             previous = self.lane(state, previous_lane)
-            require(previous['state'] == 'done' and (previous.get('integration') or previous.get('review_disposition') or previous.get('cancelled_before_start')),
+            require(reusable(self, state, previous) or (previous['state'] == 'done' and (previous.get('integration') or previous.get('review_disposition') or previous.get('cancelled_before_start') or previous.get('superseded_planning'))),
                     'Previous slice must have an applied disposition')
             require(previous['owner'] == record['owner'], 'Pool provisioning cannot change implementation owner')
             require(previous['worker_id'] in data['workers'], 'Worker is not authorized for pool reuse')

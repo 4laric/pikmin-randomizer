@@ -11,10 +11,10 @@ import threading
 import traceback
 
 from .handoff import GATES, digest, local_path, nonempty, phantom_shared_reviews, require, source_record, validate_handoff
-from .processes import identify, probe
+from .processes import identify, probe, DeadIdentityCache
+from .worker_capacity import ACTIVE  # Lane states that hold their worker.
 
 STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
-ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
 TRANSITIONS = {
     'ready': {'running', 'blocked'},
     'running': {'waiting_resource', 'blocked'},
@@ -46,53 +46,81 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
         self.clock, self.probe = clock, process_probe
+        if process_probe is probe:
+            self.probe = DeadIdentityCache(process_probe, unknown_seconds=5)
         self._transaction_local = threading.local()
 
-    def snapshot(self):
-        """Read one committed registry version; never reserve the writer lock."""
+    def snapshot(self, *, section=None, sections=None):
+        """Read one committed registry version; never reserve the writer lock.
+
+        Rows are fetched inside the read transaction and decoded after it ends, so a
+        reader holds SQLite's SHARED lock only while copying bytes. sections=(...)
+        decodes just those partitions; every other partition is Sealed and refuses use."""
+        from . import storage
         require(self.path.is_file(), 'Registry missing; run init first')
-        db = sqlite3.connect(self.path, timeout=30)
-        try:
-            db.execute('PRAGMA query_only=ON')
-            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
-        finally:
-            db.close()
-        require(row is not None, 'Registry not initialized')
-        state = json.loads(row[0])
+        require(section is None or sections is None, 'Pass section or sections, not both')
+        only = None
+        if sections is not None: only, _ = storage.declared(sections)
+        elif section: only = [p for p in storage.PARTS if p[:len(section)] == tuple(section)]
+        def read():
+            db = sqlite3.connect(self.path, timeout=storage.BUSY_TIMEOUT)
+            try:
+                db.execute('PRAGMA query_only=ON')
+                db.execute('BEGIN')
+                return storage.fetch(db, only)
+            finally:
+                db.close()
+        descriptor, raw = storage.retry(read, 'registry read')
+        state = storage.decode(descriptor, raw, only)
         require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
+        if sections is not None:
+            storage.seal(state, raw, only)
+        elif section:
+            for key in section:state=state.get(key,{})
         return state
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, sections=None, append=()):
+        """Serialized write. sections=(path, ...) loads and saves only those documents-v1
+        partitions plus the meta row; append=(list path, ...) exposes a history as
+        append-only. Touching any other partition refuses and rolls back."""
+        from . import storage
         require(not getattr(self._transaction_local, 'active', False), 'Nested registry write transaction')
         require(self.path.is_file(), 'Registry missing; run init first')
-        db = sqlite3.connect(self.path, timeout=30)
+        if sections is not None: sections, append = storage.declared(sections, append)
+        db = sqlite3.connect(self.path, timeout=storage.BUSY_TIMEOUT)
         started = time.monotonic()
         acquired = None
         self._transaction_local.active = True
+        from .write_gate import gate
+        writer = gate(self.path)
+        entered = False
         try:
-            db.execute('BEGIN IMMEDIATE')
+            writer.acquire(); entered = True
+            storage.begin(db)
             acquired = time.monotonic()
-            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
-            require(row is not None, 'Registry not initialized')
-            state = json.loads(row[0])
+            if sections is None:
+                state, previous = storage.load(db)
+            else:
+                state, previous, marks = storage.open_sections(db, sections, append)
             require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
             yield state
-            encoded = json.dumps(state)
-            if encoded != row[0]:
-                db.execute('UPDATE registry SET body=? WHERE id=1', (encoded,))
-            db.commit()
+            if sections is None: storage.save(db, state, previous)
+            else: storage.save_sections(db, state, previous, sections, marks)
+            storage.commit(db)
         except BaseException:
             db.rollback()
             raise
         finally:
             db.close()
+            if entered:writer.release()
             self._transaction_local.active = False
             elapsed = time.monotonic() - started
             if elapsed >= 2:
                 try:
                     record = dict(at=self.clock(), thread=threading.current_thread().name,
                         elapsed_seconds=elapsed, wait_seconds=(acquired-started) if acquired else elapsed,
+                        sections=None if sections is None else ['.'.join(p) for p in sections],
                         stack=traceback.format_stack(limit=8))
                     with self.path.with_name('slow-transactions.jsonl').open('a', encoding='utf-8') as log:
                         log.write(json.dumps(record) + '\n')
@@ -121,12 +149,18 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         state['wake_revision'] = state.get('wake_revision', len(state['events'])) + 1
         state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
 
-    def throughput_status(self, window_seconds=3600, ram_percent=None):
+    def throughput_status(self, window_seconds=3600, ram_percent=None, state=None, idle=None):
+        """Reads the caller's snapshot when given; process checks use the dead-identity cache. idle is the
+        caller's autofill._workers result for that snapshot (computed here when not given)."""
         from .analytics import throughput_metrics, staffing_recommendations
-        with nullcontext(self.snapshot()) as state:
+        from .autofill import _workers
+        with nullcontext(self.snapshot() if state is None else state) as state:
             return dict(at=self.clock(), throughput=state.get('throughput', {}),
                         metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
-                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent))
+                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent,
+                                                          process_probe=self.probe,
+                                                          available={l['worker_id'] for l in (
+                                                              _workers(self, state) if idle is None else idle)}))
 
     def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
         """Attach local launch paths to an issue-backed pool lane without restarting service."""
@@ -163,11 +197,11 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         return lane
 
     def check_wip(self, state, lane):
-        from .worker_capacity import reusable
+        from .worker_capacity import occupant
         others = [l for l in state['lanes'].values()
                   if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
         if lane['state'] in ACTIVE:
-            require(not any(l['state'] in ACTIVE and not reusable(self, state, l) for l in others), 'Worker already has one active slice')
+            require(occupant(self, state, lane) is None, 'Worker already has one active slice')
         if lane['state'] in ('handoff_ready', 'review_ready', 'integrating'):
             require(not any(l['state'] in ('handoff_ready', 'review_ready', 'integrating') for l in others),
                     'Worker already has one ready/integrating handoff')
@@ -213,22 +247,29 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             return data
 
     def heartbeat(self, key, generation):
-        with self.transaction() as state:
-            lane = self.lane(state, key, generation)
+        from .storage import selected
+        with selected(self, [(('lanes',),key)]) as rows:
+            lane = rows[(('lanes',),key)]
+            require(lane is not None, 'Unknown lane: ' + key)
+            require(lane['generation'] == generation, 'Stale ownership generation')
             require(lane['state'] != 'done', 'Lane is done')
             lane['heartbeat_at'] = self.clock()
             # Liveness updates do not change revision or progress.
             return {'heartbeat_at': lane['heartbeat_at'], 'revision': lane['revision']}
 
     def checkpoint(self, key, generation, revision, changes, progress=None):
-        require(set(changes) <= {'state', 'next_action', 'dependencies', 'root', 'native'}, 'Unknown checkpoint field')
+        require(set(changes) <= {'state', 'next_action', 'dependencies', 'root', 'native', 'shared_hooks'},
+                'Unknown checkpoint field')
+        if 'shared_hooks' in changes:
+            from .approvals import hooks
+            changes = dict(changes, shared_hooks=hooks(changes['shared_hooks']))
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
             require(lane['state'] != 'done', 'Lane is done')
             target = changes.get('state', lane['state'])
             require(target == lane['state'] or target in TRANSITIONS[lane['state']], 'Invalid state transition')
             if target == 'integrating':
-                self.check_handoff(lane)
+                self.check_handoff(lane, state)
             if 'dependencies' in changes:
                 require(isinstance(changes['dependencies'], list) and
                         all(nonempty(x) for x in changes['dependencies']), 'Dependencies must be lane IDs or issue references')
@@ -240,6 +281,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                         source_record(changes[repo], repo)
             if 'next_action' in changes:
                 require(nonempty(changes['next_action']), 'Next action cannot be empty')
+            require('shared_hooks' not in changes or target == 'blocked', 'shared_hooks belong to a blocked lane')
+            if target == 'blocked' and lane['state'] != 'blocked' and 'shared_hooks' not in changes:
+                lane.pop('shared_hooks', None)  # A new blocked state declares its own structured hooks.
             lane.update(changes)
             if target == 'blocked':
                 require(lane['dependencies'], 'Blocked lane needs dependency/issue reference')
@@ -252,6 +296,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             if target in ACTIVE:
                 lane['handoff'] = None
                 lane['handoff_at'] = None
+                lane.pop('handoff_code_revision', None)
             if progress is not None:
                 require(isinstance(progress, dict) and nonempty(progress.get('summary')),
                         'Meaningful progress requires a summary and hashed evidence')
@@ -297,6 +342,28 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
     @staticmethod
     def heavy(resource):
         return resource == 'maintained-build-export' or resource.startswith('build:')
+
+    def reap_dead_build_leases(self, state):
+        """Caller holds the registry transaction; expiry never proves death."""
+        released=[]
+        for resource, lease in list(state['leases'].items()):
+            if not self.heavy(resource) or self.probe(lease['process'])!='dead':continue
+            del state['leases'][resource]
+            released.append(resource)
+            self.event(state,'lease_reaped',lease['lane'],resource=resource,
+                       reason='independent_build_capacity_monitor',process=lease['process'],
+                       generation=lease.get('generation'))
+        state['build_lease_recovery']=dict(at=self.clock(),released=released,
+            remaining=sum(self.heavy(k) for k in state['leases']))
+        return released
+
+    def drop_leases(self, state, key, reason):
+        """Caller proved the owners stopped; every dropped lease still closes its interval."""
+        for resource, lease in list(state['leases'].items()):
+            if lease['lane'] != key: continue
+            del state['leases'][resource]
+            self.event(state, 'lease_reaped', key, resource=resource, reason=reason,
+                       process=lease.get('process'), generation=lease.get('generation'))
 
     def acquire(self, key, generation, resource, pid, ttl=300):
         resource = self.resource(resource)
@@ -479,8 +546,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                             recovery_count=lane['recovery_count'] + 1,
                             heartbeat_at=self.clock(), progress_at=self.clock(),
                             progress_detail='Recovered from checkpoint: ' + outcome)
+                lane.pop('handoff_code_revision', None)
                 # Only confirmed-dead old leases can reach here.
-                state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
+                self.drop_leases(state, lane['lane'], 'recovery')
                 state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}
             else:
                 require(replacement is None, 'Only recover actions may replace execution')
@@ -489,35 +557,95 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             return action
 
     def submit_handoff(self, key, generation, revision, path):
+        from .provenance import stamp
+        code = stamp()
         path = local_path(self.root, path)
+        observed=self.snapshot()
+        before=self.lane(observed,key,generation,revision)
+        frozen=None
+        if observed['settings'].get('freeze_handoffs_on_submit',False):
+            data=json.loads(path.read_text(encoding='utf-8'))
+            result=validate_handoff(self.root,data,before)
+            require(data.get('kind')!='review' and result['slice_passed'], 'Passing implementation handoff required')
+            # Copy/hash large artifacts outside the registry writer lock.
+            frozen=self._delivery_freeze(before,data)
+            path=Path(frozen['handoff']['path'])
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
+            require(all(lane.get(k)==before.get(k) for k in ('root','native')), 'Submission source pins changed')
             require(lane['state'] in ('running', 'handoff_ready', 'integrating'),
                     'Only running/ready/integrating slices can submit a handoff')
             data = json.loads(path.read_text(encoding='utf-8'))
             result = validate_handoff(self.root, data, lane)
             require(data.get('kind') != 'review', 'Use finish review-ready for reviews; reviews are not implementation handoffs')
             require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
+            from .approvals import apply
+            # A producer-written approved/rejected needs a matching authenticated ledger row; the result carries the ledger's.
+            result = apply(state.get('approvals', {}), lane, data, result, strict=True)
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
-                        revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
+                        revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result),
+                        handoff_code_revision=code)
+            from .no_progress import record
+            record(self, state, lane)
+            if frozen:
+                self.delivery(state)['snapshots'][frozen['handoff']['sha256']]=dict(frozen,lane=key,
+                    generation=generation,version='submission',created_at=self.clock())
             self.check_wip(state, lane)
             self.event(state, 'handoff_ready', key)
             return lane
 
-    def check_handoff(self, lane):
+    def check_handoff(self, lane, state=None):
+        """pending_reviews comes from the approvals ledger at the lane's pins, never from the handoff's own statuses."""
+        from .approvals import apply
         require(lane['handoff'], 'Handoff required')
         path = Path(lane['handoff']['path'])
         require(path.is_file() and digest(path) == lane['handoff']['sha256'], 'Handoff changed after submission')
-        result = validate_handoff(self.root, json.loads(path.read_text(encoding='utf-8')), lane)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        result = validate_handoff(self.root, data, lane)
         require(result['slice_passed'], 'Assigned slice criteria no longer pass')
-        return result
+        rows = state.get('approvals', {}) if state is not None else self.snapshot(section=('approvals',))
+        return apply(rows, lane, data, result)
 
-    def integrate(self, key, generation, revision, record):
+    def integrate(self, key, generation, revision, record, lander=None):
+        """The receipt stays exactly as submitted (replays compare it); code and landing proof are siblings.
+
+        The landing proof runs git against the lane read outside the writer lock; the
+        transaction then refuses if the proven pins moved in between. The lander is the
+        live launch session the caller runs inside (process ancestry); a request lander
+        that is not that session refuses, and without one shared-file ports refuse."""
+        from . import approvals
+        from .provenance import stamp
+        from .landing import prove, recheck
+        from .storage import read_record
+        code = stamp()
+        require(isinstance(record, dict), 'Integration record required')
+        require(lander is None or (isinstance(lander, dict) and set(lander) == {'lane', 'generation'} and
+                nonempty(lander['lane']) and type(lander['generation']) is int), 'lander must be {lane, generation}')
+        chain = approvals.ancestry()
+        before = read_record(self, ('lanes',), key)
+        require(before is not None, 'Unknown lane: ' + key)
+        require(before['generation'] == generation, 'Stale ownership generation')
+        require(before['revision'] == revision, 'Stale lane revision; read status before retrying')
+        require(before['state'] == 'integrating', 'Begin integration before recording completion')
+        session = approvals.session(self, chain)
+        require(lander is None or session is None or (session['lane'], session['generation']) ==
+                (lander['lane'], lander['generation']), 'lander does not match the live launch session calling integrate')
+        rows = self.snapshot(section=('approvals',)) if record.get('ports') else {}
+        landing = prove(self.root, before, record, session, rows)
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
             require(lane['state'] == 'integrating', 'Begin integration before recording completion')
-            result = self.check_handoff(lane)
-            require(not result['pending_reviews'], 'Resolve shared reviews before integration')
+            require(all(lane.get(k) == before.get(k) for k in ('root', 'native', 'handoff')),
+                    'Lane source or handoff changed while proving the landing')
+            if lander is not None:
+                require(self.lane(state, lander['lane'], lander['generation'])['state'] != 'done',
+                        'Lander lane is done')
+            if session is not None:
+                require(approvals.still(state, session), 'Lander session ended while proving the landing')
+            recheck(state.get('approvals', {}), key, landing)
+            result = self.check_handoff(lane, state)
+            require(not result['pending_reviews'], 'Resolve shared reviews before integration: no authenticated '
+                    'approval in the approvals ledger at these pins for ' + ', '.join(result['pending_reviews']))
             for name in ('root_commit',):
                 require(re.fullmatch(r'[0-9a-f]{40}', record.get(name, '')), 'Full integrated root commit required')
             if lane['native'] is not None:
@@ -530,7 +658,17 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                 export = local_path(self.root, record['export_evidence'])
                 require(export.is_file() and digest(export) == record.get('export_sha256'),
                         'Export evidence missing/changed')
-            lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record)
+                # A hashed statement that no export happened is not export proof.
+                try:
+                    export_record = json.loads(export.read_text(encoding='utf-8-sig'))
+                except (ValueError, UnicodeError):
+                    export_record = None  # Existing text/log evidence remains supported.
+                require(not isinstance(export_record, dict) or export_record.get('action') != 'none-performed',
+                        'Export evidence explicitly records no export; obtain actual export evidence')
+            landing.update(claimed_lander=lander, reviews=result.get('reviews', {}), self_reviewed=sorted(
+                f for f, v in result.get('reviews', {}).items() if session and v.get('reviewer') == session['lane']))
+            lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record,
+                        integration_code_revision=code, integration_landing=dict(landing, verified_at=self.clock()))
             self.event(state, 'integrated', key, lead_seconds=self.clock() - (lane['started_at'] or lane['created_at']))
             return lane
 
@@ -547,7 +685,10 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]
             leads = [e['lead_seconds'] for e in state['events'] if e['kind'] == 'integrated']
             milestones = {}
+            from .approvals import hook_status
             for lane in state['lanes'].values():
+                if lane.get('shared_hooks'):  # Satisfied only at the pins a ledger decision recorded.
+                    lane['shared_hook_status'] = hook_status(state.get('approvals', {}), lane)
                 result = lane['handoff']['result'] if lane['handoff'] else None
                 milestones.setdefault(lane['milestone'], []).append(dict(lane=lane['lane'],
                     state=lane['state'], outstanding_gates=result['outstanding_gates'] if result else 'not_reported'))

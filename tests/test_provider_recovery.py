@@ -130,6 +130,35 @@ class ProviderRecoveryTests(unittest.TestCase):
         self.assertEqual(self.reg.select_model(retry['models']), 'paid/deepseek')
         self.assertEqual(self.reg.control_status()['model_limits']['paid/muse']['count'], 1)
 
+    def test_stall_continuation_carries_the_chain_budget_and_session_scope(self):
+        self.prepare()
+        directory=self.controller.launch_directory('old'); directory.mkdir(parents=True)
+        write(directory/'child.json',self.worker)
+        (directory/'events.jsonl').write_text(self.events.read_text()); os.utime(directory/'events.jsonl',(1001,1001))
+        (directory/'stderr.log').write_text(self.errors.read_text())
+        old=dict(id='old',lane='consumer',status='running',model='paid/muse',automatic_retries=5,dead_runner_retries=1,
+                 rate_limit_retries=2,fresh_session=True)
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['process']=self.supervisor
+            self.reg.control(state)['launches']['old']=old
+        self.run_recovery(); self.run_recovery(); self.run_recovery()
+        retry=next(x for k,x in self.reg.control_status()['launches'].items() if k!='old')
+        self.assertEqual((retry['automatic_retries'],retry['dead_runner_retries'],retry['rate_limit_retries']),(6,1,2))
+        self.assertTrue(retry['fresh_session'])  # Never adopted: the continuation must not resume another lane.
+
+    def test_stall_continuation_refuses_a_spent_chain(self):
+        self.prepare(); self.controller.config['automatic_retry_limit']=3
+        directory=self.controller.launch_directory('old'); directory.mkdir(parents=True)
+        write(directory/'child.json',self.worker)
+        (directory/'events.jsonl').write_text(self.events.read_text()); os.utime(directory/'events.jsonl',(1001,1001))
+        (directory/'stderr.log').write_text(self.errors.read_text())
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['process']=self.supervisor
+            self.reg.control(state)['launches']['old']=dict(id='old',lane='consumer',status='running',model='paid/muse',automatic_retries=3)
+        self.run_recovery(); self.run_recovery(); self.run_recovery()
+        self.assertEqual(list(self.reg.control_status()['launches']),['old'])
+        self.assertIn('automatic_retry_exhausted',[n['kind'] for n in self.reg.control_status()['notices'].values()])
+
     def test_terminal_state_after_shutdown_prevents_relaunch(self):
         self.prepare(); self.run_recovery()
         with self.reg.transaction() as state: state['lanes']['consumer']['state']='done'

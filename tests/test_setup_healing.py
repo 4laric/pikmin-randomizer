@@ -53,3 +53,11 @@ class HealingTests(unittest.TestCase):
         self.assertIn('CURRENT registry',self.reg.plan_launch.call_args.args[2])
         with self.reg.transaction() as s:self.assertEqual(s['lanes'][key]['native'],{'head':'already-created'})
 
+    def test_incomplete_outcomes_do_not_starve_later_setup_recovery(self):
+        with self.reg.transaction() as s:
+            for index,outcome in enumerate((None,{}, {'summary':None}, {'summary':42}, 'invalid')):
+                key=f'incomplete-{index}'
+                s['lanes'][key]=dict(lane=key,state='blocked',target_level='runtime',outcome=outcome)
+            s['lanes']['absent']=dict(lane='absent',state='blocked',target_level='runtime')
+        self.test_setup_resume_is_bounded_and_preserves_existing_sources()
+
