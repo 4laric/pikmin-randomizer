@@ -184,6 +184,16 @@ class IntegrationWakeupTests(unittest.TestCase):
         self.assertIn('accept_review', launches[0]['instruction'])
         self.assertIn("'review': 'provider'", launches[0]['instruction'])
 
+    def test_orphaned_review_ready_lane_wakes_integration_owner(self):
+        self.reg.finish('provider', 1, 'review-ready', 'Orphaned source audit', self.f.ev)
+        # provider is not a member of any workstream; the terminal packet must
+        # still reach the standing integration owner instead of aging silently.
+        tick(self.controller); tick(self.controller)
+        launches = list(self.reg.control_status()['launches'].values())
+        self.assertEqual(len(launches), 1)
+        self.assertIn('accept_review', launches[0]['instruction'])
+        self.assertIn("'orphaned': True", launches[0]['instruction'])
+
     def test_admission_only_demand_uses_verified_standby_without_model_call(self):
         tick(self.controller)
         self.assertFalse(self.reg.control_status()['launches'])

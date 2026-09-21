@@ -32,6 +32,8 @@ MAINTAINED_EXPORT_COMMAND = 'py -3.12 scripts/export_native_source.py'
 PRESERVE_NOTE = ('Historical integration receipts are immutable. Re-run the single maintained export, '
                  'then attach the resulting real evidence to this lane\'s issue. Never overwrite '
                  'export_sha256 in place or fabricate a replacement hash.')
+LEDGER_PATH = 'output/workflow/export-repair/reconciled.json'
+RECONCILE_OWNER = 'Codex through shared account 4laric (sole integration owner takeover)'
 
 
 def _reason(root, receipt):
@@ -128,6 +130,94 @@ def reconciliation(root, rows):
     return result
 
 
+def ledger_path(root):
+    """Absolute path of the append-only reconciliation ledger (under output/)."""
+    return local_path(Path(root), LEDGER_PATH)
+
+
+def load_reconciliations(root):
+    """Read the reconciliation ledger; a missing/invalid ledger yields an empty map.
+
+    Reads are fail-safe: the operator must still raise the repair action when the
+    ledger is absent or corrupt, never silently hide debt.
+    """
+    try:
+        data = json.loads(ledger_path(root).read_text(encoding='utf-8-sig'))
+        lanes = data.get('lanes') if isinstance(data, dict) else None
+        return lanes if isinstance(lanes, dict) else {}
+    except (OSError, ValueError, UnicodeError, TypeError):
+        return {}
+
+
+def reconciled_rows(root, state, ledger=None):
+    """Split current debt rows into (outstanding, reconciled) by exact debt fingerprint.
+
+    A row is reconciled only when the ledger records its current debt fingerprint,
+    which binds the immutable receipt identity, the observed evidence state and the
+    classification reason. Any later receipt/evidence drift changes the fingerprint
+    and re-flags the lane as outstanding.
+    """
+    entries = load_reconciliations(root) if ledger is None else (ledger or {})
+    outstanding, reconciled = [], []
+    for row in debt_rows(root, state):
+        entry = entries.get(row['lane'])
+        target = reconciled if isinstance(entry, dict) and entry.get('debt_fingerprint') == debt_fingerprint(row) else outstanding
+        target.append(row)
+    return outstanding, reconciled
+
+
+def _evidence(root, evidence):
+    """Require a real, hashable corrective evidence file under <root>/output."""
+    require(str(evidence or '').strip(), 'Reconciliation evidence path required')
+    path = local_path(root, str(evidence))
+    require(path.is_relative_to(local_path(root, 'output')),
+            'Reconciliation evidence must stay under output/')
+    require(path.is_file(), f'Reconciliation evidence not readable: {path}')
+    return dict(path=str(path), sha256=digest(path))
+
+
+def record(reg, lanes, evidence, *, owner=RECONCILE_OWNER, note=None, now=None, out_dir=LEDGER_PATH):
+    """Append exact per-lane reconciliations; never mutates an integration receipt.
+
+    Every requested lane must be current debt. Re-recording a lane preserves its
+    previous entries under ``history``. The stored ``debt_fingerprint`` is the
+    fail-closed key the operator uses to decide whether the lane stays reconciled.
+    """
+    root = Path(reg.root)
+    state = reg.snapshot()
+    proof = _evidence(root, evidence)
+    rows = {row['lane']: row for row in debt_rows(root, state)}
+    wanted = list(lanes) if lanes else sorted(rows)
+    require(wanted, 'At least one debt lane is required to reconcile')
+    missing = sorted(set(wanted) - set(rows))
+    require(not missing, 'Requested lanes are not current export-repair debt: ' + json.dumps(missing))
+    at = now if now is not None else time.time()
+    existing = load_reconciliations(root)
+    lane_out = {}
+    for key in wanted:
+        row = rows[key]
+        entry = dict(debt_fingerprint=debt_fingerprint(row),
+                     receipt_fingerprint=row['receipt_fingerprint'],
+                     reason=row['reason'], recorded_sha256=row['recorded_sha256'],
+                     observed_sha256=row['observed_sha256'], evidence=dict(proof),
+                     owner=owner, note=note, at=at, history=[])
+        prior = existing.get(key)
+        if isinstance(prior, dict):
+            entry['history'] = list(prior.get('history', [])) + [dict(prior, history=[])]
+        lane_out[key] = entry
+    ledger = dict(existing)
+    ledger.update(lane_out)
+    out = local_path(root, str(out_dir))
+    require(out.is_relative_to(local_path(root, 'output')),
+            'Reconciliation ledger must stay under output/')
+    out.parent.mkdir(parents=True, exist_ok=True)
+    document = dict(schema=1, at=at, owner=owner, evidence=dict(proof),
+                    lanes=ledger)
+    out.write_text(json.dumps(document, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    return dict(at=at, reconciled=sorted(lane_out), count=len(lane_out),
+                ledger_path=str(out), ledger_sha256=digest(out), evidence=dict(proof))
+
+
 def manifest(root, state=None, *, lanes=None, baseline=None, now=None):
     """Build the grouped repair manifest without mutating any lane record."""
     if state is None:
@@ -203,11 +293,25 @@ def main():
                         help='Prior manifest; fail closed if any recorded receipt changed')
     parser.add_argument('--write', action='store_true',
                         help='Write the grouped manifest (default: plan only)')
+    parser.add_argument('--evidence', type=Path,
+                        help='Hashed maintained-export evidence under output/ for --reconcile')
+    parser.add_argument('--owner', default=RECONCILE_OWNER,
+                        help='Reconciling owner recorded in the ledger')
+    parser.add_argument('--note', help='Free-form reconciliation note')
+    parser.add_argument('--reconcile', action='store_true',
+                        help='Record exact per-lane reconciliations (persist with --write)')
     args = parser.parse_args()
     root = args.root.resolve()
     reg = Registry(root / 'output/workflow/registry.sqlite3', root)
     baseline = json.loads(args.baseline.read_text(encoding='utf-8-sig')) if args.baseline else None
-    if args.write:
+    if args.reconcile:
+        require(args.evidence, 'Reconciliation evidence required (--evidence)')
+        if args.write:
+            result = record(reg, args.lanes, args.evidence, owner=args.owner, note=args.note)
+        else:
+            result = dict(dry_run=True, lanes=args.lanes or 'all current debt',
+                          evidence=str(args.evidence))
+    elif args.write:
         result = prepare(reg, args.out, lanes=args.lanes, baseline=baseline)
     else:
         result = manifest(root, reg.snapshot(), lanes=args.lanes, baseline=baseline)

@@ -90,10 +90,7 @@ class ExportRepairTests(unittest.TestCase):
                 },
                 throughput=dict(workstreams={}, batches={}), throughput_runtime={},
                 admission_reconciliation={})
-            operator_result = report(state, 50, root)
-            if 'export_repairs' not in operator_result:
-                self.skipTest('compact operator on this base has no export_repairs surface')
-            operator_rows = operator_result['export_repairs']
+            operator_rows = report(state, 50, root)['export_repairs']
             own_rows = export_repair.debt_rows(root, state)
             self.assertEqual([(r['lane'], r['reason']) for r in own_rows],
                              [(r['lane'], r['reason']) for r in operator_rows])
@@ -162,6 +159,99 @@ class ExportRepairTests(unittest.TestCase):
             with self.assertRaises(Rejected):
                 export_repair.prepare(racing, out_dir='output/workflow/race', state=state)
             self.assertFalse((root / 'output/workflow/race').exists())
+
+
+class ExportReconciliationTests(unittest.TestCase):
+    def write(self, root, rel, text):
+        path = Path(root) / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding='utf-8')
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def debt_state(self, root):
+        none_hash = self.write(root, 'output/none.json', json.dumps({'action': 'none-performed'}))
+        self.write(root, 'output/workflow/export-repair/export-2026.json',
+                   json.dumps({'action': 'exported', 'files': 1}))
+        receipt_value = receipt('output/none.json', none_hash)
+        return dict(lanes={'old-a': lane('old-a', 10, receipt_value),
+                           'old-b': lane('old-b', 11, receipt('output/gone.json', '0' * 64))})
+
+    def test_record_reconciles_exact_debt_without_touching_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = self.debt_state(root)
+            before = copy.deepcopy(state)
+            result = export_repair.record(reg_for(root, state), None,
+                                          'output/workflow/export-repair/export-2026.json', now=9.0)
+            self.assertEqual(result['count'], 2)
+            self.assertEqual(state, before)
+            ledger = export_repair.load_reconciliations(root)
+            self.assertEqual(sorted(ledger), ['old-a', 'old-b'])
+            self.assertEqual(ledger['old-a']['evidence']['sha256'],
+                             digest(root / 'output/workflow/export-repair/export-2026.json'))
+            self.assertEqual(ledger['old-a']['receipt_fingerprint'],
+                             export_repair.receipt_fingerprint('old-a', state['lanes']['old-a']['integration']))
+            self.assertEqual(result['ledger_sha256'], digest(Path(result['ledger_path'])))
+            outstanding, reconciled = export_repair.reconciled_rows(root, state)
+            self.assertEqual(outstanding, [])
+            self.assertEqual([r['lane'] for r in reconciled], ['old-a', 'old-b'])
+
+    def test_drift_in_receipt_or_evidence_reflags_the_lane(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = self.debt_state(root)
+            export_repair.record(reg_for(root, state), None,
+                                 'output/workflow/export-repair/export-2026.json')
+            drifted = copy.deepcopy(state)
+            drifted['lanes']['old-a']['integration']['export_sha256'] = '9' * 64
+            outstanding, reconciled = export_repair.reconciled_rows(root, drifted)
+            self.assertEqual([r['lane'] for r in outstanding], ['old-a'])
+            self.assertEqual([r['lane'] for r in reconciled], ['old-b'])
+            Path(root, 'output/none.json').write_text('changed after reconciliation', encoding='utf-8')
+            outstanding, reconciled = export_repair.reconciled_rows(root, state)
+            self.assertEqual([r['lane'] for r in outstanding], ['old-a'])
+            self.assertEqual([r['lane'] for r in reconciled], ['old-b'])
+
+    def test_record_rejects_non_debt_lanes_and_foreign_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = self.debt_state(root)
+            with self.assertRaises(Rejected):
+                export_repair.record(reg_for(root, state), ['missing'],
+                                     'output/workflow/export-repair/export-2026.json')
+            outside = root / 'evidence.json'
+            outside.write_text('{}', encoding='utf-8')
+            with self.assertRaises(Rejected):
+                export_repair.record(reg_for(root, state), None, outside)
+            with self.assertRaises(Rejected):
+                export_repair.record(reg_for(root, state), None, 'output/absent.json')
+
+    def test_corrupt_or_missing_ledger_is_fail_safe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = self.debt_state(root)
+            self.assertEqual(export_repair.load_reconciliations(root), {})
+            path = export_repair.ledger_path(root)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('not json', encoding='utf-8')
+            self.assertEqual(export_repair.load_reconciliations(root), {})
+            outstanding, reconciled = export_repair.reconciled_rows(root, state)
+            self.assertEqual(sorted(r['lane'] for r in outstanding), ['old-a', 'old-b'])
+            self.assertEqual(reconciled, [])
+
+    def test_reconciliation_survives_re_recording_with_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = self.debt_state(root)
+            reg = reg_for(root, state)
+            export_repair.record(reg, ['old-a'], 'output/workflow/export-repair/export-2026.json', now=1.0)
+            export_repair.record(reg, ['old-a'], 'output/workflow/export-repair/export-2026.json', now=2.0)
+            ledger = export_repair.load_reconciliations(root)
+            self.assertEqual(ledger['old-a']['at'], 2.0)
+            self.assertEqual(len(ledger['old-a']['history']), 1)
+            self.assertEqual(ledger['old-a']['history'][0]['at'], 1.0)
+            self.assertNotIn('old-b', ledger)
+
 
 
 if __name__ == '__main__':

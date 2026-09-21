@@ -42,6 +42,36 @@ class ControlMixin:
         require(path.is_file() and digest(path) == value.get('sha256'), 'Missing or changed evidence')
         return path
 
+    def recovery_evidence(self, value):
+        """Verify recovery evidence, falling back to the content-addressed archive.
+
+        Blocked/recovery turns consume hashed reports copied from worker inboxes
+        that are cleaned later. ``evidence`` stays strict for every other caller;
+        only recovery demand may resolve exact recorded bytes from
+        ``output/workflow/evidence/<sha256>`` when the transient source path is
+        gone. The recorded hash is never weakened or substituted.
+        """
+        require(isinstance(value, dict), 'Hashed evidence required')
+        try:
+            return self.evidence(value)
+        except (Rejected, OSError):
+            archived = self.archived_evidence(value)
+            require(archived is not None, 'Missing or changed evidence')
+            return archived
+
+    def archived_evidence(self, value):
+        """Return the archive path for exact recorded bytes, or ``None``."""
+        sha = value.get('sha256') if isinstance(value, dict) else None
+        if not (isinstance(sha, str) and len(sha) == 64 and all(c in '0123456789abcdef' for c in sha)):
+            return None
+        candidate = self.root / 'output/workflow/evidence' / sha
+        try:
+            if candidate.is_file() and digest(candidate) == sha:
+                return candidate
+        except OSError:
+            return None
+        return None
+
     def finish(self, key, generation, outcome, summary, evidence, dependencies=None, path=None, shared_hooks=None):
         """A small terminal API; runtime handoffs still go through full validation.
 
@@ -58,6 +88,26 @@ class ControlMixin:
             require(path is not None, 'implementation-ready requires a validated handoff path')
             lane = self.status()['lanes'][key]
             return self.submit_handoff(key, generation, lane['revision'], path)
+        if outcome == 'review-ready':
+            lane = self.status()['lanes'][key]
+            for source_name in ('root', 'native'):
+                source = lane.get(source_name)
+                if not source:
+                    continue
+                tree = local_path(self.root, source['worktree'])
+                # Synthetic/report-only fixtures may use a non-Git directory.
+                # Real source worktrees must be pinned to what is actually
+                # checked out when review-ready evidence is submitted.
+                if (tree / '.git').exists():
+                    require(git(tree, 'rev-parse', 'HEAD') == source['head'],
+                            f'{source_name} worktree HEAD differs from recorded review source pin')
+                    require(git(tree, 'status', '--porcelain') == source['dirty'].strip(),
+                            f'{source_name} worktree dirty state differs from recorded review source')
+        if outcome == 'blocked':
+            # Blocked outcomes are consumed by blocked/prerequisite recovery turns
+            # from worker inboxes that are cleaned later. Archive the exact bytes now
+            # so the recorded report cannot be stranded by a transient source path.
+            evidence = self.archive_evidence(evidence)
         with self.transaction() as state:
             lane = self.lane(state, key, generation)
             require(lane['state'] != 'done', 'Completed slice cannot be reopened')

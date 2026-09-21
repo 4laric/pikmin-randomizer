@@ -124,6 +124,28 @@ def tick(controller):
     for owner in {s.get('owner_lane') for s in pool.get('workstreams',{}).values()}:
         work=owner_work(snapshot,owner)
         if work:demand.setdefault(owner,[]).extend(work)
+    # An orphaned review-ready outcome (its scope is not a member of any
+    # configured integration workstream) would otherwise never generate demand:
+    # the sole integration owner is never woken and the terminal packet ages
+    # indefinitely. Route it to the standing owner without changing workstream
+    # membership or any acceptance gate.
+    covered = {k for stream in pool.get('workstreams', {}).values() for k in stream.get('lanes', [])}
+    owner_lanes = sorted({s.get('owner_lane') for s in pool.get('workstreams', {}).values()})
+    fallback = pool.get('default_integration_owner') or (owner_lanes[0] if len(owner_lanes) == 1 else None)
+    if fallback:
+        orphan_work = [
+            dict(stream='orphaned-review', review=k, orphaned=True,
+                 generation=lane['generation'],
+                 evidence=lane.get('review', {}).get('evidence'),
+                 disposition_required=reg.clock() - (lane.get('handoff_at') or reg.clock()) >= 1800,
+                 prerequisite_input=dependency_pin({}), review_pin=review_pin(lane))
+            for k, lane in sorted(snapshot['lanes'].items())
+            if k != fallback and k not in covered and lane.get('state') == 'review_ready'
+            and not is_helper(k)
+            and not k.startswith(('planning-', 'publication-review-', 'integration-support-'))
+            and not deferred(snapshot, k)]
+        if orphan_work:
+            demand.setdefault(fallback, []).extend(orphan_work)
     for owner, work in demand.items():
         lane = snapshot['lanes'].get(owner)
         if owner not in controller.config['lanes'] or not lane:
