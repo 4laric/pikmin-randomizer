@@ -18,6 +18,12 @@ SCHEMA = 1
 
 ENUM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}")
 
+TERRAIN_ALLOW = frozenset({"ground", "water", "mixed", "air"})
+
+_HEX64_RE = re.compile(r"[0-9a-fA-F]{64}")
+_COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,40}")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
 # Safe Pikmin 1 vehicles a proxy host may use. The placeholder types 26-29 and
 # 34 crash the game and are never allowed.
 HOST_ALLOW = frozenset({
@@ -47,6 +53,86 @@ def _roster_enums():
     return mapping
 
 
+def _validate_terrains(document, path_name):
+    """Return the validated terrains list, defaulting to ``["ground"]``."""
+    terrains = document.get("terrains", ["ground"])
+    if not isinstance(terrains, list) or not terrains:
+        raise ValueError(f"proxy declaration terrains must be a non-empty list: {path_name}")
+    seen = set()
+    for terrain in terrains:
+        if not isinstance(terrain, str) or terrain not in TERRAIN_ALLOW:
+            raise ValueError(
+                f"proxy declaration terrain must be one of {sorted(TERRAIN_ALLOW)}: {path_name}")
+        if terrain in seen:
+            raise ValueError(f"proxy declaration terrains contains a duplicate: {path_name}")
+        seen.add(terrain)
+    return list(terrains)
+
+
+def _validate_evidence(document, path_name):
+    """Return the validated evidence block, or ``None`` when absent.
+
+    A present block must carry non-empty ``run``, ``log``, ``log_sha256``
+    (64 hex), ``native_commit`` (7-40 hex), ``recorded`` (YYYY-MM-DD) and a
+    ``markers`` object whose ``table``, ``bind`` and ``draw`` entries are all
+    boolean ``True``. Anything less fails closed.
+    """
+    evidence = document.get("evidence")
+    if evidence is None:
+        return None
+    if not isinstance(evidence, dict):
+        raise ValueError(f"proxy declaration evidence must be an object: {path_name}")
+    for key in ("run", "log"):
+        value = evidence.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"proxy declaration evidence.{key} must be a non-empty string: {path_name}")
+    digest = evidence.get("log_sha256")
+    if not isinstance(digest, str) or not _HEX64_RE.fullmatch(digest):
+        raise ValueError(f"proxy declaration evidence.log_sha256 must be 64 hex: {path_name}")
+    commit = evidence.get("native_commit")
+    if not isinstance(commit, str) or not _COMMIT_RE.fullmatch(commit):
+        raise ValueError(f"proxy declaration evidence.native_commit must be 7-40 hex: {path_name}")
+    recorded = evidence.get("recorded")
+    if not isinstance(recorded, str) or not _DATE_RE.fullmatch(recorded):
+        raise ValueError(f"proxy declaration evidence.recorded must be YYYY-MM-DD: {path_name}")
+    import datetime as _datetime
+    try:
+        _datetime.date.fromisoformat(recorded)
+    except ValueError as error:
+        raise ValueError(
+            f"proxy declaration evidence.recorded is not a calendar date: {path_name}") from error
+    markers = evidence.get("markers")
+    if not isinstance(markers, dict):
+        raise ValueError(f"proxy declaration evidence.markers must be an object: {path_name}")
+    for key in ("table", "bind", "draw"):
+        if markers.get(key) is not True:
+            raise ValueError(
+                f"proxy declaration evidence.markers.{key} must be true: {path_name}")
+    return {
+        "run": evidence["run"],
+        "log": evidence["log"],
+        "log_sha256": digest,
+        "native_commit": commit,
+        "recorded": recorded,
+        "markers": {key: True for key in ("table", "bind", "draw")},
+    }
+
+
+def tier_ids(tier, directory=None):
+    """Sorted proxy source ids for one opt-in tier.
+
+    ``"proven"`` returns only rows carrying a valid evidence block;
+    ``"declared"`` returns every declared row. Anything else raises
+    ``ValueError``.
+    """
+    if tier not in ("proven", "declared"):
+        raise ValueError(f"unknown proxy tier {tier!r}; expected 'proven' or 'declared'")
+    rows = load_rows(directory=directory)
+    if tier == "declared":
+        return sorted(row["source_id"] for row in rows)
+    return sorted(row["source_id"] for row in rows if row.get("evidence") is not None)
+
+
 def load_rows(directory=None):
     """Load and validate every proxy declaration, sorted by source id.
 
@@ -55,7 +141,9 @@ def load_rows(directory=None):
     id, a duplicate source or enum, a source id that already has a non-proxy
     path (anything in today's ``IDENTITY_FAMILY``/``EXTRACTORS`` outside the
     ``proxy``/``extract_proxy`` rows this family owns), a ``pose_limit``
-    outside 2..8, or a ``host_teki`` outside the safe-vehicle allowlist.
+    outside 2..8, a ``host_teki`` outside the safe-vehicle allowlist, a
+    ``terrains`` entry outside the proxy terrain allowlist, or a malformed
+    ``evidence`` block.
     """
     directory = Path(directory) if directory is not None else Path(__file__).parent
     if not directory.is_dir():
@@ -120,13 +208,19 @@ def load_rows(directory=None):
         if type(host_teki) is not int or isinstance(host_teki, bool) \
                 or host_teki not in HOST_ALLOW:
             raise ValueError(f"proxy declaration host_teki not an allowed vehicle: {path.name}")
-        rows.append({
+        terrains = _validate_terrains(document, path.name)
+        evidence = _validate_evidence(document, path.name)
+        row = {
             "schema": SCHEMA,
             "source_id": source_id,
             "enum_name": enum_name,
             "host_teki": host_teki,
             "pose_limit": pose_limit,
+            "terrains": terrains,
             "notes": document.get("notes", ""),
-        })
+        }
+        if evidence is not None:
+            row["evidence"] = evidence
+        rows.append(row)
     rows.sort(key=lambda row: row["source_id"])
     return rows
