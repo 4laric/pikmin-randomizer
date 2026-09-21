@@ -53,7 +53,9 @@ def _issue(record, number, body_hash):
 def validate_spec(reg, spec, issue_reader=github_issue, *, verified=False):
     required = {'id', 'priority', 'workstream', 'role', 'capabilities', 'heavy', 'instruction',
                 'lane', 'launch', 'launch_hashes', 'issue_proof', 'issue_body_sha256'}
-    require(set(spec) == required, 'Autofill spec fields must be explicit')
+    require(required <= set(spec) <= required | {'producer_contract'}, 'Autofill spec fields must be explicit')
+    from .producer_contract import validate as validate_contract
+    validate_contract(spec)
     require(isinstance(spec['id'], str) and spec['id'] and len(spec['id']) <= 120, 'Bounded spec ID required')
     require(isinstance(spec['priority'], str) and spec['priority'] in PRIORITIES, 'Unknown autofill priority')
     from .scheduling import ROLES
@@ -108,49 +110,139 @@ def _launch(spec):
 
 def launch_files_unchanged(reg, entry):
     try:
-        return all(digest(_private(reg, entry[k])) == entry['autofill_proof'][k] for k in ('brief', 'config'))
+        from .managed_config import pinned_config_matches
+        return (digest(_private(reg, entry['brief'])) == entry['autofill_proof']['brief'] and
+                pinned_config_matches(_private(reg, entry['config']), entry['autofill_proof']['config']))
     except (Rejected, OSError, ValueError, KeyError, TypeError):
         return False
 
 
 def _workers(reg, state, spec=None):
+    from .worker_capacity import reusable
     pool = reg.scheduling(state)
     candidates = []
     for worker in pool['workers'].values():
         if spec and (spec['role'] not in worker['roles'] or not set(spec['capabilities']) <= set(worker['capabilities'])):
             continue
         lanes = [l for l in state['lanes'].values() if l['worker_id'] == worker['worker_id']]
-        if not lanes or any(l['state'] != 'done' or not reg.recovery_safe(state, l) for l in lanes):
+        if not lanes or any((l['state'] != 'done' and not reusable(reg, state, l)) or not reg.recovery_safe(state, l) for l in lanes):
             continue
         if any(a['worker_id'] == worker['worker_id'] and a['status'] in ('assigned', 'dispatched') for a in pool['assignments'].values()):
             continue
-        if any(a['lane'] in {l['lane'] for l in lanes} and a['status'] in ('intent', 'spawned', 'running')
+        if any(a['lane'] in {l['lane'] for l in lanes} and a['status'] in ('intent', 'spawned', 'running', 'exiting')
                for a in state.get('control', {}).get('launches', {}).values()):
             continue
         latest = max(lanes, key=lambda l: (l['created_at'], l['lane']))
-        if latest.get('integration') or latest.get('review_disposition') or latest.get('cancelled_before_start'):
+        if reusable(reg, state, latest) or latest.get('integration') or latest.get('review_disposition') or latest.get('cancelled_before_start') or latest.get('superseded_planning'):
             candidates.append(latest)
     return sorted(candidates, key=lambda l: (l['worker_id'], l['lane']))
 
 
+def _adapt_worker(controller, state, spec, reserved):
+    """Apply an operator-authorized capability profile during reservation only."""
+    reg = controller.reg
+    policy = controller.config.get('throughput', {}).get('autofill', {}).get('worker_adaptation', {})
+    if not policy.get('enabled') or not policy.get('authorized_by'):
+        return []
+    pool = reg.scheduling(state)
+    owners = {stream['owner_lane'] for stream in pool['workstreams'].values()}
+    for lane in _workers(reg, state):
+        worker_id = lane['worker_id']
+        worker = pool['workers'][worker_id]
+        if worker_id in reserved or spec['role'] not in worker['roles']:
+            continue
+        if any(l['lane'] in owners for l in state['lanes'].values() if l['worker_id'] == worker_id):
+            continue
+        current = set(worker['capabilities'])
+        missing = set(spec['capabilities']) - current
+        for profile in policy.get('profiles', []):
+            if (not profile.get('name') or profile.get('role') != spec['role'] or
+                    profile.get('workstream') != spec['workstream'] or
+                    not set(profile.get('requires', [])) <= current or
+                    not missing or not missing <= set(profile.get('grants', []))):
+                continue
+            # Caller has validated the spec and checked admission/conflicts.
+            # This mutation and the caller's worker reservation share one transaction.
+            worker['capabilities'] = sorted(current | missing)
+            reg.event(state, 'pool_worker_adapted', lane['lane'], worker_id=worker_id,
+                      target_lane=spec['lane']['lane'], spec_hash=fingerprint(spec),
+                      profile=profile['name'], authorized_by=policy['authorized_by'],
+                      added_capabilities=sorted(missing))
+            return [lane]
+    return []
+
+
 def autofill_status(reg):
-    with reg.transaction() as state:
+    from contextlib import nullcontext
+    with nullcontext(reg.snapshot()) as state:
         data = copy.deepcopy(_state(state))
         data['idle_workers_count'] = len(_workers(reg, state))
         data['ready_count'] = sum(i.get('ready', False) and
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
         data['awaiting_worker_count'] = sum(bool(i.get('ready') and i.get('awaiting_worker')) for i in data['items'].values())
+        idle = _workers(reg, state)
+        pool = reg.scheduling(state)
+        idle_by_id = {lane['worker_id']: lane for lane in idle}
+        compatible_ids = set()
+        unmatched = []
+        reassignment_options = []
+        compatibility = []
+        for item in data['items'].values():
+            if not item.get('ready') or item.get('planner_helper'):
+                continue
+            role = item.get('role')
+            capabilities = set(item.get('capabilities', []))
+            matches = []
+            near_matches = []
+            if role:
+                for worker_id, lane in idle_by_id.items():
+                    worker = pool.get('workers', {}).get(worker_id, {})
+                    if role in worker.get('roles', []) and capabilities <= set(worker.get('capabilities', [])):
+                        matches.append(worker_id)
+                    elif role in worker.get('roles', []):
+                        missing = sorted(capabilities - set(worker.get('capabilities', [])))
+                        if missing:
+                            near_matches.append(dict(worker_id=worker_id, missing_capabilities=missing))
+            compatible_ids.update(matches)
+            detail = dict(lane=item.get('lane'), role=role, capabilities=sorted(capabilities),
+                          compatible_workers=sorted(matches), reason=None if matches else
+                          'No idle compatible worker' if role else 'Worker requirements unavailable')
+            compatibility.append(detail)
+            if not matches:
+                unmatched.append(detail)
+                if near_matches:
+                    reassignment_options.append(dict(lane=item.get('lane'), role=role,
+                        capabilities=sorted(capabilities), options=near_matches,
+                        action='explicitly reassign an idle worker, then refresh readiness'))
+        data['ready_compatibility'] = compatibility
+        data['compatible_idle_workers'] = len(compatible_ids)
+        data['unmatched_ready_items'] = unmatched
+        data['reassignment_options'] = reassignment_options
         helpers = dict(running=0, queued=0, report_ready=0, recovery=0)
+        integration_helpers = dict(running=0,queued=0,report_ready=0,recovery=0,workers=[])
+        exhausted = {v['lane'] for v in state.get('control', {}).get('launches', {}).values()
+                     if v.get('status') == 'intent' and v.get('registration_recovery_exhausted')}
         for record in data.get('planner_pool', {}).get('scopes', {}).values():
             if 'completed_at' in record: continue
             lane = state['lanes'].get(record['spec']['lane']['lane'], {})
+            if lane.get('state') == 'done': continue
             if lane.get('state') == 'review_ready': bucket = 'report_ready'
-            elif lane.get('state') == 'ready': bucket = 'queued'
+            elif lane.get('state') == 'ready': bucket = 'recovery' if lane.get('lane') in exhausted else 'queued'
             elif lane.get('state') == 'running' and reg.probe(lane['process']) == 'alive': bucket = 'running'
             else: bucket = 'recovery'
             helpers[bucket] += 1
-        data.setdefault('planner_pool', {}).update(helpers)
+            if 'support_targets' in record:
+                integration_helpers[bucket] += 1
+                integration_helpers['workers'].append(dict(lane=record['spec']['lane']['lane'],
+                    worker=lane.get('worker_id'),status=bucket,
+                    targets=[t['lane'] for t in record['support_targets']]))
+        data.setdefault('planner_pool', {}).update(helpers, active=sum(helpers.values()))
+        integration_helpers.update(active=sum(integration_helpers[k] for k in helpers),
+            target=data['planner_pool'].get('integration_support_target',0),
+            limit=data['planner_pool'].get('integration_support_limit',2))
+        data['planner_pool']['integration_helpers']=integration_helpers
+        data['planner_pool']['integration_support_active']=integration_helpers['active']
         data['pending_count'] = sum(i.get('phase') == 'pending' for i in data['items'].values())
         data['active_enemy_lanes'] = active_enemy_lanes(state, data['items'])
         data['active_enemy_count'] = len(data['active_enemy_lanes'])
@@ -169,10 +261,69 @@ def active_enemy_lanes(state, items):
         and state['lanes'].get(item.get('lane'),{}).get('state') in ('running','waiting_resource')})
 
 
+def _blocker_signature(lane):
+    """Normalized text identifying why a lane is blocked, or None if nothing usable.
+
+    Structured `dependencies` entries (plain lane names or '#issue' strings) are
+    preferred since they are exact data, not prose. Free-text `progress_detail`/
+    `next_action` is used only as a fallback, normalized by casefolding and
+    collapsing whitespace. This is intentionally a byte-exact-after-normalization
+    match, not fuzzy/keyword extraction: two lanes describing the same missing
+    capability in slightly different wording will NOT cluster unless their
+    recorded text normalizes identically.
+    """
+    deps = lane.get('dependencies') or []
+    text = ' '.join(sorted(d.strip() for d in deps if isinstance(d, str) and d.strip()))
+    if text:
+        return ' '.join(text.casefold().split())
+    detail = lane.get('progress_detail') or lane.get('next_action') or ''
+    if isinstance(detail, str) and detail.strip():
+        return ' '.join(detail.casefold().split())
+    return None
+
+
+def clustered_blockers(state):
+    """Surface 2+ blocked/waiting_resource lanes sharing one normalized blocker signature.
+
+    Propose-only, mirroring every other human-gated notice in this module: this
+    never creates a lane, dispatches work or mutates any lane. It only reports a
+    signature, its lane count and the affected lane names for an operator/planner
+    to act on. A cluster is suppressed if any lane's `scope` text already contains
+    the signature, on the assumption that scope text is human-authored and would
+    reference a fix already underway.
+    """
+    groups = {}
+    for name, lane in state['lanes'].items():
+        if lane.get('state') not in ('blocked', 'waiting_resource'):
+            continue
+        signature = _blocker_signature(lane)
+        if not signature:
+            continue
+        groups.setdefault(signature, []).append(name)
+    all_scopes = ' '.join((lane.get('scope') or '').casefold() for lane in state['lanes'].values())
+    clusters = [dict(signature=signature, count=len(lanes), lanes=sorted(lanes))
+                for signature, lanes in groups.items() if len(lanes) >= 2 and signature not in all_scopes]
+    return sorted(clusters, key=lambda c: c['signature'])
+
+
 def _blocked(reg, identity, reason):
     with reg.transaction() as state:
         item = _state(state)['items'][identity]
-        item.update(status='blocked', reason=str(reason), updated_at=reg.clock(), ready=False)
+        now = reg.clock()
+        if item.get('status') != 'blocked' or not item.get('blocked_at'):
+            item['blocked_at'] = now
+        text = str(reason)
+        lowered = text.casefold()
+        if 'integration owner' in lowered:
+            dependency_kind = 'integration_owner'
+        elif 'provider' in lowered or 'api absent' in lowered or 'staging' in lowered:
+            dependency_kind = 'provider'
+        elif 'worker' in lowered or 'capacity' in lowered:
+            dependency_kind = 'worker_capacity'
+        else:
+            dependency_kind = 'workflow'
+        item.update(status='blocked', reason=text, dependency_kind=dependency_kind,
+                    updated_at=now, ready=False)
         if item.get('phase') == 'intent' and item.get('lane') not in state['lanes']:
             for key in ('previous_lane', 'worker_id', 'owner', 'issue_verified_at'):
                 item.pop(key, None)
@@ -222,7 +373,8 @@ def _prepare(controller, spec, issue_reader):
         stream = pool['workstreams'].get(spec['workstream'])
         require(stream is not None, 'Workstream integration owner is missing')
         owner = reg.lane(state, stream['owner_lane'])
-        require(owner['state'] != 'done' and reg.probe(owner['process']) == 'alive', 'Integration owner unavailable')
+        require(reg.integration_assistance(state, spec['lane'], spec['role']) or
+                reg.integration_owner_available(state, owner), 'Integration owner unavailable')
         if spec['heavy'] and not state.get('build_capacity', {}).get('lease_only'):
             held = [v for r, v in state['leases'].items() if reg.heavy(r)]
             pending = pending_heavy_lanes(state, pool, reg.probe)
@@ -237,6 +389,8 @@ def _prepare(controller, spec, issue_reader):
             reserved = {i.get('worker_id') for i in data['items'].values()
                         if i.get('phase') in ('intent', 'provisioned', 'configured') and i.get('previous_lane')}
             candidates = [l for l in candidates if l['worker_id'] not in reserved]
+            if not candidates:
+                candidates = _adapt_worker(controller, state, spec, reserved)
             require(candidates, 'No authorized stopped worker with required role/capabilities')
             prior = candidates[0]
             item.update(previous_lane=prior['lane'], worker_id=prior['worker_id'], owner=prior['owner'],
@@ -257,7 +411,8 @@ def _prepare(controller, spec, issue_reader):
         specs[item['lane']] = _launch(spec)
         stream = reg.scheduling(state)['workstreams'][spec['workstream']]
         owner = reg.lane(state, stream['owner_lane'])
-        require(owner['state'] != 'done' and reg.probe(owner['process']) == 'alive', 'Integration owner changed')
+        require(reg.integration_assistance(state, spec['lane'], spec['role']) or
+                reg.integration_owner_available(state, owner), 'Integration owner changed')
         stream['lanes'] = sorted(set(stream.get('lanes', [])) | {item['lane']})
         item['phase'] = 'configured'
     reg.enqueue_job(dict(id='autofill:' + identity, lane=record['lane'], issue=record['issue'],
@@ -301,6 +456,19 @@ def _request_refill(controller, manifest_hash, cooldown):
 
 def _refresh_readiness(controller, items, issue_reader):
     reg = controller.reg
+    observed = _state(reg.snapshot())['items']
+    items = [spec for spec in items if not (observed.get(spec['id'], {}).get('status') == 'completed'
+             and observed[spec['id']].get('spec_hash') == fingerprint(spec))]
+    snapshot = reg.snapshot()
+    def unchanged_execution(spec):
+        item = observed.get(spec['id'], {})
+        lane = snapshot['lanes'].get(item.get('lane'), {})
+        status = lane.get('state')
+        reason = lane.get('next_action') if status in ('blocked','reconciling') else None
+        return (status in ('running','blocked','waiting_resource','handoff_ready','review_ready','integrating')
+                and item.get('spec_hash') == fingerprint(spec) and item.get('status') == status
+                and item.get('reason') == reason and not item.get('ready') and not item.get('awaiting_worker'))
+    items = [spec for spec in items if not unchanged_execution(spec)]
     for spec in items:
         identity = spec['id']
         try:
@@ -320,7 +488,8 @@ def _refresh_readiness(controller, items, issue_reader):
                 stream = reg.scheduling(state)['workstreams'].get(spec.get('workstream'))
                 require(stream is not None, 'No integration owner')
                 owner = reg.lane(state, stream['owner_lane'])
-                require(owner['state'] != 'done' and reg.probe(owner['process']) == 'alive', 'Integration owner unavailable')
+                require(reg.integration_assistance(state, spec['lane'], spec['role']) or
+                        reg.integration_owner_available(state, owner), 'Integration owner unavailable')
                 lane = state['lanes'].get(item['lane'])
                 if lane is not None:
                     if lane['state'] != 'ready' or not reg.recovery_safe(state, lane) or lane.get('dependencies'):
@@ -341,6 +510,8 @@ def _refresh_readiness(controller, items, issue_reader):
                 validate_spec(reg, spec, issue_reader, verified=verified)
             with reg.transaction() as state:
                 item = _state(state)['items'][identity]
+                item.update(role=spec.get('role'), capabilities=list(spec.get('capabilities', [])),
+                            workstream=spec.get('workstream'))
                 waiting = lane is None and not _workers(reg, state, spec)
                 item.update(ready=True, awaiting_worker=waiting, reason='Awaiting compatible worker' if waiting else None,
                             status='queued' if lane else 'pending', updated_at=reg.clock())
@@ -353,8 +524,27 @@ def _refresh_readiness(controller, items, issue_reader):
 def _planner_tick(controller, settings, manifest_hash):
     reg = controller.reg
     key = settings.get('planner_lane')
-    if not key or not controller.capacity() or not 0 <= controller.memory() < 90:
+    if not key or not controller.capacity() or not 0 <= controller.memory() < controller.config.get('ram_high', 90):
         return False
+    from .prerequisite_queue import collect, dispatched
+    promotion = collect(reg, settings)
+    parallel_config = settings.get('planner_pool', {})
+    inboxes = sorted({p for h in parallel_config.get('helpers', [])
+                      for p in h.get('review_inboxes', []) + h.get('defer_for_review', [])})
+    if parallel_config.get('enabled') and inboxes:
+        with reg.transaction() as state:
+            malformed = bool(_state(state).get('last_manifest_error'))
+        if not malformed and not promotion:
+            from .planner_pool import review_pending
+            if not review_pending(reg, settings, {'review_inboxes': inboxes}):
+                with reg.transaction() as state:
+                    active_requests = _state(state).get('prerequisite_requests', {}).values()
+                    _state(state)['coordinator_wait_reason'] = (
+                        'Handling prerequisite requests' if any(r['status'] == 'dispatched' for r in active_requests)
+                        else 'Waiting for new unpublished proposals')
+                return False
+    with reg.transaction() as state:
+        _state(state)['coordinator_wait_reason'] = None
     cooldown = max(300, settings.get('planner_cooldown_seconds', 900))
     with reg.transaction() as state:
         data = _state(state)
@@ -373,23 +563,26 @@ def _planner_tick(controller, settings, manifest_hash):
                       (ready(i) or (i.get('phase') in ('provisioned', 'configured', 'enqueued') and
                        state['lanes'].get(i['lane'], {}).get('state') in ('running', 'handoff_ready', 'review_ready', 'integrating')))
                       for i in data['items'].values())
-        if not data.get('last_manifest_error') and backlog >= max(1, settings.get('low_watermark', 4)) and enemies:
+        if not promotion and not data.get('last_manifest_error') and backlog >= max(1, settings.get('low_watermark', 4)) and enemies:
             return False
         lane = reg.lane(state, key)
         require(lane['state'] in ('ready', 'blocked', 'reconciling', 'running'), 'Backlog planner is not resumable')
         health = reg.probe(lane['process'])
         require(health in ('alive', 'dead'), 'Backlog planner process identity is unknown')
-        in_flight = any(a['lane'] == key and a['status'] in ('intent', 'spawned', 'running')
+        in_flight = any(a['lane'] == key and a['status'] in ('intent', 'spawned', 'running', 'exiting')
                         for a in state.get('control', {}).get('launches', {}).values())
         if health == 'alive' or in_flight:
             data['last_planner_error'] = None
             return False  # Expected ongoing work; never a recovery error.
         require(reg.recovery_safe(state, lane), 'Backlog planner protected child is live or unknown')
         previous = data.get('last_planner_request')
-        if previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < cooldown:
+        resolution_version = max((r.get('resolution_version', 1) for r in promotion), default=1)
+        if (previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < cooldown
+                and previous.get('resolution_version', 1) >= resolution_version):
             return False
         if not previous or previous.get('status') == 'planned':
-            previous = dict(at=reg.clock(), id=fingerprint([manifest_hash, lane['generation'], int(reg.clock())]), status='intent')
+            previous = dict(at=reg.clock(), id=fingerprint([manifest_hash, lane['generation'], int(reg.clock())]),
+                            status='intent', resolution_version=resolution_version)
             data['last_planner_request'] = previous
     require(key in controller.config['lanes'] and controller.available(key), 'Prepared planner launch configuration unavailable')
     brief = _private(reg, controller.config['lanes'][key]['brief'])
@@ -402,8 +595,69 @@ def _planner_tick(controller, settings, manifest_hash):
         'canonical workflow.planner_pool.merge_proposals; validate issue scope, ownership and source proofs. '
         'Record accepted/rejected proposal paths in your cycle report. Never overwrite helper inboxes. '
         if parallel else '')
+    if promotion:
+        packet = reg.root/'output/workflow/autofill/prerequisite-requests.json'
+        packet.parent.mkdir(parents=True, exist_ok=True)
+        from .runner import write
+        with reg.transaction() as state:
+            blocked_consumers = [dict(lane=k, issue=l['issue'], next_action=l.get('next_action'),
+                dependencies=l.get('dependencies', []), evidence=l.get('progress_evidence'),
+                owned_files=l.get('owned_files', [])) for k, l in state['lanes'].items()
+                if l['state'] == 'blocked' and not k.startswith(('planning-', 'publication-review-', 'integration-support-'))
+                and k != key]
+        write(packet, dict(requests=promotion, blocked_consumers=blocked_consumers))
+        partition_directive += (
+            'PREREQUISITE PROMOTION EXCEPTION to older publication-only briefs: the user authorizes you '
+            'to turn these verified unmet prerequisite requests into bounded executable jobs. Read ' + str(packet) + '. '
+            'For each request inspect the hashed report and live ownership. Reuse an existing producer or '
+            'already-published job whenever it covers the gap; never duplicate owned issues/files. Otherwise '
+            'create/assign a suitable GitHub issue to 4laric with Codex as implementation owner, define '
+            'scope/acceptance first, prepare isolated codex worktrees and pinned launch/issue proofs under '
+            'output/workflow/autofill/prerequisites/, and publish an immutable spec through '
+            'workflow.planner_pool.merge_proposals. Prefer the smallest actual provider implementation '
+            'when its contract is known; use a contract slice only when necessary. Do not return no-work '
+            'merely because a missing provider is outside the requesting content partition. You own '
+            'cross-partition prerequisite preparation for this request, not its implementation. '
+            'RESOLUTION CONTRACT v3: linking only completed historical producers is rejected. '
+            'Read blocked_consumers in the packet, including consumers outside the reporting partition. '
+            'A completed schema/contract/P0 packet is not the missing runtime implementation or its landing. '
+            'For every residual actionable gap, publish a bounded producer job or link an outstanding producer '
+            'that actually owns that deliverable. A vague referral to provider business/controller business '
+            'does not assign the missing work. For an existing blocked consumer, preserve its owned files '
+            'and prepare a disjoint shared provider/fixture prerequisite; never duplicate the consumer. '
+            'In particular inspect guarded game-linked cave boot fixtures and coherent runtime consumer pins '
+            'for forest1 #154 and yakushima4 #161, and the Challenge host-mode implementation behind #136. '
+            'An existing captain-guard header does not establish that a game-linked boot fixture exists. '
+            'No known consumer pins is a bounded source-pin discovery/compatibility job, not an external '
+            'decision. If implementation cannot yet be scoped, publish that concrete discovery deliverable '
+            'with exact consumer pin files and acceptance; do not close the request as no_action. '
+            'For reports referencing blocked consumers, no_action is rejected unless external_input is '
+            'supplied as {kind:user_asset or user_decision, owner:user, detail:exact needed input}. '
+            'Internal provider/controller/integrator work does not qualify as a user-owned external input. '
+            'A request may include stranded_producers: these are already-linked owners that are all blocked. '
+            'Linking the blocked consumer back to itself does not assign its missing input and is rejected. '
+            'Prepare the missing producer or a bounded source/ownership discovery job; avoid a circular wait. '
+            'If the existing consumer already owns the entire missing step, give a concrete evidenced '
+            'owner/action disposition explaining whether it can resume without new inputs; do not invent '
+            'a dependency or new job. External asset/decision blockers must identify the exact needed input. '
+            'Then resolve each request using canonical workflow.prerequisite_queue.resolve, or run from '
+            'the canonical repository: py -3.12 -m workflow.prerequisite_queue --root ' + str(reg.root) +
+            ' --request <private-json>. JSON fields: coordinator (your lane), generation (session-ready), '
+            'request_id, outcome (linked or no_action), lanes (published/existing producer IDs for linked; '
+            'empty for no_action), reason, evidence ({path,sha256} of your disposition report). '
+            'Link shared producers to every affected request. no_action requires concrete evidence that '
+            'no unmet prerequisite exists or a decision outside your authority is required, with exact '
+            'owner/action; a vague outside-my-partition answer is not a disposition. No raw registry or '
+            'manifest writes, implementation, builds, independent dispatch or ADMIT. Handle at most the '
+            'three supplied requests this turn; normal controller admission starts published jobs. ')
     launch = reg.plan_launch(key, 'autofill-planner:' + previous['id'],
         partition_directive + 'Read your configured backlog-planner brief at ' + str(brief) + '. Capacity needs explicit prepared next-gate scopes. '
+        'For an unclaimed prepared job with a wrong role/instruction/proof, use '
+        'workflow.prepared_repair.repair or py -3.12 -m workflow.prepared_repair --root <canonical-root> '
+        '--request <json>; request fields manifest_path,replacement,expected_hash,evidence. '
+        'It validates fresh issue/launch proofs, archives the original and preserves issue/lane/owned files/source pins. '
+        'Registered or launched lanes cannot use this repair tool. Private candidate preparation uses '
+        'implementation/review roles; never request a second integration writer merely to prepare a candidate. '
         'Inspect autofill last_manifest_error first; if malformed/unreadable, diagnose and repair the manifest from '
         'immutable recorded specs without changing accepted scopes. '
         'Prioritize uncompleted enemy acceptance gates, then existing content, then expansion. Inspect live ownership; ' +
@@ -416,6 +670,7 @@ def _planner_tick(controller, settings, manifest_hash):
     with reg.transaction() as state:
         _state(state)['last_planner_request'].update(status='planned', launch_id=launch['id'])
         _state(state)['last_planner_error'] = None
+    if promotion: dispatched(reg, promotion, launch['id'])
     return True
 
 
@@ -457,34 +712,41 @@ def autofill_tick(controller, *, issue_reader=github_issue):
                 if not old:
                     data['items'][identity] = dict(spec_hash=fingerprint(spec), priority=spec.get('priority'),
                         lane=spec.get('lane', {}).get('lane'), phase='pending', status='pending', reason=None,
-                        ready=False, updated_at=reg.clock())
+                        role=spec.get('role'), capabilities=list(spec.get('capabilities', [])),
+                        workstream=spec.get('workstream'), ready=False, updated_at=reg.clock())
+                else:
+                    old.update(role=spec.get('role'), capabilities=list(spec.get('capabilities', [])),
+                               workstream=spec.get('workstream'))
                 if data['items'][identity]['phase'] == 'enqueued' and state['lanes'].get(spec.get('lane', {}).get('lane'), {}).get('state') == 'done':
                     data['items'][identity].update(status='completed', ready=False, updated_at=reg.clock())
-        if not controller.capacity() or not 0 <= controller.memory() < 90:
+        if not controller.capacity() or not 0 <= controller.memory() < controller.config.get('ram_high', 90):
             return
         _refresh_readiness(controller, items, issue_reader)
         admitted = False
         from .queue_pressure import dependents
         lanes=reg.status()['lanes']
-        for spec in sorted(items, key=lambda i: (PRIORITIES.get(i.get('priority'), 99),
-                -dependents(lanes,i['lane']['lane'],i['lane']['issue']),i['id'])):
-            try:
-                from .planner_reclaim import reclaim_for
-                reclaim_for(controller, spec)
-                if _prepare(controller, spec, issue_reader):
-                    admitted = True
-                    break  # At most one newly provisioned slice per tick.
-            except (Rejected, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as exc:
-                _blocked(reg, spec['id'], exc)
+        if not getattr(controller, '_admission_monitor', None):
+            for spec in sorted(items, key=lambda i: (PRIORITIES.get(i.get('priority'), 99),
+                    -dependents(lanes,i['lane']['lane'],i['lane']['issue']),i['id'])):
+                try:
+                    from .planner_reclaim import reclaim_for
+                    reclaim_for(controller, spec)
+                    if _prepare(controller, spec, issue_reader):
+                        admitted = True
+                        break  # At most one newly provisioned slice per tick.
+                except (Rejected, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as exc:
+                    _blocked(reg, spec['id'], exc)
         _refresh_readiness(controller, items, issue_reader)
         try:
             from .planner_pool import tick as planner_pool_tick
-            planner_pool_tick(controller, settings, issue_reader)
+            if not getattr(controller, '_helper_monitor', None):
+                planner_pool_tick(controller, settings, issue_reader)
         except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
             with reg.transaction() as state:
                 _state(state).setdefault('planner_pool', {})['error'] = str(exc)
         with reg.transaction() as state:
             data = _state(state)
+            data['clustered_blockers'] = clustered_blockers(state)
             idle = bool(_workers(reg, state))
             has_ready = any(i.get('ready') for i in data['items'].values())
             if admitted or not idle or has_ready:

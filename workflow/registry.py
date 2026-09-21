@@ -1,5 +1,5 @@
 """Transactional, single-host lane registry. No builds, task dispatch or kills."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import copy
 import json
 from pathlib import Path, PurePosixPath
@@ -7,8 +7,10 @@ import re
 import sqlite3
 import time
 import uuid
+import threading
+import traceback
 
-from .handoff import GATES, digest, local_path, nonempty, require, source_record, validate_handoff
+from .handoff import GATES, digest, local_path, nonempty, phantom_shared_reviews, require, source_record, validate_handoff
 from .processes import identify, probe
 
 STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
@@ -44,13 +46,33 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
         self.clock, self.probe = clock, process_probe
+        self._transaction_local = threading.local()
 
-    @contextmanager
-    def transaction(self):
+    def snapshot(self):
+        """Read one committed registry version; never reserve the writer lock."""
         require(self.path.is_file(), 'Registry missing; run init first')
         db = sqlite3.connect(self.path, timeout=30)
         try:
+            db.execute('PRAGMA query_only=ON')
+            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
+        finally:
+            db.close()
+        require(row is not None, 'Registry not initialized')
+        state = json.loads(row[0])
+        require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
+        return state
+
+    @contextmanager
+    def transaction(self):
+        require(not getattr(self._transaction_local, 'active', False), 'Nested registry write transaction')
+        require(self.path.is_file(), 'Registry missing; run init first')
+        db = sqlite3.connect(self.path, timeout=30)
+        started = time.monotonic()
+        acquired = None
+        self._transaction_local.active = True
+        try:
             db.execute('BEGIN IMMEDIATE')
+            acquired = time.monotonic()
             row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
             require(row is not None, 'Registry not initialized')
             state = json.loads(row[0])
@@ -65,6 +87,17 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             raise
         finally:
             db.close()
+            self._transaction_local.active = False
+            elapsed = time.monotonic() - started
+            if elapsed >= 2:
+                try:
+                    record = dict(at=self.clock(), thread=threading.current_thread().name,
+                        elapsed_seconds=elapsed, wait_seconds=(acquired-started) if acquired else elapsed,
+                        stack=traceback.format_stack(limit=8))
+                    with self.path.with_name('slow-transactions.jsonl').open('a', encoding='utf-8') as log:
+                        log.write(json.dumps(record) + '\n')
+                except OSError:
+                    pass
 
     def init(self, settings=None):
         settings = settings or {}
@@ -90,7 +123,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
 
     def throughput_status(self, window_seconds=3600, ram_percent=None):
         from .analytics import throughput_metrics, staffing_recommendations
-        with self.transaction() as state:
+        with nullcontext(self.snapshot()) as state:
             return dict(at=self.clock(), throughput=state.get('throughput', {}),
                         metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
                         staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent))
@@ -130,10 +163,11 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         return lane
 
     def check_wip(self, state, lane):
+        from .worker_capacity import reusable
         others = [l for l in state['lanes'].values()
                   if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
         if lane['state'] in ACTIVE:
-            require(not any(l['state'] in ACTIVE for l in others), 'Worker already has one active slice')
+            require(not any(l['state'] in ACTIVE and not reusable(self, state, l) for l in others), 'Worker already has one active slice')
         if lane['state'] in ('handoff_ready', 'review_ready', 'integrating'):
             require(not any(l['state'] in ('handoff_ready', 'review_ready', 'integrating') for l in others),
                     'Worker already has one ready/integrating handoff')
@@ -247,7 +281,8 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                 return {'duplicate': True, 'failure_streak': lane['failure_streak']}
             lane['failure_streak'] = lane['failure_streak'] + 1 if lane['failure_fingerprint'] == fingerprint else 1
             lane['failure_fingerprint'] = fingerprint
-            self.event(state, 'failure', key, attempt_id=attempt_id, fingerprint=fingerprint, evidence=evidence)
+            self.event(state, 'failure', key, attempt_id=attempt_id, fingerprint=fingerprint, evidence=evidence,
+                       generation=generation, source_pins={k:(lane.get(k) or {}).get('head') for k in ('root','native')})
             return {'duplicate': False, 'failure_streak': lane['failure_streak']}
 
     def resource(self, name):
@@ -270,9 +305,10 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         with self.transaction() as state:
             lane = self.lane(state, key, generation)
             require(lane['state'] != 'done', 'Lane is done')
-            # Expiry alone never proves that the protected process has stopped.
+            # Exact process death permits release even before TTL, just like
+            # release(). Expiry alone never proves the process has stopped.
             for name, lease in list(state['leases'].items()):
-                if lease['expires_at'] <= self.clock() and self.probe(lease['process']) == 'dead':
+                if self.probe(lease['process']) == 'dead':
                     self.event(state, 'lease_reaped', lease['lane'], resource=name)
                     del state['leases'][name]
             existing = state['leases'].get(resource)
@@ -284,7 +320,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             # retain their place until explicitly cancelled.
             for queued_id, queued in list(state['queue'].items()):
                 if self.clock() - queued['requested_at'] > state['settings']['heartbeat_seconds'] and self.probe(queued['process']) == 'dead':
-                    self.event(state, 'request_reaped', queued['lane'], wait_seconds=self.clock() - queued['requested_at'])
+                    self.event(state, 'request_reaped', queued['lane'], resource=queued['resource'], wait_seconds=self.clock() - queued['requested_at'])
                     del state['queue'][queued_id]
             request = state['queue'].setdefault(request_id, dict(id=request_id, lane=key,
                 generation=generation, resource=resource, requested_at=self.clock(), process=identity))
@@ -295,9 +331,14 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                        q['resource'] not in state['leases'] and
                        (q['resource'] == resource or (self.heavy(resource) and self.heavy(q['resource'])))]
             count = sum(self.heavy(r) for r in state['leases'])
+            # Reserve capacity for earlier independent resources without making
+            # a live but non-polling waiter serialize the entire build pool.
+            # Multiple waiters for one directory need only one reserved slot.
+            same_resource_wait = any(q['resource'] == resource for q in earlier)
+            reserved = len({q['resource'] for q in earlier if self.heavy(q['resource'])})
             from .build_capacity import admission_paused
-            if existing or earlier or (self.heavy(resource) and
-                    (count >= state['settings']['max_heavy_builds'] or admission_paused(state, self.clock()))):
+            if existing or same_resource_wait or (self.heavy(resource) and
+                    (count + reserved >= state['settings']['max_heavy_builds'] or admission_paused(state, self.clock()))):
                 return {'acquired': False, 'request': request, 'reason': 'held, earlier request, or build capacity'}
             lease = dict(token=new_id(), lane=key, generation=generation, resource=resource,
                          process=identity, acquired_at=self.clock(), expires_at=self.clock() + ttl)
@@ -337,27 +378,37 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             request = state['queue'].get(request_id)
             require(request and request['lane'] == key and request['generation'] == generation, 'Request owner mismatch')
             del state['queue'][request_id]
-            self.event(state, 'request_cancelled', key, wait_seconds=self.clock() - request['requested_at'])
+            self.event(state, 'request_cancelled', key, resource=request['resource'], wait_seconds=self.clock() - request['requested_at'])
             return {'cancelled': request_id}
 
     def recovery_safe(self, state, lane):
+        queued = state['queue'].values() if 'queue' in state else state.get('requests', [])
         return self.probe(lane['process']) == 'dead' and all(
-            self.probe(lease['process']) == 'dead' for lease in state['leases'].values()
-            if lease['lane'] == lane['lane'])
+            self.probe(owner['process']) == 'dead'
+            for owner in [*state['leases'].values(), *queued] if owner['lane'] == lane['lane'])
 
     def watchdog(self):
         """Persist deduplicated recommendations. Never launch or terminate a task."""
         with self.transaction() as state:
             results = []
             for key, lane in state['lanes'].items():
-                if lane['state'] in ('done', 'handoff_ready', 'review_ready', 'reconciling', 'integrating'):
+                if lane['state'] in ('done', 'review_ready', 'reconciling', 'integrating'):
                     continue
+                phantom = phantom_shared_reviews(self.root, lane) if lane['state'] == 'handoff_ready' else []
+                if lane['state'] == 'handoff_ready' and not phantom:
+                    continue  # No mechanism redispatches a legitimately pending review.
                 kind, reason = None, None
                 settings = state['settings']
                 if lane['failure_streak'] >= settings['failure_limit']:
                     kind, reason = 'escalate', 'Repeated failure: ' + str(lane['failure_fingerprint'])
                 elif lane['recovery_count'] >= settings['failure_limit']:
                     kind, reason = 'escalate', 'Recovery budget exhausted without meaningful progress'
+                elif phantom and any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')
+                                      for l in state.get('control', {}).get('launches', {}).values()):
+                    pass  # A launch is already in flight for this lane; do not double-dispatch.
+                elif phantom and self.recovery_safe(state, lane):
+                    kind, reason = 'recover', ('Handoff pending review names file(s) never in changed_files: ' +
+                                                ', '.join(phantom))
                 elif lane['state'] in ('blocked', 'waiting_resource'):
                     if self.clock() - lane['progress_at'] >= settings['progress_seconds']:
                         kind, reason = 'check_dependency', 'Inspect dependency or resource wait; do not restart'
@@ -392,12 +443,16 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             require(action['progress_at'] == lane['progress_at'], 'Action superseded by progress')
             require(action['status'] == 'pending', 'Action already claimed/completed; reconcile instead of redispatching')
             if action['kind'] == 'recover':
-                require(lane['state'] in ('ready', 'running') and self.recovery_safe(state, lane),
-                        'Recovery no longer safe')
+                require((lane['state'] in ('ready', 'running') or
+                         (lane['state'] == 'handoff_ready' and phantom_shared_reviews(self.root, lane))) and
+                        self.recovery_safe(state, lane), 'Recovery no longer safe')
                 require(lane['failure_streak'] < state['settings']['failure_limit'] and
                         lane['recovery_count'] < state['settings']['failure_limit'], 'Recovery budget exhausted')
                 require(not any(a['lane'] == lane['lane'] and a['kind'] == 'recover' and a['status'] == 'claimed'
                                 for a in state['actions'].values()), 'Recovery already in flight')
+                require(not any(l['lane'] == lane['lane'] and l['status'] in ('intent', 'spawned', 'running')
+                                for l in state.get('control', {}).get('launches', {}).values()),
+                        'Launch already in flight')
             action.update(status='claimed', consumer=consumer, claimed_at=self.clock())
             return action
 
@@ -415,11 +470,12 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             if action['kind'] == 'recover':
                 require(isinstance(replacement, dict) and nonempty(replacement.get('task_id')) and
                         type(replacement.get('pid')) is int, 'Recovery needs known replacement task ID and PID')
-                require(lane['state'] in ('ready', 'running') and self.recovery_safe(state, lane),
-                        'Previous execution must remain stopped')
+                require((lane['state'] in ('ready', 'running') or
+                         (lane['state'] == 'handoff_ready' and phantom_shared_reviews(self.root, lane))) and
+                        self.recovery_safe(state, lane), 'Previous execution must remain stopped')
                 identity = identify(replacement['pid'])
                 lane.update(generation=lane['generation'] + 1, revision=lane['revision'] + 1,
-                            task_id=replacement['task_id'], process=identity, state='ready',
+                            task_id=replacement['task_id'], process=identity, state='ready', handoff=None,
                             recovery_count=lane['recovery_count'] + 1,
                             heartbeat_at=self.clock(), progress_at=self.clock(),
                             progress_detail='Recovered from checkpoint: ' + outcome)
@@ -479,9 +535,13 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
             return lane
 
     def status(self):
-        with self.transaction() as state:
+        from .batching import isolated_handoff
+        with nullcontext(self.snapshot()) as state:
             now = self.clock()
-            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'review_ready', 'integrating')]
+            owners = {s.get('owner_lane') for s in state.get('throughput', {}).get('workstreams', {}).values()}
+            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'review_ready', 'integrating')
+                        and not isolated_handoff(state.get('throughput', {}).get('batches', {}), l['lane'], l)
+                        and not (l['lane'] in owners and l['state'] == 'review_ready' and not l.get('handoff'))]
             backlog = (len(handoffs) >= state['settings']['handoff_limit'] or any(
                 now - l['handoff_at'] >= state['settings']['handoff_age_seconds'] for l in handoffs))
             waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]
