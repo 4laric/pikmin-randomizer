@@ -205,6 +205,12 @@ set(PC_PORT_SOURCES
     # emits its 7 challenge-persistence probe markers; the #718 callsite fixture
     # links this same object rather than a fixture-local copy.
     pc_port/pc_p2_challenge_persistence.cpp
+    # Challenge stage-table extension fallthrough (#730; #186 decision
+    # output/workflow/integration-recovery/species-owner/stagetable730-186-decision.md):
+    # the additive LeafChappy/02tile table joins pikmin_pc so the pc_bbft.cpp
+    # weak fallthrough resolves on an engine miss. pc_bbft_test keeps linking
+    # without this TU.
+    pc_port/pc_p2_challenge_stages_ext.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp
     pc_port/pc_p2_second_captain.cpp

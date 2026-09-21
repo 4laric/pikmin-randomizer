@@ -3,28 +3,25 @@
 //
 // Replacement-main convention: mirrors tools/p2_challenge_stage_boot_fixture.cpp
 // (#675) -- scenario main instead of pc_main.cpp, 960x540 centred window, and
-// the --experimental-pikmin2-room boot. The lane build script links this TU
-// plus the extension table TU against the private pikmin_pc graph without
-// editing shared build files (the extension TU is unity-included below, so
-// no CMakeLists change is needed; wiring it into the engine lookup is the
-// serialized one-line pc_bbft.cpp integration owned by READY #728).
+// the --experimental-pikmin2-room boot. The extension table TU is production
+// membership in pikmin_pc (#730 wiring follow-on, #186 decision), so this TU
+// links it from the graph and the engine lookup falls through to it.
 //
-// What this proves (and only this): the extension table resolves
-// ch_ABEM_LeafChappy (#550 pins) and ch_NARI_02tile (#537 pins) field by
-// field, the engine table still resolves kusachi identically (untouched),
-// the engine table refuses both new keys (proving the extension adds the
-// coverage), and the extension refuses unknown keys. It boots the real
-// engine privately under the room-preview path with a guarded captain.
+// What this proves (and only this): the wired engine lookup resolves
+// ch_ABEM_LeafChappy (#550 pins) and ch_NARI_02tile (#537 pins) field by field
+// through the extension fallthrough, the engine table still resolves kusachi
+// identically (untouched), and unknown keys are refused everywhere. It boots
+// the real engine privately under the room-preview path with a guarded captain.
 //
 // It does NOT prove content wiring or challenge gameplay: all six gates stay
 // UNTESTED and the P2_CHALLENGE_STAGE_EXT_GATES marker says so.
 //
 // Markers: P2_CHALLENGE_STAGE_EXT_RESOLVED (per-key pin lines),
 // P2_CHALLENGE_STAGE_EXT_ENGINE_UNTOUCHED (kusachi via engine only),
-// P2_CHALLENGE_STAGE_EXT_ENGINE_REFUSES (both new keys refused by engine),
-// P2_CHALLENGE_STAGE_EXT_WINDOW, _READY, _GATES all=UNTESTED, then
-// "PASS CHALLENGE_STAGE_TABLE_EXT" and exit 0. Refusals exit 1 with a
-// reason; a guard trip exits BLOCKED (86); timeout 2.
+// P2_CHALLENGE_STAGE_EXT_FALLTHROUGH (both new keys resolved by the engine
+// lookup through the extension), P2_CHALLENGE_STAGE_EXT_WINDOW, _READY,
+// _GATES all=UNTESTED, then "PASS CHALLENGE_STAGE_TABLE_EXT" and exit 0.
+// Refusals exit 1 with a reason; a guard trip exits BLOCKED (86); timeout 2.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include "App.h"
@@ -53,11 +50,9 @@
 #include <cstring>
 #include <string>
 
-// Unity-included extension table TU (established provider-fixture pattern):
-// pc_p2_challenge_stages_ext.cpp is NOT in the game target (no CMakeLists
-// edit per serialization), so the fixture carries it directly. No duplicate
-// symbols arise because the game graph never defines these symbols.
-#include "pc_p2_challenge_stages_ext.cpp"
+// Extension table TU is production membership in pikmin_pc now, so the graph
+// provides pc_p2_challenge_stages_ext_count()/lookup(); no unity include and no
+// duplicate definitions.
 
 // Engine table lookup, read-only (defined in pc_port/pc_bbft.cpp, owned by
 // lane #675 / READY #728; never modified here).
@@ -286,13 +281,19 @@ int main(int argc, char** argv) {
         std::printf("P2_CHALLENGE_STAGE_EXT_ENGINE_UNTOUCHED cave=ch_NARI_01kusachi ui_index=3\n");
         std::fflush(stdout);
     }
-    // Both new keys must be refused by the engine table (proves the extension
-    // adds the coverage; wiring it in is the serialized #728 integration).
+    // The wired engine lookup must now resolve both new keys through the
+    // extension fallthrough with the pinned identity (this is the serialized
+    // #730 integration proof), while unknown keys stay refused everywhere.
     for (size_t i = 0; i < sizeof(kExpects) / sizeof(kExpects[0]); ++i) {
-        if (pc_p2_challenge_stage_lookup(kExpects[i].caveId)) fail("engine-resolves-new-key");
-        std::printf("P2_CHALLENGE_STAGE_EXT_ENGINE_REFUSES cave=%s\n", kExpects[i].caveId);
+        const P2ChallengeStageRowEngine* wired =
+            pc_p2_challenge_stage_lookup(kExpects[i].caveId);
+        if (!wired || std::strcmp(wired->caveId, kExpects[i].caveId)
+            || wired->uiIndex != kExpects[i].uiIndex) fail("engine-fallthrough");
+        std::printf("P2_CHALLENGE_STAGE_EXT_FALLTHROUGH cave=%s ui_index=%d\n",
+                    wired->caveId, wired->uiIndex);
         std::fflush(stdout);
     }
+    if (pc_p2_challenge_stage_lookup("ch_NARI_99bogus")) fail("engine-accepts-bogus");
     if (pc_p2_challenge_stages_ext_lookup("ch_NARI_99bogus")) fail("ext-accepts-bogus");
     if (pc_p2_challenge_stage_lookup(nullptr)) fail("engine-null-accepted");
     if (pc_p2_challenge_stages_ext_lookup(nullptr)) fail("ext-null-accepted");

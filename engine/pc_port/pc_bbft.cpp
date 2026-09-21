@@ -3,6 +3,7 @@
 #include "pc_p2_challenge_persistence.h"
 #include "pc_p2_challenge_runtime.h"
 #include "pc_p2_challenge_content.h"
+#include "pc_p2_challenge_stages_ext.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -47,10 +48,28 @@ static const P2ChallengeStageRow kP2ChallengeStages[] = {
       { {0,0,50}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0} },
       1, 2, 350.0f, 0 },
 };
+// Challenge stage-table extension fallthrough (#730; #186 decision
+// output/workflow/integration-recovery/species-owner/stagetable730-186-decision.md).
+// The additive LeafChappy/02tile table (pc_p2_challenge_stages_ext.{h,cpp}) is
+// linked only into pikmin_pc, so this reference is weak: pc_bbft_test stays
+// link-inert without the module, while every build that carries the TU resolves
+// the two additive rows on an engine miss. It coexists with the landed #718
+// persistence, #722 runtime and #728 content hooks (all null-by-default).
+#if defined(__GNUC__)
+const P2ChallengeStageExtRow* pc_p2_challenge_stages_ext_lookup(const char*) __attribute__((weak));
+#endif
+static_assert(sizeof(P2ChallengeStageRow) == sizeof(P2ChallengeStageExtRow),
+              "stage-table extension row layout drifted from the engine row");
 const P2ChallengeStageRow* pc_p2_challenge_stage_lookup(const char* caveId) {
     if (caveId == nullptr) return nullptr;
     for (size_t i = 0; i < sizeof(kP2ChallengeStages) / sizeof(kP2ChallengeStages[0]); ++i)
         if (!std::strcmp(kP2ChallengeStages[i].caveId, caveId)) return &kP2ChallengeStages[i];
+#if defined(__GNUC__)
+    if (pc_p2_challenge_stages_ext_lookup != nullptr) {
+        const P2ChallengeStageExtRow* ext = pc_p2_challenge_stages_ext_lookup(caveId);
+        return reinterpret_cast<const P2ChallengeStageRow*>(ext);
+    }
+#endif
     return nullptr;
 }
 const P2ChallengeStageRow* pc_p2_challenge_stage_selected() {
