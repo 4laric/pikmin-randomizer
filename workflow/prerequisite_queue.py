@@ -102,10 +102,16 @@ def recovery_instruction(recovery):
 
 def collect(reg, settings):
     """Detect demand deterministically; issue/scope decisions belong to the coordinator."""
-    from .autofill import _state
     if not settings.get('planner_pool', {}).get('enabled') or not settings.get('planner_lane'): return []
-    with reg.transaction() as state:
-        data = _state(state)
+    # Demand detection reads lanes and launch state and writes only the autofill meta
+    # row (prerequisite requests) plus the events history. Declaring those partitions
+    # avoids decoding and re-serializing the whole documents state on every planner tick.
+    # A sectioned transaction may not create an absent partition, so when no planning
+    # runtime exists yet this returns nothing; a later full transaction creates it.
+    with reg.transaction(sections=[('lanes',), ('control', 'launches')], append=[('events',)]) as state:
+        data = state.get('throughput_runtime', {}).get('autofill')
+        if data is None:
+            return []
         data['prerequisite_coordinator'] = settings['planner_lane']
         requests = data.setdefault('prerequisite_requests', {})
         records = data.get('planner_pool', {}).get('scopes', {})

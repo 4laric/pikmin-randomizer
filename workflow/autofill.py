@@ -550,20 +550,22 @@ def _planner_tick(controller, settings, manifest_hash):
     inboxes = sorted({p for h in parallel_config.get('helpers', [])
                       for p in h.get('review_inboxes', []) + h.get('defer_for_review', [])})
     if parallel_config.get('enabled') and inboxes:
-        with reg.transaction() as state:
-            malformed = bool(_state(state).get('last_manifest_error'))
+        runtime = reg.snapshot(section=('throughput_runtime',))  # Read meta without the writer lock.
+        malformed = bool(runtime.get('autofill', {}).get('last_manifest_error'))
         if not malformed and not promotion:
             from .planner_pool import review_pending
             if not review_pending(reg, settings, {'review_inboxes': inboxes}):
-                with reg.transaction() as state:
-                    active_requests = _state(state).get('prerequisite_requests', {}).values()
-                    _state(state)['coordinator_wait_reason'] = (
-                        'Handling prerequisite requests' if any(r['status'] == 'dispatched' for r in active_requests)
-                        else 'Waiting for new unpublished proposals')
+                with reg.transaction(sections=()) as state:  # Meta-only write; sealed partitions stay untouched.
+                    data = state.get('throughput_runtime', {}).get('autofill')
+                    if data is not None:
+                        active_requests = data.get('prerequisite_requests', {}).values()
+                        data['coordinator_wait_reason'] = (
+                            'Handling prerequisite requests' if any(r['status'] == 'dispatched' for r in active_requests)
+                            else 'Waiting for new unpublished proposals')
                 return False
-    with reg.transaction() as state:
-        data = _state(state)
-        if (data.get('last_planner_request') or {}).get('status') != 'parked':  # A park keeps its reason.
+    with reg.transaction(sections=()) as state:  # Meta-only write.
+        data = state.get('throughput_runtime', {}).get('autofill')
+        if data is not None and (data.get('last_planner_request') or {}).get('status') != 'parked':  # A park keeps its reason.
             data['coordinator_wait_reason'] = None
     cooldown = max(300, settings.get('planner_cooldown_seconds', 900))
     staged = []
