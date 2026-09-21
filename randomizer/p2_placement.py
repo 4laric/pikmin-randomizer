@@ -36,7 +36,9 @@ DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
 PROXY_SCHEMA = 'p2-proxy-placement-v1'
 PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
 PROXY_SLOT_UIDS = frozenset({1849273021, 2049888785})
-PROXY_RESERVED_VANILLA = (3640055869, 328297937, 3886812794)
+# Kept in the schema for stability but intentionally empty: a proxy keeps its Pikmin 1 host's behaviour and corpse,
+# and reserving committed slots from proxies only made every sampled seed spend them on a repeat of a playable species.
+PROXY_RESERVED_VANILLA = ()
 PROXY_DOCUMENT_REQUIRED = ('schema', 'slots', 'reserved_vanilla')
 PROXY_DOCUMENT_ALLOWED = PROXY_DOCUMENT_REQUIRED + ('notes',)
 
@@ -60,7 +62,7 @@ def validate_proxy_document(document):
     if (any(not isinstance(uid, int) or isinstance(uid, bool) for uid in reserved)
             or len(set(reserved)) != len(reserved)
             or sorted(reserved) != sorted(PROXY_RESERVED_VANILLA)):
-        _fail('proxy document reserved_vanilla must be exactly [3640055869, 328297937, 3886812794]')
+        _fail(f'proxy document reserved_vanilla must be exactly {sorted(PROXY_RESERVED_VANILLA)}')
     if len(document['slots']) != len(PROXY_SLOT_UIDS):
         _fail(f'proxy document must carry exactly {len(PROXY_SLOT_UIDS)} slots')
     slots = []

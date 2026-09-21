@@ -24,7 +24,7 @@ from randomizer.seed import (
 )
 
 SINGLETONS = {"1849273021", "2049888785"}
-RESERVED = {"3640055869", "328297937", "3886812794"}
+RESERVED = set()  # no committed slot is reserved from proxies (see PROXY_RESERVED_VANILLA)
 
 
 def _sibling():
@@ -209,6 +209,7 @@ def test_sampler_cap_and_reserved_and_sorted():
     for reserved_target in RESERVED:
         if reserved_target in by_target:
             assert by_target[reserved_target] in set(PLAYABLE_P2_SPECIES)
+
     # Six-gate identities are never placed on the new singleton slots.
     for binding in layout["bindings"]:
         if binding["target"] in SINGLETONS:
@@ -231,3 +232,16 @@ def test_generate_parity_with_declared_dwarf_hosts():
     assert manifest["p2_layout"]["density"] == "sampled-v1"
     assert {10, 11} <= {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
     validate(manifest)
+
+
+def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
+    """With more species than targets every target carries a distinct species."""
+    from collections import Counter
+    from randomizer.seed import generate
+    for seed in ("distinct-a", "distinct-b", "distinct-c"):
+        layout = generate(seed, "solo", "Player1", p2_enemies=True, p2_species="full",
+                          p2_proxy_tier="declared")["p2_layout"]
+        counts = Counter(binding["source_id"] for binding in layout["bindings"])
+        pool = len(counts) + len(layout.get("unplaced", []))
+        assert pool > len(layout["bindings"]), "test needs a pool larger than the target set"
+        assert len(counts) == len(layout["bindings"]), {k: v for k, v in counts.items() if v > 1}

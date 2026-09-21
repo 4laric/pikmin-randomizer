@@ -56,10 +56,6 @@
       "evidence_level": "mechanical-only: xyz from game data; terrain/route unprobed"
     }
   ],
-  "reserved_vanilla": [
-    3640055869,
-    328297937,
-    3886812794
-  ],
-  "notes": "Stage A proxy-tier-only expansion (issue #871): 2 Hope singleton dwarf ground slots (count == 1, unprotected, day-2 renewable). Pack generators excluded: shared campaign tokens abort the proxy binder on duplicate tokens (pc_p2_batch2.cpp). Never passed to audit()/validate_document(); six-gate species never use these slots. Reserved vanilla slots stay vanilla under the proxy tier."
+  "reserved_vanilla": [],
+  "notes": "Stage A proxy-tier-only expansion (issue #871): 2 Hope singleton dwarf ground slots (count == 1, unprotected, day-2 renewable). Pack generators excluded: shared campaign tokens abort the proxy binder on duplicate tokens (pc_p2_batch2.cpp). Never passed to audit()/validate_document(); six-gate species never use these slots. No committed slot is reserved from proxies: a proxy keeps its Pikmin 1 host's behaviour and corpse."
 }
