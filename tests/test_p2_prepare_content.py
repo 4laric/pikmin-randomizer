@@ -218,3 +218,62 @@ def test_every_proxy_id_maps_to_extract_proxy():
     assert set(prepare.PROXY_SOURCE_IDS) == declared
     for source_id in prepare.PROXY_SOURCE_IDS:
         assert prepare.EXTRACTORS[source_id] == "extract_proxy"
+
+
+def test_proxy_ids_for_manifest(tmp_path):
+    plain = tmp_path / "plain.json"
+    plain.write_text(json.dumps(manifest_with("11")))
+    assert prepare.proxy_ids_for_manifest(plain) == []
+    no_layout = tmp_path / "no-layout.json"
+    no_layout.write_text(json.dumps({"seed": "x"}))
+    assert prepare.proxy_ids_for_manifest(no_layout) == []
+    tiered = tmp_path / "tiered.json"
+    tiered.write_text(json.dumps({
+        "p2_proxy_tier": "declared",
+        "p2_layout": {"bindings": [
+            {"target": "11", "source_id": 2, "enum_name": "Chappy"},
+            {"target": "22", "source_id": 44, "enum_name": "BlueKochappy"},
+            {"target": "33", "source_id": 2, "enum_name": "Chappy"},
+        ]}}))
+    assert prepare.proxy_ids_for_manifest(tiered) == [2]
+    untiered = tmp_path / "untiered.json"
+    untiered.write_text(json.dumps({
+        "p2_layout": {"bindings": [
+            {"target": "11", "source_id": 2, "enum_name": "Chappy"}]}}))
+    with pytest.raises(ValueError, match="without a p2_proxy_tier"):
+        prepare.proxy_ids_for_manifest(untiered)
+    # Chappy carries no probe evidence, so the proven tier does not cover it.
+    proven = tmp_path / "proven.json"
+    proven.write_text(json.dumps({
+        "p2_proxy_tier": "proven",
+        "p2_layout": {"bindings": [
+            {"target": "11", "source_id": 2, "enum_name": "Chappy"}]}}))
+    with pytest.raises(ValueError, match="outside the 'proven' tier"):
+        prepare.proxy_ids_for_manifest(proven)
+
+
+def test_main_adds_manifest_proxy_ids_to_wanted(tmp_path, monkeypatch):
+    iso = tmp_path / "game.iso"
+    iso.write_bytes(b"fake")
+    manifest = tmp_path / "seed.json"
+    manifest.write_text(json.dumps({
+        "p2_proxy_tier": "declared",
+        "p2_layout": {"bindings": [
+            {"target": "11", "source_id": 2, "enum_name": "Chappy"},
+            {"target": "22", "source_id": 44, "enum_name": "BlueKochappy"}]}}))
+    seen = {}
+
+    def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None):
+        seen["wanted"] = list(wanted)
+        return {"iso": str(iso_arg), "out": str(out),
+                "extracted": [], "skipped": []}
+
+    monkeypatch.setattr(prepare, "prepare_content_root", fake_prepare)
+    actors_out = tmp_path / "actors.json"
+    prepare.main(["--iso", str(iso), "--out", str(tmp_path / "content"),
+                  "--seed-manifest", str(manifest),
+                  "--actors-out", str(actors_out),
+                  "--species", "playable"])
+    assert 2 in seen["wanted"]
+    assert seen["wanted"][:6] == [44, 54, 59, 60, 61, 62]
+    assert json.loads(actors_out.read_text()) == {"11": 11, "22": 22}
