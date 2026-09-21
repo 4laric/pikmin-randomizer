@@ -30,6 +30,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   adapter stages the room meshes through ``pikmin2_kogane_content``.
 * 57 Kurage: ``pikmin2_kurage_assets.extract`` -> ``<out>/Kurage/``; the Kurage
   adapter stages the visual files through ``pikmin2_kurage_content``.
+* 78 MiniHoudai: ``pikmin2_minihoudai_assets.extract`` -> ``<out>/MiniHoudai/``
+  (``minihoudai.json`` + ``identity.json`` + ``minihoudai_<clip>_<ii>.mod``);
+  the MiniHoudai adapter stages the actor sidecar through
+  ``experimental.pikmin2_groink_carcass_teki.sidecar_config``. Pose meshes
+  are data-only.
 * 79 Sokkuri: ``pikmin2_sokkuri_assets.extract`` -> ``<out>/Sokkuri/``
   (``sokkuri.json`` + ``ginv_Sokkuri_<clip>_<ii>.mod``); the Sokkuri adapter
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
@@ -331,6 +336,29 @@ def extract_kurage(iso, dest):
     return target
 
 
+def extract_minihoudai(iso, dest, pose_limit=3):
+    """Build <dest>/MiniHoudai/ via the MiniHoudai extractor."""
+    from experimental import pikmin2_minihoudai_assets as minihoudai_assets
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "MiniHoudai"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-minihoudai"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        minihoudai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_sokkuri(iso, dest, pose_limit=6):
     """Build <dest>/Sokkuri/ via the Sokkuri extractor.
 
@@ -370,6 +398,7 @@ EXTRACTORS = {
     23: "extract_sarai",
     9: "extract_kogane",
     57: "extract_kurage",
+    78: "extract_minihoudai",
     79: "extract_sokkuri",
 }
 
@@ -411,6 +440,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out)
+            extracted.append(source_id)
+        elif source_id == 78:
+            extract_minihoudai(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
