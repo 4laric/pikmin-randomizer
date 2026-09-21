@@ -21,6 +21,10 @@ The installer table (`experimental/pikmin2_family_install.py`
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
+Separate from this pool, the proxy tier (`docs/PIKMIN2_PROXY_TIER.md`)
+stages Pikmin 2 models over Pikmin 1 enemy behaviour. Proxy species are
+never P2 identities and never enter this table.
+
 ## Admission bar
 
 A species is admitted when all three hold:
