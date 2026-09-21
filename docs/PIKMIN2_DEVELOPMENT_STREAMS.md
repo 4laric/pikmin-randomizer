@@ -5,9 +5,9 @@ executing worker). Coordination and shared-semantics review: **#186**.
 
 This document is the current routing manifest for the three user-authorized
 development streams. It records what has actually been **provisioned** (branches
-and private worktrees) separately from what is **staffed/active** (an explicitly
-bound owner running one bounded batch). Provisioning a branch is not staffing and
-is not maintained delivery.
+and private worktrees) separately from what is **staffed/active** (a live,
+generation-fenced owner running one bounded batch). Provisioning a branch is not
+staffing and is not maintained delivery.
 
 Stream state lives in the shared registry under an isolated
 `development_streams` section via `workflow.development_streams`. Stream-local
@@ -16,140 +16,112 @@ calls `Registry.integrate`, never dispatches and never wakes a maintained
 consumer. Final merges, maintained builds/exports, integration receipts and
 gameplay admission stay with the existing sole integration owner.
 
-## Verified maintained sources (inspection, 2026-09-21)
+## Verified maintained sources and observed dirty baselines (2026-09-21)
 
-| Source | Repo | Ref | Commit | Dirty baseline |
+| Source | Repo | Ref | Commit | Observed dirty baseline |
 |---|---|---|---|---|
-| Root | `output/p2-main-review` | `codex/p2-main-review` | `8f790eb464ffa4dc567f5a07709a3ca2da19084c` | clean (0 porcelain) |
-| Native | `output/dsw/native-wave` | `claude/p2-deepseek-wave-native` | `a53a8bb96820d478410686dfc694650254084cdd` | clean (0 porcelain) |
+| Root | `output/p2-main-review` | `codex/p2-main-review` | `8f790eb464ffa4dc567f5a07709a3ca2da19084c` | recorded, not required clean |
+| Native | `output/dsw/native-wave` | `claude/p2-deepseek-wave-native` | `a53a8bb96820d478410686dfc694650254084cdd` | recorded, not required clean |
 
-These are the configured `integration_lines` in
-`output/workflow/controller/config.json`. The setup worktree is
-`output/development-streams/setup-root` on `codex/development-stream-setup`,
-based on canonical root HEAD `fdd558123223f94d706b9a00973037553e864756`.
+`observe_maintained_sources()` reads the real Git HEAD and `git status
+--porcelain` from the configured `integration_lines` outside any registry lock.
+A stream-local submission is rejected while the observed HEAD differs from the
+recorded maintained base; the base must be refreshed explicitly
+(`configure(..., supersede=True)`), which marks older candidates `stale`.
+
+The setup worktree is `output/development-streams/setup-root` on
+`codex/development-stream-setup`.
 
 ## Provisioned streams
 
-All six paired worktrees were created from the maintained pins above. Each stream
-is `awaiting-controller-assignment`: no lane has been bound and no candidate is
-`ready`. These branches were **not** pushed and no build directory was created.
+All six paired worktrees descend from the maintained pins above. Each stream is
+`awaiting-controller-assignment`: no live owner is bound and no candidate is
+`ready`. Branches were **not** pushed; no build directory or lease was created.
 
-| Stream | Root branch / worktree | Native branch / worktree | Owner | Ready batch | Status |
-|---|---|---|---|---|---|
-| `actors-assets` | `codex/stream-actors-assets` / `output/development-streams/actors-assets/root` | `codex/stream-actors-assets` / `output/development-streams/actors-assets/native` | awaiting-controller-assignment | none | provisioned |
-| `world-content` | `codex/stream-world-content` / `output/development-streams/world-content/root` | `codex/stream-world-content` / `output/development-streams/world-content/native` | awaiting-controller-assignment | none | provisioned |
-| `campaign-product` | `codex/stream-campaign-product` / `output/development-streams/campaign-product/root` | `codex/stream-campaign-product` / `output/development-streams/campaign-product/native` | awaiting-controller-assignment | none | provisioned |
+| Stream | Root branch / worktree | Native branch / worktree | Owner state | Ready batch |
+|---|---|---|---|---|
+| `actors-assets` | `codex/stream-actors-assets` / `output/development-streams/actors-assets/root` | `codex/stream-actors-assets` / `output/development-streams/actors-assets/native` | awaiting-controller-assignment | none |
+| `world-content` | `codex/stream-world-content` / `output/development-streams/world-content/root` | `codex/stream-world-content` / `output/development-streams/world-content/native` | awaiting-controller-assignment | none |
+| `campaign-product` | `codex/stream-campaign-product` / `output/development-streams/campaign-product/root` | `codex/stream-campaign-product` / `output/development-streams/campaign-product/native` | awaiting-controller-assignment | none |
 
 Future private build directories are reserved as
-`output/development-streams/<stream>/build` and require an exclusive
-`build:` resource lease plus the aggregate heavy-build budget before use.
+`output/development-streams/<stream>/build` and require an exclusive `build:`
+lease plus the aggregate heavy-build budget.
 
 ## Per-stream scope and shared-hook boundaries
 
 A stream owns only its own stream-local source slices. Shared engine hooks are
 **requested**, never owned by a stream; every shared-hook change needs focused
 `#186` shared-semantics review before it can be part of a maintained delivery.
-The current shared-review routing hooks are
-`native/pc_port/pc_p2_cave_transfer.h`, `native/pc_port/pc_p2_cave.cpp` and
-`experimental/pikmin2_campaign.py`.
 
 | Stream | Scope | Shared-hook boundary |
 |---|---|---|
-| `actors-assets` | Actor FSM/behaviour slices, receivers, lifecycle and starting-squad/asset adoption for existing lane work | Requests `pc_p2_actor_slots.h`/actor registration hooks through `#186` review; does not edit maintained engine sources |
-| `world-content` | Cave/overworld geometry, placement, generation and challenge/area content slices | Requests cave transfer/generation hooks through `#186` review; does not own shared cave routing |
-| `campaign-product` | Campaign/product integration, goal lifecycle, staging and packaging slices | Requests campaign scripting hooks through `#186` review; does not own maintained campaign export |
+| `actors-assets` | Actor FSM/behaviour, receivers, lifecycle and squad/asset adoption slices | Requests actor registration hooks through `#186`; does not edit maintained engine sources |
+| `world-content` | Cave/overworld geometry, placement, generation and challenge/area content | Requests cave transfer/generation hooks through `#186` |
+| `campaign-product` | Campaign/product integration, goal lifecycle, staging and packaging | Requests campaign scripting hooks through `#186` |
 
 ## Current work candidates (references, not duplicates)
 
-Candidates are represented by **existing** lane IDs and issues. This setup does
-not create duplicate work, reassign existing owners or claim unstarted slots; a
-stream candidate is only a routing reference until the integrator activates it.
-
 | Stream | Existing lane / issue references |
 |---|---|
-| `actors-assets` | `rd-p2-sarai-natural` (#830), `rd-p2-kurage-natural` (#832), `rd-p2-kurage-capture-ownership` (#839), `rd-p2-kogane-natural` (#831), `rd-p2-minihoudai-admission` (#847), converter/animation (#128) |
-| `world-content` | `shard-caves-forest-forest1-p1` (#154), `shard-caves-yakushima-yakushima4-p1` (#161), `p2-cave-tutorial_2-p1-later-floors` (#747), `p2-cave-tutorial_3-p1-later-floors` (#812), `p2-overworld-yakushima-p1-native-runtime` (#150), planning shards (#593–#610) |
-| `campaign-product` | `rd-p2-campaign-fixture` (#837), `rd-p2-campaign-goal-lifecycle` (#836), `rd-p2-sarai-campaign` (#457), `rd-p2-sarai-goal-census` (#843), `codex-p2-ap-campaign-821` (#821), campaign smoke (#186) |
+| `actors-assets` | `rd-p2-sarai-natural` (#830), `rd-p2-kurage-natural` (#832), `rd-p2-kogane-natural` (#831), `rd-p2-minihoudai-admission` (#847), converter/animation (#128) |
+| `world-content` | `shard-caves-forest-forest1-p1` (#154), `shard-caves-yakushima-yakushima4-p1` (#161), `p2-cave-tutorial_2-p1-later-floors` (#747), `p2-overworld-yakushima-p1-native-runtime` (#150) |
+| `campaign-product` | `rd-p2-campaign-goal-lifecycle` (#836), `rd-p2-campaign-fixture` (#837), `rd-p2-sarai-goal-census` (#843), `codex-p2-ap-campaign-821` (#821) |
 
-## Activation blockers
+## Staffing: prepared activation requests (not executed)
 
-1. No owner is bound on any stream (`awaiting-controller-assignment`); owner
-   binding must name an existing, live, unfinished lane that owns no other stream.
-2. The sole integration line is currently occupied by the integrator takeover and
-   export-evidence repair; the bottleneck session owns the surrounding workflow
-   repair files. Streams must not contend with it.
-3. No candidate is `ready`; a candidate must pin the current maintained base or it
-   is rejected as stale (fail-closed), and a stream may hold at most one `ready`
-   batch.
-4. Future private builds require an exclusive lease and RAM admission; no build
-   directory or lease was created during provisioning.
+No supported development-stream owner role exists. Ownership is lane-scoped and
+issue-backed, executed only by the sole controller. Worker availability and the
+exact blocker are recorded in `output/stream-rollout/staffing.md`.
 
-## Exact integrator actions
+| Stream | Activation issue | Candidate worker | Current safety | Packet |
+|---|---|---|---|---|
+| `actors-assets` | #861 | `muse-l71` (implementation) | 1 blocked lane; controller must park/reuse first | `output/stream-rollout/activation/actors-assets.json` |
+| `world-content` | #862 | `muse-l72` (implementation) | 1 blocked lane; controller must park/reuse first | `output/stream-rollout/activation/world-content.json` |
+| `campaign-product` | #863 | `muse-l73` (implementation) | 1 blocked lane; controller must park/reuse first | `output/stream-rollout/activation/campaign-product.json` |
 
-1. Review the committed setup on `codex/development-stream-setup` (#859).
-2. Bind one genuine owner per stream (reconcile existing owners; do not fabricate
-   assignments and state unstaffed roles honestly).
-3. Activate exactly one bounded batch per stream by submitting one `ready`
-   candidate that pins the maintained base; then run normal private
-   implementation, shared review and handoff validation.
-4. Keep final merges, maintained build/export, integration receipts and gameplay
-   ADMIT with the sole integration owner. Do not treat a stream-local receipt as
-   integration or as a consumer wakeup.
+Each packet contains a full `register_request` (issue, worker, stream
+worktrees, maintained-base pins, honest dirty baseline) and a `bind_owner_request`.
+They are staged for the existing controller/coordinator, which must park/reuse
+the candidate worker, register the lane and bind it. Central integrator approval
+is pending. No running lane is stolen or reassigned.
 
-### Activation command packet
+## Module contract (v1)
 
-Write an activation request (example) and review it before running:
+Operations (`python -m workflow.development_streams --root <root> --request <json>`):
 
-```json
-{
-  "operation": "bind-owner",
-  "stream": "actors-assets",
-  "lane": "<existing-owner-lane>",
-  "generation": 1,
-  "replace": false
-}
-```
+| Operation | Effect |
+|---|---|
+| `configure` | Upsert stream definitions; refuses a silent maintained-base move unless `supersede=true`, which stales older candidates and clears the ready slot |
+| `bind-owner` | Bind one existing **live** lane at its **mandatory current generation**; one owner per stream, one stream per lane |
+| `submit-candidate` | Record a stream-local candidate; observes real Git HEAD, rejects stale maintained base, rejects a second `ready` batch |
+| `retire-ready` | Fenced close of the ready batch: `abandoned` (reason required) releases the slot without claiming delivery; `maintained` stores a read-only reference to an existing canonical `lane.integration` record |
+| `validate-sources` | Fail-closed check of observed maintained HEAD and stream worktree ancestry |
+| `receipts` | Read-only maintained receipt references |
+| `status` / `manifest` | Inventory with `owner_state` (`awaiting-controller-assignment`, `assigned-live`, `assigned-not-live`, `assigned-stale-generation`, `assigned-terminal`) |
 
-```powershell
-py -3.12 -m workflow.development_streams --root C:/Users/alari/pikmin-randomizer --request output/development-streams/activation.json
-```
+Fail-closed guarantees:
 
-Promotion request (one ready batch per stream; fails closed on stale pins):
-
-```json
-{
-  "operation": "submit-candidate",
-  "stream": "actors-assets",
-  "candidate": {
-    "id": "<candidate-id>",
-    "title": "<bounded slice>",
-    "summary": "<stream-local summary>",
-    "references": ["#830"],
-    "base": {
-      "root": "8f790eb464ffa4dc567f5a07709a3ca2da19084c",
-      "native": "a53a8bb96820d478410686dfc694650254084cdd"
-    },
-    "commits": {"root": [], "native": []},
-    "state": "ready",
-    "evidence": {"path": "output/development-streams/<stream>/evidence.md", "sha256": "<sha256>"}
-  }
-}
-```
-
-Read-only inventory:
-
-```powershell
-py -3.12 -m workflow.development_streams --root C:/Users/alari/pikmin-randomizer --request output/development-streams/status.json
-```
+* every owner operation names an existing, live, unfinished lane at its current
+  generation; a stored owner label is not authority;
+* the ready slot can always be released (`retire-ready`), so a stream can accept
+  a second batch;
+* no caller supplies maintained hashes: `maintained` references only an existing
+  canonical `lane.integration` record and never marks the lane `done`;
+* replay of a close is idempotent for the exact disposition/reason and rejected
+  otherwise; candidate/receipt IDs are never rewritten;
+* stream-local status never records canonical integration, dispatches or wakes a
+  maintained consumer.
 
 ## Status vocabulary
 
 * `provisioned` / `awaiting-owner` — branch and worktree exist; no staffed owner.
-* `active` — an explicit existing lane is bound; at most one `ready` batch.
-* `stale` candidate — its pinned maintained base moved; it must be re-based and
-  resubmitted, never promoted or silently rebased by the registry.
-* `maintained_receipts` — references only, recorded by an integration-owner lane;
-  they never set a stream-local candidate to canonical `done`.
+* `active` — a live existing lane is bound at its current generation; at most
+  one `ready` batch.
+* `stale` candidate — its pinned maintained base or observed HEAD moved; it must
+  be resubmitted, never promoted or silently rebased.
+* `abandoned` / `maintained` candidate — a closed ready batch; history retained.
+* `maintained_receipts` — read-only references to canonical integration records.
 
 Tooling-only scope: this setup does not build, launch, export or accept gameplay.
-No stream is staffed or active as of provisioning.
+No stream is staffed or active as of this revision.

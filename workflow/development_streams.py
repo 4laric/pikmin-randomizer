@@ -1,33 +1,42 @@
 """Operator-reviewed development streams layered on the shared registry.
 
 An isolated ``development_streams`` section tracks stream provisioning, explicit
-owner binding, stream-local candidate receipts and final maintained receipt
-*references*.  Stream-local status is never canonical ``done``/``integrated``: the
-module never calls ``Registry.integrate``, never dispatches and never wakes a
-maintained consumer.  Final merges, maintained builds/exports and admission stay
-with the existing sole integration owner.
+live-owner binding, stream-local candidate receipts and read-only references to
+real canonical maintained integration records.  Stream-local status is never
+canonical ``done``/``integrated``: the module never calls ``Registry.integrate``,
+never dispatches and never wakes a maintained consumer.  Final merges,
+maintained builds/exports and admission stay with the existing sole integration
+owner.
 
 Fail-closed rules:
-* a stream owner must be an existing, live, unfinished lane and own no other stream;
-* a stream-local candidate must pin the stream's current maintained base, so a
-  moved maintained base makes the candidate stale and unpromotable;
+* every owner operation names an existing, live, unfinished lane at its current
+  recorded ownership generation; a stored owner label alone is not authority;
+* a stream-local candidate must pin the stream's current maintained base *and*
+  the real Git HEAD observed from the configured maintained worktrees, so a
+  moved maintained HEAD makes the stream stale until an explicit refresh;
 * at most one ``ready`` batch exists per stream;
-* maintained receipt references may only be recorded by an integration owner lane.
+* a ready batch is retired only through an explicit fenced operation: either a
+  reasoned abandon (releases the slot without claiming delivery) or a read-only
+  reference to an existing canonical ``lane.integration`` record.  No caller
+  supplies maintained hashes.
 """
 import argparse
 import copy
 import json
 import re
+import subprocess
 from pathlib import Path
 
-from .handoff import Rejected, digest, nonempty, require
+from .handoff import Rejected, digest, local_path, nonempty, require
 
 SCHEMA = 1
 STREAM_ID = r'[a-z0-9][a-z0-9_-]*'
 COMMIT = r'[0-9a-f]{40}'
-STREAM_STATES = ('provisioned', 'awaiting-owner', 'active')
 CANDIDATE_STATES = ('draft', 'ready', 'stale')
+CLOSED_STATES = ('abandoned', 'maintained')
 INTEGRATOR_LEVEL = 'integration ownership'
+CONFIG_PATH = 'output/workflow/controller/config.json'
+MISSING_GIT = 'git-unavailable'
 
 
 def _commit(value, name):
@@ -39,6 +48,63 @@ def _base(value):
     require(isinstance(value, dict), 'maintained base record required')
     return {kind: _commit((value.get(kind) or {}).get('commit'), kind) if isinstance(value.get(kind), dict)
             else _commit(value.get(kind), kind) for kind in ('root', 'native')}
+
+
+def _observed_commits(observed):
+    require(isinstance(observed, dict), 'Observed maintained sources required')
+    return {kind: _commit((observed.get(kind) or {}).get('commit'), kind) for kind in ('root', 'native')}
+
+
+def _git(tree, *args):
+    try:
+        proc = subprocess.run(['git', '-C', str(tree), *args], capture_output=True, text=True)
+    except OSError as error:
+        raise Rejected('Git unavailable: ' + str(error))
+    require(proc.returncode == 0, 'Git verification failed: ' + proc.stderr.strip())
+    return proc.stdout.strip()
+
+
+def _is_ancestor(tree, ancestor, descendant):
+    try:
+        proc = subprocess.run(['git', '-C', str(tree), 'merge-base', '--is-ancestor', ancestor, descendant],
+                              capture_output=True, text=True)
+    except OSError:
+        return True  # Git unavailable: skip ancestry, never fail open on a missing tool
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    return True
+
+
+def observe_maintained_sources(reg, controller_config=CONFIG_PATH):
+    """Read real Git HEADs of the configured maintained lines; never under a lock."""
+    path = local_path(reg.root, controller_config)
+    require(path.is_file(), 'Controller config missing: ' + str(controller_config))
+    lines = (json.loads(path.read_text(encoding='utf-8-sig')) or {}).get('integration_lines') or {}
+    observed = {}
+    for kind in ('root', 'native'):
+        spec = lines.get(kind) or {}
+        repo, ref = spec.get('repo'), spec.get('ref')
+        require(nonempty(repo) and nonempty(ref), 'Maintained ' + kind + ' line not configured')
+        tree = local_path(reg.root, repo)
+        require(tree.is_dir(), 'Maintained ' + kind + ' worktree missing: ' + repo)
+        observed[kind] = dict(repo=repo, ref=ref, commit=_commit(_git(tree, 'rev-parse', ref), kind),
+                              dirty=_git(tree, 'status', '--porcelain'))
+    return observed
+
+
+def _validate_stream_worktrees(reg, record):
+    """Confirm provisioned stream worktrees descend from the recorded maintained base."""
+    for kind, worktree in (record.get('worktrees') or {}).items():
+        if kind not in ('root', 'native') or not nonempty(worktree):
+            continue
+        tree = local_path(reg.root, worktree)
+        if not tree.is_dir() or not (tree / '.git').exists():
+            continue  # Worktree not present on this host; nothing to fence.
+        head = _git(tree, 'rev-parse', 'HEAD')
+        require(_is_ancestor(tree, record['maintained_base'][kind], head),
+                'Stream ' + kind + ' worktree does not descend from the maintained base')
 
 
 def section(state, create=False):
@@ -63,6 +129,18 @@ def _stale(stream, base):
 def _owner_for(data, lane):
     return next((s for s in data['streams'].values()
                  if (s.get('owner') or {}).get('lane') == lane), None)
+
+
+def _require_live_owner(reg, state, record):
+    """A stored owner label is not authority; require a live lane at generation."""
+    owner = record.get('owner')
+    require(owner, 'Stream has no bound owner')
+    lane = state.get('lanes', {}).get(owner['lane'])
+    require(lane, 'Bound owner lane is not registered: ' + owner['lane'])
+    require(lane['generation'] == owner['generation'], 'Stream owner ownership generation is stale')
+    require(lane.get('state') != 'done', 'Stream owner lane is terminal')
+    require(reg.probe(lane['process']) == 'alive', 'Stream owner process is not live')
+    return lane
 
 
 def configure(reg, streams, *, supersede=False):
@@ -97,9 +175,9 @@ def configure(reg, streams, *, supersede=False):
                 record['status'] = 'awaiting-owner'
             if previous_base is not None and previous_base != base:
                 for candidate in record['candidates'].values():
-                    if candidate['base'] != base and candidate['state'] != 'stale':
+                    if candidate['state'] in ('draft', 'ready') and candidate['base'] != base:
                         candidate.update(state='stale', stale_at=now)
-                if record.get('ready_batch') and record['candidates'][record['ready_batch']]['state'] == 'stale':
+                if record.get('ready_batch') and record['candidates'][record['ready_batch']]['state'] != 'ready':
                     record['ready_batch'] = None
             data['streams'][stream] = record
             recorded.append(stream)
@@ -107,15 +185,17 @@ def configure(reg, streams, *, supersede=False):
         return copy.deepcopy([data['streams'][s] for s in recorded])
 
 
-def bind_owner(reg, stream, lane, generation=None, *, replace=False):
-    """Bind exactly one existing lane to one stream; conflicts fail closed."""
+def bind_owner(reg, stream, lane, generation, *, replace=False):
+    """Bind exactly one live existing lane at its current generation; conflicts fail closed."""
+    require(type(generation) is int, 'Current owner generation is mandatory')
     with reg.transaction() as state:
         data = section(state)
         record = _stream(data, stream)
         require(lane in state.get('lanes', {}), 'Owner lane is not registered: ' + str(lane))
         owner_lane = state['lanes'][lane]
-        require(generation is None or owner_lane['generation'] == generation, 'Stale owner generation')
+        require(owner_lane['generation'] == generation, 'Stale owner generation; read current status first')
         require(owner_lane.get('state') != 'done', 'A completed lane cannot own a development stream')
+        require(reg.probe(owner_lane['process']) == 'alive', 'Owner lane process must be live')
         other = _owner_for(data, lane)
         if other is not None and other['id'] != stream:
             raise Rejected('Lane already owns stream ' + other['id'])
@@ -130,8 +210,8 @@ def bind_owner(reg, stream, lane, generation=None, *, replace=False):
         return copy.deepcopy(record['owner'])
 
 
-def submit_candidate(reg, stream, candidate):
-    """Record a stream-local candidate; stale pins and a second ready batch fail."""
+def submit_candidate(reg, stream, candidate, *, observed=None):
+    """Record a stream-local candidate; stale maintained HEAD and slot conflicts fail."""
     require(isinstance(candidate, dict), 'Candidate must be an object')
     for key in ('id', 'title', 'summary'):
         require(nonempty(candidate.get(key)), key + ' required')
@@ -140,10 +220,14 @@ def submit_candidate(reg, stream, candidate):
             'references must name existing lanes or issues, not duplicate work')
     state_value = candidate.get('state', 'draft')
     require(state_value in CANDIDATE_STATES, 'Unknown candidate state')
+    observed = observed or observe_maintained_sources(reg)
+    observed_base = _observed_commits(observed)
     with reg.transaction() as state:
         data = section(state)
         record = _stream(data, stream)
-        require(record.get('owner'), 'Stream has no bound owner; candidate cannot be promoted')
+        _require_live_owner(reg, state, record)
+        require(observed_base == record['maintained_base'],
+                'Maintained source moved; refresh the stream base explicitly before submitting')
         base = _base(candidate.get('base'))
         require(not _stale(record, base), 'Candidate pins a stale maintained base')
         evidence = candidate.get('evidence')
@@ -163,6 +247,7 @@ def submit_candidate(reg, stream, candidate):
                      references=list(references), base=base, commits=copy.deepcopy(commits),
                      owner_lane=record['owner']['lane'], owner_generation=record['owner']['generation'],
                      state=state_value, evidence={'path': evidence['path'], 'sha256': digest(path)},
+                     observed=copy.deepcopy(observed),
                      created_at=entry.get('created_at', now), updated_at=now)
         record['candidates'][candidate['id']] = entry
         if state_value == 'ready':
@@ -171,67 +256,112 @@ def submit_candidate(reg, stream, candidate):
         return copy.deepcopy(entry)
 
 
-def record_maintained_receipt(reg, stream, receipt):
-    """Store a *reference* to an integrator's maintained receipt; grants no authority."""
-    require(isinstance(receipt, dict), 'Receipt must be an object')
-    require(nonempty(receipt.get('id')) and nonempty(receipt.get('recorded_by')),
-            'Receipt id and recorded_by required')
+def retire_ready(reg, stream, candidate, lane, generation, disposition, *, reason=None, integration_lane=None):
+    """Fenced close of the ready batch: abandon or reference a canonical integration.
+
+    Never writes maintained hashes and never marks the lane done.  Replay is
+    idempotent for the exact disposition/reason; a conflicting replay is refused.
+    """
+    require(disposition in CLOSED_STATES, 'Disposition must be one of ' + ', '.join(CLOSED_STATES))
+    require(nonempty(candidate), 'Ready candidate ID required')
+    require(type(generation) is int, 'Current owner generation is mandatory')
+    if disposition == 'abandoned':
+        require(nonempty(reason), 'Abandoned batch requires a reason')
     with reg.transaction() as state:
         data = section(state)
         record = _stream(data, stream)
-        author = state.get('lanes', {}).get(receipt['recorded_by'])
-        require(author, 'Recording lane is not registered')
-        require(author.get('target_level') == INTEGRATOR_LEVEL,
-                'Only an integration owner can record a maintained receipt reference')
-        root_commit = _commit(receipt.get('root_commit'), 'root_commit')
-        native_commit = _commit(receipt.get('native_commit'), 'native_commit')
-        evidence = receipt.get('export_evidence')
-        path = reg.evidence(evidence)
-        candidate = receipt.get('candidate')
-        require(candidate is None or candidate in record['candidates'],
-                'Receipt candidate is not recorded in this stream')
+        owner = _require_live_owner(reg, state, record)
+        require(lane == owner['lane'] and owner['generation'] == generation,
+                'Only the bound owner at its current generation can retire the ready batch')
+        require(candidate in record['candidates'], 'Unknown candidate: ' + str(candidate))
+        entry = record['candidates'][candidate]
+        if entry['state'] in CLOSED_STATES:
+            expected = dict(disposition=entry.get('disposition'), reason=entry.get('reason'))
+            require(expected == dict(disposition=disposition, reason=reason), 'Conflicting batch replay')
+            return copy.deepcopy(entry)
+        require(record.get('ready_batch') == candidate, 'Only the current ready batch can be retired')
         now = reg.clock()
-        entry = dict(id=receipt['id'], stream=stream, candidate=candidate,
-                     recorded_by=author['lane'], recorded_generation=author['generation'],
-                     root_commit=root_commit, native_commit=native_commit,
-                     export_evidence={'path': evidence['path'], 'sha256': digest(path)},
-                     reference_only=True, at=now)
-        record['maintained_receipts'][receipt['id']] = entry
+        reference = None
+        if disposition == 'maintained':
+            require(nonempty(integration_lane), 'Canonical integration lane required')
+            integrated = state.get('lanes', {}).get(integration_lane)
+            require(integrated, 'Integration lane is not registered: ' + str(integration_lane))
+            receipt = integrated.get('integration')
+            require(isinstance(receipt, dict), 'Integration lane has no canonical integration record')
+            root_commit = _commit(receipt.get('root_commit'), 'integration root_commit')
+            reg.evidence(dict(path=receipt.get('validation_path'), sha256=receipt.get('validation_sha256')))
+            native = integrated.get('native') is not None
+            native_commit = _commit(receipt.get('native_commit'), 'integration native_commit') if native else None
+            if native:
+                require(isinstance(receipt.get('native_dirty'), str) and nonempty(receipt.get('export_evidence')),
+                        'Canonical native integration requires dirty state and export evidence')
+                reg.evidence(dict(path=receipt.get('export_evidence'), sha256=receipt.get('export_sha256')))
+            reference = dict(lane=integrated['lane'], generation=integrated['generation'],
+                             root_commit=root_commit, native_commit=native_commit,
+                             integrated_at=integrated.get('integrated_at'), reference_only=True)
+        entry.update(state=disposition, disposition=disposition, reason=reason or None,
+                     closed_at=now, closed_by=lane, maintained_reference=reference, ready=False)
+        record['ready_batch'] = None
         record['updated_at'] = now
+        if reference:
+            record['maintained_receipts'][candidate] = reference
         return copy.deepcopy(entry)
 
 
-def validate_sources(reg, stream, observed):
-    """Fail closed when an observed source no longer matches the maintained base."""
-    stored = reg.snapshot().get('development_streams') or {}
+def validate_sources(reg, stream, observed=None):
+    """Fail closed when the real maintained HEAD no longer matches the recorded base."""
+    observed = observed or observe_maintained_sources(reg)
+    observed_base = _observed_commits(observed)
+    state = reg.snapshot()
+    stored = state.get('development_streams') or {}
     data = section({'development_streams': stored})
     record = _stream(data, stream)
-    observed_base = _base(observed)
-    require(not _stale(record, observed_base),
-            'Observed source is stale against the maintained base for ' + stream)
-    return copy.deepcopy(record['maintained_base'])
+    require(observed_base == record['maintained_base'],
+            'Observed maintained source is stale against the recorded base for ' + stream)
+    _validate_stream_worktrees(reg, record)
+    return dict(maintained_base=copy.deepcopy(record['maintained_base']), observed=copy.deepcopy(observed))
+
+
+def receipt_references(reg, stream):
+    """Read-only maintained receipt references for a stream; never grants authority."""
+    data = section({'development_streams': (reg.snapshot().get('development_streams') or {})})
+    return copy.deepcopy(list(_stream(data, stream)['maintained_receipts'].values()))
 
 
 def status(reg, stream=None):
-    """Report configured streams, explicit owners and unstaffed roles honestly."""
-    stored = reg.snapshot().get('development_streams') or {}
+    """Report configured streams, live owners and unstaffed roles honestly."""
+    state = reg.snapshot()
+    stored = state.get('development_streams') or {}
     if not stored.get('streams'):
         return []
     data = section({'development_streams': stored})
+    lanes = state.get('lanes', {})
     records = [data['streams'][stream]] if stream else list(data['streams'].values())
     report = []
     for record in records:
         candidates = record['candidates']
         ready = record.get('ready_batch')
+        owner = record.get('owner')
+        lane = lanes.get(owner['lane']) if owner else None
+        if not owner:
+            owner_state = 'awaiting-controller-assignment'
+        elif not lane or lane['generation'] != owner['generation']:
+            owner_state = 'assigned-stale-generation'
+        elif lane.get('state') == 'done':
+            owner_state = 'assigned-terminal'
+        elif reg.probe(lane['process']) != 'alive':
+            owner_state = 'assigned-not-live'
+        else:
+            owner_state = 'assigned-live'
         report.append(dict(
             id=record['id'], name=record['name'], scope=record['scope'],
             status=record['status'], maintained_base=record['maintained_base'],
             shared_hooks=record['shared_hooks'], worktrees=record['worktrees'],
-            owner=record.get('owner') or None,
-            owner_state='assigned' if record.get('owner') else 'awaiting-controller-assignment',
+            owner=owner, owner_state=owner_state,
             ready_batch=ready if ready and candidates.get(ready, {}).get('state') == 'ready' else None,
             candidate_count=len(candidates),
             stale_candidates=[c['id'] for c in candidates.values() if c['state'] == 'stale'],
+            closed_candidates=[c['id'] for c in candidates.values() if c['state'] in CLOSED_STATES],
             maintained_receipts=sorted(record['maintained_receipts'])))
     return report
 
@@ -253,14 +383,20 @@ def dispatch(reg, request):
         return {'streams': [s['id'] for s in configure(reg, request['streams'],
                                                        supersede=request.get('supersede', False))]}
     if operation == 'bind-owner':
-        return {'owner': bind_owner(reg, request['stream'], request['lane'],
-                                    request.get('generation'), replace=request.get('replace', False))}
+        return {'owner': bind_owner(reg, request['stream'], request['lane'], request['generation'],
+                                    replace=request.get('replace', False))}
     if operation == 'submit-candidate':
-        return {'candidate': submit_candidate(reg, request['stream'], request['candidate'])}
-    if operation == 'record-receipt':
-        return {'receipt': record_maintained_receipt(reg, request['stream'], request['receipt'])}
+        return {'candidate': submit_candidate(reg, request['stream'], request['candidate'],
+                                              observed=request.get('observed'))}
+    if operation == 'retire-ready':
+        return {'candidate': retire_ready(reg, request['stream'], request['candidate'], request['lane'],
+                                          request['generation'], request['disposition'],
+                                          reason=request.get('reason'),
+                                          integration_lane=request.get('integration_lane'))}
     if operation == 'validate-sources':
-        return {'maintained_base': validate_sources(reg, request['stream'], request['observed'])}
+        return validate_sources(reg, request['stream'], request.get('observed'))
+    if operation == 'receipts':
+        return {'maintained_receipts': receipt_references(reg, request['stream'])}
     if operation == 'status':
         return {'streams': status(reg, request.get('stream'))}
     if operation == 'manifest':
