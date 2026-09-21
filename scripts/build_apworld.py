@@ -39,6 +39,10 @@ def build(output):
             archive.write(ROOT / "docs" / name, "pikmin_randomizer/experimental/data/" + name)
         archive.write(ROOT / "docs/PIKMIN2_ADMITTED_PLACEMENT.json",
                       "pikmin_randomizer/core/data/PIKMIN2_ADMITTED_PLACEMENT.json")
+        # The proxy tier's stage-A sibling is loaded fail-closed whenever a tier is
+        # requested, so the `full` pool needs it inside the package too.
+        archive.write(ROOT / "docs/PIKMIN2_PROXY_PLACEMENT.json",
+                      "pikmin_randomizer/core/data/PIKMIN2_PROXY_PLACEMENT.json")
         # The `full` enemy pool (P2EnemyPool option_full) resolves through
         # randomizer/p2_proxy at generation time, so the package must carry
         # the declarations and the roster snapshot they validate against --
