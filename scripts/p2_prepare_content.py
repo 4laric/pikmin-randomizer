@@ -40,14 +40,14 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
-* 2 Chappy: ``pikmin2_proxy_assets.extract`` -> ``<out>/Chappy/``
-  (``proxy.json`` + ``px_Chappy_<clip>_<ii>.mod``); the proxy adapter stages
-  the campaign/actors/bank sidecars plus the pose files through
-  ``pikmin2_proxy_content``.
-* 17 Frog: ``pikmin2_proxy_assets.extract`` -> ``<out>/Frog/``
-  (``proxy.json`` + ``px_Frog_<clip>_<ii>.mod``); the proxy adapter stages
-  the campaign/actors/bank sidecars plus the pose files through
-  ``pikmin2_proxy_content``.
+Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
+species, e.g. Chappy and Frog today) extract through the generic
+``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
+the ``px_<Enum>_<clip>_<ii>.mod`` pose meshes) and stage the shared
+campaign/actors/bank sidecars plus the pose files through
+``pikmin2_proxy_content``. Adding a species is one new declaration file;
+the ``ENUM_FOR_SOURCE``/``EXTRACTORS`` rows and the dispatch arm below derive
+from ``randomizer.p2_proxy.load_rows()`` instead of naming any species.
 
 Extraction alone is not enough, and the difference is invisible from the native
 side: a species whose assets extract but whose adapter does not stage what the
@@ -89,9 +89,7 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
-    2: "Chappy",
     9: "Kogane",
-    17: "Frog",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -105,6 +103,19 @@ ENUM_FOR_SOURCE = {
     78: "MiniHoudai",
     79: "Sokkuri",
 }
+
+
+def _proxy_declarations():
+    """Proxy species declarations driving the data-driven wiring below."""
+    from randomizer.p2_proxy import load_rows
+
+    return load_rows()
+
+
+_PROXY_ROWS = _proxy_declarations()
+PROXY_SOURCE_IDS = frozenset(row["source_id"] for row in _PROXY_ROWS)
+for _row in _PROXY_ROWS:
+    ENUM_FOR_SOURCE[_row["source_id"]] = _row["enum_name"]
 
 TARGET_RE = re.compile(r"[A-Za-z0-9_.:/-]+")
 
@@ -449,9 +460,10 @@ EXTRACTORS = {
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
-    2: "extract_proxy",
-    17: "extract_proxy",
 }
+for _row in _PROXY_ROWS:
+    EXTRACTORS[_row["source_id"]] = "extract_proxy"
+del _row
 
 
 def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
@@ -498,7 +510,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
-        elif source_id == 2 or source_id == 17:
+        elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=pose_limit)
             extracted.append(source_id)
         else:

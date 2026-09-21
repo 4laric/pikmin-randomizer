@@ -182,12 +182,13 @@ def test_docstring_bullets_match_extractors():
         else:
             bullets.add(int(token))
 
-    wired = set(prepare.EXTRACTORS)
+    wired = set(prepare.EXTRACTORS) - set(prepare.PROXY_SOURCE_IDS)
     assert bullets == wired, (
-        f"docstring documents {sorted(bullets)} but EXTRACTORS wires "
+        f"docstring documents {sorted(bullets)} but non-proxy EXTRACTORS wires "
         f"{sorted(wired)}; undocumented={sorted(wired - bullets)}, "
         f"stale={sorted(bullets - wired)}"
     )
+    assert "randomizer/p2_proxy" in prepare.__doc__
 
 
 def test_every_wired_extractor_has_a_dispatch_arm(tmp_path):
@@ -200,9 +201,20 @@ def test_every_wired_extractor_has_a_dispatch_arm(tmp_path):
     import inspect
 
     dispatch = inspect.getsource(prepare.prepare_content_root)
+    assert "source_id in PROXY_SOURCE_IDS" in dispatch
     missing = [
         source_id for source_id in prepare.EXTRACTORS
         if f"source_id == {source_id}" not in dispatch
         and source_id not in (59, 60, 61, 62)  # shared dweevil arm, matched as a set
+        and source_id not in set(prepare.PROXY_SOURCE_IDS)  # shared proxy set arm
     ]
     assert not missing, f"wired in EXTRACTORS but never dispatched: {missing}"
+
+
+def test_every_proxy_id_maps_to_extract_proxy():
+    from randomizer.p2_proxy import load_rows
+
+    declared = {row["source_id"] for row in load_rows()}
+    assert set(prepare.PROXY_SOURCE_IDS) == declared
+    for source_id in prepare.PROXY_SOURCE_IDS:
+        assert prepare.EXTRACTORS[source_id] == "extract_proxy"

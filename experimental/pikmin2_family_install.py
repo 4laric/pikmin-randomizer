@@ -101,12 +101,33 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
-    # Data-driven campaign proxy family (#871): Chappy (Red Bulborb, source 2)
-    # and Frog (Yellow Wollywog, source 17) stage through the generic
-    # ``experimental.pikmin2_proxy_content.stage_proxy`` grouped call below.
-    2: 'proxy', 'chappy': 'proxy',
-    17: 'proxy', 'frog': 'proxy',
 }
+
+
+def _proxy_family_entries():
+    """Proxy ``IDENTITY_FAMILY`` rows derived from ``randomizer/p2_proxy``.
+
+    Each declared species contributes ``<source_id>: 'proxy'`` and
+    ``<enum_name.lower()>: 'proxy'``. A derived key that collides with an
+    existing non-proxy row fails closed at import.
+    """
+    from randomizer.p2_proxy import load_rows
+
+    entries = {}
+    for row in load_rows():
+        keys = (row["source_id"], row["enum_name"].lower())
+        for key in keys:
+            if key in IDENTITY_FAMILY:
+                raise ValueError(
+                    f"proxy declaration collides with a non-proxy family path: {key!r}")
+            if key in entries:
+                raise ValueError(
+                    f"proxy declaration duplicate family key: {key!r}")
+            entries[key] = "proxy"
+    return entries
+
+
+IDENTITY_FAMILY.update(_proxy_family_entries())
 
 
 def _validate_dwarf_orange(source):
