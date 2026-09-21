@@ -1,0 +1,8 @@
+{
+ "enum_name": "DangoMushi",
+ "host_teki": 4,
+ "notes": "Segmented Crawbster; proxy over TEKI_Swallow; brace-less attack_2.bca registry block tolerated",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 94
+}

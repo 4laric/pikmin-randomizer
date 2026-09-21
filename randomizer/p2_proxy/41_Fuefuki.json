@@ -1,0 +1,8 @@
+{
+ "enum_name": "Fuefuki",
+ "host_teki": 11,
+ "notes": "Antenna Beetle; proxy over TEKI_Napkid; landing/landfail clips skipped: Singular animation scale at frame 0 (recorded unsupported)",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 41
+}

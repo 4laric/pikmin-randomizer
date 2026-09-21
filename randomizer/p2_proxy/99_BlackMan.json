@@ -1,0 +1,13 @@
+{
+ "clips": {
+  "dead": "kagebozu_dead",
+  "move1": "kagebozu_move",
+  "wait1": "kagebozu_wait"
+ },
+ "enum_name": "BlackMan",
+ "host_teki": 4,
+ "notes": "Waterwraith; proxy over TEKI_Swallow; kagebozu_* clip prefix aliased to canonical wait1/dead/move1",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 99
+}

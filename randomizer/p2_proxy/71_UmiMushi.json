@@ -1,0 +1,11 @@
+{
+ "clips": {
+  "wait1": "search1"
+ },
+ "enum_name": "UmiMushi",
+ "host_teki": 3,
+ "notes": "Ranging Bloyster; proxy over TEKI_Chappy; wait1 poses sampled from search1 (no idle clip on disc); sturn1 skipped: 40-joint clip vs 25-joint model skeleton",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 71
+}

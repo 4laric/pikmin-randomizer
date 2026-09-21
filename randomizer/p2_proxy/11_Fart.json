@@ -1,0 +1,13 @@
+{
+ "asset_dir": "Kogane",
+ "clips": {
+  "dead": "damage"
+ },
+ "enum_name": "Fart",
+ "host_teki": 3,
+ "notes": "Doodlebug; proxy over TEKI_Chappy; shares Kogane model/anim with parent (identical look; tint override out of scope); dead poses sampled from damage (no dead clip on disc)",
+ "param_dir": "kogane",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 11
+}

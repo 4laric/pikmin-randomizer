@@ -1,0 +1,11 @@
+{
+ "clips": {
+  "wait1": "move"
+ },
+ "enum_name": "UjiA",
+ "host_teki": 18,
+ "notes": "Female Sheargrub; proxy over TEKI_KabekuiA; wait1 poses sampled from move (no idle clip on disc)",
+ "pose_limit": 4,
+ "schema": 1,
+ "source_id": 12
+}
