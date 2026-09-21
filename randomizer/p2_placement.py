@@ -33,6 +33,74 @@ ENCOUNTER_ALLOWED = ENCOUNTER_REQUIRED + ('notes',)
 ARENA_SLOT_KEYS = ('min', 'max')
 DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
 
+PROXY_SCHEMA = 'p2-proxy-placement-v1'
+PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
+PROXY_SLOT_UIDS = frozenset({1849273021, 2049888785})
+PROXY_RESERVED_VANILLA = (3640055869, 328297937, 3886812794)
+PROXY_DOCUMENT_REQUIRED = ('schema', 'slots', 'reserved_vanilla')
+PROXY_DOCUMENT_ALLOWED = PROXY_DOCUMENT_REQUIRED + ('notes',)
+
+
+def validate_proxy_document(document):
+    """Validate the stage-A proxy-tier-only sibling document.
+
+    Accepts only ``p2-proxy-placement-v1`` with exactly the two admitted
+    singleton uids, honest mechanical-only evidence (xyz true, terrain/route
+    false), ``proxy_only is True`` and the fixed ``evidence_level`` string on
+    every slot. Never touches the committed document or six-gate behaviour.
+    """
+    _check_keys('proxy document', document, PROXY_DOCUMENT_REQUIRED, PROXY_DOCUMENT_ALLOWED)
+    if document['schema'] != PROXY_SCHEMA:
+        _fail(f'document schema must be {PROXY_SCHEMA}')
+    if not isinstance(document['slots'], list):
+        _fail('proxy document slots must be a list')
+    if not isinstance(document['reserved_vanilla'], list):
+        _fail('proxy document reserved_vanilla must be a list')
+    reserved = document['reserved_vanilla']
+    if (any(not isinstance(uid, int) or isinstance(uid, bool) for uid in reserved)
+            or len(set(reserved)) != len(reserved)
+            or sorted(reserved) != sorted(PROXY_RESERVED_VANILLA)):
+        _fail('proxy document reserved_vanilla must be exactly [3640055869, 328297937, 3886812794]')
+    if len(document['slots']) != len(PROXY_SLOT_UIDS):
+        _fail(f'proxy document must carry exactly {len(PROXY_SLOT_UIDS)} slots')
+    slots = []
+    seen = set()
+    for raw in document['slots']:
+        if not isinstance(raw, dict):
+            _fail('proxy slot must be an object')
+        if raw.get('proxy_only') is not True:
+            _fail('proxy slot requires proxy_only: true')
+        if raw.get('evidence_level') != PROXY_EVIDENCE_LEVEL:
+            _fail('proxy slot has an unexpected evidence_level')
+        if raw.get('uid') in seen:
+            _fail('proxy document has duplicate slot uids')
+        seen.add(raw.get('uid'))
+        stripped = {key: value for key, value in raw.items()
+                    if key not in ('proxy_only', 'evidence_level')}
+        slot = normalize_slot(stripped)
+        if slot['uid'] not in PROXY_SLOT_UIDS:
+            _fail(f'proxy slot uid {slot["uid"]} is not an admitted proxy-only slot')
+        if slot['terrain'] != 'ground':
+            _fail('proxy-only slots must be ground terrain')
+        if slot['evidence'].get('xyz') is not True:
+            _fail('proxy slot evidence.xyz must be true (mechanical position)')
+        if slot['evidence'].get('terrain') is not False:
+            _fail('proxy slot evidence.terrain must be false (unprobed)')
+        if slot['evidence'].get('route') is not False:
+            _fail('proxy slot evidence.route must be false (unprobed)')
+        slot['proxy_only'] = True
+        slot['evidence_level'] = PROXY_EVIDENCE_LEVEL
+        slots.append(slot)
+    if set(seen) != set(PROXY_SLOT_UIDS):
+        _fail(f'proxy document slots must be exactly {sorted(PROXY_SLOT_UIDS)}')
+    slots.sort(key=lambda item: item['uid'])
+    return {'schema': PROXY_SCHEMA, 'slots': slots,
+            'reserved_vanilla': list(reserved), 'notes': document.get('notes', '')}
+
+
+def load_proxy_document(path):
+    return validate_proxy_document(json.loads(Path(path).read_text()))
+
 
 def _fail(message):
     raise ValueError(message)

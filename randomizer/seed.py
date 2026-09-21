@@ -13,6 +13,7 @@ EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "explorat
 CAPABILITIES = ["identity-placement-v1", "foh-day2-v1", "repair-goal-v1", "repeat-day29-v1"]
 
 ADMITTED_PLACEMENT_FILENAME = "PIKMIN2_ADMITTED_PLACEMENT.json"
+PROXY_PLACEMENT_FILENAME = "PIKMIN2_PROXY_PLACEMENT.json"
 
 
 def _default_admitted_placement():
@@ -48,6 +49,31 @@ def _default_admitted_placement():
     raise ValueError(
         "P2 enemies require the committed admitted-placement document "
         f"(docs/{ADMITTED_PLACEMENT_FILENAME}); set PIKMIN2_ADMITTED_PLACEMENT to override")
+
+
+def _default_proxy_placement():
+    """Stage-A proxy-tier-only sibling document (never used without the tier).
+
+    Loaded only when ``p2_proxy_tier`` is requested; the default (no-tier)
+    path never reads this file, so default manifests stay byte-identical.
+    Fail-closed: a missing or invalid sibling rejects the proxy seed instead
+    of silently falling back to 33 targets.
+    """
+    candidates = []
+    override = os.environ.get("PIKMIN2_PROXY_PLACEMENT")
+    if override:
+        candidates.append(Path(override))
+    try:
+        candidates.append(Path(__file__).resolve().parents[1] / "docs" / PROXY_PLACEMENT_FILENAME)
+    except (NameError, OSError):
+        pass
+    candidates.append(Path.cwd() / "docs" / PROXY_PLACEMENT_FILENAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    raise ValueError(
+        "p2_proxy_tier requires the proxy-placement sibling "
+        f"(docs/{PROXY_PLACEMENT_FILENAME}); set PIKMIN2_PROXY_PLACEMENT to override")
 
 
 def canonical(value):
@@ -391,6 +417,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             # targets and resolve_placement_layout still fails closed.
             p2_placement = _default_admitted_placement()
         proxy_rows = None
+        proxy_document = None
         if p2_proxy_tier is not None:
             from .p2_proxy import load_rows as _load_proxy_rows, tier_ids as _tier_ids
             tier_set = set(_tier_ids(p2_proxy_tier))
@@ -402,10 +429,13 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             rows_by_id = {row["source_id"]: row for row in _load_proxy_rows()}
             proxy_rows = [rows_by_id[source_id] for source_id in sorted(wanted_proxy)
                           if source_id in tier_set and source_id in rows_by_id]
+            if proxy_rows:
+                proxy_document = _default_proxy_placement()
         result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate(),
                                                        species=None if p2_species is None else sorted(set(p2_species)),
                                                        density=p2_density,
-                                                       proxy_rows=proxy_rows)
+                                                       proxy_rows=proxy_rows,
+                                                       proxy_document=proxy_document)
         result['capabilities'].append('p2-enemy-bridge-v1')
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
