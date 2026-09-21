@@ -2,7 +2,8 @@
  "enum_name": "Catfish",
  "host_teki": 30,
  "notes": "Water Dumple; proxy over TEKI_Namazu; duplicate wait1.bca registry rows skipped (9 blocks, 7 unique)",
- "pose_limit": 4,
- "schema": 1,
- "source_id": 26
+  "pose_limit": 4,
+  "schema": 1,
+  "source_id": 26,
+  "terrains": ["ground", "water"]
 }

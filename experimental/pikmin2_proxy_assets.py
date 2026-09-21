@@ -61,6 +61,12 @@ CANONICAL_CLIPS = frozenset(WAIT_CLIPS + DEAD_CLIPS + MOVE_CLIPS + ATTACK_CLIPS)
 CLIP_STEM_RE = re.compile(r'[A-Za-z0-9_]+')
 PARAM_DIR_RE = re.compile(r'[a-z][a-z0-9_]{0,31}')
 
+# Opt-in converter normal policy, mirroring the admitted bulblax extractor
+# (docs/PIKMIN2_NORMAL_POLICY.md, POLICIES): KingChappy shape 0 references no
+# normal attribute, so its poses convert via missing_normals="compute".
+# Only "compute" is allowed; anything else fails closed in _row_overrides.
+MISSING_NORMALS_ALLOW = frozenset({'compute'})
+
 CLIP_BYTES = 512 * 1024
 TOTAL_BYTES = 8 * 1024 * 1024
 
@@ -118,14 +124,17 @@ def _row_overrides(row, enum_name):
     ``param_files`` (``{metadata_filename: prefix}`` per-file parameter
     prefixes for split families such as the dweevils, whose shared
     ``otakara/`` folder carries the anim mgr/collision/stone tables while
-    each colour keeps its own ``<species>/enemyparm.txt``). Every
+    each colour keeps its own ``<species>/enemyparm.txt``) and
+    ``missing_normals`` (the opt-in converter normal policy, only
+    ``"compute"``; anything else fails closed). Every
     violation fails closed with a clear ``ValueError``; registry
     membership of alias sources is checked later against the parsed
     registry so the error can name the species' actual stems.
     """
     asset_dir, param_dir, clips, param_files = None, None, {}, {}
+    missing_normals = None
     if row is None:
-        return asset_dir, param_dir, clips, param_files
+        return asset_dir, param_dir, clips, param_files, missing_normals
     if not isinstance(row, dict):
         raise ValueError(f'Proxy row overrides must be a mapping: {row!r}')
     if row.get('asset_dir') is not None:
@@ -174,7 +183,13 @@ def _row_overrides(row, enum_name):
                     f'Proxy param_files prefix invalid for {enum_name!r}: '
                     f'{prefix!r}')
         param_files = dict(raw_files)
-    return asset_dir, param_dir, clips, param_files
+    if row.get('missing_normals') is not None:
+        missing_normals = row['missing_normals']
+        if not isinstance(missing_normals, str) or missing_normals not in MISSING_NORMALS_ALLOW:
+            raise ValueError(
+                f'Proxy missing_normals must be one of '
+                f'{sorted(MISSING_NORMALS_ALLOW)} for {enum_name!r}')
+    return asset_dir, param_dir, clips, param_files, missing_normals
 
 
 def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
@@ -190,7 +205,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             f'Proxy enum mismatch for source {source_id}: '
             f'{enum_name!r} != roster {roster_enum!r}')
     model_name, anim_name, param_dir = _asset_names(enum_name, roster_assets)
-    row_asset, row_param, aliases, param_files = _row_overrides(row, enum_name)
+    row_asset, row_param, aliases, param_files, missing_normals = _row_overrides(row, enum_name)
     if row_asset is not None:
         # A row override names the disc directory directly (verified
         # against the ISO listing per species); the roster assets block is
@@ -293,6 +308,11 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
     case_resolved = []
     reference = None
     total_pose_bytes = 0
+    # Opt-in converter normal policy, exactly like the admitted bulblax
+    # extractor's POLICIES (docs/PIKMIN2_NORMAL_POLICY.md): strict by
+    # default; a row carrying missing_normals="compute" derives
+    # area-weighted normals after all position transforms.
+    policies = {} if missing_normals is None else {'missing_normals': missing_normals}
     for row in rows:
         stem = Path(row['file']).stem
         out_stem = by_source.get(stem, stem)
@@ -329,7 +349,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             try:
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 matrices = draw_matrices(model_blocks, pose)
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
+                decoded = decode(model, True, bake_rigid=True,
+                                 draw_matrices=matrices, **policies)
                 name = pose_name(enum_name, out_stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name,
@@ -385,6 +406,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         pose_limit=pose_limit,
         asset_dir=model_name, param_dir=param_dir,
         clips_alias=dict(aliases), param_files=dict(param_files),
+        missing_normals=missing_normals,
         metadata_sha256=metadata,
         missing_metadata=list(missing_metadata),
         registry_notes=list(registry_notes),

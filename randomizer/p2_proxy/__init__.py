@@ -43,15 +43,25 @@ CANONICAL_CLIPS = frozenset({
     "wait1", "wait", "wait2",
 })
 
+# Opt-in converter normal policy, passed through to the model decode exactly
+# like the admitted bulblax extractor's policy (docs/PIKMIN2_NORMAL_POLICY.md,
+# POLICIES): KingChappy shape 0 references no normal attribute, so its poses
+# convert via missing_normals="compute" (area-weighted normals derived after
+# all position transforms). Only "compute" is allowed; anything else (in
+# particular "default", which would invent unit+Y normals) fails closed.
+MISSING_NORMALS_ALLOW = frozenset({"compute"})
+
 
 def _optional_overrides(document, path_name):
     """Validate ``asset_dir`` / ``param_dir`` / ``clips`` / ``param_files``.
 
-    Returns ``(asset_dir, param_dir, clips, param_files)`` with ``None`` /
-    ``None`` / ``{}`` / ``{}`` defaults. Fails closed on any malformed
+    Returns ``(asset_dir, param_dir, clips, param_files, missing_normals)``
+    with ``None`` / ``None`` / ``{}`` / ``{}`` / ``None`` defaults. Fails closed on any malformed
     field. ``param_files`` maps a metadata filename to its parameter
     prefix for split families (Volatile Dweevil: shared ``otakara/`` anim
     mgr/collision/stone plus its own ``bombotakara/enemyparm.txt``).
+    ``missing_normals`` carries the opt-in converter normal policy through
+    to the model decode (see ``MISSING_NORMALS_ALLOW``).
     """
     asset_dir = document.get("asset_dir")
     if asset_dir is not None and (
@@ -87,19 +97,27 @@ def _optional_overrides(document, path_name):
         clips = dict(clips)
     param_files = document.get("param_files")
     if param_files is None:
-        return asset_dir, param_dir, clips, {}
-    if not isinstance(param_files, dict) or not param_files:
+        param_files = {}
+    else:
+        if not isinstance(param_files, dict) or not param_files:
+            raise ValueError(
+                f"proxy declaration param_files must be a non-empty object: {path_name}")
+        for filename, prefix in param_files.items():
+            if filename not in METADATA_FILES:
+                raise ValueError(
+                    f"proxy declaration param_files key not a metadata file: "
+                    f"{filename!r} ({path_name})")
+            if not isinstance(prefix, str) or not PARAM_DIR_RE.fullmatch(prefix):
+                raise ValueError(
+                    f"proxy declaration param_files prefix invalid: {prefix!r} ({path_name})")
+        param_files = dict(param_files)
+    missing_normals = document.get("missing_normals")
+    if missing_normals is not None and (
+            not isinstance(missing_normals, str) or missing_normals not in MISSING_NORMALS_ALLOW):
         raise ValueError(
-            f"proxy declaration param_files must be a non-empty object: {path_name}")
-    for filename, prefix in param_files.items():
-        if filename not in METADATA_FILES:
-            raise ValueError(
-                f"proxy declaration param_files key not a metadata file: "
-                f"{filename!r} ({path_name})")
-        if not isinstance(prefix, str) or not PARAM_DIR_RE.fullmatch(prefix):
-            raise ValueError(
-                f"proxy declaration param_files prefix invalid: {prefix!r} ({path_name})")
-    return asset_dir, param_dir, clips, dict(param_files)
+            f"proxy declaration missing_normals must be one of "
+            f"{sorted(MISSING_NORMALS_ALLOW)}: {path_name}")
+    return asset_dir, param_dir, clips, param_files, missing_normals
 
 
 # --- END proxy-extract2 optional override fields ---
@@ -220,10 +238,11 @@ def load_rows(directory=None):
     matching its content, an enum name not matching the roster for that source
     id, a duplicate source or enum, a source id that already has a non-proxy
     path (anything in today's ``IDENTITY_FAMILY``/``EXTRACTORS`` outside the
-    ``proxy``/``extract_proxy`` rows this family owns), a ``pose_limit``
+    ``proxy``/``extract_proxy`` rows this family owns), a     ``pose_limit``
     outside 2..8, a ``host_teki`` outside the safe-vehicle allowlist, a
-    ``terrains`` entry outside the proxy terrain allowlist, or a malformed
-    ``evidence`` block.
+    ``terrains`` entry outside the proxy terrain allowlist, a malformed
+    ``evidence`` block, or a ``missing_normals`` value outside the opt-in
+    converter policy allowlist.
     """
     directory = Path(directory) if directory is not None else Path(__file__).parent
     if not directory.is_dir():
@@ -231,11 +250,17 @@ def load_rows(directory=None):
     roster = _roster_enums()
     try:
         from experimental.pikmin2_family_install import IDENTITY_FAMILY
-    except Exception:
+    except ImportError:
+        # The package's own import is circular here (family_install imports
+        # load_rows at module level, and p2_prepare_content calls load_rows
+        # before its EXTRACTORS map exists), so a missing map at this point
+        # only means the non-proxy collision check cannot run yet -- not that
+        # the row is valid. Anything other than ImportError (in particular a
+        # ValueError from a colliding proxy row) propagates fail-closed.
         IDENTITY_FAMILY = {}
     try:
         from scripts.p2_prepare_content import EXTRACTORS
-    except Exception:
+    except ImportError:
         EXTRACTORS = {}
     rows = []
     seen_sources, seen_enums = set(), set()
@@ -290,7 +315,7 @@ def load_rows(directory=None):
             raise ValueError(f"proxy declaration host_teki not an allowed vehicle: {path.name}")
         terrains = _validate_terrains(document, path.name)
         evidence = _validate_evidence(document, path.name)
-        asset_dir, param_dir, clips, param_files = _optional_overrides(document, path.name)
+        asset_dir, param_dir, clips, param_files, missing_normals = _optional_overrides(document, path.name)
         row = {
             "schema": SCHEMA,
             "source_id": source_id,
@@ -303,6 +328,7 @@ def load_rows(directory=None):
             "param_dir": param_dir,
             "clips": clips,
             "param_files": param_files,
+            "missing_normals": missing_normals,
         }
         if evidence is not None:
             row["evidence"] = evidence

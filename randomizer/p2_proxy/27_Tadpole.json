@@ -1,1 +1,1 @@
-{"enum_name": "Tadpole", "host_teki": 25, "notes": "Wogpole; proxy over TEKI_Otama", "pose_limit": 4, "schema": 1, "source_id": 27}
+{"enum_name": "Tadpole", "host_teki": 25, "notes": "Wogpole; proxy over TEKI_Otama", "pose_limit": 4, "schema": 1, "source_id": 27, "terrains": ["ground", "water"]}
