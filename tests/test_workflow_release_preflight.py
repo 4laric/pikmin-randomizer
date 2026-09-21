@@ -63,6 +63,48 @@ class ReleasePreflightTests(unittest.TestCase):
             problems = preflight.check_release(base, run_import_smoke=False)
             self.assertTrue(any('workflow/review_decisions.py' in p for p in problems), problems)
 
+    def test_detects_unwired_required_monitor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _write_release(
+                Path(tmp),
+                review_decisions_body=(
+                    'def apply_sole_disposition(*a, **k):\n    return None\n'
+                    'def require_sole_authority(*a, **k):\n    return None\n'))
+            problems = preflight.check_release(base, run_import_smoke=False)
+            self.assertTrue(any('registry_wal' in p and 'unwired' in p for p in problems),
+                            problems)
+
+    def test_reports_monitor_imported_but_never_called(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _write_release(
+                Path(tmp),
+                review_decisions_body=(
+                    'def apply_sole_disposition(*a, **k):\n    return None\n'
+                    'def require_sole_authority(*a, **k):\n    return None\n'))
+            (base / 'workflow' / 'registry_wal.py').write_text(
+                'def maintain(*a, **k):\n    return None\n'
+                'def start_monitor(*a, **k):\n    return None\n', encoding='utf-8')
+            (base / 'scripts' / 'pikmin2_controller.py').write_text(
+                'from workflow.registry_wal import start_monitor\n', encoding='utf-8')
+            problems = preflight.check_release(base, run_import_smoke=False)
+            self.assertTrue(any('never calls it' in p for p in problems), problems)
+
+    def test_accepts_wired_required_monitor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = _write_release(
+                Path(tmp),
+                review_decisions_body=(
+                    'def apply_sole_disposition(*a, **k):\n    return None\n'
+                    'def require_sole_authority(*a, **k):\n    return None\n'))
+            (base / 'workflow' / 'registry_wal.py').write_text(
+                'def maintain(*a, **k):\n    return None\n'
+                'def start_monitor(*a, **k):\n    return None\n', encoding='utf-8')
+            (base / 'scripts' / 'pikmin2_controller.py').write_text(
+                'from workflow.registry_wal import start_monitor as start_wal\n'
+                'stop = start_wal(controller)\n', encoding='utf-8')
+            problems = preflight.check_release(base, run_import_smoke=False)
+            self.assertFalse(any('registry_wal' in p for p in problems), problems)
+
     def test_current_tree_passes_full_preflight(self):
         problems = preflight.check_release(_ROOT, run_import_smoke=True)
         self.assertEqual([], problems)

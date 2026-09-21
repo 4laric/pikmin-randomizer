@@ -15,6 +15,8 @@ This preflight validates the release *before* the live controller is stopped:
   optional imports guarded by ``except ImportError``/``ModuleNotFoundError``;
 * the deployment entrypoints and integration modules exist;
 * required integration symbols are defined;
+* the controller entrypoint actually imports and starts required background
+  monitors (a maintenance module can otherwise land inert while its guard is off);
 * the package and controller entrypoint import cleanly in a fresh interpreter.
 
 Exit status is nonzero when any finding is reported, so a caller can abort a
@@ -35,7 +37,14 @@ REQUIRED_ENTRYPOINTS = (
 # Modules whose named symbols the controller/reduced path imports lazily.
 REQUIRED_SYMBOLS = {
     'workflow/review_decisions.py': ('apply_sole_disposition', 'require_sole_authority'),
+    'workflow/registry_wal.py': ('maintain', 'start_monitor'),
 }
+# Background monitors the controller entrypoint must actually start. A maintenance
+# module can land in a release while the entrypoint never starts its thread: the #869
+# WAL housekeeping module was present but inert, so the WAL regrew to hundreds of MB.
+REQUIRED_MONITORS = (
+    ('scripts/pikmin2_controller.py', 'registry_wal', 'start_monitor'),
+)
 OPTIONAL = ('ImportError', 'ModuleNotFoundError')
 IMPORT_SMOKE = (
     'import workflow\n'
@@ -108,6 +117,41 @@ def _module_names(path):
     if any(isinstance(n, ast.FunctionDef) and n.name == '__getattr__' for n in tree.body):
         return None  # Dynamic attributes; skip strict name checking.
     return _bindings(tree)
+
+
+def monitor_wiring_violations(entrypoint, module, symbol):
+    """Problems when ``entrypoint`` neither imports nor starts ``symbol``.
+
+    Guards the class of defect where a maintenance module is merged into a release
+    but the controller never starts its monitor, leaving the guard inert. Checks the
+    entrypoint AST for the relative ``workflow.<module>`` import and at least one call
+    routed through that import.
+    """
+    path = Path(entrypoint)
+    if not path.is_file():
+        return ['Missing monitor entrypoint: %s' % entrypoint]
+    tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path))
+    target = 'workflow.' + module
+    aliases = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or (node.module or '') != target:
+            continue
+        for alias in node.names:
+            if alias.name == symbol:
+                aliases.add(alias.asname or alias.name)
+    if not aliases:
+        return ['%s does not import %s from %s (monitor unwired)'
+                % (entrypoint, symbol, target)]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in aliases:
+            return []
+        if isinstance(func, ast.Attribute) and func.attr == symbol:
+            return []
+    return ['%s imports %s but never calls it (monitor unwired)'
+            % (entrypoint, symbol)]
 
 
 def import_contract_violations(workflow_dir):
@@ -193,6 +237,9 @@ def check_release(release_dir, run_import_smoke=True):
         for symbol in symbols:
             if symbol not in names:
                 problems.append('%s does not define required symbol %r' % (rel, symbol))
+
+    for entrypoint, module, symbol in REQUIRED_MONITORS:
+        problems.extend(monitor_wiring_violations(release_dir / entrypoint, module, symbol))
 
     if run_import_smoke and not problems:
         try:
