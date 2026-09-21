@@ -27,6 +27,11 @@ foreach ($path in @($wrapper, $entry, $Config, $Python)) {
 $dirty = & git -C $release status --porcelain
 if ($LASTEXITCODE -ne 0 -or $dirty) { throw "Release $release is not a clean git worktree" }
 $sha = (& git -C $release rev-parse HEAD).Trim()
+$preflight = Join-Path $PSScriptRoot 'check_workflow_release.py'
+if (-not (Test-Path -LiteralPath $preflight)) { throw "Missing $preflight" }
+Write-Host "Preflighting workflow package in $release"
+& $Python $preflight --release $release
+if ($LASTEXITCODE -ne 0) { throw "Release preflight failed for $release; live controller left running" }
 $settings = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
 if (-not $settings.output) { throw "Config $Config lacks output" }
 $stop = Join-Path (Join-Path $WorkspaceRoot $settings.output) 'STOP'
