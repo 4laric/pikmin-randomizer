@@ -167,6 +167,14 @@ class PlannerStrandReclaimTests(unittest.TestCase):
         state = self.orphan_state(started_at=990)
         self.assertEqual(plan(state, now=1000), [])
 
+    def test_inflight_launch_scope_is_not_orphaned(self):
+        state = self.orphan_state()
+        state['control'] = {'launches': {'launch-1': dict(
+            lane='planning-shard-e-1-cycle-9', status='intent')}}
+        self.assertEqual(plan(state, now=1000), [])
+        state['control']['launches']['launch-1']['status'] = 'running'
+        self.assertEqual(plan(state, now=1000), [])
+
     def test_report_includes_strand_action(self):
         state, _, _ = self.classification_state()
         with tempfile.TemporaryDirectory() as directory:

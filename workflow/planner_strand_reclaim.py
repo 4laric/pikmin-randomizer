@@ -109,6 +109,9 @@ def _orphan_scopes(state, now, history):
     pool = autofill.get('planner_pool', {}).get('scopes', {})
     items = autofill.get('items', {})
     lanes = state.get('lanes', {})
+    launches = state.get('control', {}).get('launches', {})
+    inflight = {l.get('lane') for l in launches.values()
+                if l.get('status') in ('intent', 'spawned', 'running', 'exiting')}
     orphans = []
     for scope, record in pool.items():
         if not isinstance(record, dict) or 'completed_at' in record:
@@ -116,6 +119,8 @@ def _orphan_scopes(state, now, history):
         spec = record.get('spec') or {}
         lane_id = (spec.get('lane') or {}).get('lane')
         if not lane_id or lane_id in lanes:
+            continue
+        if lane_id in inflight:
             continue
         started = record.get('started_at')
         if not isinstance(started, (int, float)) or now - started < ORPHAN_MIN_AGE:
