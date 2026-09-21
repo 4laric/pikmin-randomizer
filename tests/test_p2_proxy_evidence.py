@@ -153,3 +153,30 @@ def test_cli_writes_and_reports(tmp_path, rows_dir, capsys):
     bad = write_probe(tmp_path, name="c9", drawn_live={})
     assert recorder.main(["--result", str(bad), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 1
+
+
+def test_dict_skip_naming_species_refuses(tmp_path, rows_dir):
+    result = write_probe(
+        tmp_path,
+        skips=[{"reason": "P2_SETUP_SKIP Chappy clip_file_missing"}])
+    lines, refused = recorder.record(result, rows_dir, "abc1234")
+    assert refused == 1
+    assert any("2/Chappy" in line and "skips" in line for line in lines)
+    assert "evidence" not in read_row(rows_dir, 2, "Chappy")
+    assert "evidence" in read_row(rows_dir, 17, "Frog")
+
+
+def test_rerecord_on_later_day_is_noop(tmp_path, rows_dir):
+    from scripts.p2_proxy_record_evidence import apply, decide
+    import json as _json
+
+    result = write_probe(tmp_path)
+    payload = _json.loads(result.read_text(encoding="utf-8"))
+    payload["__path__"] = str(result)
+    decisions, context = decide(payload, rows_dir)
+    lines = apply(decisions, context, "abc1234", today="2026-09-20")
+    assert any(line.startswith("RECORDED") for line in lines)
+    before = {p.name: p.read_bytes() for p in rows_dir.glob("*.json")}
+    lines = apply(decisions, context, "abc1234", today="2026-09-21")
+    assert all(line.startswith("UNCHANGED") for line in lines)
+    assert {p.name: p.read_bytes() for p in rows_dir.glob("*.json")} == before

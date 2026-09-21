@@ -111,8 +111,10 @@ def _table_non_empty(table):
 
 def _skip_names_species(skip, source_id, enum_name):
     if isinstance(skip, dict):
-        values = [str(value) for value in skip.values()]
-        return (str(source_id) in values) or (enum_name in values)
+        tokens = set()
+        for value in skip.values():
+            tokens.update(_TOKEN_RE.findall(str(value)))
+        return (str(source_id) in tokens) or (enum_name in tokens)
     tokens = set(_TOKEN_RE.findall(str(skip)))
     return str(source_id) in tokens or enum_name in tokens
 
@@ -237,9 +239,16 @@ def apply(decisions, context, native_commit, today=None):
                  "log_sha256": context["log_sha256"],
                  "native_commit": native_commit, "recorded": today,
                  "markers": {"table": True, "bind": True, "draw": True}}
-        if document.get("evidence") == block:
+        existing = document.get("evidence")
+        if existing == block:
             lines.append(f"UNCHANGED {key}: evidence already recorded")
             continue
+        if isinstance(existing, dict):
+            same = dict(existing)
+            same["recorded"] = today
+            if same == block:
+                lines.append(f"UNCHANGED {key}: evidence already recorded")
+                continue
         previous = "absent" if "evidence" not in document else "re-recorded"
         document["evidence"] = block
         path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")

@@ -149,7 +149,8 @@ def _check_events(species, clip_name, duration, events):
     validates events against duration -- so this check enforces no
     duration relation and no kind-0/1 loop-pairing rule. What stays is
     fail-closed in the safe direction: frames must be non-negative
-    100000-bounded digits in strictly increasing order, kinds must be
+    100000-bounded digits in non-decreasing order (equal frames permitted,
+    as the native side accepts them), kinds must be
     0..999 (written as ``frame:kind`` string keys the native side
     accepts), at most 4096 events per clip.
     """

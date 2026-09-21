@@ -122,6 +122,9 @@ def test_declared_admits_chappy_frog():
     bound = {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
     # The 50-species declared pool overflows the 33 ground slots, so some
     # species land in `unplaced`; the pool as a whole still covers Chappy/Frog.
+    # The sampler must still bind something: an empty binding list with
+    # everything unplaced would pass the pool check while placement is broken.
+    assert bound
     pool = bound | set(manifest["p2_layout"].get("unplaced", []))
     assert {2, 17} <= pool
     assert manifest["p2_layout"]["density"] == "sampled-v1"
@@ -261,6 +264,44 @@ def test_bootstrap_carries_sampled_proxy_bindings():
     assert parsed["density"] == "sampled-v1"
     assert {b["source_id"] for b in parsed["bindings"]} == {44, 2}
     assert bootstrap_for_manifest({"p2_layout": layout}, roster) == line
+
+
+def test_bootstrap_tier_pair_round_trip():
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from experimental.pikmin2_seed_bridge import (
+        SeedBridgeError, bootstrap_for_manifest, build_bootstrap,
+        parse_bootstrap)
+    from randomizer.seed import _default_admitted_placement
+    from experimental.pikmin2_seed_bridge import resolve_placement_layout
+
+    import pytest
+
+    roster = load_and_validate()
+    document = _default_admitted_placement()
+    layout = resolve_placement_layout("seed-boot-tier", "Player1", document,
+                                      roster, species=[44, 2],
+                                      proxy_rows=_proxy_rows_for([2]))
+    legacy = build_bootstrap(layout, roster)
+    assert "P2_PROXY_TIER" not in legacy
+    parsed_legacy = parse_bootstrap(legacy, roster, density="sampled-v1")
+    assert "p2_proxy_tier" not in parsed_legacy
+    assert {b["source_id"] for b in parsed_legacy["bindings"]} == {44, 2}
+    tiered = build_bootstrap(layout, roster, proxy_tier="declared")
+    assert tiered.startswith(legacy)
+    assert tiered.endswith("P2_PROXY_TIER 1\n")
+    parsed = parse_bootstrap(tiered, roster, density="sampled-v1")
+    assert parsed["p2_proxy_tier"] is True
+    assert {b["source_id"] for b in parsed["bindings"]} == {44, 2}
+    assert build_bootstrap(parsed, roster) == tiered
+    assert bootstrap_for_manifest(
+        {"p2_layout": layout, "p2_proxy_tier": "declared"},
+        roster) == tiered
+    assert bootstrap_for_manifest({"p2_layout": layout}, roster) == legacy
+    for bad in (legacy + "P2_PROXY_TIER 2\n",
+                legacy + "P2_PROXY_TIER\n",
+                legacy + "P2_PROXY_TIER 1 EXTRA\n"):
+        with pytest.raises(SeedBridgeError):
+            parse_bootstrap(bad, roster)
 
 
 def test_cli_proxy_tier_and_full(tmp_path):

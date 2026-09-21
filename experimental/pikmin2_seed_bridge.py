@@ -487,15 +487,29 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
             raise SeedBridgeError(f"P2 layout binds unadmitted source ids: {unadmitted}")
 
 
-def build_bootstrap(layout: dict, roster: list[RosterEntry] | None = None) -> str:
-    """Emit the native bootstrap line, or empty string when no P2 layout is present."""
+def build_bootstrap(layout: dict, roster: list[RosterEntry] | None = None, *,
+                    proxy_tier=None) -> str:
+    """Emit the native bootstrap line, or empty string when no P2 layout is present.
+
+    When the seed manifest carries ``p2_proxy_tier`` (``proxy_tier`` not None,
+    or the layout itself carries a truthy ``p2_proxy_tier`` key from a prior
+    :func:`parse_bootstrap`), a second ``P2_PROXY_TIER 1`` line follows the
+    ``ENEMY_P2`` line so the native adapter can echo ``p2-proxy-tier-v1`` in
+    the hello. The wire version is always 1; the tier name lives in the
+    manifest, not on the wire. Legacy layouts (no tier) emit byte-for-byte
+    what they always did.
+    """
     if not layout:
         return ""
     validate_layout(layout, roster)
     parts = [PROTOCOL_HEADER, str(PROTOCOL_VERSION), layout["roster_revision"], str(len(layout["bindings"]))]
     for binding in layout["bindings"]:
         parts += [binding["target"], str(binding["source_id"])]
-    return " ".join(parts) + "\n"
+    text = " ".join(parts) + "\n"
+    tier = proxy_tier if proxy_tier is not None else layout.get("p2_proxy_tier")
+    if tier is not None:
+        text += "P2_PROXY_TIER 1\n"
+    return text
 
 
 def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None, *,
@@ -505,6 +519,11 @@ def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None, *,
     The wire format carries only the bindings, so the density policy is not on
     the line. ``density`` lets a caller reconstruct the policy the manifest
     stored; it defaults to the legacy all-target fill.
+
+    An optional trailing ``P2_PROXY_TIER 1`` pair (same line or next line) is
+    accepted and round-trips as a truthy ``layout["p2_proxy_tier"]`` key; any
+    other value fails closed. Layouts without the pair carry no such key, so
+    legacy ``parse(build(layout)) == layout`` is unchanged.
     """
     policy = validate_density(density)
     tokens = text.split()
@@ -520,6 +539,12 @@ def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None, *,
     except ValueError as error:
         raise SeedBridgeError(f"invalid ENEMY_P2 binding count: {tokens[3]!r}") from error
     body = tokens[4:]
+    proxy_tier = None
+    if "P2_PROXY_TIER" in body:
+        if len(body) != count * 2 + 2 or body[-2] != "P2_PROXY_TIER" or body[-1] != "1":
+            raise SeedBridgeError(f"invalid P2 proxy tier pair: {body[count * 2:]!r}")
+        proxy_tier = True
+        body = body[:-2]
     if count <= 0 or len(body) != count * 2:
         raise SeedBridgeError(f"ENEMY_P2 count {count} does not match {len(body)} tokens")
     bindings = []
@@ -542,10 +567,22 @@ def parse_bootstrap(text: str, roster: list[RosterEntry] | None = None, *,
             for b in bindings
         ],
     }
+    if proxy_tier is not None:
+        layout["p2_proxy_tier"] = True
     validate_layout(layout, roster)
     return layout
 
 
 def bootstrap_for_manifest(manifest: dict, roster: list[RosterEntry] | None = None) -> str:
-    """Return the ENEMY_P2 line for a manifest, or '' for legacy seeds."""
-    return build_bootstrap(manifest.get("p2_layout"), roster)
+    """Return the ENEMY_P2 block for a manifest, or '' for legacy seeds.
+
+    Manifests carrying ``p2_proxy_tier`` gain a trailing ``P2_PROXY_TIER 1``
+    line after the ``ENEMY_P2`` line (before the runner's ``END``) so the
+    native hello can echo ``p2-proxy-tier-v1`` in manifest capability order;
+    an old binary that never emits the token then fails the exact hello
+    comparison instead of silently showing plain Pikmin 1 hosts.
+    """
+    if not isinstance(manifest, dict) or not manifest.get("p2_layout"):
+        return build_bootstrap(manifest.get("p2_layout") if isinstance(manifest, dict) else None, roster)
+    return build_bootstrap(manifest.get("p2_layout"), roster,
+                           proxy_tier=manifest.get("p2_proxy_tier"))

@@ -515,12 +515,25 @@ for _row in _PROXY_ROWS:
 del _row
 
 
-def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
-    """Extract the identity-keyed content root for the wanted source ids."""
+def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
+                         proxy_pose_limit=None):
+    """Extract the identity-keyed content root for the wanted source ids.
+
+    ``pose_limit`` applies to the non-proxy family banks. Proxy species use
+    ``proxy_pose_limit`` when given, otherwise each row's own ``pose_limit``
+    (``extract_proxy`` with ``pose_limit=None`` takes the declaration), so a
+    product run without an explicit ``--pose-limit`` stages what the rows
+    declare instead of silently sampling 3 poses/clip.
+    """
     iso = Path(iso)
     out = Path(out)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if proxy_pose_limit is not None and (
+            type(proxy_pose_limit) is not int or not 2 <= proxy_pose_limit <= 8):
+        raise ValueError(f"proxy pose limit must be 2..8: {proxy_pose_limit!r}")
     if wanted is None:
         wanted = admitted_source_ids()
     wanted = order_source_ids(wanted)
@@ -560,7 +573,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None):
             extract_sokkuri(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
-            extract_proxy(iso, out, source_id, pose_limit=pose_limit)
+            extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here
@@ -650,8 +663,10 @@ def main(argv=None):
                         help="output JSON for the actor bindings")
     parser.add_argument("--research", type=Path, default=None,
                         help="native/pikmin2-research checkout (default: %(default)s)")
-    parser.add_argument("--pose-limit", type=int, default=3,
-                        help="sampled poses per clip for mamuta/dweevil/dwarf banks (default 3)")
+    parser.add_argument("--pose-limit", type=int, default=None,
+                        help="sampled poses per clip for mamuta/dweevil/dwarf banks "
+                             "(default 3; proxy species use their row pose_limit "
+                             "unless this flag is given explicitly)")
     parser.add_argument("--species", default=None,
                         help="'playable', 'admitted', or comma-separated source ids "
                              "(default: admitted)")
@@ -659,7 +674,7 @@ def main(argv=None):
 
     if (args.seed_manifest is None) != (args.actors_out is None):
         parser.error("--seed-manifest and --actors-out must be given together")
-    if not 2 <= args.pose_limit <= 8:
+    if args.pose_limit is not None and not 2 <= args.pose_limit <= 8:
         parser.error("--pose-limit must be 2..8")
 
     if args.species is None or args.species == "admitted":
@@ -675,8 +690,9 @@ def main(argv=None):
             parser.error("--species must be a nonempty list of source ids")
 
     if args.seed_manifest is not None:
-        # The manifest's proxy bindings join the extraction set (at the
-        # global pose limit) so no manual extract_proxy call is needed.
+        # The manifest's proxy bindings join the extraction set so no manual
+        # extract_proxy call is needed. Proxy species sample their row
+        # pose_limit unless --pose-limit was given explicitly.
         # Manifests without proxy bindings add nothing: the default
         # extraction list is unchanged byte-for-byte.
         for source_id in proxy_ids_for_manifest(args.seed_manifest):
@@ -685,7 +701,8 @@ def main(argv=None):
 
     summary = prepare_content_root(args.iso, args.out,
                                    research=args.research,
-                                   pose_limit=args.pose_limit,
+                                   pose_limit=3 if args.pose_limit is None else args.pose_limit,
+                                   proxy_pose_limit=args.pose_limit,
                                    wanted=wanted)
     print(json.dumps(summary, indent=2))
     if args.seed_manifest is not None:

@@ -263,8 +263,11 @@ def test_main_adds_manifest_proxy_ids_to_wanted(tmp_path, monkeypatch):
             {"target": "22", "source_id": 44, "enum_name": "BlueKochappy"}]}}))
     seen = {}
 
-    def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None):
+    def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None,
+                     proxy_pose_limit=None):
         seen["wanted"] = list(wanted)
+        seen["pose_limit"] = pose_limit
+        seen["proxy_pose_limit"] = proxy_pose_limit
         return {"iso": str(iso_arg), "out": str(out),
                 "extracted": [], "skipped": []}
 
@@ -277,3 +280,83 @@ def test_main_adds_manifest_proxy_ids_to_wanted(tmp_path, monkeypatch):
     assert 2 in seen["wanted"]
     assert seen["wanted"][:6] == [44, 54, 59, 60, 61, 62]
     assert json.loads(actors_out.read_text()) == {"11": 11, "22": 22}
+    # Row pose limits win unless --pose-limit is explicit.
+    assert seen["proxy_pose_limit"] is None
+    assert seen["pose_limit"] == 3
+
+
+def test_main_explicit_pose_limit_overrides_proxy_rows(tmp_path, monkeypatch):
+    iso = tmp_path / "game.iso"
+    iso.write_bytes(b"fake")
+    manifest = tmp_path / "seed.json"
+    manifest.write_text(json.dumps({
+        "p2_proxy_tier": "declared",
+        "p2_layout": {"bindings": [
+            {"target": "11", "source_id": 2, "enum_name": "Chappy"}]}}))
+    seen = {}
+
+    def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None,
+                     proxy_pose_limit=None):
+        seen["pose_limit"] = pose_limit
+        seen["proxy_pose_limit"] = proxy_pose_limit
+        return {"iso": str(iso_arg), "out": str(out),
+                "extracted": [], "skipped": []}
+
+    monkeypatch.setattr(prepare, "prepare_content_root", fake_prepare)
+    actors_out = tmp_path / "actors.json"
+    prepare.main(["--iso", str(iso), "--out", str(tmp_path / "content"),
+                  "--seed-manifest", str(manifest),
+                  "--actors-out", str(actors_out),
+                  "--species", "playable", "--pose-limit", "5"])
+    assert seen["pose_limit"] == 5
+    assert seen["proxy_pose_limit"] == 5
+
+
+def test_prepare_proxy_arm_uses_row_limit_by_default(tmp_path, monkeypatch):
+    iso = tmp_path / "game.iso"
+    iso.write_bytes(b"fake")
+    out = tmp_path / "content"
+    calls = []
+
+    def fake_proxy(iso_arg, dest, source_id, pose_limit=None, **kwargs):
+        calls.append((source_id, pose_limit))
+        (Path(dest) / "Chappy").mkdir(parents=True)
+        return Path(dest) / "Chappy"
+
+    monkeypatch.setattr(prepare, "extract_proxy", fake_proxy)
+    prepare.prepare_content_root(iso, out, wanted=[2])
+    assert calls == [(2, None)]
+    out2 = tmp_path / "content2"
+    calls.clear()
+    prepare.prepare_content_root(iso, out2, wanted=[2], proxy_pose_limit=6)
+    assert calls == [(2, 6)]
+
+
+def test_extract_proxy_passes_declaration_row(tmp_path, monkeypatch):
+    import sys as _sys
+
+    iso = tmp_path / "game.iso"
+    iso.write_bytes(b"fake")
+    dest = tmp_path / "content"
+    dest.mkdir()
+    seen = {}
+
+    import experimental.pikmin2_proxy_assets as proxy_mod
+
+    def fake_extract(iso_arg, enum_name, source_id, tmp, pose_limit=None,
+                     row=None):
+        seen["row"] = row
+        seen["pose_limit"] = pose_limit
+        (Path(tmp)).mkdir(parents=True, exist_ok=True)
+        (Path(tmp) / "proxy.json").write_text("{}")
+        return Path(tmp)
+
+    monkeypatch.setattr(proxy_mod, "extract", fake_extract)
+    # Wealthy (10) needs asset_dir/param_dir/clips/param_files from its row;
+    # without row= the product path extracts from the wrong disc paths.
+    prepare.extract_proxy(iso, dest, 10)
+    from randomizer.p2_proxy import load_rows
+
+    declared = {row["source_id"]: row for row in load_rows()}
+    assert seen["row"] == declared[10]
+    assert seen["pose_limit"] == declared[10]["pose_limit"]

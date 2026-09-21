@@ -479,6 +479,26 @@ def test_stage_accepts_retail_uppercase_clip_stems(tmp_path):
         "px_Chappy_preattackF_00.mod", "px_Chappy_preattackF_01.mod"]
 
 
+def test_stage_accepts_underscore_clip_stems(tmp_path):
+    # Clip stems legitimately contain underscores (Tobi dead_p, Kabuto
+    # hit_start); the stager compares the exact native pose filename
+    # px_<species>_<stem>_<ii>.mod instead of regex-splitting the stem, so
+    # these stage instead of failing the whole layout install.
+    content_root = tmp_path / "content"
+    make_species_tree(content_root, "Chappy", 2,
+                      clips=(("wait1", []),
+                             ("dead_p", []),
+                             ("dead", [])))
+    run = make_run(tmp_path / "run")
+    receipt = content.stage_proxy(content_root, run, {111: "Chappy"})
+    assert receipt["staged"] == "written"
+    bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
+    assert "clip Chappy dead_p 30 - poses 2 converted" in bank
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert sorted(p.name for p in room.glob("px_Chappy_dead_p_*.mod")) == [
+        "px_Chappy_dead_p_00.mod", "px_Chappy_dead_p_01.mod"]
+
+
 def _stub_private_destination(monkeypatch):
     import experimental.pikmin2_family_install as family_install
     room = Path("assets") / "dataDir" / "courses" / "pikmin2room"
