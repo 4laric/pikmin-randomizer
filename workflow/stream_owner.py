@@ -24,6 +24,7 @@ from .development_streams import (CONFIG_PATH, bind_owner, observe_maintained_so
                                   observe_stream_worktrees, section, validate_sources)
 from .handoff import Rejected, require
 from .scheduling import OPEN
+from .worker_capacity import parked
 
 OWNER_TEMPLATE = ('Run exactly one bounded stream-local candidate through '
                   'workflow.development_streams; no canonical integration, maintained '
@@ -49,10 +50,12 @@ def _free_worker(reg, state, worker_id):
     for lane in _worker_lanes(state, worker_id):
         if lane['state'] == 'done':
             continue
-        require(reg.probe(lane['process']) == 'dead',
-                'Worker lane is live or unknown: ' + lane['lane'])
         require(lane['state'] == 'blocked',
                 'Worker lane is not blocked for reuse: ' + lane['lane'] + ' (' + lane['state'] + ')')
+        require(parked(lane),
+                'Worker lane is blocked but not capacity-parked by the controller: ' + lane['lane'])
+        require(reg.probe(lane['process']) == 'dead',
+                'Worker lane is live or unknown: ' + lane['lane'])
         for name, lease in state.get('leases', {}).items():
             if lease.get('lane') == lane['lane']:
                 require(reg.probe(lease['process']) == 'dead',
@@ -113,6 +116,11 @@ def activate(reg, packet, pid, task_id, *, controller_config=None, observed=None
     require(isinstance(packet, dict), 'Activation packet required')
     require(type(pid) is int and pid > 0, 'Live owner PID required')
     require(isinstance(task_id, str) and bool(task_id.strip()), 'Owner task id required')
+    from .processes import identify
+    try:
+        identify(pid)
+    except (ProcessLookupError, OSError, ValueError, PermissionError) as error:
+        raise Rejected('Live owner PID required: ' + str(pid) + ' (' + str(error) + ')')
     stream, worker_id, issue = packet.get('stream'), packet.get('worker_id'), packet.get('issue')
     state = reg.snapshot()
     existing = state['lanes'].get('stream-owner-' + str(stream))
