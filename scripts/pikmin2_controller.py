@@ -45,6 +45,8 @@ def main(argv=None):
     record_restart(registry, controller.base)  # The wrapper's saved crash logs, if the last run failed.
     from workflow.build_capacity import start_monitor
     memory_monitor = start_monitor(controller)
+    from workflow.registry_wal import start_monitor as start_wal_maintenance
+    wal_monitor = start_wal_maintenance(controller)  # Bounded WAL checkpoint housekeeping.
     dashboard_monitor = None
     if not args.once and config.get('throughput', {}).get('enabled', False):
         from workflow.dashboard_refresh import start_monitor as start_dashboard
@@ -82,9 +84,11 @@ def main(argv=None):
             print(str(exc), file=sys.stderr, flush=True)
             if args.once:
                 memory_monitor.set()
+                wal_monitor.set()
                 return 1
         if args.once:
             memory_monitor.set()
+            wal_monitor.set()
             return 0
         try:
             waiter.paced(interval, started, spacing)
@@ -94,6 +98,7 @@ def main(argv=None):
             print(str(exc), file=sys.stderr, flush=True)
             time.sleep(max(0, started + interval - waiter.clock()))
     memory_monitor.set()
+    wal_monitor.set()
     if dashboard_monitor is not None: dashboard_monitor.set()
     if dispatch_monitor is not None: dispatch_monitor.set()
     if helper_monitor is not None: helper_monitor.set()
