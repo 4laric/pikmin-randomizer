@@ -119,6 +119,12 @@ class InitialStatMaximum(InitialStatMinimum):
     default = 100
 
 
+class InitialMovementMinimum(InitialStatMinimum):
+    """Minimum initial movement speed percentage when randomize_color_stats is on. Use 25, 50, 75 or 100; must not exceed maximum. Defaults to 75, since slower rolls feel bad to play."""
+    display_name = 'Initial Movement Minimum'
+    default = 75
+
+
 class DamageUpgrades(Range):
     """Copies per color when progressive_color_stats is on. Each adds 25 percentage points of base damage."""
     display_name = 'Damage Upgrades Per Color'
@@ -196,7 +202,7 @@ class PikminOptions(PerGameCommonOptions):
     random_start_areas: RandomStartAreas
     initial_damage_min: InitialStatMinimum
     initial_damage_max: InitialStatMaximum
-    initial_movement_min: InitialStatMinimum
+    initial_movement_min: InitialMovementMinimum
     initial_movement_max: InitialStatMaximum
     initial_attack_rate_min: InitialStatMinimum
     initial_attack_rate_max: InitialStatMaximum
