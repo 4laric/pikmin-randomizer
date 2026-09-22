@@ -1970,8 +1970,16 @@ protected:
 	void keyOperation(Controller* controller, u32 button, WorldMapCoursePoint::linkFlag linkID)
 	{
 		if (controller->keyClick(button)) {
+			// Locked courses aren't valid stops, so keep following the link
+			// chain in the same direction until an open course is found (or
+			// the chain ends). Without this, a locked course sitting between
+			// two open ones blocks movement entirely, since the world map
+			// grid only supports orthogonal adjacency (see issue #872).
 			WorldMapCoursePoint* linkPoint = mSelectedPoint->getLinkCoursePointPtr(linkID);
-			if (linkPoint && linkPoint->getOpenSw()) {
+			while (linkPoint && !linkPoint->getOpenSw()) {
+				linkPoint = linkPoint->getLinkCoursePointPtr(linkID);
+			}
+			if (linkPoint) {
 				SeSystem::playSysSe(SYSSE_MOVE1);
 				mSelectedPoint->nonSelect();
 				mSelectedPoint = linkPoint;
