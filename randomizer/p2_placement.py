@@ -42,9 +42,11 @@ PROXY_PACK_UIDS = frozenset({3768801221, 2637843033, 517610653, 2380387682, 3679
                              1102975523, 3417529495, 1428724902, 648204418, 3157218646,
                              843459898, 1340027046, 2158371058, 4096115722})
 PROXY_SLOT_UIDS = PROXY_SINGLETON_UIDS | PROXY_PACK_UIDS
-# Small hosts allowed on pack (multi-member) targets. Every member is SAFE per
-# host-safety section 4 (no open-air/pellet/clearance condition beyond landing
-# space that a generic ground slot provides); all SAFE-WITH-CONDITIONS hosts
+# Small hosts allowed on pack (multi-member) targets. Hosts 18/19/20/25/31/33
+# are SAFE per host-safety section 4 with no open-air/pellet/clearance
+# condition beyond landing space that a generic ground slot provides; hosts
+# 0/3 are proven vanilla hosts (host-safety scope) in the same small-bodied
+# families; all SAFE-WITH-CONDITIONS hosts
 # (6 ephemeral floater, 8 pellet/route-dependent, 11/16 60-height fliers, 17
 # firing-lane Beetle) and all large/dangerous hosts (4, 15, 32, ...) are
 # excluded so a 2-5 member pack cannot multiply difficulty or crowd the spot.

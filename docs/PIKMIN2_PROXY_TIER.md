@@ -103,8 +103,10 @@ difficulty and crowd the spot. Pack targets therefore admit only
 small-host proxy rows (`pack_hosts: [0, 3, 18, 19, 20, 25, 31, 33]` in
 the sibling, enforced in `_proxy_accepted_targets`; any other host is
 simply ineligible on pack targets, singletons keep the full ground set).
-The set is every host verdict `SAFE` in the host-safety review with no
-open-air/pellet/clearance condition beyond landing space: Chappy 3 /
+The set is every SAFE host in the host-safety review with no
+open-air/pellet/clearance condition beyond landing space (section 4 verdicts
+for 18/19/20/25/31/33) plus the proven vanilla small hosts Frog 0 / Chappy 3
+(host-safety scope): Chappy 3 /
 Chappb 31 (proven dwarf family, same cohort as the dwarf packs),
 Kabekui 18/19/20 (self-contained burrowers, same cohort as the grub
 packs), Otama 25 (land-capable), Frog 0 / Frow 33 (landing space only).

@@ -302,6 +302,7 @@ def test_pack_targets_only_bind_small_hosts():
         layout = generate(seed, "solo", "Player1", p2_enemies=True, p2_species="full",
                           p2_proxy_tier="proven")["p2_layout"]
         by_target = {b["target"]: b["source_id"] for b in layout["bindings"]}
+        assert PACKS & set(by_target), f"seed {seed} bound no pack targets"
         for uid in PACKS & set(by_target):
             assert host_by_id[by_target[uid]] in PACK_HOSTS
 
