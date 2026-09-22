@@ -98,7 +98,8 @@ YAML options for the `Pikmin Randomizer` game. Defaults are those of the .apworl
 | `collection_checks` | Bestiary corpse deliveries (Puffy Blowhog defeat and Clamclamp pearl) plus population 10/25/50/100 per color. Enables all five areas. | true |
 | `permanent_checks` | Adds 43 individual walls, bridges and boxes (105 total checks). Climbing sticks are excluded because they reset daily. | false |
 | `randomize_color_stats` | Seeded damage, movement and attack rate at 25/50/75/100% per color; carrying strength starts at 1. | false |
-| `initial_damage_min` / `initial_damage_max`, `initial_movement_min` / `..._max`, `initial_attack_rate_min` / `..._max` | Bounds for the rolled initial stats: 25, 50, 75 or 100; each minimum must not exceed its maximum. Equal bounds fix the stat. | 25 / 100 |
+| `initial_damage_min` / `initial_damage_max`, `initial_attack_rate_min` / `..._max` | Bounds for the rolled initial stats: 25, 50, 75 or 100; each minimum must not exceed its maximum. Equal bounds fix the stat. | 25 / 100 |
+| `initial_movement_min` / `initial_movement_max` | Same as above, for movement speed. Minimum defaults higher since slow rolls feel bad to play. | 75 / 100 |
 | `progressive_color_stats` | Per-color stat upgrades as items (36 at the default counts). Enables permanent checks. | false |
 | `damage_upgrades` / `carry_upgrades` | Copies per color, 0–4. +25 percentage points damage / +1 carrying strength each. | 4 / 4 |
 | `movement_upgrades` / `attack_rate_upgrades` | Copies per color, 0–2. +25 percentage points each. | 2 / 2 |

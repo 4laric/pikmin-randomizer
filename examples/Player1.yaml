@@ -16,7 +16,7 @@ Pikmin Randomizer:
   # Same bounds apply independently to each color. Carry always starts at 1.
   initial_damage_min: 25
   initial_damage_max: 100
-  initial_movement_min: 25
+  initial_movement_min: 75
   initial_movement_max: 100
   initial_attack_rate_min: 25
   initial_attack_rate_max: 100
