@@ -180,3 +180,21 @@ def test_rerecord_on_later_day_is_noop(tmp_path, rows_dir):
     lines = apply(decisions, context, "abc1234", today="2026-09-21")
     assert all(line.startswith("UNCHANGED") for line in lines)
     assert {p.name: p.read_bytes() for p in rows_dir.glob("*.json")} == before
+
+
+def test_workspace_relative_log_needs_the_log_root(tmp_path, rows_dir):
+    """Evidence cites logs workspace-relative; without --log-root the path does not resolve."""
+    workspace = tmp_path / "ws"
+    (workspace / "output" / "evidence" / "w1").mkdir(parents=True)
+    body = b"campaign probe log\n"
+    (workspace / "output" / "evidence" / "w1" / "native.log").write_bytes(body)
+    result = write_probe(tmp_path, name="w1", log="output/evidence/w1/native.log",
+                         log_sha256=hashlib.sha256(body).hexdigest())
+    with pytest.raises(ValueError):
+        recorder.record(result, rows_dir, "ab" * 10)
+    lines, refused = recorder.record(result, rows_dir, "ab" * 10, log_root=workspace)
+    assert refused == 0 and lines
+    recorded = json.loads((rows_dir / "2_Chappy.json").read_text(encoding="utf-8"))["evidence"]
+    assert recorded["log"] == "output/evidence/w1/native.log"
+    assert recorded["log_sha256"] == hashlib.sha256(body).hexdigest()
+

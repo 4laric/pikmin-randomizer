@@ -129,14 +129,17 @@ def _drawn_entry(drawn_live, source_id, enum_name):
     return None
 
 
-def _verify_log(result_path, log_ref, claimed_digest):
+def _verify_log(result_path, log_ref, claimed_digest, log_root=None):
     if not isinstance(log_ref, str) or not log_ref.strip():
         _fail("probe result has no log path")
     if not isinstance(claimed_digest, str) or not _HEX64_RE.fullmatch(claimed_digest):
         _fail("probe result log_sha256 must be 64 hex")
     log_path = Path(log_ref)
     if not log_path.is_absolute():
-        log_path = result_path.parent / log_path
+        # Evidence is cited workspace-relative (e.g. ``output/<lane>/.../native.log``) like the rest of
+        # the repository's evidence; ``--log-root`` names that workspace. Default: next to the result.
+        base = Path(log_root) if log_root is not None else result_path.parent
+        log_path = base / log_path
     if not log_path.is_file():
         _fail(f"probe log not found on disk: {log_path}")
     actual = hashlib.sha256(log_path.read_bytes()).hexdigest()
@@ -179,7 +182,8 @@ def decide(result, rows_dir):
         skips = []
     if not isinstance(skips, list):
         _fail("probe result skips must be a list")
-    digest = _verify_log(result_path, result.get("log"), result.get("log_sha256"))
+    digest = _verify_log(result_path, result.get("log"), result.get("log_sha256"),
+                         log_root=result.get("__log_root__"))
     probe = result.get("probe")
     if probe is None or (isinstance(probe, str) and not probe.strip()):
         probe = result_path.parent.name
@@ -256,7 +260,7 @@ def apply(decisions, context, native_commit, today=None):
     return lines
 
 
-def record(result_path, rows_dir, native_commit):
+def record(result_path, rows_dir, native_commit, log_root=None):
     """Decide and apply one probe result; return (lines, refused_count)."""
     result_path = Path(result_path)
     try:
@@ -266,6 +270,8 @@ def record(result_path, rows_dir, native_commit):
     if not isinstance(result, dict):
         _fail("probe result must be a JSON object")
     result["__path__"] = str(result_path)
+    if log_root is not None:
+        result["__log_root__"] = str(log_root)
     decisions, context = decide(result, rows_dir)
     lines = apply(decisions, context, native_commit)
     refused = sum(1 for _row, reason in decisions.values() if reason is not None)
@@ -282,11 +288,14 @@ def main(argv=None):
     parser.add_argument("--rows-dir", type=Path,
                         default=ROOT / "randomizer" / "p2_proxy",
                         help="species declaration directory (default: %(default)s)")
+    parser.add_argument("--log-root", type=Path, default=None,
+                        help="workspace that a relative `log` path in the result is relative to "
+                             "(default: the result file's directory)")
     parser.add_argument("--native-commit", required=True,
                         help="native commit hash (7-40 hex) the probe ran against")
     args = parser.parse_args(argv)
     try:
-        lines, refused = record(args.result, args.rows_dir, args.native_commit)
+        lines, refused = record(args.result, args.rows_dir, args.native_commit, log_root=args.log_root)
     except ValueError as error:
         print(f"REFUSED ALL: {error}")
         return 1
