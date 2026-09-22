@@ -220,7 +220,13 @@ def test_every_proxy_id_maps_to_extract_proxy():
         assert prepare.EXTRACTORS[source_id] == "extract_proxy"
 
 
-def test_proxy_ids_for_manifest(tmp_path):
+def test_proxy_ids_for_manifest(tmp_path, monkeypatch):
+    # The "proven" refusal below needs a row WITHOUT evidence, whatever the committed rows say.
+    import randomizer.p2_proxy as _proxy
+    _real_rows = _proxy.load_rows
+    monkeypatch.setattr(_proxy, "load_rows", lambda directory=None: [
+        {key: value for key, value in row.items() if key != "evidence"}
+        for row in _real_rows(directory=directory)])
     plain = tmp_path / "plain.json"
     plain.write_text(json.dumps(manifest_with("11")))
     assert prepare.proxy_ids_for_manifest(plain) == []

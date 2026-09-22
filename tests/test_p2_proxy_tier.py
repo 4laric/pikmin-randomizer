@@ -19,6 +19,15 @@ from randomizer.p2_proxy import load_rows, tier_ids
 from randomizer.seed import PLAYABLE_P2_SPECIES, generate, validate
 
 
+def _unproven(monkeypatch):
+    """Pretend no row carries probe evidence yet, whatever the committed rows say."""
+    import randomizer.p2_proxy as proxy
+    real = proxy.load_rows
+    monkeypatch.setattr(proxy, "load_rows", lambda directory=None: [
+        {key: value for key, value in row.items() if key != "evidence"}
+        for row in real(directory=directory)])
+
+
 def _proxy_rows_for(ids):
     by_id = {row["source_id"]: row for row in load_rows()}
     return [by_id[source_id] for source_id in ids]
@@ -44,7 +53,10 @@ def test_row_schema_defaults_and_validation(tmp_path):
     assert by_id[27]["terrains"] == ["ground", "water"]
     assert all(row["terrains"] == ["ground"] for row in rows
                if row["source_id"] not in (26, 27))
-    assert all("evidence" not in row for row in rows)
+    # A row is either only declared or carries a complete, all-true evidence block.
+    for row in rows:
+        if "evidence" in row:
+            assert row["evidence"]["markers"] == {"table": True, "bind": True, "draw": True}
     # Bad terrains fail closed.
     bad = tmp_path / "2_Chappy.json"
     bad.write_text(json.dumps({"schema": 1, "source_id": 2, "enum_name": "Chappy",
@@ -107,7 +119,18 @@ def test_full_requires_a_tier():
         generate("x", p2_enemies=True, p2_species="full")
 
 
-def test_full_plus_proven_equals_playable_six():
+def test_full_plus_proven_is_playable_plus_every_proven_row():
+    manifest = generate("tier-full-proven-live", p2_enemies=True,
+                        p2_proxy_tier="proven", p2_species="full")
+    layout = manifest["p2_layout"]
+    bound = {b["source_id"] for b in layout["bindings"]}
+    assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids("proven"))
+    assert set(PLAYABLE_P2_SPECIES) <= bound
+    validate(manifest)
+
+
+def test_full_plus_proven_equals_playable_six(monkeypatch):
+    _unproven(monkeypatch)
     manifest = generate("tier-full-proven", p2_enemies=True,
                         p2_proxy_tier="proven", p2_species="full")
     assert manifest["p2_proxy_tier"] == "proven"
@@ -132,7 +155,8 @@ def test_declared_admits_chappy_frog():
     validate(manifest)
 
 
-def test_explicit_proxy_ids_need_covering_tier():
+def test_explicit_proxy_ids_need_covering_tier(monkeypatch):
+    _unproven(monkeypatch)
     with pytest.raises(ValueError):
         generate("x", p2_enemies=True, p2_species=[44, 2])
     with pytest.raises(ValueError):

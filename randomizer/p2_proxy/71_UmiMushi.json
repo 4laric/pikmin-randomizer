@@ -1,11 +1,23 @@
 {
- "clips": {
-  "wait1": "search1"
- },
- "enum_name": "UmiMushi",
- "host_teki": 3,
- "notes": "Ranging Bloyster; proxy over TEKI_Chappy; wait1 poses sampled from search1 (no idle clip on disc); sturn1 skipped: 40-joint clip vs 25-joint model skeleton",
- "pose_limit": 4,
- "schema": 1,
- "source_id": 71
+  "clips": {
+    "wait1": "search1"
+  },
+  "enum_name": "UmiMushi",
+  "host_teki": 3,
+  "notes": "Ranging Bloyster; proxy over TEKI_Chappy; wait1 poses sampled from search1 (no idle clip on disc); sturn1 skipped: 40-joint clip vs 25-joint model skeleton",
+  "pose_limit": 4,
+  "schema": 1,
+  "source_id": 71,
+  "evidence": {
+    "run": "final-07",
+    "log": "output/claude-orch/evidence/final-07/native.log",
+    "log_sha256": "e120b3ad7623b08392ecfc09e69d03f0623b8ed9ffef17582091b33694fdca09",
+    "native_commit": "ba6832cef8d49d358589238da70b0f7d387036aa",
+    "recorded": "2026-09-21",
+    "markers": {
+      "table": true,
+      "bind": true,
+      "draw": true
+    }
+  }
 }
