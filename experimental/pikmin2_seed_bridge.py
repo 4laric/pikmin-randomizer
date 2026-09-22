@@ -194,7 +194,10 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
     ``proxy_document`` is an optional validated stage-A sibling
     (``p2-proxy-placement-v1``): when supplied, its slot uids extend the
     audit union for proxy rows only (filtered by row terrains, minus
-    ``reserved_vanilla``). Six-gate identities keep exactly today's targets
+    ``reserved_vanilla``). Pack slots (``pack: true``) additionally require
+    the row's ``host_teki`` to be in the document's ``pack_hosts`` small-host
+    set, so a 2-5 member pack never multiplies a large/dangerous host.
+    Six-gate identities keep exactly today's targets
     because their ``accepted`` mapping never sees the sibling. When ``None``
     (diagnostic callers) the behaviour is exactly the pre-stage-A union.
     """
@@ -206,6 +209,8 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
     validated = validate_document(document)
     terrain_by_uid = {str(item["uid"]): item["terrain"] for item in validated["slots"]}
     reserved: set[str] = set()
+    pack_uids: set[str] = set()
+    pack_hosts: set[int] | None = None
     if proxy_document is not None:
         from randomizer.p2_placement import validate_proxy_document
         validated_proxy = validate_proxy_document(proxy_document)
@@ -213,11 +218,17 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
             terrain_by_uid.setdefault(str(item["uid"]), item["terrain"])
         union = set(union) | {str(item["uid"]) for item in validated_proxy["slots"]}
         reserved = {str(uid) for uid in validated_proxy["reserved_vanilla"]}
+        pack_hosts = set(validated_proxy["pack_hosts"])
+        pack_uids = {str(item["uid"]) for item in validated_proxy["slots"] if item.get("pack")}
     result: dict[int, set[str]] = {}
     for row in proxy_rows or []:
         source_id = row.get("source_id")
         terrains = row.get("terrains") or ["ground"]
-        result[source_id] = {uid for uid in union if terrain_by_uid.get(uid) in set(terrains)} - reserved
+        host = row.get("host_teki")
+        tokens = {uid for uid in union if terrain_by_uid.get(uid) in set(terrains)} - reserved
+        if pack_uids and pack_hosts is not None and host not in pack_hosts:
+            tokens -= pack_uids
+        result[source_id] = tokens
     return result
 
 
@@ -319,8 +330,16 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         rng = SeedRandom(f"{seed}/p2-placement-layout-v1/{slot}")
         shuffled = rng.shuffle(pool)
         playable = set(PLAYABLE_IDS)
-        identity_order = ([source_id for source_id in shuffled if source_id in playable]
-                          + [source_id for source_id in shuffled if source_id not in playable])
+        play_first = [source_id for source_id in shuffled if source_id in playable]
+        rest = [source_id for source_id in shuffled if source_id not in playable]
+        # Most-constrained species first (stable: ties keep shuffled order) so
+        # host-restricted species claim the committed/singleton slots before
+        # flexible small-host species take them: a stranded large species can
+        # never land on a pack target, while a small one can land anywhere.
+        width = {source_id: sum(1 for target in eligible if source_id in eligible[target])
+                 for source_id in rest}
+        rest.sort(key=lambda source_id: width[source_id])
+        identity_order = play_first + rest
         remaining = sorted(eligible, key=lambda item: (len(item), item))
         assigned: dict[str, int] = {}
         for source_id in identity_order:
@@ -333,7 +352,14 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
             if not remaining:
                 break
         for target in list(remaining):
-            assigned[target] = rng.shuffle(eligible[target])[0]
+            # Never waste a slot on a repeat while an eligible unplaced species
+            # exists: prefer pool ids not yet covered on this target; only when
+            # every eligible id is already placed (e.g. a pack target whose
+            # small-host pool is exhausted) fall back to any eligible id.
+            covered_so_far = set(assigned.values())
+            fresh = [source_id for source_id in eligible[target]
+                     if source_id not in covered_so_far]
+            assigned[target] = rng.shuffle(fresh or eligible[target])[0]
         if len(assigned) > 64:
             raise SeedBridgeError(
                 "P2 layout exceeds the native 64-binding cap "

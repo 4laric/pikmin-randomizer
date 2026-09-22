@@ -24,6 +24,11 @@ from randomizer.seed import (
 )
 
 SINGLETONS = {"1849273021", "2049888785"}
+PACKS = {"3768801221", "2637843033", "517610653", "2380387682", "3679976242",
+         "1102975523", "3417529495", "1428724902", "648204418", "3157218646",
+         "843459898", "1340027046", "2158371058", "4096115722"}
+PROXY_ONLY = SINGLETONS | PACKS
+PACK_HOSTS = [0, 3, 18, 19, 20, 25, 31, 33]
 RESERVED = set()  # no committed slot is reserved from proxies (see PROXY_RESERVED_VANILLA)
 
 
@@ -43,12 +48,25 @@ def test_validate_proxy_document_accepts_sibling():
     doc = _sibling()
     validated = placement.validate_proxy_document(doc)
     assert validated["schema"] == placement.PROXY_SCHEMA
-    assert sorted(s["uid"] for s in validated["slots"]) == [1849273021, 2049888785]
+    assert sorted(s["uid"] for s in validated["slots"]) == sorted(
+        int(uid) for uid in PROXY_ONLY)
+    assert sorted(validated["pack_hosts"]) == sorted(placement.PACK_HOSTS)
     for slot in validated["slots"]:
         assert slot["proxy_only"] is True
-        assert slot["evidence_level"] == placement.PROXY_EVIDENCE_LEVEL
-        assert slot["evidence"] == {"xyz": True, "terrain": False, "route": False}
         assert slot["terrain"] == "ground"
+        assert slot["evidence"] == {"xyz": True, "terrain": False, "route": False}
+        if str(slot["uid"]) in PACKS:
+            assert slot["pack"] is True
+            assert slot["evidence_level"] == placement.PROXY_PACK_EVIDENCE_LEVEL
+            expected = placement.PACK_TARGETS[slot["uid"]]
+            assert slot["count"] == expected[3]
+            assert slot["original_teki"] == expected[2]
+            assert slot["first_day"] == expected[4]
+        else:
+            assert slot["pack"] is False
+            assert slot["evidence_level"] == placement.PROXY_EVIDENCE_LEVEL
+            assert "count" not in slot
+            assert "original_teki" not in slot
     assert sorted(validated["reserved_vanilla"]) == sorted(
         list(placement.PROXY_RESERVED_VANILLA))
 
@@ -73,6 +91,40 @@ def test_validate_proxy_document_rejects_bad_docs():
     extra = copy.deepcopy(bad["slots"][0])
     extra["uid"] = 12345
     bad["slots"].append(extra)
+    with pytest.raises(ValueError):
+        placement.validate_proxy_document(bad)
+    # Missing pack_hosts is rejected.
+    bad = copy.deepcopy(good)
+    del bad["pack_hosts"]
+    with pytest.raises(ValueError):
+        placement.validate_proxy_document(bad)
+    # Altered pack_hosts is rejected.
+    bad = copy.deepcopy(good)
+    bad["pack_hosts"] = [3]
+    with pytest.raises(ValueError):
+        placement.validate_proxy_document(bad)
+    # Pack slot with singleton evidence_level is rejected.
+    bad = copy.deepcopy(good)
+    for slot in bad["slots"]:
+        if slot.get("pack") is True:
+            slot["evidence_level"] = placement.PROXY_EVIDENCE_LEVEL
+            break
+    with pytest.raises(ValueError):
+        placement.validate_proxy_document(bad)
+    # Pack slot with wrong count is rejected.
+    bad = copy.deepcopy(good)
+    for slot in bad["slots"]:
+        if slot.get("pack") is True:
+            slot["count"] += 1
+            break
+    with pytest.raises(ValueError):
+        placement.validate_proxy_document(bad)
+    # Singleton carrying count is rejected.
+    bad = copy.deepcopy(good)
+    for slot in bad["slots"]:
+        if slot.get("pack") is False:
+            slot["count"] = 1
+            break
     with pytest.raises(ValueError):
         placement.validate_proxy_document(bad)
     # Missing proxy_only is rejected.
@@ -107,7 +159,17 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
                                        proxy_document=sibling)
     for source_id, tokens in accepted.items():
         assert SINGLETONS <= set(tokens)
+        assert PACKS <= set(tokens)
         assert not (RESERVED & set(tokens))
+
+    # Pack targets admit only small-host rows: a large-host ground row (id 2,
+    # host_teki 4 Spotty Bulborb) sees the singletons but none of the packs.
+    large_rows = _proxy_rows_for([2])
+    assert large_rows[0]["host_teki"] not in PACK_HOSTS
+    accepted_large = _proxy_accepted_targets(document, large_rows, roster,
+                                             proxy_document=sibling)
+    assert SINGLETONS <= set(accepted_large[2])
+    assert not (PACKS & set(accepted_large[2]))
 
     water_row = dict(_proxy_rows_for([2])[0])
     water_row["terrains"] = ["water"]
@@ -133,9 +195,9 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     sibling = _sibling()
     report = placement.audit(document)
     assert set(report["admitted"]) >= {"BlueKochappy", "Miulin"}
-    # Six-gate accepted sets never contain the proxy-only singletons.
+    # Six-gate accepted sets never contain any proxy-only slot.
     for uids in report["admitted"].values():
-        assert not (SINGLETONS & {str(uid) for uid in uids})
+        assert not (PROXY_ONLY & {str(uid) for uid in uids})
 
     first = resolve_placement_layout("stageA-invariance", "Player1", document,
                                      roster, species=list(PLAYABLE_P2_SPECIES))
@@ -143,7 +205,7 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
                                       roster, species=list(PLAYABLE_P2_SPECIES),
                                       proxy_document=sibling)
     assert first == second
-    assert all(b["target"] not in SINGLETONS for b in first["bindings"])
+    assert all(b["target"] not in PROXY_ONLY for b in first["bindings"])
 
     manifest = generate("stageA-parity", p2_enemies=True, p2_species="playable")
     manifest_none = generate("stageA-parity", p2_enemies=True,
@@ -151,7 +213,7 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     assert manifest == manifest_none
     assert "p2_proxy_tier" not in manifest
     assert manifest["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
-    assert all(b["target"] not in SINGLETONS for b in manifest["p2_layout"]["bindings"])
+    assert all(b["target"] not in PROXY_ONLY for b in manifest["p2_layout"]["bindings"])
     validate(manifest)
 
 
@@ -210,9 +272,9 @@ def test_sampler_cap_and_reserved_and_sorted():
         if reserved_target in by_target:
             assert by_target[reserved_target] in set(PLAYABLE_P2_SPECIES)
 
-    # Six-gate identities are never placed on the new singleton slots.
+    # Six-gate identities are never placed on the new proxy-only slots.
     for binding in layout["bindings"]:
-        if binding["target"] in SINGLETONS:
+        if binding["target"] in PROXY_ONLY:
             assert binding["source_id"] not in set(PLAYABLE_P2_SPECIES)
 
     grown = _synthetic_65_document()
@@ -220,6 +282,82 @@ def test_sampler_cap_and_reserved_and_sorted():
         resolve_placement_layout("stageA-65", "Player1", grown, roster,
                                  species=[44, 2],
                                  proxy_rows=_proxy_rows_for([2]))
+
+
+def test_pack_targets_only_bind_small_hosts():
+    """Guarantee: pack uids never bind a large/dangerous-host proxy species.
+
+    The sampler places as many distinct eligible species as the pack-host rule
+    allows; a pack target whose small-host pool is exhausted stays a repeat of
+    an already-placed small-host species, never a large-host species. What is
+    NOT guaranteed: 49 distinct species on every seed (only 20 declared proxy
+    rows are small-host eligible on packs, so wide pools still leave species
+    in `unplaced`).
+    """
+    from randomizer.seed import generate
+    from randomizer.p2_proxy import load_rows
+
+    host_by_id = {row["source_id"]: row["host_teki"] for row in load_rows()}
+    for seed in ("pack-host-a", "pack-host-b"):
+        layout = generate(seed, "solo", "Player1", p2_enemies=True, p2_species="full",
+                          p2_proxy_tier="proven")["p2_layout"]
+        by_target = {b["target"]: b["source_id"] for b in layout["bindings"]}
+        for uid in PACKS & set(by_target):
+            assert host_by_id[by_target[uid]] in PACK_HOSTS
+
+
+def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
+    """Guarantee: a repeated species never fills a target an unplaced species could fill.
+
+    Pool (6 playable + 2 small-host + all 30 large-host declared proxies = 38)
+    overflows the 35 non-pack slots, so at least one large-host proxy stays
+    unplaced while pack targets fall back to repeats of the 2 small-host
+    species. The fallback repeats only small-host species on packs: no
+    repeated target is eligible for any end-unplaced species.
+    """
+    from collections import Counter
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from experimental.pikmin2_seed_bridge import (
+        _accepted_placement_targets,
+        _proxy_accepted_targets,
+        resolve_placement_layout,
+    )
+    from randomizer.p2_proxy import load_rows
+    from randomizer.seed import _default_admitted_placement
+
+    roster = load_and_validate()
+    document = _default_admitted_placement()
+    sibling = _sibling()
+    rows = load_rows()
+    small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
+    large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
+    assert len(small_ids) == 20 and len(large_ids) == 30
+    pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
+    proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
+    for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
+        layout = resolve_placement_layout(
+            seed, "Player1", document, roster, species=pool,
+            proxy_rows=proxy_rows, proxy_document=sibling)
+        counts = Counter(b["source_id"] for b in layout["bindings"])
+        repeats = {source_id for source_id, count in counts.items() if count > 1}
+        assert repeats, "pack fallback must repeat the 2 small-host species"
+        unplaced = set(layout.get("unplaced", []))
+        assert unplaced, "large-host overflow must leave species unplaced"
+        assert unplaced <= set(large_ids)
+        accepted = _accepted_placement_targets(document, roster)
+        proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster,
+                                                 proxy_document=sibling)
+        eligible = {}
+        for target in {b["target"] for b in layout["bindings"]}:
+            ids = {source_id for source_id, tokens in accepted.items()
+                   if source_id in set(pool) and target in tokens}
+            ids |= {source_id for source_id, tokens in proxy_accepted.items()
+                    if source_id in set(pool) and target in tokens}
+            eligible[target] = ids
+        for binding in layout["bindings"]:
+            if binding["source_id"] in repeats:
+                assert not (unplaced & eligible[binding["target"]]), (
+                    seed, binding["target"], binding["source_id"])
 
 
 def test_generate_parity_with_declared_dwarf_hosts():

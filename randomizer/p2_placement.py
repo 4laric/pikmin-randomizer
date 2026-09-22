@@ -35,21 +35,57 @@ DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
 
 PROXY_SCHEMA = 'p2-proxy-placement-v1'
 PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
-PROXY_SLOT_UIDS = frozenset({1849273021, 2049888785})
+PROXY_PACK_EVIDENCE_LEVEL = (PROXY_EVIDENCE_LEVEL + '; pack binding verified natively by code review only '
+                             'until the integrator has run a launch probe')
+PROXY_SINGLETON_UIDS = frozenset({1849273021, 2049888785})
+PROXY_PACK_UIDS = frozenset({3768801221, 2637843033, 517610653, 2380387682, 3679976242,
+                             1102975523, 3417529495, 1428724902, 648204418, 3157218646,
+                             843459898, 1340027046, 2158371058, 4096115722})
+PROXY_SLOT_UIDS = PROXY_SINGLETON_UIDS | PROXY_PACK_UIDS
+# Small hosts allowed on pack (multi-member) targets. Every member is SAFE per
+# host-safety section 4 (no open-air/pellet/clearance condition beyond landing
+# space that a generic ground slot provides); all SAFE-WITH-CONDITIONS hosts
+# (6 ephemeral floater, 8 pellet/route-dependent, 11/16 60-height fliers, 17
+# firing-lane Beetle) and all large/dangerous hosts (4, 15, 32, ...) are
+# excluded so a 2-5 member pack cannot multiply difficulty or crowd the spot.
+PACK_HOSTS = (0, 3, 18, 19, 20, 25, 31, 33)
+# Expected pack metadata per uid: (label, stage, original_teki, count, first_day,
+# cohort, source_identity). Pinned fail-closed against campaign_data drift.
+PACK_TARGETS = {
+    3768801221: ('hope_0-29_3791', 1, 18, 3, 2, 'grub', 'campaign:grub:18'),
+    2637843033: ('hope_0-29_3990', 1, 19, 2, 2, 'grub', 'campaign:grub:19'),
+    517610653: ('hope_4-29_2038', 1, 18, 3, 5, 'grub', 'campaign:grub:18'),
+    2380387682: ('hope_4-29_2237', 1, 19, 2, 5, 'grub', 'campaign:grub:19'),
+    3679976242: ('hope_init_3344', 1, 19, 2, 2, 'grub', 'campaign:grub:19'),
+    1102975523: ('hope_init_3543', 1, 18, 3, 2, 'grub', 'campaign:grub:18'),
+    3417529495: ('spring_15-29_24', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    1428724902: ('spring_15-29_223', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    648204418: ('spring_15-29_422', 3, 31, 2, 16, 'dwarf', 'campaign:dwarf:31'),
+    3157218646: ('spring_15-29_621', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    843459898: ('spring_init_7623', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+    1340027046: ('spring_init_7822', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+    2158371058: ('spring_init_8021', 3, 20, 2, 2, 'grub', 'campaign:grub:20'),
+    4096115722: ('spring_init_8220', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+}
 # Kept in the schema for stability but intentionally empty: a proxy keeps its Pikmin 1 host's behaviour and corpse,
 # and reserving committed slots from proxies only made every sampled seed spend them on a repeat of a playable species.
 PROXY_RESERVED_VANILLA = ()
-PROXY_DOCUMENT_REQUIRED = ('schema', 'slots', 'reserved_vanilla')
+PROXY_DOCUMENT_REQUIRED = ('schema', 'slots', 'reserved_vanilla', 'pack_hosts')
 PROXY_DOCUMENT_ALLOWED = PROXY_DOCUMENT_REQUIRED + ('notes',)
 
 
 def validate_proxy_document(document):
-    """Validate the stage-A proxy-tier-only sibling document.
+    """Validate the proxy-tier-only sibling document (2 singletons + 14 packs).
 
-    Accepts only ``p2-proxy-placement-v1`` with exactly the two admitted
-    singleton uids, honest mechanical-only evidence (xyz true, terrain/route
+    Accepts only ``p2-proxy-placement-v1`` with exactly the 16 admitted
+    proxy-only uids, honest mechanical-only evidence (xyz true, terrain/route
     false), ``proxy_only is True`` and the fixed ``evidence_level`` string on
-    every slot. Never touches the committed document or six-gate behaviour.
+    every slot (singletons carry :data:`PROXY_EVIDENCE_LEVEL`, pack slots carry
+    :data:`PROXY_PACK_EVIDENCE_LEVEL`), ``pack``/``count``/``original_teki``
+    metadata pinned per uid, and a top-level ``pack_hosts`` list exactly equal
+    to :data:`PACK_HOSTS`. Never touches the committed document or six-gate
+    behaviour. Schema stays v1 (extension, not a bump): same slot shape, same
+    consumers, same packaged path; fail-closed exact allowlists either way.
     """
     _check_keys('proxy document', document, PROXY_DOCUMENT_REQUIRED, PROXY_DOCUMENT_ALLOWED)
     if document['schema'] != PROXY_SCHEMA:
@@ -63,6 +99,12 @@ def validate_proxy_document(document):
             or len(set(reserved)) != len(reserved)
             or sorted(reserved) != sorted(PROXY_RESERVED_VANILLA)):
         _fail(f'proxy document reserved_vanilla must be exactly {sorted(PROXY_RESERVED_VANILLA)}')
+    pack_hosts = document.get('pack_hosts')
+    if (not isinstance(pack_hosts, list)
+            or any(not isinstance(host, int) or isinstance(host, bool) for host in pack_hosts)
+            or len(set(pack_hosts)) != len(pack_hosts)
+            or sorted(pack_hosts) != sorted(PACK_HOSTS)):
+        _fail(f'proxy document pack_hosts must be exactly {sorted(PACK_HOSTS)}')
     if len(document['slots']) != len(PROXY_SLOT_UIDS):
         _fail(f'proxy document must carry exactly {len(PROXY_SLOT_UIDS)} slots')
     slots = []
@@ -72,13 +114,44 @@ def validate_proxy_document(document):
             _fail('proxy slot must be an object')
         if raw.get('proxy_only') is not True:
             _fail('proxy slot requires proxy_only: true')
-        if raw.get('evidence_level') != PROXY_EVIDENCE_LEVEL:
-            _fail('proxy slot has an unexpected evidence_level')
-        if raw.get('uid') in seen:
+        if raw.get('pack') not in (True, False):
+            _fail('proxy slot requires pack: true/false')
+        uid = raw.get('uid')
+        is_pack = raw.get('pack') is True
+        if is_pack:
+            if uid not in PROXY_PACK_UIDS:
+                _fail(f'proxy pack slot uid {uid} is not an admitted pack slot')
+            if raw.get('evidence_level') != PROXY_PACK_EVIDENCE_LEVEL:
+                _fail('proxy pack slot has an unexpected evidence_level')
+            expected = PACK_TARGETS[uid]
+            if raw.get('count') != expected[3]:
+                _fail(f'proxy pack slot {uid} has an unexpected count')
+            if raw.get('original_teki') != expected[2]:
+                _fail(f'proxy pack slot {uid} has an unexpected original_teki')
+            if raw.get('first_day') != expected[4]:
+                _fail(f'proxy pack slot {uid} has an unexpected first_day')
+            if raw.get('label') != expected[0]:
+                _fail(f'proxy pack slot {uid} has an unexpected label')
+            if raw.get('stage') != expected[1]:
+                _fail(f'proxy pack slot {uid} has an unexpected stage')
+            if raw.get('cohort') != expected[5]:
+                _fail(f'proxy pack slot {uid} has an unexpected cohort')
+            if raw.get('source_identity') != expected[6]:
+                _fail(f'proxy pack slot {uid} has an unexpected source_identity')
+        else:
+            if uid not in PROXY_SINGLETON_UIDS:
+                _fail(f'proxy singleton slot uid {uid} is not an admitted singleton slot')
+            if raw.get('evidence_level') != PROXY_EVIDENCE_LEVEL:
+                _fail('proxy slot has an unexpected evidence_level')
+            if 'count' in raw:
+                _fail('proxy singleton slot must not carry count')
+            if 'original_teki' in raw:
+                _fail('proxy singleton slot must not carry original_teki')
+        if uid in seen:
             _fail('proxy document has duplicate slot uids')
-        seen.add(raw.get('uid'))
+        seen.add(uid)
         stripped = {key: value for key, value in raw.items()
-                    if key not in ('proxy_only', 'evidence_level')}
+                    if key not in ('proxy_only', 'evidence_level', 'pack', 'count', 'original_teki')}
         slot = normalize_slot(stripped)
         if slot['uid'] not in PROXY_SLOT_UIDS:
             _fail(f'proxy slot uid {slot["uid"]} is not an admitted proxy-only slot')
@@ -91,13 +164,18 @@ def validate_proxy_document(document):
         if slot['evidence'].get('route') is not False:
             _fail('proxy slot evidence.route must be false (unprobed)')
         slot['proxy_only'] = True
-        slot['evidence_level'] = PROXY_EVIDENCE_LEVEL
+        slot['pack'] = is_pack
+        slot['evidence_level'] = (PROXY_PACK_EVIDENCE_LEVEL if is_pack else PROXY_EVIDENCE_LEVEL)
+        if is_pack:
+            slot['count'] = PACK_TARGETS[uid][3]
+            slot['original_teki'] = PACK_TARGETS[uid][2]
         slots.append(slot)
     if set(seen) != set(PROXY_SLOT_UIDS):
         _fail(f'proxy document slots must be exactly {sorted(PROXY_SLOT_UIDS)}')
     slots.sort(key=lambda item: item['uid'])
     return {'schema': PROXY_SCHEMA, 'slots': slots,
-            'reserved_vanilla': list(reserved), 'notes': document.get('notes', '')}
+            'reserved_vanilla': list(reserved), 'pack_hosts': list(pack_hosts),
+            'notes': document.get('notes', '')}
 
 
 def load_proxy_document(path):

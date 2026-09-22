@@ -83,10 +83,39 @@ the non-proxy extractors); the message names the directory.
 
 Proxy placement uses the `sampled-v1` density policy
 (`experimental/pikmin2_seed_bridge.py`): playable species are assigned
-first, each remaining species takes one unique accepted target where its
-terrains match, and species without a target are listed under `unplaced`
-(they stay vanilla). Today there are 33 ground slots, so a 50-species
-declared pool leaves most species `unplaced` on any given seed.
+first on their own 33 committed targets (six-gate species never use
+proxy-only targets), each remaining species takes one unique accepted
+target where its terrains match, and species without a target are listed
+under `unplaced` (they stay vanilla). There are 49 proxy-tier targets:
+the 33 committed ground slots plus a 16-slot proxy-only sibling
+(`docs/PIKMIN2_PROXY_PLACEMENT.json`, schema `p2-proxy-placement-v1`):
+2 Hope singleton dwarf slots and 14 pack generators (Hope grubs,
+Spring dwarfs/grubs, counts 2-3) carrying `pack: true`, member `count`,
+`original_teki`, `first_day`, and honest mechanical-only evidence (pack
+binding verified natively by code review only until the integrator has
+run a launch probe). 49 stays under the native 64-binding cap, enforced
+fail-closed in the sampler.
+
+Pack rule: a pack births 2-5 hosts of the same swapped type, so a large
+or dangerous host (Spotty Bulborb 4, Bulbear 32, Fiery Blowhog 15, Puffy
+Blowhog 16, Armored Cannon Beetle 17, Snitchbug 11, ...) would multiply
+difficulty and crowd the spot. Pack targets therefore admit only
+small-host proxy rows (`pack_hosts: [0, 3, 18, 19, 20, 25, 31, 33]` in
+the sibling, enforced in `_proxy_accepted_targets`; any other host is
+simply ineligible on pack targets, singletons keep the full ground set).
+The set is every host verdict `SAFE` in the host-safety review with no
+open-air/pellet/clearance condition beyond landing space: Chappy 3 /
+Chappb 31 (proven dwarf family, same cohort as the dwarf packs),
+Kabekui 18/19/20 (self-contained burrowers, same cohort as the grub
+packs), Otama 25 (land-capable), Frog 0 / Frow 33 (landing space only).
+Excluded with reason: Qurione 6 (ephemeral 5 s floater, not a durable
+guard), Collec 8 (needs pellets/waypoints unprobed on these slots),
+Napkid 11 / Mar 16 (obligate 60-height fliers; slots carry
+`flight_space: false`), Beatle 17 (firing lane + vehicle), and all
+large/dangerous hosts. Only 20 of the 50 declared proxy rows are
+small-host, so wide pools still leave species `unplaced`; the sampler
+places as many distinct eligible species as the rule allows and never
+fills a target with a repeat while an eligible unplaced species exists.
 
 ## Staging limits
 
