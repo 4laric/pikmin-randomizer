@@ -91,10 +91,17 @@ the 33 committed ground slots plus a 16-slot proxy-only sibling
 (`docs/PIKMIN2_PROXY_PLACEMENT.json`, schema `p2-proxy-placement-v1`):
 2 Hope singleton dwarf slots and 14 pack generators (Hope grubs,
 Spring dwarfs/grubs, counts 2-3) carrying `pack: true`, member `count`,
-`original_teki`, `first_day`, and honest mechanical-only evidence (pack
-binding verified natively by code review only until the integrator has
-run a launch probe). 49 stays under the native 64-binding cap, enforced
-fail-closed in the sampler.
+`original_teki`, `first_day`, and honest mechanical-only evidence. Pack
+binding was proven by a launch probe (2026-09-21, native
+`claude/p2-proxy-family` at `ba6832cef`, unmodified product sampler,
+Forest of Hope and Distant Spring day 2): all 8 packs live on day 2
+bound every member (`P2_BATCH2_BIND` lines per species equal the pack
+count), with no `P2_SETUP_SKIP` and no duplicate-generator abort; the
+6 day-5/day-16 packs share that native path but were not live in the
+probe. Terrain/route stay "unprobed" in the evidence string because the
+`P2_PLACEMENT_SLOT ground/route=1` markers the probe emitted were not
+folded through `scripts/audit_p2_placement_evidence.py`. 49 stays under
+the native 64-binding cap, enforced fail-closed in the sampler.
 
 Pack rule: a pack births 2-5 hosts of the same swapped type, so a large
 or dangerous host (Spotty Bulborb 4, Bulbear 32, Fiery Blowhog 15, Puffy

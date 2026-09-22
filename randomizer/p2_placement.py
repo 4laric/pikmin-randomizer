@@ -35,8 +35,8 @@ DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
 
 PROXY_SCHEMA = 'p2-proxy-placement-v1'
 PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
-PROXY_PACK_EVIDENCE_LEVEL = (PROXY_EVIDENCE_LEVEL + '; pack binding verified natively by code review only '
-                             'until the integrator has run a launch probe')
+PROXY_PACK_EVIDENCE_LEVEL = (PROXY_EVIDENCE_LEVEL + '; pack binding proven by launch probe pk1 on native '
+                             'ba6832cef (every live member bound, 8 day-2 packs)')
 PROXY_SINGLETON_UIDS = frozenset({1849273021, 2049888785})
 PROXY_PACK_UIDS = frozenset({3768801221, 2637843033, 517610653, 2380387682, 3679976242,
                              1102975523, 3417529495, 1428724902, 648204418, 3157218646,
