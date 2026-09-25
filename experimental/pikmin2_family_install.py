@@ -101,9 +101,11 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
-    # Frog lane (inst-frogs #871): Yellow Wollywog (Frog, source 17) stages
-    # through the dedicated frog installer (p2-frog.txt + frog_* poses).
+    # Frog lane (inst-frogs #871): Yellow Wollywog (Frog, source 17) and
+    # Wollywog (MaroFrog, source 18) stage through the dedicated frog
+    # installer (p2-frog.txt + frog_* poses).
     17: 'frog', 'frog': 'frog',
+    18: 'frog', 'marofrog': 'frog',
 }
 
 

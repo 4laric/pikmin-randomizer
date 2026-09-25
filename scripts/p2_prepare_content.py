@@ -44,6 +44,8 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   (``frogs.json`` + ``Frog/`` + ``MaroFrog/`` pose banks, the layout the frog
   installer reads); the Frog adapter stages ``p2-frog.txt`` through
   ``pikmin2_frog_install``.
+* 18 MaroFrog: shares the Frog extraction (``<out>/MaroFrog/`` carries the same
+  ``frogs.json`` bank); the Frog adapter stages both species together.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -99,6 +101,7 @@ ENUM_FOR_SOURCE = {
     1: "Kochappy",
     9: "Kogane",
     17: "Frog",
+    18: "MaroFrog",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -454,12 +457,14 @@ def extract_sokkuri(iso, dest, pose_limit=6):
 
 
 def extract_frog(iso, research, dest, pose_limit=6):
-    """Build <dest>/Frog/ via the Frog extractor.
+    """Build <dest>/Frog/ + <dest>/MaroFrog/ via the Frog extractor.
 
     ``pikmin2_frog_assets.extract`` produces the source bank
-    (``frogs.json`` + ``Frog/`` + ``MaroFrog/`` pose meshes); the Frog
-    adapter stages ``p2-frog.txt`` from that tree via
-    ``experimental.pikmin2_frog_install``.
+    (``frogs.json`` + ``Frog/`` + ``MaroFrog/`` pose meshes); the full bank is
+    placed under both enum dirs because the shared-contract frog installer
+    validates the whole two-species manifest per install (like the dweevil
+    four-species bank). The Frog adapter stages ``p2-frog.txt`` from either
+    tree via ``experimental.pikmin2_frog_install``.
     """
     from experimental import pikmin2_frog_assets as frog
 
@@ -470,18 +475,19 @@ def extract_frog(iso, research, dest, pose_limit=6):
         raise ValueError(f"research checkout not found: {research}")
     if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
         raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
-    target = dest / "Frog"
-    if target.exists():
-        raise ValueError(f"content dir already exists: {target}")
+    for enum_name in ("Frog", "MaroFrog"):
+        if (dest / enum_name).exists():
+            raise ValueError(f"content dir already exists: {dest / enum_name}")
     tmp = dest / ".tmp-frog"
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
         frog.extract(iso, research, tmp, limit=pose_limit)
-        shutil.copytree(tmp, target)
+        for enum_name in ("Frog", "MaroFrog"):
+            shutil.copytree(tmp, dest / enum_name)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return target
+    return [dest / e for e in ("Frog", "MaroFrog")]
 
 
 def extract_proxy(iso, dest, source_id, pose_limit=None):
@@ -543,6 +549,7 @@ EXTRACTORS = {
     23: "extract_sarai",
     9: "extract_kogane",
     17: "extract_frog",
+    18: "extract_frog",
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
@@ -582,6 +589,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     extracted = []
     no_extractor = []
     dweevil_done = False
+    frog_done = False
     for source_id in supported:
         if source_id == 44:
             extract_bluekochappy(iso, research, out, pose_limit=pose_limit)
@@ -610,7 +618,14 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extract_sokkuri(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 17:
-            extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
+            if not frog_done:
+                extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
+                frog_done = True
+            extracted.append(source_id)
+        elif source_id == 18:
+            if not frog_done:
+                extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
+                frog_done = True
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
