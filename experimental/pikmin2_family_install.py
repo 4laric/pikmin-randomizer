@@ -112,6 +112,21 @@ IDENTITY_FAMILY = {
     53: 'chappy', 'kingchappy': 'chappy',
     67: 'chappy', 'leafchappy': 'chappy',
     76: 'chappy', 'kumakochappy': 'chappy',
+    # Campaign-identity Uji family (#871): UjiA (Female Sheargrub, 12), UjiB
+    # (Male Sheargrub, 13) and Tobi (Shearwig, 14) stage the p2-uji-actors/bank
+    # sidecars through experimental.pikmin2_uji_content.
+    12: 'uji', 'ujia': 'uji',
+    13: 'uji', 'ujib': 'uji',
+    14: 'uji', 'tobi': 'uji',
+    # Campaign-identity ground invertebrates (#871): ElecBug (Anode Beetle,
+    # source 28) stages its rows of the shared p2-ground-actors/bank sidecars
+    # through experimental.pikmin2_elecbug_content, merging with other
+    # ground-identity species. TamagoMushi (68) joins in its own landing.
+    28: 'elecbug', 'elecbug': 'elecbug',
+    # Campaign-identity snagret family (#871): DangoMushi (Segmented
+    # Crawbster, source 94) stages its rows of the p2-snagret-actors/bank
+    # sidecars through experimental.pikmin2_dangomushi_content.
+    94: 'dangomushi', 'dangomushi': 'dangomushi',
 }
 
 
@@ -432,6 +447,179 @@ def _adapt_sokkuri(source, run, actors):
                 generators=[g for g, _ in pairs], ground_receipt=receipt)
 
 
+def _uji_content_root(source, actors):
+    """Resolve the identity-keyed content root for a Uji install.
+
+    ``install_layout`` groups by family, so this adapter runs once per layout
+    with every Uji actor while ``source`` is only the first binding's
+    ``<content_root>/<enum>`` species dir. The content root is the directory
+    whose per-species children hold every bound species' ``uji.json`` (same
+    shape as the proxy adapter's content-root resolution).
+    """
+    species = {species for _, species in actors}
+    candidates = [Path(source), Path(source).parent]
+    for candidate in candidates:
+        if all((candidate / name / 'uji.json').is_file() for name in species):
+            return candidate
+    raise StagingError(
+        f'Uji content root missing uji.json for {sorted(species)} under {source}')
+
+
+def _validate_uji(source):
+    """Pre-flight check for one Uji species dir (full plan runs at install)."""
+    from experimental import pikmin2_uji_content as uji_content
+    uji_content.validate_source(source)
+
+
+def _adapt_uji(source, run, actors):
+    """Adapter for the campaign-identity Uji family (sources 12/13/14).
+
+    Stages all Uji actors through ``experimental.pikmin2_uji_content`` in one
+    grouped call: the ``p2-uji-actors.txt``/``p2-uji-bank.txt`` sidecars (the
+    ``P2_UJI_ACTORS_1``/``P2_UJI_BANK_1`` shape the native ``pc_p2_uji_*``
+    module parses) plus every bound species' pose meshes. ``install_layout``
+    already groups bindings by family, so this runs once per layout with all
+    Uji generators.
+    """
+    from experimental import pikmin2_uji_content as uji_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in uji_content.UJI_SPECIES:
+            raise StagingError(f'Uji adapter got non-Uji species: {species!r}')
+    if not pairs:
+        raise StagingError('Uji install requires at least one generator')
+    content_root = _uji_content_root(source, pairs)
+    return uji_content.stage_uji(content_root, run, pairs)
+
+
+def _validate_elecbug(source):
+    """Pre-flight check for the ElecBug (Anode Beetle, source 28) content.
+
+    Accepts the ElecBug extraction tree (``elecbug.json``) staged through
+    ``experimental.pikmin2_elecbug_content``, as well as the legacy
+    ground-invertebrate import dir (``ground_inverts.json``) consumed as-is by
+    ``experimental.pikmin2_ground_inverts_install``; the full schema/policy
+    contract stays authoritative inside the respective installer.
+    """
+    from experimental import pikmin2_elecbug_content as elecbug_content
+    source = Path(source)
+    if (source / 'elecbug.json').is_file():
+        elecbug_content.validate_source(source)
+        return
+    manifest = source / 'ground_inverts.json'
+    if not manifest.is_file():
+        raise StagingError(f'ElecBug ground manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'ElecBug ground manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or species.get('ElecBug') != 28:
+        # Manifests key species by name to enemy id in batch-2 shape; also
+        # accept the nested ``{'enemy_id': 28}`` shape.
+        entry = species.get('ElecBug')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or enemy_id != 28:
+            raise StagingError(f'ElecBug ground manifest identity mismatch: {manifest}')
+
+
+def _adapt_elecbug(source, run, actors):
+    """Adapter for ElecBug (source 28) via the ElecBug content stager.
+
+    Writes the ElecBug rows of ``p2-ground-actors.txt`` + ``p2-ground-bank.txt``
+    (plus visuals) in the exact batch-2 shape the native ``pc_p2_elecbug_setup``
+    parses (``P2_GROUND_ACTORS_1`` + ``P2_GROUND_BANK_1``,
+    ``engine/pc_port/pc_p2_elecbug.cpp:460-501``), merging with rows other
+    ground-identity species already staged. In bridge mode the native setup
+    replaces the filed ids from the seed (``pc_p2_campaign_ids``), so filed
+    generators are placeholders there; outside bridge mode they bind.
+
+    An ``elecbug.json`` tree (what ``extract_elecbug`` produces) stages through
+    ``experimental.pikmin2_elecbug_content``; a legacy ``ground_inverts.json``
+    import dir keeps the shared ground-installer path unchanged.
+    """
+    from experimental import pikmin2_elecbug_content as elecbug_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'ElecBug':
+            raise StagingError(f'ElecBug adapter got non-ElecBug species: {species!r}')
+    if not pairs:
+        raise StagingError('ElecBug install requires at least one generator')
+    if (Path(source) / 'elecbug.json').is_file():
+        return elecbug_content.stage_elecbug_ground(Path(source), run, pairs)
+    from experimental import pikmin2_ground_inverts_install as ground
+    try:
+        receipt = ground.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='ElecBug', source_id=28,
+                generators=[g for g, _ in pairs], ground_receipt=receipt)
+
+
+def _validate_dangomushi(source):
+    """Pre-flight check for the DangoMushi (Segmented Crawbster, source 94) content.
+
+    Accepts the DangoMushi extraction tree (``dangomushi.json``) staged through
+    ``experimental.pikmin2_dangomushi_content``, as well as the legacy
+    snagret import dir (``snagret.json``) consumed as-is by
+    ``experimental.pikmin2_snagret_install``; the full schema/policy contract
+    stays authoritative inside the respective installer.
+    """
+    from experimental import pikmin2_dangomushi_content as dangomushi_content
+    source = Path(source)
+    if (source / 'dangomushi.json').is_file():
+        dangomushi_content.validate_source(source)
+        return
+    manifest = source / 'snagret.json'
+    if not manifest.is_file():
+        raise StagingError(f'DangoMushi snagret manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'DangoMushi snagret manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_SNAGRET_1' or species.get('DangoMushi') != 94:
+        # Manifests key species by name to enemy id in batch-1 shape; also
+        # accept the nested ``{'enemy_id': 94}`` shape.
+        entry = species.get('DangoMushi')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_SNAGRET_1' or enemy_id != 94:
+            raise StagingError(f'DangoMushi snagret manifest identity mismatch: {manifest}')
+
+
+def _adapt_dangomushi(source, run, actors):
+    """Adapter for DangoMushi (source 94) via the DangoMushi content stager.
+
+    Writes the DangoMushi rows of ``p2-snagret-actors.txt`` +
+    ``p2-snagret-bank.txt`` (plus visuals) in the exact batch-3 shape the
+    native ``pc_p2_dangomushi_setup`` parses
+    (``P2_SNAGRET_ACTORS_1`` + ``P2_SNAGRET_BANK_1``,
+    ``engine/pc_port/pc_p2_dangomushi.cpp:737-806``), merging with rows other
+    snagret-family species already staged.
+
+    A ``dangomushi.json`` tree (what ``extract_dangomushi`` produces) stages
+    through ``experimental.pikmin2_dangomushi_content``; a legacy
+    ``snagret.json`` import dir keeps the shared snagret-installer path
+    unchanged.
+    """
+    from experimental import pikmin2_dangomushi_content as dangomushi_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'DangoMushi':
+            raise StagingError(f'DangoMushi adapter got non-DangoMushi species: {species!r}')
+    if not pairs:
+        raise StagingError('DangoMushi install requires at least one generator')
+    if (Path(source) / 'dangomushi.json').is_file():
+        return dangomushi_content.stage_dangomushi(Path(source), run, pairs)
+    from experimental import pikmin2_snagret_install as snagret
+    try:
+        receipt = snagret.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='DangoMushi', source_id=94,
+                generators=[g for g, _ in pairs], snagret_receipt=receipt)
+
+
 def _read_identity_source(source, source_id, enum_name):
     path = Path(source) / 'identity.json'
     if not path.is_file():
@@ -648,6 +836,9 @@ ADAPTERS = {
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
+    'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},
+    'dangomushi': {'install': _adapt_dangomushi, 'validate': _validate_dangomushi},
+    'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},

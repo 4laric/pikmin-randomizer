@@ -48,6 +48,7 @@ import json
 import re
 from pathlib import Path
 
+from experimental import pikmin2_ground_species_content as ground
 from experimental.pikmin2_staging import StagingError
 
 SOURCE_ID = 79
@@ -286,9 +287,12 @@ def stage_sokkuri_ground(source, run, actors):
     ``run`` is the run directory whose text-bank slots and
     ``assets/dataDir/courses/pikmin2room/`` room receive the staged files;
     ``actors`` is the seed's ``[(generator_id, 'Sokkuri'), ...]`` bindings.
-    Idempotent: a second call over the same run is a no-op success when every
-    staged file is byte-identical; a conflicting staged file is refused with
-    ``StagingError`` before any write.
+    Rows merge with other ground-identity species' staged rows (see
+    :mod:`experimental.pikmin2_ground_species_content`), so one seed can bind
+    Sokkuri together with ElecBug or TamagoMushi. Idempotent: a second call
+    over the same run is a no-op success when every staged file is
+    byte-identical; a conflicting staged file is refused with ``StagingError``
+    before any write.
     """
     source, run = Path(source), Path(run)
     actors = list(actors)
@@ -298,17 +302,42 @@ def stage_sokkuri_ground(source, run, actors):
     if not room.is_dir() or room.is_symlink():
         raise StagingError(f'Sokkuri room directory missing for run staging: {room}')
     actors_payload, bank_payload, mesh_files, digest, skipped = plan(source, actors)
+    # Merge with rows other ground-identity species already staged: the plan
+    # payloads above carry exactly this species' rows in the canonical
+    # bank_text/actors_text shape, so they round-trip through the shared
+    # parser and merge byte-identically when staged alone.
+    own_blocks = [block for block in ground.parse_bank(bank_payload)
+                  if block[0] == SPECIES]
+    if len(own_blocks) != 1:
+        raise StagingError('Sokkuri plan carries no Sokkuri bank block')
+    _species, _enemy_id, own_clips = own_blocks[0]
+    actors_path, bank_file = run / ACTORS_TXT, run / BANK_TXT
+    actors_payload = ground.merge_actors(
+        actors_path.read_bytes() if actors_path.is_file() else None,
+        SPECIES, [int(generator) for generator, _species in actors])
+    bank_payload = ground.merge_bank(
+        bank_file.read_bytes() if bank_file.is_file() else None,
+        SPECIES, SOURCE_ID, own_clips)
     targets = {ACTORS_TXT: actors_payload, BANK_TXT: bank_payload}
     targets.update({str(ROOM / name): payload for name, payload in mesh_files.items()})
-    conflicts = sorted(name for name, payload in targets.items()
-                       if (run / name).is_file() and (run / name).read_bytes() != payload)
-    if conflicts:
-        raise StagingError('Refusing conflicting Sokkuri ground staging: ' + ', '.join(conflicts))
-    if all((run / name).is_file() for name in targets):
+    # Sidecar conflicts surface inside the merge above (a restaged own-species
+    # block must equal what is already there); only a mesh file that exists
+    # with different bytes is a conflict here. Merged sidecars legitimately
+    # differ from the staged files when they gain new rows.
+    mesh_conflicts = sorted(
+        name for name, payload in mesh_files.items()
+        if (run / str(ROOM / name)).is_file()
+        and (run / str(ROOM / name)).read_bytes() != payload)
+    if mesh_conflicts:
+        raise StagingError(
+            'Refusing conflicting Sokkuri ground staging: ' + ', '.join(mesh_conflicts))
+    if all((run / name).is_file() and (run / name).read_bytes() == payload
+           for name, payload in targets.items()):
         staged = 'existing_identical'
     else:
         for name, payload in targets.items():
-            (run / name).write_bytes(payload)
+            if not (run / name).is_file() or (run / name).read_bytes() != payload:
+                (run / name).write_bytes(payload)
         staged = 'written'
     receipt = dict(species=SPECIES, source_id=SOURCE_ID, staged=staged,
                    manifest_sha256=digest,

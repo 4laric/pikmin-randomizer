@@ -610,11 +610,10 @@ def validate(m):
             if m.get('p2_proxy_tier') is not None:
                 from .p2_proxy import tier_ids as _tier_ids
                 admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
-            # inst-chappy lane (#871): species with own-identity family installers
-            # are seedable for campaign evidence before roster admission (the
-            # orchestrator admits after evidence). Without this, a proxy-tier
-            # seed rebound to an identity species fails closed here even though
-            # install_layout can stage it.
+            # integ (#871): species with own-identity family installers are
+            # seedable for campaign evidence before roster admission (the
+            # orchestrator admits after evidence). A validate() pass is not
+            # admission: P2_PLAYABLE_POOL remains the single source of truth.
             try:
                 from experimental.pikmin2_family_install import IDENTITY_FAMILY as _IDENTITY
                 _identity_ids = {k for k, v in _IDENTITY.items()
