@@ -101,6 +101,15 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # inst-legs lane (#871): Damagumo (56, Beady Long Legs) and BigFoot (69,
+    # Raging Long Legs) share the long_legs adapter below (shared installer +
+    # bind-mod visual staging); Jigumo (63, Hermit Crawmad) reuses the shared
+    # aquatic installer directly (full-family source per species dir, like the
+    # dweevil 59-62 precedent). Proxy rows for 56/63/69 are removed; a proxy
+    # row coexisting with these rows fails closed via _proxy_family_entries.
+    56: 'long_legs', 'damagumo': 'long_legs',
+    69: 'long_legs', 'bigfoot': 'long_legs',
+    63: 'aquatic', 'jigumo': 'aquatic',
 }
 
 
@@ -583,6 +592,141 @@ def _adapt_proxy(source, run, actors):
     return proxy_content.stage_proxy(content_root, run, pairs)
 
 
+def _validate_long_legs(source):
+    """Pre-flight check for the Long Legs identity content (56/69, plus 66).
+
+    The source is the long-legs import dir (``long-legs-family.json`` for
+    Houdai 66 + BigFoot 69, plus ``damagumo-family.json`` + ``Demon/enemy.bmd``
+    when a Damagumo actor is staged). The full contract stays authoritative
+    inside ``experimental.pikmin2_long_legs_install.plan``; this only proves
+    the identity manifests are present before the run tree is written.
+    """
+    from experimental.pikmin2_long_legs_install import MANIFEST as _LL_MANIFEST
+    from experimental.pikmin2_long_legs_install import DAMAGUMO_MANIFEST as _DM_MANIFEST
+    source = Path(source)
+    manifest_path = source / _LL_MANIFEST
+    if not manifest_path.is_file():
+        raise StagingError(f'Long Legs manifest missing for identity content: {manifest_path}')
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Long Legs manifest unreadable: {manifest_path}') from error
+    if manifest.get('schema') != 1 or manifest.get('family') != 'Long Legs':
+        raise StagingError(f'Long Legs manifest identity mismatch: {manifest_path}')
+    if set(manifest.get('profiles', {})) != {'66', '69'}:
+        raise StagingError(f'Long Legs profile set mismatch: {manifest_path}')
+
+
+def _adapt_long_legs(source, run, actors):
+    """Adapter for Long Legs (Damagumo 56 / Houdai 66 / BigFoot 69).
+
+    Reuses ``experimental.pikmin2_long_legs_install.install`` for the
+    profile/bank/actor configs plus the ``*_enemy.bmd`` meshes, then stages
+    the native bind shapes (``longlegs_<species>_bind_00.mod``) the
+    ``pc_p2_long_legs`` draw path opens: Houdai/BigFoot via
+    ``experimental.pikmin2_long_legs_visual.convert``, Damagumo via the same
+    bind conversion applied to the staged ``Damagumo_enemy.bmd``.
+    ``install_layout`` groups by family, so this runs once per layout with all
+    Long Legs actors.
+    """
+    from experimental import pikmin2_long_legs_install as long_legs
+    from experimental import pikmin2_long_legs_visual as long_visual
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in ('Damagumo', 'Houdai', 'BigFoot'):
+            raise StagingError(f'Long Legs adapter got non-Long-Legs species: {species!r}')
+    if not pairs:
+        raise StagingError('Long Legs install requires at least one generator')
+    # The shared installer refuses an unused Damagumo source mesh, but the
+    # identity content dirs carry the full family tree (so a grouped
+    # Damagumo+BigFoot layout stages from either source). Prune the Demon
+    # files via a temp source when no Damagumo actor is staged.
+    import shutil as _shutil
+    import tempfile as _tempfile
+    staged_names = {species for _, species in pairs}
+    _tmpdir = None
+    try:
+        effective_source = Path(source)
+        if 'Damagumo' not in staged_names:
+            demon_manifest = Path(source) / 'damagumo-family.json'
+            demon_mesh = Path(source) / 'Demon' / 'enemy.bmd'
+            if demon_manifest.is_file() or demon_mesh.is_file():
+                _tmpdir = _tempfile.TemporaryDirectory()
+                _tmp = Path(_tmpdir.name)
+                for _child in Path(source).iterdir():
+                    if _child.name == 'damagumo-family.json':
+                        continue
+                    if _child.name == 'Demon':
+                        continue
+                    if _child.is_dir():
+                        _shutil.copytree(_child, _tmp / _child.name)
+                    else:
+                        _shutil.copyfile(_child, _tmp / _child.name)
+                effective_source = _tmp
+        try:
+            receipt = long_legs.install(effective_source, Path(run), pairs)
+        except ValueError as error:
+            raise StagingError(str(error)) from error
+    finally:
+        if _tmpdir is not None:
+            _tmpdir.cleanup()
+    # Stage the native bind shapes from the just-installed meshes. The shared
+    # visual converter covers Houdai/BigFoot only and rejects a Damagumo mesh
+    # as stray, so a Damagumo mesh is parked aside for the shared conversion,
+    # then restored and converted via the identical bind bake.
+    run = Path(run)
+    room = run / 'assets/dataDir/courses/pikmin2room'
+    staged = {species for _, species in pairs}
+    parked = None
+    if 'Damagumo' in staged:
+        mesh_path = room / 'Damagumo_enemy.bmd'
+        if mesh_path.is_file():
+            parked = room / 'Damagumo_enemy.bmd.parked'
+            mesh_path.rename(parked)
+    try:
+        try:
+            long_visual.convert(room)
+        except ValueError as error:
+            raise StagingError(str(error)) from error
+    finally:
+        if parked is not None and parked.is_file():
+            parked.rename(room / 'Damagumo_enemy.bmd')
+    if 'Damagumo' in staged:
+        mesh_path = room / 'Damagumo_enemy.bmd'
+        mod_path = room / 'longlegs_Damagumo_bind_00.mod'
+        if not mesh_path.is_file():
+            raise StagingError(f'Damagumo staged mesh missing for bind conversion: {mesh_path}')
+        if mod_path.is_file():
+            raise StagingError(f'Refusing existing/conflicting Damagumo bind mod: {mod_path}')
+        # Damagumo bind bake (pinned #727 policy): explicit bind matrices via
+        # joint_matrices(model, None) + rigid bake. The shared visual
+        # _conversion uses the skinning draw-matrices path, which the strict
+        # decoder rejects for the Damagumo mesh (unsupported display-list
+        # attribute); the joint-matrices path is the model's own bind pose.
+        from experimental.pikmin2_convert import blocks as _blocks
+        from experimental.pikmin2_convert import decode as _decode
+        from experimental.pikmin2_convert import write_model as _write_model
+        from experimental.pikmin2_rigid import joint_matrices as _joint_matrices
+        import tempfile
+        model = mesh_path.read_bytes()
+        try:
+            matrices = _joint_matrices(_blocks(model), None)
+            decoded = _decode(model, True, bake_rigid=True, draw_matrices=matrices)
+            with tempfile.TemporaryDirectory() as _tmp:
+                _target = Path(_tmp) / 'bind.mod'
+                _write_model(decoded, _target, 'enemy.bmd')
+                data = _target.read_bytes()
+        except (ValueError, KeyError, ArithmeticError) as error:
+            raise StagingError(f'Damagumo bind conversion failed: {error}') from error
+        if not data:
+            raise StagingError('Damagumo bind conversion produced no bytes')
+        mod_path.write_bytes(data)
+    return dict(receipt, bind_mods=sorted(
+        (room / name).name for name in (
+            [f'longlegs_{s}_bind_00.mod' for s in staged
+             if (room / f'longlegs_{s}_bind_00.mod').is_file()])))
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
@@ -595,6 +739,7 @@ ADAPTERS = {
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'long_legs': {'install': _adapt_long_legs, 'validate': _validate_long_legs},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 
