@@ -107,6 +107,7 @@ IDENTITY_FAMILY = {
     # must never coexist.
     2: 'chappy', 'chappy': 'chappy',
     33: 'chappy', 'firechappy': 'chappy',
+    35: 'chappy', 'kumachappy': 'chappy',
 }
 
 
