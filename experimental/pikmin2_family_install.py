@@ -109,6 +109,7 @@ IDENTITY_FAMILY = {
     33: 'chappy', 'firechappy': 'chappy',
     35: 'chappy', 'kumachappy': 'chappy',
     43: 'chappy', 'yellowchappy': 'chappy',
+    53: 'chappy', 'kingchappy': 'chappy',
 }
 
 
