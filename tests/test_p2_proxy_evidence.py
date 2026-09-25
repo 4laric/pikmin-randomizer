@@ -24,7 +24,7 @@ def rows_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(proxy, "_roster_enums", lambda: stub)
     rows = tmp_path / "rows"
     rows.mkdir()
-    for source_id, enum in ((2, "Chappy"), (24, "Tank")):
+    for source_id, enum in ((2, "Chappy"), (26, "Catfish")):
         (rows / f"{source_id}_{enum}.json").write_text(json.dumps(
             {"schema": 1, "source_id": source_id, "enum_name": enum,
              "host_teki": 4, "pose_limit": 4,
@@ -40,9 +40,9 @@ def write_probe(tmp_path, name="a6", **fields):
     digest = hashlib.sha256(b"natural gameplay log\n").hexdigest()
     payload = {"probe": name, "ok": True, "fatal": None,
                "exe_sha256": "cd" * 32, "table": [{"source": 2}],
-               "bound_species": [2, 24],
-               "drawn_live": {"2": {"frames": 120}, "24": {"frames": 96}},
-               "expected": [2, 24], "skips": [],
+               "bound_species": [2, 26],
+               "drawn_live": {"2": {"frames": 120}, "26": {"frames": 96}},
+               "expected": [2, 26], "skips": [],
                "log": "probe.log", "log_sha256": digest}
     payload.update(fields)
     result = probe_dir / "result.json"
@@ -60,7 +60,7 @@ def test_records_and_is_idempotent(tmp_path, rows_dir):
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 0
     assert [line for line in lines if line.startswith("RECORDED")] and len(lines) == 2
-    for source_id, enum in ((2, "Chappy"), (24, "Tank")):
+    for source_id, enum in ((2, "Chappy"), (26, "Catfish")):
         document = read_row(rows_dir, source_id, enum)
         assert document["evidence"]["run"] == "a6"
         assert document["evidence"]["log_sha256"] == \
@@ -81,16 +81,16 @@ def test_bound_but_not_drawn_is_not_recorded(tmp_path, rows_dir):
     result = write_probe(tmp_path, drawn_live={"2": {"frames": 5}})
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("24/Tank" in line and "not drawn" in line for line in lines)
+    assert any("26/Catfish" in line and "not drawn" in line for line in lines)
     assert "evidence" in read_row(rows_dir, 2, "Chappy")
-    assert "evidence" not in read_row(rows_dir, 24, "Tank")
+    assert "evidence" not in read_row(rows_dir, 26, "Catfish")
 
 
 def test_expected_but_unbound_refused(tmp_path, rows_dir):
     result = write_probe(tmp_path, bound_species=[2])
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("24/Tank" in line and "not in bound_species" in line
+    assert any("26/Catfish" in line and "not in bound_species" in line
                for line in lines)
 
 
@@ -106,7 +106,7 @@ def test_fatal_empty_table_and_skips_refuse(tmp_path, rows_dir):
     assert refused == 1
     assert any("2/Chappy" in line and "skips" in line for line in lines)
     assert "evidence" not in read_row(rows_dir, 2, "Chappy")
-    assert "evidence" in read_row(rows_dir, 24, "Tank")
+    assert "evidence" in read_row(rows_dir, 26, "Catfish")
 
 
 def test_ok_false_and_log_mismatch_refuse_all(tmp_path, rows_dir):
@@ -146,7 +146,7 @@ def test_cli_writes_and_reports(tmp_path, rows_dir, capsys):
     assert recorder.main(["--result", str(result), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 0
     out = capsys.readouterr().out
-    assert "RECORDED 2/Chappy" in out and "RECORDED 24/Tank" in out
+    assert "RECORDED 2/Chappy" in out and "RECORDED 26/Catfish" in out
     assert recorder.main(["--result", str(result), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 0
     assert "UNCHANGED 2/Chappy" in capsys.readouterr().out
@@ -163,7 +163,7 @@ def test_dict_skip_naming_species_refuses(tmp_path, rows_dir):
     assert refused == 1
     assert any("2/Chappy" in line and "skips" in line for line in lines)
     assert "evidence" not in read_row(rows_dir, 2, "Chappy")
-    assert "evidence" in read_row(rows_dir, 24, "Tank")
+    assert "evidence" in read_row(rows_dir, 26, "Catfish")
 
 
 def test_rerecord_on_later_day_is_noop(tmp_path, rows_dir):

@@ -106,6 +106,14 @@ IDENTITY_FAMILY = {
     # installer (p2-frog.txt + frog_* poses).
     17: 'frog', 'frog': 'frog',
     18: 'frog', 'marofrog': 'frog',
+    # Frogs round 2 (inst2-frogs #871): Fiery Blowhog (Tank 24) + Watery
+    # Blowhog (Wtank 25) share the tank bank (p2-tank.txt); Cloaking
+    # Burrow-nit (Armor 15) stages via the ground family; Armored Cannon
+    # Beetle Larva (Kabuto 75) stages via its own bank (p2-kabuto.txt).
+    24: 'tank', 'tank': 'tank',
+    25: 'tank', 'wtank': 'tank',
+    15: 'armor', 'armor': 'armor',
+    75: 'kabuto', 'kabuto': 'kabuto',
 }
 
 
@@ -624,6 +632,72 @@ def _adapt_proxy(source, run, actors):
     return proxy_content.stage_proxy(content_root, run, pairs)
 
 
+def _validate_tank(source):
+    """Pre-flight check for the Tank/Wtank bank (tank.json + Tank/ + Wtank/)."""
+    source = Path(source)
+    if not (source / 'tank.json').is_file():
+        raise StagingError(f'Tank bank missing for identity content: {source / "tank.json"}')
+
+
+def _adapt_tank(source, run, actors):
+    """Adapter for Tank (24) + Wtank (25): stage p2-tank.txt + poses."""
+    from experimental import pikmin2_tank_identity_install as tank
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in ('Tank', 'Wtank'):
+            raise StagingError(f'Tank adapter got non-Tank species: {species!r}')
+    if not pairs:
+        raise StagingError('Tank install requires at least one generator')
+    try:
+        return tank.install(Path(source), Path(run), pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+
+
+def _validate_armor(source):
+    """Pre-flight check for the Armor ground bank (ground_inverts.json)."""
+    source = Path(source)
+    if not (source / 'ground_inverts.json').is_file():
+        raise StagingError(f'Armor bank missing for identity content: {source / "ground_inverts.json"}')
+
+
+def _adapt_armor(source, run, actors):
+    """Adapter for Armor (15) via the shared ground installer."""
+    from experimental import pikmin2_ground_inverts_install as ground
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'Armor':
+            raise StagingError(f'Armor adapter got non-Armor species: {species!r}')
+    if not pairs:
+        raise StagingError('Armor install requires at least one generator')
+    try:
+        return ground.install(Path(source), Path(run), pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+
+
+def _validate_kabuto(source):
+    """Pre-flight check for the Kabuto bank (cannon_projectile.json)."""
+    source = Path(source)
+    if not (source / 'cannon_projectile.json').is_file():
+        raise StagingError(f'Kabuto bank missing for identity content: {source / "cannon_projectile.json"}')
+
+
+def _adapt_kabuto(source, run, actors):
+    """Adapter for Kabuto (75): stage p2-kabuto.txt + poses."""
+    from experimental import pikmin2_kabuto_identity_install as kabuto
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'Kabuto':
+            raise StagingError(f'Kabuto adapter got non-Kabuto species: {species!r}')
+    if not pairs:
+        raise StagingError('Kabuto install requires at least one generator')
+    try:
+        return kabuto.install(Path(source), Path(run), pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
@@ -637,6 +711,9 @@ ADAPTERS = {
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
+    'tank': {'install': _adapt_tank, 'validate': _validate_tank},
+    'armor': {'install': _adapt_armor, 'validate': _validate_armor},
+    'kabuto': {'install': _adapt_kabuto, 'validate': _validate_kabuto},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 

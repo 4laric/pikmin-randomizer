@@ -46,6 +46,17 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   ``pikmin2_frog_install``.
 * 18 MaroFrog: shares the Frog extraction (``<out>/MaroFrog/`` carries the same
   ``frogs.json`` bank); the Frog adapter stages both species together.
+* 24 Tank: ``pikmin2_tank_assets.extract`` -> ``<out>/Tank/``
+  (``tank.json`` + ``Tank/`` + ``Wtank/`` pose banks); the Tank adapter stages
+  ``p2-tank.txt`` through ``pikmin2_tank_identity_install``.
+* 25 Wtank: shares the Tank extraction (``<out>/Wtank/`` carries the same
+  ``tank.json`` bank); the Tank adapter stages both species together.
+* 15 Armor: ``pikmin2_ground_inverts_assets.extract`` -> ``<out>/Armor/``
+  (``ground_inverts.json`` + per-species banks); the Armor adapter stages the
+  ground files through ``pikmin2_ground_inverts_install``.
+* 75 Kabuto: ``pikmin2_cannon_projectile_assets.extract`` -> ``<out>/Kabuto/``
+  (``cannon_projectile.json`` + per-species banks); the Kabuto adapter stages
+  ``p2-kabuto.txt`` through ``pikmin2_kabuto_identity_install``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -100,9 +111,12 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
     9: "Kogane",
+    15: "Armor",
     17: "Frog",
     18: "MaroFrog",
     23: "Sarai",
+    24: "Tank",
+    25: "Wtank",
     44: "BlueKochappy",
     45: "YellowKochappy",
     54: "Miulin",
@@ -112,6 +126,7 @@ ENUM_FOR_SOURCE = {
     60: "WaterOtakara",
     61: "GasOtakara",
     62: "ElecOtakara",
+    75: "Kabuto",
     78: "MiniHoudai",
     79: "Sokkuri",
 }
@@ -490,6 +505,84 @@ def extract_frog(iso, research, dest, pose_limit=6):
     return [dest / e for e in ("Frog", "MaroFrog")]
 
 
+def extract_tank(iso, research, dest, pose_limit=3):
+    """Build <dest>/Tank/ + <dest>/Wtank/ via the Tank extractor.
+
+    ``pikmin2_tank_assets.extract`` produces the source bank (``tank.json`` +
+    ``Tank/`` + ``Wtank/`` pose meshes); the full bank is placed under both
+    enum dirs because the tank installer validates the whole two-species
+    manifest per install (like frog/dweevil).
+    """
+    from experimental import pikmin2_tank_assets as tank
+
+    iso, research, dest = Path(iso), Path(research), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    for enum_name in ("Tank", "Wtank"):
+        if (dest / enum_name).exists():
+            raise ValueError(f"content dir already exists: {dest / enum_name}")
+    tmp = dest / ".tmp-tank"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        tank.extract(iso, tmp, research, pose_limit=pose_limit)
+        for enum_name in ("Tank", "Wtank"):
+            shutil.copytree(tmp, dest / enum_name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return [dest / e for e in ("Tank", "Wtank")]
+
+
+def extract_armor(iso, research, dest, pose_limit=6):
+    """Build <dest>/Armor/ via the ground-invertebrate extractor."""
+    from experimental import pikmin2_ground_inverts_assets as ground
+
+    iso, research, dest = Path(iso), Path(research), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    target = dest / "Armor"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-armor"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        ground.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_kabuto(iso, research, dest, pose_limit=6):
+    """Build <dest>/Kabuto/ via the cannon-projectile extractor."""
+    from experimental import pikmin2_cannon_projectile_assets as cannon
+
+    iso, research, dest = Path(iso), Path(research), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    target = dest / "Kabuto"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-kabuto"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        cannon.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -550,6 +643,10 @@ EXTRACTORS = {
     9: "extract_kogane",
     17: "extract_frog",
     18: "extract_frog",
+    24: "extract_tank",
+    25: "extract_tank",
+    15: "extract_armor",
+    75: "extract_kabuto",
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
@@ -590,6 +687,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     no_extractor = []
     dweevil_done = False
     frog_done = False
+    tank_done = False
     for source_id in supported:
         if source_id == 44:
             extract_bluekochappy(iso, research, out, pose_limit=pose_limit)
@@ -626,6 +724,22 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             if not frog_done:
                 extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
                 frog_done = True
+            extracted.append(source_id)
+        elif source_id == 24:
+            if not tank_done:
+                extract_tank(iso, research, out, pose_limit=pose_limit)
+                tank_done = True
+            extracted.append(source_id)
+        elif source_id == 25:
+            if not tank_done:
+                extract_tank(iso, research, out, pose_limit=pose_limit)
+                tank_done = True
+            extracted.append(source_id)
+        elif source_id == 15:
+            extract_armor(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 75:
+            extract_kabuto(iso, research, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
