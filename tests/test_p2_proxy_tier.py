@@ -37,7 +37,7 @@ def test_tier_ids_declared_vs_proven():
     rows = load_rows()
     declared = tier_ids("declared")
     assert declared == sorted(row["source_id"] for row in rows)
-    assert {2} <= set(declared)
+    assert {10} <= set(declared)
     # inst-frogs #871: Frog (17) graduated to its own identity installer.
     assert 17 not in set(declared)
     # Proven is exactly the rows that carry a probe evidence block.
@@ -60,14 +60,14 @@ def test_row_schema_defaults_and_validation(tmp_path):
         if "evidence" in row:
             assert row["evidence"]["markers"] == {"table": True, "bind": True, "draw": True}
     # Bad terrains fail closed.
-    bad = tmp_path / "2_Chappy.json"
-    bad.write_text(json.dumps({"schema": 1, "source_id": 2, "enum_name": "Chappy",
+    bad = tmp_path / "10_Wealthy.json"
+    bad.write_text(json.dumps({"schema": 1, "source_id": 10, "enum_name": "Wealthy",
                                "host_teki": 4, "pose_limit": 4,
                                "terrains": ["lava"]}))
     with pytest.raises(ValueError, match="terrain"):
         load_rows(tmp_path)
     # Present-but-invalid evidence fails closed instead of silently declared.
-    bad.write_text(json.dumps({"schema": 1, "source_id": 2, "enum_name": "Chappy",
+    bad.write_text(json.dumps({"schema": 1, "source_id": 10, "enum_name": "Wealthy",
                                "host_teki": 4, "pose_limit": 4,
                                "evidence": {"run": "", "log": "x"}}))
     with pytest.raises(ValueError, match="evidence"):
@@ -76,23 +76,23 @@ def test_row_schema_defaults_and_validation(tmp_path):
 
 def test_row_evidence_proven(tmp_path, monkeypatch):
     import randomizer.p2_proxy as proxy
-    monkeypatch.setattr(proxy, "_roster_enums", lambda: {2: "Chappy"})
+    monkeypatch.setattr(proxy, "_roster_enums", lambda: {10: "Wealthy"})
     evidence = {"run": "probe run", "log": "logs/probe.md",
                 "log_sha256": "ab" * 32, "native_commit": "abc1234",
                 "recorded": "2026-09-20",
                 "markers": {"table": True, "bind": True, "draw": True}}
-    (tmp_path / "2_Chappy.json").write_text(json.dumps(
-        {"schema": 1, "source_id": 2, "enum_name": "Chappy",
+    (tmp_path / "10_Wealthy.json").write_text(json.dumps(
+        {"schema": 1, "source_id": 10, "enum_name": "Wealthy",
          "host_teki": 4, "pose_limit": 4, "evidence": evidence}))
     rows = load_rows(tmp_path)
     assert rows[0]["evidence"]["log_sha256"] == "ab" * 32
-    assert tier_ids("proven", tmp_path) == [2]
-    assert tier_ids("declared", tmp_path) == [2]
+    assert tier_ids("proven", tmp_path) == [10]
+    assert tier_ids("declared", tmp_path) == [10]
     # A false marker is not proven: it fails closed at load.
     bad = dict(evidence)
     bad["markers"] = {"table": True, "bind": False, "draw": True}
-    (tmp_path / "2_Chappy.json").write_text(json.dumps(
-        {"schema": 1, "source_id": 2, "enum_name": "Chappy",
+    (tmp_path / "10_Wealthy.json").write_text(json.dumps(
+        {"schema": 1, "source_id": 10, "enum_name": "Wealthy",
          "host_teki": 4, "pose_limit": 4, "evidence": bad}))
     with pytest.raises(ValueError, match="markers"):
         load_rows(tmp_path)
@@ -141,17 +141,19 @@ def test_full_plus_proven_equals_playable_six(monkeypatch):
     validate(manifest)
 
 
-def test_declared_admits_chappy_frog():
+def test_declared_admits_wealthy_bluechappy():
     manifest = generate("tier-declared", p2_enemies=True,
                         p2_proxy_tier="declared", p2_species="full")
     bound = {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
     # The declared pool overflows the ground slots, so some species land in
-    # `unplaced`; the pool as a whole still covers Chappy/Catfish (Frog 17/18 + Tank 24/25 + Armor 15 + Kabuto 75 are now their own identity via inst-frogs #871).
+    # `unplaced`; the pool as a whole still covers the surviving proxies
+    # Wealthy/BlueChappy (the 38 graduated identity species stage through
+    # their own installers now, never via the proxy tier).
     # The sampler must still bind something: an empty binding list with
     # everything unplaced would pass the pool check while placement is broken.
     assert bound
     pool = bound | set(manifest["p2_layout"].get("unplaced", []))
-    assert {2, 26} <= pool
+    assert {10, 42} <= pool
     assert manifest["p2_layout"]["density"] == "sampled-v1"
     assert manifest["p2_proxy_tier"] == "declared"
     validate(manifest)
@@ -160,20 +162,20 @@ def test_declared_admits_chappy_frog():
 def test_explicit_proxy_ids_need_covering_tier(monkeypatch):
     _unproven(monkeypatch)
     with pytest.raises(ValueError):
-        generate("x", p2_enemies=True, p2_species=[44, 2])
+        generate("x", p2_enemies=True, p2_species=[44, 10])
     with pytest.raises(ValueError):
         generate("x", p2_enemies=True, p2_proxy_tier="proven",
-                 p2_species=[44, 2])
+                 p2_species=[44, 10])
     manifest = generate("x", p2_enemies=True, p2_proxy_tier="declared",
-                        p2_species=[44, 2])
-    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == {44, 2}
+                        p2_species=[44, 10])
+    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == {44, 10}
     validate(manifest)
 
 
 def test_manifest_round_trip_with_tier():
     manifest = generate("tier-roundtrip", p2_enemies=True,
                         p2_proxy_tier="declared",
-                        p2_species=[44, 54, 59, 60, 61, 62, 2, 26])
+                        p2_species=[44, 54, 59, 60, 61, 62, 10, 42])
     validate(manifest)
     loaded = json.loads(json.dumps(manifest))
     validate(loaded)
@@ -184,7 +186,7 @@ def test_manifest_round_trip_with_tier():
 def test_proxy_binding_without_tier_key_rejected():
     manifest = generate("tier-strip", p2_enemies=True,
                         p2_proxy_tier="declared",
-                        p2_species=[44, 54, 59, 60, 61, 62, 2, 26])
+                        p2_species=[44, 54, 59, 60, 61, 62, 10, 42])
     stripped = json.loads(json.dumps(manifest))
     del stripped["p2_proxy_tier"]
     stripped["capabilities"] = [c for c in stripped["capabilities"]
@@ -200,11 +202,11 @@ def test_sampled_layout_pool_larger_than_targets_reports_unplaced():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    pool = [44, 54, 59, 60, 61, 62, 2, 26, 9, 23, 57, 78, 79]
+    pool = [44, 54, 59, 60, 61, 62, 10, 42, 9, 23, 57, 78, 79]
     tiny = {"schema": document["schema"],
             "slots": document["slots"][:3],
             "profiles": document["profiles"]}
-    proxy_rows = _proxy_rows_for([2, 26])
+    proxy_rows = _proxy_rows_for([10, 42])
     layout = resolve_placement_layout("seed-unplaced", "Player1", tiny, roster,
                                       species=pool, proxy_rows=proxy_rows)
     assert layout["density"] == "sampled-v1"
@@ -220,9 +222,9 @@ def test_sampled_assigns_playable_first():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    proxy_rows = _proxy_rows_for([2, 26])
+    proxy_rows = _proxy_rows_for([10, 42])
     layout = resolve_placement_layout("seed-playable-first", "Player1", document, roster,
-                                      species=[*PLAYABLE_P2_SPECIES, 2, 26],
+                                      species=[*PLAYABLE_P2_SPECIES, 10, 42],
                                       proxy_rows=proxy_rows)
     bound = {b["source_id"] for b in layout["bindings"]}
     assert set(PLAYABLE_P2_SPECIES) <= bound
@@ -249,10 +251,10 @@ def test_proxy_row_accepted_only_on_matching_terrain():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    water_row = dict(_proxy_rows_for([2])[0])
+    water_row = dict(_proxy_rows_for([10])[0])
     water_row["terrains"] = ["water"]
     accepted = _proxy_accepted_targets(document, [water_row], roster)
-    assert accepted[2] == set()
+    assert accepted[10] == set()
 
 
 def test_validate_layout_accepts_sampled_and_unplaced():
@@ -264,7 +266,7 @@ def test_validate_layout_accepts_sampled_and_unplaced():
     roster = load_and_validate()
     document = _default_admitted_placement()
     layout = resolve_placement_layout("seed-validate", "Player1", document, roster,
-                                      species=[44, 2], proxy_rows=_proxy_rows_for([2]))
+                                      species=[44, 10], proxy_rows=_proxy_rows_for([10]))
     validate_layout(layout, roster)
     bad = dict(layout)
     bad["unplaced"] = [44]
@@ -282,13 +284,13 @@ def test_bootstrap_carries_sampled_proxy_bindings():
     roster = load_and_validate()
     document = _default_admitted_placement()
     layout = resolve_placement_layout("seed-boot", "Player1", document, roster,
-                                      species=[44, 2], proxy_rows=_proxy_rows_for([2]))
+                                      species=[44, 10], proxy_rows=_proxy_rows_for([10]))
     line = build_bootstrap(layout, roster)
     assert line.startswith("ENEMY_P2 1 ")
-    assert " 2 " in f" {line} " or line.strip().endswith(" 2")
+    assert " 10 " in f" {line} " or line.strip().endswith(" 10")
     parsed = parse_bootstrap(line, roster, density="sampled-v1")
     assert parsed["density"] == "sampled-v1"
-    assert {b["source_id"] for b in parsed["bindings"]} == {44, 2}
+    assert {b["source_id"] for b in parsed["bindings"]} == {44, 10}
     assert bootstrap_for_manifest({"p2_layout": layout}, roster) == line
 
 
@@ -305,19 +307,19 @@ def test_bootstrap_tier_pair_round_trip():
     roster = load_and_validate()
     document = _default_admitted_placement()
     layout = resolve_placement_layout("seed-boot-tier", "Player1", document,
-                                      roster, species=[44, 2],
-                                      proxy_rows=_proxy_rows_for([2]))
+                                      roster, species=[44, 10],
+                                      proxy_rows=_proxy_rows_for([10]))
     legacy = build_bootstrap(layout, roster)
     assert "P2_PROXY_TIER" not in legacy
     parsed_legacy = parse_bootstrap(legacy, roster, density="sampled-v1")
     assert "p2_proxy_tier" not in parsed_legacy
-    assert {b["source_id"] for b in parsed_legacy["bindings"]} == {44, 2}
+    assert {b["source_id"] for b in parsed_legacy["bindings"]} == {44, 10}
     tiered = build_bootstrap(layout, roster, proxy_tier="declared")
     assert tiered.startswith(legacy)
     assert tiered.endswith("P2_PROXY_TIER 1\n")
     parsed = parse_bootstrap(tiered, roster, density="sampled-v1")
     assert parsed["p2_proxy_tier"] is True
-    assert {b["source_id"] for b in parsed["bindings"]} == {44, 2}
+    assert {b["source_id"] for b in parsed["bindings"]} == {44, 10}
     assert build_bootstrap(parsed, roster) == tiered
     assert bootstrap_for_manifest(
         {"p2_layout": layout, "p2_proxy_tier": "declared"},

@@ -239,23 +239,23 @@ def test_proxy_ids_for_manifest(tmp_path, monkeypatch):
     tiered.write_text(json.dumps({
         "p2_proxy_tier": "declared",
         "p2_layout": {"bindings": [
-            {"target": "11", "source_id": 17, "enum_name": "Frog"},
+            {"target": "11", "source_id": 10, "enum_name": "Wealthy"},
             {"target": "22", "source_id": 44, "enum_name": "BlueKochappy"},
-            {"target": "33", "source_id": 18, "enum_name": "MaroFrog"},
+            {"target": "33", "source_id": 42, "enum_name": "BlueChappy"},
         ]}}))
-    assert prepare.proxy_ids_for_manifest(tiered) == [17, 18]
+    assert prepare.proxy_ids_for_manifest(tiered) == [10, 42]
     untiered = tmp_path / "untiered.json"
     untiered.write_text(json.dumps({
         "p2_layout": {"bindings": [
-            {"target": "11", "source_id": 17, "enum_name": "Frog"}]}}))
+            {"target": "11", "source_id": 10, "enum_name": "Wealthy"}]}}))
     with pytest.raises(ValueError, match="without a p2_proxy_tier"):
         prepare.proxy_ids_for_manifest(untiered)
-    # Frog carries no probe evidence here (stripped above), so the proven tier does not cover it.
+    # Wealthy carries no probe evidence here (stripped above), so the proven tier does not cover it.
     proven = tmp_path / "proven.json"
     proven.write_text(json.dumps({
         "p2_proxy_tier": "proven",
         "p2_layout": {"bindings": [
-            {"target": "11", "source_id": 17, "enum_name": "Frog"}]}}))
+            {"target": "11", "source_id": 10, "enum_name": "Wealthy"}]}}))
     with pytest.raises(ValueError, match="outside the 'proven' tier"):
         prepare.proxy_ids_for_manifest(proven)
 
@@ -267,7 +267,7 @@ def test_main_adds_manifest_proxy_ids_to_wanted(tmp_path, monkeypatch):
     manifest.write_text(json.dumps({
         "p2_proxy_tier": "declared",
         "p2_layout": {"bindings": [
-            {"target": "11", "source_id": 17, "enum_name": "Frog"},
+            {"target": "11", "source_id": 10, "enum_name": "Wealthy"},
             {"target": "22", "source_id": 44, "enum_name": "BlueKochappy"}]}}))
     seen = {}
 
@@ -285,7 +285,7 @@ def test_main_adds_manifest_proxy_ids_to_wanted(tmp_path, monkeypatch):
                   "--seed-manifest", str(manifest),
                   "--actors-out", str(actors_out),
                   "--species", "playable"])
-    assert 17 in seen["wanted"]
+    assert 10 in seen["wanted"]
     assert seen["wanted"][:6] == [44, 54, 59, 60, 61, 62]
     assert json.loads(actors_out.read_text()) == {"11": 11, "22": 22}
     # Row pose limits win unless --pose-limit is explicit.
@@ -300,7 +300,7 @@ def test_main_explicit_pose_limit_overrides_proxy_rows(tmp_path, monkeypatch):
     manifest.write_text(json.dumps({
         "p2_proxy_tier": "declared",
         "p2_layout": {"bindings": [
-            {"target": "11", "source_id": 17, "enum_name": "Frog"}]}}))
+            {"target": "11", "source_id": 10, "enum_name": "Wealthy"}]}}))
     seen = {}
 
     def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None,
@@ -328,16 +328,16 @@ def test_prepare_proxy_arm_uses_row_limit_by_default(tmp_path, monkeypatch):
 
     def fake_proxy(iso_arg, dest, source_id, pose_limit=None, **kwargs):
         calls.append((source_id, pose_limit))
-        (Path(dest) / "Frog").mkdir(parents=True)
-        return Path(dest) / "Frog"
+        (Path(dest) / "Wealthy").mkdir(parents=True)
+        return Path(dest) / "Wealthy"
 
     monkeypatch.setattr(prepare, "extract_proxy", fake_proxy)
-    prepare.prepare_content_root(iso, out, wanted=[17])
-    assert calls == [(17, None)]
+    prepare.prepare_content_root(iso, out, wanted=[10])
+    assert calls == [(10, None)]
     out2 = tmp_path / "content2"
     calls.clear()
-    prepare.prepare_content_root(iso, out2, wanted=[17], proxy_pose_limit=6)
-    assert calls == [(17, 6)]
+    prepare.prepare_content_root(iso, out2, wanted=[10], proxy_pose_limit=6)
+    assert calls == [(10, 6)]
 
 
 def test_extract_proxy_passes_declaration_row(tmp_path, monkeypatch):

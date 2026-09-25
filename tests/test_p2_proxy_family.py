@@ -41,29 +41,34 @@ def test_load_rows_happy_path_real_dir():
     rows = load_rows()
     assert rows == sorted(rows, key=lambda row: row["source_id"])
     by_id = {row["source_id"]: row for row in rows}
-    assert by_id[2]["enum_name"] == "Chappy"
-    # inst-frogs #871: Frog (17) and MaroFrog (18) graduated to own identity.
-    assert 17 not in by_id
-    assert 18 not in by_id
-    assert by_id[26]["enum_name"] == "Catfish"
+    assert by_id[10]["enum_name"] == "Wealthy"
+    assert by_id[42]["enum_name"] == "BlueChappy"
+    # integ (#871): all own-identity species graduated out of the proxy tier.
+    for graduated in (2, 33, 35, 43, 53, 67, 76,
+                      12, 13, 14, 28, 68, 94,
+                      17, 18, 24, 25, 15, 75,
+                      56, 63, 69,
+                      34, 70, 65, 71, 101,
+                      26, 27, 66, 84, 93, 97):
+        assert graduated not in by_id
     assert len(rows) == len(list((ROOT / "randomizer" / "p2_proxy").glob("*.json")))
 
 
 def test_load_rows_rejects_bad_schema(tmp_path):
-    write_decl(tmp_path, 2, "Chappy", schema=2)
+    write_decl(tmp_path, 10, "Wealthy", schema=2)
     with pytest.raises(ValueError, match="schema"):
         load_rows(tmp_path)
 
 
 def test_load_rows_rejects_filename_mismatch(tmp_path):
-    write_decl(tmp_path, 2, "Chappy", filename="2_Frog.json")
+    write_decl(tmp_path, 10, "Wealthy", filename="10_BlueChappy.json")
     with pytest.raises(ValueError, match="filename"):
         load_rows(tmp_path)
 
 
 def test_load_rows_rejects_roster_mismatch(tmp_path):
-    # Filename matches its content, but source 2 is Chappy in the roster.
-    write_decl(tmp_path, 2, "KumaChappy")
+    # Filename matches its content, but source 10 is Wealthy in the roster.
+    write_decl(tmp_path, 10, "BlueChappy")
     with pytest.raises(ValueError, match="roster"):
         load_rows(tmp_path)
 
@@ -78,31 +83,31 @@ def test_load_rows_rejects_non_proxy_path(tmp_path):
 def test_load_rows_rejects_duplicate_enum(tmp_path, monkeypatch):
     import randomizer.p2_proxy as proxy
     monkeypatch.setattr(proxy, "_roster_enums",
-                        lambda: {2: "Chappy", 26: "Chappy"})
-    write_decl(tmp_path, 2, "Chappy")
-    write_decl(tmp_path, 26, "Chappy")
+                        lambda: {10: "Wealthy", 42: "Wealthy"})
+    write_decl(tmp_path, 10, "Wealthy")
+    write_decl(tmp_path, 42, "Wealthy")
     with pytest.raises(ValueError, match="duplicate enum"):
         load_rows(tmp_path)
 
 
 def test_load_rows_rejects_bad_pose_limit(tmp_path):
-    write_decl(tmp_path, 2, "Chappy", pose_limit=9)
+    write_decl(tmp_path, 10, "Wealthy", pose_limit=9)
     with pytest.raises(ValueError, match="pose_limit"):
         load_rows(tmp_path)
-    write_decl(tmp_path, 26, "Catfish", pose_limit=1)
+    write_decl(tmp_path, 42, "BlueChappy", pose_limit=1)
     with pytest.raises(ValueError, match="pose_limit"):
         load_rows(tmp_path)
 
 
 def test_load_rows_rejects_bad_host(tmp_path):
     # Host 27 is a placeholder type that crashes the game.
-    write_decl(tmp_path, 2, "Chappy", host_teki=27)
+    write_decl(tmp_path, 10, "Wealthy", host_teki=27)
     with pytest.raises(ValueError, match="host_teki"):
         load_rows(tmp_path)
 
 
 def test_load_rows_accepts_full_overrides(tmp_path):
-    write_decl(tmp_path, 2, "Chappy", asset_dir="Kogane", param_dir="kogane",
+    write_decl(tmp_path, 10, "Wealthy", asset_dir="Kogane", param_dir="kogane",
                clips={"wait1": "waitact1"},
                param_files={"enemyparm.txt": "bombotakara"})
     (rows,) = load_rows(tmp_path)
@@ -113,7 +118,7 @@ def test_load_rows_accepts_full_overrides(tmp_path):
 
 
 def test_load_rows_defaults_overrides_to_empty(tmp_path):
-    write_decl(tmp_path, 2, "Chappy")
+    write_decl(tmp_path, 10, "Wealthy")
     (rows,) = load_rows(tmp_path)
     assert rows["asset_dir"] is None
     assert rows["param_dir"] is None
@@ -142,7 +147,7 @@ def test_load_rows_defaults_overrides_to_empty(tmp_path):
     ("param_files", {"enemyparm.txt": "Kogane"}),
 ])
 def test_load_rows_rejects_bad_overrides(tmp_path, field, value):
-    write_decl(tmp_path, 2, "Chappy", **{field: value})
+    write_decl(tmp_path, 10, "Wealthy", **{field: value})
     with pytest.raises(ValueError, match=field):
         load_rows(tmp_path)
 
@@ -212,69 +217,69 @@ def make_run(run):
 
 def test_sidecar_grammar_single_species(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
-    receipt = content.stage_proxy(content_root, run, {111: "Chappy"})
+    receipt = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert receipt["staged"] == "written"
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n1\n2 Chappy 4\n"
+        "P2_PROXY_CAMPAIGN_1\n1\n10 Wealthy 3\n"
     assert (run / "p2-proxy-actors.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_ACTORS_1\n1\n111 Chappy\n"
+        "P2_PROXY_ACTORS_1\n1\n111 Wealthy\n"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii").splitlines()
     assert bank[0] == "P2_PROXY_BANK_1"
-    assert bank[1] == "species Chappy 2"
-    assert bank[2] == "clip Chappy wait1 30 - poses 2 converted"
-    assert bank[3] == "clip Chappy move1 30 5:0,10:1 poses 2 converted"
-    assert bank[4] == "clip Chappy dead 30 - poses 2 converted"
+    assert bank[1] == "species Wealthy 10"
+    assert bank[2] == "clip Wealthy wait1 30 - poses 2 converted"
+    assert bank[3] == "clip Wealthy move1 30 5:0,10:1 poses 2 converted"
+    assert bank[4] == "clip Wealthy dead 30 - poses 2 converted"
     assert len(bank) == 5
     room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
     assert sorted(p.name for p in room.glob("*.mod")) == [
-        "px_Chappy_dead_00.mod", "px_Chappy_dead_01.mod",
-        "px_Chappy_move1_00.mod", "px_Chappy_move1_01.mod",
-        "px_Chappy_wait1_00.mod", "px_Chappy_wait1_01.mod",
+        "px_Wealthy_dead_00.mod", "px_Wealthy_dead_01.mod",
+        "px_Wealthy_move1_00.mod", "px_Wealthy_move1_01.mod",
+        "px_Wealthy_wait1_00.mod", "px_Wealthy_wait1_01.mod",
     ]
 
 
 def test_two_species_share_sidecars(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Catfish", 26)
+    make_species_tree(content_root, "Wealthy", 10)
+    make_species_tree(content_root, "BlueChappy", 42)
     run = make_run(tmp_path / "run")
     receipt = content.stage_proxy(content_root, run,
-                                  {111: "Chappy", 222: "Catfish", 333: "Chappy"})
-    assert receipt["species"] == ["Catfish", "Chappy"]
+                                  {111: "Wealthy", 222: "BlueChappy", 333: "Wealthy"})
+    assert receipt["species"] == ["BlueChappy", "Wealthy"]
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n26 Catfish 30\n"
+        "P2_PROXY_CAMPAIGN_1\n2\n10 Wealthy 3\n42 BlueChappy 4\n"
     assert (run / "p2-proxy-actors.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_ACTORS_1\n3\n111 Chappy\n222 Catfish\n333 Chappy\n"
+        "P2_PROXY_ACTORS_1\n3\n111 Wealthy\n222 BlueChappy\n333 Wealthy\n"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
-    assert "species Chappy 2\n" in bank and "species Catfish 26\n" in bank
+    assert "species Wealthy 10\n" in bank and "species BlueChappy 42\n" in bank
     assert bank.startswith("P2_PROXY_BANK_1\n")
     room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
-    assert len(list(room.glob("px_Chappy_*.mod"))) == 6
-    assert len(list(room.glob("px_Catfish_*.mod"))) == 6
+    assert len(list(room.glob("px_Wealthy_*.mod"))) == 6
+    assert len(list(room.glob("px_BlueChappy_*.mod"))) == 6
 
 
 def test_reapplication_conflict_rejected(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
-    first = content.stage_proxy(content_root, run, {111: "Chappy"})
+    first = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert first["staged"] == "written"
-    second = content.stage_proxy(content_root, run, {111: "Chappy"})
+    second = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert second["staged"] == "existing_identical"
     with pytest.raises(StagingError, match="conflicting"):
-        content.stage_proxy(content_root, run, {999: "Chappy"})
+        content.stage_proxy(content_root, run, {999: "Wealthy"})
 
 
 def test_stage_rejects_unknown_species_and_bad_generators(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
     with pytest.raises(StagingError):
         content.stage_proxy(content_root, run, {111: "Kogane"})
     with pytest.raises(StagingError):
-        content.stage_proxy(content_root, run, {0: "Chappy"})
+        content.stage_proxy(content_root, run, {0: "Wealthy"})
     # NOTE: a dict literal cannot test duplicate generators (the key
     # collapses before the call); see
     # test_stage_rejects_duplicate_generators_list_input for the pairs form.
@@ -282,14 +287,14 @@ def test_stage_rejects_unknown_species_and_bad_generators(tmp_path):
 
 def test_stage_rejects_hash_mismatch(tmp_path):
     content_root = tmp_path / "content"
-    root = make_species_tree(content_root, "Chappy", 2)
-    (root / "px_Chappy_wait1_00.mod").write_bytes(b"tampered")
+    root = make_species_tree(content_root, "Wealthy", 10)
+    (root / "px_Wealthy_wait1_00.mod").write_bytes(b"tampered")
     run = make_run(tmp_path / "run")
     with pytest.raises(StagingError, match="hash mismatch"):
-        content.stage_proxy(content_root, run, {111: "Chappy"})
+        content.stage_proxy(content_root, run, {111: "Wealthy"})
 
 
-@pytest.mark.parametrize("species,source_id", [("Chappy", 2), ("Catfish", 26)])
+@pytest.mark.parametrize("species,source_id", [("Demon", 32), ("Mar", 29)])
 def test_extract_real_species(tmp_path, species, source_id):
     if not ISO.is_file():
         pytest.skip("P2 ISO not present")
@@ -376,7 +381,7 @@ def test_load_rows_rejects_duplicate_source(tmp_path, monkeypatch):
     # Two files for the same source id: serve each file's own enum from the
     # stubbed roster so both pass the enum check and reach the duplicate
     # branch (unreachable with the real one-enum-per-source roster).
-    seen = iter(["Chappy", "Frog"])
+    seen = iter(["BlueChappy", "Wealthy"])
 
     class _TwoEnums(dict):
         def get(self, key, default=None):
@@ -386,20 +391,20 @@ def test_load_rows_rejects_duplicate_source(tmp_path, monkeypatch):
                 return default
 
     monkeypatch.setattr(proxy, "_roster_enums", lambda: _TwoEnums())
-    write_decl(tmp_path, 2, "Chappy")
-    write_decl(tmp_path, 2, "Frog", filename="2_Frog.json")
+    write_decl(tmp_path, 10, "Wealthy")
+    write_decl(tmp_path, 10, "BlueChappy", filename="10_BlueChappy.json")
     with pytest.raises(ValueError, match="duplicate source"):
         load_rows(tmp_path)
 
 
 def test_load_rows_missing_normals_policy(tmp_path):
-    write_decl(tmp_path, 2, "Chappy", missing_normals="compute")
+    write_decl(tmp_path, 10, "Wealthy", missing_normals="compute")
     (row,) = load_rows(tmp_path)
     assert row["missing_normals"] == "compute"
-    write_decl(tmp_path, 2, "Chappy", missing_normals="default")
+    write_decl(tmp_path, 10, "Wealthy", missing_normals="default")
     with pytest.raises(ValueError, match="missing_normals"):
         load_rows(tmp_path)
-    write_decl(tmp_path, 2, "Chappy", missing_normals="bogus")
+    write_decl(tmp_path, 10, "Wealthy", missing_normals="bogus")
     with pytest.raises(ValueError, match="missing_normals"):
         load_rows(tmp_path)
 
@@ -407,18 +412,18 @@ def test_load_rows_missing_normals_policy(tmp_path):
 def test_stage_rejects_duplicate_generators_list_input(tmp_path):
     # A dict literal cannot carry a duplicate key, so pass pairs directly.
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
     with pytest.raises(StagingError, match="not unique"):
         content.stage_proxy(content_root, run,
-                            [(111, "Chappy"), (111, "Chappy")])
+                            [(111, "Wealthy"), (111, "Wealthy")])
 
 
 def test_stage_rejects_actor_rows_past_native_cap(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
-    actors = [(1000 + index, "Chappy") for index in range(101)]
+    actors = [(1000 + index, "Wealthy") for index in range(101)]
     with pytest.raises(StagingError, match="100-row cap"):
         content.stage_proxy(content_root, run, actors)
 
@@ -443,24 +448,24 @@ def test_stage_accepts_retail_event_shapes(tmp_path):
     # must too (frames stay strictly increasing, the safe-direction check
     # the extractor output always satisfies).
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2,
+    make_species_tree(content_root, "Wealthy", 10,
                       clips=(("wait1", [[5, 1], [12, 7]]),
                              ("move1", []),
                              ("dead", [[30, 0]])))
     run = make_run(tmp_path / "run")
-    receipt = content.stage_proxy(content_root, run, {111: "Chappy"})
+    receipt = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert receipt["staged"] == "written"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
-    assert "clip Chappy wait1 30 5:1,12:7 poses 2 converted" in bank
+    assert "clip Wealthy wait1 30 5:1,12:7 poses 2 converted" in bank
 
 
 def test_stage_refuses_non_file_target(tmp_path):
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     run = make_run(tmp_path / "run")
     (run / "p2-proxy-bank.txt").mkdir()
     with pytest.raises(StagingError, match="non-file targets"):
-        content.stage_proxy(content_root, run, {111: "Chappy"})
+        content.stage_proxy(content_root, run, {111: "Wealthy"})
 
 
 def test_stage_accepts_retail_uppercase_clip_stems(tmp_path):
@@ -468,18 +473,18 @@ def test_stage_accepts_retail_uppercase_clip_stems(tmp_path):
     # Kabuto K_wait); the native bank reader takes the clip name as an
     # unrestricted token, so the stager must carry the spelling through.
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2,
+    make_species_tree(content_root, "Wealthy", 10,
                       clips=(("wait1", []),
                              ("preattackF", []),
                              ("dead", [])))
     run = make_run(tmp_path / "run")
-    receipt = content.stage_proxy(content_root, run, {111: "Chappy"})
+    receipt = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert receipt["staged"] == "written"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
-    assert "clip Chappy preattackF 30 - poses 2 converted" in bank
+    assert "clip Wealthy preattackF 30 - poses 2 converted" in bank
     room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
-    assert sorted(p.name for p in room.glob("px_Chappy_preattackF_*.mod")) == [
-        "px_Chappy_preattackF_00.mod", "px_Chappy_preattackF_01.mod"]
+    assert sorted(p.name for p in room.glob("px_Wealthy_preattackF_*.mod")) == [
+        "px_Wealthy_preattackF_00.mod", "px_Wealthy_preattackF_01.mod"]
 
 
 def test_stage_accepts_underscore_clip_stems(tmp_path):
@@ -488,18 +493,18 @@ def test_stage_accepts_underscore_clip_stems(tmp_path):
     # px_<species>_<stem>_<ii>.mod instead of regex-splitting the stem, so
     # these stage instead of failing the whole layout install.
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2,
+    make_species_tree(content_root, "Wealthy", 10,
                       clips=(("wait1", []),
                              ("dead_p", []),
                              ("dead", [])))
     run = make_run(tmp_path / "run")
-    receipt = content.stage_proxy(content_root, run, {111: "Chappy"})
+    receipt = content.stage_proxy(content_root, run, {111: "Wealthy"})
     assert receipt["staged"] == "written"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
-    assert "clip Chappy dead_p 30 - poses 2 converted" in bank
+    assert "clip Wealthy dead_p 30 - poses 2 converted" in bank
     room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
-    assert sorted(p.name for p in room.glob("px_Chappy_dead_p_*.mod")) == [
-        "px_Chappy_dead_p_00.mod", "px_Chappy_dead_p_01.mod"]
+    assert sorted(p.name for p in room.glob("px_Wealthy_dead_p_*.mod")) == [
+        "px_Wealthy_dead_p_00.mod", "px_Wealthy_dead_p_01.mod"]
 
 
 def _stub_private_destination(monkeypatch):
@@ -518,13 +523,13 @@ def _stub_private_destination(monkeypatch):
 def test_install_layout_groups_two_proxy_species(tmp_path, monkeypatch):
     family_install = _stub_private_destination(monkeypatch)
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Catfish", 26)
+    make_species_tree(content_root, "Wealthy", 10)
+    make_species_tree(content_root, "BlueChappy", 42)
     run = tmp_path / "run"
     layout = {"bindings": [
-        {"target": "1001", "source_id": 2, "enum_name": "Chappy"},
-        {"target": "1002", "source_id": 26, "enum_name": "Catfish"},
-        {"target": "1003", "source_id": 2, "enum_name": "Chappy"},
+        {"target": "1001", "source_id": 10, "enum_name": "Wealthy"},
+        {"target": "1002", "source_id": 42, "enum_name": "BlueChappy"},
+        {"target": "1003", "source_id": 10, "enum_name": "Wealthy"},
     ]}
     receipt = family_install.install_layout(
         run, layout, content_root,
@@ -532,9 +537,9 @@ def test_install_layout_groups_two_proxy_species(tmp_path, monkeypatch):
         retail_assets=tmp_path / "retail")
     assert sorted(receipt["receipts"]) == ["1001", "1002", "1003"]
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n26 Catfish 30\n"
+        "P2_PROXY_CAMPAIGN_1\n2\n10 Wealthy 3\n42 BlueChappy 4\n"
     assert (run / "p2-proxy-actors.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_ACTORS_1\n3\n1001 Chappy\n1002 Catfish\n1003 Chappy\n"
+        "P2_PROXY_ACTORS_1\n3\n1001 Wealthy\n1002 BlueChappy\n1003 Wealthy\n"
 
 
 def test_install_layout_mixes_proxy_and_other_families(tmp_path, monkeypatch):
@@ -551,11 +556,11 @@ def test_install_layout_mixes_proxy_and_other_families(tmp_path, monkeypatch):
 
     monkeypatch.setitem(family_install._OVERRIDES, "fakefam", _fake_install)
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
+    make_species_tree(content_root, "Wealthy", 10)
     (content_root / "Fakefam").mkdir(parents=True)
     run = tmp_path / "run"
     layout = {"bindings": [
-        {"target": "1001", "source_id": 2, "enum_name": "Chappy"},
+        {"target": "1001", "source_id": 10, "enum_name": "Wealthy"},
         {"target": "1002", "source_id": 900, "enum_name": "Fakefam"},
         {"target": "1003", "source_id": 900, "enum_name": "Fakefam"},
     ]}
@@ -566,18 +571,18 @@ def test_install_layout_mixes_proxy_and_other_families(tmp_path, monkeypatch):
     assert sorted(receipt["receipts"]) == ["1001", "1002", "1003"]
     assert (run / "p2-fakefam.txt").read_text(encoding="ascii") == "P2_FAKEFAM_1\n"
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n1\n2 Chappy 4\n"
+        "P2_PROXY_CAMPAIGN_1\n1\n10 Wealthy 3\n"
 
 
 def test_install_layout_second_call_replays_receipt(tmp_path, monkeypatch):
     family_install = _stub_private_destination(monkeypatch)
     content_root = tmp_path / "content"
-    make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Catfish", 26)
+    make_species_tree(content_root, "Wealthy", 10)
+    make_species_tree(content_root, "BlueChappy", 42)
     run = tmp_path / "run"
     layout = {"bindings": [
-        {"target": "1001", "source_id": 2, "enum_name": "Chappy"},
-        {"target": "1002", "source_id": 26, "enum_name": "Catfish"},
+        {"target": "1001", "source_id": 10, "enum_name": "Wealthy"},
+        {"target": "1002", "source_id": 42, "enum_name": "BlueChappy"},
     ]}
     actors = {"1001": 1001, "1002": 1002}
     first = family_install.install_layout(

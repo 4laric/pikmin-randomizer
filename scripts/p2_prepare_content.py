@@ -74,6 +74,12 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   ``pikmin2_elecbug_content`` (merging with other ground-identity species'
   rows). A legacy ``ground_inverts.json`` import dir still stages through the
   shared ground installer unchanged.
+* 68 TamagoMushi: ``pikmin2_tamago_assets.extract`` -> ``<out>/TamagoMushi/``
+  (``tamagomushi.json`` + ``ginv_TamagoMushi_<clip>_<ii>.mod``); the
+  TamagoMushi adapter stages its rows of the shared batch-2 ground files
+  through ``pikmin2_tamago_content`` (merging with other ground-identity
+  species' rows). A legacy ``ground_inverts.json`` import dir still stages
+  through the shared ground installer unchanged.
 * 94 DangoMushi: ``pikmin2_dangomushi_assets.extract`` -> ``<out>/DangoMushi/``
   (``dangomushi.json`` + ``snake_DangoMushi_<clip>_<ii>.mod``); the DangoMushi
   adapter stages its rows of the shared snagret files through
@@ -199,6 +205,7 @@ ENUM_FOR_SOURCE = {
     27: "Tadpole",
     28: "ElecBug",
     34: "SnakeCrow",
+    68: "TamagoMushi",
     94: "DangoMushi",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -1103,6 +1110,36 @@ def extract_armor(iso, research, dest, pose_limit=6):
     return target
 
 
+def extract_tamago(iso, dest, pose_limit=6):
+    """Build <dest>/TamagoMushi/ via the TamagoMushi extractor.
+
+    ``pikmin2_tamago_assets.extract`` produces the source poses
+    (``tamagomushi.json`` + ``ginv_TamagoMushi_<clip>_<ii>.mod``); the
+    TamagoMushi adapter stages its rows of the shared batch-2 ground files
+    from that tree via
+    ``experimental.pikmin2_tamago_content.stage_tamago_ground``.
+    """
+    from experimental import pikmin2_tamago_assets as tamago
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "TamagoMushi"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-tamago"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        tamago.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_dangomushi(iso, dest, pose_limit=6):
     """Build <dest>/DangoMushi/ via the DangoMushi extractor.
 
@@ -1275,6 +1312,7 @@ EXTRACTORS = {
     13: "extract_uji",
     14: "extract_uji",
     28: "extract_elecbug",
+    68: "extract_tamago",
     94: "extract_dangomushi",
     56: "extract_damagumo",
     63: "extract_jigumo",
@@ -1419,6 +1457,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 28:
             extract_elecbug(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 68:
+            extract_tamago(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 94:
             extract_dangomushi(iso, out, pose_limit=pose_limit)

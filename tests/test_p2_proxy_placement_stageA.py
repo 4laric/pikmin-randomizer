@@ -162,21 +162,22 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
         assert PACKS <= set(tokens)
         assert not (RESERVED & set(tokens))
 
-    # Pack targets admit only small-host rows: a large-host ground row (id 34,
-    # host_teki 4 SnakeCrow) sees the singletons but none of the packs.
-    # (Chappy id 2 used to serve here; it is now own-identity, inst-chappy.)
-    large_rows = _proxy_rows_for([34])
+    # Pack targets admit only small-host rows: a large-host ground row (id 42,
+    # host_teki 4 BlueChappy) sees the singletons but none of the packs.
+    # (SnakeCrow id 34 used to serve here; it is now own-identity, inst-worms.
+    # Chappy id 2 served before that; also own-identity now, inst-chappy.)
+    large_rows = _proxy_rows_for([42])
     assert large_rows[0]["host_teki"] not in PACK_HOSTS
     accepted_large = _proxy_accepted_targets(document, large_rows, roster,
                                              proxy_document=sibling)
-    assert SINGLETONS <= set(accepted_large[34])
-    assert not (PACKS & set(accepted_large[34]))
+    assert SINGLETONS <= set(accepted_large[42])
+    assert not (PACKS & set(accepted_large[42]))
 
-    water_row = dict(_proxy_rows_for([34])[0])
+    water_row = dict(_proxy_rows_for([42])[0])
     water_row["terrains"] = ["water"]
     accepted_water = _proxy_accepted_targets(document, [water_row], roster,
                                              proxy_document=sibling)
-    assert accepted_water[34] == set()
+    assert accepted_water[42] == set()
 
     # The audit-derived union is unchanged: without the sibling the singletons
     # never appear.
@@ -281,8 +282,8 @@ def test_sampler_cap_and_reserved_and_sorted():
     grown = _synthetic_65_document()
     with pytest.raises(SeedBridgeError):
         resolve_placement_layout("stageA-65", "Player1", grown, roster,
-                                 species=[44, 17],
-                                 proxy_rows=_proxy_rows_for([17]))
+                                 species=[44, 10],
+                                 proxy_rows=_proxy_rows_for([10]))
 
 
 def test_pack_targets_only_bind_small_hosts():
@@ -340,11 +341,18 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     rows = load_rows()
     small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
-    # The whole Chappy family (ids 2, 33, 35, 43, 53, 67, 76) left the
-    # proxy tier for its own identity (inst-chappy #871 complete), so this
-    # pins the declared shape, not a universal constant.
-    assert len(small_ids) == 18 and len(large_ids) == 25
-    for finished in (2, 33, 35, 43, 53, 67, 76):
+    # All 38 own-identity species left the proxy tier for their own
+    # installers (integ #871), so this pins the declared shape, not a
+    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 15
+    # large-host proxies remain.
+    assert len(small_ids) == 2 and len(large_ids) == 15
+    assert sorted(small_ids) == [10, 11]
+    for finished in (2, 33, 35, 43, 53, 67, 76,
+                     12, 13, 14, 28, 68, 94,
+                     17, 18, 24, 25, 15, 75,
+                     56, 63, 69,
+                     34, 70, 65, 71, 101,
+                     26, 27, 66, 84, 93, 97):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]

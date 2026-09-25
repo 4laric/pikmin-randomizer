@@ -133,10 +133,13 @@ IDENTITY_FAMILY = {
     13: 'uji', 'ujib': 'uji',
     14: 'uji', 'tobi': 'uji',
     # Campaign-identity ground invertebrates (#871): ElecBug (Anode Beetle,
-    # source 28) stages its rows of the shared p2-ground-actors/bank sidecars
-    # through experimental.pikmin2_elecbug_content, merging with other
-    # ground-identity species. TamagoMushi (68) joins in its own landing.
+    # source 28) and TamagoMushi (Mitite, source 68) stage their rows of the
+    # shared p2-ground-actors/bank sidecars through
+    # experimental.pikmin2_elecbug_content /
+    # experimental.pikmin2_tamago_content, merging with other
+    # ground-identity species.
     28: 'elecbug', 'elecbug': 'elecbug',
+    68: 'tamago', 'tamagomushi': 'tamago',
     # Campaign-identity snagret family (#871): DangoMushi (Segmented
     # Crawbster, source 94) stages its rows of the p2-snagret-actors/bank
     # sidecars through experimental.pikmin2_dangomushi_content.
@@ -667,6 +670,166 @@ def _adapt_dangomushi(source, run, actors):
                 generators=[g for g, _ in pairs], snagret_receipt=receipt)
 
 
+def _validate_tamago(source):
+    """Pre-flight check for the TamagoMushi (Mitite, source 68) content.
+
+    Accepts the TamagoMushi extraction tree (``tamagomushi.json``) staged
+    through ``experimental.pikmin2_tamago_content``, as well as the legacy
+    ground-invertebrate import dir (``ground_inverts.json``) consumed as-is by
+    ``experimental.pikmin2_ground_inverts_install``; the full schema/policy
+    contract stays authoritative inside the respective installer.
+    """
+    from experimental import pikmin2_tamago_content as tamago_content
+    source = Path(source)
+    if (source / 'tamagomushi.json').is_file():
+        tamago_content.validate_source(source)
+        return
+    manifest = source / 'ground_inverts.json'
+    if not manifest.is_file():
+        raise StagingError(f'TamagoMushi ground manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'TamagoMushi ground manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or species.get('TamagoMushi') != 68:
+        # Manifests key species by name to enemy id in batch-2 shape; also
+        # accept the nested ``{'enemy_id': 68}`` shape.
+        entry = species.get('TamagoMushi')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or enemy_id != 68:
+            raise StagingError(f'TamagoMushi ground manifest identity mismatch: {manifest}')
+
+
+def _adapt_tamago(source, run, actors):
+    """Adapter for TamagoMushi (source 68) via the TamagoMushi content stager.
+
+    Writes the TamagoMushi rows of ``p2-ground-actors.txt`` +
+    ``p2-ground-bank.txt`` (plus visuals) in the exact batch-2 shape the
+    native ``pc_p2_tamago_setup`` parses (``P2_GROUND_ACTORS_1`` +
+    ``P2_GROUND_BANK_1``, ``engine/pc_port/pc_p2_tamago.cpp:378-421``),
+    merging with rows other ground-identity species already staged.
+
+    A ``tamagomushi.json`` tree (what ``extract_tamago`` produces) stages
+    through ``experimental.pikmin2_tamago_content``; a legacy
+    ``ground_inverts.json`` import dir keeps the shared ground-installer path
+    unchanged.
+    """
+    from experimental import pikmin2_tamago_content as tamago_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'TamagoMushi':
+            raise StagingError(f'TamagoMushi adapter got non-TamagoMushi species: {species!r}')
+    if not pairs:
+        raise StagingError('TamagoMushi install requires at least one generator')
+    if (Path(source) / 'tamagomushi.json').is_file():
+        return tamago_content.stage_tamago_ground(Path(source), run, pairs)
+    from experimental import pikmin2_ground_inverts_install as ground
+    try:
+        receipt = ground.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='TamagoMushi', source_id=68,
+                generators=[g for g, _ in pairs], ground_receipt=receipt)
+
+
+# Imomushi (65) / Hana (84) share the ground_inverts family installer. Unlike
+# the shared batch2_core install (which refuses when the run already carries
+# ground sidecars from Sokkuri/ElecBug/TamagoMushi), this adapter merges its
+# own species rows, so one seed can bind Imomushi together with Sokkuri (or
+# any other ground writer) in either family order. Idempotent: a second call
+# over the same run is a no-op success when every staged file is
+# byte-identical; a conflicting staged file is refused with ``StagingError``.
+_GROUND_INVERTS_SOURCE_IDS = {'Imomushi': 65, 'Hana': 84}
+
+
+def _validate_ground_inverts(source):
+    """Pre-flight check for the shared ground-inverts family content."""
+    source = Path(source)
+    manifest = source / 'ground_inverts.json'
+    if not manifest.is_file():
+        raise StagingError(f'Ground-inverts manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Ground-inverts manifest unreadable: {manifest}') from error
+    if metadata.get('policy') != 'P2_GROUND_INVERTS_1':
+        raise StagingError(f'Ground-inverts manifest identity mismatch: {manifest}')
+    species = metadata.get('species', {})
+    if not any(name in species for name in _GROUND_INVERTS_SOURCE_IDS):
+        raise StagingError(f'Ground-inverts manifest carries no staged species: {manifest}')
+
+
+def _adapt_ground_inverts(source, run, actors):
+    """Adapter for Imomushi (65) / Hana (84) with merge semantics."""
+    from experimental import pikmin2_ground_inverts_install as ground
+    from experimental import pikmin2_ground_species_content as species_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in _GROUND_INVERTS_SOURCE_IDS:
+            raise StagingError(f'Ground-inverts adapter got non-ground-inverts species: {species!r}')
+    if not pairs:
+        raise StagingError('Ground-inverts install requires at least one generator')
+    source, run = Path(source), Path(run)
+    if not run.is_dir():
+        raise StagingError(f'Ground-inverts run directory missing: {run}')
+    room = run / 'assets/dataDir/courses/pikmin2room'
+    if not room.is_dir() or room.is_symlink():
+        raise StagingError(f'Ground-inverts room directory missing for run staging: {room}')
+    try:
+        profile_payload, bank_payload, _actors_payload, files, _metadata = ground.plan(source, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    wanted = sorted({species for _, species in pairs})
+    own_blocks = {}
+    for block in species_content.parse_bank(bank_payload):
+        if block[0] in wanted:
+            if block[0] in own_blocks:
+                raise StagingError(f'Ground-inverts plan carries duplicate bank block: {block[0]}')
+            own_blocks[block[0]] = block
+    if sorted(own_blocks) != wanted:
+        raise StagingError(
+            f'Ground-inverts plan carries no bank block for {sorted(set(wanted) - set(own_blocks))}')
+    actors_path, bank_file, profile_path = run / ground.ACTORS_TXT, run / ground.BANK_TXT, run / ground.PROFILE_TXT
+    wrote = False
+    for species in wanted:
+        generators = [int(generator) for generator, name in pairs if name == species]
+        merged_actors = species_content.merge_actors(
+            actors_path.read_bytes() if actors_path.is_file() else None,
+            species, generators)
+        _name, _enemy_id, own_clips = own_blocks[species]
+        merged_bank = species_content.merge_bank(
+            bank_file.read_bytes() if bank_file.is_file() else None,
+            species, _GROUND_INVERTS_SOURCE_IDS[species], own_clips)
+        if not actors_path.is_file() or actors_path.read_bytes() != merged_actors:
+            actors_path.write_bytes(merged_actors)
+            wrote = True
+        if not bank_file.is_file() or bank_file.read_bytes() != merged_bank:
+            bank_file.write_bytes(merged_bank)
+            wrote = True
+    if profile_path.is_file():
+        if profile_path.read_bytes() != profile_payload:
+            raise StagingError('Refusing conflicting ground-inverts profile staging')
+    else:
+        profile_path.write_bytes(profile_payload)
+        wrote = True
+    mesh_conflicts = sorted(
+        name for name, payload in files.items()
+        if (room / name).is_file()
+        and (room / name).read_bytes() != payload)
+    if mesh_conflicts:
+        raise StagingError(
+            'Refusing conflicting ground-inverts staging: ' + ', '.join(mesh_conflicts))
+    for name, payload in files.items():
+        if not (room / name).is_file():
+            (room / name).write_bytes(payload)
+            wrote = True
+    staged = 'written' if wrote else 'existing_identical'
+    return dict(family='ground_inverts', species=wanted, staged=staged,
+                generators=[g for g, _ in pairs],
+                files=sorted(files))
+
+
 def _read_identity_source(source, source_id, enum_name):
     path = Path(source) / 'identity.json'
     if not path.is_file():
@@ -1121,6 +1284,8 @@ ADAPTERS = {
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},
+    'tamago': {'install': _adapt_tamago, 'validate': _validate_tamago},
+    'ground_inverts': {'install': _adapt_ground_inverts, 'validate': _validate_ground_inverts},
     'dangomushi': {'install': _adapt_dangomushi, 'validate': _validate_dangomushi},
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},

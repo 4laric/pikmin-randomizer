@@ -16,10 +16,36 @@ every existing caller keeps working. Today the pool is:
 | 62 | ElecOtakara | dweevil |
 | 23 | Sarai | sarai |
 | 79 | Sokkuri | sokkuri |
+| 2 | Chappy | chappy |
+| 33 | FireChappy | chappy |
+| 35 | KumaChappy | chappy |
+| 43 | YellowChappy | chappy |
+| 53 | KingChappy | chappy |
+| 67 | LeafChappy | chappy |
+| 76 | KumaKochappy | chappy |
+| 12 | UjiA | uji |
+| 13 | UjiB | uji |
+| 14 | Tobi | uji |
+| 28 | ElecBug | elecbug |
+| 94 | DangoMushi | dangomushi |
+| 68 | TamagoMushi | tamago |
+| 17 | Frog | frog |
+| 18 | MaroFrog | frog |
+| 24 | Tank | tank |
+| 75 | Kabuto | kabuto |
+| 56 | Damagumo | long_legs |
+| 63 | Jigumo | aquatic |
+| 69 | BigFoot | long_legs |
+| 34 | SnakeCrow | snagret |
+| 70 | SnakeWhole | snagret |
+| 65 | Imomushi | ground_inverts |
+| 71 | UmiMushi | aquatic |
+| 101 | UmiMushiBlind | aquatic |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai).
+9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 25 Wtank, 15 Armor,
+26 Catfish, 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
