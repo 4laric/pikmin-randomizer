@@ -40,6 +40,18 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 34 SnakeCrow: ``pikmin2_snagret_assets.extract`` once, then
+  the full import tree is placed under ``<out>/SnakeCrow`` and
+  ``<out>/SnakeWhole``, because the shared-contract snagret installer
+  validates the whole three-species manifest per install.
+* 70 SnakeWhole: same shared snagret import tree as 34 (see above).
+* 65 Imomushi: ``pikmin2_ground_inverts_assets.extract`` -> ``<out>/Imomushi/``
+  (full six-species tree); the shared-contract ground installer validates the
+  whole manifest per install.
+* 71 UmiMushi: ``pikmin2_aquatic_assets.extract`` once, then the full import
+  tree is placed under ``<out>/UmiMushi`` and ``<out>/UmiMushiBlind``.
+* 101 UmiMushiBlind: same shared aquatic import tree as 71 (see above);
+  Blind reuses the UmiMushi bank as a visual stand-in.
 * 2 Chappy (inst-chappy #871): ``pikmin2_chappy_assets.extract`` ->
   ``<out>/Chappy/`` (``proxy.json`` + ``px_Chappy_<clip>_<ii>.mod``,
   byte-identical to the retired proxy extraction); the Chappy adapter stages
@@ -173,6 +185,7 @@ ENUM_FOR_SOURCE = {
     24: "Tank",
     25: "Wtank",
     28: "ElecBug",
+    34: "SnakeCrow",
     94: "DangoMushi",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -185,10 +198,14 @@ ENUM_FOR_SOURCE = {
     61: "GasOtakara",
     62: "ElecOtakara",
     63: "Jigumo",
+    65: "Imomushi",
     69: "BigFoot",
+    70: "SnakeWhole",
+    71: "UmiMushi",
     75: "Kabuto",
     78: "MiniHoudai",
     79: "Sokkuri",
+    101: "UmiMushiBlind",
 }
 
 
@@ -667,6 +684,99 @@ def extract_jigumo(iso, dest, research=None, pose_limit=6):
     return target
 
 
+def extract_snagret(iso, source_repo, dest, pose_limit=6):
+    """Build <dest>/{SnakeCrow,SnakeWhole}/ via the shared snagret extractor.
+
+    The shared-contract snagret installer validates the whole three-species
+    ``snagret.json`` manifest on every install, so the full import tree is
+    placed under each of the two worm-lane enum dirs (like the dweevil
+    four-way copy). Actors staged per install are the single bound species.
+    """
+    from experimental import pikmin2_snagret_assets as snagret
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    enums = ["SnakeCrow", "SnakeWhole"]
+    for enum_name in enums:
+        if (dest / enum_name).exists():
+            raise ValueError(f"content dir already exists: {dest / enum_name}")
+    tmp = dest / ".tmp-snagret"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        snagret.extract(iso, Path(source_repo), tmp, pose_limit=pose_limit)
+        for enum_name in enums:
+            shutil.copytree(tmp, dest / enum_name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return [dest / e for e in enums]
+
+
+def extract_ground(iso, source_repo, dest, pose_limit=6):
+    """Build <dest>/Imomushi/ via the shared ground-inverts extractor.
+
+    The shared-contract ground installer validates the whole six-species
+    ``ground_inverts.json`` manifest on every install, so the full import
+    tree is placed under the Imomushi enum dir; actors staged per install
+    are the single bound species.
+    """
+    from experimental import pikmin2_ground_inverts_assets as ground
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "Imomushi"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-ground"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        ground.extract(iso, Path(source_repo), tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_aquatic(iso, source_repo, dest, pose_limit=6):
+    """Build <dest>/{UmiMushi,UmiMushiBlind}/ via the shared aquatic extractor.
+
+    The shared-contract aquatic installer validates the whole four-species
+    ``aquatic.json`` manifest on every install, so the full import tree is
+    placed under each of the two worm-lane enum dirs. UmiMushiBlind reuses
+    the UmiMushi bank as a visual stand-in (see aquatic_install
+    UmiMushiBlind handling); actors staged per install keep the Blind
+    species name for the native Blind path.
+    """
+    from experimental import pikmin2_aquatic_assets as aquatic
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    enums = ["UmiMushi", "UmiMushiBlind"]
+    for enum_name in enums:
+        if (dest / enum_name).exists():
+            raise ValueError(f"content dir already exists: {dest / enum_name}")
+    tmp = dest / ".tmp-aquatic"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        aquatic.extract(iso, Path(source_repo), tmp, pose_limit=pose_limit)
+        for enum_name in enums:
+            shutil.copytree(tmp, dest / enum_name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return [dest / e for e in enums]
+
+
 def extract_uji(iso, dest, pose_limit=4):
     """Build <dest>/{UjiA,UjiB,Tobi}/ via the shared Uji extractor.
 
@@ -989,6 +1099,11 @@ EXTRACTORS = {
     56: "extract_damagumo",
     63: "extract_jigumo",
     69: "extract_bigfoot",
+    34: "extract_snagret",
+    70: "extract_snagret",
+    65: "extract_ground",
+    71: "extract_aquatic",
+    101: "extract_aquatic",
 }
 for _row in _PROXY_ROWS:
     # An own-identity extractor (e.g. Chappy) wins over the generic proxy
@@ -1032,6 +1147,8 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     uji_done = False
     frog_done = False
     tank_done = False
+    snagret_done = False
+    aquatic_done = False
     for source_id in supported:
         if source_id == 44:
             extract_bluekochappy(iso, research, out, pose_limit=pose_limit)
@@ -1058,6 +1175,19 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id in (34, 70):
+            if not snagret_done:
+                extract_snagret(iso, ROOT, out, pose_limit=pose_limit)
+                snagret_done = True
+            extracted.append(source_id)
+        elif source_id == 65:
+            extract_ground(iso, ROOT, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id in (71, 101):
+            if not aquatic_done:
+                extract_aquatic(iso, ROOT, out, pose_limit=pose_limit)
+                aquatic_done = True
             extracted.append(source_id)
         elif source_id == 56:
             extract_damagumo(iso, out)

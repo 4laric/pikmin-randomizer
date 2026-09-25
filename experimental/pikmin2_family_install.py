@@ -149,6 +149,17 @@ IDENTITY_FAMILY = {
     56: 'long_legs', 'damagumo': 'long_legs',
     69: 'long_legs', 'bigfoot': 'long_legs',
     63: 'aquatic', 'jigumo': 'aquatic',
+    # inst-worms lane (#871): SnakeCrow (34) + SnakeWhole (70) share the
+    # existing shared-contract snagret installer; Imomushi (65) reuses the
+    # shared-contract ground_inverts installer; UmiMushi (71) + UmiMushiBlind
+    # (101, Blind variant sharing the UmiMushi bank, see aquatic_install)
+    # reuse the shared-contract aquatic installer. Anything else still fails
+    # closed.
+    34: 'snagret', 'snakecrow': 'snagret',
+    70: 'snagret', 'snakewhole': 'snagret',
+    65: 'ground_inverts', 'imomushi': 'ground_inverts',
+    71: 'aquatic', 'umimushi': 'aquatic',
+    101: 'aquatic', 'umimushiblind': 'aquatic',
 }
 
 
