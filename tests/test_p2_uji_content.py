@@ -331,3 +331,28 @@ def test_proxy_and_uji_coexistence_fails_closed(tmp_path):
         '"host_teki": 18, "pose_limit": 4}\n', encoding='utf-8')
     with pytest.raises(ValueError, match='non-proxy'):
         proxy.load_rows(directory=proxy_dir)
+
+
+def test_family_install_ujib_grouped_with_ujia(tmp_path):
+    """UjiB shares the Uji family install with UjiA in one grouped call."""
+    from experimental import pikmin2_family_install as family_install
+
+    assert family_install.resolve_family(13) == 'uji'
+    assert family_install.resolve_family('UjiB') == 'uji'
+
+    content = make_content_root(tmp_path / 'content', ('UjiA', 'UjiB'))
+    retail = tmp_path / 'retail'
+    (retail / 'dataDir' / 'stages').mkdir(parents=True)
+    run = tmp_path / 'run'
+    layout = {'bindings': [
+        {'target': 'gen-012', 'source_id': 12, 'enum_name': 'UjiA'},
+        {'target': 'gen-013', 'source_id': 13, 'enum_name': 'UjiB'},
+    ]}
+    receipt = family_install.install_layout(
+        run, layout, content, {'gen-012': 219012, 'gen-013': 219013},
+        retail_assets=retail)
+    assert set(receipt['receipts']) == {'gen-012', 'gen-013'}
+    actors = (run / ACTORS_TXT).read_text(encoding='ascii')
+    assert _parse_actors(actors) == {219012: 'UjiA', 219013: 'UjiB'}
+    bank = (run / BANK_TXT).read_text(encoding='ascii')
+    assert set(_parse_bank(bank)) == {'UjiA', 'UjiB'}

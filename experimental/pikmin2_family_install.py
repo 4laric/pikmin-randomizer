@@ -102,10 +102,11 @@ IDENTITY_FAMILY = {
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
     # Campaign-identity Uji family (#871): UjiA (Female Sheargrub, source 12)
-    # stages the p2-uji-actors/bank sidecars through
-    # experimental.pikmin2_uji_content. UjiB (13) and Tobi (14) join the same
-    # family in their own landings; until then they stay proxy-declared.
+    # and UjiB (Male Sheargrub, source 13) stage the p2-uji-actors/bank
+    # sidecars through experimental.pikmin2_uji_content. Tobi (14) joins the
+    # same family in its own landing; until then it stays proxy-declared.
     12: 'uji', 'ujia': 'uji',
+    13: 'uji', 'ujib': 'uji',
 }
 
 
