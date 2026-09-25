@@ -313,16 +313,17 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     pack targets only ever bind small-host species.
 
     Pool (6 playable + 2 small-host + all large-host declared proxies) fits
-    the 35 non-pack slots now that Chappy (id 2), FireChappy (id 33) and
-    KumaChappy (id 35) stage through their own identity family instead of
-    the proxy tier (inst-chappy #871): 6 + 27 = 33. The sibling layout
-    leaves nothing unplaced; the base (sibling-less) layout has exactly 33
-    slots for the same 33 non-pack-eligible species, so its overflow side
-    is boundary-sensitive (see below). Which species the sampler repeats on
-    the 49-slot sibling layout is pool-sensitive (not an invariant), so
-    this pins the real guarantees instead: eligibility soundness on every
-    binding, the pack small-host rule, the exact-fit boundary, and
-    distinctness plus pool conservation wherever overflow occurs.
+    the 35 non-pack slots now that Chappy (id 2), FireChappy (id 33),
+    KumaChappy (id 35) and YellowChappy (id 43) stage through their own
+    identity family instead of the proxy tier (inst-chappy #871): 6 + 26 =
+    32. The sibling layout leaves nothing unplaced; the base
+    (sibling-less) layout still overflows its 33 slots (32 non-pack
+    eligible plus the 2 smalls compete for them). Which species the sampler
+    repeats on the 49-slot sibling layout is pool-sensitive (not an
+    invariant), so this pins the real guarantees instead: eligibility
+    soundness on every binding, the pack small-host rule, the exact-fit
+    boundary, and distinctness plus pool conservation wherever overflow
+    occurs.
     """
     from collections import Counter
     from experimental.pikmin2_enemy_roster import load_and_validate
@@ -340,14 +341,13 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     rows = load_rows()
     small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
-    # Chappy (id 2), FireChappy (id 33) and KumaChappy (id 35) left the
-    # proxy tier for their own identity (inst-chappy #871); further lane
-    # species shrink the large count the same way, so this pins the
-    # declared shape, not a universal constant.
-    assert len(small_ids) == 20 and len(large_ids) == 27
-    assert 2 not in small_ids + large_ids
-    assert 33 not in small_ids + large_ids
-    assert 35 not in small_ids + large_ids
+    # Chappy (id 2), FireChappy (id 33), KumaChappy (id 35) and
+    # YellowChappy (id 43) left the proxy tier for their own identity
+    # (inst-chappy #871); further lane species shrink the large count the
+    # same way, so this pins the declared shape, not a universal constant.
+    assert len(small_ids) == 20 and len(large_ids) == 26
+    for finished in (2, 33, 35, 43):
+        assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
