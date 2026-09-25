@@ -220,7 +220,7 @@ def test_sampled_assigns_playable_first():
     document = _default_admitted_placement()
     proxy_rows = _proxy_rows_for([2, 17])
     layout = resolve_placement_layout("seed-playable-first", "Player1", document, roster,
-                                      species=[44, 54, 59, 60, 61, 62, 2, 17],
+                                      species=[*PLAYABLE_P2_SPECIES, 2, 17],
                                       proxy_rows=proxy_rows)
     bound = {b["source_id"] for b in layout["bindings"]}
     assert set(PLAYABLE_P2_SPECIES) <= bound

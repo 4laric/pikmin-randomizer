@@ -14,10 +14,12 @@ every existing caller keeps working. Today the pool is:
 | 60 | WaterOtakara | dweevil |
 | 61 | GasOtakara | dweevil |
 | 62 | ElecOtakara | dweevil |
+| 23 | Sarai | sarai |
+| 79 | Sokkuri | sokkuri |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 23 Sarai, 57 Kurage, 58 BombSarai, 78 MiniHoudai, 79 Sokkuri).
+9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
@@ -39,7 +41,9 @@ A species is admitted when all three hold:
    a campaign or campaign-like native session: spawn, movement/animation,
    combat interaction, natural death, corpse. The table row cites what was
    run and where the log lives (`evidence.run` / `evidence.log`); injected
-   state, forced transport, or synthetic markers do not count.
+   state, forced transport, or synthetic markers do not count. Owner ruling
+   2026-09-25: bot-driven power-mode runs (larger squad, damage multiplier)
+   count, provided each claim keys on the species' own generator token.
 
 ## How to add a species
 

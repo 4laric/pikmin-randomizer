@@ -93,9 +93,10 @@ def test_other_species_and_gates_are_preserved():
 
 
 def test_roster_evidence_is_not_playable_pool_admission():
-    assert 79 not in PLAYABLE_P2_SPECIES
-    assert all(row["source_id"] != 79 for row in P2_PLAYABLE_POOL)
+    # Roster evidence alone never admitted 79; the bc5 campaign row did (owner ruling 2026-09-25).
     assert "not P2_PLAYABLE_POOL admission" in _notes79()
+    row = next(row for row in P2_PLAYABLE_POOL if row["source_id"] == 79)
+    assert "bc5" in row["evidence"]["run"]
 
 
 def test_source79_receipt_doc_leaves_gate6_untested():

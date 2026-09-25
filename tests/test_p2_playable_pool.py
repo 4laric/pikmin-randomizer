@@ -4,7 +4,7 @@ from randomizer.seed import P2_PLAYABLE_POOL, PLAYABLE_P2_SPECIES, generate, val
 
 
 def test_pool_table_derives_playable_tuple():
-    assert PLAYABLE_P2_SPECIES == (44, 54, 59, 60, 61, 62)
+    assert PLAYABLE_P2_SPECIES == (44, 54, 59, 60, 61, 62, 23, 79)
     assert PLAYABLE_P2_SPECIES == tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 

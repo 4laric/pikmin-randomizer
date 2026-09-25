@@ -121,7 +121,7 @@ class SeedRandom:
 # Adding a row does NOT admit a species on its own -- see
 # docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure.
 # Do NOT add the other installer-capable species (1 Kochappy, 45 Snow,
-# 9 Kogane, 23 Sarai, 57 Kurage, 58 BombSarai, 78 MiniHoudai, 79 Sokkuri)
+# 9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai)
 # until their campaign evidence lands; that evidence is owned by other lanes.
 P2_PLAYABLE_POOL = (
     {
@@ -211,6 +211,28 @@ P2_PLAYABLE_POOL = (
                    "tests/test_pikmin2_otakara_runtime.py",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 62 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 23,
+        "enum_name": "Sarai",
+        "family": "sarai",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, fight, P2_SARAI_DEAD health=0 on its own generator, corpse carried, Onion receipt onion:p2:23:3; movement/combat also seen in owner playtest",
+            "log": "C:/cop/botcamp-bc5-23-Sarai/session/runs/e4da72b1eb8f1d730171bd2cb671faa82557a579d3df53023988f02cb93f1f26/native.log (sha256 3231b0baf8077f23...) L1140 dead, L1239 receipt; output/claude-orch/evidence/botcamp-bc5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 23 -> sarai",
+        },
+    },
+    {
+        "source_id": 79,
+        "enum_name": "Sokkuri",
+        "family": "sokkuri",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, drawn, fight, natural death, corpse carried by 6, Onion receipt onion:p2:79:3; reveal also seen in owner playtest",
+            "log": "C:/cop/botcamp-bc5-79-Sokkuri/session/runs/ec5a69e36cc98c686de365365d36a3a064593214bce92675d457dbe183e5a6ec/native.log (sha256 77b9adba1959e718...) L1281 dead, L1413 receipt; output/claude-orch/evidence/botcamp-bc5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 79 -> sokkuri",
         },
     },
 )
