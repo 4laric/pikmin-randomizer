@@ -37,7 +37,9 @@ def test_tier_ids_declared_vs_proven():
     rows = load_rows()
     declared = tier_ids("declared")
     assert declared == sorted(row["source_id"] for row in rows)
-    assert {2, 17} <= set(declared)
+    assert {2} <= set(declared)
+    # inst-frogs #871: Frog (17) graduated to its own identity installer.
+    assert 17 not in set(declared)
     # Proven is exactly the rows that carry a probe evidence block.
     assert tier_ids("proven") == sorted(row["source_id"] for row in rows if "evidence" in row)
     assert set(tier_ids("proven")) <= set(declared)
@@ -143,13 +145,14 @@ def test_declared_admits_chappy_frog():
     manifest = generate("tier-declared", p2_enemies=True,
                         p2_proxy_tier="declared", p2_species="full")
     bound = {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
-    # The 50-species declared pool overflows the 33 ground slots, so some
-    # species land in `unplaced`; the pool as a whole still covers Chappy/Frog.
+    # The declared pool overflows the ground slots, so some species land in
+    # `unplaced`; the pool as a whole still covers Chappy/MaroFrog (Frog 17 is
+    # now its own identity via inst-frogs #871).
     # The sampler must still bind something: an empty binding list with
     # everything unplaced would pass the pool check while placement is broken.
     assert bound
     pool = bound | set(manifest["p2_layout"].get("unplaced", []))
-    assert {2, 17} <= pool
+    assert {2, 18} <= pool
     assert manifest["p2_layout"]["density"] == "sampled-v1"
     assert manifest["p2_proxy_tier"] == "declared"
     validate(manifest)
@@ -171,7 +174,7 @@ def test_explicit_proxy_ids_need_covering_tier(monkeypatch):
 def test_manifest_round_trip_with_tier():
     manifest = generate("tier-roundtrip", p2_enemies=True,
                         p2_proxy_tier="declared",
-                        p2_species=[44, 54, 59, 60, 61, 62, 2, 17])
+                        p2_species=[44, 54, 59, 60, 61, 62, 2, 18])
     validate(manifest)
     loaded = json.loads(json.dumps(manifest))
     validate(loaded)
@@ -182,7 +185,7 @@ def test_manifest_round_trip_with_tier():
 def test_proxy_binding_without_tier_key_rejected():
     manifest = generate("tier-strip", p2_enemies=True,
                         p2_proxy_tier="declared",
-                        p2_species=[44, 54, 59, 60, 61, 62, 2, 17])
+                        p2_species=[44, 54, 59, 60, 61, 62, 2, 18])
     stripped = json.loads(json.dumps(manifest))
     del stripped["p2_proxy_tier"]
     stripped["capabilities"] = [c for c in stripped["capabilities"]
@@ -198,11 +201,11 @@ def test_sampled_layout_pool_larger_than_targets_reports_unplaced():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    pool = [44, 54, 59, 60, 61, 62, 2, 17, 9, 23, 57, 78, 79]
+    pool = [44, 54, 59, 60, 61, 62, 2, 18, 9, 23, 57, 78, 79]
     tiny = {"schema": document["schema"],
             "slots": document["slots"][:3],
             "profiles": document["profiles"]}
-    proxy_rows = _proxy_rows_for([2, 17])
+    proxy_rows = _proxy_rows_for([2, 18])
     layout = resolve_placement_layout("seed-unplaced", "Player1", tiny, roster,
                                       species=pool, proxy_rows=proxy_rows)
     assert layout["density"] == "sampled-v1"
@@ -218,9 +221,9 @@ def test_sampled_assigns_playable_first():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    proxy_rows = _proxy_rows_for([2, 17])
+    proxy_rows = _proxy_rows_for([2, 18])
     layout = resolve_placement_layout("seed-playable-first", "Player1", document, roster,
-                                      species=[*PLAYABLE_P2_SPECIES, 2, 17],
+                                      species=[*PLAYABLE_P2_SPECIES, 2, 18],
                                       proxy_rows=proxy_rows)
     bound = {b["source_id"] for b in layout["bindings"]}
     assert set(PLAYABLE_P2_SPECIES) <= bound

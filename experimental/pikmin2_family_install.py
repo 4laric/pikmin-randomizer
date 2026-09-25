@@ -101,6 +101,9 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # Frog lane (inst-frogs #871): Yellow Wollywog (Frog, source 17) stages
+    # through the dedicated frog installer (p2-frog.txt + frog_* poses).
+    17: 'frog', 'frog': 'frog',
 }
 
 
@@ -539,6 +542,42 @@ def _adapt_minihoudai(source, run, actors):
                 placeholder_generator=True)
 
 
+def _validate_frog(source):
+    """Pre-flight check for the Frog (Yellow Wollywog, source 17) content.
+
+    The source is the frog bank dir (``frogs.json`` + ``Frog/`` + ``MaroFrog/``
+    pose banks) produced by ``extract_frog``; the full manifest contract stays
+    authoritative inside ``experimental.pikmin2_frog_install``.
+    """
+    source = Path(source)
+    if not (source / 'frogs.json').is_file():
+        raise StagingError(f'Frog bank missing for identity content: {source / "frogs.json"}')
+
+
+def _adapt_frog(source, run, actors):
+    """Adapter for Frog (source 17): stage ``p2-frog.txt`` + pose meshes.
+
+    Reuses ``experimental.pikmin2_frog_install.install`` for the
+    ``p2-frog.txt`` protocol and ``frog_*`` visuals. In bridge mode the native
+    setup takes the bound actor from the seed (``pc_p2_campaign_ids(17)``), so
+    the filed generators are placeholders there; outside bridge mode they bind
+    directly. ``install_layout`` groups by family, so this runs once per layout
+    with all Frog generators. Accepts MaroFrog actors as well because the bank
+    carries both species (the 18 row lands next).
+    """
+    from experimental import pikmin2_frog_install as frog
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in ('Frog', 'MaroFrog'):
+            raise StagingError(f'Frog adapter got non-Frog species: {species!r}')
+    if not pairs:
+        raise StagingError('Frog install requires at least one generator')
+    try:
+        return frog.install(Path(source), Path(run), pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+
+
 def _proxy_content_root(source, actors):
     """Resolve the identity-keyed content root for a proxy install.
 
@@ -595,6 +634,7 @@ ADAPTERS = {
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'frog': {'install': _adapt_frog, 'validate': _validate_frog},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 

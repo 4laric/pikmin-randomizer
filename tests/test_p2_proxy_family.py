@@ -42,7 +42,9 @@ def test_load_rows_happy_path_real_dir():
     assert rows == sorted(rows, key=lambda row: row["source_id"])
     by_id = {row["source_id"]: row for row in rows}
     assert by_id[2]["enum_name"] == "Chappy"
-    assert by_id[17]["enum_name"] == "Frog"
+    # inst-frogs #871: Frog (17) graduated to its own identity installer.
+    assert 17 not in by_id
+    assert by_id[18]["enum_name"] == "MaroFrog"
     assert len(rows) == len(list((ROOT / "randomizer" / "p2_proxy").glob("*.json")))
 
 
@@ -75,9 +77,9 @@ def test_load_rows_rejects_non_proxy_path(tmp_path):
 def test_load_rows_rejects_duplicate_enum(tmp_path, monkeypatch):
     import randomizer.p2_proxy as proxy
     monkeypatch.setattr(proxy, "_roster_enums",
-                        lambda: {2: "Chappy", 17: "Chappy"})
+                        lambda: {2: "Chappy", 18: "Chappy"})
     write_decl(tmp_path, 2, "Chappy")
-    write_decl(tmp_path, 17, "Chappy")
+    write_decl(tmp_path, 18, "Chappy")
     with pytest.raises(ValueError, match="duplicate enum"):
         load_rows(tmp_path)
 
@@ -86,7 +88,7 @@ def test_load_rows_rejects_bad_pose_limit(tmp_path):
     write_decl(tmp_path, 2, "Chappy", pose_limit=9)
     with pytest.raises(ValueError, match="pose_limit"):
         load_rows(tmp_path)
-    write_decl(tmp_path, 17, "Frog", pose_limit=1)
+    write_decl(tmp_path, 18, "MaroFrog", pose_limit=1)
     with pytest.raises(ValueError, match="pose_limit"):
         load_rows(tmp_path)
 
@@ -235,21 +237,21 @@ def test_sidecar_grammar_single_species(tmp_path):
 def test_two_species_share_sidecars(tmp_path):
     content_root = tmp_path / "content"
     make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Frog", 17)
+    make_species_tree(content_root, "MaroFrog", 18)
     run = make_run(tmp_path / "run")
     receipt = content.stage_proxy(content_root, run,
-                                  {111: "Chappy", 222: "Frog", 333: "Chappy"})
-    assert receipt["species"] == ["Chappy", "Frog"]
+                                  {111: "Chappy", 222: "MaroFrog", 333: "Chappy"})
+    assert receipt["species"] == ["Chappy", "MaroFrog"]
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n17 Frog 0\n"
+        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n18 MaroFrog 33\n"
     assert (run / "p2-proxy-actors.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_ACTORS_1\n3\n111 Chappy\n222 Frog\n333 Chappy\n"
+        "P2_PROXY_ACTORS_1\n3\n111 Chappy\n222 MaroFrog\n333 Chappy\n"
     bank = (run / "p2-proxy-bank.txt").read_text(encoding="ascii")
-    assert "species Chappy 2\n" in bank and "species Frog 17\n" in bank
+    assert "species Chappy 2\n" in bank and "species MaroFrog 18\n" in bank
     assert bank.startswith("P2_PROXY_BANK_1\n")
     room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
     assert len(list(room.glob("px_Chappy_*.mod"))) == 6
-    assert len(list(room.glob("px_Frog_*.mod"))) == 6
+    assert len(list(room.glob("px_MaroFrog_*.mod"))) == 6
 
 
 def test_reapplication_conflict_rejected(tmp_path):
@@ -286,7 +288,7 @@ def test_stage_rejects_hash_mismatch(tmp_path):
         content.stage_proxy(content_root, run, {111: "Chappy"})
 
 
-@pytest.mark.parametrize("species,source_id", [("Chappy", 2), ("Frog", 17)])
+@pytest.mark.parametrize("species,source_id", [("Chappy", 2), ("MaroFrog", 18)])
 def test_extract_real_species(tmp_path, species, source_id):
     if not ISO.is_file():
         pytest.skip("P2 ISO not present")
@@ -516,11 +518,11 @@ def test_install_layout_groups_two_proxy_species(tmp_path, monkeypatch):
     family_install = _stub_private_destination(monkeypatch)
     content_root = tmp_path / "content"
     make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Frog", 17)
+    make_species_tree(content_root, "MaroFrog", 18)
     run = tmp_path / "run"
     layout = {"bindings": [
         {"target": "1001", "source_id": 2, "enum_name": "Chappy"},
-        {"target": "1002", "source_id": 17, "enum_name": "Frog"},
+        {"target": "1002", "source_id": 18, "enum_name": "MaroFrog"},
         {"target": "1003", "source_id": 2, "enum_name": "Chappy"},
     ]}
     receipt = family_install.install_layout(
@@ -529,9 +531,9 @@ def test_install_layout_groups_two_proxy_species(tmp_path, monkeypatch):
         retail_assets=tmp_path / "retail")
     assert sorted(receipt["receipts"]) == ["1001", "1002", "1003"]
     assert (run / "p2-proxy-campaign.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n17 Frog 0\n"
+        "P2_PROXY_CAMPAIGN_1\n2\n2 Chappy 4\n18 MaroFrog 33\n"
     assert (run / "p2-proxy-actors.txt").read_text(encoding="ascii") == \
-        "P2_PROXY_ACTORS_1\n3\n1001 Chappy\n1002 Frog\n1003 Chappy\n"
+        "P2_PROXY_ACTORS_1\n3\n1001 Chappy\n1002 MaroFrog\n1003 Chappy\n"
 
 
 def test_install_layout_mixes_proxy_and_other_families(tmp_path, monkeypatch):
@@ -570,11 +572,11 @@ def test_install_layout_second_call_replays_receipt(tmp_path, monkeypatch):
     family_install = _stub_private_destination(monkeypatch)
     content_root = tmp_path / "content"
     make_species_tree(content_root, "Chappy", 2)
-    make_species_tree(content_root, "Frog", 17)
+    make_species_tree(content_root, "MaroFrog", 18)
     run = tmp_path / "run"
     layout = {"bindings": [
         {"target": "1001", "source_id": 2, "enum_name": "Chappy"},
-        {"target": "1002", "source_id": 17, "enum_name": "Frog"},
+        {"target": "1002", "source_id": 18, "enum_name": "MaroFrog"},
     ]}
     actors = {"1001": 1001, "1002": 1002}
     first = family_install.install_layout(

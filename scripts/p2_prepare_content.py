@@ -40,6 +40,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 17 Frog: ``pikmin2_frog_assets.extract`` -> ``<out>/Frog/``
+  (``frogs.json`` + ``Frog/`` + ``MaroFrog/`` pose banks, the layout the frog
+  installer reads); the Frog adapter stages ``p2-frog.txt`` through
+  ``pikmin2_frog_install``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -94,6 +98,7 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
     9: "Kogane",
+    17: "Frog",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -448,6 +453,37 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
+def extract_frog(iso, research, dest, pose_limit=6):
+    """Build <dest>/Frog/ via the Frog extractor.
+
+    ``pikmin2_frog_assets.extract`` produces the source bank
+    (``frogs.json`` + ``Frog/`` + ``MaroFrog/`` pose meshes); the Frog
+    adapter stages ``p2-frog.txt`` from that tree via
+    ``experimental.pikmin2_frog_install``.
+    """
+    from experimental import pikmin2_frog_assets as frog
+
+    iso, research, dest = Path(iso), Path(research), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
+        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    target = dest / "Frog"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-frog"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        frog.extract(iso, research, tmp, limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -506,6 +542,7 @@ EXTRACTORS = {
     62: "extract_dweevil",
     23: "extract_sarai",
     9: "extract_kogane",
+    17: "extract_frog",
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
@@ -571,6 +608,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 17:
+            extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
