@@ -340,13 +340,11 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     rows = load_rows()
     small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
-    # Chappy (id 2), FireChappy (id 33), KumaChappy (id 35),
-    # YellowChappy (id 43), KingChappy (id 53) and LeafChappy (id 67) left
-    # the proxy tier for their own identity (inst-chappy #871); the last
-    # lane species (76) shrinks the small count the same way, so this pins
-    # the declared shape, not a universal constant.
-    assert len(small_ids) == 19 and len(large_ids) == 25
-    for finished in (2, 33, 35, 43, 53, 67):
+    # The whole Chappy family (ids 2, 33, 35, 43, 53, 67, 76) left the
+    # proxy tier for its own identity (inst-chappy #871 complete), so this
+    # pins the declared shape, not a universal constant.
+    assert len(small_ids) == 18 and len(large_ids) == 25
+    for finished in (2, 33, 35, 43, 53, 67, 76):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
