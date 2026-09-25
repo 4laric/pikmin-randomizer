@@ -162,20 +162,21 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
         assert PACKS <= set(tokens)
         assert not (RESERVED & set(tokens))
 
-    # Pack targets admit only small-host rows: a large-host ground row (id 2,
-    # host_teki 4 Spotty Bulborb) sees the singletons but none of the packs.
-    large_rows = _proxy_rows_for([2])
+    # Pack targets admit only small-host rows: a large-host ground row (id 34,
+    # host_teki 4 SnakeCrow) sees the singletons but none of the packs.
+    # (Chappy id 2 used to serve here; it is now own-identity, inst-chappy.)
+    large_rows = _proxy_rows_for([34])
     assert large_rows[0]["host_teki"] not in PACK_HOSTS
     accepted_large = _proxy_accepted_targets(document, large_rows, roster,
                                              proxy_document=sibling)
-    assert SINGLETONS <= set(accepted_large[2])
-    assert not (PACKS & set(accepted_large[2]))
+    assert SINGLETONS <= set(accepted_large[34])
+    assert not (PACKS & set(accepted_large[34]))
 
-    water_row = dict(_proxy_rows_for([2])[0])
+    water_row = dict(_proxy_rows_for([34])[0])
     water_row["terrains"] = ["water"]
     accepted_water = _proxy_accepted_targets(document, [water_row], roster,
                                              proxy_document=sibling)
-    assert accepted_water[2] == set()
+    assert accepted_water[34] == set()
 
     # The audit-derived union is unchanged: without the sibling the singletons
     # never appear.
@@ -280,8 +281,8 @@ def test_sampler_cap_and_reserved_and_sorted():
     grown = _synthetic_65_document()
     with pytest.raises(SeedBridgeError):
         resolve_placement_layout("stageA-65", "Player1", grown, roster,
-                                 species=[44, 2],
-                                 proxy_rows=_proxy_rows_for([2]))
+                                 species=[44, 17],
+                                 proxy_rows=_proxy_rows_for([17]))
 
 
 def test_pack_targets_only_bind_small_hosts():
@@ -310,11 +311,15 @@ def test_pack_targets_only_bind_small_hosts():
 def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     """Guarantee: a repeated species never fills a target an unplaced species could fill.
 
-    Pool (6 playable + 2 small-host + all 30 large-host declared proxies = 38)
-    overflows the 35 non-pack slots, so at least one large-host proxy stays
-    unplaced while pack targets fall back to repeats of the 2 small-host
-    species. The fallback repeats only small-host species on packs: no
-    repeated target is eligible for any end-unplaced species.
+    Pool (6 playable + 2 small-host + all large-host declared proxies) fills
+    the 35 non-pack slots exactly now that Chappy (id 2) stages through its
+    own identity family instead of the proxy tier (inst-chappy #871): 6 +
+    29 = 35, so the sibling layout leaves nothing unplaced while pack
+    targets still fall back to repeats of the 2 small-host species. The base
+    (sibling-less) layout still overflows its 33 slots, so the unplaced side
+    of the guarantee is exercised there: no repeated target is eligible for
+    any end-unplaced species, and the fallback repeats only small-host
+    species on packs.
     """
     from collections import Counter
     from experimental.pikmin2_enemy_roster import load_and_validate
@@ -332,7 +337,11 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     rows = load_rows()
     small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
-    assert len(small_ids) == 20 and len(large_ids) == 30
+    # Chappy (id 2, large host 4) left the proxy tier for its own identity
+    # (inst-chappy #871); further lane species shrink the large count the
+    # same way, so this pins the declared shape, not a universal constant.
+    assert len(small_ids) == 20 and len(large_ids) == 29
+    assert 2 not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
@@ -342,9 +351,12 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
         counts = Counter(b["source_id"] for b in layout["bindings"])
         repeats = {source_id for source_id, count in counts.items() if count > 1}
         assert repeats, "pack fallback must repeat the 2 small-host species"
-        unplaced = set(layout.get("unplaced", []))
-        assert unplaced, "large-host overflow must leave species unplaced"
-        assert unplaced <= set(large_ids)
+        assert repeats <= set(small_ids), (seed, repeats)
+        # The declared pool fits the sibling layout exactly now (see
+        # docstring): nothing is unplaced here, so the no-steal check is
+        # vacuous on this layout; the overflow side runs on the base
+        # document below.
+        assert not layout.get("unplaced", []), (seed, layout.get("unplaced"))
         accepted = _accepted_placement_targets(document, roster)
         proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster,
                                                  proxy_document=sibling)
@@ -356,9 +368,21 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
                     if source_id in set(pool) and target in tokens}
             eligible[target] = ids
         for binding in layout["bindings"]:
-            if binding["source_id"] in repeats:
-                assert not (unplaced & eligible[binding["target"]]), (
-                    seed, binding["target"], binding["source_id"])
+            assert binding["source_id"] in eligible[binding["target"]], (
+                seed, binding["target"], binding["source_id"])
+        # The same pool overflows the 33-slot base document: unplaced is
+        # non-empty, every binding is distinct (no repeat steals a slot),
+        # and nothing in the pool is lost.
+        base = resolve_placement_layout(
+            seed, "Player1", document, roster, species=pool,
+            proxy_rows=proxy_rows)
+        base_unplaced = set(base.get("unplaced", []))
+        assert base_unplaced, "base-document overflow must leave species unplaced"
+        base_counts = Counter(b["source_id"] for b in base["bindings"])
+        assert all(count == 1 for count in base_counts.values()), (
+            seed, base_counts)
+        assert ({b["source_id"] for b in base["bindings"]} | base_unplaced
+                == set(pool)), (seed, base_unplaced)
 
 
 def test_generate_parity_with_declared_dwarf_hosts():

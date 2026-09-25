@@ -40,6 +40,12 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 2 Chappy (inst-chappy #871): ``pikmin2_chappy_assets.extract`` ->
+  ``<out>/Chappy/`` (``proxy.json`` + ``px_Chappy_<clip>_<ii>.mod``,
+  byte-identical to the retired proxy extraction); the Chappy adapter stages
+  the identity sidecars through ``pikmin2_chappy_content``. Further
+  Chappy-family species (33, 35, 43, 53, 67, 76) wire here one finished
+  species at a time.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -93,6 +99,7 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
+    2: "Chappy",
     9: "Kogane",
     23: "Sarai",
     44: "BlueKochappy",
@@ -120,6 +127,9 @@ _PROXY_ROWS = _proxy_declarations()
 PROXY_SOURCE_IDS = frozenset(row["source_id"] for row in _PROXY_ROWS)
 for _row in _PROXY_ROWS:
     ENUM_FOR_SOURCE[_row["source_id"]] = _row["enum_name"]
+
+
+
 
 TARGET_RE = re.compile(r"[A-Za-z0-9_.:/-]+")
 
@@ -497,7 +507,44 @@ def extract_proxy(iso, dest, source_id, pose_limit=None):
     return target
 
 
+def extract_chappy(iso, dest, source_id, pose_limit=None):
+    """Build <dest>/<Enum>/ for one Chappy-family species via its extractor.
+
+    ``pikmin2_chappy_assets.extract`` produces the source poses
+    (``proxy.json`` + ``px_<Enum>_<clip>_<ii>.mod``, byte-identical to the
+    retired proxy extraction); the Chappy adapter stages the identity
+    actors/bank sidecars plus the pose files from that tree via
+    ``experimental.pikmin2_chappy_content.stage_chappy``. A ``None`` pose
+    limit takes the family row's ``pose_limit``.
+    """
+    from experimental import pikmin2_chappy_assets as chappy
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(source_id) is not int or isinstance(source_id, bool):
+        raise ValueError(f"chappy source id must be an int: {source_id!r}")
+    if source_id not in chappy.CHAPPY_ROWS:
+        raise ValueError(f"source id {source_id!r} is not a Chappy-family species")
+    enum_name = ENUM_FOR_SOURCE.get(source_id)
+    if enum_name != chappy.CHAPPY_ROWS[source_id]["enum_name"]:
+        raise ValueError(f"unknown enum name for source id {source_id!r}")
+    target = dest / enum_name
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / f".tmp-chappy-{source_id}"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        chappy.extract(iso, enum_name, source_id, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 EXTRACTORS = {
+    2: "extract_chappy",
     44: "extract_bluekochappy",
     54: "extract_miulin",
     59: "extract_dweevil",
@@ -511,7 +558,11 @@ EXTRACTORS = {
     79: "extract_sokkuri",
 }
 for _row in _PROXY_ROWS:
-    EXTRACTORS[_row["source_id"]] = "extract_proxy"
+    # An own-identity extractor (e.g. Chappy) wins over the generic proxy
+    # path; a proxy row and an identity row must never coexist, so a
+    # surviving proxy declaration for an EXTRACTORS id is a fail-closed
+    # import error via IDENTITY_FAMILY, not a silent overwrite here.
+    EXTRACTORS.setdefault(_row["source_id"], "extract_proxy")
 del _row
 
 
@@ -571,6 +622,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 2:
+            extract_chappy(iso, out, source_id, pose_limit=proxy_pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)

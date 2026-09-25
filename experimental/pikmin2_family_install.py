@@ -101,6 +101,11 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # inst-chappy lane (#871): Chappy (Red Bulborb, source 2) binds through
+    # the own-identity chappy adapter below. Further Chappy-family species
+    # (33, 35, 43, 53, 67, 76) join these rows one finished species at a
+    # time; a proxy row and an identity row must never coexist.
+    2: 'chappy', 'chappy': 'chappy',
 }
 
 
@@ -539,6 +544,50 @@ def _adapt_minihoudai(source, run, actors):
                 placeholder_generator=True)
 
 
+def _chappy_content_root(source, actors):
+    """Resolve the identity-keyed content root for a Chappy-family install.
+
+    ``install_layout`` groups by family, so this adapter runs once per layout
+    with every Chappy-family actor while ``source`` is only the first
+    binding's ``<content_root>/<enum>`` species dir. The content root is the
+    directory whose per-species children hold every bound species'
+    ``proxy.json`` (the Chappy extractor output).
+    """
+    species = {species for _, species in actors}
+    candidates = [Path(source), Path(source).parent]
+    for candidate in candidates:
+        if all((candidate / name / 'proxy.json').is_file() for name in species):
+            return candidate
+    raise StagingError(
+        f'Chappy content root missing proxy.json for {sorted(species)} under {source}')
+
+
+def _validate_chappy(source):
+    """Pre-flight check for one Chappy-family species dir (full plan at install)."""
+    from experimental import pikmin2_chappy_content as chappy_content
+    chappy_content.validate_source(source)
+
+
+def _adapt_chappy(source, run, actors):
+    """Adapter for the own-identity Chappy family (source 2, Chappy, first).
+
+    Stages all Chappy-family actors through
+    ``experimental.pikmin2_chappy_content`` in one grouped call: one shared
+    actors/bank file plus every bound species' pose meshes.
+    ``install_layout`` already groups bindings by family, so this runs once
+    per layout with all Chappy-family generators.
+    """
+    from experimental import pikmin2_chappy_content as chappy_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in chappy_content.ID_FOR_SPECIES:
+            raise StagingError(f'Chappy adapter got non-Chappy species: {species!r}')
+    if not pairs:
+        raise StagingError('Chappy install requires at least one generator')
+    content_root = _chappy_content_root(source, pairs)
+    return chappy_content.stage_chappy(content_root, run, pairs)
+
+
 def _proxy_content_root(source, actors):
     """Resolve the identity-keyed content root for a proxy install.
 
@@ -595,6 +644,7 @@ ADAPTERS = {
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 
