@@ -356,3 +356,36 @@ def test_family_install_ujib_grouped_with_ujia(tmp_path):
     assert _parse_actors(actors) == {219012: 'UjiA', 219013: 'UjiB'}
     bank = (run / BANK_TXT).read_text(encoding='ascii')
     assert set(_parse_bank(bank)) == {'UjiA', 'UjiB'}
+
+
+def test_family_install_tobi_completes_uji_family(tmp_path):
+    """Tobi (Shearwig) stages its fly clip through the shared Uji family."""
+    from experimental import pikmin2_family_install as family_install
+
+    assert family_install.resolve_family(14) == 'uji'
+    assert family_install.resolve_family('Tobi') == 'uji'
+
+    content = make_content_root(tmp_path / 'content', ('UjiA', 'UjiB', 'Tobi'))
+    retail = tmp_path / 'retail'
+    (retail / 'dataDir' / 'stages').mkdir(parents=True)
+    run = tmp_path / 'run'
+    layout = {'bindings': [
+        {'target': 'gen-012', 'source_id': 12, 'enum_name': 'UjiA'},
+        {'target': 'gen-013', 'source_id': 13, 'enum_name': 'UjiB'},
+        {'target': 'gen-014', 'source_id': 14, 'enum_name': 'Tobi'},
+    ]}
+    receipt = family_install.install_layout(
+        run, layout, content,
+        {'gen-012': 219012, 'gen-013': 219013, 'gen-014': 219014},
+        retail_assets=retail)
+    assert set(receipt['receipts']) == {'gen-012', 'gen-013', 'gen-014'}
+    actors = (run / ACTORS_TXT).read_text(encoding='ascii')
+    assert _parse_actors(actors) == {219012: 'UjiA', 219013: 'UjiB',
+                                     219014: 'Tobi'}
+    bank = (run / BANK_TXT).read_text(encoding='ascii')
+    blocks = _parse_bank(bank)
+    assert set(blocks) == {'UjiA', 'UjiB', 'Tobi'}
+    names = [name for name, _, _, _ in blocks['Tobi']]
+    assert 'fly' in names and 'move' in names and 'dead' in names
+    room_files = sorted(p.name for p in (run / ROOM).glob('*.mod'))
+    assert any(name.startswith('uji_Tobi_') for name in room_files)

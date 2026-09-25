@@ -40,11 +40,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
-* 12-13 UjiA/UjiB: ``pikmin2_uji_assets.extract`` once, then each Uji species
-  tree (``uji.json`` + ``uji_<Species>_<clip>_<ii>.mod``) is placed under
-  ``<out>/UjiA`` etc.; the Uji adapter stages the ``p2-uji-actors.txt`` /
-  ``p2-uji-bank.txt`` sidecars plus the pose meshes through
-  ``pikmin2_uji_content``. (Tobi 14 joins in its own landing.)
+* 12-14 UjiA/UjiB/Tobi: ``pikmin2_uji_assets.extract`` once, then each Uji
+  species tree (``uji.json`` + ``uji_<Species>_<clip>_<ii>.mod``) is placed
+  under ``<out>/UjiA`` etc.; the Uji adapter stages the
+  ``p2-uji-actors.txt`` / ``p2-uji-bank.txt`` sidecars plus the pose meshes
+  through ``pikmin2_uji_content``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -101,6 +101,7 @@ ENUM_FOR_SOURCE = {
     9: "Kogane",
     12: "UjiA",
     13: "UjiB",
+    14: "Tobi",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -552,6 +553,7 @@ EXTRACTORS = {
     79: "extract_sokkuri",
     12: "extract_uji",
     13: "extract_uji",
+    14: "extract_uji",
 }
 for _row in _PROXY_ROWS:
     EXTRACTORS[_row["source_id"]] = "extract_proxy"
@@ -622,6 +624,11 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
                 uji_done = True
             extracted.append(source_id)
         elif source_id == 13:
+            if not uji_done:
+                extract_uji(iso, out, pose_limit=pose_limit)
+                uji_done = True
+            extracted.append(source_id)
+        elif source_id == 14:
             if not uji_done:
                 extract_uji(iso, out, pose_limit=pose_limit)
                 uji_done = True
