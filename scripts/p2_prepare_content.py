@@ -90,6 +90,18 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 75 Kabuto: ``pikmin2_cannon_projectile_assets.extract`` -> ``<out>/Kabuto/``
   (``cannon_projectile.json`` + per-species banks); the Kabuto adapter stages
   ``p2-kabuto.txt`` through ``pikmin2_kabuto_identity_install``.
+* 56 Damagumo: ``pikmin2_long_legs_assets.extract`` (66/69 manifest) +
+  ``pikmin2_damagumo_profile_convert.convert_profile`` (56 manifest from the
+  Damagumo disc rows) -> ``<out>/Damagumo/`` (``long-legs-family.json`` +
+  ``damagumo-family.json`` + ``Demon/enemy.bmd``); the Long Legs adapter stages
+  the configs plus the native bind shapes through ``pikmin2_long_legs_install``
+  + ``pikmin2_long_legs_visual``.
+* 63 Jigumo: ``pikmin2_aquatic_assets.extract`` (full 26/27/63/71 family import)
+  copied under ``<out>/Jigumo/`` (``aquatic.json`` + per-species pose banks);
+  the shared aquatic installer stages the Jigumo actors/bank/poses.
+* 69 BigFoot: ``pikmin2_long_legs_assets.extract`` -> ``<out>/BigFoot/``
+  (``long-legs-family.json`` + ``BigFoot/enemy.bmd``); the Long Legs adapter
+  stages the configs plus the native bind shape as for Damagumo.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -165,12 +177,15 @@ ENUM_FOR_SOURCE = {
     44: "BlueKochappy",
     45: "YellowKochappy",
     54: "Miulin",
+    56: "Damagumo",
     57: "Kurage",
     58: "BombSarai",
     59: "FireOtakara",
     60: "WaterOtakara",
     61: "GasOtakara",
     62: "ElecOtakara",
+    63: "Jigumo",
+    69: "BigFoot",
     75: "Kabuto",
     78: "MiniHoudai",
     79: "Sokkuri",
@@ -519,6 +534,139 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
+def extract_damagumo(iso, dest):
+    """Build <dest>/Damagumo/ for the Long Legs adapter.
+
+    Combines ``pikmin2_long_legs_assets.extract`` (66/69
+    ``long-legs-family.json`` + owned meshes, kept whole so a grouped
+    Damagumo+BigFoot layout still finds its base meshes) with
+    ``pikmin2_damagumo_profile_convert.convert_profile`` over the Damagumo
+    disc rows (56 ``damagumo-family.json`` + ``Demon/enemy.bmd``). The Long
+    Legs adapter stages the configs plus the native bind shapes from this
+    tree via ``pikmin2_long_legs_install`` + ``pikmin2_long_legs_visual``.
+    """
+    from experimental import pikmin2_long_legs_assets as long_legs
+    from experimental import pikmin2_damagumo_profile_convert as damagumo_convert
+    from experimental.pikmin2_assets import archive_files, disc_files
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Damagumo"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-damagumo"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        long_legs.extract(iso, tmp)
+        # Damagumo disc rows (audit: enemy/data/{Damagumo,Houdai,BigFoot}).
+        index = disc_files(iso)
+        with iso.open("rb") as disc:
+            def _read(path):
+                try:
+                    at, size = index[path]
+                except KeyError:
+                    raise ValueError(f"Disc entry missing: {path}") from None
+                disc.seek(at)
+                raw = disc.read(size)
+                if len(raw) != size:
+                    raise ValueError(f"Truncated disc entry: {path}")
+                return raw
+            model_szs = _read(damagumo_convert.DAMAGUMO_MODEL)
+            anim_szs = _read(damagumo_convert.DAMAGUMO_ANIM)
+        manifest, mesh, _slot = damagumo_convert.convert_profile(model_szs, anim_szs)
+        (tmp / damagumo_convert.PROFILE_NAME).write_text(
+            json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
+        folder = tmp / damagumo_convert.FOLDER
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / damagumo_convert.MESH_NAME).write_bytes(mesh)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_bigfoot(iso, dest):
+    """Build <dest>/BigFoot/ for the Long Legs adapter.
+
+    Full family tree (66/69 manifest + owned meshes + 56 Damagumo manifest +
+    Demon mesh), identical to the Damagumo tree, so a grouped Damagumo+BigFoot
+    layout stages from either source. The adapter prunes the Demon files via
+    a temp source when no Damagumo actor is staged (the shared installer
+    refuses an unused Damagumo source mesh).
+    """
+    from experimental import pikmin2_long_legs_assets as long_legs
+    from experimental import pikmin2_damagumo_profile_convert as damagumo_convert
+    from experimental.pikmin2_assets import disc_files
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "BigFoot"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bigfoot"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        long_legs.extract(iso, tmp)
+        index = disc_files(iso)
+        with iso.open("rb") as disc:
+            def _read(path):
+                try:
+                    at, size = index[path]
+                except KeyError:
+                    raise ValueError(f"Disc entry missing: {path}") from None
+                disc.seek(at)
+                raw = disc.read(size)
+                if len(raw) != size:
+                    raise ValueError(f"Truncated disc entry: {path}")
+                return raw
+            model_szs = _read(damagumo_convert.DAMAGUMO_MODEL)
+            anim_szs = _read(damagumo_convert.DAMAGUMO_ANIM)
+        manifest, mesh, _slot = damagumo_convert.convert_profile(model_szs, anim_szs)
+        (tmp / damagumo_convert.PROFILE_NAME).write_text(
+            json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
+        folder = tmp / damagumo_convert.FOLDER
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / damagumo_convert.MESH_NAME).write_bytes(mesh)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_jigumo(iso, dest, research=None, pose_limit=6):
+    """Build <dest>/Jigumo/ via the aquatic extractor (full family import).
+
+    ``pikmin2_aquatic_assets.extract`` produces the 26/27/63/71
+    ``aquatic.json`` + per-species pose banks; the whole tree is placed under
+    ``<dest>/Jigumo/`` because the shared aquatic installer validates the
+    whole four-species manifest per install (dweevil 59-62 precedent).
+    """
+    from experimental import pikmin2_aquatic_assets as aquatic
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= aquatic.MAX_POSES:
+        raise ValueError(f"pose limit must be 2..{aquatic.MAX_POSES}: {pose_limit!r}")
+    target = dest / "Jigumo"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-jigumo"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        source = Path(research) if research is not None else DEFAULT_RESEARCH
+        aquatic.extract(iso, source, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_uji(iso, dest, pose_limit=4):
     """Build <dest>/{UjiA,UjiB,Tobi}/ via the shared Uji extractor.
 
@@ -838,6 +986,9 @@ EXTRACTORS = {
     14: "extract_uji",
     28: "extract_elecbug",
     94: "extract_dangomushi",
+    56: "extract_damagumo",
+    63: "extract_jigumo",
+    69: "extract_bigfoot",
 }
 for _row in _PROXY_ROWS:
     # An own-identity extractor (e.g. Chappy) wins over the generic proxy
@@ -907,6 +1058,15 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 56:
+            extract_damagumo(iso, out)
+            extracted.append(source_id)
+        elif source_id == 63:
+            extract_jigumo(iso, out, research=research, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 69:
+            extract_bigfoot(iso, out)
             extracted.append(source_id)
         elif source_id == 2:
             extract_chappy(iso, out, source_id, pose_limit=proxy_pose_limit)
