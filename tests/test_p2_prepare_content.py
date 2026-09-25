@@ -206,6 +206,8 @@ def test_every_wired_extractor_has_a_dispatch_arm(tmp_path):
         source_id for source_id in prepare.EXTRACTORS
         if f"source_id == {source_id}" not in dispatch
         and source_id not in (59, 60, 61, 62)  # shared dweevil arm, matched as a set
+        and source_id not in (34, 70)  # shared snagret arm, matched as a set
+        and source_id not in (71, 101)  # shared aquatic arm, matched as a set
         and source_id not in set(prepare.PROXY_SOURCE_IDS)  # shared proxy set arm
     ]
     assert not missing, f"wired in EXTRACTORS but never dispatched: {missing}"

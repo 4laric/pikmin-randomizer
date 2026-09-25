@@ -89,6 +89,12 @@ def actors_text(actors):
 
 def _actor_species(actors):
     used = {species for _, species in actors}
+    # UmiMushiBlind (101) is a visual variant sharing the UmiMushi bank
+    # (same UmiMushi::Mgr FSM, half scale, see pc_p2_umimushi.cpp); map it
+    # to UmiMushi for manifest/visual resolution while the actors file
+    # keeps the Blind species name for the native Blind path.
+    if 'UmiMushiBlind' in used:
+        used = set(used) | {'UmiMushi'}
     return [species for species in SPECIES if species in used]
 
 
@@ -144,7 +150,8 @@ def plan(imported, actors):
     for generator, species in actors:
         if type(generator) is not int or not 0 <= generator <= 0xffffffff or generator in ids:
             raise ValueError('Invalid/duplicate actor identity')
-        if species not in SPECIES:
+        # UmiMushiBlind shares the UmiMushi bank (see _actor_species).
+        if species not in SPECIES and species != 'UmiMushiBlind':
             raise ValueError('Unsupported aquatic actor species: ' + str(species))
         ids.add(generator)
     metadata = json.loads((imported / MANIFEST).read_bytes())
