@@ -610,6 +610,18 @@ def validate(m):
             if m.get('p2_proxy_tier') is not None:
                 from .p2_proxy import tier_ids as _tier_ids
                 admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
+            # inst-bugs lane (#871): species with own-identity family installers
+            # are seedable for campaign evidence before roster admission (the
+            # orchestrator admits after evidence). Without this, a proxy-tier
+            # seed rebound to an identity species fails closed here even though
+            # install_layout can stage it. Mirrors the inst-legs lane patch.
+            try:
+                from experimental.pikmin2_family_install import IDENTITY_FAMILY as _IDENTITY
+                _identity_ids = {k for k, v in _IDENTITY.items()
+                                 if isinstance(k, int) and v != 'proxy'}
+                admitted = sorted(set(admitted) | _identity_ids)
+            except Exception:
+                pass
             validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
         except SeedBridgeError as exc:
             raise ValueError(f'invalid p2_layout: {exc}')
