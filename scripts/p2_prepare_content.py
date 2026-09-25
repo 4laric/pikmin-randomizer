@@ -40,6 +40,17 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 26 Catfish: ``pikmin2_aquatic_assets.extract`` -> ``<out>/Catfish/``
+  (``aquatic.json`` + per-species pose banks); the shared-contract aquatic
+  installer stages ``p2-aquatic-actors.txt``/``p2-aquatic-bank.txt``.
+* 27 Tadpole: same aquatic family import under ``<out>/Tadpole/``.
+* 84 Hana: ``pikmin2_ground_inverts_assets.extract`` -> ``<out>/Hana/``;
+  the shared ground installer stages ``p2-ground-*.txt``.
+* 93 BombOtakara: ``pikmin2_dweevil_assets.extract`` -> ``<out>/BombOtakara/``;
+  the shared dweevil installer stages ``p2-dweevil-*.txt``.
+* 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
+* 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
+  ``<out>/FminiHoudai/``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -95,6 +106,8 @@ ENUM_FOR_SOURCE = {
     1: "Kochappy",
     9: "Kogane",
     23: "Sarai",
+    26: "Catfish",
+    27: "Tadpole",
     44: "BlueKochappy",
     45: "YellowKochappy",
     54: "Miulin",
@@ -104,8 +117,12 @@ ENUM_FOR_SOURCE = {
     60: "WaterOtakara",
     61: "GasOtakara",
     62: "ElecOtakara",
+    66: "Houdai",
     78: "MiniHoudai",
     79: "Sokkuri",
+    84: "Hana",
+    93: "BombOtakara",
+    97: "FminiHoudai",
 }
 
 
@@ -448,6 +465,163 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
+def extract_catfish(iso, research, dest, pose_limit=6):
+    """Build <dest>/Catfish/ via the aquatic extractor (full family import).
+
+    ``pikmin2_aquatic_assets.extract`` produces the family import
+    (``aquatic.json`` + per-species ``<Species>/`` pose banks); the shared-
+    contract aquatic installer validates the whole four-species manifest on
+    every install, so the full import tree is placed under ``<dest>/Catfish``.
+    When Tadpole (27) is also wired it carries its own full copy under
+    ``<dest>/Tadpole``; ``install_layout`` groups by family and installs once
+    from the first binding's source.
+    """
+    from experimental import pikmin2_aquatic_assets as aquatic
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "Catfish"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-catfish"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        aquatic.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_tadpole(iso, research, dest, pose_limit=6):
+    """Build <dest>/Tadpole/ via the aquatic extractor (full family import)."""
+    from experimental import pikmin2_aquatic_assets as aquatic
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "Tadpole"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-tadpole"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        aquatic.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_hana(iso, research, dest, pose_limit=6):
+    """Build <dest>/Hana/ via the ground-inverts extractor (full family import)."""
+    from experimental import pikmin2_ground_inverts_assets as ground
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "Hana"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-hana"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        ground.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
+    """Build <dest>/BombOtakara/ via the dweevil extractor (full family import)."""
+    from experimental import pikmin2_dweevil_assets as dweevil
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "BombOtakara"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bombotakara"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        dweevil.extract(iso, Path(source_repo), tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_houdai(iso, dest):
+    """Build <dest>/Houdai/ via the long-legs extractor (full family import)."""
+    from experimental import pikmin2_long_legs_assets as longlegs
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Houdai"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-houdai"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        longlegs.extract(iso, tmp)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_fminihoudai(iso, research, dest, pose_limit=6):
+    """Build <dest>/FminiHoudai/ via the cannon extractor (full family import)."""
+    from experimental import pikmin2_cannon_projectile_assets as cannon
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "FminiHoudai"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-fminihoudai"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        cannon.extract(iso, research, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -509,6 +683,12 @@ EXTRACTORS = {
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
+    26: "extract_catfish",
+    27: "extract_tadpole",
+    84: "extract_hana",
+    93: "extract_bombotakara",
+    66: "extract_houdai",
+    97: "extract_fminihoudai",
 }
 for _row in _PROXY_ROWS:
     EXTRACTORS[_row["source_id"]] = "extract_proxy"
@@ -571,6 +751,24 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 26:
+            extract_catfish(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 27:
+            extract_tadpole(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 84:
+            extract_hana(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 93:
+            extract_bombotakara(iso, ROOT, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 66:
+            extract_houdai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 97:
+            extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)

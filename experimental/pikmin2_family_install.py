@@ -101,6 +101,20 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
+    # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
+    # than forking it; the source dir holds the full aquatic import.
+    26: 'aquatic', 'catfish': 'aquatic',
+    # Tadpole (27, Wogpole) shares the aquatic installer with Catfish.
+    27: 'aquatic', 'tadpole': 'aquatic',
+    # Hana (84, Creeping Chrysanthemum) reuses the shared ground installer.
+    84: 'ground_inverts', 'hana': 'ground_inverts',
+    # BombOtakara (93, Volatile Dweevil) reuses the shared dweevil installer.
+    93: 'dweevil', 'bombotakara': 'dweevil',
+    # Houdai (66, Man-at-Legs) reuses the shared long-legs installer.
+    66: 'long_legs', 'houdai': 'long_legs',
+    # FminiHoudai (97, Gatling Groink pedestal) reuses the cannon installer.
+    97: 'cannon_projectile', 'fminihoudai': 'cannon_projectile',
 }
 
 

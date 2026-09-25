@@ -48,11 +48,11 @@ def test_tier_ids_declared_vs_proven():
 def test_row_schema_defaults_and_validation(tmp_path):
     rows = load_rows()
     by_id = {row["source_id"]: row for row in rows}
-    # Catfish/Tadpole hosts are land-capable, so they accept water too.
-    assert by_id[26]["terrains"] == ["ground", "water"]
-    assert by_id[27]["terrains"] == ["ground", "water"]
-    assert all(row["terrains"] == ["ground"] for row in rows
-               if row["source_id"] not in (26, 27))
+    # inst-misc lane: 26/27/66/97/84/93 are now identity species, no longer
+    # proxies. All remaining proxies are ground-only.
+    for sid in (26, 27, 66, 97, 84, 93):
+        assert sid not in by_id
+    assert all(row["terrains"] == ["ground"] for row in rows)
     # A row is either only declared or carries a complete, all-true evidence block.
     for row in rows:
         if "evidence" in row:
