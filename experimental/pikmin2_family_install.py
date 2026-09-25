@@ -101,11 +101,12 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
-    # inst-chappy lane (#871): Chappy (Red Bulborb, source 2) binds through
-    # the own-identity chappy adapter below. Further Chappy-family species
-    # (33, 35, 43, 53, 67, 76) join these rows one finished species at a
-    # time; a proxy row and an identity row must never coexist.
+    # inst-chappy lane (#871): finished Chappy-family species bind through
+    # the own-identity chappy adapter below, one finished species at a time
+    # (2 Chappy, then 33 FireChappy, ...); a proxy row and an identity row
+    # must never coexist.
     2: 'chappy', 'chappy': 'chappy',
+    33: 'chappy', 'firechappy': 'chappy',
 }
 
 

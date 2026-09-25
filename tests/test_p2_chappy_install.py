@@ -69,11 +69,35 @@ def test_install_layout_stages_chappy_identity(tmp_path):
         "P2_CHAPPY_BANK_1"
 
 
+def test_install_layout_stages_firechappy_identity(tmp_path):
+    from experimental import pikmin2_chappy_content as chappy_content
+
+    content = tmp_path / "content"
+    make_source(content / "Chappy")
+    make_source(content / "FireChappy", species="FireChappy", source_id=33)
+    run = tmp_path / "run"
+    layout = {"bindings": [
+        {"target": "219002", "source_id": 2, "enum_name": "Chappy"},
+        {"target": "219033", "source_id": 33, "enum_name": "FireChappy"},
+    ]}
+    receipt = family.install_layout(
+        run, layout, content,
+        actor_bindings={"219002": 219002, "219033": 219033},
+        retail_assets=make_retail(tmp_path))
+    assert set(receipt["receipts"]["219002"]["species"]) == {"Chappy", "FireChappy"}
+    actors_text = (run / "p2-chappy-actors.txt").read_text(encoding="ascii")
+    assert "219002 Chappy" in actors_text and "219033 FireChappy" in actors_text
+    bank_text = (run / "p2-chappy-bank.txt").read_text(encoding="ascii")
+    assert "species Chappy 2" in bank_text.splitlines()
+    assert "species FireChappy 33" in bank_text.splitlines()
+    assert chappy_content.ID_FOR_SPECIES["FireChappy"] == 33
+
+
 def test_install_layout_rejects_chappy_enum_disagreement(tmp_path):
     content = tmp_path / "content"
     make_source(content / "Chappy")
     run = tmp_path / "run"
-    layout = {"bindings": [{"target": "219002", "source_id": 33, "enum_name": "Chappy"}]}
+    layout = {"bindings": [{"target": "219002", "source_id": 17, "enum_name": "Chappy"}]}
     with pytest.raises(StagingError, match="disagrees"):
         family.install_layout(run, layout, content,
                               actor_bindings={"219002": 219002},

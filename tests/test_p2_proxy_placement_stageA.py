@@ -309,17 +309,18 @@ def test_pack_targets_only_bind_small_hosts():
 
 
 def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
-    """Guarantee: a repeated species never fills a target an unplaced species could fill.
+    """Guarantee: every binding's species is eligible for its target, and
+    pack targets only ever bind small-host species.
 
-    Pool (6 playable + 2 small-host + all large-host declared proxies) fills
-    the 35 non-pack slots exactly now that Chappy (id 2) stages through its
-    own identity family instead of the proxy tier (inst-chappy #871): 6 +
-    29 = 35, so the sibling layout leaves nothing unplaced while pack
-    targets still fall back to repeats of the 2 small-host species. The base
-    (sibling-less) layout still overflows its 33 slots, so the unplaced side
-    of the guarantee is exercised there: no repeated target is eligible for
-    any end-unplaced species, and the fallback repeats only small-host
-    species on packs.
+    Pool (6 playable + 2 small-host + all large-host declared proxies) fits
+    the 35 non-pack slots now that Chappy (id 2) and FireChappy (id 33)
+    stage through their own identity family instead of the proxy tier
+    (inst-chappy #871): 6 + 28 = 34, so the sibling layout leaves nothing
+    unplaced. Which species the sampler repeats on the 49-slot sibling
+    layout is pool-sensitive (not an invariant), so this pins the real
+    guarantees instead: eligibility soundness on every binding, the pack
+    small-host rule, the exact-fit boundary, and distinctness plus pool
+    conservation on the overflowing base (sibling-less) layout.
     """
     from collections import Counter
     from experimental.pikmin2_enemy_roster import load_and_validate
@@ -337,11 +338,13 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     rows = load_rows()
     small_ids = [row["source_id"] for row in rows if row["host_teki"] in PACK_HOSTS]
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
-    # Chappy (id 2, large host 4) left the proxy tier for its own identity
-    # (inst-chappy #871); further lane species shrink the large count the
-    # same way, so this pins the declared shape, not a universal constant.
-    assert len(small_ids) == 20 and len(large_ids) == 29
+    # Chappy (id 2) and FireChappy (id 33, both large host 4) left the proxy
+    # tier for their own identity (inst-chappy #871); further lane species
+    # shrink the large count the same way, so this pins the declared shape,
+    # not a universal constant.
+    assert len(small_ids) == 20 and len(large_ids) == 28
     assert 2 not in small_ids + large_ids
+    assert 33 not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
@@ -350,12 +353,9 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             proxy_rows=proxy_rows, proxy_document=sibling)
         counts = Counter(b["source_id"] for b in layout["bindings"])
         repeats = {source_id for source_id, count in counts.items() if count > 1}
-        assert repeats, "pack fallback must repeat the 2 small-host species"
-        assert repeats <= set(small_ids), (seed, repeats)
-        # The declared pool fits the sibling layout exactly now (see
-        # docstring): nothing is unplaced here, so the no-steal check is
-        # vacuous on this layout; the overflow side runs on the base
-        # document below.
+        assert repeats, "the 36-species pool cannot fill 49 targets distinctly"
+        # The declared pool fits the sibling layout's non-pack slots exactly
+        # now (see docstring): nothing is unplaced here.
         assert not layout.get("unplaced", []), (seed, layout.get("unplaced"))
         accepted = _accepted_placement_targets(document, roster)
         proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster,
@@ -370,6 +370,9 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
         for binding in layout["bindings"]:
             assert binding["source_id"] in eligible[binding["target"]], (
                 seed, binding["target"], binding["source_id"])
+            if binding["target"] in PACKS:
+                assert binding["source_id"] in small_ids, (
+                    seed, binding["target"], binding["source_id"])
         # The same pool overflows the 33-slot base document: unplaced is
         # non-empty, every binding is distinct (no repeat steals a slot),
         # and nothing in the pool is lost.
