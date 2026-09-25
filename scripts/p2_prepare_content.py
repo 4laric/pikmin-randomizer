@@ -51,8 +51,9 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 43 YellowChappy (inst-chappy #871): same own-identity Chappy-family path
   (``<out>/YellowChappy/``).
 * 53 KingChappy (inst-chappy #871): same own-identity Chappy-family path
-  (``<out>/KingChappy/``). Further family species (67, 76) wire here one
-  finished species at a time.
+  (``<out>/KingChappy/``).
+* 67 LeafChappy (inst-chappy #871): same own-identity Chappy-family path
+  (``<out>/LeafChappy/``). KumaKochappy (76) wires here when finished.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -111,6 +112,7 @@ ENUM_FOR_SOURCE = {
     35: "KumaChappy",
     43: "YellowChappy",
     53: "KingChappy",
+    67: "LeafChappy",
     9: "Kogane",
     23: "Sarai",
     44: "BlueKochappy",
@@ -560,6 +562,7 @@ EXTRACTORS = {
     35: "extract_chappy",
     43: "extract_chappy",
     53: "extract_chappy",
+    67: "extract_chappy",
     44: "extract_bluekochappy",
     54: "extract_miulin",
     59: "extract_dweevil",
@@ -651,6 +654,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extract_chappy(iso, out, source_id, pose_limit=proxy_pose_limit)
             extracted.append(source_id)
         elif source_id == 53:
+            extract_chappy(iso, out, source_id, pose_limit=proxy_pose_limit)
+            extracted.append(source_id)
+        elif source_id == 67:
             extract_chappy(iso, out, source_id, pose_limit=proxy_pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
