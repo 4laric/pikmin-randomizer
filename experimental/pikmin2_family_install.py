@@ -107,6 +107,11 @@ IDENTITY_FAMILY = {
     12: 'uji', 'ujia': 'uji',
     13: 'uji', 'ujib': 'uji',
     14: 'uji', 'tobi': 'uji',
+    # Campaign-identity ground invertebrates (#871): ElecBug (Anode Beetle,
+    # source 28) stages its rows of the shared p2-ground-actors/bank sidecars
+    # through experimental.pikmin2_elecbug_content, merging with other
+    # ground-identity species. TamagoMushi (68) joins in its own landing.
+    28: 'elecbug', 'elecbug': 'elecbug',
 }
 
 
@@ -472,6 +477,70 @@ def _adapt_uji(source, run, actors):
     return uji_content.stage_uji(content_root, run, pairs)
 
 
+def _validate_elecbug(source):
+    """Pre-flight check for the ElecBug (Anode Beetle, source 28) content.
+
+    Accepts the ElecBug extraction tree (``elecbug.json``) staged through
+    ``experimental.pikmin2_elecbug_content``, as well as the legacy
+    ground-invertebrate import dir (``ground_inverts.json``) consumed as-is by
+    ``experimental.pikmin2_ground_inverts_install``; the full schema/policy
+    contract stays authoritative inside the respective installer.
+    """
+    from experimental import pikmin2_elecbug_content as elecbug_content
+    source = Path(source)
+    if (source / 'elecbug.json').is_file():
+        elecbug_content.validate_source(source)
+        return
+    manifest = source / 'ground_inverts.json'
+    if not manifest.is_file():
+        raise StagingError(f'ElecBug ground manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'ElecBug ground manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or species.get('ElecBug') != 28:
+        # Manifests key species by name to enemy id in batch-2 shape; also
+        # accept the nested ``{'enemy_id': 28}`` shape.
+        entry = species.get('ElecBug')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_GROUND_INVERTS_1' or enemy_id != 28:
+            raise StagingError(f'ElecBug ground manifest identity mismatch: {manifest}')
+
+
+def _adapt_elecbug(source, run, actors):
+    """Adapter for ElecBug (source 28) via the ElecBug content stager.
+
+    Writes the ElecBug rows of ``p2-ground-actors.txt`` + ``p2-ground-bank.txt``
+    (plus visuals) in the exact batch-2 shape the native ``pc_p2_elecbug_setup``
+    parses (``P2_GROUND_ACTORS_1`` + ``P2_GROUND_BANK_1``,
+    ``engine/pc_port/pc_p2_elecbug.cpp:460-501``), merging with rows other
+    ground-identity species already staged. In bridge mode the native setup
+    replaces the filed ids from the seed (``pc_p2_campaign_ids``), so filed
+    generators are placeholders there; outside bridge mode they bind.
+
+    An ``elecbug.json`` tree (what ``extract_elecbug`` produces) stages through
+    ``experimental.pikmin2_elecbug_content``; a legacy ``ground_inverts.json``
+    import dir keeps the shared ground-installer path unchanged.
+    """
+    from experimental import pikmin2_elecbug_content as elecbug_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'ElecBug':
+            raise StagingError(f'ElecBug adapter got non-ElecBug species: {species!r}')
+    if not pairs:
+        raise StagingError('ElecBug install requires at least one generator')
+    if (Path(source) / 'elecbug.json').is_file():
+        return elecbug_content.stage_elecbug_ground(Path(source), run, pairs)
+    from experimental import pikmin2_ground_inverts_install as ground
+    try:
+        receipt = ground.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='ElecBug', source_id=28,
+                generators=[g for g, _ in pairs], ground_receipt=receipt)
+
+
 def _read_identity_source(source, source_id, enum_name):
     path = Path(source) / 'identity.json'
     if not path.is_file():
@@ -644,6 +713,7 @@ ADAPTERS = {
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
+    'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},

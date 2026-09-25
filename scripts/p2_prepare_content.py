@@ -40,6 +40,12 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 28 ElecBug: ``pikmin2_elecbug_assets.extract`` -> ``<out>/ElecBug/``
+  (``elecbug.json`` + ``ginv_ElecBug_<clip>_<ii>.mod``); the ElecBug adapter
+  stages its rows of the shared batch-2 ground files through
+  ``pikmin2_elecbug_content`` (merging with other ground-identity species'
+  rows). A legacy ``ground_inverts.json`` import dir still stages through the
+  shared ground installer unchanged.
 * 12-14 UjiA/UjiB/Tobi: ``pikmin2_uji_assets.extract`` once, then each Uji
   species tree (``uji.json`` + ``uji_<Species>_<clip>_<ii>.mod``) is placed
   under ``<out>/UjiA`` etc.; the Uji adapter stages the
@@ -103,6 +109,7 @@ ENUM_FOR_SOURCE = {
     13: "UjiB",
     14: "Tobi",
     23: "Sarai",
+    28: "ElecBug",
     44: "BlueKochappy",
     45: "YellowKochappy",
     54: "Miulin",
@@ -490,6 +497,35 @@ def extract_uji(iso, dest, pose_limit=4):
     return [dest / e for e in enums]
 
 
+def extract_elecbug(iso, dest, pose_limit=6):
+    """Build <dest>/ElecBug/ via the ElecBug extractor.
+
+    ``pikmin2_elecbug_assets.extract`` produces the source poses
+    (``elecbug.json`` + ``ginv_ElecBug_<clip>_<ii>.mod``); the ElecBug
+    adapter stages its rows of the shared batch-2 ground files from that tree
+    via ``experimental.pikmin2_elecbug_content.stage_elecbug_ground``.
+    """
+    from experimental import pikmin2_elecbug_assets as elecbug
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    target = dest / "ElecBug"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-elecbug"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        elecbug.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -554,6 +590,7 @@ EXTRACTORS = {
     12: "extract_uji",
     13: "extract_uji",
     14: "extract_uji",
+    28: "extract_elecbug",
 }
 for _row in _PROXY_ROWS:
     EXTRACTORS[_row["source_id"]] = "extract_proxy"
@@ -617,6 +654,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 28:
+            extract_elecbug(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 12:
             if not uji_done:
