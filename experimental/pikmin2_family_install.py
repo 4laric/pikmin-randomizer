@@ -101,6 +101,11 @@ IDENTITY_FAMILY = {
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # Campaign-identity Uji family (#871): UjiA (Female Sheargrub, source 12)
+    # stages the p2-uji-actors/bank sidecars through
+    # experimental.pikmin2_uji_content. UjiB (13) and Tobi (14) join the same
+    # family in their own landings; until then they stay proxy-declared.
+    12: 'uji', 'ujia': 'uji',
 }
 
 
@@ -421,6 +426,51 @@ def _adapt_sokkuri(source, run, actors):
                 generators=[g for g, _ in pairs], ground_receipt=receipt)
 
 
+def _uji_content_root(source, actors):
+    """Resolve the identity-keyed content root for a Uji install.
+
+    ``install_layout`` groups by family, so this adapter runs once per layout
+    with every Uji actor while ``source`` is only the first binding's
+    ``<content_root>/<enum>`` species dir. The content root is the directory
+    whose per-species children hold every bound species' ``uji.json`` (same
+    shape as the proxy adapter's content-root resolution).
+    """
+    species = {species for _, species in actors}
+    candidates = [Path(source), Path(source).parent]
+    for candidate in candidates:
+        if all((candidate / name / 'uji.json').is_file() for name in species):
+            return candidate
+    raise StagingError(
+        f'Uji content root missing uji.json for {sorted(species)} under {source}')
+
+
+def _validate_uji(source):
+    """Pre-flight check for one Uji species dir (full plan runs at install)."""
+    from experimental import pikmin2_uji_content as uji_content
+    uji_content.validate_source(source)
+
+
+def _adapt_uji(source, run, actors):
+    """Adapter for the campaign-identity Uji family (sources 12/13/14).
+
+    Stages all Uji actors through ``experimental.pikmin2_uji_content`` in one
+    grouped call: the ``p2-uji-actors.txt``/``p2-uji-bank.txt`` sidecars (the
+    ``P2_UJI_ACTORS_1``/``P2_UJI_BANK_1`` shape the native ``pc_p2_uji_*``
+    module parses) plus every bound species' pose meshes. ``install_layout``
+    already groups bindings by family, so this runs once per layout with all
+    Uji generators.
+    """
+    from experimental import pikmin2_uji_content as uji_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in uji_content.UJI_SPECIES:
+            raise StagingError(f'Uji adapter got non-Uji species: {species!r}')
+    if not pairs:
+        raise StagingError('Uji install requires at least one generator')
+    content_root = _uji_content_root(source, pairs)
+    return uji_content.stage_uji(content_root, run, pairs)
+
+
 def _read_identity_source(source, source_id, enum_name):
     path = Path(source) / 'identity.json'
     if not path.is_file():
@@ -593,6 +643,7 @@ ADAPTERS = {
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
+    'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},

@@ -40,6 +40,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
   ``ground_inverts.json`` import dir still stages through the shared ground
   installer unchanged.
+* 12 UjiA: ``pikmin2_uji_assets.extract`` once, then each Uji species tree
+  (``uji.json`` + ``uji_<Species>_<clip>_<ii>.mod``) is placed under
+  ``<out>/UjiA`` etc.; the Uji adapter stages the ``p2-uji-actors.txt`` /
+  ``p2-uji-bank.txt`` sidecars plus the pose meshes through
+  ``pikmin2_uji_content``. (UjiB 13 and Tobi 14 join in their own landings.)
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -94,6 +99,7 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
     9: "Kogane",
+    12: "UjiA",
     23: "Sarai",
     44: "BlueKochappy",
     45: "YellowKochappy",
@@ -448,6 +454,40 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     return target
 
 
+def extract_uji(iso, dest, pose_limit=4):
+    """Build <dest>/{UjiA,UjiB,Tobi}/ via the shared Uji extractor.
+
+    ``pikmin2_uji_assets.extract`` produces one source tree per Uji species
+    (``uji.json`` + ``uji_<Species>_<clip>_<ii>.mod``); the Uji adapter stages
+    the ``p2-uji-actors.txt`` / ``p2-uji-bank.txt`` sidecars from the bound
+    species' trees via ``experimental.pikmin2_uji_content.stage_uji``. All
+    three trees are staged together (one ISO read), mirroring ``extract_dweevil``;
+    a ``wanted`` list mixing identity UjiA (12) with still-proxy UjiB/Tobi
+    (13/14) collides fail-closed on the already-written species dir.
+    """
+    from experimental import pikmin2_uji_assets as uji
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
+        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    enums = ["UjiA", "UjiB", "Tobi"]
+    for enum_name in enums:
+        if (dest / enum_name).exists():
+            raise ValueError(f"content dir already exists: {dest / enum_name}")
+    tmp = dest / ".tmp-uji"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        uji.extract(iso, tmp, pose_limit=pose_limit)
+        for enum_name in enums:
+            shutil.copytree(tmp / enum_name, dest / enum_name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return [dest / e for e in enums]
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -509,6 +549,7 @@ EXTRACTORS = {
     57: "extract_kurage",
     78: "extract_minihoudai",
     79: "extract_sokkuri",
+    12: "extract_uji",
 }
 for _row in _PROXY_ROWS:
     EXTRACTORS[_row["source_id"]] = "extract_proxy"
@@ -545,6 +586,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     extracted = []
     no_extractor = []
     dweevil_done = False
+    uji_done = False
     for source_id in supported:
         if source_id == 44:
             extract_bluekochappy(iso, research, out, pose_limit=pose_limit)
@@ -571,6 +613,11 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 12:
+            if not uji_done:
+                extract_uji(iso, out, pose_limit=pose_limit)
+                uji_done = True
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
