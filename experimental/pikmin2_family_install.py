@@ -112,6 +112,10 @@ IDENTITY_FAMILY = {
     # through experimental.pikmin2_elecbug_content, merging with other
     # ground-identity species. TamagoMushi (68) joins in its own landing.
     28: 'elecbug', 'elecbug': 'elecbug',
+    # Campaign-identity snagret family (#871): DangoMushi (Segmented
+    # Crawbster, source 94) stages its rows of the p2-snagret-actors/bank
+    # sidecars through experimental.pikmin2_dangomushi_content.
+    94: 'dangomushi', 'dangomushi': 'dangomushi',
 }
 
 
@@ -541,6 +545,70 @@ def _adapt_elecbug(source, run, actors):
                 generators=[g for g, _ in pairs], ground_receipt=receipt)
 
 
+def _validate_dangomushi(source):
+    """Pre-flight check for the DangoMushi (Segmented Crawbster, source 94) content.
+
+    Accepts the DangoMushi extraction tree (``dangomushi.json``) staged through
+    ``experimental.pikmin2_dangomushi_content``, as well as the legacy
+    snagret import dir (``snagret.json``) consumed as-is by
+    ``experimental.pikmin2_snagret_install``; the full schema/policy contract
+    stays authoritative inside the respective installer.
+    """
+    from experimental import pikmin2_dangomushi_content as dangomushi_content
+    source = Path(source)
+    if (source / 'dangomushi.json').is_file():
+        dangomushi_content.validate_source(source)
+        return
+    manifest = source / 'snagret.json'
+    if not manifest.is_file():
+        raise StagingError(f'DangoMushi snagret manifest missing for identity content: {manifest}')
+    try:
+        metadata = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'DangoMushi snagret manifest unreadable: {manifest}') from error
+    species = metadata.get('species', {})
+    if metadata.get('policy') != 'P2_SNAGRET_1' or species.get('DangoMushi') != 94:
+        # Manifests key species by name to enemy id in batch-1 shape; also
+        # accept the nested ``{'enemy_id': 94}`` shape.
+        entry = species.get('DangoMushi')
+        enemy_id = entry.get('enemy_id') if isinstance(entry, dict) else entry
+        if metadata.get('policy') != 'P2_SNAGRET_1' or enemy_id != 94:
+            raise StagingError(f'DangoMushi snagret manifest identity mismatch: {manifest}')
+
+
+def _adapt_dangomushi(source, run, actors):
+    """Adapter for DangoMushi (source 94) via the DangoMushi content stager.
+
+    Writes the DangoMushi rows of ``p2-snagret-actors.txt`` +
+    ``p2-snagret-bank.txt`` (plus visuals) in the exact batch-3 shape the
+    native ``pc_p2_dangomushi_setup`` parses
+    (``P2_SNAGRET_ACTORS_1`` + ``P2_SNAGRET_BANK_1``,
+    ``engine/pc_port/pc_p2_dangomushi.cpp:737-806``), merging with rows other
+    snagret-family species already staged.
+
+    A ``dangomushi.json`` tree (what ``extract_dangomushi`` produces) stages
+    through ``experimental.pikmin2_dangomushi_content``; a legacy
+    ``snagret.json`` import dir keeps the shared snagret-installer path
+    unchanged.
+    """
+    from experimental import pikmin2_dangomushi_content as dangomushi_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species != 'DangoMushi':
+            raise StagingError(f'DangoMushi adapter got non-DangoMushi species: {species!r}')
+    if not pairs:
+        raise StagingError('DangoMushi install requires at least one generator')
+    if (Path(source) / 'dangomushi.json').is_file():
+        return dangomushi_content.stage_dangomushi(Path(source), run, pairs)
+    from experimental import pikmin2_snagret_install as snagret
+    try:
+        receipt = snagret.install(Path(source), run, pairs)
+    except ValueError as error:
+        raise StagingError(str(error)) from error
+    return dict(species='DangoMushi', source_id=94,
+                generators=[g for g, _ in pairs], snagret_receipt=receipt)
+
+
 def _read_identity_source(source, source_id, enum_name):
     path = Path(source) / 'identity.json'
     if not path.is_file():
@@ -714,6 +782,7 @@ ADAPTERS = {
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},
+    'dangomushi': {'install': _adapt_dangomushi, 'validate': _validate_dangomushi},
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
