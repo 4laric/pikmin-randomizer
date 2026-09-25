@@ -24,7 +24,7 @@ def rows_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(proxy, "_roster_enums", lambda: stub)
     rows = tmp_path / "rows"
     rows.mkdir()
-    for source_id, enum in ((18, "MaroFrog"), (17, "Frog")):
+    for source_id, enum in ((2, "Chappy"), (26, "Catfish")):
         (rows / f"{source_id}_{enum}.json").write_text(json.dumps(
             {"schema": 1, "source_id": source_id, "enum_name": enum,
              "host_teki": 4, "pose_limit": 4,
@@ -39,10 +39,10 @@ def write_probe(tmp_path, name="a6", **fields):
     log.write_bytes(b"natural gameplay log\n")
     digest = hashlib.sha256(b"natural gameplay log\n").hexdigest()
     payload = {"probe": name, "ok": True, "fatal": None,
-               "exe_sha256": "cd" * 32, "table": [{"source": 18}],
-               "bound_species": [18, 17],
-               "drawn_live": {"18": {"frames": 120}, "17": {"frames": 96}},
-               "expected": [18, 17], "skips": [],
+               "exe_sha256": "cd" * 32, "table": [{"source": 2}],
+               "bound_species": [2, 26],
+               "drawn_live": {"2": {"frames": 120}, "26": {"frames": 96}},
+               "expected": [2, 26], "skips": [],
                "log": "probe.log", "log_sha256": digest}
     payload.update(fields)
     result = probe_dir / "result.json"
@@ -60,7 +60,7 @@ def test_records_and_is_idempotent(tmp_path, rows_dir):
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 0
     assert [line for line in lines if line.startswith("RECORDED")] and len(lines) == 2
-    for source_id, enum in ((18, "MaroFrog"), (17, "Frog")):
+    for source_id, enum in ((2, "Chappy"), (26, "Catfish")):
         document = read_row(rows_dir, source_id, enum)
         assert document["evidence"]["run"] == "a6"
         assert document["evidence"]["log_sha256"] == \
@@ -78,19 +78,19 @@ def test_records_and_is_idempotent(tmp_path, rows_dir):
 
 
 def test_bound_but_not_drawn_is_not_recorded(tmp_path, rows_dir):
-    result = write_probe(tmp_path, drawn_live={"18": {"frames": 5}})
+    result = write_probe(tmp_path, drawn_live={"2": {"frames": 5}})
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("17/Frog" in line and "not drawn" in line for line in lines)
-    assert "evidence" in read_row(rows_dir, 18, "MaroFrog")
-    assert "evidence" not in read_row(rows_dir, 17, "Frog")
+    assert any("26/Catfish" in line and "not drawn" in line for line in lines)
+    assert "evidence" in read_row(rows_dir, 2, "Chappy")
+    assert "evidence" not in read_row(rows_dir, 26, "Catfish")
 
 
 def test_expected_but_unbound_refused(tmp_path, rows_dir):
-    result = write_probe(tmp_path, bound_species=[18])
+    result = write_probe(tmp_path, bound_species=[2])
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("17/Frog" in line and "not in bound_species" in line
+    assert any("26/Catfish" in line and "not in bound_species" in line
                for line in lines)
 
 
@@ -101,12 +101,12 @@ def test_fatal_empty_table_and_skips_refuse(tmp_path, rows_dir):
     result = write_probe(tmp_path, table=[])
     _lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 2
-    result = write_probe(tmp_path, skips=["P2_SETUP_SKIP MaroFrog clip_file_missing"])
+    result = write_probe(tmp_path, skips=["P2_SETUP_SKIP Chappy clip_file_missing"])
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("18/MaroFrog" in line and "skips" in line for line in lines)
-    assert "evidence" not in read_row(rows_dir, 18, "MaroFrog")
-    assert "evidence" in read_row(rows_dir, 17, "Frog")
+    assert any("2/Chappy" in line and "skips" in line for line in lines)
+    assert "evidence" not in read_row(rows_dir, 2, "Chappy")
+    assert "evidence" in read_row(rows_dir, 26, "Catfish")
 
 
 def test_ok_false_and_log_mismatch_refuse_all(tmp_path, rows_dir):
@@ -132,13 +132,13 @@ def test_enum_name_refs_and_probe_dir_fallback(tmp_path, rows_dir):
     result = probe_dir / "result.json"
     result.write_text(json.dumps({
         "ok": True, "fatal": None, "exe_sha256": "cd" * 32,
-        "table": "P2_PROXY_CAMPAIGN_1 1 18 MaroFrog 4",
-        "bound_species": ["MaroFrog"], "drawn_live": {"MaroFrog": {"frames": 3}},
-        "expected": ["MaroFrog"], "skips": [],
+        "table": "P2_PROXY_CAMPAIGN_1 1 2 Chappy 4",
+        "bound_species": ["Chappy"], "drawn_live": {"Chappy": {"frames": 3}},
+        "expected": ["Chappy"], "skips": [],
         "log": "run.log", "log_sha256": digest}), encoding="utf-8")
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 0
-    assert read_row(rows_dir, 18, "MaroFrog")["evidence"]["run"] == "b7"
+    assert read_row(rows_dir, 2, "Chappy")["evidence"]["run"] == "b7"
 
 
 def test_cli_writes_and_reports(tmp_path, rows_dir, capsys):
@@ -146,10 +146,10 @@ def test_cli_writes_and_reports(tmp_path, rows_dir, capsys):
     assert recorder.main(["--result", str(result), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 0
     out = capsys.readouterr().out
-    assert "RECORDED 18/MaroFrog" in out and "RECORDED 17/Frog" in out
+    assert "RECORDED 2/Chappy" in out and "RECORDED 26/Catfish" in out
     assert recorder.main(["--result", str(result), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 0
-    assert "UNCHANGED 18/MaroFrog" in capsys.readouterr().out
+    assert "UNCHANGED 2/Chappy" in capsys.readouterr().out
     bad = write_probe(tmp_path, name="c9", drawn_live={})
     assert recorder.main(["--result", str(bad), "--rows-dir", str(rows_dir),
                           "--native-commit", "abc1234"]) == 1
@@ -158,12 +158,12 @@ def test_cli_writes_and_reports(tmp_path, rows_dir, capsys):
 def test_dict_skip_naming_species_refuses(tmp_path, rows_dir):
     result = write_probe(
         tmp_path,
-        skips=[{"reason": "P2_SETUP_SKIP MaroFrog clip_file_missing"}])
+        skips=[{"reason": "P2_SETUP_SKIP Chappy clip_file_missing"}])
     lines, refused = recorder.record(result, rows_dir, "abc1234")
     assert refused == 1
-    assert any("18/MaroFrog" in line and "skips" in line for line in lines)
-    assert "evidence" not in read_row(rows_dir, 18, "MaroFrog")
-    assert "evidence" in read_row(rows_dir, 17, "Frog")
+    assert any("2/Chappy" in line and "skips" in line for line in lines)
+    assert "evidence" not in read_row(rows_dir, 2, "Chappy")
+    assert "evidence" in read_row(rows_dir, 26, "Catfish")
 
 
 def test_rerecord_on_later_day_is_noop(tmp_path, rows_dir):
@@ -194,7 +194,7 @@ def test_workspace_relative_log_needs_the_log_root(tmp_path, rows_dir):
         recorder.record(result, rows_dir, "ab" * 10)
     lines, refused = recorder.record(result, rows_dir, "ab" * 10, log_root=workspace)
     assert refused == 0 and lines
-    recorded = json.loads((rows_dir / "18_MaroFrog.json").read_text(encoding="utf-8"))["evidence"]
+    recorded = json.loads((rows_dir / "2_Chappy.json").read_text(encoding="utf-8"))["evidence"]
     assert recorded["log"] == "output/evidence/w1/native.log"
     assert recorded["log_sha256"] == hashlib.sha256(body).hexdigest()
 
