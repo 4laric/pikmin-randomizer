@@ -266,7 +266,12 @@ class PlacementCatalogTests(unittest.TestCase):
         identities = {p['identity'] for p in profiles}
         self.assertIn('Chappy', identities)
         self.assertIn('Miulin', identities)
-        self.assertNotIn('UmiMushi', identities)  # boss not in the non-boss cohort
+        # Roster wave (#871): the campaign-proven Bloysters bind ordinary
+        # ground slots (rev2-worms), so they are ground candidates here; the
+        # water-arena descriptor path (boss_profiles/boss_encounters) is kept
+        # for caller-supplied arenas.
+        self.assertIn('UmiMushi', identities)
+        self.assertIn('UmiMushiBlind', identities)
         for p in profiles:
             self.assertEqual(p['accepted_gates'], [])
             self.assertFalse(p['is_boss'])
@@ -274,8 +279,9 @@ class PlacementCatalogTests(unittest.TestCase):
         self.assertEqual(by_identity['Chappy']['cohort'], 'ground')
         self.assertEqual(by_identity['UjiA']['cohort'], 'grub')
         self.assertEqual(by_identity['Sokkuri']['cohort'], None)
-        # Source-backed nest anchor: Hermit Crawmad references PanHouse.
-        self.assertTrue(by_identity['Jigumo']['requires_home'])
+        # Campaign-proven ground binding (inst-legs-63g): Hermit Crawmad no
+        # longer needs the source nest anchor for placement.
+        self.assertFalse(by_identity['Jigumo']['requires_home'])
         self.assertFalse(by_identity['Tadpole']['requires_home'])
         self.assertTrue(all(p['requires_corpse_route'] for p in profiles))
 
@@ -289,10 +295,11 @@ class PlacementCatalogTests(unittest.TestCase):
         self.assertTrue(all(p['accepted_gates'] == [] for p in profiles))
 
     def test_boss_document_needs_a_boss_arena_slot(self):
-        # Default campaign document excludes bosses and their descriptors.
+        # Default campaign document carries the roster-wave ground candidates
+        # (UmiMushi/UmiMushiBlind bind ordinary slots) and no descriptors.
         plain = catalog.build_document()
         self.assertEqual(plain['encounters'], [])
-        self.assertNotIn('UmiMushi', {p['identity'] for p in plain['profiles']})
+        self.assertIn('UmiMushi', {p['identity'] for p in plain['profiles']})
         # A caller-supplied water boss arena validates and is constraint-compatible.
         water = normalize_slot(dict(
             next(s for s in catalog.slots_from_campaign() if s['terrain'] == 'water'), boss_slot=True))
@@ -315,12 +322,11 @@ class PlacementCatalogTests(unittest.TestCase):
         report = compatibility_report(document)
         compatibility_by_id = report['identity_compatibility']
         self.assertEqual(report['slots_evaluated'], len(catalog.CAMPAIGN_SLOTS))
-        # Jigumo needs a nest anchor the campaign table does not expose, and
-        # TamagoMushi is a lane-14 group identity whose helper_budget (10) exceeds
-        # every slot's helper_capacity (default 0) until slots model it.
-        self.assertEqual(report['unplaceable_identities'], ['Jigumo', 'TamagoMushi'])
-        jigumo_reasons = [row['reason'] for row in compatibility_by_id['Jigumo']['top_incompatible_reasons']]
-        self.assertIn('slot lacks a home/nest anchor', jigumo_reasons)
+        # TamagoMushi is a lane-14 group identity whose helper_budget (10)
+        # exceeds every slot's helper_capacity (default 0) until slots model
+        # it. Jigumo's campaign binding is proven on ordinary nest-free
+        # ground slots (inst-legs-63g), so it is placeable now.
+        self.assertEqual(report['unplaceable_identities'], ['TamagoMushi'])
         tamago_reasons = [row['reason'] for row in compatibility_by_id['TamagoMushi']['top_incompatible_reasons']]
         self.assertIn('helper budget 10 exceeds slot capacity 0', tamago_reasons)
         # A grub identity cannot land in the ground or aquatic cohorts.
@@ -472,7 +478,9 @@ class BindingTargetTests(unittest.TestCase):
         targets = catalog.targets_by_identity(document)
         self.assertEqual(len(targets['Catfish']), 10)
         self.assertEqual(len(targets['Chappy']), 33)
-        self.assertEqual(targets['Jigumo'], [])
+        # Roster wave (#871): campaign-proven ground binding for Jigumo
+        # (inst-legs-63g) across the fresh document's ground slots.
+        self.assertEqual(len(targets['Jigumo']), 49)
         campaign_uids = {str(s['uid']) for s in document['slots']}
         self.assertTrue(set(targets['Catfish']) <= campaign_uids)
 
@@ -491,8 +499,13 @@ class BindingTargetTests(unittest.TestCase):
     def test_binding_targets_for_sources_maps_and_rejects_bosses(self):
         self.assertEqual(catalog.binding_targets_for_sources([26, 27]),
                          catalog.binding_targets(['Catfish', 'Tadpole']))
+        # Roster wave (#871): UmiMushi binds ordinary slots, so it maps now;
+        # a true non-candidate boss (Emperor Bulblax 30 has no placement
+        # candidacy) is still rejected.
+        self.assertEqual(catalog.binding_targets_for_sources([71]),
+                         catalog.binding_targets(['UmiMushi']))
         with self.assertRaises(ValueError):
-            catalog.binding_targets_for_sources([71])  # UmiMushi is a boss cohort entry
+            catalog.binding_targets_for_sources([30])  # Queen is not a placement candidate
 
     def test_targets_compose_with_lane03_seed_bridge(self):
         from experimental.pikmin2_seed_bridge import (

@@ -1276,6 +1276,57 @@ def _adapt_long_legs(source, run, actors):
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
+def _snagret_content_root(source, actors):
+    """Resolve the identity-keyed content root for a snagret-pair install.
+
+    ``install_layout`` groups by family, so this adapter runs once per layout
+    with every snagret actor while ``source`` is only the first binding's
+    ``<content_root>/<enum>`` species dir. Each enum dir carries the full
+    shared import tree (``snagret.json`` plus per-species meshes, see
+    ``scripts/p2_prepare_content`` ``extract_snagret``), so the first
+    binding's dir suffices; fall back to its parent when it does not.
+    """
+    from experimental.pikmin2_snagret_content import validate_source
+    species = {species for _, species in actors}
+    for candidate in (Path(source), Path(source).parent):
+        try:
+            validate_source(candidate)
+            return candidate
+        except Exception:
+            continue
+    raise StagingError(
+        f"Snagret content root missing snagret.json for {sorted(species)} under {source}")
+
+
+def _validate_snagret(source):
+    """Pre-flight check for the snagret-pair content tree."""
+    from experimental import pikmin2_snagret_content as snagret_content
+    snagret_content.validate_source(source)
+
+
+def _adapt_snagret(source, run, actors):
+    """Adapter for SnakeCrow (34) / SnakeWhole (70) with merge semantics.
+
+    Stages both species' rows of ``p2-snagret-actors.txt`` +
+    ``p2-snagret-bank.txt`` (plus pose meshes) through
+    ``experimental.pikmin2_snagret_content``, merging with rows other
+    snagret-family species (DangoMushi) already staged -- the snagret
+    counterpart of the ``_adapt_ground_inverts`` co-install fix. The legacy
+    shared installer stages actors + meshes but no bank, so 34/70-only
+    bindings drew without their own model; this adapter always stages the
+    bank. Idempotent across repeat calls and independent of family order.
+    """
+    from experimental import pikmin2_snagret_content as snagret_content
+    pairs = [(int(generator), species) for generator, species in actors]
+    for _, species in pairs:
+        if species not in snagret_content.SPECIES_IDS:
+            raise StagingError(f"Snagret adapter got non-snagret species: {species!r}")
+    if not pairs:
+        raise StagingError("Snagret install requires at least one generator")
+    content_root = _snagret_content_root(source, pairs)
+    return snagret_content.stage_snagret(content_root, run, pairs)
+
+
 ADAPTERS = {
     'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange},
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
@@ -1296,6 +1347,7 @@ ADAPTERS = {
     'armor': {'install': _adapt_armor, 'validate': _validate_armor},
     'kabuto': {'install': _adapt_kabuto, 'validate': _validate_kabuto},
     'long_legs': {'install': _adapt_long_legs, 'validate': _validate_long_legs},
+    'snagret': {'install': _adapt_snagret, 'validate': _validate_snagret},
     'proxy': {'install': _adapt_proxy, 'validate': _validate_proxy},
 }
 

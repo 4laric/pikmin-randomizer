@@ -48,7 +48,14 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # Playable P2 species assigned first under the sampled proxy policy so they
 # are always present when selected. Mirrors randomizer.seed.PLAYABLE_P2_SPECIES
 # without importing the seed module (which imports this bridge lazily).
-PLAYABLE_IDS = (44, 54, 59, 60, 61, 62)
+# Keep in sync with P2_PLAYABLE_POOL (tests/test_p2_pool_roster_sync.py pins
+# the equality); the 2026-09-26 roster wave grew this from the original six.
+PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
+                2, 33, 35, 43, 53, 67, 76,
+                12, 13, 14, 28, 94, 68,
+                17, 18, 24, 75,
+                56, 63, 69,
+                34, 70, 65, 71, 101)
 
 
 class SeedBridgeError(ValueError):

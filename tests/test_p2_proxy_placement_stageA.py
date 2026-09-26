@@ -313,17 +313,15 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     """Guarantee: every binding's species is eligible for its target, and
     pack targets only ever bind small-host species.
 
-    Pool (6 playable + 2 small-host + all large-host declared proxies) fits
-    the 35 non-pack slots now that Chappy (id 2), FireChappy (id 33),
-    KumaChappy (id 35), YellowChappy (id 43) and KingChappy (id 53) stage
-    through their own identity family instead of the proxy tier
-    (inst-chappy #871): 6 + 25 = 31. Both layouts fit exactly (sibling:
-    nothing unplaced; base 33 slots hold the same 33 species distinctly).
-    Which species the sampler repeats on the 49-slot sibling layout is
-    pool-sensitive (not an invariant), so this pins the real guarantees
-    instead: eligibility soundness on every binding, the pack small-host
-    rule, the exact-fit boundary on both layouts, and distinctness plus
-    pool conservation on the base layout.
+    Pool (6 playable + 10 pool identities + all 17 declared proxies) fits
+    the 33-slot base document exactly: the roster wave admitted the full
+    33-species pool, so the exact-fit pool is 6 original playable + 10 more
+    pool identities (Chappy/Uji) + 2 small-host + 15 large-host proxies = 33.
+    The sibling layout (49 targets) still needs repeats, and which species
+    the sampler repeats there is pool-sensitive (not an invariant), so this
+    pins the real guarantees instead: eligibility soundness on every
+    binding, the pack small-host rule, the exact-fit boundary on both
+    layouts, and distinctness plus pool conservation on the base layout.
     """
     from collections import Counter
     from experimental.pikmin2_enemy_roster import load_and_validate
@@ -355,6 +353,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
                      26, 27, 66, 84, 93, 97):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
+    # Ten more pool identities (admitted, non-proxy) bring the pool to the
+    # exact 33-slot fit: 6 playable + 10 pool + 17 proxies = 33.
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14]
+    assert len(pool) == 33 and len(set(pool)) == 33
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
         layout = resolve_placement_layout(
@@ -362,7 +364,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             proxy_rows=proxy_rows, proxy_document=sibling)
         counts = Counter(b["source_id"] for b in layout["bindings"])
         repeats = {source_id for source_id, count in counts.items() if count > 1}
-        assert repeats, "the 36-species pool cannot fill 49 targets distinctly"
+        assert repeats, "the 33-species pool cannot fill 49 targets distinctly"
         # The declared pool fits the sibling layout's non-pack slots exactly
         # now (see docstring): nothing is unplaced here.
         assert not layout.get("unplaced", []), (seed, layout.get("unplaced"))
@@ -383,7 +385,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
                 assert binding["source_id"] in small_ids, (
                     seed, binding["target"], binding["source_id"])
         # The same pool fits the 33-slot base document exactly (6 playable
-        # + 25 large + the 2 smalls = 33): nothing is unplaced, every
+        # + 10 pool + 17 proxies = 33): nothing is unplaced, every
         # binding is distinct (no repeat steals a slot), and nothing in
         # the pool is lost.
         base = resolve_placement_layout(
@@ -411,13 +413,29 @@ def test_generate_parity_with_declared_dwarf_hosts():
 
 
 def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
-    """With more species than targets every target carries a distinct species."""
+    """With more species than targets every target carries a distinct species,
+    except where the pack rule forces small-host repeats.
+
+    The 14 pack targets only accept the 2 small-host proxies (10/11), so
+    repeats there are required, not wasted. Non-pack targets must still be
+    pairwise distinct.
+    """
     from collections import Counter
+    from randomizer.p2_proxy import load_rows
     from randomizer.seed import generate
+    host_by_id = {row["source_id"]: row["host_teki"] for row in load_rows()}
     for seed in ("distinct-a", "distinct-b", "distinct-c"):
         layout = generate(seed, "solo", "Player1", p2_enemies=True, p2_species="full",
                           p2_proxy_tier="declared")["p2_layout"]
         counts = Counter(binding["source_id"] for binding in layout["bindings"])
         pool = len(counts) + len(layout.get("unplaced", []))
         assert pool > len(layout["bindings"]), "test needs a pool larger than the target set"
-        assert len(counts) == len(layout["bindings"]), {k: v for k, v in counts.items() if v > 1}
+        pack_counts = Counter()
+        plain_counts = Counter()
+        for binding in layout["bindings"]:
+            (pack_counts if binding["target"] in PACKS else plain_counts)[binding["source_id"]] += 1
+        assert len(plain_counts) == sum(plain_counts.values()), (
+            {k: v for k, v in plain_counts.items() if v > 1})
+        assert set(pack_counts) <= {10, 11}, dict(pack_counts)
+        for source_id in pack_counts:
+            assert host_by_id[source_id] in PACK_HOSTS, source_id

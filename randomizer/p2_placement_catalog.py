@@ -71,11 +71,12 @@ P1_COHORT = {
     0: 'frog', 33: 'frog',
 }
 
-# `requires_home` is source-backed by the lane-02 roster child reference: a
+# `requires_home` was source-backed by the lane-02 roster child reference: a
 # non-null `child_name` of PanHouse/JigumoNest means the identity is anchored to
-# a nest, not a free spawn. Only Jigumo (Hermit Crawmad) qualifies in this cohort.
-# Every cohort entry drops a carryable corpse (BDT_Weak..BDT_Strong), so all of
-# them require a corpse return route.
+# a nest, not a free spawn (only Jigumo qualified). Jigumo's campaign binding
+# is proven on ordinary nest-free ground slots (inst-legs-63g), so no candidate
+# in this table requires a home anchor. Every cohort entry drops a carryable
+# corpse (BDT_Weak..BDT_Strong), so all of them require a corpse return route.
 CANDIDATE_SPECS = (
     # Lane 13 - Bulborbs, dwarfs and Sheargrubs.
     (1, 'Kochappy', 13, ['ground'], 3, False),
@@ -89,6 +90,11 @@ CANDIDATE_SPECS = (
     (43, 'YellowChappy', 13, ['ground'], None, False),
     (44, 'BlueKochappy', 13, ['ground'], None, False),
     (45, 'YellowKochappy', 13, ['ground'], None, False),
+    # Roster wave (#871): Emperor Bulblax (53) and Bulbmin (67) bind the same
+    # campaign ground slots as the other Chappy-family identities (pool
+    # admission e3e69de3; native host TEKI_Swallow/TEKI_Chappy).
+    (53, 'KingChappy', 13, ['ground'], None, False),
+    (67, 'LeafChappy', 13, ['ground'], None, False),
     (76, 'KumaKochappy', 13, ['ground'], 31, False),
     # Lane 14 - Ground invertebrates.
     (15, 'Armor', 14, ['ground'], None, False),
@@ -97,12 +103,24 @@ CANDIDATE_SPECS = (
     (68, 'TamagoMushi', 14, ['ground'], None, False),
     (79, 'Sokkuri', 14, ['ground'], None, False),
     (84, 'Hana', 14, ['ground'], None, False),
-    # Lane 16 - Frogs and aquatic enemies (bosses excluded; see BOSS_COHORT).
+    # Lane 16 - Frogs and aquatic enemies. Jigumo (Hermit Crawmad) is
+    # source-anchored to a nest (child PanHouse) but its campaign binding is
+    # proven on the ordinary ground slots (inst-legs-63g, pool admission
+    # e3e69de3; native host TEKI_Chappy), so it is a ground candidate here;
+    # the source nest fact stays on the roster. Bloysters (71/101) likewise
+    # bind ordinary slots (rev2-worms); they stay listed in BOSS_COHORT for
+    # the arena-descriptor path and are ground candidates here.
     (17, 'Frog', 16, ['mixed', 'ground'], 0, False),
     (18, 'MaroFrog', 16, ['mixed', 'ground'], 33, False),
     (26, 'Catfish', 16, ['water'], 30, False),
     (27, 'Tadpole', 16, ['water'], 25, False),
-    (63, 'Jigumo', 16, ['water'], None, True),
+    (63, 'Jigumo', 16, ['ground'], None, False),
+    # Roster wave (#871): Fiery Blowhog (24) binds campaign ground slots
+    # (inst-frogs-3; native host TEKI_Tank is the vehicle, placement is
+    # ground).
+    (24, 'Tank', 16, ['ground'], None, False),
+    (71, 'UmiMushi', 16, ['ground'], None, False),
+    (101, 'UmiMushiBlind', 16, ['ground'], None, False),
     # Lane 17 - Kogane beetle family (no P1 counterpart; new in Pikmin 2).
     (9, 'Kogane', 17, ['ground'], None, False),
     # Lane 19 - Mamuta.
@@ -116,6 +134,17 @@ CANDIDATE_SPECS = (
     # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
     # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
     (23, 'Sarai', 30, ['ground'], None, False),
+    # Roster wave (#871): campaign-proven ground bindings for the remaining
+    # pool identities. Segmented Crawbster (94) shares the snagret bank/family
+    # with the snagret pair (34/70, lane 25); Beady/Raging Long Legs (56/69,
+    # lane 26) ride the Chappy placement vehicle; Armored Cannon Beetle Larva
+    # (75, lane 20) binds a campaign ground slot (inst-frogs-6).
+    (94, 'DangoMushi', 25, ['ground'], None, False),
+    (34, 'SnakeCrow', 25, ['ground'], None, False),
+    (70, 'SnakeWhole', 25, ['ground'], None, False),
+    (56, 'Damagumo', 26, ['ground'], None, False),
+    (69, 'BigFoot', 26, ['ground'], None, False),
+    (75, 'Kabuto', 20, ['ground'], None, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
@@ -507,7 +536,10 @@ def build_muse_document(slots=None, include_bosses=False):
                   'profiles for 41/57/58/78; default deny.'),
     }
     if include_bosses:
-        document['profiles'] = profiles + boss_profiles()
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document['profiles'] = ([p for p in profiles
+                                 if p["identity"] not in arena_names]
+                                + boss_profiles())
         document['encounters'] = boss_encounters()
     return _placement.validate_document(document)
 
@@ -584,7 +616,10 @@ def build_waterwraith_document(slots=None, include_bosses=False):
                   "default deny."),
     }
     if include_bosses:
-        document["profiles"] = profiles + boss_profiles()
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document["profiles"] = ([p for p in profiles
+                                 if p["identity"] not in arena_names]
+                                + boss_profiles())
         document["encounters"] = boss_encounters()
     return _placement.validate_document(document)
 
@@ -757,7 +792,13 @@ def build_document(slots=None, profiles=None, include_bosses=False):
         'notes': 'Lane-04 concrete candidate slots (campaign + adult/group) and P2 candidate profiles; default deny.',
     }
     if include_bosses:
-        document['profiles'] = list(profiles) + boss_profiles()
+        # The roster wave admits UmiMushi/UmiMushiBlind as ordinary ground
+        # candidates too; the arena-descriptor versions win when a caller
+        # explicitly asks for boss arenas so the document keeps unique
+        # identities.
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document["profiles"] = [p for p in profiles
+                                if p["identity"] not in arena_names] + boss_profiles()
         document['encounters'] = boss_encounters()
     return _placement.validate_document(document)
 

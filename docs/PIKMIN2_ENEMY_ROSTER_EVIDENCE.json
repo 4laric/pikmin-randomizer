@@ -55,25 +55,26 @@
       ]
     },
     "2": {
-      "native_module": "pc_p2_batch2",
+      "native_module": "pc_p2_chappy",
       "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "visual/mechanics foundations present on the neutral batch-2 vehicle; per-variant behavior and natural death/carry unverified",
+      "eligibility": "admitted",
+      "eligibility_reason": "Red Bulborb (Chappy, source 2): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:2:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:2:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log:L2552 receipt (sha256 12f3c4396153bb25...)",
       "source": [
-        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Red Bulborb (Chappy); batch-2 display path, not a complete source FSM.",
-        "Open: per-variant receiver/event mapping, natural death/carry/revisit (#120/#197)."
-      ],
-      "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
-      }
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-2r2c (owner ruling 2026-09-25: power mode admits): campaign bind, P2 FSM fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:2:3 Bind/dead/receipt on the own generator token (L1463 bind, L2384 dead, L2552 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 2 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 12f3c4396153bb25...) L1463 bind, L2384 dead, L2552 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
     },
     "3": {
       "native_module": "pc_p2_pom",
@@ -266,45 +267,47 @@
       ]
     },
     "12": {
-      "native_module": "pc_p2_sheargrub",
+      "native_module": "pc_p2_uji",
       "owner_lane": "13",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Female Sheargrub (UjiA, source 12): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:12:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:12:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log:L2645 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "UjiA (Female Sheargrub): pc_p2_sheargrub visual/vehicle (ids {\"UjiA\",\"UjiB\"}); natural combat/death/carry remain on the family contract.",
-        "Sheargrub siblings are distinct source identities, not helpers or aliases (#120/#197)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3 Bind/dead/receipt on the own generator token (L1828 bind, L2176 dead, L2645 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 12 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 495d3998cb9c8eff...) L1828 bind, L2176 dead, L2645 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "13": {
-      "native_module": "pc_p2_sheargrub",
+      "native_module": "pc_p2_uji",
       "owner_lane": "13",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Male Sheargrub (UjiB, source 13): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:13:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:13:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log:L2156 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "UjiB (Male Sheargrub): pc_p2_sheargrub visual/vehicle (ids {\"UjiA\",\"UjiB\"}); natural combat/death/carry remain on the family contract.",
-        "Sheargrub siblings are distinct source identities, not helpers or aliases (#120/#197)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3 Bind/dead/receipt on the own generator token (L1641 bind, L1958 dead, L2156 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 13 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 495d3998cb9c8eff...) L1641 bind, L1958 dead, L2156 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "15": {
@@ -376,42 +379,45 @@
     "17": {
       "native_module": "pc_p2_frog",
       "owner_lane": "16",
-      "eligibility": "candidate",
-      "eligibility_reason": "display/landing foundations present; source combat and escape/death chains unverified",
-      "source": [
-        "PIKMIN2_FROG_IMPORT.md"
-      ],
-      "notes": [
-        "Yellow Wollywog; water and land variants remain separate (#167).",
-        "Open: landing/crush/receivers, death/re-entry, transport or source N/A (#194/#201)."
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Yellow Wollywog (Frog, source 17): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:17:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
-      }
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:17:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log:L2288 receipt (sha256 f289672e6426bfbf...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3 Bind/dead/receipt on the own generator token (L1005 bind, L2095 dead, L2288 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 17 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 f289672e6426bfbf...) L1005 bind, L2095 dead, L2288 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
     },
     "18": {
       "native_module": "pc_p2_frog",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_FROG_IMPORT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Wollywog (MaroFrog, source 18): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:18:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:18:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log:L2169 receipt (sha256 f289672e6426bfbf...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "MaroFrog (Wollywog): shares pc_p2_frog vehicle with Frog; landing/crush + source combat untested (#167/#201)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3 Bind/dead/receipt on the own generator token (L1013 bind, L2066 dead, L2169 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 18 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 f289672e6426bfbf...) L1013 bind, L2066 dead, L2169 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "20": {
@@ -500,21 +506,23 @@
     "24": {
       "native_module": "pc_p2_tank",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_TANK_IMPORT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Fiery Blowhog (Tank, source 24): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:24:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:24:3 (P2_TANK_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log:L2034 receipt (sha256 f289672e6426bfbf...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Tank (Fiery Blowhog): pc_p2_tank uses P1 TEKI_Tank host; fire emitter real receiver mutation remain (#170/#408)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3 Bind/dead/receipt on the own generator token (L1103 bind, L1844 dead, L2034 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 24 -> tank (experimental/pikmin2_tank_identity_install). Log C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 f289672e6426bfbf...) L1103 bind, L1844 dead, L2034 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "25": {
@@ -584,22 +592,23 @@
     "28": {
       "native_module": "pc_p2_elecbug",
       "owner_lane": "14",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_SPECIES_RESIDUAL_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Anode Beetle (ElecBug, source 28): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:28:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:28:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log:L2239 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "ElecBug (Anode Beetle): pairing/discharge PASS (natural); flip/press + death UNTESTED.",
-        "Pair discharge and group births need their own evidence (#165)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3 Bind/dead/receipt on the own generator token (L1860 bind, L2043 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 28 -> elecbug (experimental/pikmin2_elecbug_content). Log C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 495d3998cb9c8eff...) L1860 bind, L2043 dead, L2239 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "29": {
@@ -688,22 +697,23 @@
     "34": {
       "native_module": "pc_p2_snakejoint",
       "owner_lane": "25",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_SNAKEJOINT_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Burrowing Snagret (SnakeCrow, source 34): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:34:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:34:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log:L2239 receipt (sha256 dc00ded07ec05316...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "SnakeCrow (Burrowing Snagret): natural stay/appear/attack/eat PASS; bite receiver PASS (frame 34, once/eat).",
-        "Bury/emerge/vulnerable/death lifecycle + cleanup remain (#174)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-34b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/swallow fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:34:3 Bind/dead/receipt on the own generator token (L1757 bind, L2066 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 34 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 dc00ded07ec05316...) L1757 bind, L2066 dead, L2239 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "38": {
@@ -909,24 +919,25 @@
       ]
     },
     "53": {
-      "native_module": "pc_p2_king",
-      "owner_lane": "24",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_BULBLAX_RUNTIME.md",
-        "PIKMIN2_QUEEN_SPECULAR.md"
-      ],
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Emperor Bulblax (KingChappy, source 53): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:53:3 on the species' own generator token per rev2-chappy.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:53:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log:L2693 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "KingChappy (Emperor Bulblax): king vehicle; natural flick/trample/gates + material profile remain (#172/#289)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3 Bind/dead/receipt on the own generator token (L1571 bind, L2370 dead, L2693 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 53 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 12f3c4396153bb25...) L1571 bind, L2370 dead, L2693 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "54": {
@@ -975,21 +986,23 @@
     "56": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:56:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log:L2126 receipt (sha256 5bcce5342707de7b...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Damagumo (Beady Long Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 5bcce5342707de7b...) L1706 bind, L1998 dead, L2126 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "57": {
@@ -1126,43 +1139,45 @@
     "63": {
       "native_module": "pc_p2_jigumo",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_JIGUMO_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Hermit Crawmad (Jigumo, source 63): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:63:3 on the species' own generator token per rev2-legs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:63:3 (P2_JIGUMO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log:L4256 receipt (sha256 5bcce5342707de7b...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Jigumo (Hermit Crawmad): natural appear/wait/search/attack PASS; bite receiver PASS (frame 13, once/eat).",
-        "Carry->eat implemented but UNTESTED; cleanup PASS wiring only (#167)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-63g (owner ruling 2026-09-25: power mode admits): campaign bind, BITE frame-13 + EAT kill chain, P2_JIGUMO_DEAD on its own generator, dead1 P2 corpse carried, Onion receipt onion:p2:63:3 Bind/dead/receipt on the own generator token (L1763 bind, L2060 dead, L4256 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 63 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 5bcce5342707de7b...) L1763 bind, L2060 dead, L4256 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "65": {
       "native_module": "pc_p2_imomushi",
       "owner_lane": "14",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_IMOMUSHI_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Ravenous Whiskerpillar (Imomushi, source 65): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:65:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "N/A",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:65:3 (P2_IMOMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log:L1984 receipt (sha256 dc00ded07ec05316...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Imomushi (Ravenous Whiskerpillar): natural spawn/move/hide/appear PASS; plant-eating, no player receiver (attacks N/A).",
-        "Death/corpse and cleanup remain UNTESTED; plant interaction with lane 23 (#165/#407)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3 Bind/dead/receipt on the own generator token (L1714 bind, L1858 dead, L1984 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 65 -> ground_inverts (experimental/pikmin2_ground_inverts_install). Log C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 dc00ded07ec05316...) L1714 bind, L1858 dead, L1984 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "66": {
@@ -1188,84 +1203,89 @@
     "68": {
       "native_module": "pc_p2_tamago",
       "owner_lane": "14",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_TAMAGO_NATIVE.md"
-      ],
-      "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "PASS"
-      },
-      "notes": [
-        "TamagoMushi (Mitite): natural spawn/hide/appear/walk + Astonish(flick) PASS; true panic + group births UNTESTED.",
-        "Death/corpse and honey drop (transport_reward) UNTESTED (#165)."
-      ]
-    },
-    "69": {
-      "native_module": "pc_p2_long_legs",
-      "owner_lane": "26",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Mitite (TamagoMushi, source 68): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:68:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:68:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log:L2178 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "BigFoot (Raging Long Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-12 (owner ruling 2026-09-25: power mode admits): campaign bind, ASTONISH receiver + TURN chain, DEAD + exactly-once HONEY on its own generator, receipt onion:p2:68:3 Bind/dead/receipt on the own generator token (L1765 bind, L2103 dead, L2178 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 68 -> tamago (experimental/pikmin2_tamago_content). Log C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 495d3998cb9c8eff...) L1765 bind, L2103 dead, L2178 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "69": {
+      "native_module": "pc_p2_long_legs",
+      "owner_lane": "26",
+      "eligibility": "admitted",
+      "eligibility_reason": "Raging Long Legs (BigFoot, source 69): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:69:3 on the species' own generator token per rev2-legs.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:69:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log:L1810 receipt (sha256 5bcce5342707de7b...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3 Bind/dead/receipt on the own generator token (L1585 bind, L1751 dead, L1810 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 69 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 5bcce5342707de7b...) L1585 bind, L1751 dead, L1810 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "70": {
       "native_module": "pc_p2_snakejoint",
       "owner_lane": "25",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_SNAKEJOINT_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Pileated Snagret (SnakeWhole, source 70): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:70:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:70:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log:L2464 receipt (sha256 dc00ded07ec05316...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "SnakeWhole (Pileated Snagret): natural stay/appear/attack/eat PASS; bite receiver PASS (frame 34, once/eat).",
-        "Bury/emerge/vulnerable/death lifecycle + cleanup remain (#174)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-70 (owner ruling 2026-09-25: power mode admits): campaign bind, Walk/Home + bite fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:70:3 Bind/dead/receipt on the own generator token (L1675 bind, L2163 dead, L2464 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 70 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 dc00ded07ec05316...) L1675 bind, L2163 dead, L2464 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "71": {
       "native_module": "pc_p2_umimushi",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_UMIMUSHI_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Ranging Bloyster (UmiMushi, source 71): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:71:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:71:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log:L2254 receipt (sha256 dc00ded07ec05316...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "UmiMushi (Ranging Bloyster): natural walk/flick/attack/eat PASS; bite receiver PASS (frame 39, once/eat).",
-        "Captain-dependent behavior (lane 12) + death/transport/cleanup UNTESTED (#167)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-71b (owner ruling 2026-09-25: power mode admits): campaign bind, attack/bite/eat cycles with graduated damage, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:71:3 Bind/dead/receipt on the own generator token (L1778 bind, L2109 dead, L2254 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 71 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 dc00ded07ec05316...) L1778 bind, L2109 dead, L2254 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "72": {
@@ -1314,22 +1334,23 @@
     "75": {
       "native_module": "pc_p2_kabuto_cannon",
       "owner_lane": "20",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_CANNON_GROINK_AUDIT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Armored Cannon Beetle Larva (Kabuto, source 75): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:75:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:75:3 (P2_KABUTO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log:L2144 receipt (sha256 f289672e6426bfbf...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Kabuto (Armored Cannon Beetle Larva): pc_p2_kabuto_* family (moving muzzle + Stone projectile primitives); ordinary cannon actor + real receiver mutation remain (#169/#406).",
-        "Stone=74/Rock=19/Egg=37 primitives are lane-20 shared infrastructure, not identity rows."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-6 (owner ruling 2026-09-25: power mode admits): campaign bind, stone-fire + flick fight, P2_KABUTO_DEAD on its own generator, corpse carried, Onion receipt onion:p2:75:3 Bind/dead/receipt on the own generator token (L1002 bind, L2025 dead, L2144 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 75 -> kabuto (experimental/pikmin2_kabuto_identity_install). Log C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 f289672e6426bfbf...) L1002 bind, L2025 dead, L2144 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "77": {
@@ -1528,21 +1549,23 @@
     "94": {
       "native_module": "pc_p2_dangomushi",
       "owner_lane": "25",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_DANGOMUSHI_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:94:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "DangoMushi (Segmented Crawbster): natural roll PASS (frame 23, once/hit); roll/fall hazards + vulnerable/death lifecycle remain (#174)."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 495d3998cb9c8eff...) L1722 bind, L2338 dead, L2456 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
     "95": {
@@ -1631,22 +1654,155 @@
     "101": {
       "native_module": "pc_p2_umimushi",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_SPECIES_RESIDUAL2_NATIVE.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Toady Bloyster (UmiMushiBlind, source 101): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:101:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:101:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log:L2365 receipt (sha256 dc00ded07ec05316...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "UmiMushiBlind (Toady Bloyster): variant sharing UmiMushiBase (role=variant); natural bite+eat PASS (blind=1 scale 0.5 health 800) (#167).",
-        "No converted visual bank (aliased to UmiMushi clips); death/transport/cleanup UNTESTED."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-101 (owner ruling 2026-09-25: power mode admits): campaign bind with Blind split params, walk/attack/eat cycles, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:101:3 Bind/dead/receipt on the own generator token (L1680 bind, L2140 dead, L2365 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 101 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 dc00ded07ec05316...) L1680 bind, L2140 dead, L2365 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "33": {
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Fiery Bulblax (FireChappy, source 33): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:33:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:33:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log:L2725 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-33r2c (owner ruling 2026-09-25: power mode admits): campaign bind, fire-aura + bite fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:33:3 Bind/dead/receipt on the own generator token (L1484 bind, L2427 dead, L2725 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 33 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 12f3c4396153bb25...) L1484 bind, L2427 dead, L2725 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "35": {
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Spotty Bulbear (KumaChappy, source 35): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:35:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:35:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log:L2379 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-35r2c (owner ruling 2026-09-25: power mode admits): campaign bind, patrol/chase/attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:35:3 Bind/dead/receipt on the own generator token (L1379 bind, L2236 dead, L2379 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 35 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 12f3c4396153bb25...) L1379 bind, L2236 dead, L2379 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "43": {
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Hairy Bulborb (YellowChappy, source 43): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:43:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:43:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log:L4275 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-43r2b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/eat/swallow fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:43:3 Bind/dead/receipt on the own generator token (L1535 bind, L2888 dead, L4275 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 43 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 12f3c4396153bb25...) L1535 bind, L2888 dead, L4275 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "67": {
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Bulbmin (LeafChappy, source 67): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:67:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:67:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log:L3946 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-67r2b (owner ruling 2026-09-25: power mode admits): campaign bind, Kuma-chase attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:67:3 Bind/dead/receipt on the own generator token (L1536 bind, L2624 dead, L3946 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 67 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 12f3c4396153bb25...) L1536 bind, L2624 dead, L3946 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "76": {
+      "native_module": "pc_p2_chappy",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Dwarf Bulbear (KumaKochappy, source 76): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:76:3 on the species' own generator token per rev2-chappy.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:76:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log:L2963 receipt (sha256 12f3c4396153bb25...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-76r2 (owner ruling 2026-09-25: power mode admits): campaign bind, dwarf-frame attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:76:3 Bind/dead/receipt on the own generator token (L1514 bind, L2316 dead, L2963 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 76 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 12f3c4396153bb25...) L1514 bind, L2316 dead, L2963 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+      ]
+    },
+    "14": {
+      "native_module": "pc_p2_uji",
+      "owner_lane": "13",
+      "eligibility": "admitted",
+      "eligibility_reason": "Shearwig (Tobi, source 14): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:14:3 on the species' own generator token per rev2-bugs.md.",
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:14:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log:L2052 receipt (sha256 495d3998cb9c8eff...)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3 Bind/dead/receipt on the own generator token (L1853 bind, L2002 dead, L2052 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 14 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 495d3998cb9c8eff...) L1853 bind, L2002 dead, L2052 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     }
   }

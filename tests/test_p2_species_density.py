@@ -80,35 +80,40 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
 
 
 def test_legacy_default_is_unchanged_and_deterministic():
-    """Default policy is byte-for-byte the same layout on repeated calls."""
+    """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    first = resolve_placement_layout("seed-a", "Player1", document, roster)
-    second = resolve_placement_layout("seed-a", "Player1", document, roster)
-    assert first == second
-    # Default None equals an explicit legacy token.
-    explicit = resolve_placement_layout(
-        "seed-a", "Player1", document, roster, density=DENSITY_LEGACY)
-    assert explicit == first
-    assert {binding["source_id"] for binding in first["bindings"]} == set(layout_ids(first))
-
-
-def layout_ids(layout):
-    return sorted({binding["source_id"] for binding in layout["bindings"]})
+    # Roster wave (#871): 36 admitted identities exceed the 33-slot target
+    # set, so the bare default (every admitted identity needs a unique
+    # target) fails closed deterministically instead of silently dropping
+    # three species. None and the explicit legacy token agree.
+    with pytest.raises(SeedBridgeError,
+                       match="no unique accepted placement target") as first_err:
+        resolve_placement_layout("seed-a", "Player1", document, roster)
+    with pytest.raises(SeedBridgeError,
+                       match="no unique accepted placement target") as second_err:
+        resolve_placement_layout("seed-a", "Player1", document, roster)
+    assert str(first_err.value) == str(second_err.value)
+    with pytest.raises(SeedBridgeError,
+                       match="no unique accepted placement target"):
+        resolve_placement_layout(
+            "seed-a", "Player1", document, roster, density=DENSITY_LEGACY)
 
 
 def test_legacy_multi_species_multiset_is_pinned():
-    """The full admitted cohort keeps its historical all-target multiset."""
+    """The 33-species pool keeps its exact-fit all-target multiset."""
     from collections import Counter
 
+    from randomizer.seed import PLAYABLE_P2_SPECIES
+
     roster = load_and_validate()
-    layout = resolve_placement_layout("seed-a", "Player1", committed_document(), roster)
+    layout = resolve_placement_layout(
+        "seed-a", "Player1", committed_document(), roster,
+        species=list(PLAYABLE_P2_SPECIES))
     counts = Counter(binding["source_id"] for binding in layout["bindings"])
     assert sum(counts.values()) == 33
-    assert counts == {
-        9: 1, 23: 1, 44: 4, 54: 2, 57: 4,
-        59: 3, 60: 3, 61: 3, 62: 2, 78: 4, 79: 6,
-    }
+    assert set(counts) == set(PLAYABLE_P2_SPECIES)
+    assert all(count == 1 for count in counts.values())
 
 
 # --- bounded-coverage policy ------------------------------------------------

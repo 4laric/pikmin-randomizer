@@ -911,15 +911,22 @@ def validate(m):
             if m.get('p2_proxy_tier') is not None:
                 from .p2_proxy import tier_ids as _tier_ids
                 admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
-            # integ (#871): species with own-identity family installers are
-            # seedable for campaign evidence before roster admission (the
-            # orchestrator admits after evidence). A validate() pass is not
-            # admission: P2_PLAYABLE_POOL remains the single source of truth.
+            # Roster wave (#871): the roster admits every pool species, so an
+            # admitted identity validates through the roster admission set
+            # above, never through the installer table. The union below is
+            # kept only for evidence staging of installed-but-unadmitted
+            # identities (lane runs whose campaign evidence is still in
+            # flight, e.g. 25/15/26/27/84/93/66/97): scoping it to
+            # _identity_ids - admitted means a pool species that loses roster
+            # admission fails closed here instead of being masked by its
+            # installer row. A validate() pass is not admission:
+            # P2_PLAYABLE_POOL remains the single source of truth.
             try:
                 from experimental.pikmin2_family_install import IDENTITY_FAMILY as _IDENTITY
                 _identity_ids = {k for k, v in _IDENTITY.items()
                                  if isinstance(k, int) and v != 'proxy'}
-                admitted = sorted(set(admitted) | _identity_ids)
+                _staging_only = _identity_ids - set(admitted)
+                admitted = sorted(set(admitted) | _staging_only)
             except Exception:
                 pass
             validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
