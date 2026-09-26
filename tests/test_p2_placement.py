@@ -497,15 +497,18 @@ class BindingTargetTests(unittest.TestCase):
             catalog.binding_targets(['NoSuchIdentity'])
 
     def test_binding_targets_for_sources_maps_and_rejects_bosses(self):
+        from experimental.pikmin2_enemy_roster import by_id, load_roster
         self.assertEqual(catalog.binding_targets_for_sources([26, 27]),
                          catalog.binding_targets(['Catfish', 'Tadpole']))
         # Roster wave (#871): UmiMushi binds ordinary slots, so it maps now;
-        # a true non-candidate boss (Emperor Bulblax 30 has no placement
-        # candidacy) is still rejected.
+        # a real roster boss with no placement candidacy is still rejected.
         self.assertEqual(catalog.binding_targets_for_sources([71]),
                          catalog.binding_targets(['UmiMushi']))
-        with self.assertRaises(ValueError):
-            catalog.binding_targets_for_sources([30])  # Queen is not a placement candidate
+        # Queen (Empress Bulblax) 30 is roster-classified as a boss, so this
+        # probes the is_boss rejection path, not just an unknown id.
+        self.assertEqual(by_id(load_roster())[30].classification, 'boss')
+        with self.assertRaisesRegex(ValueError, 'non-boss'):
+            catalog.binding_targets_for_sources([30])
 
     def test_targets_compose_with_lane03_seed_bridge(self):
         from experimental.pikmin2_seed_bridge import (
