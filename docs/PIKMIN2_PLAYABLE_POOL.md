@@ -94,8 +94,14 @@ Generate a playable-pool seed and stage a session (see
 ```powershell
 py -3.12 -m randomizer generate --seed <name> --p2-enemies --p2-species playable --output <seed-manifest.json>
 py -3.12 scripts/p2_prepare_content.py --iso "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso" --out <p2-content> --seed-manifest <seed-manifest.json> --actors-out <p2-actors.json>
-py -3.12 -m randomizer run <seed-manifest.json> --p2-content <p2-content> --p2-actors <p2-actors.json> --session-dir <short-dir> --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets
+py -3.12 -m randomizer run <seed-manifest.json> --exe <path-to-nectar.exe> --p2-content <p2-content> --p2-actors <p2-actors.json> --session-dir <short-dir> --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets
 ```
+
+`--exe` is required to actually launch the game: `randomizer run` stages the
+P2 content and prints `PIKMIN_P2_BOUND: ...` regardless, but the native
+process is only spawned when `--exe` is given (`randomizer/runner.py`, the
+`if exe:` block gating `subprocess.Popen`). Without it the command exits 0
+having staged everything and launched nothing, which looks like success.
 
 Keep session paths short: Windows' 260-char limit makes `.mod` loads fail in
 deep directories.
