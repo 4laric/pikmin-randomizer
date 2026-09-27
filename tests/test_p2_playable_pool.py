@@ -30,28 +30,19 @@ def test_pool_table_rows_carry_evidence():
 
 
 def test_playable_pool_binds_only_playable_species():
-    # Admit-frogs5 (#871): the 35-species pool exceeds the 33-slot target
-    # set, so full-playable generation fails closed (default-deny slot
-    # contract) instead of silently dropping two species. Two more accepted
-    # slots (lane 04) restore the exact fit; until then the product path
-    # stays red by design and this pins the fail-closed behaviour.
-    with pytest.raises(ValueError, match="no unique accepted placement target"):
-        generate('12345', p2_enemies=True, p2_species='playable')
-    # The admitted pair still binds natively as an explicit subset (no
-    # proxy tier, no rebind): the clean product path for 25/15.
-    m = generate('12345', p2_enemies=True, p2_species=[25, 15])
-    assert {b['source_id'] for b in m['p2_layout']['bindings']} == {25, 15}
+    m = generate('12345', p2_enemies=True, p2_species='playable')
+    ids = {b['source_id'] for b in m['p2_layout']['bindings']}
+    assert ids == set(PLAYABLE_P2_SPECIES)
     validate(m)
-    assert m == generate('12345', p2_enemies=True, p2_species=[25, 15])
+    assert m == generate('12345', p2_enemies=True, p2_species='playable')
 
 
 def test_explicit_subset_and_default_all():
     assert {b['source_id'] for b in generate('7', p2_enemies=True, p2_species=[44, 54])['p2_layout']['bindings']} == {44, 54}
-    # Roster wave (#871): 38 admitted identities exceed the 33-slot target
+    # Roster wave (#871): 38 admitted identities exceed the 35-slot target
     # set, so the bare default (every admitted identity needs a unique
-    # target) fails closed instead of silently dropping five species. The
-    # product default is --p2-species playable (35 on 33 -- see
-    # test_p2_species_density for the capacity pin).
+    # target) fails closed instead of silently dropping three species. The
+    # product default is --p2-species playable (35 on 35, exact fit).
     with pytest.raises(ValueError, match="no unique accepted placement target"):
         generate('7', p2_enemies=True)
 

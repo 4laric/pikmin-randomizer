@@ -28,6 +28,12 @@ PACKS = {"3768801221", "2637843033", "517610653", "2380387682", "3679976242",
          "1102975523", "3417529495", "1428724902", "648204418", "3157218646",
          "843459898", "1340027046", "2158371058", "4096115722"}
 PROXY_ONLY = SINGLETONS | PACKS
+# Placement-cap (#871): the 2 former proxy singletons above are now SHARED
+# admitted slots (all 49 ground slots covered: 33 admitted-exclusive + 14
+# proxy-exclusive + 2 shared), so six-gate sets legitimately contain them.
+# PROXY_EXCLUSIVE is the still-exclusive remainder.
+SHARED = {"1849273021", "2049888785"}
+PROXY_EXCLUSIVE = PROXY_ONLY - SHARED
 PACK_HOSTS = [0, 3, 18, 19, 20, 25, 31, 33]
 RESERVED = set()  # no committed slot is reserved from proxies (see PROXY_RESERVED_VANILLA)
 
@@ -152,7 +158,10 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
     union_before = set()
     for tokens in _accepted_placement_targets(document, roster).values():
         union_before.update(tokens)
-    assert not (SINGLETONS & union_before)
+    # Placement-cap shares the 2 singletons (see SHARED); no other singleton
+    # may appear in six-gate admission.
+    assert not ((SINGLETONS - SHARED) & union_before)
+    assert SHARED <= union_before
 
     ground_rows = _proxy_rows_for([10, 11])
     accepted = _proxy_accepted_targets(document, ground_rows, roster,
@@ -179,11 +188,13 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
                                              proxy_document=sibling)
     assert accepted_water[42] == set()
 
-    # The audit-derived union is unchanged: without the sibling the singletons
-    # never appear.
+    # The audit-derived union is extended only by the shared singletons:
+    # without the sibling the exclusive singletons never appear (there are
+    # none left; both singletons are shared), and reserved behaviour is old.
     accepted_plain = _proxy_accepted_targets(document, ground_rows, roster)
     for tokens in accepted_plain.values():
-        assert not (SINGLETONS & set(tokens))
+        assert not ((SINGLETONS - SHARED) & set(tokens))
+        assert SHARED <= set(tokens)
         # Reserved slots are still available without the sibling (old behaviour).
         assert RESERVED <= set(tokens)
 
@@ -197,30 +208,26 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     sibling = _sibling()
     report = placement.audit(document)
     assert set(report["admitted"]) >= {"BlueKochappy", "Miulin"}
-    # Six-gate accepted sets never contain any proxy-only slot.
+    # Six-gate accepted sets never contain any proxy-EXCLUSIVE slot (the 2
+    # shared singletons are legitimately admitted; see SHARED above).
     for uids in report["admitted"].values():
-        assert not (PROXY_ONLY & {str(uid) for uid in uids})
+        assert not (PROXY_EXCLUSIVE & {str(uid) for uid in uids})
 
-    # Admit-frogs5 (#871): the 35-species pool overflows the 33-slot target
-    # set (fail-closed, pinned in test_p2_playable_pool), so invariance is
-    # checked on the fitting 33-species subset (pool minus the two newest).
-    fitting = [s for s in PLAYABLE_P2_SPECIES if s not in (25, 15)]
-    assert len(fitting) == 33
     first = resolve_placement_layout("stageA-invariance", "Player1", document,
-                                     roster, species=fitting)
+                                     roster, species=list(PLAYABLE_P2_SPECIES))
     second = resolve_placement_layout("stageA-invariance", "Player1", document,
-                                      roster, species=fitting,
+                                      roster, species=list(PLAYABLE_P2_SPECIES),
                                       proxy_document=sibling)
     assert first == second
-    assert all(b["target"] not in PROXY_ONLY for b in first["bindings"])
+    assert all(b["target"] not in PROXY_EXCLUSIVE for b in first["bindings"])
 
-    manifest = generate("stageA-parity", p2_enemies=True, p2_species=fitting)
+    manifest = generate("stageA-parity", p2_enemies=True, p2_species="playable")
     manifest_none = generate("stageA-parity", p2_enemies=True,
-                             p2_species=fitting, p2_proxy_tier=None)
+                             p2_species="playable", p2_proxy_tier=None)
     assert manifest == manifest_none
     assert "p2_proxy_tier" not in manifest
     assert manifest["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
-    assert all(b["target"] not in PROXY_ONLY for b in manifest["p2_layout"]["bindings"])
+    assert all(b["target"] not in PROXY_EXCLUSIVE for b in manifest["p2_layout"]["bindings"])
     validate(manifest)
 
 
@@ -279,9 +286,10 @@ def test_sampler_cap_and_reserved_and_sorted():
         if reserved_target in by_target:
             assert by_target[reserved_target] in set(PLAYABLE_P2_SPECIES)
 
-    # Six-gate identities are never placed on the new proxy-only slots.
+    # Six-gate identities are never placed on the proxy-EXCLUSIVE slots (the
+    # 2 shared singletons are legitimately admitted; see SHARED above).
     for binding in layout["bindings"]:
-        if binding["target"] in PROXY_ONLY:
+        if binding["target"] in PROXY_EXCLUSIVE:
             assert binding["source_id"] not in set(PLAYABLE_P2_SPECIES)
 
     grown = _synthetic_65_document()
@@ -318,10 +326,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     """Guarantee: every binding's species is eligible for its target, and
     pack targets only ever bind small-host species.
 
-    Pool (6 playable + 10 pool identities + all 17 declared proxies) fits
-    the 33-slot base document exactly: the roster wave admitted the full
-    33-species pool, so the exact-fit pool is 6 original playable + 10 more
-    pool identities (Chappy/Uji) + 2 small-host + 15 large-host proxies = 33.
+    Pool (8 playable + 10 pool identities + all 17 declared proxies) fits
+    the 35-slot base document exactly: placement-cap admitted 2 more slots,
+    so the exact-fit pool is 8 playable + 10 more pool identities
+    (Chappy/Uji/Sarai/Sokkuri) + 2 small-host + 15 large-host proxies = 35.
     The sibling layout (49 targets) still needs repeats, and which species
     the sampler repeats there is pool-sensitive (not an invariant), so this
     pins the real guarantees instead: eligibility soundness on every
@@ -358,10 +366,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
                      26, 27, 66, 84, 93, 97):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
-    # Ten more pool identities (admitted, non-proxy) bring the pool to the
-    # exact 33-slot fit: 6 playable + 10 pool + 17 proxies = 33.
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14]
-    assert len(pool) == 33 and len(set(pool)) == 33
+    # Twelve more pool identities (admitted, non-proxy) bring the pool to the
+    # exact 35-slot fit: 8 playable + 10 pool + 17 proxies = 35.
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79]
+    assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
         layout = resolve_placement_layout(
@@ -369,7 +377,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             proxy_rows=proxy_rows, proxy_document=sibling)
         counts = Counter(b["source_id"] for b in layout["bindings"])
         repeats = {source_id for source_id, count in counts.items() if count > 1}
-        assert repeats, "the 33-species pool cannot fill 49 targets distinctly"
+        assert repeats, "the 35-species pool cannot fill 49 targets distinctly"
         # The declared pool fits the sibling layout's non-pack slots exactly
         # now (see docstring): nothing is unplaced here.
         assert not layout.get("unplaced", []), (seed, layout.get("unplaced"))
@@ -389,8 +397,8 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             if binding["target"] in PACKS:
                 assert binding["source_id"] in small_ids, (
                     seed, binding["target"], binding["source_id"])
-        # The same pool fits the 33-slot base document exactly (6 playable
-        # + 10 pool + 17 proxies = 33): nothing is unplaced, every
+        # The same pool fits the 35-slot base document exactly (8 playable
+        # + 10 pool + 17 proxies = 35): nothing is unplaced, every
         # binding is distinct (no repeat steals a slot), and nothing in
         # the pool is lost.
         base = resolve_placement_layout(
@@ -406,10 +414,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
 
 
 def test_generate_parity_with_declared_dwarf_hosts():
-    # Admit-frogs5 (#871): full playable (35) overflows 33 slots, so parity
-    # uses the fitting 33-species subset (pool minus the two newest).
-    fitting = [s for s in PLAYABLE_P2_SPECIES if s not in (25, 15)]
-    manifest_plain = generate("stageA-gen", p2_enemies=True, p2_species=fitting)
+    manifest_plain = generate("stageA-gen", p2_enemies=True, p2_species="playable")
     assert "p2_proxy_tier" not in manifest_plain
     manifest = generate("stageA-gen", p2_enemies=True,
                         p2_proxy_tier="declared", p2_species=[10, 11])

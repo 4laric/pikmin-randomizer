@@ -42,18 +42,14 @@ AFFECTED = {
 
 
 def playable_manifest(mode="solo"):
-    # Admit-frogs5 (#871): the 35-species pool overflows the 33-slot target
-    # set (fail-closed, pinned in test_p2_playable_pool), so these checks
-    # run on the fitting 33-species subset (pool minus the two newest).
-    fitting = [s for s in PLAYABLE_P2_SPECIES if s not in (25, 15)]
-    manifest = generate(SEED, mode, p2_enemies=True, p2_species=fitting)
+    manifest = generate(SEED, mode, p2_enemies=True, p2_species="playable")
     validate(manifest)
     return manifest
 
 
 def test_playable_pool_binds_all_playable_species():
     manifest = playable_manifest()
-    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == set(PLAYABLE_P2_SPECIES) - {25, 15}
+    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == set(PLAYABLE_P2_SPECIES)
 
 
 def test_location_set_ignores_p2_kills():

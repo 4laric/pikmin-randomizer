@@ -4,7 +4,8 @@ The old ``randomizer/seed.py`` scoping (``admitted | (identity - admitted)``)
 was a set-algebra no-op: any installed pool species validated even after
 losing roster admission, masked by its installer row. The staging union must
 cover only installed-but-unadmitted NON-POOL staging ids
-(1,15,25,26,27,45,58,66,84,93,97); a pool species that loses admission fails
+(1,26,27,45,58,66,84,93,97 -- 15 Armor and 25 Wtank graduated to the admitted
+pool in admit-frogs5); a pool species that loses admission fails
 closed. Each test below fails on the pre-fix scoping.
 """
 import sys
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from experimental import pikmin2_seed_bridge as bridge
 from randomizer.seed import generate, validate
 
-STAGING_IDS = [1, 15, 25, 26, 27, 45, 58, 66, 84, 93, 97]
+STAGING_IDS = [1, 26, 27, 45, 58, 66, 84, 93, 97]
 
 
 @pytest.mark.parametrize("dropped", [34, 70, 2, 44])
@@ -46,13 +47,13 @@ def test_staging_ids_stay_permitted_for_evidence_runs(monkeypatch):
     roster = load_and_validate()
     by_source = by_id(roster)
     manifest = generate("rfix-validate", p2_enemies=True, p2_species="playable")
-    # Swap one binding onto a staging identity (Wtank 25) with its real enum.
+    # Swap one binding onto a staging identity (Kochappy 1) with its real enum.
     tweaked = dict(manifest)
     bindings = [dict(b) for b in manifest["p2_layout"]["bindings"]]
     bindings[0] = {
         "target": bindings[0]["target"],
-        "source_id": 25,
-        "enum_name": by_source[25].enum_name,
+        "source_id": 1,
+        "enum_name": by_source[1].enum_name,
     }
     layout = dict(manifest["p2_layout"], bindings=bindings)
     tweaked["p2_layout"] = layout

@@ -99,14 +99,14 @@ def test_row_evidence_proven(tmp_path, monkeypatch):
 
 
 def test_default_path_unchanged():
-    # Admit-frogs5 (#871): full playable (35) overflows the 33-slot target
-    # set, so both spellings fail closed identically (deterministic).
-    with pytest.raises(ValueError, match="no unique accepted placement target") as first:
-        generate("tier-default-seed", p2_enemies=True, p2_species="playable")
-    with pytest.raises(ValueError, match="no unique accepted placement target") as second:
-        generate("tier-default-seed", p2_enemies=True, p2_species="playable",
-                 p2_proxy_tier=None)
-    assert str(first.value) == str(second.value)
+    first = generate("tier-default-seed", p2_enemies=True, p2_species="playable")
+    second = generate("tier-default-seed", p2_enemies=True, p2_species="playable",
+                      p2_proxy_tier=None)
+    assert first == second
+    assert "p2_proxy_tier" not in first
+    assert "p2-proxy-tier-v1" not in first["capabilities"]
+    assert first["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
+    validate(first)
 
 
 def test_proxy_tier_requires_p2_enemies():
@@ -127,20 +127,18 @@ def test_full_plus_proven_is_playable_plus_every_proven_row():
     layout = manifest["p2_layout"]
     bound = {b["source_id"] for b in layout["bindings"]}
     assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids("proven"))
-    # Admit-frogs5 (#871): sampled mode still covers everything, but only
-    # 33 of the 35 playable fit the base slots, so exactly two playable
-    # spill to unplaced (which two is seed-dependent).
-    assert len(set(PLAYABLE_P2_SPECIES) & bound) == 33
+    assert set(PLAYABLE_P2_SPECIES) <= bound
     validate(manifest)
 
 
 def test_full_plus_proven_equals_playable_six(monkeypatch):
     _unproven(monkeypatch)
-    # Admit-frogs5 (#871): with no proven rows the full admitted set (38)
-    # overflows the 33 slots under the legacy policy: fail closed.
-    with pytest.raises(ValueError, match="no unique accepted placement target"):
-        generate("tier-full-proven", p2_enemies=True,
-                 p2_proxy_tier="proven", p2_species="full")
+    manifest = generate("tier-full-proven", p2_enemies=True,
+                        p2_proxy_tier="proven", p2_species="full")
+    assert manifest["p2_proxy_tier"] == "proven"
+    assert "p2-proxy-tier-v1" in manifest["capabilities"]
+    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == set(PLAYABLE_P2_SPECIES)
+    validate(manifest)
 
 
 def test_declared_admits_wealthy_bluechappy():
@@ -229,14 +227,7 @@ def test_sampled_assigns_playable_first():
                                       species=[*PLAYABLE_P2_SPECIES, 10, 42],
                                       proxy_rows=proxy_rows)
     bound = {b["source_id"] for b in layout["bindings"]}
-    unplaced = set(layout.get("unplaced", []))
-    assert bound | unplaced == set(PLAYABLE_P2_SPECIES) | {10, 42}
-    # Admit-frogs5 (#871): 37 species overflow the slots, so 4 land
-    # unplaced. Playable still comes first: both proxies yield before the
-    # pool, and 33 of the 35 playable stay bound (which 2 spill is
-    # seed-dependent).
-    assert {10, 42} <= unplaced
-    assert len(set(PLAYABLE_P2_SPECIES) & bound) == 33
+    assert set(PLAYABLE_P2_SPECIES) <= bound
     validate_layout(layout, roster)
 
 

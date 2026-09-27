@@ -940,7 +940,7 @@ def validate(m):
             # set above, never through the installer table. The union below
             # is kept only for evidence staging of installed-but-unadmitted
             # identities (lane runs whose campaign evidence is still in
-            # flight: 1,15,25,26,27,45,58,66,84,93,97, e.g. 26/27/84/93/66/97).
+            # flight: 1,26,27,45,58,66,84,93,97, e.g. 26/27/84/93/66/97).
             # It is scoped to installed AND non-pool AND unadmitted
             # (_identity_ids - admitted - pool), so a pool species that
             # loses roster admission is excluded and fails closed here

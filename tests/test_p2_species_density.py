@@ -5,7 +5,7 @@ Pins the two behaviours issue #838 asks for:
 1. The *legacy all-target fill* semantics of ``resolve_placement_layout`` are
    unchanged: every admitted identity is covered and every accepted compatible
    target is bound. The accepted-data case (``p2_species=[23]``) is reproduced
-   verbatim: all 33 accepted Hope targets become Sarai, which is the eight
+   verbatim: all 35 accepted Hope targets become Sarai, which is the eight
    overlapping capture territories that motivated the issue.
 2. The new *bounded-coverage* policy binds the minimum number of targets that
    gives every selected species at least one binding and leaves the remaining
@@ -73,7 +73,7 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
     layout = resolve_placement_layout("seed-a", "Player1", document, roster, species=[SARAI])
     targets = {binding["target"] for binding in layout["bindings"]}
     # Every accepted, constraint-compatible target is bound, all to Sarai.
-    assert len(layout["bindings"]) == 33  # committed doc exposes 33 accepted slots
+    assert len(layout["bindings"]) == 35  # committed doc exposes 35 accepted slots
     assert {binding["source_id"] for binding in layout["bindings"]} == {SARAI}
     assert layout["density"] == DENSITY_LEGACY
     assert targets  # nonempty
@@ -83,10 +83,10 @@ def test_legacy_default_is_unchanged_and_deterministic():
     """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    # Roster wave (#871): 38 admitted identities exceed the 33-slot target
+    # Roster wave (#871): 38 admitted identities exceed the 35-slot target
     # set, so the bare default (every admitted identity needs a unique
     # target) fails closed deterministically instead of silently dropping
-    # five species. None and the explicit legacy token agree.
+    # three species. None and the explicit legacy token agree.
     with pytest.raises(SeedBridgeError,
                        match="no unique accepted placement target") as first_err:
         resolve_placement_layout("seed-a", "Player1", document, roster)
@@ -101,21 +101,19 @@ def test_legacy_default_is_unchanged_and_deterministic():
 
 
 def test_legacy_multi_species_multiset_is_pinned():
-    """The 35-species pool overflows the 33-slot target set: fail closed.
-
-    Admit-frogs5 (#871) grew the pool 33 -> 35 without new accepted slots,
-    so the exact-fit multiset no longer exists. This pins the fail-closed
-    overflow (no silent drops) until lane 04 accepts two more slots.
-    """
+    """The 35-species pool keeps its exact-fit all-target multiset."""
+    from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
     assert len(PLAYABLE_P2_SPECIES) == 35
     roster = load_and_validate()
-    with pytest.raises(SeedBridgeError,
-                       match="no unique accepted placement target"):
-        resolve_placement_layout(
-            "seed-a", "Player1", committed_document(), roster,
-            species=list(PLAYABLE_P2_SPECIES))
+    layout = resolve_placement_layout(
+        "seed-a", "Player1", committed_document(), roster,
+        species=list(PLAYABLE_P2_SPECIES))
+    counts = Counter(binding["source_id"] for binding in layout["bindings"])
+    assert sum(counts.values()) == 35
+    assert set(counts) == set(PLAYABLE_P2_SPECIES)
+    assert all(count == 1 for count in counts.values())
 
 
 # --- bounded-coverage policy ------------------------------------------------
