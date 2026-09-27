@@ -13,7 +13,7 @@ from .catalog import ITEM_IDS, REPAIR, RED, YELLOW, BLUE, field_capacity, color_
 from .seed import fingerprint, solo_rewards
 from .stats import profile_lines
 from .benefits import benefit_lines
-from .session import death_link_summary
+from .session import death_link_summary, load_session_data, resolve_session_file
 
 
 def snapshot(manifest, data):
@@ -111,7 +111,10 @@ def main(manifest_path, session_path, pid):
             root.destroy()
             return
         try:
-            raw = (session_path / 'session.json').read_text(encoding='utf-8')
+            # --session-dir may point at a host session (session.json) or a
+            # netplay client mirror (mirror.json, same schema); the resolver
+            # prefers session.json so host behaviour is unchanged.
+            raw = resolve_session_file(session_path).read_text(encoding='utf-8')
             if raw != cache:
                 data = json.loads(raw)
                 state = snapshot(manifest, data)

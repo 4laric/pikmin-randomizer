@@ -7,6 +7,22 @@ import subprocess
 import sys
 from pathlib import Path
 from .catalog import GAME, NAMES, LOCATION_IDS
+from .netplay_mirror import (
+    BOOTSTRAP_FILENAME,
+    CARD_DIRNAME,
+    EVENTS_FILENAME,
+    INGEST_FILENAME,
+    MIRROR_FILENAME,
+    SAVE_RESULT_FILENAME,
+    STATE_FILENAME,
+    MirrorStore,
+    export_client_bundle,
+    mirror_dir_for,
+    parse_mirror_line,
+    render_mirror_state,
+    restamp_bootstrap_for_peer,
+    run_dir_for,
+)
 from .seed import fingerprint
 from .stats import bootstrap_stats
 from .enemy_slots import bootstrap_slots, verify_source_assets
@@ -289,6 +305,182 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
     try:
         updates = connection_updates(sys.stdin) if os.getenv("PIKMIN_AP_CONTROL") == "1" and manifest["mode"] == "ap" else None
         asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD"), updates))
+    finally:
+        if process and process.poll() is None:
+            process.terminate()
+            process.wait(timeout=10)
+        if log:
+            if overlay and overlay.poll() is None:
+                overlay.terminate()
+                overlay.wait(timeout=5)
+            log.close()
+    if process and process.returncode:
+        raise RuntimeError(f"native process exited {process.returncode}; see {run.directory / 'native.log'}")
+
+
+class NetplayClientRun:
+    """One ``--netplay-client`` run. This class never touches the network.
+
+    It owns only its mirror run directory
+    (``<mirror>/runs/<token>/`` with ``bootstrap.txt``, ``mirror.json``,
+    ``mirror-events.txt``, a debug ``state.txt`` and ``card/``). It never
+    imports ``websockets``, never contacts Archipelago, and never writes the
+    host's ``session.json``, ``checks.txt`` or ``campaign/``. There is no
+    reference to ``websockets``, ``ap_connect`` or ``serve`` anywhere on this
+    code path by construction.
+    """
+
+    def __init__(self, manifest, mirror_dir, bootstrap_text, run_token=None):
+        self.manifest = manifest
+        self.fingerprint_value = fingerprint(manifest)
+        self.mirror_dir = Path(mirror_dir)
+        token = run_token or secrets.token_hex(32)
+        self.directory = run_dir_for(self.mirror_dir, token)
+        self.token = self.directory.name
+        fields = bootstrap_text.split()
+        try:
+            session_line = fields[fields.index("SESSION") + 1]
+            fingerprint_line = fields[fields.index("FINGERPRINT") + 1]
+        except (ValueError, IndexError):
+            raise ValueError("client bootstrap is missing SESSION/FINGERPRINT")
+        if session_line != self.token:
+            raise ValueError("client bootstrap SESSION does not match this run token")
+        if fingerprint_line != self.fingerprint_value:
+            raise ValueError("client bootstrap fingerprint does not match manifest")
+        self.directory.mkdir(parents=True)
+        atomic_write(self.directory / BOOTSTRAP_FILENAME, bootstrap_text)
+        (self.directory / CARD_DIRNAME).mkdir(exist_ok=True)
+        self.events = self.directory / EVENTS_FILENAME
+        self.mirror = MirrorStore(manifest, self.directory / MIRROR_FILENAME)
+        self.ingest_path = self.directory / INGEST_FILENAME
+        self.offset = 0
+        self.seen = set()
+        self.checkpoint = None
+        if self.ingest_path.exists():
+            try:
+                state = json.loads(self.ingest_path.read_text(encoding="utf-8"))
+                offset, seen, checkpoint = state["offset"], state["seen"], state.get("checkpoint")
+                if type(offset) is not int or offset < 0 or type(seen) is not list:
+                    raise ValueError("bad ingest state")
+            except (ValueError, KeyError, UnicodeDecodeError):
+                raise ValueError("mirror ingest state is damaged")
+            self.offset = offset
+            self.seen = set(seen)
+            self.checkpoint = checkpoint
+        self.write_state(True)
+
+    def _save_ingest(self):
+        atomic_write(self.ingest_path, json.dumps(
+            dict(offset=self.offset, seen=sorted(self.seen), checkpoint=self.checkpoint),
+            indent=2) + "\n")
+
+    def write_state(self, ready=True):
+        atomic_write(self.directory / STATE_FILENAME,
+                     render_mirror_state(self.manifest, self.mirror.load(), self.token, ready))
+
+    def poll(self):
+        """Ingest newly appended events; return ``(applied, duplicates)``."""
+        raw = self.events.read_bytes() if self.events.exists() else b""
+        complete = raw[:raw.rfind(b"\n") + 1] if raw else b""
+        if len(complete) < self.offset:
+            raise ValueError("mirror event file was truncated")
+        try:
+            text = complete.decode("ascii")
+        except UnicodeDecodeError:
+            raise ValueError("mirror event file is not ASCII")
+        data = self.mirror.load()
+        applied = duplicates = 0
+        dirty = False
+        for line in text[self.offset:].splitlines():
+            if line in self.seen:
+                duplicates += 1
+                continue
+            frame, tag, args = parse_mirror_line(line)
+            if tag in ("SAVE_RESULT", "SAVE_FAIL"):
+                if tag == "SAVE_RESULT":
+                    gen, digest = args
+                    self.checkpoint = dict(gen=gen, digest=digest, ok=True, frame=frame)
+                    atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME,
+                                 f"SAVE_RESULT {gen} {digest}\n")
+                else:
+                    (gen,) = args
+                    self.checkpoint = dict(gen=gen, digest=None, ok=False, frame=frame)
+                    atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME,
+                                 f"SAVE_FAIL {gen}\n")
+                self.seen.add(line)
+                applied += 1
+                dirty = True
+                continue
+            if self.mirror.apply(data, (frame, tag, args)):
+                applied += 1
+            else:
+                duplicates += 1
+            self.seen.add(line)
+            dirty = True
+        self.offset = len(complete)
+        if dirty:
+            self.mirror.save(data)
+            self._save_ingest()
+            self.write_state(True)
+        return (applied, duplicates)
+
+
+async def serve_netplay_client(manifest, run, process=None):
+    """Local-file serve loop for client mode. No sockets, no AP reconnect."""
+    try:
+        while process is None or process.poll() is None:
+            run.poll()
+            await asyncio.sleep(0.1)
+    finally:
+        try:
+            run.poll()
+        finally:
+            run.write_state(True)
+
+
+def launch_netplay_client(manifest, session_dir, bootstrap_text, mirror_dir=None, exe=None, assets=None):
+    """Run the mirror client. Only writes under the mirror directory."""
+    from .seed import fingerprint as _fingerprint
+
+    if manifest.get("mode") == "ap" and bootstrap_text is None:
+        raise ValueError("netplay client requires the host bootstrap")
+    target = Path(mirror_dir) if mirror_dir else mirror_dir_for(session_dir, _fingerprint(manifest))
+    with SessionLock(target):
+        return _launch_netplay_client(manifest, target, bootstrap_text, exe, assets)
+
+
+def _launch_netplay_client(manifest, mirror_dir, bootstrap_text, exe=None, assets=None):
+    run = NetplayClientRun(manifest, mirror_dir, bootstrap_text)
+    process = None
+    overlay = None
+    log = None
+    if exe:
+        exe = Path(exe).resolve(strict=True)
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        target = run.directory / "assets"
+        import _winapi
+        _winapi.CreateJunction(str(Path(assets).resolve()), str(target.resolve()))
+        env = dict(os.environ)
+        env.pop("BBFT_PORT", None)
+        log = (run.directory / "native.log").open("w", encoding="utf-8")
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 1  # Win32 SW_SHOWNORMAL; not exported by subprocess.
+        process = subprocess.Popen([str(exe), "--randomizer-seed", str((run.directory / BOOTSTRAP_FILENAME).resolve())],
+            cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
+        overlay_manifest = run.directory / "overlay-manifest.json"
+        atomic_write(overlay_manifest, json.dumps(manifest))
+        try:
+            overlay = subprocess.Popen([sys.executable, "-m", "randomizer.overlay",
+                "--manifest", str(overlay_manifest.resolve()), "--session-dir", str(run.directory.resolve()),
+                "--pid", str(process.pid)], cwd=Path(__file__).resolve().parents[1],
+                stdout=log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+        except OSError as exc:
+            print(f"Overlay unavailable: {exc}", flush=True)
+    print(f"Netplay client mirror: {run.directory.resolve()}", flush=True)
+    try:
+        asyncio.run(serve_netplay_client(manifest, run, process))
     finally:
         if process and process.poll() is None:
             process.terminate()

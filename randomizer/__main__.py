@@ -2,7 +2,7 @@ import argparse
 import json
 from pathlib import Path
 from .seed import generate, validate, fingerprint, solo_rewards, spheres
-from .runner import launch
+from .runner import launch, launch_netplay_client
 from .session import Session, SessionLock
 from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, ALL_EXPLORATION, NAMES, POSITRON
 
@@ -43,6 +43,12 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--netplay-client", action="store_true",
+                     help="Mirror mode: no AP connection; ingest mirror-events.txt into session/netplay/<fingerprint>/")
+    run.add_argument("--mirror-dir", type=Path,
+                     help="Netplay client mirror directory (defaults to <session-dir>/netplay/<fingerprint>/)")
+    run.add_argument("--bootstrap", type=Path,
+                     help="Host-provided bootstrap file for --netplay-client")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -110,7 +116,17 @@ def main():
                 else:
                     print(text)
         else:
-            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server)
+            if args.netplay_client:
+                if args.server:
+                    raise ValueError("--netplay-client never contacts AP; drop --server")
+                if not args.bootstrap:
+                    raise ValueError("--netplay-client requires --bootstrap <host bootstrap>")
+                launch_netplay_client(manifest, args.session_dir.resolve(),
+                                      args.bootstrap.read_text(encoding="ascii"),
+                                      args.mirror_dir.resolve() if args.mirror_dir else None,
+                                      args.exe, args.assets)
+            else:
+                launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server)
 
 
 if __name__ == "__main__":

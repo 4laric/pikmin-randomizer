@@ -5,6 +5,7 @@ from tkinter import ttk
 from .catalog import (ITEM_IDS, REPAIR, color_inventory, field_capacity,
                       can_reach_manifest, check_area, bestiary_sources, START_AREAS)
 from .seed import fingerprint, solo_rewards
+from .session import load_session_data
 from .stats import profile_lines
 from .benefits import benefit_lines
 
@@ -48,6 +49,10 @@ class TrackerModel:
         return dict(rows=rows, inventory=inventory, profiles=profile_lines(self.manifest, inventory),
                     benefits=benefit_lines(self.manifest, inventory) + ([death_link] if death_link else []), onions=onions,
                     summary=f'{len(checked)}/{len(rows)} checks    Repairs {inventory[REPAIR]}/{self.manifest["goal"]} required    Field cap {cap}{finale}')
+
+    def snapshot_from_dir(self, session_dir):
+        """Snapshot from a host session dir or a netplay mirror dir."""
+        return self.snapshot(load_session_data(session_dir))
 
     @staticmethod
     def filter_rows(rows, query='', area='All areas', status='Unchecked'):
