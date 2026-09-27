@@ -511,7 +511,7 @@ def _stub_private_destination(monkeypatch):
     import experimental.pikmin2_family_install as family_install
     room = Path("assets") / "dataDir" / "courses" / "pikmin2room"
 
-    def _stub(run, retail_assets):
+    def _stub(run, retail_assets, **kwargs):
         dest = Path(run) / room
         dest.mkdir(parents=True, exist_ok=True)
         return Path(run) / "assets"

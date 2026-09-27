@@ -1367,7 +1367,7 @@ def _validator(name):
     return None
 
 
-def prepare_private_destination(run, retail_assets, room=ROOM):
+def prepare_private_destination(run, retail_assets, room=ROOM, *, campaign=False):
     """Build ``<run>/assets`` with the model room real and the rest retail-linked.
 
     Reuses the room-overlay scheme: untouched directories stay junctions and
@@ -1379,7 +1379,11 @@ def prepare_private_destination(run, retail_assets, room=ROOM):
     if assets.exists():
         raise ValueError(f'run assets already prepared: {assets}')
     sentinel = f'{room}/{PLACEHOLDER}'
-    overlay(Path(retail_assets), assets, {sentinel: b''})
+    overrides = {sentinel: b''}
+    if campaign:
+        from experimental.pikmin2_campaign_assets import campaign_overrides
+        overrides.update(campaign_overrides(retail_assets))
+    overlay(Path(retail_assets), assets, overrides)
     placeholder = assets / room / PLACEHOLDER
     if not placeholder.is_file():
         raise ValueError('room overlay did not materialize the private destination')
@@ -1527,7 +1531,7 @@ def _replay_from_cache(run, cache_root, marker, retail_assets):
         raise StagingError('run assets already exist; conflicting p2 binding install')
     run.mkdir(parents=True, exist_ok=True)
     if retail_assets is not None:
-        prepare_private_destination(run, Path(retail_assets))
+        prepare_private_destination(run, Path(retail_assets), campaign=True)
     tree = cache_root / 'tree'
     for relpath, digest in files.items():
         source = tree / relpath
@@ -1629,7 +1633,7 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
 
     run.mkdir(parents=True, exist_ok=True)
     if retail_assets is not None:
-        prepare_private_destination(run, Path(retail_assets))
+        prepare_private_destination(run, Path(retail_assets), campaign=True)
     # A family installer owns its run-root sidecars and refuses a second install, and
     # seeds repeat families (several Otakara, Mamuta, ...), so install each family once
     # with every actor bound to it. Each family source holds the whole family import.

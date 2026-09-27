@@ -105,3 +105,17 @@ having staged everything and launched nothing, which looks like success.
 
 Keep session paths short: Windows' 260-char limit makes `.mod` loads fail in
 deep directories.
+
+## Starting squad in future campaign packages (#882)
+
+Campaign staging excludes explicitly labelled `campaign red pikmin` harness
+records from the private Forest of Hope generator. Some local input assets
+contain twenty such actors beyond the landing wall, duplicating the twenty
+starters the production game already holds in the starting Onion. Withdraw the
+intended squad normally from the Onion. Retail Pikmin and other generators are
+preserved byte-for-byte; shared asset inputs are never rewritten. Fresh staging
+and model-cache replay both apply this correction. Standalone fixture staging
+retains its intentional squad.
+
+This source fix is for future packages. The existing `output/p2play` delivery,
+its running game, AP progress and saves were not patched or migrated.
