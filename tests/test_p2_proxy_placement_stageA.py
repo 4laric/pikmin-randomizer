@@ -58,9 +58,14 @@ def test_validate_proxy_document_accepts_sibling():
         int(uid) for uid in PROXY_ONLY)
     assert sorted(validated["pack_hosts"]) == sorted(placement.PACK_HOSTS)
     for slot in validated["slots"]:
-        assert slot["proxy_only"] is True
         assert slot["terrain"] == "ground"
-        assert slot["evidence"] == {"xyz": True, "terrain": False, "route": False}
+        if str(slot["uid"]) in SHARED:
+            # Shared with the admitted doc and native-probed (doc-reconcile #871).
+            assert slot["proxy_only"] is False
+            assert slot["evidence"] == {"xyz": True, "terrain": True, "route": True}
+        else:
+            assert slot["proxy_only"] is True
+            assert slot["evidence"] == {"xyz": True, "terrain": False, "route": False}
         if str(slot["uid"]) in PACKS:
             assert slot["pack"] is True
             assert slot["evidence_level"] == placement.PROXY_PACK_EVIDENCE_LEVEL
@@ -70,7 +75,7 @@ def test_validate_proxy_document_accepts_sibling():
             assert slot["first_day"] == expected[4]
         else:
             assert slot["pack"] is False
-            assert slot["evidence_level"] == placement.PROXY_EVIDENCE_LEVEL
+            assert slot["evidence_level"] == placement.PROXY_SHARED_EVIDENCE_LEVEL
             assert "count" not in slot
             assert "original_teki" not in slot
     assert sorted(validated["reserved_vanilla"]) == sorted(
@@ -113,7 +118,7 @@ def test_validate_proxy_document_rejects_bad_docs():
     bad = copy.deepcopy(good)
     for slot in bad["slots"]:
         if slot.get("pack") is True:
-            slot["evidence_level"] = placement.PROXY_EVIDENCE_LEVEL
+            slot["evidence_level"] = placement.PROXY_SHARED_EVIDENCE_LEVEL
             break
     with pytest.raises(ValueError):
         placement.validate_proxy_document(bad)

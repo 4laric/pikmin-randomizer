@@ -38,6 +38,19 @@ PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unpro
 PROXY_PACK_EVIDENCE_LEVEL = (PROXY_EVIDENCE_LEVEL + '; pack binding proven by launch probe pk1 on native '
                              'ba6832cef (every live member bound, 8 day-2 packs)')
 PROXY_SINGLETON_UIDS = frozenset({1849273021, 2049888785})
+# Placement-cap (#871) promoted both singletons into the admitted document, so
+# they are SHARED between the six-gate and proxy tiers (proxy_only: false). The
+# P2_PLACEMENT_SLOT probe samples the ground triangle and nearest waypoint at
+# the slot XYZ, which is independent of the species or tier occupying it, and
+# two native probes agree: proxy probe pk1 and the six-gate rev8 run. Their
+# terrain/route evidence is therefore true in BOTH documents.
+PROXY_SHARED_UIDS = PROXY_SINGLETON_UIDS
+PROXY_SHARED_EVIDENCE_LEVEL = (
+    'native-probed: P2_PLACEMENT_SLOT terrain=ground route=1 (route coverage radius 200) '
+    'in proxy probe pk1 (native ba6832cef, output/claude-orch/evidence/packs-forest/native.log '
+    'L789/L801) and six-gate run rev8 (native eb510ff4, '
+    'output/claude-orch/evidence/doc-reconcile/rev8-native.log L791/L793); '
+    'shared with docs/PIKMIN2_ADMITTED_PLACEMENT.json')
 PROXY_PACK_UIDS = frozenset({3768801221, 2637843033, 517610653, 2380387682, 3679976242,
                              1102975523, 3417529495, 1428724902, 648204418, 3157218646,
                              843459898, 1340027046, 2158371058, 4096115722})
@@ -79,11 +92,13 @@ PROXY_DOCUMENT_ALLOWED = PROXY_DOCUMENT_REQUIRED + ('notes',)
 def validate_proxy_document(document):
     """Validate the proxy-tier-only sibling document (2 singletons + 14 packs).
 
-    Accepts only ``p2-proxy-placement-v1`` with exactly the 16 admitted
-    proxy-only uids, honest mechanical-only evidence (xyz true, terrain/route
-    false), ``proxy_only is True`` and the fixed ``evidence_level`` string on
-    every slot (singletons carry :data:`PROXY_EVIDENCE_LEVEL`, pack slots carry
-    :data:`PROXY_PACK_EVIDENCE_LEVEL`), ``pack``/``count``/``original_teki``
+    Accepts only ``p2-proxy-placement-v1`` with exactly the 16 proxy-tier
+    uids. The 14 pack slots carry honest mechanical-only evidence (xyz true,
+    terrain/route false), ``proxy_only is True`` and
+    :data:`PROXY_PACK_EVIDENCE_LEVEL`. The 2 singletons are shared with the
+    admitted document (:data:`PROXY_SHARED_UIDS`) and carry native-probed
+    evidence (xyz/terrain/route all true), ``proxy_only is False`` and
+    :data:`PROXY_SHARED_EVIDENCE_LEVEL`; anything else is rejected, ``pack``/``count``/``original_teki``
     metadata pinned per uid, and a top-level ``pack_hosts`` list exactly equal
     to :data:`PACK_HOSTS`. Never touches the committed document or six-gate
     behaviour. Schema stays v1 (extension, not a bump): same slot shape, same
@@ -114,11 +129,13 @@ def validate_proxy_document(document):
     for raw in document['slots']:
         if not isinstance(raw, dict):
             _fail('proxy slot must be an object')
-        if raw.get('proxy_only') is not True:
-            _fail('proxy slot requires proxy_only: true')
         if raw.get('pack') not in (True, False):
             _fail('proxy slot requires pack: true/false')
         uid = raw.get('uid')
+        shared = uid in PROXY_SHARED_UIDS
+        if raw.get('proxy_only') is not (not shared):
+            _fail('proxy slot requires proxy_only: false (shared with the admitted document)' if shared
+                  else 'proxy slot requires proxy_only: true')
         is_pack = raw.get('pack') is True
         if is_pack:
             if uid not in PROXY_PACK_UIDS:
@@ -143,7 +160,7 @@ def validate_proxy_document(document):
         else:
             if uid not in PROXY_SINGLETON_UIDS:
                 _fail(f'proxy singleton slot uid {uid} is not an admitted singleton slot')
-            if raw.get('evidence_level') != PROXY_EVIDENCE_LEVEL:
+            if raw.get('evidence_level') != PROXY_SHARED_EVIDENCE_LEVEL:
                 _fail('proxy slot has an unexpected evidence_level')
             if 'count' in raw:
                 _fail('proxy singleton slot must not carry count')
@@ -156,18 +173,24 @@ def validate_proxy_document(document):
                     if key not in ('proxy_only', 'evidence_level', 'pack', 'count', 'original_teki')}
         slot = normalize_slot(stripped)
         if slot['uid'] not in PROXY_SLOT_UIDS:
-            _fail(f'proxy slot uid {slot["uid"]} is not an admitted proxy-only slot')
+            _fail(f'proxy slot uid {slot["uid"]} is not an admitted proxy-tier slot')
         if slot['terrain'] != 'ground':
             _fail('proxy-only slots must be ground terrain')
         if slot['evidence'].get('xyz') is not True:
             _fail('proxy slot evidence.xyz must be true (mechanical position)')
-        if slot['evidence'].get('terrain') is not False:
-            _fail('proxy slot evidence.terrain must be false (unprobed)')
-        if slot['evidence'].get('route') is not False:
-            _fail('proxy slot evidence.route must be false (unprobed)')
-        slot['proxy_only'] = True
+        if shared:
+            if slot['evidence'].get('terrain') is not True:
+                _fail('shared proxy slot evidence.terrain must be true (native-probed)')
+            if slot['evidence'].get('route') is not True:
+                _fail('shared proxy slot evidence.route must be true (native-probed)')
+        else:
+            if slot['evidence'].get('terrain') is not False:
+                _fail('proxy slot evidence.terrain must be false (unprobed)')
+            if slot['evidence'].get('route') is not False:
+                _fail('proxy slot evidence.route must be false (unprobed)')
+        slot['proxy_only'] = not shared
         slot['pack'] = is_pack
-        slot['evidence_level'] = (PROXY_PACK_EVIDENCE_LEVEL if is_pack else PROXY_EVIDENCE_LEVEL)
+        slot['evidence_level'] = (PROXY_PACK_EVIDENCE_LEVEL if is_pack else PROXY_SHARED_EVIDENCE_LEVEL)
         if is_pack:
             slot['count'] = PACK_TARGETS[uid][3]
             slot['original_teki'] = PACK_TARGETS[uid][2]
