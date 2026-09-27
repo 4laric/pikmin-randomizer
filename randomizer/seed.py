@@ -121,8 +121,8 @@ class SeedRandom:
 # Adding a row does NOT admit a species on its own -- see
 # docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure.
 # Do NOT add the other installer-capable species (1 Kochappy, 45 Snow,
-# 9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 25 Wtank, 15 Armor,
-# 26 Catfish, 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai)
+# 9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish,
+# 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai)
 # until their campaign evidence lands; that evidence is owned by other lanes.
 P2_PLAYABLE_POOL = (
     {
@@ -536,6 +536,30 @@ P2_PLAYABLE_POOL = (
                          "(experimental/pikmin2_aquatic_install)",
         },
     },
+    {
+        "source_id": 25,
+        "enum_name": "Wtank",
+        "family": "tank",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign frogs5-25 (owner ruling 2026-09-25: power mode admits): blue squad POWER=30, campaign bind, breath-cone fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:25:3",
+            "log": "C:/cop/botcamp-frogs5-25-Wtank/session/runs/6f7f48ec5786daf3784f517aaf00786f6a5423af2950f18996a010955372c3a3/native.log (sha256 ba67a715fb46fb56...) L1060 bind, L1702 dead, L1930 receipt; output/claude-orch/evidence/botcamp-frogs5.md; output/claude-orch/review/rev6-frogs5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 25 -> tank "
+                         "(experimental/pikmin2_tank_identity_install)",
+        },
+    },
+    {
+        "source_id": 15,
+        "enum_name": "Armor",
+        "family": "armor",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign frogs5b-15 (owner ruling 2026-09-25: power mode admits): blue squad POWER=10, campaign bind, GoHome/flick/attack2 fight with two incremental DAMAGE lines, P2_ARMOR_DEAD on its own generator, corpse carried, Onion receipt onion:p2:15:3",
+            "log": "C:/cop/botcamp-frogs5b-15-Armor/session/runs/5994608956e0b4ce8d562b1f1d61bbcda85947a2d5996f6216fe0123483bc759/native.log (sha256 889febb33ff5c33...) L996 bind, L1918 dead, L2401 receipt; product-content loop C:/cop/botcamp-admitprod-b15-15-Armor/session/runs/12176a0d9c26dd39cdb48d0bdeeb8b895151c17f51678e44cf787203e84f7991/native.log (sha256 24219d621ef8ea6c...) L1037 bind, L1775 dead, L2170 receipt; output/claude-orch/evidence/botcamp-frogs5.md; output/claude-orch/review/rev6-frogs5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 15 -> armor "
+                         "(ADAPTERS 'armor' via _adapt_ground_inverts)",
+        },
+    },
 )
 
 
@@ -916,8 +940,9 @@ def validate(m):
             # set above, never through the installer table. The union below
             # is kept only for evidence staging of installed-but-unadmitted
             # identities (lane runs whose campaign evidence is still in
-            # flight: 1,15,25,26,27,45,58,66,84,93,97). It is scoped to
-            # installed AND non-pool AND unadmitted, so a pool species that
+            # flight: 1,15,25,26,27,45,58,66,84,93,97, e.g. 26/27/84/93/66/97).
+            # It is scoped to installed AND non-pool AND unadmitted
+            # (_identity_ids - admitted - pool), so a pool species that
             # loses roster admission is excluded and fails closed here
             # instead of being masked by its installer row (the old
             # A | (I - A) == A | I scoping was a no-op). A validate() pass

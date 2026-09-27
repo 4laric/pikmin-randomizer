@@ -41,11 +41,13 @@ every existing caller keeps working. Today the pool is:
 | 65 | Imomushi | ground_inverts |
 | 71 | UmiMushi | aquatic |
 | 101 | UmiMushiBlind | aquatic |
+| 25 | Wtank | tank |
+| 15 | Armor | armor |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 25 Wtank, 15 Armor,
-26 Catfish, 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
+9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish,
+27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 

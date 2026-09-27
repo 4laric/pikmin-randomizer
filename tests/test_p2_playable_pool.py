@@ -9,7 +9,8 @@ def test_pool_table_derives_playable_tuple():
                                    12, 13, 14, 28, 94, 68,
                                    17, 18, 24, 75,
                                    56, 63, 69,
-                                   34, 70, 65, 71, 101)
+                                   34, 70, 65, 71, 101,
+                                   25, 15)
     assert PLAYABLE_P2_SPECIES == tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
@@ -29,19 +30,28 @@ def test_pool_table_rows_carry_evidence():
 
 
 def test_playable_pool_binds_only_playable_species():
-    m = generate('12345', p2_enemies=True, p2_species='playable')
-    ids = {b['source_id'] for b in m['p2_layout']['bindings']}
-    assert ids == set(PLAYABLE_P2_SPECIES)
+    # Admit-frogs5 (#871): the 35-species pool exceeds the 33-slot target
+    # set, so full-playable generation fails closed (default-deny slot
+    # contract) instead of silently dropping two species. Two more accepted
+    # slots (lane 04) restore the exact fit; until then the product path
+    # stays red by design and this pins the fail-closed behaviour.
+    with pytest.raises(ValueError, match="no unique accepted placement target"):
+        generate('12345', p2_enemies=True, p2_species='playable')
+    # The admitted pair still binds natively as an explicit subset (no
+    # proxy tier, no rebind): the clean product path for 25/15.
+    m = generate('12345', p2_enemies=True, p2_species=[25, 15])
+    assert {b['source_id'] for b in m['p2_layout']['bindings']} == {25, 15}
     validate(m)
-    assert m == generate('12345', p2_enemies=True, p2_species='playable')
+    assert m == generate('12345', p2_enemies=True, p2_species=[25, 15])
 
 
 def test_explicit_subset_and_default_all():
     assert {b['source_id'] for b in generate('7', p2_enemies=True, p2_species=[44, 54])['p2_layout']['bindings']} == {44, 54}
-    # Roster wave (#871): 36 admitted identities exceed the 33-slot target
+    # Roster wave (#871): 38 admitted identities exceed the 33-slot target
     # set, so the bare default (every admitted identity needs a unique
-    # target) fails closed instead of silently dropping three species. The
-    # product default is --p2-species playable (33 on 33, exact fit).
+    # target) fails closed instead of silently dropping five species. The
+    # product default is --p2-species playable (35 on 33 -- see
+    # test_p2_species_density for the capacity pin).
     with pytest.raises(ValueError, match="no unique accepted placement target"):
         generate('7', p2_enemies=True)
 

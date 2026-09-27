@@ -733,14 +733,18 @@ def _adapt_tamago(source, run, actors):
                 generators=[g for g, _ in pairs], ground_receipt=receipt)
 
 
-# Imomushi (65) / Hana (84) share the ground_inverts family installer. Unlike
-# the shared batch2_core install (which refuses when the run already carries
-# ground sidecars from Sokkuri/ElecBug/TamagoMushi), this adapter merges its
-# own species rows, so one seed can bind Imomushi together with Sokkuri (or
-# any other ground writer) in either family order. Idempotent: a second call
-# over the same run is a no-op success when every staged file is
-# byte-identical; a conflicting staged file is refused with ``StagingError``.
-_GROUND_INVERTS_SOURCE_IDS = {'Imomushi': 65, 'Hana': 84}
+# Armor (15) / Imomushi (65) / Hana (84) share the ground_inverts family
+# installer. Unlike the shared batch2_core install (which refuses when the run
+# already carries ground sidecars from Sokkuri/ElecBug/TamagoMushi), this
+# adapter merges its own species rows, so one seed can bind Armor together
+# with Sokkuri, ElecBug, Imomushi (or any other ground writer) in either
+# family order. Idempotent: a second call over the same run is a no-op
+# success when every staged file is byte-identical; a conflicting staged file
+# is refused with ``StagingError``.
+# frogs4 (#871): Armor used to stage through the legacy all-or-nothing
+# ``ground.install`` (``_adapt_armor``), which refused a seed that also bound
+# any other ground species; it now rides this merge adapter like 65/84.
+_GROUND_INVERTS_SOURCE_IDS = {'Armor': 15, 'Imomushi': 65, 'Hana': 84}
 
 
 def _validate_ground_inverts(source):
@@ -761,7 +765,7 @@ def _validate_ground_inverts(source):
 
 
 def _adapt_ground_inverts(source, run, actors):
-    """Adapter for Imomushi (65) / Hana (84) with merge semantics."""
+    """Adapter for Armor (15) / Imomushi (65) / Hana (84) with merge semantics."""
     from experimental import pikmin2_ground_inverts_install as ground
     from experimental import pikmin2_ground_species_content as species_content
     pairs = [(int(generator), species) for generator, species in actors]
@@ -1094,28 +1098,6 @@ def _adapt_tank(source, run, actors):
         raise StagingError(str(error)) from error
 
 
-def _validate_armor(source):
-    """Pre-flight check for the Armor ground bank (ground_inverts.json)."""
-    source = Path(source)
-    if not (source / 'ground_inverts.json').is_file():
-        raise StagingError(f'Armor bank missing for identity content: {source / "ground_inverts.json"}')
-
-
-def _adapt_armor(source, run, actors):
-    """Adapter for Armor (15) via the shared ground installer."""
-    from experimental import pikmin2_ground_inverts_install as ground
-    pairs = [(int(generator), species) for generator, species in actors]
-    for _, species in pairs:
-        if species != 'Armor':
-            raise StagingError(f'Armor adapter got non-Armor species: {species!r}')
-    if not pairs:
-        raise StagingError('Armor install requires at least one generator')
-    try:
-        return ground.install(Path(source), Path(run), pairs)
-    except ValueError as error:
-        raise StagingError(str(error)) from error
-
-
 def _validate_kabuto(source):
     """Pre-flight check for the Kabuto bank (cannon_projectile.json)."""
     source = Path(source)
@@ -1344,7 +1326,7 @@ ADAPTERS = {
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
     'tank': {'install': _adapt_tank, 'validate': _validate_tank},
-    'armor': {'install': _adapt_armor, 'validate': _validate_armor},
+    'armor': {'install': _adapt_ground_inverts, 'validate': _validate_ground_inverts},
     'kabuto': {'install': _adapt_kabuto, 'validate': _validate_kabuto},
     'long_legs': {'install': _adapt_long_legs, 'validate': _validate_long_legs},
     'snagret': {'install': _adapt_snagret, 'validate': _validate_snagret},
