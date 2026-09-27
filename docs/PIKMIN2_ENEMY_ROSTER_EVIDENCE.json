@@ -67,12 +67,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:2:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log:L2552 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:2:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log:L2552 receipt (sha256 42b170b28c6c721d...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-2r2c (owner ruling 2026-09-25: power mode admits): campaign bind, P2 FSM fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:2:3 Bind/dead/receipt on the own generator token (L1463 bind, L2384 dead, L2552 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 2 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 12f3c4396153bb25...) L1463 bind, L2384 dead, L2552 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-2r2c (owner ruling 2026-09-25: power mode admits): campaign bind, P2 FSM fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:2:3 Bind/dead/receipt on the own generator token (L1463 bind, L2384 dead, L2552 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 2 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 42b170b28c6c721d...) L1463 bind, L2384 dead, L2552 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -279,12 +279,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:12:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log:L2645 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:12:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log:L2645 receipt (sha256 8b4e008235893288...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3 Bind/dead/receipt on the own generator token (L1828 bind, L2176 dead, L2645 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 12 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 495d3998cb9c8eff...) L1828 bind, L2176 dead, L2645 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3 Bind/dead/receipt on the own generator token (L1828 bind, L2176 dead, L2645 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 12 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -301,12 +301,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:13:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log:L2156 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:13:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log:L2156 receipt (sha256 1f57998bf095ed2d...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3 Bind/dead/receipt on the own generator token (L1641 bind, L1958 dead, L2156 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 13 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 495d3998cb9c8eff...) L1641 bind, L1958 dead, L2156 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3 Bind/dead/receipt on the own generator token (L1641 bind, L1958 dead, L2156 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 13 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -389,12 +389,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:17:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log:L2288 receipt (sha256 f289672e6426bfbf...)",
+      "delivery_receipt": "onion:p2:17:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log:L2288 receipt (sha256 9e757690449df2fb...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3 Bind/dead/receipt on the own generator token (L1005 bind, L2095 dead, L2288 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 17 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 f289672e6426bfbf...) L1005 bind, L2095 dead, L2288 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3 Bind/dead/receipt on the own generator token (L1005 bind, L2095 dead, L2288 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 17 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -411,12 +411,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:18:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log:L2169 receipt (sha256 f289672e6426bfbf...)",
+      "delivery_receipt": "onion:p2:18:3 (P2_FROG_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log:L2169 receipt (sha256 4f2398378590e177...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3 Bind/dead/receipt on the own generator token (L1013 bind, L2066 dead, L2169 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 18 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 f289672e6426bfbf...) L1013 bind, L2066 dead, L2169 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3 Bind/dead/receipt on the own generator token (L1013 bind, L2066 dead, L2169 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 18 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -516,12 +516,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:24:3 (P2_TANK_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log:L2034 receipt (sha256 f289672e6426bfbf...)",
+      "delivery_receipt": "onion:p2:24:3 (P2_TANK_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log:L2034 receipt (sha256 706dfef24a6ab859...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3 Bind/dead/receipt on the own generator token (L1103 bind, L1844 dead, L2034 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 24 -> tank (experimental/pikmin2_tank_identity_install). Log C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 f289672e6426bfbf...) L1103 bind, L1844 dead, L2034 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3 Bind/dead/receipt on the own generator token (L1103 bind, L1844 dead, L2034 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 24 -> tank (experimental/pikmin2_tank_identity_install). Log C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -602,12 +602,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:28:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log:L2239 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:28:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log:L2239 receipt (sha256 d6b74d9abef0f6fc...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3 Bind/dead/receipt on the own generator token (L1860 bind, L2043 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 28 -> elecbug (experimental/pikmin2_elecbug_content). Log C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 495d3998cb9c8eff...) L1860 bind, L2043 dead, L2239 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3 Bind/dead/receipt on the own generator token (L1860 bind, L2043 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 28 -> elecbug (experimental/pikmin2_elecbug_content). Log C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 d6b74d9abef0f6fc...) L1860 bind, L2043 dead, L2239 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -707,13 +707,14 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:34:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log:L2239 receipt (sha256 dc00ded07ec05316...)",
+      "delivery_receipt": "onion:p2:34:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log:L2239 receipt (sha256 b0d739e34150821b...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-34b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/swallow fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:34:3 Bind/dead/receipt on the own generator token (L1757 bind, L2066 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 34 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 dc00ded07ec05316...) L1757 bind, L2066 dead, L2239 receipt.",
-        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-34b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/swallow fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:34:3 Bind/dead/receipt on the own generator token (L1757 bind, L2066 dead, L2239 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 34 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 b0d739e34150821b...) L1757 bind, L2066 dead, L2239 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs.",
+        "Drawn on own token: C:/cop/botcamp-roster-34-SnakeCrow/session/runs/91159f7966460d11d0b36b7237abf405dc51f67862777c068b91acb8fd752367/native.log (sha256 e4705ca83ad9c97a...) L1161 P2_SNAKEJOINT_DRAW generator=3921089765 key=snagret|SnakeCrow clip=appear1 (the roster handoff's L1146 is sibling generator 3850487044 and is not cited); the cited evidence log draws on its own token 1945764764 at L1935."
       ]
     },
     "38": {
@@ -931,12 +932,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:53:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log:L2693 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:53:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log:L2693 receipt (sha256 40b0759327273001...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3 Bind/dead/receipt on the own generator token (L1571 bind, L2370 dead, L2693 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 53 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 12f3c4396153bb25...) L1571 bind, L2370 dead, L2693 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3 Bind/dead/receipt on the own generator token (L1571 bind, L2370 dead, L2693 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 53 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -996,12 +997,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:56:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log:L2126 receipt (sha256 5bcce5342707de7b...)",
+      "delivery_receipt": "onion:p2:56:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log:L2126 receipt (sha256 c13a933ddd892223...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 5bcce5342707de7b...) L1706 bind, L1998 dead, L2126 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1149,12 +1150,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:63:3 (P2_JIGUMO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log:L4256 receipt (sha256 5bcce5342707de7b...)",
+      "delivery_receipt": "onion:p2:63:3 (P2_JIGUMO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log:L4256 receipt (sha256 1a63f2dcdb8ab0e1...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-63g (owner ruling 2026-09-25: power mode admits): campaign bind, BITE frame-13 + EAT kill chain, P2_JIGUMO_DEAD on its own generator, dead1 P2 corpse carried, Onion receipt onion:p2:63:3 Bind/dead/receipt on the own generator token (L1763 bind, L2060 dead, L4256 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 63 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 5bcce5342707de7b...) L1763 bind, L2060 dead, L4256 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-63g (owner ruling 2026-09-25: power mode admits): campaign bind, BITE frame-13 + EAT kill chain, P2_JIGUMO_DEAD on its own generator, dead1 P2 corpse carried, Onion receipt onion:p2:63:3 Bind/dead/receipt on the own generator token (L1763 bind, L2060 dead, L4256 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 63 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 1a63f2dcdb8ab0e1...) L1763 bind, L2060 dead, L4256 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1171,12 +1172,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:65:3 (P2_IMOMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log:L1984 receipt (sha256 dc00ded07ec05316...)",
+      "delivery_receipt": "onion:p2:65:3 (P2_IMOMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log:L1984 receipt (sha256 7ccd8abf9afdabaf...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3 Bind/dead/receipt on the own generator token (L1714 bind, L1858 dead, L1984 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 65 -> ground_inverts (experimental/pikmin2_ground_inverts_install). Log C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 dc00ded07ec05316...) L1714 bind, L1858 dead, L1984 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3 Bind/dead/receipt on the own generator token (L1714 bind, L1858 dead, L1984 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 65 -> ground_inverts (experimental/pikmin2_ground_inverts_install). Log C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1213,12 +1214,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:68:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log:L2178 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:68:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log:L2178 receipt (sha256 6969d5021da9c359...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-12 (owner ruling 2026-09-25: power mode admits): campaign bind, ASTONISH receiver + TURN chain, DEAD + exactly-once HONEY on its own generator, receipt onion:p2:68:3 Bind/dead/receipt on the own generator token (L1765 bind, L2103 dead, L2178 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 68 -> tamago (experimental/pikmin2_tamago_content). Log C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 495d3998cb9c8eff...) L1765 bind, L2103 dead, L2178 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-12 (owner ruling 2026-09-25: power mode admits): campaign bind, ASTONISH receiver + TURN chain, DEAD + exactly-once HONEY on its own generator, receipt onion:p2:68:3 Bind/dead/receipt on the own generator token (L1765 bind, L2103 dead, L2178 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 68 -> tamago (experimental/pikmin2_tamago_content). Log C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 6969d5021da9c359...) L1765 bind, L2103 dead, L2178 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1235,12 +1236,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:69:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log:L1810 receipt (sha256 5bcce5342707de7b...)",
+      "delivery_receipt": "onion:p2:69:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log:L1810 receipt (sha256 0fbcb5d984defcdf...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3 Bind/dead/receipt on the own generator token (L1585 bind, L1751 dead, L1810 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 69 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 5bcce5342707de7b...) L1585 bind, L1751 dead, L1810 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3 Bind/dead/receipt on the own generator token (L1586 bind on own generator 1945764764, L1751 dead, L1810 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 69 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 0fbcb5d984defcdf...) L1586 bind (own token 1945764764; DELIVERY_BIND L1581; L1585 BIND is sibling generator 1787125272 and is not cited), L1751 dead, L1810 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1257,13 +1258,14 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:70:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log:L2464 receipt (sha256 dc00ded07ec05316...)",
+      "delivery_receipt": "onion:p2:70:3 (P2_SNAKEJOINT_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log:L2464 receipt (sha256 90fd5518feab2872...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-70 (owner ruling 2026-09-25: power mode admits): campaign bind, Walk/Home + bite fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:70:3 Bind/dead/receipt on the own generator token (L1675 bind, L2163 dead, L2464 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 70 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 dc00ded07ec05316...) L1675 bind, L2163 dead, L2464 receipt.",
-        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-70 (owner ruling 2026-09-25: power mode admits): campaign bind, Walk/Home + bite fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:70:3 Bind/dead/receipt on the own generator token (L1675 bind, L2163 dead, L2464 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 70 -> snagret (experimental/pikmin2_snagret_install). Log C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 90fd5518feab2872...) L1675 bind, L2163 dead, L2464 receipt.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs.",
+        "Drawn on own token: C:/cop/botcamp-roster-70-SnakeWhole/session/runs/0c0532433f2c8a11cfee469284351429885fda2afc0b91b0f77faad2929aef77/native.log (sha256 23d1913ce8e372d6...) L1166 P2_SNAKEJOINT_DRAW generator=3921089765 key=snagret|SnakeWhole clip=appear1 (the roster handoff's L1151 is sibling generator 3850487044 and is not cited); the cited evidence log draws on its own token 1945764764 at L1856."
       ]
     },
     "71": {
@@ -1279,12 +1281,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:71:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log:L2254 receipt (sha256 dc00ded07ec05316...)",
+      "delivery_receipt": "onion:p2:71:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log:L2254 receipt (sha256 c6a4a34f6a9149e4...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-71b (owner ruling 2026-09-25: power mode admits): campaign bind, attack/bite/eat cycles with graduated damage, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:71:3 Bind/dead/receipt on the own generator token (L1778 bind, L2109 dead, L2254 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 71 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 dc00ded07ec05316...) L1778 bind, L2109 dead, L2254 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-71b (owner ruling 2026-09-25: power mode admits): campaign bind, attack/bite/eat cycles with graduated damage, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:71:3 Bind/dead/receipt on the own generator token (L1778 bind, L2109 dead, L2254 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 71 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 c6a4a34f6a9149e4...) L1778 bind, L2109 dead, L2254 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1344,12 +1346,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:75:3 (P2_KABUTO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log:L2144 receipt (sha256 f289672e6426bfbf...)",
+      "delivery_receipt": "onion:p2:75:3 (P2_KABUTO_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log:L2144 receipt (sha256 1c4fcd69d4c39360...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-6 (owner ruling 2026-09-25: power mode admits): campaign bind, stone-fire + flick fight, P2_KABUTO_DEAD on its own generator, corpse carried, Onion receipt onion:p2:75:3 Bind/dead/receipt on the own generator token (L1002 bind, L2025 dead, L2144 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 75 -> kabuto (experimental/pikmin2_kabuto_identity_install). Log C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 f289672e6426bfbf...) L1002 bind, L2025 dead, L2144 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-6 (owner ruling 2026-09-25: power mode admits): campaign bind, stone-fire + flick fight, P2_KABUTO_DEAD on its own generator, corpse carried, Onion receipt onion:p2:75:3 Bind/dead/receipt on the own generator token (L1002 bind, L2025 dead, L2144 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 75 -> kabuto (experimental/pikmin2_kabuto_identity_install). Log C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 1c4fcd69d4c39360...) L1002 bind, L2025 dead, L2144 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1559,12 +1561,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 4a5a138eaa228226...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 495d3998cb9c8eff...) L1722 bind, L2338 dead, L2456 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1664,12 +1666,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:101:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log:L2365 receipt (sha256 dc00ded07ec05316...)",
+      "delivery_receipt": "onion:p2:101:3 (P2_UMIMUSHI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log:L2365 receipt (sha256 2cd7b541d1d6c453...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-101 (owner ruling 2026-09-25: power mode admits): campaign bind with Blind split params, walk/attack/eat cycles, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:101:3 Bind/dead/receipt on the own generator token (L1680 bind, L2140 dead, L2365 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 101 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 dc00ded07ec05316...) L1680 bind, L2140 dead, L2365 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-101 (owner ruling 2026-09-25: power mode admits): campaign bind with Blind split params, walk/attack/eat cycles, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:101:3 Bind/dead/receipt on the own generator token (L1680 bind, L2140 dead, L2365 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 101 -> aquatic (experimental/pikmin2_aquatic_install). Log C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 2cd7b541d1d6c453...) L1680 bind, L2140 dead, L2365 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1686,12 +1688,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:33:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log:L2725 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:33:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log:L2725 receipt (sha256 ad190f3ef357cc3c...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-33r2c (owner ruling 2026-09-25: power mode admits): campaign bind, fire-aura + bite fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:33:3 Bind/dead/receipt on the own generator token (L1484 bind, L2427 dead, L2725 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 33 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 12f3c4396153bb25...) L1484 bind, L2427 dead, L2725 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-33r2c (owner ruling 2026-09-25: power mode admits): campaign bind, fire-aura + bite fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:33:3 Bind/dead/receipt on the own generator token (L1484 bind, L2427 dead, L2725 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 33 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 ad190f3ef357cc3c...) L1484 bind, L2427 dead, L2725 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1708,12 +1710,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:35:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log:L2379 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:35:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log:L2379 receipt (sha256 c327f8233b524391...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-35r2c (owner ruling 2026-09-25: power mode admits): campaign bind, patrol/chase/attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:35:3 Bind/dead/receipt on the own generator token (L1379 bind, L2236 dead, L2379 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 35 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 12f3c4396153bb25...) L1379 bind, L2236 dead, L2379 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-35r2c (owner ruling 2026-09-25: power mode admits): campaign bind, patrol/chase/attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:35:3 Bind/dead/receipt on the own generator token (L1379 bind, L2236 dead, L2379 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 35 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 c327f8233b524391...) L1379 bind, L2236 dead, L2379 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1730,12 +1732,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:43:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log:L4275 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:43:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log:L4275 receipt (sha256 cb6622f8fb4afa5e...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-43r2b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/eat/swallow fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:43:3 Bind/dead/receipt on the own generator token (L1535 bind, L2888 dead, L4275 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 43 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 12f3c4396153bb25...) L1535 bind, L2888 dead, L4275 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-43r2b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/eat/swallow fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:43:3 Bind/dead/receipt on the own generator token (L1535 bind, L2888 dead, L4275 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 43 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 cb6622f8fb4afa5e...) L1535 bind, L2888 dead, L4275 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1752,12 +1754,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:67:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log:L3946 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:67:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log:L3946 receipt (sha256 df677b77fdb4b3c0...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-67r2b (owner ruling 2026-09-25: power mode admits): campaign bind, Kuma-chase attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:67:3 Bind/dead/receipt on the own generator token (L1536 bind, L2624 dead, L3946 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 67 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 12f3c4396153bb25...) L1536 bind, L2624 dead, L3946 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-67r2b (owner ruling 2026-09-25: power mode admits): campaign bind, Kuma-chase attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:67:3 Bind/dead/receipt on the own generator token (L1536 bind, L2624 dead, L3946 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 67 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 df677b77fdb4b3c0...) L1536 bind, L2624 dead, L3946 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1774,12 +1776,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:76:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log:L2963 receipt (sha256 12f3c4396153bb25...)",
+      "delivery_receipt": "onion:p2:76:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log:L2963 receipt (sha256 16ed59ee27b0389f...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-76r2 (owner ruling 2026-09-25: power mode admits): campaign bind, dwarf-frame attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:76:3 Bind/dead/receipt on the own generator token (L1514 bind, L2316 dead, L2963 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 76 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 12f3c4396153bb25...) L1514 bind, L2316 dead, L2963 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-76r2 (owner ruling 2026-09-25: power mode admits): campaign bind, dwarf-frame attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:76:3 Bind/dead/receipt on the own generator token (L1514 bind, L2316 dead, L2963 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 76 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 16ed59ee27b0389f...) L1514 bind, L2316 dead, L2963 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
@@ -1796,12 +1798,12 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:14:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log:L2052 receipt (sha256 495d3998cb9c8eff...)",
+      "delivery_receipt": "onion:p2:14:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log:L2052 receipt (sha256 5e8e730acc2a4446...)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3 Bind/dead/receipt on the own generator token (L1853 bind, L2002 dead, L2052 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 14 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 495d3998cb9c8eff...) L1853 bind, L2002 dead, L2052 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3 Bind/dead/receipt on the own generator token (L1853 bind, L2002 dead, L2052 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 14 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     }

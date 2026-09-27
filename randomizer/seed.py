@@ -242,7 +242,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-2r2c (owner ruling 2026-09-25: power mode admits): campaign bind, P2 FSM fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:2:3",
-            "log": "C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 12f3c4396153bb25...) L1463 bind, L2384 dead, L2552 receipt; output/claude-orch/evidence/botcamp-inst-chappy-2r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 42b170b28c6c721d...) L1463 bind, L2384 dead, L2552 receipt; output/claude-orch/evidence/botcamp-inst-chappy-2r2c.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 2 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -254,7 +254,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-33r2c (owner ruling 2026-09-25: power mode admits): campaign bind, fire-aura + bite fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:33:3",
-            "log": "C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 12f3c4396153bb25...) L1484 bind, L2427 dead, L2725 receipt; output/claude-orch/evidence/botcamp-inst-chappy-33r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 ad190f3ef357cc3c...) L1484 bind, L2427 dead, L2725 receipt; output/claude-orch/evidence/botcamp-inst-chappy-33r2c.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 33 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -266,7 +266,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-35r2c (owner ruling 2026-09-25: power mode admits): campaign bind, patrol/chase/attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:35:3",
-            "log": "C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 12f3c4396153bb25...) L1379 bind, L2236 dead, L2379 receipt; output/claude-orch/evidence/botcamp-inst-chappy-35r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 c327f8233b524391...) L1379 bind, L2236 dead, L2379 receipt; output/claude-orch/evidence/botcamp-inst-chappy-35r2c.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 35 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -278,7 +278,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-43r2b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/eat/swallow fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:43:3",
-            "log": "C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 12f3c4396153bb25...) L1535 bind, L2888 dead, L4275 receipt; output/claude-orch/evidence/botcamp-inst-chappy-43r2b.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 cb6622f8fb4afa5e...) L1535 bind, L2888 dead, L4275 receipt; output/claude-orch/evidence/botcamp-inst-chappy-43r2b.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 43 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -290,7 +290,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3",
-            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 12f3c4396153bb25...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 53 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -302,7 +302,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-67r2b (owner ruling 2026-09-25: power mode admits): campaign bind, Kuma-chase attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:67:3",
-            "log": "C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 12f3c4396153bb25...) L1536 bind, L2624 dead, L3946 receipt; output/claude-orch/evidence/botcamp-inst-chappy-67r2b.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 df677b77fdb4b3c0...) L1536 bind, L2624 dead, L3946 receipt; output/claude-orch/evidence/botcamp-inst-chappy-67r2b.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 67 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -314,7 +314,7 @@ P2_PLAYABLE_POOL = (
         "family": "chappy",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-chappy-76r2 (owner ruling 2026-09-25: power mode admits): campaign bind, dwarf-frame attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:76:3",
-            "log": "C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 12f3c4396153bb25...) L1514 bind, L2316 dead, L2963 receipt; output/claude-orch/evidence/botcamp-inst-chappy-76r2.md; output/claude-orch/review/rev2-chappy.md",
+            "log": "C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 16ed59ee27b0389f...) L1514 bind, L2316 dead, L2963 receipt; output/claude-orch/evidence/botcamp-inst-chappy-76r2.md; output/claude-orch/review/rev2-chappy.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 76 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -326,7 +326,7 @@ P2_PLAYABLE_POOL = (
         "family": "uji",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3",
-            "log": "C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 495d3998cb9c8eff...) L1828 bind, L2176 dead, L2645 receipt; output/claude-orch/evidence/botcamp-inst-bugs-7c.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt; output/claude-orch/evidence/botcamp-inst-bugs-7c.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 12 -> uji "
                          "(experimental/pikmin2_uji_content)",
@@ -338,7 +338,7 @@ P2_PLAYABLE_POOL = (
         "family": "uji",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3",
-            "log": "C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 495d3998cb9c8eff...) L1641 bind, L1958 dead, L2156 receipt; output/claude-orch/evidence/botcamp-inst-bugs-8.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt; output/claude-orch/evidence/botcamp-inst-bugs-8.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 13 -> uji "
                          "(experimental/pikmin2_uji_content)",
@@ -350,7 +350,7 @@ P2_PLAYABLE_POOL = (
         "family": "uji",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3",
-            "log": "C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 495d3998cb9c8eff...) L1853 bind, L2002 dead, L2052 receipt; output/claude-orch/evidence/botcamp-inst-bugs-9b.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt; output/claude-orch/evidence/botcamp-inst-bugs-9b.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 14 -> uji "
                          "(experimental/pikmin2_uji_content)",
@@ -362,7 +362,7 @@ P2_PLAYABLE_POOL = (
         "family": "elecbug",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3",
-            "log": "C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 495d3998cb9c8eff...) L1860 bind, L2043 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst-bugs-10.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 d6b74d9abef0f6fc...) L1860 bind, L2043 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst-bugs-10.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 28 -> elecbug "
                          "(experimental/pikmin2_elecbug_content)",
@@ -374,7 +374,7 @@ P2_PLAYABLE_POOL = (
         "family": "dangomushi",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
-            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 495d3998cb9c8eff...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",
@@ -386,7 +386,7 @@ P2_PLAYABLE_POOL = (
         "family": "tamago",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-12 (owner ruling 2026-09-25: power mode admits): campaign bind, ASTONISH receiver + TURN chain, DEAD + exactly-once HONEY on its own generator, receipt onion:p2:68:3",
-            "log": "C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 495d3998cb9c8eff...) L1765 bind, L2103 dead, L2178 receipt; output/claude-orch/evidence/botcamp-inst-bugs-12.md; output/claude-orch/review/rev2-bugs.md",
+            "log": "C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 6969d5021da9c359...) L1765 bind, L2103 dead, L2178 receipt; output/claude-orch/evidence/botcamp-inst-bugs-12.md; output/claude-orch/review/rev2-bugs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 68 -> tamago "
                          "(experimental/pikmin2_tamago_content)",
@@ -398,7 +398,7 @@ P2_PLAYABLE_POOL = (
         "family": "frog",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3",
-            "log": "C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 f289672e6426bfbf...) L1005 bind, L2095 dead, L2288 receipt; output/claude-orch/review/rev2-frogs.md",
+            "log": "C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt; output/claude-orch/review/rev2-frogs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 17 -> frog "
                          "(experimental/pikmin2_frog_install)",
@@ -410,7 +410,7 @@ P2_PLAYABLE_POOL = (
         "family": "frog",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3",
-            "log": "C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 f289672e6426bfbf...) L1013 bind, L2066 dead, L2169 receipt; output/claude-orch/review/rev2-frogs.md",
+            "log": "C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt; output/claude-orch/review/rev2-frogs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 18 -> frog "
                          "(experimental/pikmin2_frog_install)",
@@ -422,7 +422,7 @@ P2_PLAYABLE_POOL = (
         "family": "tank",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3",
-            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 f289672e6426bfbf...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
+            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 24 -> tank "
                          "(experimental/pikmin2_tank_identity_install)",
@@ -434,7 +434,7 @@ P2_PLAYABLE_POOL = (
         "family": "kabuto",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-frogs-6 (owner ruling 2026-09-25: power mode admits): campaign bind, stone-fire + flick fight, P2_KABUTO_DEAD on its own generator, corpse carried, Onion receipt onion:p2:75:3",
-            "log": "C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 f289672e6426bfbf...) L1002 bind, L2025 dead, L2144 receipt; output/claude-orch/review/rev2-frogs.md",
+            "log": "C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 1c4fcd69d4c39360...) L1002 bind, L2025 dead, L2144 receipt; output/claude-orch/review/rev2-frogs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 75 -> kabuto "
                          "(experimental/pikmin2_kabuto_identity_install)",
@@ -446,7 +446,7 @@ P2_PLAYABLE_POOL = (
         "family": "long_legs",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3",
-            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 5bcce5342707de7b...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
+            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 56 -> long_legs "
                          "(experimental/pikmin2_long_legs_install)",
@@ -458,7 +458,7 @@ P2_PLAYABLE_POOL = (
         "family": "aquatic",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-legs-63g (owner ruling 2026-09-25: power mode admits): campaign bind, BITE frame-13 + EAT kill chain, P2_JIGUMO_DEAD on its own generator, dead1 P2 corpse carried, Onion receipt onion:p2:63:3",
-            "log": "C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 5bcce5342707de7b...) L1763 bind, L2060 dead, L4256 receipt; output/claude-orch/review/rev2-legs.md",
+            "log": "C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 1a63f2dcdb8ab0e1...) L1763 bind, L2060 dead, L4256 receipt; output/claude-orch/review/rev2-legs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 63 -> aquatic "
                          "(experimental/pikmin2_aquatic_install)",
@@ -470,7 +470,7 @@ P2_PLAYABLE_POOL = (
         "family": "long_legs",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3",
-            "log": "C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 5bcce5342707de7b...) L1585 bind, L1751 dead, L1810 receipt; output/claude-orch/review/rev2-legs.md",
+            "log": "C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 0fbcb5d984defcdf...) L1586 bind (own token 1945764764; DELIVERY_BIND L1581), L1751 dead, L1810 receipt; output/claude-orch/review/rev2-legs.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 69 -> long_legs "
                          "(experimental/pikmin2_long_legs_install)",
@@ -482,7 +482,7 @@ P2_PLAYABLE_POOL = (
         "family": "snagret",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst2-worms-34b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/swallow fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:34:3",
-            "log": "C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 dc00ded07ec05316...) L1757 bind, L2066 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst2-worms-34b.md; output/claude-orch/review/rev2-worms.md",
+            "log": "C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 b0d739e34150821b...) L1757 bind, L2066 dead, L2239 receipt; DRAW L1935 P2_SNAKEJOINT_DRAW own token 1945764764; output/claude-orch/evidence/botcamp-inst2-worms-34b.md; output/claude-orch/review/rev2-worms.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 34 -> snagret "
                          "(experimental/pikmin2_snagret_install)",
@@ -494,7 +494,7 @@ P2_PLAYABLE_POOL = (
         "family": "snagret",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst2-worms-70 (owner ruling 2026-09-25: power mode admits): campaign bind, Walk/Home + bite fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:70:3",
-            "log": "C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 dc00ded07ec05316...) L1675 bind, L2163 dead, L2464 receipt; output/claude-orch/evidence/botcamp-inst2-worms-70.md; output/claude-orch/review/rev2-worms.md",
+            "log": "C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 90fd5518feab2872...) L1675 bind, L2163 dead, L2464 receipt; DRAW L1856 P2_SNAKEJOINT_DRAW own token 1945764764; output/claude-orch/evidence/botcamp-inst2-worms-70.md; output/claude-orch/review/rev2-worms.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 70 -> snagret "
                          "(experimental/pikmin2_snagret_install)",
@@ -506,7 +506,7 @@ P2_PLAYABLE_POOL = (
         "family": "ground_inverts",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3",
-            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 dc00ded07ec05316...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
+            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 65 -> ground_inverts "
                          "(experimental/pikmin2_ground_inverts_install)",
@@ -518,7 +518,7 @@ P2_PLAYABLE_POOL = (
         "family": "aquatic",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst2-worms-71b (owner ruling 2026-09-25: power mode admits): campaign bind, attack/bite/eat cycles with graduated damage, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:71:3",
-            "log": "C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 dc00ded07ec05316...) L1778 bind, L2109 dead, L2254 receipt; output/claude-orch/evidence/botcamp-inst2-worms-71b.md; output/claude-orch/review/rev2-worms.md",
+            "log": "C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 c6a4a34f6a9149e4...) L1778 bind, L2109 dead, L2254 receipt; output/claude-orch/evidence/botcamp-inst2-worms-71b.md; output/claude-orch/review/rev2-worms.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 71 -> aquatic "
                          "(experimental/pikmin2_aquatic_install)",
@@ -530,7 +530,7 @@ P2_PLAYABLE_POOL = (
         "family": "aquatic",
         "evidence": {
             "run": "Bot-driven power-mode campaign inst2-worms-101 (owner ruling 2026-09-25: power mode admits): campaign bind with Blind split params, walk/attack/eat cycles, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:101:3",
-            "log": "C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 dc00ded07ec05316...) L1680 bind, L2140 dead, L2365 receipt; output/claude-orch/evidence/botcamp-inst2-worms-101.md; output/claude-orch/review/rev2-worms.md",
+            "log": "C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 2cd7b541d1d6c453...) L1680 bind, L2140 dead, L2365 receipt; output/claude-orch/evidence/botcamp-inst2-worms-101.md; output/claude-orch/review/rev2-worms.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 101 -> aquatic "
                          "(experimental/pikmin2_aquatic_install)",
@@ -911,21 +911,24 @@ def validate(m):
             if m.get('p2_proxy_tier') is not None:
                 from .p2_proxy import tier_ids as _tier_ids
                 admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
-            # Roster wave (#871): the roster admits every pool species, so an
-            # admitted identity validates through the roster admission set
-            # above, never through the installer table. The union below is
-            # kept only for evidence staging of installed-but-unadmitted
+            # Roster wave (#871, rfix): the roster admits every pool species,
+            # so an admitted identity validates through the roster admission
+            # set above, never through the installer table. The union below
+            # is kept only for evidence staging of installed-but-unadmitted
             # identities (lane runs whose campaign evidence is still in
-            # flight, e.g. 25/15/26/27/84/93/66/97): scoping it to
-            # _identity_ids - admitted means a pool species that loses roster
-            # admission fails closed here instead of being masked by its
-            # installer row. A validate() pass is not admission:
-            # P2_PLAYABLE_POOL remains the single source of truth.
+            # flight: 1,15,25,26,27,45,58,66,84,93,97). It is scoped to
+            # installed AND non-pool AND unadmitted, so a pool species that
+            # loses roster admission is excluded and fails closed here
+            # instead of being masked by its installer row (the old
+            # A | (I - A) == A | I scoping was a no-op). A validate() pass
+            # is not admission: P2_PLAYABLE_POOL remains the single source
+            # of truth.
             try:
                 from experimental.pikmin2_family_install import IDENTITY_FAMILY as _IDENTITY
                 _identity_ids = {k for k, v in _IDENTITY.items()
-                                 if isinstance(k, int) and v != 'proxy'}
-                _staging_only = _identity_ids - set(admitted)
+                                 if type(k) is int and v != 'proxy'}
+                _pool_ids = {row["source_id"] for row in P2_PLAYABLE_POOL}
+                _staging_only = _identity_ids - set(admitted) - _pool_ids
                 admitted = sorted(set(admitted) | _staging_only)
             except Exception:
                 pass
