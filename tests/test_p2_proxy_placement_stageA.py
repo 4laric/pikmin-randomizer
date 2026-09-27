@@ -201,17 +201,22 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     for uids in report["admitted"].values():
         assert not (PROXY_ONLY & {str(uid) for uid in uids})
 
+    # Admit-frogs5 (#871): the 35-species pool overflows the 33-slot target
+    # set (fail-closed, pinned in test_p2_playable_pool), so invariance is
+    # checked on the fitting 33-species subset (pool minus the two newest).
+    fitting = [s for s in PLAYABLE_P2_SPECIES if s not in (25, 15)]
+    assert len(fitting) == 33
     first = resolve_placement_layout("stageA-invariance", "Player1", document,
-                                     roster, species=list(PLAYABLE_P2_SPECIES))
+                                     roster, species=fitting)
     second = resolve_placement_layout("stageA-invariance", "Player1", document,
-                                      roster, species=list(PLAYABLE_P2_SPECIES),
+                                      roster, species=fitting,
                                       proxy_document=sibling)
     assert first == second
     assert all(b["target"] not in PROXY_ONLY for b in first["bindings"])
 
-    manifest = generate("stageA-parity", p2_enemies=True, p2_species="playable")
+    manifest = generate("stageA-parity", p2_enemies=True, p2_species=fitting)
     manifest_none = generate("stageA-parity", p2_enemies=True,
-                             p2_species="playable", p2_proxy_tier=None)
+                             p2_species=fitting, p2_proxy_tier=None)
     assert manifest == manifest_none
     assert "p2_proxy_tier" not in manifest
     assert manifest["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
@@ -401,7 +406,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
 
 
 def test_generate_parity_with_declared_dwarf_hosts():
-    manifest_plain = generate("stageA-gen", p2_enemies=True, p2_species="playable")
+    # Admit-frogs5 (#871): full playable (35) overflows 33 slots, so parity
+    # uses the fitting 33-species subset (pool minus the two newest).
+    fitting = [s for s in PLAYABLE_P2_SPECIES if s not in (25, 15)]
+    manifest_plain = generate("stageA-gen", p2_enemies=True, p2_species=fitting)
     assert "p2_proxy_tier" not in manifest_plain
     manifest = generate("stageA-gen", p2_enemies=True,
                         p2_proxy_tier="declared", p2_species=[10, 11])

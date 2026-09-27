@@ -313,23 +313,25 @@
     "15": {
       "native_module": "pc_p2_armor",
       "owner_lane": "14",
-      "eligibility": "candidate",
-      "eligibility_reason": "native combat FSM + animation-event bite receiver present; weak-point/captain and lifecycle gates open",
-      "source": [
-        "PIKMIN2_ARMOR_NATIVE.md"
-      ],
-      "notes": [
-        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
-        "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Armored Maw (Armor, source 15): all six gates natural PASS on the frogs5 lane campaign line; Onion receipt onion:p2:15:3 on the species' own generator token per rev6-frogs5.md items 3a/3b.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
-      }
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "onion:p2:15:3 (P2_ARMOR_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-frogs5b-15-Armor/session/runs/5994608956e0b4ce8d562b1f1d61bbcda85947a2d5996f6216fe0123483bc759/native.log:L2401 receipt (sha256 889febb33ff5c33c0f73063f1ddbf8dd980866086f4fe04981f17ebe382dfa86)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
+      "notes": [
+        "Lane campaign evidence (blue run, POWER=10 default): BIND/DRAW/ACCEPT+DAMAGE/DEAD/CORPSE/CARRY/RECEIPT all on the own generator token 1945764764 (L996 bind, L1438 draw, L1700/1701 accept+damage health=200, L1708/1709 accept+damage health=100, L1918 dead prior 100, L1919 corpse, L2180->L2231 carriers 1->5, L2401 receipt onion:p2:15:3, L2402 RESULT 1/1/1/1 in 83 s). Tick path BTeki::update -> pc_p2_armor_update (src/plugPikiNakata/tekibteki.cpp:486); base-game AI suppressed by pc_p2_armor_suppress_ai (src/plugPikiNakata/tekibteki.cpp:655). GoHome observed on the same build (red run): 48x state=gohome with gohome->attack2 (L1700->1702, L1786->1788, L1842->1844, L1992->1994) and gohome->flick (L1679->1684 plus seven more pairs) per ArmorState.cpp:462-499; the port's MOVE/GOHOME gate (pc_p2_armor.cpp:645-678) is a disclosed nearest-target range/angle approximation. Logs C:/cop/botcamp-frogs5b-15-Armor/session/runs/5994608956e0b4ce8d562b1f1d61bbcda85947a2d5996f6216fe0123483bc759/native.log (sha256 889febb33ff5c33c0f73063f1ddbf8dd980866086f4fe04981f17ebe382dfa86); gohome C:/cop/botcamp-frogs5-15-Armor/session/runs/c8e08e81f2c461c3d420446ab02090a2de75647f4c5b81544dc1601c1acc9fb9/native.log (sha256 51712e4b96f2d80858e49c7176cfb3638db7aa8fe520e1a9524f13bee680bab7). Root fd581d83 / native 51e4e9a18 (admit-frogs5 trees identical), exe C:/cop/bin-frogs4.exe (sha256 d3b23ae4ac1f6e0b7e5290b39fb53444e20864c81d802ec57e4c5a4ac4a2e980).",
+        "Product-content proof (closes rev6-frogs5 remaining item 1): p2_prepare_content --species 15 output C:/cop/content-frogs5-prod/Armor (policy P2_GROUND_INVERTS_1, full six-species tree) stages through a real randomizer run + install_layout (PIKMIN_P2_BOUND 49 identities, zero StagingError) and runs the full loop on its own token: BIND L1037, DRAW L1609, DAMAGE L1753/L1765 (200/100), DEAD L1775, RECEIPT L2170 onion:p2:15:3, RESULT L2171 1/1/1/1 in 45 s. Log C:/cop/botcamp-admitprod-b15-15-Armor/session/runs/12176a0d9c26dd39cdb48d0bdeeb8b895151c17f51678e44cf787203e84f7991/native.log (sha256 24219d621ef8ea6c5c9240471535504c0a0096e26fc37acf06174ba9cf8bb0a9).",
+        "Caveat (rev6-frogs5 Finding 2): killability by red squads is luck-bound. Identical-exe reds at POWER=10 got 0 accepts / 1285 rejects in 248 s (single body-sphere weakpoint approximation rejects head/none parts); frogs4 on the same build got 1 accept -> kill, so this is stick-part RNG, not a regression. The blue 100/hit run above shows incremental damage honestly. A red-start seed can stall on Armor."
+      ]
     },
     "16": {
       "native_module": "pc_p2_qurione",
@@ -528,22 +530,23 @@
     "25": {
       "native_module": "pc_p2_tank",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
-      "source": [
-        "PIKMIN2_TANK_IMPORT.md"
-      ],
+      "eligibility": "admitted",
+      "eligibility_reason": "Watery Blowhog (Wtank, source 25): all six gates natural PASS on the frogs5 lane campaign line; Onion receipt onion:p2:25:3 on the species' own generator token per rev6-frogs5.md item 2.",
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:25:3 (P2_TANK_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-frogs5-25-Wtank/session/runs/6f7f48ec5786daf3784f517aaf00786f6a5423af2950f18996a010955372c3a3/native.log:L1930 receipt (sha256 ba67a715fb46fb56652919464f2c5470b187e7d41254031912d8191349392ec0)",
+      "source": [
+        "PIKMIN2_PLAYABLE_POOL.md"
+      ],
       "notes": [
-        "Wtank (Watery Blowhog): water variant; static noninteractive display only (header notes).",
-        "No natural behavior acceptance."
+        "Lane campaign evidence: bot-driven power-mode run frogs5-25 (owner ruling 2026-09-25: power mode admits): blue squad POWER=30, BIND/DRAW/BREATH/DAMAGE/DEAD/CORPSE/CARRY/RECEIPT all on the own generator token 1945764764 (L1060 bind, L1563 draw, L1675/1682/1684 damage 700/400/100, L1702 dead prior 100, L1726 corpse, L1733->L1793 carriers 1->15, L1930 receipt onion:p2:25:3, L1931 RESULT 1/1/1/1 in 50 s). Log C:/cop/botcamp-frogs5-25-Wtank/session/runs/6f7f48ec5786daf3784f517aaf00786f6a5423af2950f18996a010955372c3a3/native.log (sha256 ba67a715fb46fb56652919464f2c5470b187e7d41254031912d8191349392ec0). Root fd581d83 / native 51e4e9a18 (admit-frogs5 trees identical), exe C:/cop/bin-frogs4.exe (sha256 d3b23ae4ac1f6e0b7e5290b39fb53444e20864c81d802ec57e4c5a4ac4a2e980).",
+        "Caveat (rev6-frogs5 Finding 3): the kill uses POWER=30 with a blue squad (test-accelerated logistics; FSM/bind/draw are power-independent). POWER=10 blues did ~60 damage in 900 s (inst3 run 9-25) and POWER=10 reds kill in 260 s but wipe the squad, so neither is acceptable admission evidence. No blue-availability logic gate exists (standing rev3 caveat); in normal play with blues, Wtank at 1000 HP is a long fight."
       ]
     },
     "26": {

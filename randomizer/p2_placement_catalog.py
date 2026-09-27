@@ -119,6 +119,10 @@ CANDIDATE_SPECS = (
     # (inst-frogs-3; native host TEKI_Tank is the vehicle, placement is
     # ground).
     (24, 'Tank', 16, ['ground'], None, False),
+    # Admit-frogs5 (#871): Watery Blowhog (25) binds campaign ground slots
+    # (frogs5 blue POWER=30 full loop on its own generator token; same tank
+    # family installer as 24, placement is ground).
+    (25, 'Wtank', 16, ['ground'], None, False),
     (71, 'UmiMushi', 16, ['ground'], None, False),
     (101, 'UmiMushiBlind', 16, ['ground'], None, False),
     # Lane 17 - Kogane beetle family (no P1 counterpart; new in Pikmin 2).
