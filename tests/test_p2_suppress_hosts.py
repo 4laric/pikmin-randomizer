@@ -85,6 +85,18 @@ class SuppressHostsWiringTests(unittest.TestCase):
             self.assertIn(f'pc_p2_{mod}_update(this);', update,
                           f'BTeki::update must drive pc_p2_{mod}_update')
 
+    def test_update_drains_stored_damage(self):
+        # State-machine-owns-actor assertion: the P1 TAI reaction path
+        # (TaiDamagingAction) normally applies mStoredDamage through
+        # makeDamaged(), but doAI is suppressed for registered actors, so
+        # each source FSM must drain pending damage itself (frog pattern).
+        for mod in MODULES:
+            text = _read(f'pc_port/pc_p2_{mod}.cpp')
+            self.assertIn('if (actor->mStoredDamage > 0.0f) {', text,
+                          f'pc_p2_{mod}_update must drain pending damage')
+            self.assertIn('actor->makeDamaged();', text,
+                          f'pc_p2_{mod}_update must apply damage via makeDamaged')
+
 
 if __name__ == '__main__':
     unittest.main()
