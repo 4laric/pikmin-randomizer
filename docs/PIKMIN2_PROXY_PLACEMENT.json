@@ -200,14 +200,14 @@
       "respawn_days": 4,
       "evidence": {
         "xyz": true,
-        "terrain": false,
-        "route": false
+        "terrain": true,
+        "route": true
       },
       "source_identity": "campaign:dwarf:3",
       "cohort": "dwarf",
-      "proxy_only": true,
+      "proxy_only": false,
       "pack": false,
-      "evidence_level": "mechanical-only: xyz from game data; terrain/route unprobed"
+      "evidence_level": "native-probed: P2_PLACEMENT_SLOT terrain=ground route=1 (route coverage radius 200) in proxy probe pk1 (native ba6832cef, output/claude-orch/evidence/packs-forest/native.log L789/L801) and six-gate run rev8 (native eb510ff4, output/claude-orch/evidence/doc-reconcile/rev8-native.log L791/L793); shared with docs/PIKMIN2_ADMITTED_PLACEMENT.json"
     },
     {
       "uid": 2049888785,
@@ -228,14 +228,14 @@
       "respawn_days": 4,
       "evidence": {
         "xyz": true,
-        "terrain": false,
-        "route": false
+        "terrain": true,
+        "route": true
       },
       "source_identity": "campaign:dwarf:3",
       "cohort": "dwarf",
-      "proxy_only": true,
+      "proxy_only": false,
       "pack": false,
-      "evidence_level": "mechanical-only: xyz from game data; terrain/route unprobed"
+      "evidence_level": "native-probed: P2_PLACEMENT_SLOT terrain=ground route=1 (route coverage radius 200) in proxy probe pk1 (native ba6832cef, output/claude-orch/evidence/packs-forest/native.log L789/L801) and six-gate run rev8 (native eb510ff4, output/claude-orch/evidence/doc-reconcile/rev8-native.log L791/L793); shared with docs/PIKMIN2_ADMITTED_PLACEMENT.json"
     },
     {
       "uid": 2158371058,
@@ -489,5 +489,5 @@
     31,
     33
   ],
-  "notes": "Proxy-tier-only expansion (issue #871): 2 Hope singleton dwarf ground slots plus 14 pack generators (count 2-3, unprotected, Hope/Spring day-2/5/16 renewable ground). Pack binding proven by launch probe pk1 (2026-09-21, native claude/p2-proxy-family at ba6832cef, product sampler, Forest of Hope + Distant Spring day 2): all 8 live packs bound every member (P2_BATCH2_BIND lines per species == pack count), no P2_SETUP_SKIP, no duplicate-generator abort; logs output/claude-orch/evidence/packs-forest and packs-spring. The 6 day-5/day-16 packs share the native path but were not live in that probe. P2_PLACEMENT_SLOT markers showed terrain=ground route=1 for every probed member, yet terrain/route stays 'unprobed' here because nothing folded them through scripts/audit_p2_placement_evidence.py. Six-gate species never use these slots. No committed slot is reserved from proxies: a proxy keeps its Pikmin 1 host Pikmin 1 behaviour and corpse."
+  "notes": "Proxy-tier-only expansion (issue #871): 2 Hope singleton dwarf ground slots plus 14 pack generators (count 2-3, unprotected, Hope/Spring day-2/5/16 renewable ground). Pack binding proven by launch probe pk1 (2026-09-21, native claude/p2-proxy-family at ba6832cef, product sampler, Forest of Hope + Distant Spring day 2): all 8 live packs bound every member (P2_BATCH2_BIND lines per species == pack count), no P2_SETUP_SKIP, no duplicate-generator abort; logs output/claude-orch/evidence/packs-forest and packs-spring. The 6 day-5/day-16 packs share the native path but were not live in that probe. P2_PLACEMENT_SLOT markers showed terrain=ground route=1 for every probed member, yet pack terrain/route stays 'unprobed' here because nothing folded them through scripts/audit_p2_placement_evidence.py. The 2 Hope singletons (1849273021, 2049888785) are SHARED with docs/PIKMIN2_ADMITTED_PLACEMENT.json since placement-cap (#871): proxy_only is false and terrain/route are true, backed by two native P2_PLACEMENT_SLOT probes that agree (terrain=ground route=1): pk1 (proxy hosts 16/4, evidence/packs-forest/native.log L789/L801, route_distance 96.3/187.8) and the six-gate rev8 run (Frog/Wtank, native eb510ff4, route_distance 93.1/187.2; native route coverage radius is 200). The probe samples terrain and nearest waypoint at the slot XYZ, so the capability is a property of the slot, not of the tier. Six-gate species never use the 14 pack slots. No committed slot is reserved from proxies: a proxy keeps its Pikmin 1 host Pikmin 1 behaviour and corpse."
 }

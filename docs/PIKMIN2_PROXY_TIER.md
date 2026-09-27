@@ -83,12 +83,13 @@ the non-proxy extractors); the message names the directory.
 
 Proxy placement uses the `sampled-v1` density policy
 (`experimental/pikmin2_seed_bridge.py`): playable species are assigned
-first on their own 33 committed targets (six-gate species never use
-proxy-only targets), each remaining species takes one unique accepted
-target where its terrains match, and species without a target are listed
-under `unplaced` (they stay vanilla). There are 49 proxy-tier targets:
-the 33 committed ground slots plus a 16-slot proxy-only sibling
-(`docs/PIKMIN2_PROXY_PLACEMENT.json`, schema `p2-proxy-placement-v1`):
+first on their own 35 committed targets (six-gate species never use
+the 14 proxy-exclusive pack targets), each remaining species takes one
+unique accepted target where its terrains match, and species without a
+target are listed under `unplaced` (they stay vanilla). There are 49
+proxy-tier targets: 35 committed ground slots plus a 16-slot proxy-tier
+sibling (`docs/PIKMIN2_PROXY_PLACEMENT.json`, schema
+`p2-proxy-placement-v1`), overlapping on 2 uids:
 2 Hope singleton dwarf slots and 14 pack generators (Hope grubs,
 Spring dwarfs/grubs, counts 2-3) carrying `pack: true`, member `count`,
 `original_teki`, `first_day`, and honest mechanical-only evidence. Pack
@@ -98,9 +99,25 @@ Forest of Hope and Distant Spring day 2): all 8 packs live on day 2
 bound every member (`P2_BATCH2_BIND` lines per species equal the pack
 count), with no `P2_SETUP_SKIP` and no duplicate-generator abort; the
 6 day-5/day-16 packs share that native path but were not live in the
-probe. Terrain/route stay "unprobed" in the evidence string because the
-`P2_PLACEMENT_SLOT ground/route=1` markers the probe emitted were not
-folded through `scripts/audit_p2_placement_evidence.py`. 49 stays under
+probe. Pack terrain/route stay "unprobed" in the evidence string because
+the `P2_PLACEMENT_SLOT ground/route=1` markers the probe emitted were not
+folded through `scripts/audit_p2_placement_evidence.py`.
+
+Shared singletons (placement-cap, #871): the 2 Hope singletons
+`1849273021` (`hope_0-29_4189`) and `2049888785` (`hope_0-29_3592`) are
+also committed slots in `docs/PIKMIN2_ADMITTED_PLACEMENT.json`, so the
+sibling marks them `proxy_only: false` with `terrain`/`route` evidence
+`true`, matching the admitted document. The native probe
+(`pc_p2_placement_probe.cpp`) samples the ground triangle and the nearest
+waypoint (coverage radius 200) at the slot XYZ, so the result belongs to
+the slot, not to the tier or species in it. Two probes agree,
+`terrain=ground route=1` on both slots: proxy probe pk1 (hosts 16/4,
+`output/claude-orch/evidence/packs-forest/native.log` L789/L801,
+route_distance 96.3/187.8) and the six-gate rev8 run (Frog/Wtank, native
+`eb510ff4`, `output/claude-orch/evidence/doc-reconcile/rev8-native.log`
+L791/L793, route_distance 93.1/187.2). `validate_proxy_document` enforces
+this split, and `tests/test_p2_placement_shared_evidence.py` pins it
+against the admitted document. 49 stays under
 the native 64-binding cap, enforced fail-closed in the sampler.
 
 Pack rule: a pack births 2-5 hosts of the same swapped type, so a large
