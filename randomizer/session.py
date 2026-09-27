@@ -202,6 +202,29 @@ class Session:
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 
+def resolve_session_file(directory):
+    """Return the session file overlay/tracker readers should open.
+
+    The host layout stores ``session.json``; a netplay client mirror stores
+    ``mirror.json`` with the same schema. Pointing ``--session-dir`` at a
+    mirror directory reads the mirror. When ``session.json`` exists it wins,
+    so host behaviour is unchanged.
+    """
+    directory = Path(directory)
+    primary = directory / "session.json"
+    if primary.exists():
+        return primary
+    mirror = directory / "mirror.json"
+    if mirror.exists():
+        return mirror
+    return primary
+
+
+def load_session_data(directory):
+    """Parse the resolved session/mirror file for overlay/tracker readers."""
+    return json.loads(resolve_session_file(directory).read_text(encoding="utf-8"))
+
+
 class SessionLock:
     """OS-owned lock, released even after a crash; do not delete another runner's file."""
     def __init__(self, directory):
