@@ -602,6 +602,18 @@ def extract(iso, source, output, pose_limit=6):
                         clip['poses'][0]['unsupported_reason'] \
                         if clip['poses'] else 'no sampled frames'
                 info['clips'].append(clip)
+                if species == 'FminiHoudai' and clip['name'] == 'attack1':
+                    # #888 WP5: model-space kuti basis at the shell-emission
+                    # key frame, staged as the native Groink bank muzzle row.
+                    from experimental.pikmin2_groink_assets import muzzle
+                    from experimental.pikmin2_minihoudai_assets import emission_frame
+                    from experimental.pikmin2_rigid import joint_matrices
+                    if names.count('kuti') != 1:
+                        raise ValueError('Expected one FminiHoudai kuti joint')
+                    fire = emission_frame(row['events'])
+                    _, pose = bca_pose(raw, fire, len(names), allow_scale=True)
+                    info['muzzle'] = dict(clip='attack1', frame=fire, **muzzle(
+                        joint_matrices(model_blocks, pose)[names.index('kuti')]))
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
         manifest = {k: v for k, v in report.items()
