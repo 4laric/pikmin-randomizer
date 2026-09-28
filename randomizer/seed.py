@@ -121,9 +121,10 @@ class SeedRandom:
 # Adding a row does NOT admit a species on its own -- see
 # docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure.
 # Do NOT add the other installer-capable species (1 Kochappy, 45 Snow,
-# 9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish,
-# 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai)
-# until their campaign evidence lands; that evidence is owned by other lanes.
+# 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish, 27 Tadpole,
+# 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai) until their campaign
+# evidence lands; that evidence is owned by other lanes. 9 Kogane (and 10/11/16)
+# never enter: unkillable enemies carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS).
 P2_PLAYABLE_POOL = (
     {
         "source_id": 44,
@@ -565,8 +566,7 @@ P2_PLAYABLE_POOL = (
 
 # Admitted P2 species the current launcher and native campaign path can actually run:
 # derived from P2_PLAYABLE_POOL so the table above is the single source of truth.
-# Excluded until fixed: 9 Kogane, 79 Sokkuri, 57 Kurage,
-# 78 MiniHoudai (no installer) and 23 Sarai (campaign setup needs a fixed generator).
+# Roster admission must equal this set (#888, tests/test_p2_pool_roster_sync.py).
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 

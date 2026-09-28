@@ -83,21 +83,13 @@ def test_legacy_default_is_unchanged_and_deterministic():
     """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    # Roster wave (#871): 38 admitted identities exceed the 35-slot target
-    # set, so the bare default (every admitted identity needs a unique
-    # target) fails closed deterministically instead of silently dropping
-    # three species. None and the explicit legacy token agree.
-    with pytest.raises(SeedBridgeError,
-                       match="no unique accepted placement target") as first_err:
-        resolve_placement_layout("seed-a", "Player1", document, roster)
-    with pytest.raises(SeedBridgeError,
-                       match="no unique accepted placement target") as second_err:
-        resolve_placement_layout("seed-a", "Player1", document, roster)
-    assert str(first_err.value) == str(second_err.value)
-    with pytest.raises(SeedBridgeError,
-                       match="no unique accepted placement target"):
-        resolve_placement_layout(
-            "seed-a", "Player1", document, roster, density=DENSITY_LEGACY)
+    # #888: roster admission equals the pool (35 on 35), so the bare
+    # default resolves again. None and the explicit legacy token agree.
+    first = resolve_placement_layout("seed-a", "Player1", document, roster)
+    second = resolve_placement_layout("seed-a", "Player1", document, roster)
+    assert first == second
+    assert resolve_placement_layout(
+        "seed-a", "Player1", document, roster, density=DENSITY_LEGACY) == first
 
 
 def test_legacy_multi_species_multiset_is_pinned():

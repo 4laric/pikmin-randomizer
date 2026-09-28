@@ -9,6 +9,7 @@ build rosters purely through ``parse_enum_header``/``parse_info_table``/
 evidence.
 """
 import json
+from randomizer.seed import PLAYABLE_P2_SPECIES
 
 from experimental.pikmin2_enemy_roster import (
     ADMISSION_GATES,
@@ -209,7 +210,7 @@ def test_admission_contract_respects_excluded():
 def test_admitted_ids_from_contract():
     roster = _roster({"17": _frog_overlay()})
     assert admitted_ids(roster) == [17]
-    assert admitted_ids(load_and_validate()) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (lane 22 fix 4, natural six gates, admitted 2026-09-15)
+    assert admitted_ids(load_and_validate()) == sorted(PLAYABLE_P2_SPECIES)  # #888: admission == the playable pool
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +221,7 @@ def test_write_admission_round_trip(tmp_path):
     real = load_and_validate()
     path = tmp_path / "ev.json"
     result = write_admission(real, path=path)
-    assert result["admitted"] == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (lane 22 fix 4, natural six gates, admitted 2026-09-15)
+    assert result["admitted"] == sorted(PLAYABLE_P2_SPECIES)  # #888: admission == the playable pool
 
     written = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(written.get("entries"), dict)
@@ -257,14 +258,14 @@ def test_write_admission_fresh_path_keeps_fields(tmp_path):
 
 def test_admit_check_cli_exit_codes(capsys):
     import scripts.audit_pikmin2_roster as audit
-    # Sokkuri (79) and Kogane (9) are admitted (user-approved 2026-09-17): all
-    # six gates clear and admit-check reports PASS for both.
+    # Sokkuri (79) is admitted (user-approved 2026-09-17): all six gates
+    # clear and admit-check reports PASS.
     assert audit.main(["--admit-check", "79"]) == 0
     out = capsys.readouterr().out
     assert "PASS" in out
-    assert audit.main(["--admit-check", "9"]) == 0
-    out = capsys.readouterr().out
-    assert "PASS" in out
+    # Kogane (9) is excluded under #888 (unkillable, no check): refused.
+    assert audit.main(["--admit-check", "9"]) == 1
+    capsys.readouterr()
     # A plant identity is refused for its role.
     assert audit.main(["--admit-check", "0"]) == 1
     # An unknown id fails closed.

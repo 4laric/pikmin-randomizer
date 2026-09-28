@@ -86,7 +86,8 @@ def test_source79_gate_keys_preserve_canonical_order():
 def test_other_species_and_gates_are_preserved():
     entries = _evidence()["entries"]
     assert entries["0"]["gates"]["identity_spawn"] == "UNTESTED"
-    assert entries["9"]["eligibility"] == "admitted"
+    # #888: Kogane is excluded (unkillable, no Archipelago check).
+    assert entries["9"]["eligibility"] == "excluded"
     assert entries["84"]["gates"]["cleanup_reentry"] == "UNTESTED"
     assert entries["79"]["gates"]["identity_spawn"] == "PASS"
     assert entries["79"]["gates"]["death_corpse"] == "PASS"

@@ -39,12 +39,10 @@ def test_playable_pool_binds_only_playable_species():
 
 def test_explicit_subset_and_default_all():
     assert {b['source_id'] for b in generate('7', p2_enemies=True, p2_species=[44, 54])['p2_layout']['bindings']} == {44, 54}
-    # Roster wave (#871): 38 admitted identities exceed the 35-slot target
-    # set, so the bare default (every admitted identity needs a unique
-    # target) fails closed instead of silently dropping three species. The
-    # product default is --p2-species playable (35 on 35, exact fit).
-    with pytest.raises(ValueError, match="no unique accepted placement target"):
-        generate('7', p2_enemies=True)
+    # #888: roster admission equals the pool again, so the bare default
+    # (every admitted identity) binds exactly the playable pool.
+    bare = generate('7', p2_enemies=True)
+    assert {b['source_id'] for b in bare['p2_layout']['bindings']} == set(PLAYABLE_P2_SPECIES)
 
 
 @pytest.mark.parametrize('species', [[], [44, 3], ['44'], 'most'])

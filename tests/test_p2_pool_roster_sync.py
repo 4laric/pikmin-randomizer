@@ -57,6 +57,40 @@ def test_every_pool_id_has_accepted_placement():
         assert admitted.get(enum_name), enum_name
 
 
+def test_roster_admission_equals_pool():
+    # Roster-follows-admission (#888): admitted == pool, so a bare
+    # ``--p2-enemies`` seed never sees an admitted identity with no slot.
+    roster = load_and_validate()
+    assert set(admitted_ids(roster)) == set(PLAYABLE_P2_SPECIES)
+
+
+def test_placement_accepts_exactly_the_pool():
+    document = _default_admitted_placement()
+    pool_enums = {row["enum_name"] for row in P2_PLAYABLE_POOL}
+    accepted = {p["identity"] for p in document["profiles"] if p["accepted_gates"]}
+    assert accepted == pool_enums
+
+
+def test_no_check_species_are_excluded_everywhere():
+    # Owner decision (#888): unkillable enemies carry no Archipelago check.
+    from randomizer.p2_proxy import NO_CHECK_SOURCE_IDS, tier_ids
+
+    roster = by_id(load_and_validate())
+    for source_id in NO_CHECK_SOURCE_IDS:
+        assert roster[source_id].eligibility == "excluded", source_id
+        assert source_id not in PLAYABLE_P2_SPECIES, source_id
+    for tier in ("proven", "declared"):
+        assert not NO_CHECK_SOURCE_IDS & set(tier_ids(tier)), tier
+
+
+def test_bare_p2_enemies_seed_generates():
+    from randomizer.seed import generate
+
+    manifest = generate("sync-bare-p2", p2_enemies=True)
+    bound = {b["source_id"] for b in manifest["p2_layout"]["bindings"]}
+    assert bound <= set(PLAYABLE_P2_SPECIES)
+
+
 def test_bridge_playable_priority_mirrors_pool():
     from experimental.pikmin2_seed_bridge import PLAYABLE_IDS
 

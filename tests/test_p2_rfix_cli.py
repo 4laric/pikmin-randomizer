@@ -26,16 +26,17 @@ def run_main(monkeypatch, capsys, argv):
     return 0, capsys.readouterr()
 
 
-def test_bare_p2_enemies_fails_clean_without_traceback(monkeypatch, capsys, tmp_path):
+def test_bare_p2_enemies_succeeds(monkeypatch, capsys, tmp_path):
+    # #888: roster admission equals the pool, so the bare flag no longer
+    # fails closed on admitted-but-unplaceable identities.
     out_file = tmp_path / "seed.json"
     code, out = run_main(
         monkeypatch, capsys,
         ["randomizer", "generate", "--seed", "x", "--p2-enemies",
          "--output", str(out_file)])
-    assert code == 2
+    assert code == 0
     assert "Traceback" not in out.err
-    assert "--p2-species playable" in out.err
-    assert not out_file.exists()
+    assert out_file.exists()
 
 
 def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):

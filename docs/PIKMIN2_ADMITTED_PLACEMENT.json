@@ -2079,16 +2079,11 @@
       "requires_corpse_route": true,
       "is_boss": false,
       "encounter_descriptor": null,
-      "accepted_gates": [
-        "placement.xyz",
-        "placement.terrain",
-        "placement.route",
-        "bridge.spawn"
-      ],
+      "accepted_gates": [],
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "Admitted cohort placement (2026-09-17): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates.",
+      "notes": "Admitted cohort placement (2026-09-17): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates. | #888 (2026-09-28): accepted_gates cleared with the roster demotion (Kogane excluded: unkillable, no check; Kurage and MiniHoudai back to candidate). Slot uids kept for re-admission.",
       "cohort": null,
       "accepted_slot_uids": [
         5465461,
@@ -2275,16 +2270,11 @@
       "requires_corpse_route": true,
       "is_boss": false,
       "encounter_descriptor": null,
-      "accepted_gates": [
-        "placement.xyz",
-        "placement.terrain",
-        "placement.route",
-        "bridge.spawn"
-      ],
+      "accepted_gates": [],
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "Admitted cohort placement (2026-09-16): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates.",
+      "notes": "Admitted cohort placement (2026-09-16): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates. | #888 (2026-09-28): accepted_gates cleared with the roster demotion (Kogane excluded: unkillable, no check; Kurage and MiniHoudai back to candidate). Slot uids kept for re-admission.",
       "cohort": null,
       "accepted_slot_uids": [
         5465461,
@@ -2471,16 +2461,11 @@
       "requires_corpse_route": true,
       "is_boss": false,
       "encounter_descriptor": null,
-      "accepted_gates": [
-        "placement.xyz",
-        "placement.terrain",
-        "placement.route",
-        "bridge.spawn"
-      ],
+      "accepted_gates": [],
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "Admitted cohort placement (2026-09-16): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates.",
+      "notes": "Admitted cohort placement (2026-09-16): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates. | #888 (2026-09-28): accepted_gates cleared with the roster demotion (Kogane excluded: unkillable, no check; Kurage and MiniHoudai back to candidate). Slot uids kept for re-admission.",
       "cohort": null,
       "accepted_slot_uids": [
         5465461,

@@ -216,16 +216,25 @@ def _validate_evidence(document, path_name):
     }
 
 
+# Owner decision 2026-09-28 (#888): unkillable enemies carry no Archipelago
+# check. In P2 source these are invulnerable and leave no carcass
+# (Kogane::Obj::onInit; Wealthy and Fart subclass Kogane; Qurione), so a
+# kill -> carry -> Onion check is unreachable. A proxy host would only fake
+# that death, so they are never staged in any tier.
+NO_CHECK_SOURCE_IDS = frozenset({9, 10, 11, 16})
+
+
 def tier_ids(tier, directory=None):
     """Sorted proxy source ids for one opt-in tier.
 
     ``"proven"`` returns only rows carrying a valid evidence block;
     ``"declared"`` returns every declared row. Anything else raises
-    ``ValueError``.
+    ``ValueError``. :data:`NO_CHECK_SOURCE_IDS` are never returned.
     """
     if tier not in ("proven", "declared"):
         raise ValueError(f"unknown proxy tier {tier!r}; expected 'proven' or 'declared'")
-    rows = load_rows(directory=directory)
+    rows = [row for row in load_rows(directory=directory)
+            if row["source_id"] not in NO_CHECK_SOURCE_IDS]
     if tier == "declared":
         return sorted(row["source_id"] for row in rows)
     return sorted(row["source_id"] for row in rows if row.get("evidence") is not None)

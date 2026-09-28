@@ -205,8 +205,8 @@
     "9": {
       "native_module": "pc_p2_kogane",
       "owner_lane": "17",
-      "eligibility": "admitted",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): no Archipelago check for unkillable enemies. P2 source makes this identity invulnerable with no carcass (Kogane::Obj::onInit EB_Invulnerable / no EB_LeaveCarcass; Wealthy/Fart subclass Kogane; Qurione is invulnerable), so it can never carry a kill/carry/Onion check.",
       "source": [
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
@@ -221,14 +221,15 @@
       "delivery_receipt": "onion:enemy:9 (P2_KOGANE_COLLECT collect1 drink5 onion_receipt3) output/dsw/l17-out/fix4-cross/stages/08b36a21ef504eaa8af9d4ac13e45a8b/native-pass0.log:793",
       "notes": [
         "Kogane (Iridescent Flint Beetle): pc_p2_kogane family actor module; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
-        "Natural hit/drop limits and reload unchanged; receiver gate closed by the natural-throw path in the muse l54 throw-run (native.log:751/:899/:903-:905/:921/:926/:930/:932); death is source-backed N/A (retail FSM has no Dead state; Disappear recycles); onion reward receipt from the preserved lane-17 collect run."
+        "Natural hit/drop limits and reload unchanged; receiver gate closed by the natural-throw path in the muse l54 throw-run (native.log:751/:899/:903-:905/:921/:926/:930/:932); death is source-backed N/A (retail FSM has no Dead state; Disappear recycles); onion reward receipt from the preserved lane-17 collect run.",
+        "Owner decision 2026-09-28 (#888): excluded from the pool and from every proxy tier; the prior gate rows are kept for history only."
       ]
     },
     "10": {
       "native_module": "pc_p2_kogane",
       "owner_lane": "17",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): no Archipelago check for unkillable enemies. P2 source makes this identity invulnerable with no carcass (Kogane::Obj::onInit EB_Invulnerable / no EB_LeaveCarcass; Wealthy/Fart subclass Kogane; Qurione is invulnerable), so it can never carry a kill/carry/Onion check.",
       "source": [
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
@@ -242,14 +243,15 @@
       },
       "notes": [
         "Wealthy (Iridescent Glint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
-        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance.",
+        "Owner decision 2026-09-28 (#888): excluded from the pool and from every proxy tier; the prior gate rows are kept for history only."
       ]
     },
     "11": {
       "native_module": "pc_p2_kogane",
       "owner_lane": "17",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): no Archipelago check for unkillable enemies. P2 source makes this identity invulnerable with no carcass (Kogane::Obj::onInit EB_Invulnerable / no EB_LeaveCarcass; Wealthy/Fart subclass Kogane; Qurione is invulnerable), so it can never carry a kill/carry/Onion check.",
       "source": [
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
@@ -263,7 +265,8 @@
       },
       "notes": [
         "Fart (Doodlebug): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
-        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance.",
+        "Owner decision 2026-09-28 (#888): excluded from the pool and from every proxy tier; the prior gate rows are kept for history only."
       ]
     },
     "12": {
@@ -336,8 +339,8 @@
     "16": {
       "native_module": "pc_p2_qurione",
       "owner_lane": "15",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): no Archipelago check for unkillable enemies. P2 source makes this identity invulnerable with no carcass (Kogane::Obj::onInit EB_Invulnerable / no EB_LeaveCarcass; Wealthy/Fart subclass Kogane; Qurione is invulnerable), so it can never carry a kill/carry/Onion check.",
       "source": [
         "PIKMIN2_FLYING_ENEMY_AUDIT.md",
         "PIKMIN2_QURIONE_LIFECYCLE.md"
@@ -352,7 +355,8 @@
       },
       "notes": [
         "Qurione (Honeywisp): native qurione vehicle; wind/nectar lifecycle remains open (#166).",
-        "Carries Egg=37 as a reported child (lane 20 projectile), not an independent spawn."
+        "Carries Egg=37 as a reported child (lane 20 projectile), not an independent spawn.",
+        "Owner decision 2026-09-28 (#888): excluded from the pool and from every proxy tier; the prior gate rows are kept for history only."
       ]
     },
     "44": {
@@ -1012,16 +1016,16 @@
     "57": {
       "native_module": "pc_p2_kurage",
       "owner_lane": "29",
-      "eligibility": "admitted",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): campaign Kurage runs on the P1 Frog host AI: its P2 FSM arms only under PIKMIN_P2_KURAGE_SHOWCASE (pc_p2_kurage_teki.cpp:456) and there is no doAI suppression, so movement/attacks are host-driven (proxy under the OWN bar). Pulled from the roster for now.",
       "source": [
         "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
         "PIKMIN2_KURAGE_MATERIAL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
+        "movement_animation": "BLOCKED",
+        "attacks_receivers": "BLOCKED",
         "death_corpse": "PASS",
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
@@ -1030,7 +1034,8 @@
       "notes": [
         "Kurage (Lesser Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
         "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243).",
-        "Natural generated-slot transport/reward receipt corpse:kurage:689702860 (P2_POD_RECEIPT value=2 new=1) in the muse-l58 generated-birth run (output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858); identity_spawn closed on the reviewed l52 accepted slot."
+        "Natural generated-slot transport/reward receipt corpse:kurage:689702860 (P2_POD_RECEIPT value=2 new=1) in the muse-l58 generated-birth run (output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858); identity_spawn closed on the reviewed l52 accepted slot.",
+        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run."
       ]
     },
     "58": {
@@ -1383,15 +1388,15 @@
     "78": {
       "native_module": "pc_p2_groink",
       "owner_lane": "21",
-      "eligibility": "admitted",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): live Groink stays on the P1 Frog host AI (suppression is limited to 97, pc_p2_groink_teki.cpp:316-320) and no Groink draw hook is in the draw chain, so movement/attacks are host-driven (proxy under the OWN bar). Being finished under #888 WP5; re-admit with its pool row.",
       "source": [
         "PIKMIN2_GROINK_BURST.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
+        "movement_animation": "BLOCKED",
+        "attacks_receivers": "BLOCKED",
         "death_corpse": "PASS",
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
@@ -1400,7 +1405,8 @@
       "notes": [
         "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
         "FminiHoudai=97 (pedestal) has no dedicated module yet; tracked as a gap.",
-        "identity_spawn closed on the reviewed l52 accepted slot 328297937 (muse-l60 generated birth native.log:592-594); natural transport/reward receipt corpse:groink:201001 from the preserved l21 carcass-transport run (output/dsw/l21-out/run-carcass-transport3/native.log:1378)."
+        "identity_spawn closed on the reviewed l52 accepted slot 328297937 (muse-l60 generated birth native.log:592-594); natural transport/reward receipt corpse:groink:201001 from the preserved l21 carcass-transport run (output/dsw/l21-out/run-carcass-transport3/native.log:1378).",
+        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run."
       ]
     },
     "79": {

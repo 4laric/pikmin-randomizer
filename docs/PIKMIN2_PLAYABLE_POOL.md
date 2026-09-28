@@ -55,6 +55,27 @@ Separate from this pool, the proxy tier (`docs/PIKMIN2_PROXY_TIER.md`)
 stages Pikmin 2 models over Pikmin 1 enemy behaviour. Proxy species are
 never P2 identities and never enter this table.
 
+## Owner decisions, 2026-09-28 (#888)
+
+- **Roster follows admission exactly.** The roster evidence, the admitted
+  placement document and this table name the same species. `tests/test_p2_pool_roster_sync.py`
+  checks equality, not subset. A bare `--p2-enemies` seed (no `--p2-species`)
+  must generate.
+- **Pulled for now:** 9 Kogane (see the no-check rule below) and 57 Kurage.
+  The campaign Kurage runs on the P1 Frog host AI, because its P2 FSM is env-gated.
+- **78 MiniHoudai (Gatling Groink): being finished.** It is back to `candidate`
+  until a live P2 Groink FSM with the host suppressed, a draw hook and OWN
+  evidence land. It then re-enters with its pool row.
+- **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
+  11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so
+  a kill, carry and Onion check is unreachable. They are `excluded` in the roster
+  evidence, never enter this table, and are dropped from every proxy tier
+  (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
+- **Bosses belong in the pool.** Eight P2 bosses are already here (34, 53, 56,
+  69, 70, 71, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
+  66 Houdai, 73 Titan Dweevil and 99 Waterwraith are in scope under the same
+  admission bar. Per-boss arena feasibility is the work, not a policy question.
+
 ## Admission bar
 
 A species is admitted when all three hold:
