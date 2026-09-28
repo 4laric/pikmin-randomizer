@@ -100,6 +100,10 @@ IDENTITY_FAMILY = {
     9: 'kogane', 'kogane': 'kogane',
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
+    # #888 WP5: 78 stages the native Groink source-FSM inputs (retail parms,
+    # clip/key-event/pose/muzzle bank, poses) plus the carcass sidecar; the
+    # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
+    # Still a candidate until the owner's Windows OWN run lands.
     78: 'minihoudai', 'minihoudai': 'minihoudai',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
@@ -113,7 +117,9 @@ IDENTITY_FAMILY = {
     93: 'dweevil', 'bombotakara': 'dweevil',
     # Houdai (66, Man-at-Legs) reuses the shared long-legs installer.
     66: 'long_legs', 'houdai': 'long_legs',
-    # FminiHoudai (97, Gatling Groink pedestal) reuses the cannon installer.
+    # FminiHoudai (97, Gatling Groink pedestal) reuses the cannon installer;
+    # the cannon adapter also stages the shared Groink source-FSM inputs
+    # (FixMiniHoudai: same FSM, no locomotion; delivers onion:p2:97).
     97: 'cannon_projectile', 'fminihoudai': 'cannon_projectile',
     # inst-chappy lane (#871): finished Chappy-family species bind through
     # the own-identity chappy adapter below, one finished species at a time
@@ -909,17 +915,38 @@ def _validate_minihoudai(source):
     _read_identity_source(source, 78, 'MiniHoudai')
 
 
-def _adapt_minihoudai(source, run, actors):
-    """Adapter for MiniHoudai (source 78): emit ``p2-groink-teki.txt``.
+def _stage_groink(source, run):
+    """Stage the native Groink OWN inputs (#888 WP5) from an extractor tree.
 
-    Reuses ``experimental.pikmin2_groink_carcass_teki.sidecar_config`` so the
-    bytes match the native ``p2groink::read`` shape exactly (short
-    gauge/recovery profile, Frog type 0 host). In bridge mode the native setup
-    takes the bound actor from the seed (source 78), so the filed generator is
-    a placeholder there; outside bridge mode it binds directly. Idempotent
-    across repeat calls like the Kurage adapter.
+    Writes ``p2-groink-parms.txt`` / ``p2-groink-fixed-parms.txt`` (verbatim
+    retail enemyparm.txt), ``p2-groink-bank.txt`` and the
+    ``minihoudai_<clip>_<ii>.mod`` poses through
+    ``experimental.pikmin2_groink_stage``. 78 and 97 share one bank.
+    """
+    from experimental.pikmin2_groink_stage import GroinkStageError, stage_from
+    try:
+        return stage_from(Path(source), Path(run))
+    except (GroinkStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Groink staging failed: {error}') from error
+
+
+def _adapt_minihoudai(source, run, actors):
+    """Adapter for MiniHoudai (source 78): Groink OWN inputs + actor sidecar.
+
+    Stages the native source-FSM inputs (``_stage_groink``: retail parms, the
+    clip/key-event/pose/muzzle bank and the pose meshes) and
+    ``p2-groink-teki.txt``. The sidecar carries the SOURCE carcass timeline
+    (proper fp11 gauge delay, fp12 respawn, general fp00 life from the staged
+    retail enemyparm.txt; source defaults when absent), never the 2.0/3.0/1200
+    fixture profile. The native campaign (bridge) setup binds actors from the
+    seed and takes these values from the parms file, so the filed generator is
+    a placeholder there; outside bridge mode it binds directly. The short
+    fixture profile stays with the room-preview tools
+    (``pikmin2_groink_carcass_teki.sidecar_config_short``). Idempotent across
+    repeat calls like the Kurage adapter.
     """
     from experimental.pikmin2_groink_carcass_teki import sidecar_config
+    from experimental.pikmin2_groink_stage import GroinkStageError, gauge_profile
     _read_identity_source(source, 78, 'MiniHoudai')
     run = Path(run)
     generators = [int(generator) for generator, _species in actors]
@@ -928,6 +955,7 @@ def _adapt_minihoudai(source, run, actors):
             raise StagingError(f'MiniHoudai adapter got non-MiniHoudai species: {species!r}')
     if not generators:
         raise StagingError('MiniHoudai install requires at least one generator')
+    groink = _stage_groink(source, run)
     path = run / GROINK_TEKI_TXT
     if path.is_file():
         existing = path.read_bytes()
@@ -940,16 +968,36 @@ def _adapt_minihoudai(source, run, actors):
             raise StagingError(f'existing {GROINK_TEKI_TXT} is malformed')
         return dict(species='MiniHoudai', source_id=78, generators=sorted(set(generators)),
                     actors_config_sha256=hashlib.sha256(existing).hexdigest(),
-                    placeholder_generator=True)
+                    placeholder_generator=True, groink=groink)
     placeholder = sorted(set(generators))[0]
+    parm = Path(source) / 'enemyparm.txt'
     try:
-        payload = sidecar_config(placeholder, 0, 2.0, 3.0, 1200.0).encode('ascii')
-    except ValueError as error:
+        gauge, recovery, health = gauge_profile(parm.read_bytes() if parm.is_file() else None)
+        payload = sidecar_config(placeholder, 0, gauge, recovery, health).encode('ascii')
+    except (GroinkStageError, ValueError) as error:
         raise StagingError(str(error)) from error
     path.write_bytes(payload)
     return dict(species='MiniHoudai', source_id=78, generators=sorted(set(generators)),
                 actors_config_sha256=hashlib.sha256(payload).hexdigest(),
-                placeholder_generator=True)
+                placeholder_generator=True, carcass_profile=[gauge, recovery, health],
+                groink=groink)
+
+
+def _adapt_cannon_projectile(source, run, actors):
+    """Cannon/projectile family (#350) plus the FminiHoudai (97) Groink inputs.
+
+    Runs the shared-contract cannon installer unchanged, then, when a
+    FminiHoudai actor is bound, stages the native Groink OWN inputs from the
+    cannon extraction's FminiHoudai bank (``p2-groink-fixed-parms.txt`` and,
+    unless a MiniHoudai install already staged them, the shared bank + poses).
+    """
+    from experimental import pikmin2_cannon_projectile_install as cannon
+    receipt = cannon.install(Path(source), Path(run), list(actors))
+    if any(species == 'FminiHoudai' for _generator, species in actors):
+        groink = _stage_groink(source, run)
+        if isinstance(receipt, dict):
+            receipt = dict(receipt, groink=groink)
+    return receipt
 
 
 def _chappy_content_root(source, actors):
@@ -1323,6 +1371,7 @@ ADAPTERS = {
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
     'tank': {'install': _adapt_tank, 'validate': _validate_tank},
