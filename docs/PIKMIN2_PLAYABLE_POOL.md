@@ -64,8 +64,11 @@ never P2 identities and never enter this table.
 - **Pulled for now:** 9 Kogane (see the no-check rule below) and 57 Kurage.
   The campaign Kurage runs on the P1 Frog host AI, because its P2 FSM is env-gated.
 - **78 MiniHoudai (Gatling Groink): being finished.** It is back to `candidate`
-  until a live P2 Groink FSM with the host suppressed, a draw hook and OWN
-  evidence land. It then re-enters with its pool row.
+  until OWN evidence lands; it then re-enters with its pool row. The native
+  side (#888 WP5) now has the live source FSM with the Frog host suppressed,
+  the draw hook and the `onion:p2:78` delivery bind, and the root stages its
+  retail parms, bank and poses (`experimental/pikmin2_groink_stage.py`).
+  What is missing is the owner's Windows campaign run.
 - **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
   11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster

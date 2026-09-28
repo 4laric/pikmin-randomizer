@@ -20,10 +20,16 @@ installer pre-flights via ``_read_identity_source(source, 78, 'MiniHoudai')``):
   muzzle basis before the runtime aim callback) and ``unsupported_frames``
   listing sampled source frames the converter rejected.
 * ``minihoudai_<clip>_<ii:02>.mod``: sampled pose meshes, plus a per-pose
-  ``.json`` conversion record. Pose meshes are data-only: the current
-  MiniHoudai adapter (``experimental.pikmin2_family_install._adapt_minihoudai``)
-  stages only the ``p2-groink-teki.txt`` actor sidecar, so no native loader
-  opens them yet; names are chosen not to collide with any staged bank.
+  ``.json`` conversion record. The MiniHoudai adapter
+  (``experimental.pikmin2_family_install._adapt_minihoudai`` via
+  ``experimental.pikmin2_groink_stage``) stages them into the private model
+  room, where the native draw hook ``pc_p2_groink_teki_draw`` loads them,
+  together with ``p2-groink-bank.txt`` built from this manifest (#888 WP5).
+  Poses per clip follow ``pikmin2_groink_stage.POSE_LIMITS`` unless a uniform
+  ``pose_limit`` is passed.
+* ``muzzle``: the model-space ``kuti`` basis at the attack1 shell-emission
+  key frame (event type 4), before the runtime vertical aim callback; staged
+  as the bank's ``muzzle`` row.
 * ``enemy.bmd`` and the four ``minihoudai/enemy*.txt`` metadata files, plus
   ``fixed-enemyparm.txt`` (the ``fminihoudai`` pedestal variant's parameters,
   preserved verbatim for audit; only the roaming MiniHoudai identity's values
@@ -63,10 +69,10 @@ METADATA_FILES = ('enemyparm.txt', 'enemycoll.txt', 'enemyanimmgr.txt',
 MUZZLE_JOINT = 'kuti'
 
 LIMITATIONS = [
-    'Sampled rigid poses with approximate materials; no skeletal playback or event execution.',
+    'Sampled rigid poses with approximate materials; no skeletal playback. Key events are data for the native source FSM clock.',
     'Muzzle transforms precede the runtime vertical aim callback and owner world transform.',
-    'Pose meshes are data-only; the MiniHoudai adapter stages only the p2-groink-teki.txt actor sidecar.',
-    'No native runtime, AI/FSM, carcass delivery or revival is provided by this module.',
+    'Poses are sampled per clip (pikmin2_groink_stage.POSE_LIMITS); the native draw holds the nearest sampled pose.',
+    'This module extracts data only; the native source FSM (pc_p2_groink_fsm) owns behavior.',
 ]
 
 
@@ -75,9 +81,25 @@ def pose_name(clip, number):
     return f'minihoudai_{clip}_{number:02}.mod'
 
 
-def extract(iso, output, pose_limit=3):
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f'Pose limit must be 2..8: {pose_limit!r}')
+def clip_pose_limit(stem, pose_limit=None):
+    """Poses to sample for one clip: uniform ``pose_limit`` or the per-clip table."""
+    if pose_limit is not None:
+        return pose_limit
+    from experimental.pikmin2_groink_stage import POSE_LIMITS
+    return POSE_LIMITS.get(stem, 3)
+
+
+def emission_frame(events):
+    """The attack1 shell-emission key frame (event type 4); exactly one required."""
+    frames = [int(frame) for frame, kind in events if int(kind) == 4]
+    if len(frames) != 1:
+        raise ValueError('Expected one attack1 emission event')
+    return frames[0]
+
+
+def extract(iso, output, pose_limit=None):
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
+        raise ValueError(f'Pose limit must be 2..8 or None: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
     if not iso.is_file():
         raise ValueError(f'ISO not found: {iso}')
@@ -142,6 +164,7 @@ def extract(iso, output, pose_limit=3):
         raise ValueError('Clip budget exceeded')
 
     clips = []
+    muzzle_record = None
     for row in rows:
         stem = Path(row['file']).stem
         try:
@@ -157,7 +180,14 @@ def extract(iso, output, pose_limit=3):
         # Poses occupy contiguous _00.. slots: the sampled frames that fail to
         # convert are recorded under unsupported_frames (never replaced with a
         # placeholder) and never occupy a slot.
-        for frame in sample_frames(duration, pose_limit):
+        if stem == 'attack1':
+            frame = emission_frame(row['events'])
+            if not 0 <= frame < duration:
+                raise ValueError('attack1 emission event outside the clip')
+            _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+            muzzle_record = dict(clip=stem, frame=frame,
+                                 **muzzle(joint_matrices(model_blocks, pose)[muzzle_index]))
+        for frame in sample_frames(duration, clip_pose_limit(stem, pose_limit)):
             try:
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 transform = muzzle(joint_matrices(model_blocks, pose)[muzzle_index])
@@ -196,6 +226,9 @@ def extract(iso, output, pose_limit=3):
                            parameter_sha256=sha(fixed)),
         metadata_sha256=metadata,
         clips=clips,
+        muzzle=muzzle_record,
+        pose_limits={Path(c['file']).stem: clip_pose_limit(Path(c['file']).stem, pose_limit)
+                     for c in clips},
         collision=collision_nodes(params[PARM_PREFIX + 'enemycoll.txt'], len(names)),
         limitations=list(LIMITATIONS))
     (output / MANIFEST).write_text(
@@ -210,7 +243,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--iso', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--pose-limit', type=int, default=3)
+    parser.add_argument('--pose-limit', type=int, default=None)
     args = parser.parse_args()
     summary = extract(args.iso, args.output, args.pose_limit)
     print(json.dumps({

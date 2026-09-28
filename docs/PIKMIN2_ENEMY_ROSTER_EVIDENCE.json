@@ -1389,7 +1389,7 @@
       "native_module": "pc_p2_groink",
       "owner_lane": "21",
       "eligibility": "candidate",
-      "eligibility_reason": "Owner decision 2026-09-28 (#888): live Groink stays on the P1 Frog host AI (suppression is limited to 97, pc_p2_groink_teki.cpp:316-320) and no Groink draw hook is in the draw chain, so movement/attacks are host-driven (proxy under the OWN bar). Being finished under #888 WP5; re-admit with its pool row.",
+      "eligibility_reason": "Owner decision 2026-09-28 (#888): candidate until an OWN campaign run. Native #888 WP5 (Open-Nectar PR #4, branch claude/p2-groink-own) now drives a campaign-bound 78 with the engine-free source FSM pc_p2_groink_fsm (Frog host AI suppressed, stored-damage drain, 3-shell volleys, P2 pose draw hook, onion:p2:78 delivery bind); root stages its retail parms/bank/poses (experimental/pikmin2_groink_stage.py). No Windows OWN run has been recorded yet, so movement/attacks stay BLOCKED and 78 is not re-admitted.",
       "source": [
         "PIKMIN2_GROINK_BURST.md"
       ],
@@ -1404,9 +1404,9 @@
       "delivery_receipt": "corpse:groink:201001 (P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0) output/dsw/l21-out/run-carcass-transport3/native.log:1378",
       "notes": [
         "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
-        "FminiHoudai=97 (pedestal) has no dedicated module yet; tracked as a gap.",
         "identity_spawn closed on the reviewed l52 accepted slot 328297937 (muse-l60 generated birth native.log:592-594); natural transport/reward receipt corpse:groink:201001 from the preserved l21 carcass-transport run (output/dsw/l21-out/run-carcass-transport3/native.log:1378).",
-        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run."
+        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run.",
+        "#888 WP5 (unverified at runtime): FminiHoudai 97 runs the same source FSM as FixMiniHoudai (no locomotion) and shares the staged bank; 78 now binds its ordinary delivery source, so the expected gate-5 receipt for a campaign run is onion:p2:78:<stage> (P2_ORDINARY_P2_RECEIPT). The corpse:groink:201001 receipt above is the older preview-pod carcass evidence, not the campaign Onion receipt."
       ]
     },
     "79": {

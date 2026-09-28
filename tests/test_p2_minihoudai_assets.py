@@ -36,7 +36,7 @@ def test_rejects_existing_output(tmp_path):
 
 
 def test_rejects_bad_pose_limit(tmp_path):
-    for bad in (1, 9, '3', 3.0, None):
+    for bad in (1, 9, '3', 3.0):  # None = per-clip POSE_LIMITS (#888)
         with pytest.raises(ValueError):
             minihoudai.extract(tmp_path / 'missing.iso', tmp_path / 'out', bad)
 
