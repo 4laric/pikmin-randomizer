@@ -665,7 +665,8 @@
         "attacks_receivers: rolling press on Pikmin L2480-2482 (65 accepted), key-2 flick of stuck Pikmin L2467 (12 flicked), engine health 5000 -> 0 over 395 P2_QUEEN_DAMAGE lines from 460 real Pikmin hits, max 12 latched.",
         "death_corpse: L3831 P2_QUEEN_DEAD, L3865 P2_QUEEN_ESCAPE, P2_QUEEN_CARCASS carry_min=20 carry_max=30 pokos=15, L3867 corpse draw.",
         "transport_reward: L4022 onion:p2:30:3 new=1 on generator 3921089765; AUTOPLAY_RESULT killed=1 carried=1 received=1 L4024.",
-        "cleanup_reentry: larva 12 outlived her (L3831 dead, L3897 larva killed by Pikmin, L3917 forget), L4023 P2_QUEEN_TEKI_FORGET; no P2_SETUP_SKIP and no FixtureController/room-preview lines in the log."
+        "cleanup_reentry: larva 12 outlived her (L3831 dead, L3897 larva killed by Pikmin, L3917 forget), L4023 P2_QUEEN_TEKI_FORGET; no P2_SETUP_SKIP and no FixtureController/room-preview lines in the log.",
+        "Admission-branch seed queen-admit-0 (no rebind; queen_arena put her on boss slot 3921089765): run adm0 on the same exe, log output/wt-p2port-30-orch/runs/adm0-30/session/runs/ab82264577d49f9a8336541f55c7cc5ce4ac9895b60b3bf1c6ae05c167eaf842/native.log (sha256 9b1c9e8ec57998ba0705d8103949aeaf07d2e94a9b6c8ca96485c7deec3abaf2): P2_GENERATED_PLACEMENT bound=1, L1487 OWN bind, L3857 dead, L4070 onion:p2:30:3 new=1, L4072 killed=1 carried=1 received=1. Seed queen-admit-forest-5 bound her on forest boss slot 2506165730 (run admf5, L1467 OWN bind); the bot gave up there as target_unreachable, so that slot has no kill evidence yet."
       ]
     },
     "31": {
