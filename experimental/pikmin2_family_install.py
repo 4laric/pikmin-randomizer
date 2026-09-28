@@ -183,6 +183,11 @@ IDENTITY_FAMILY = {
     65: 'ground_inverts', 'imomushi': 'ground_inverts',
     71: 'aquatic', 'umimushi': 'aquatic',
     101: 'aquatic', 'umimushiblind': 'aquatic',
+    # #245 OWN: Antenna Beetle (Fuefuki, 41) stages the native source-FSM
+    # inputs (retail enemyparm, P2_RETAIL_EVENTS_1 motion table, pose bank)
+    # through experimental.pikmin2_fuefuki_campaign_stage. The proxy row
+    # (randomizer/p2_proxy/41_Fuefuki.json, Napkid host) is retired.
+    41: 'fuefuki', 'fuefuki': 'fuefuki',
 }
 
 
@@ -1000,6 +1005,35 @@ def _adapt_cannon_projectile(source, run, actors):
     return receipt
 
 
+def _validate_fuefuki(source):
+    """Pre-flight check for the Antenna Beetle (Fuefuki, source 41) content."""
+    _read_identity_source(source, 41, 'Fuefuki')
+
+
+def _adapt_fuefuki(source, run, actors):
+    """Adapter for Fuefuki (source 41, #245 OWN): native source-FSM inputs.
+
+    Stages ``p2-fuefuki-parms.txt`` (verbatim retail enemyparm.txt),
+    ``p2-fuefuki-motion.txt`` (P2_RETAIL_EVENTS_1, all ten FUEFUKIANIM clips),
+    ``p2-fuefuki-bank.txt`` and the ``fuefuki_Fuefuki_<clip>_<ii>.mod`` poses
+    into the private model room. The native bridge setup binds every seed 41
+    actor from the seed itself (no actor sidecar). Idempotent.
+    """
+    from experimental.pikmin2_fuefuki_campaign_stage import FuefukiStageError, stage_from
+    _read_identity_source(source, 41, 'Fuefuki')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'Fuefuki':
+            raise StagingError(f'Fuefuki adapter got non-Fuefuki species: {species!r}')
+    if not generators:
+        raise StagingError('Fuefuki install requires at least one generator')
+    try:
+        receipt = stage_from(Path(source), Path(run))
+    except (FuefukiStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Fuefuki staging failed: {error}') from error
+    return dict(species='Fuefuki', source_id=41, generators=sorted(set(generators)), fuefuki=receipt)
+
+
 def _chappy_content_root(source, actors):
     """Resolve the identity-keyed content root for a Chappy-family install.
 
@@ -1371,6 +1405,7 @@ ADAPTERS = {
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'fuefuki': {'install': _adapt_fuefuki, 'validate': _validate_fuefuki},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
