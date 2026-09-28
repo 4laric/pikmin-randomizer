@@ -12,7 +12,7 @@ from experimental.pikmin2_rigid import joint_matrices
 from experimental.pikmin2_skinning import draw_matrices
 
 
-def frames_for(duration, events, stride=None):
+def frames_for(duration, events, stride=None, window=None):
     if type(duration) is not int or not 1 <= duration <= 10000:
         raise ValueError('Invalid clip duration')
     frames = {0, duration-1}
@@ -25,6 +25,11 @@ def frames_for(duration, events, stride=None):
     # Optional dense sampling (Demon, source 32): add every ``stride``-th frame
     # while the per-clip pose budget allows, so looping clips read as motion
     # rather than a handful of key poses. Sarai keeps its sparse default.
+    # Optional every-frame window (Demon attack1 10..30: the Attack exec
+    # hunt/catch window, where the two jaws sweep past the target within a
+    # frame or two and a stride sample would miss the retail catch pose).
+    if window:
+        frames.update(f for f in range(window[0], window[1] + 1) if f < duration)
     if stride:
         for frame in range(0, duration, stride):
             if len(frames) >= 32:
@@ -40,7 +45,7 @@ def extract(iso, output):
 
 
 def extract_species(iso, output, *, data_dir='Sarai', parm_key='sarai', species='Sarai',
-                    enemy_id=23, file_prefix='', stride=None):
+                    enemy_id=23, file_prefix='', stride=None, windows=None):
     """Extract one Sarai-family species (Sarai 23, Demon 32).
 
     Demon::Obj is a Sarai::Obj subclass with its own model, animations and
@@ -81,7 +86,7 @@ def extract_species(iso, output, *, data_dir='Sarai', parm_key='sarai', species=
         try:
             duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
             clip['source_frames'] = duration
-            for frame in frames_for(duration, row['events'], stride):
+            for frame in frames_for(duration, row['events'], stride, (windows or {}).get(row['file'])):
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 matrices = joint_matrices(blocks(model), pose)
                 mouths = []
