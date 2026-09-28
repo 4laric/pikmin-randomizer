@@ -134,6 +134,14 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
 * 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
   ``<out>/FminiHoudai/``.
+* 58 BombSarai (#244 OWN): ``pikmin2_bombsarai_assets.extract`` ->
+  ``<out>/BombSarai/`` (``bombsarai.json`` + ``identity.json`` + the
+  ``BombSarai/`` carrier and ``Bomb/`` payload pose banks, retail parms and
+  bca clips); the BombSarai adapter runs the shared
+  ``pikmin2_bombsarai_install`` and stages the native OWN inputs through
+  ``pikmin2_bombsarai_stage`` (``p2-bombsarai-parms.txt``,
+  ``p2-bombsarai-bomb-parms.txt``, ``p2-bombsarai-own-bank.txt``, the Bomb
+  meshes and ``p2-bombsarai-teki.txt``).
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -548,6 +556,37 @@ def extract_minihoudai(iso, dest, pose_limit=None):
         shutil.rmtree(tmp, ignore_errors=True)
     try:
         minihoudai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_bombsarai(iso, dest, pose_limit=8):
+    """Build <dest>/BombSarai/ via the BombSarai extractor (#244 OWN).
+
+    ``experimental.pikmin2_bombsarai_assets.extract`` writes ``bombsarai.json``
+    (schema-1 ``P2_BOMBSARAI_IMPORT_1``) plus the ``BombSarai/`` carrier and
+    ``Bomb/`` payload trees (retail parms, bca clips, sampled pose meshes); this
+    wrapper adds the ``identity.json`` the family installer pre-flights. The
+    BombSarai adapter stages what the native OWN port opens from this tree.
+    """
+    from experimental import pikmin2_bombsarai_assets as bombsarai_assets
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "BombSarai"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bombsarai"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        bombsarai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        (tmp / "identity.json").write_text(
+            json.dumps(dict(schema=1, source_id=58, enum_name="BombSarai"), indent=2) + "\n",
+            encoding="utf-8")
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1316,6 +1355,7 @@ EXTRACTORS = {
     93: "extract_bombotakara",
     66: "extract_houdai",
     97: "extract_fminihoudai",
+    58: "extract_bombsarai",
     12: "extract_uji",
     13: "extract_uji",
     14: "extract_uji",
@@ -1421,6 +1461,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
         elif source_id == 97:
             extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
             extracted.append(source_id)
+        elif source_id == 58:
+            # Per-clip pose bank for the native OWN draw, not the global limit.
+            extract_bombsarai(iso, out)
+            extracted.append(source_id)
         elif source_id in (34, 70):
             if not snagret_done:
                 extract_snagret(iso, ROOT, out, pose_limit=pose_limit)
@@ -1519,7 +1563,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here
-            # (e.g. Kochappy 1 / Snow 45 / BombSarai 58): report, don't invent.
+            # (e.g. Kochappy 1 / Snow 45): report, don't invent.
             if source_id not in unsupported:
                 no_extractor.append(source_id)
     # Two distinct causes, and conflating them sends people to the wrong file:
