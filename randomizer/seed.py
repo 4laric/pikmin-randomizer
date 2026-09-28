@@ -466,18 +466,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 66,
-        "enum_name": "Houdai",
-        "family": "long_legs",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign f2-66 (owner ruling 2026-09-25: power mode admits; damage_mult 3): own-brain bind (P2HoudaiFsm, disc parms), Stay->Land->Wait->Walk->Wait->Flick->Shot->Walk->Flick->Dead on its own generator 1945764764, stuck-only Flick shakes, straight shells hitting Pikmin, 59 incremental damage lines 2800->10, P2_LONG_LEGS_DEAD prior_health 10, P2 corpse carried by 10-11, Onion receipt onion:p2:66:3",
-            "log": "output/claude-orch/p2-port-66/runs/f2-66/session/runs/1a61af1ca10b74d5b625091c66f2afe6910820accadcca6252dd0e9a8f36b29a/native.log (sha256 d2a5b6cfe626d66c...) L1516 own bind, L1517 delivery bind, L2352 dead, L2646 receipt, L2647 AUTOPLAY_RESULT; native fork claude/p2-port-66-houdai 98f6d1d44, exe sha256 d73be98700dbe159...; issue #173",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 66 -> long_legs "
-                         "(experimental/pikmin2_long_legs_install)",
-        },
-    },
-    {
         "source_id": 69,
         "enum_name": "BigFoot",
         "family": "long_legs",

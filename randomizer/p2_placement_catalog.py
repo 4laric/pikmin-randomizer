@@ -148,8 +148,6 @@ CANDIDATE_SPECS = (
     (70, 'SnakeWhole', 25, ['ground'], None, False),
     (56, 'Damagumo', 26, ['ground'], None, False),
     (69, 'BigFoot', 26, ['ground'], None, False),
-    # Man-at-Legs (66, lane 26, #173): own-brain campaign admission 2026-09-28.
-    (66, 'Houdai', 26, ['ground'], None, False),
     (75, 'Kabuto', 20, ['ground'], None, False),
 )
 
