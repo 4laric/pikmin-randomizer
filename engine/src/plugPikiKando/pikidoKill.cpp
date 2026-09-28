@@ -13,6 +13,8 @@
 #include "Route.h"
 #include "SoundMgr.h"
 #include "pc_randomizer.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_purple_impact.h"
 
 /**
  * @todo: Documentation
@@ -31,6 +33,8 @@ DEFINE_PRINT("pikidoKill");
  */
 void Piki::doKill()
 {
+	pc_p2_purple_flight_cancel(this);
+	pc_p2_purple_impact_forget(this);
 	if (mRouteHandle) {
 		routeMgr->getPathFinder('test')->releaseHandle(mRouteHandle);
 		mRouteHandle         = 0;

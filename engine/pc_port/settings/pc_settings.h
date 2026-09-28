@@ -51,7 +51,9 @@ int pc_settings_get_chain_actions(void);
 // the first pluck keeps going; release or whistle cancels. Off by default.
 int pc_settings_get_hold_to_pluck(void);
 
-// Suppress informational hints; progression and game-over screens remain active.
+// Suppress informational hints when on; progression and game-over screens
+// remain active. Default on in the fork. The end-of-day
+// results/diary is exempt in normal play (only preview/fixture runs dismiss it).
 int pc_settings_get_disable_tutorials(void);
 
 /// What the mouse wheel controls: 0 = Pikmin colour to throw, 1 = camera zoom.
@@ -79,6 +81,8 @@ void pc_newgame_prompt_open(void);
 bool pc_newgame_prompt_active(void);
 void pc_newgame_prompt_draw(void);
 int  pc_newgame_prompt_result(void);
+/// True after accept on the second prompt if Hard was chosen.
+bool pc_newgame_prompt_chose_hard(void);
 
 /// Debug shortcuts F5 and F6, off by default.
 int pc_settings_get_debug_keys(void);

@@ -1,0 +1,171 @@
+From 0d8557457213b2b8b9115867c0d5752fe7589785 Mon Sep 17 00:00:00 2001
+From: opencode <opencode@local>
+Date: Mon, 14 Sep 2026 09:02:17 -0400
+Subject: [PATCH 3/7] tests: make engine-free policy ctest gates non-vacuous
+ under NDEBUG (#173, #244, #376)
+
+---
+ CMakeLists.txt                        | 9 ++++++---
+ tools/p2_bombsarai_blast_test.cpp     | 3 +++
+ tools/p2_bombsarai_bomb_test.cpp      | 3 +++
+ tools/p2_bombsarai_fsm_test.cpp       | 3 +++
+ tools/p2_bombsarai_hover_test.cpp     | 3 +++
+ tools/p2_bombsarai_induction_test.cpp | 8 +++++++-
+ tools/p2_bombsarai_terrain_test.cpp   | 3 +++
+ tools/p2_dangomushi_hazard_test.cpp   | 3 +++
+ tools/p2_long_legs_fsm_test.cpp       | 3 +++
+ tools/p2_snagret_fsm_test.cpp         | 3 +++
+ 10 files changed, 37 insertions(+), 4 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 09cfdfdd..f0aaae41 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -752,9 +752,12 @@ target_include_directories(p2_bombsarai_terrain_test PRIVATE pc_port)
+ target_compile_options(p2_bombsarai_terrain_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_bombsarai_terrain_test COMMAND p2_bombsarai_terrain_test)
+ 
+-# Note: tools/p2_bombsarai_induction_test.cpp exists on the approved line but
+-# does not terminate when run as a ctest (observed timeout at 15 s), so it is
+-# intentionally not registered here. Tracked for lane 27 as a test-hang finding.
++add_executable(p2_bombsarai_induction_test
++    tools/p2_bombsarai_induction_test.cpp
++    pc_port/pc_p2_bombsarai_bomb.cpp)
++target_include_directories(p2_bombsarai_induction_test PRIVATE pc_port)
++target_compile_options(p2_bombsarai_induction_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bombsarai_induction_test COMMAND p2_bombsarai_induction_test)
+ 
+ add_executable(pc_render_phase_test
+     pc_port/timing/pc_render_phase_test.cpp
+diff --git a/tools/p2_bombsarai_blast_test.cpp b/tools/p2_bombsarai_blast_test.cpp
+index e0938533..ea9dc150 100644
+--- a/tools/p2_bombsarai_blast_test.cpp
++++ b/tools/p2_bombsarai_blast_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bombsarai_blast.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <limits>
+diff --git a/tools/p2_bombsarai_bomb_test.cpp b/tools/p2_bombsarai_bomb_test.cpp
+index 4958fb7b..98d50459 100644
+--- a/tools/p2_bombsarai_bomb_test.cpp
++++ b/tools/p2_bombsarai_bomb_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bombsarai_bomb.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <limits>
+diff --git a/tools/p2_bombsarai_fsm_test.cpp b/tools/p2_bombsarai_fsm_test.cpp
+index 97bf6768..2257be73 100644
+--- a/tools/p2_bombsarai_fsm_test.cpp
++++ b/tools/p2_bombsarai_fsm_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bombsarai_fsm.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ 
+diff --git a/tools/p2_bombsarai_hover_test.cpp b/tools/p2_bombsarai_hover_test.cpp
+index 69af9486..ca26f37f 100644
+--- a/tools/p2_bombsarai_hover_test.cpp
++++ b/tools/p2_bombsarai_hover_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bombsarai_hover.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <limits>
+diff --git a/tools/p2_bombsarai_induction_test.cpp b/tools/p2_bombsarai_induction_test.cpp
+index db50cc2a..64226993 100644
+--- a/tools/p2_bombsarai_induction_test.cpp
++++ b/tools/p2_bombsarai_induction_test.cpp
+@@ -1,5 +1,10 @@
+ #include "pc_p2_bombsarai_bomb.h"
+ 
++// This fixture performs state transitions inside assert() expressions (for
++// example throwBomb()/update() side effects). Release builds pass -DNDEBUG, so
++// assert() would be compiled out and the transitions would never run, leaving
++// the induce() loop below unbounded. Force assertions on for the test unit.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ 
+@@ -136,7 +141,8 @@ int main()
+                             liveCarrier, nullptr));
+         assert(bomb->phase() == P2BombSaraiBombPhase::ArmedLoop);
+         assert(pool.activeCount() == 1);
+-        while (!bomb->induce(liveCarrier, nullptr)) {}
++        for (int guard = 0; guard < 1000 && !bomb->induce(liveCarrier, nullptr); ++guard) {}
++        assert(bomb->phase() == P2BombSaraiBombPhase::Despawned);
+         assert(pool.activeCount() == 0); // despawned slot no longer live
+         P2BombSaraiBomb* fresh = pool.supply(77, { 5.0f, 70.0f, 0.0f }, config(ip02));
+         assert(fresh);
+diff --git a/tools/p2_bombsarai_terrain_test.cpp b/tools/p2_bombsarai_terrain_test.cpp
+index 4e3789b4..9187aea5 100644
+--- a/tools/p2_bombsarai_terrain_test.cpp
++++ b/tools/p2_bombsarai_terrain_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bombsarai_terrain.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <limits>
+diff --git a/tools/p2_dangomushi_hazard_test.cpp b/tools/p2_dangomushi_hazard_test.cpp
+index 11624d00..699bdf4d 100644
+--- a/tools/p2_dangomushi_hazard_test.cpp
++++ b/tools/p2_dangomushi_hazard_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_dangomushi_hazard.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <cstdio>
+diff --git a/tools/p2_long_legs_fsm_test.cpp b/tools/p2_long_legs_fsm_test.cpp
+index 9702ccdb..575b5588 100644
+--- a/tools/p2_long_legs_fsm_test.cpp
++++ b/tools/p2_long_legs_fsm_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_long_legs_fsm.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ 
+diff --git a/tools/p2_snagret_fsm_test.cpp b/tools/p2_snagret_fsm_test.cpp
+index 0f60ad67..36308eff 100644
+--- a/tools/p2_snagret_fsm_test.cpp
++++ b/tools/p2_snagret_fsm_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_snagret_fsm.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ 
+-- 
+2.55.0.windows.3
+

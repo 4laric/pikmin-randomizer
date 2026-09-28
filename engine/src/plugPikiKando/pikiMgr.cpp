@@ -8,6 +8,11 @@
 #include "PikiAI.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "Piki.h"
+#include "pc_p2_bulbmin.h"
+#include "pc_p2_captain.h"
+#endif
 
 PikiMgr* pikiMgr;
 bool PikiMgr::containerDebug;
@@ -49,7 +54,17 @@ Creature* PikiMgr::birth()
 		return nullptr;
 	}
 
-	return MonoObjectMgr::birth();
+	Creature* born = MonoObjectMgr::birth();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-11 Bulbmin: a recycled slot must not inherit the previous
+	// occupant's dependent id/leader. Lane 12 (#130): the same slot must not
+	// inherit a stale captain-capture actor id. Both inert unless opted in.
+	if (born) {
+		pc_p2_bulbmin_forget(static_cast<Piki*>(born));
+		pc_p2_captain_forget_piki(static_cast<Piki*>(born));
+	}
+#endif
+	return born;
 }
 
 /**

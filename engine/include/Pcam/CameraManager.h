@@ -22,7 +22,8 @@ enum PcamVibrationEventIDs {
 	PCAMVIB_Vibration1    = 2,
 	PCAMVIB_Vibration2    = 3,
 	PCAMVIB_LongVibration = 4,
-	PCAMVIB_VibrationCount, // 5
+	PCAMVIB_PurpleImpact  = 5,
+	PCAMVIB_VibrationCount, // 6
 };
 
 /**

@@ -48,6 +48,8 @@ enum PikiStateID {
 	PIKISTATE_UNUSED32     = 32, // Unused
 	PIKISTATE_Pressed      = 33, // Crushed/flattened; stun + temporary invulnerability.
 	PIKISTATE_Unk34        = 34, // Unused
+	PIKISTATE_DenkiDying   = 35, // P2 electric-shock death reaction (#170/#408).
+	PIKISTATE_Panic        = 36, // P2 panic state, currently the gas reaction (#170/#408).
 	PIKISTATE_Count,             // Total number of states.
 };
 
@@ -234,6 +236,62 @@ public:
 protected:
 	// _00     = VTBL
 	// _00-_10 = PikiState
+};
+
+/**
+ * @brief P2 electric-shock death reaction (#170/#408).
+ *
+ * Source `PikiDenkiDyingState` (`include/Game/PikiState.h:236`): a Piki that is
+ * not Yellow/Bulbmin is zapped by `InteractDenki`, freezes, waits 0.3s and then
+ * dies to electricity (`pikiState.cpp:1256-1283`). This port has no electric
+ * effect or animation entry, so the state plays the ordinary death animation
+ * and hands off to `PIKISTATE_Dead` (the existing kill pipeline) after the wait.
+ *
+ * @note Size: 0x14.
+ */
+struct PikiDenkiDyingState : public PikiState {
+public:
+	PikiDenkiDyingState();
+
+	virtual void init(Piki*);                      // _38
+	virtual void exec(Piki*);                      // _3C
+	virtual void cleanup(Piki*);                   // _40
+	virtual bool useLookUpdate() { return false; } // _60
+
+protected:
+	// _00     = VTBL
+	// _00-_10 = PikiState
+	f32 mWaitTime; // _10
+};
+
+/**
+ * @brief P2 panic state; currently the gas reaction (#170/#408).
+ *
+ * Source `PikiPanicState` with `PIKIPANIC_Gas` (`include/Game/PikiState.h:717`,
+ * `interactPiki.cpp:531,551`): a Piki that is not White/Bulbmin panics and then
+ * dies from poison (`pikiState.cpp:1014-1063`). This port has no `StateArg`
+ * channel and no gas animation, so the state is the gas flavour of panic and
+ * reuses the panic-run movement of `PikiFiredState`; `InteractGas` is its only
+ * producer. It is gated by the narrow `Piki::gasInvicible()` flag so repeated
+ * gas stimuli cannot restart it.
+ *
+ * @note Size: 0x20.
+ */
+struct PikiPanicState : public PikiState {
+public:
+	PikiPanicState();
+
+	virtual void init(Piki*);    // _38
+	virtual void exec(Piki*);    // _3C
+	virtual void cleanup(Piki*); // _40
+
+protected:
+	// _00     = VTBL
+	// _00-_10 = PikiState
+	f32 mSurvivalTimer;        // _10
+	f32 mChangeDirectionTimer; // _14
+	f32 mMoveDirection;        // _18
+	f32 mSpeedRatio;           // _1C
 };
 
 /**

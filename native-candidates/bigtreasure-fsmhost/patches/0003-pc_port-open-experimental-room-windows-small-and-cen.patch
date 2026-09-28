@@ -1,0 +1,110 @@
+From a82e0f4427c9c7ce9cf2c9c6f88eede3997ab3d3 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 16:33:44 -0400
+Subject: [PATCH 3/5] pc_port: open experimental-room windows small and
+ centered by default
+
+---
+ pc_port/pc_main.cpp   | 42 +++++++++++++++++++++++++++++++++++++++++-
+ pc_port/pc_window.cpp |  5 +++++
+ pc_port/pc_window.h   |  1 +
+ 3 files changed, 47 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_main.cpp b/pc_port/pc_main.cpp
+index 38d53fdc..7d23c7c8 100644
+--- a/pc_port/pc_main.cpp
++++ b/pc_port/pc_main.cpp
+@@ -51,6 +51,36 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
+ #include "settings/pc_settings.h"
+ #include "settings/pc_settings_p2d.h"
+ 
++namespace {
++// Small, centered window for the experimental P2 room preview so a wall of test
++// runs stays readable and out of the way. Overridable with
++// PIKMIN_P2_ROOM_WINDOW=WxH, or =off to keep the persisted/desktop size.
++bool pc_test_window_size(int& width, int& height) {
++    const char* value = std::getenv("PIKMIN_P2_ROOM_WINDOW");
++    if (value && (!std::strcmp(value, "0") || !std::strcmp(value, "off"))) return false;
++    if (value) {
++        int customWidth = 0, customHeight = 0;
++        if (std::sscanf(value, "%dx%d", &customWidth, &customHeight) == 2
++                && customWidth >= 320 && customHeight >= 240) {
++            width = customWidth;
++            height = customHeight;
++            return true;
++        }
++        if (!std::strcmp(value, "1") || !std::strcmp(value, "small")) {
++            width = 960;
++            height = 540;
++            return true;
++        }
++    }
++    if (pc_pikipelago_room_preview()) {
++        width = 960;
++        height = 540;
++        return true;
++    }
++    return false;
++}
++}
++
+ int main(int argc, char* argv[])
+ {
+     // Disable stdout buffering so we see logs immediately before any crash
+@@ -83,7 +113,9 @@ int main(int argc, char* argv[])
+     // Initialize SDL2 Window and OpenGL Context FIRST
+     printf("[PC Port] Initializing SDL2 Window and OpenGL...\n");
+     fflush(stdout);
+-    if (!pc_window_init("Open Nectar", 1280, 720)) {
++    int windowWidth = 1280, windowHeight = 720;
++    const bool smallTestWindow = pc_test_window_size(windowWidth, windowHeight);
++    if (!pc_window_init("Open Nectar", windowWidth, windowHeight)) {
+         printf("[PC Port Fatal Error] Could not initialize window/OpenGL!\n");
+         fflush(stdout);
+         return 1;
+@@ -92,6 +124,14 @@ int main(int argc, char* argv[])
+     printf("[PC Port] Loading persisted settings...\n");
+     fflush(stdout);
+     pc_settings_init();
++    if (smallTestWindow) {
++        pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
++        pc_window_set_window_size(windowWidth, windowHeight);
++        pc_window_center();
++        printf("[PC Port] Experimental preview window set to %dx%d windowed and centered "
++               "(override with PIKMIN_P2_ROOM_WINDOW=WxH or =off).\n", windowWidth, windowHeight);
++        fflush(stdout);
++    }
+ 
+     printf("[PC Port] Initializing game system...\n");
+     fflush(stdout);
+diff --git a/pc_port/pc_window.cpp b/pc_port/pc_window.cpp
+index 50ffc297..fe840bd3 100644
+--- a/pc_port/pc_window.cpp
++++ b/pc_port/pc_window.cpp
+@@ -1066,6 +1066,11 @@ void pc_window_set_window_size(int w, int h) {
+     sWindowHeight = h;
+ }
+ 
++void pc_window_center(void) {
++    if (!sWindow) return;
++    SDL_SetWindowPosition(sWindow, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
++}
++
+ void pc_window_set_refresh_rate(double hz) {
+     if (hz >= 20.0 && hz <= 1000.0) sTargetRefreshRate = hz;
+ }
+diff --git a/pc_port/pc_window.h b/pc_port/pc_window.h
+index b7d0722d..07d7c136 100644
+--- a/pc_port/pc_window.h
++++ b/pc_port/pc_window.h
+@@ -98,6 +98,7 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize);
+ void pc_window_set_display_mode(int mode);        // PC_WINDOW_FULLSCREEN_*
+ int  pc_window_get_display_mode(void);
+ void pc_window_set_window_size(int w, int h);     // windowed resolution
++void pc_window_center(void);                      // recenter on the current display
+ // Index of the display the window currently sits on, for enumerating that
+ // monitor's video modes. Returns 0 when there is no window yet.
+ int  pc_window_get_display_index(void);
+-- 
+2.55.0.windows.3
+

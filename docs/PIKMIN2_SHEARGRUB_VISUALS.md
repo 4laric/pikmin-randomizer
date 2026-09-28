@@ -1,0 +1,9 @@
+# Uji source visuals with explicit P1 proxy actors
+
+The opt-in `P2_SHEARGRUB_1` configuration contains a count and rows `generator_uint UjiA|UjiB corpse_value`. Native validation accepts only source corpse values1 and2 respectively (US carcass_config.txt), unique generator IDs, and matching P1 KabekuiA/KabekuiB types. Unregistered actors retain their normal rendering/behavior. Source visual models use move frame0 alive and final sampled dead pose for corpses; no source skeletal animation or event playback is implied.
+
+`experimental.pikmin2_sheargrub_install.plan/install` verifies imported pose hashes and copies four bounded source models into a private prepared room. `stage_pair` adds one female and one male proxy at explicit authored positions in the east room. This is a visual pair, not the full retail6+4 population. Native setup loads validated models, registers species identities, and routes registered corpse receipts to source values with distinct generator IDs. Existing P1 AI, body collision, carrying dimensions and event timing remain proxies; UjiA source bridge attack and UjiB source bite/Eat behavior are not implemented by this change.
+
+Hooks are isolated from the Snow implementation: new pc_p2_sheargrub files, live/corpse render fallback in tekibteki, reset/forget in tekimgr, preview setup/receipt lookup, and CMake registration. No pc_p2_enemy changes. Manager reset and actor reuse erase registration. Source assets remain local.
+
+Prepared local profile: `output/p2-sheargrub-visual-batch/runs/08e9f35b8f864b4095706da39697dfc1`. Two installer framing tests pass. Native compilation and visible/runtime acceptance remain for the coordinating integration build; no shared build/export was performed in this lane. Do not claim validated native visuals until that acceptance passes.

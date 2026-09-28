@@ -1,0 +1,25 @@
+{
+  "cave_id": "forest_1",
+  "floor": 1,
+  "definition_index": 0,
+  "unit_pool": "1_units_cent3_tsuchi.txt",
+  "unit_candidates": [
+    "item_cap_tsuchi",
+    "way3_tsuchi",
+    "way4_tsuchi",
+    "wayl_tsuchi",
+    "way2_tsuchi",
+    "way2x2_tsuchi",
+    "room_cent3_4_tsuchi"
+  ],
+  "loose_treasures": [
+    "juji_key_fc"
+  ],
+  "gate_types": [],
+  "source": {
+    "path": "user/Mukki/mapunits/caveinfo/forest_1.txt",
+    "sha256": "c0dccd032e576bdc9234ad04fc44b7081c6f36b52e50cb66ed48fe9e6f54cf88"
+  },
+  "evidence": "py -3.12 on GPVE01 rev0 disc: experimental.pikmin2_cave_catalog.parse + experimental.pikmin2_cave.unit_definition (scratch script l34-out/scratch/extract_forest1.py); enemy IDs from native/pikmin2-research/src/plugProjectYamashitaU/enemyInfo.cpp, treasure IDs from user/Abe/Pellet/us/pelletlist_us.szs; gate roster is genuinely empty (0 rows) in the source.",
+  "unknowns": []
+}

@@ -1,3 +1,4 @@
+#include "pc_p2_campaign_actor.h"
 #include "Age.h"
 #include "DebugLog.h"
 #include "Dolphin/os.h"
@@ -7,6 +8,9 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "pc_randomizer.h"
+#include "pc_p2_generated_placement.h"
+#include "pc_p2_kabuto_host.h"
+#include "pc_p2_placement_probe.h"
 #include <cstdio>
 
 static bool randomizerProtected(TekiPersonality* personality) {
@@ -132,6 +136,25 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
         std::printf("ENEMY_SLOT_BIRTH uid=%u original=%d actual=%d\n", pc_randomizer_generator_id(info.mGenerator), mTekiType, replacement);
     if (pc_randomizer_enemy_shuffle())
         std::printf("[Pikmin Randomizer] ENEMY_SPAWN original=%d actual=%d protected=%d x=%.1f z=%.1f\n", mTekiType, replacement, int(protectedSpawn), info.mPosition.x, info.mPosition.z);
+    if (pc_randomizer_p2_bridge() && info.mGenerator) {
+        const unsigned uid = pc_randomizer_generator_id(info.mGenerator);
+        const unsigned source = pc_randomizer_p2_source_for_id(uid);
+        if (source) {
+            std::printf("P2_SEED_RESOLVE source_id=%u target=%u original_type=%d x=%.1f z=%.1f\n",
+                        source, uid, int(mTekiType), info.mPosition.x, info.mPosition.z);
+            // Generated placement (lane 03/04): claim the spawned actor for its
+            // seeded P2 identity module instead of leaving it as a P1 stand-in.
+            pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, pc_p2_campaign_token(static_cast<BTeki*>(teki)));
+            // Cannon Beetle family generated-session host (lane 20, #424): no-op
+            // for every source outside 75/95/96.
+            pc_p2_kabuto_bind_dynamic(teki, uid, source);
+            // Lane-04 placement evidence: sample the generated slot's terrain/route
+            // at the birth position. Additive; the slot uid is already resolved.
+            if (uid)
+                pc_p2_placement_probe_birth(info.mPosition.x, info.mPosition.y, info.mPosition.z,
+                                            info.mGenerator->_70, uid, replacement);
+        }
+    }
 	return teki;
 }
 

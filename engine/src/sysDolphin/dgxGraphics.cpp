@@ -8,6 +8,9 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_window.h"
 #include "pc_gfx.h"
+#include "pc_p2_envmap.h"
+#include "pc_p2_billboard_draw.h"
+#include <cstdlib>
 #endif
 
 /**
@@ -921,6 +924,11 @@ void DGXGraphics::useMatrixQuick(immut Matrix4f& mtx, int id)
 		texMtx[1][1] = mag * mtx.mMtx[1][1];
 		texMtx[1][2] = mag * mtx.mMtx[1][2];
 		texMtx[1][3] = 0.5f;
+#if defined(PIKI_PC_PORT)
+		if (mP2Envmap && !p2envmap::matrix(mtx.mMtx, mP2EnvSRT, texMtx)) {
+			std::abort();
+		}
+#endif
 
 		GXLoadTexMtxImm(texMtx, mTexMtxBaseID + gxID, GX_MTX2x4);
 	}
@@ -967,6 +975,9 @@ void DGXGraphics::useTexture(Texture* texture, int id)
  */
 void DGXGraphics::setMatMatrices(Material* mat, int p2)
 {
+#if defined(PIKI_PC_PORT)
+	mP2Envmap = false;
+#endif
 	mHasTexGen = (mat->mTextureInfo.mTevStageCount) ? true : false;
 	GXSetNumTexGens(mat->mTextureInfo.mTexGenDataCount);
 
@@ -990,9 +1001,29 @@ void DGXGraphics::setMatMatrices(Material* mat, int p2)
 		}
 
 		int animFactor = mat->mTextureInfo.mTextureData[j].mAnimationFactor;
+#if defined(PIKI_PC_PORT)
+		// Explicit source-export marker; never infer this from a material name.
+		if (mat->mTextureInfo.mTextureData[j]._UNUSED10 == 0xE6) {
+			if (mP2Envmap || texGenSrc != GX_TG_NRM || animFactor == 255) std::abort();
+			mP2Envmap = true;
+			GXSetTexCoordGen2(texCoordID, texGenType, GXTexGenSrc(0xE6), postMtxId, GX_FALSE, GX_PTIDENTITY);
+			// Static imported shapes do not run ShapeDynMaterials::animate.
+			// Read the bounded source SRT directly, never its uninitialized cache.
+			const auto& data = mat->mTextureInfo.mTextureData[j];
+			if (data.mTotalFrameCount != 0 || data.mRotationZ != 0.0f) std::abort();
+			mP2EnvSRT[0][0] = data.mScaleX; mP2EnvSRT[0][1] = 0.0f;
+			mP2EnvSRT[1][0] = 0.0f; mP2EnvSRT[1][1] = data.mScaleY;
+			mP2EnvSRT[0][2] = (1.0f-data.mScaleX)*data.mPivotX+data.mTranslationX;
+			mP2EnvSRT[1][2] = (1.0f-data.mScaleY)*data.mPivotY+data.mTranslationY;
+		}
+#endif
 		if (animFactor != 0xFF) {
 			int id = (animFactor != 10) ? matrixType : 60;
-			GXLoadTexMtxImm(mat->mTextureInfo.mTextureData[j].mAnimatedTexMtx.mMtx, id, GX_MTX2x4);
+#if defined(PIKI_PC_PORT)
+            // The marked static path is loaded from source parameters in useMatrixQuick.
+            if (!mP2Envmap)
+#endif
+                GXLoadTexMtxImm(mat->mTextureInfo.mTextureData[j].mAnimatedTexMtx.mMtx, id, GX_MTX2x4);
 
 			if (mHasTexGen && mat->mTextureInfo.mTexGenData[i].mTexGenSrc == 1) {
 				mTexMtxBaseID = matrixType;
@@ -1010,6 +1041,9 @@ void DGXGraphics::setMatMatrices(Material* mat, int p2)
  */
 void DGXGraphics::setMaterial(Material* mat, bool p2)
 {
+#if defined(PIKI_PC_PORT)
+	mP2Envmap = false;
+#endif
 	if (mat) {
 		gsys->mMaterialCount++;
 
@@ -1359,6 +1393,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 {
 	Mesh& mesh    = model->mMeshList[matPoly->mMeshIndex];
 	Material& mat = model->mMaterialList[matPoly->mIndex];
+	Matrix4f billboardMatrices[10]; // Per-dep camera-facing replacements (#429).
 
 	if (!mesh.mJointList || mat.mFlags & MATFLAG_Skip) {
 		return;
@@ -1375,6 +1410,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 	mMtxDepIdx = mesh.mMtxDepIdx;
 	useMaterial(&mat);
 	setupVtxDesc(model, &mat, &mesh);
+	immut Matrix4f* viewMtx = mActiveMatrix;
 
 	for (int mtxGroupIdx = 0; mtxGroupIdx < mesh.mMtxGroupCount; mtxGroupIdx++) {
 		MtxGroup& group = mesh.mMtxGroupList[mtxGroupIdx];
@@ -1393,6 +1429,35 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 				}
 			} else {
 				useMatrixQuick(model->mJointList[vtxMtx.mIndex].mAnimMatrix, depListIdx);
+			}
+		}
+
+		// Opt-in camera-facing billboard (#429): re-upload the draw matrix as the
+		// pivot-preserving, screen-aligned matrix for flagged meshes.
+		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && viewMtx) {
+			for (int depListIdx = 0; depListIdx < group.mDepLength && depListIdx < 10; ++depListIdx) {
+				int depMtxIdx = group.mDepList[depListIdx];
+				if (depMtxIdx == -1) {
+					continue;
+				}
+				VtxMatrix& vtxMtx = model->mVtxMatrixList[depMtxIdx];
+				immut Matrix4f* joint = nullptr;
+				if (model->mCurrentAnimation->mData) {
+					joint = vtxMtx.mHasPartialWeights
+					            ? &model->getAnimMatrix(vtxMtx.mIndex)
+					            : &model->getAnimMatrix(model->mJointCount + vtxMtx.mIndex);
+				} else {
+					joint = &model->mJointList[vtxMtx.mIndex].mAnimMatrix;
+				}
+				if (p2billboard::billboardFromJoint(billboardMatrices[depListIdx], *joint, *viewMtx)) {
+					useMatrixQuick(billboardMatrices[depListIdx], depListIdx);
+					const float off = p2billboard::offDiagonal(*viewMtx, billboardMatrices[depListIdx]);
+					p2billboard::Stats& stats = p2billboard::stats();
+					++stats.draws;
+					if (off > stats.max_offdiagonal) {
+						stats.max_offdiagonal = off;
+					}
+				}
 			}
 		}
 

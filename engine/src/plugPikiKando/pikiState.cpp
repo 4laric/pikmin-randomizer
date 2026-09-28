@@ -1,3 +1,8 @@
+#include "pc_p2_purple.h"
+#include "pc_p2_purple_impact.h"
+#include "pc_p2_purple_direct.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_white.h"
 #include "PikiState.h"
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -168,6 +173,8 @@ void PikiStateMachine::init(Piki* piki)
 	registerState(new PikiAbsorbState());
 	registerState(new PikiDyingState());
 	registerState(new PikiDeadState());
+	registerState(new PikiDenkiDyingState());
+	registerState(new PikiPanicState());
 	registerState(new PikiKinokoState());
 	registerState(new PikiDrownState());
 	registerState(new PikiEmotionState());
@@ -1362,6 +1369,8 @@ void PikiFallMeckState::procBounceMsg(Piki* piki, MsgBounce*)
 			effectMgr->create(EffectMgr::EFF_SD_DirtSpray, pos, nullptr, nullptr);
 			sprout->init(pos);
 			sprout->setColor(piki->mColor);
+            sprout->mP2Purple=pc_p2_is_purple(piki);
+            sprout->mP2White=pc_p2_is_white(piki);
 			f32 randAngle = 2.0f * (PI * gsys->getRand(1.0f));
 			sprout->mVelocity.set(220.0f * sinf(randAngle), 540.0f, 220.0f * cosf(randAngle));
 			sprout->startAI(0);
@@ -1930,6 +1939,26 @@ void PikiFlyingState::init(Piki* piki)
  */
 void PikiFlyingState::exec(Piki* piki)
 {
+	PcP2PurpleFlightSample previousPurpleFlight = pc_p2_purple_flight_sample(piki);
+	if (pc_p2_purple_flight_update(piki, gsys->getFrameTime(), AICONST.mGravity())) {
+		pc_p2_purple_flight_cancel(piki);
+		piki->restartAI();
+		transit(piki, PIKISTATE_Normal);
+		seSystem->playPikiSound(SEF_PIKI_LAND, piki->mSRT.t);
+		piki->actOnSituaton();
+		return;
+	}
+	PcP2PurpleFlightSample purpleFlight = pc_p2_purple_flight_sample(piki);
+	if (previousPurpleFlight.phase == PcP2PurpleFlightPhase::Ascent
+	    && purpleFlight.phase == PcP2PurpleFlightPhase::EntryPause) {
+		mSparkleEffect.kill();
+	}
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::EntryPause) return;
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Descent && purpleFlight.phaseElapsed == 0.0f) {
+		piki->startMotion(PaniMotionInfo(PIKIANIM_Fall), PaniMotionInfo(PIKIANIM_Fall));
+	}
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Descent) return;
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
 	if (piki->isCreatureFlag(CF_IsOnGround)) {
 		mGroundTouchFrames++;
 		if (mGroundTouchFrames >= 10) {
@@ -1950,7 +1979,7 @@ void PikiFlyingState::exec(Piki* piki)
 	f32 glideGrav          = AICONST.mGravity() * C_PIKI_PARM(piki, mFlowerGravityScale);
 	f32 gravTransitionTime = 0.15f;
 	f32 gravInterp         = startGrav * gravTransitionTime - 0.5f * 0.15f * (startGrav - glideGrav) - glideGrav * gravTransitionTime;
-	if (!mIsFlowerGliding && piki->mHappa == Flower && piki->mVelocity.y <= 0.0f) {
+	if (!pc_p2_is_purple(piki) && !mIsFlowerGliding && piki->mHappa == Flower && piki->mVelocity.y <= 0.0f) {
 		mIsFlowerGliding = true;
 		piki->startMotion(PaniMotionInfo(PIKIANIM_Hang), PaniMotionInfo(PIKIANIM_Hang));
 		f32 glideDist;
@@ -2023,6 +2052,8 @@ void PikiFlyingState::cleanup(Piki* piki)
 	mSparkleEffect.kill();
 	piki->restartAI();
 	piki->mWantToStick = false;
+	pc_p2_purple_impact_forget(piki);
+	pc_p2_purple_flight_cancel(piki);
 }
 
 /**
@@ -2050,6 +2081,18 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	}
 
 	if (piki->isHolding()) {
+		return;
+	}
+	PcP2PurpleFlightSample collisionFlight = pc_p2_purple_flight_sample(piki);
+	if (collisionFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
+	const bool specialFlightContact = collisionFlight.phase == PcP2PurpleFlightPhase::EntryPause
+	                               || collisionFlight.phase == PcP2PurpleFlightPhase::Descent;
+	if (specialFlightContact && colliderType == OBJTYPE_Piki) return;
+	CollPart* flightPart = msg->mEvent.mColliderPart;
+	if (specialFlightContact && colliderType != OBJTYPE_Teki && !collider->isBoss()
+	    && flightPart && flightPart->isPlatformType()
+	    && pc_p2_purple_flight_land(piki, false)) {
+		pc_p2_purple_impact_emit(piki, "platform_collision");
 		return;
 	}
 
@@ -2092,8 +2135,16 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	if (colliderType != OBJTYPE_Plant) {
 		SeSystem::playPlayerSe(SE_THROWHIT);
 	}
-
 	if (colliderType == OBJTYPE_Teki || collider->isBoss()) {
+		PcP2PurpleDirectHit direct;
+		if ((!pc_p2_purple_flight_active(piki) || specialFlightContact) && piki->mVelocity.y < 0.0f) {
+			direct = pc_p2_purple_direct_begin(piki, collider, msg->mEvent.mColliderPart);
+			if (specialFlightContact && direct.handled) {
+				pc_p2_purple_flight_contact(piki, true);
+			}
+			pc_p2_purple_impact_emit(piki, "enemy_collision");
+			pc_p2_purple_direct_finish(piki, collider, msg->mEvent.mColliderPart, direct);
+		}
 		Vector3f effPos = collider->mSRT.t - piki->mSRT.t;
 		effPos.normalise();
 		Vector3f effDir(effPos);
@@ -2101,6 +2152,31 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 		effPos.add(piki->mSRT.t);
 		InteractHitEffect hit(piki, effPos, effDir, msg->mEvent.mColliderPart);
 		collider->stimulate(hit);
+		if (direct.handled) {
+			CollPart* part = msg->mEvent.mColliderPart;
+			if (!direct.accepted && part && collider->isAlive()) {
+				bool attached = false;
+				if (part->isPlatformType() && (part->isStickable() || part->isClimbable())) {
+					piki->startStick(collider, part);
+					attached = true;
+				} else if ((part->isCollisionType() || part->isTubeType()) && part->isStickable()) {
+					piki->startStickObject(collider, part, -1, 0.0f);
+					attached = true;
+				}
+				if (attached) SeSystem::playPlayerSe(SE_PIKI_ATTACHENEMY);
+			}
+			if (piki->getState() == PIKISTATE_Flying) {
+				transit(piki, PIKISTATE_Normal);
+				piki->restartAI();
+			}
+			return;
+		}
+	}
+	if (specialFlightContact) {
+		pc_p2_purple_flight_contact(piki, colliderType == OBJTYPE_Teki || collider->isBoss());
+		transit(piki, PIKISTATE_Normal);
+		piki->restartAI();
+		return;
 	}
 
 	CollPart* part = msg->mEvent.mColliderPart;
@@ -2206,6 +2282,15 @@ void PikiFlyingState::procStickMsg(Piki*, MsgStick*)
  */
 void PikiFlyingState::procBounceMsg(Piki* piki, MsgBounce*)
 {
+	PcP2PurpleFlightSample flight = pc_p2_purple_flight_sample(piki);
+	if (flight.phase == PcP2PurpleFlightPhase::Recovery) return;
+	if (pc_p2_purple_flight_land(piki, false)) {
+		pc_p2_purple_impact_emit(piki, "ground_bounce");
+		return;
+	}
+	if (flight.phase != PcP2PurpleFlightPhase::Ascent) {
+		pc_p2_purple_impact_emit(piki, "ground_bounce");
+	}
 	if (mHasBounced) {
 		piki->restartAI();
 		transit(piki, PIKISTATE_Normal);
@@ -2744,6 +2829,8 @@ void PikiBuryState::exec(Piki* piki)
 		effectMgr->create(EffectMgr::EFF_SD_DirtSpray, pos, nullptr, nullptr);
 		sprout->init(pos);
 		sprout->setColor(piki->mColor);
+            sprout->mP2Purple=pc_p2_is_purple(piki);
+            sprout->mP2White=pc_p2_is_white(piki);
 		f32 angle = 2.0f * (PI * gsys->getRand(1.0f));
 		sprout->mVelocity.set(220.0f * sinf(angle), 540.0f, 220.0f * cosf(angle));
 		sprout->mFlowerStage = piki->mHappa;
@@ -3165,6 +3252,109 @@ void PikiDeadState::exec(Piki* piki)
 void PikiDeadState::cleanup(Piki* piki)
 {
 	piki->mSRT.s.set(0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief Constructs the P2 electric-shock death state.
+ */
+PikiDenkiDyingState::PikiDenkiDyingState()
+    : PikiState(PIKISTATE_DenkiDying, "DENKI_DYING")
+{
+}
+
+/**
+ * @brief Freezes the Piki, plays the death animation and sets the electric wait.
+ */
+void PikiDenkiDyingState::init(Piki* piki)
+{
+	piki->mActiveAction->abandon(nullptr);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Dead), PaniMotionInfo(PIKIANIM_Dead));
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime = 0.3f;
+}
+
+/**
+ * @brief Holds the Piki still, then hands off to the ordinary death pipeline.
+ *
+ * Source `PikiDenkiDyingState::exec` (`pikiState.cpp:1268`) emits the electric
+ * effect and kills after `mWaitTime`; this port has no electric effect, so it
+ * transitions into `PIKISTATE_Dead`, which shrinks and kills the Piki.
+ */
+void PikiDenkiDyingState::exec(Piki* piki)
+{
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime -= gsys->getFrameTime();
+	if (mWaitTime <= 0.0f) {
+		transit(piki, PIKISTATE_Dead);
+	}
+}
+
+/**
+ * @brief No explicit cleanup.
+ */
+void PikiDenkiDyingState::cleanup(Piki* piki)
+{
+}
+
+/**
+ * @brief Constructs the P2 gas panic state.
+ */
+PikiPanicState::PikiPanicState()
+    : PikiState(PIKISTATE_Panic, "PANIC")
+{
+}
+
+/**
+ * @brief Enters panic movement and raises the narrow gas gate.
+ *
+ * Mirrors the source `PIKIPANIC_Gas` init (`pikiState.cpp:839`): panic-run
+ * movement and the panic effect, then death when the poison timer expires. The
+ * source `gasInvicible` flag is modelled by `Piki::setGasInvincible`.
+ */
+void PikiPanicState::init(Piki* piki)
+{
+	piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Moeru), PaniMotionInfo(PIKIANIM_Moeru));
+	piki->enableMotionBlend();
+	mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
+	mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
+	mChangeDirectionTimer = 0.1f;
+	mMoveDirection        = piki->mFaceDirection;
+	mSpeedRatio           = 1.0f;
+	piki->setGasInvincible(1);
+	piki->mIsPanicked = true;
+}
+
+/**
+ * @brief Runs panicked movement until the poison timer expires, then dies.
+ */
+void PikiPanicState::exec(Piki* piki)
+{
+	piki->setSpeed(mSpeedRatio, mMoveDirection);
+	mSurvivalTimer -= gsys->getFrameTime();
+	mChangeDirectionTimer -= gsys->getFrameTime();
+	if (mSurvivalTimer < 0.0f) {
+		transit(piki, PIKISTATE_Dying);
+		return;
+	}
+
+	if (mChangeDirectionTimer < 0.0f) {
+		mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
+		mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
+		mMoveDirection = roundAng(mMoveDirection);
+		mSpeedRatio *= 0.99f;
+	}
+}
+
+/**
+ * @brief Clears the gas gate and panic flag when the state is left.
+ */
+void PikiPanicState::cleanup(Piki* piki)
+{
+	piki->setGasInvincible(0);
+	piki->mIsPanicked = false;
 }
 
 /**

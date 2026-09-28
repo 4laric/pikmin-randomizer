@@ -191,6 +191,30 @@ void TaiStrategy::start(Teki& teki)
 }
 
 /**
+ * @brief Requests a state transition while preserving normal finish/start hooks.
+ */
+bool TaiStrategy::transit(Teki& teki, int stateID)
+{
+	if (stateID < 0 || stateID >= mStateCount || !mStateList[stateID]) {
+		return false;
+	}
+	const int previous = teki.mStateID;
+	if (previous == stateID) {
+		return true;
+	}
+	if (previous < 0 || previous >= mStateCount || !mStateList[previous]) {
+		return false;
+	}
+	if (!teki.mIsStateReady) {
+		mStateList[previous]->finish(teki);
+	}
+	teki.mReturnStateID = previous;
+	teki.mStateID = stateID;
+	teki.mIsStateReady = true;
+	return true;
+}
+
+/**
  * @todo: Documentation
  */
 void TaiStrategy::act(Teki& teki)

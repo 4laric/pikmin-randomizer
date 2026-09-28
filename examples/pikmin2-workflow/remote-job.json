@@ -1,0 +1,15 @@
+{
+  "job": "mac-pilot-review",
+  "issue": 0,
+  "owned_files": ["docs/REPLACE_WITH_RESERVED_SCOPE.md"],
+  "acceptance": ["Replace with the exact acceptance criterion already written in the assigned issue body."],
+  "instruction": "Replace with one bounded source or review task. Record existing evidence and any Windows validation still needed.",
+  "requirements": ["review"],
+  "sources": {
+    "root": {
+      "url": "https://github.com/4laric/pikmin-randomizer.git",
+      "ref": "refs/heads/codex/REPLACE_WITH_PUBLISHED_BRANCH",
+      "commit": "REPLACE_WITH_FULL_40_CHARACTER_COMMIT"
+    }
+  }
+}

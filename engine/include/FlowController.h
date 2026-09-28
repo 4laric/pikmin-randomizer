@@ -60,7 +60,7 @@ public:
 	char mMapModelFilePath[0x80];  ///< _B0, path to .mod file for current stage's map.
 	char mCurrStageFilePath[0x80]; ///< _130, path to .ini file for current stage.
 	char mDoorStageFilePath[0x80]; ///< _1B0, likely stage unused "door" item would've led to - same as above + unused in reality.
-	BOOL mIsVersusMode;            ///< _230, indicator of an (unimplemented) VS mode - never TRUE because we never spawn a second navi.
+	BOOL mIsVersusMode;            ///< _230, indicator of an (unimplemented) VS mode - never TRUE; VS is not ported.
 	int mGameEndFlag;              ///< _234, type of situation forcing the day/gameplay to end - see `GameEndFlag` enum.
 #if defined(VERSION_GPIP01)        ///
 	BOOL mIsDayEndSkippable;       ///< _238, day ends from extinction and navi down aren't skippable.

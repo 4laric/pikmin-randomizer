@@ -5,6 +5,7 @@
 #include "Navi.h"
 #include "ObjectMgr.h"
 #include "Piki.h"
+#include "pc_p2_captain_roster.h"
 #include "types.h"
 
 /**
@@ -181,6 +182,28 @@ public:
 	void renderCircle(Graphics&);
 	void drawShadow(Graphics&);
 
+	// Lane 12 second-captain primitives (#130). These are additive queries over
+	// the existing object list; with a single Navi they all resolve to slot 0
+	// and change nothing. Source equivalents: NaviMgr::getActiveNavi,
+	// getAliveOrima, getDeadOrima, informOrimaDead, mNaviDeadFlags[2].
+	Navi* getOtherNavi(Navi*);
+	Navi* getActiveNavi();
+	Navi* getAliveOrima();
+	Navi* getDeadOrima();
+	void setActiveNavi(Navi*);
+	void informOrimaDead(Navi*);
+	bool isNaviDead(Navi*);
+	bool hasSecondNavi() const;
+	int getNaviCount() const;
+	void resetCaptainRoster();
+
+	// Point the second captain's shape object (mNaviShapeObject[1]) at slot 0's
+	// fully-initialised PikiShapeObject, so a second Navi can index it without
+	// clobbering [0]'s animators or reloading a crashing fresh, uncached model.
+	// Additive: it does not touch the live object list and the single-captain
+	// path never calls it. Returns false when slot 0's shape is unavailable.
+	bool ensureSecondNaviShapeObject();
+
 	// unused/inlined:
 	void init();
 
@@ -194,6 +217,7 @@ public:
 	PaniMotionTable* mMotionTable;        // _50
 	int mNaviID;                          // _54
 	NaviProp* mNaviParms;                 // _58
+	P2CaptainRoster mCaptainRoster;       // lane 12 active/dead selection (PC port)
 };
 
 extern NaviMgr* naviMgr;

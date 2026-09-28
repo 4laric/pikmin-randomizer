@@ -400,6 +400,17 @@ public:
 	f32 getFreqFrm() { return mEmissionRate; }
 	void setFreqFrm(f32 freq) { mEmissionRate = freq; }
 
+	// Explicit detached burst; existing generators retain their loaded settings.
+	void configureOneShotBurst(f32 particles, s16 lifetime)
+	{
+		mEmissionRateKeyCount = 0;
+		mEmissionRate = particles;
+		mEmissionRateJitter = 0.0f;
+		mMaxFrame = 1;
+		mMaxPasses = 1;
+		mBaseLifetime = lifetime;
+	}
+
 	f32 getInitVel() { return mInitVel; }
 	void setInitVel(f32 vel) { mInitVel = vel; }
 

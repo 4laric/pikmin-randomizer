@@ -41,6 +41,9 @@ const char* const kDemoStreams[] = {
 // cut between both CIN files. The old stub stopped every stream at the end of
 // each individual movie and therefore cut the opening in half.
 bool sKeepDemoStreamOnFinish = false;
+// Set when the player skipped the cutscene rather than watching it out.
+// Jac_FinishDemo consults it; mirrors pikidemo.c demo_was_skipped.
+bool sDemoWasSkipped = false;
 u32 sNativeBgm = BGM_PikiSE;
 u8 sNativeBgmMode = 0;
 float sNativeBgmVolume = 1.0f;
@@ -722,6 +725,9 @@ void Jac_StartDemo(u32 cinemaId) {
     pc_audio_write_se_port(15, 1, static_cast<u16>(cinemaId));
     if (sDemoTimedEvent == kNoDemoTimedEvent) start_demo_audio(cinemaId);
 }
+// Jac_NoteDemoSkipped is defined after the extern "C" block (C++ linkage to
+// match jaudio/pikidemo.h); the stub consults sDemoWasSkipped in
+// Jac_FinishDemo so a skipped demo never carries its stream onward.
 void Jac_DemoSound(int id) { if (id >= 0) pc_audio_write_se_port(15, 2, static_cast<u16>(id)); }
 BOOL Jac_DemoFrame(int frame) {
     if (sCurrentDemo < 0) return FALSE;
@@ -766,6 +772,13 @@ void Jac_FinishDemo() {
     else if (gameplayFlags == 2) Jac_Orima_Formation(0, 0);
     sDemoEventPaused = false;
     apply_gameplay_audio_pause();
+    // A skipped demo must not carry its stream into the next scene. Mirrors
+    // pikidemo.c __Jac_FinishDemo, which clears the 0x20 carry bit when
+    // demo_was_skipped is set (and then clears the flag).
+    if (sDemoWasSkipped) {
+        sKeepDemoStreamOnFinish = false;
+    }
+    sDemoWasSkipped = false;
     if (!sKeepDemoStreamOnFinish) {
         // La musica de las cinematicas es un stream (.stx), y hasta ahora se
         // cortaba en seco: Jac_DemoFade solo funde la secuencia, nunca el
@@ -1136,6 +1149,14 @@ int Jac_GetActiveEvents(u32* eventIDs) {
     return count;
 }
 } // extern "C"
+
+// Set when the player skipped the cutscene rather than watching it out.
+// C++ linkage to match jaudio/pikidemo.h (declared after END_SCOPE_EXTERN_C),
+// unlike the C-linkage Jac_ stubs above. Mirrors pikidemo.c
+// Jac_NoteDemoSkipped (sets demo_was_skipped); the stub consults
+// sDemoWasSkipped in Jac_FinishDemo so a skipped demo never carries its
+// stream into the next scene.
+void Jac_NoteDemoSkipped() { sDemoWasSkipped = true; }
 
 void Jac_UpdatePikiGaya() {
     if (sNativeScene != SCENE_Course || audio_demo_active()) {

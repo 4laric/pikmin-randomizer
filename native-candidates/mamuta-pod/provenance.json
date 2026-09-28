@@ -1,0 +1,85 @@
+{
+  "lane": "19",
+  "issues": ["168", "221"],
+  "native_branch": "opencode/p2-mamuta-pod",
+  "native_base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+  "native_head": "a54f4af24286e264b1baf00ca80509f7ec6814ac",
+  "native_pushed": false,
+  "native_worktree": "output/native-mamuta-pod",
+  "root_worktree": "output/mamuta-pod-root",
+  "ordered_commits": [
+    "a54f4af2 family Pod receipt for the Mamuta carcass"
+  ],
+  "patch_series": [
+    "0001-Lane-19-221-family-Pod-receipt-for-the-Mamuta-carcas.patch"
+  ],
+  "scope": {
+    "adds": ["pc_p2_mamuta_receipt(PelletView*, unsigned& generator)"],
+    "modifies": ["pc_port/pc_p2_mamuta.{h,cpp}", "pc_port/pc_p2_preview.cpp (deliver routing)"],
+    "consumes": ["existing preview Pod economy path + pc_p2_sheargrub_receipt pattern"],
+    "no_shared_semantics": "Only adds a family corpse route before the corpse-registry fallback; Chappy and treasure receipts are unchanged."
+  },
+  "blocker_analysis": {
+    "cargo_free_arena": "experimental/pikmin2_mamuta_arena.py writes p2-cargo-free.txt unconditionally, so the lane arena has no Pod",
+    "chappy_only_receipts": "pc_p2_preview_rebind_corpses registers TEKI_Chappy only; pc_p2_preview_deliver aborts on unregistered pellets",
+    "treasure_required": "p2ValidatePreviewCargo throws when !cargoFree && !hasTreasure, so a Pod arena needs a pr05 treasure actor",
+    "pod_shape_required": "pc_p2_preview_setup loads courses/pikmin2room/pod.mod whenever p2-pod.txt opens, so a Pod needs both treasure.mod and pod.mod"
+  },
+  "native_build": {
+    "dir": "output/native-mamuta-pod-build",
+    "generator": "Ninja Release/MinGW, JAudio ON",
+    "target": "pikmin_pc",
+    "exe": "bin/nectar.exe",
+    "exe_sha256": "6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D",
+    "no_work_dry_run": "ninja: no work to do."
+  },
+  "root_staging": {
+    "module": "experimental/pikmin2_mamuta_rules.py",
+    "adds": [
+      "POD_TREASURE_GENERATOR=221004 / POD_TREASURE_POSITION / POD_PACKAGE_FILES",
+      "parse_cargo_profile / load_pod_package / find_pod_package",
+      "treasure_record / validate_treasure_record / append_treasure_record",
+      "enable_cargo(run, ..., pod_model_sha256) now also verifies pod.mod",
+      "stage_cargo(run, assets, package) stages treasure.mod+pod.mod+pr05 actor then enable_cargo",
+      "prepare(..., cargo=dict(pod_package=<dir>[, position=<xyz>]))"
+    ],
+    "reusable_pod_package": "output/pikmin2-pod111/import-01 (pod.mod A603A6DE..., treasure.mod E40EF235..., p2-pod.txt dia_a_red 180 15 25 / Kochappy 2); disc-derived, not committed",
+    "fail_closed": "load_pod_package raises FileNotFoundError on a missing member; enable_cargo raises on a missing/mismatched model; append_treasure_record refuses a second pr05",
+    "staging_smoke": "output/mamuta-pod-stage-smoke-01/<run>: p2-pod.txt written, p2-cargo-free.txt removed, gen has 8 records with pr05 generator 221004, arena.json gates.pod_cargo=staged",
+    "tests": "tests/test_pikmin2_mamuta_cargo.py (14) and tests/test_pikmin2_mamuta_pod.py (5); lane suite 65 passed + 24 subtests"
+  },
+  "fixture_builds": {
+    "builder": "experimental/pikmin2_mamuta_natural_runtime.build(fixture=...)",
+    "natural": {
+      "fixture": "scripts/pikmin2_mamuta_pod_fixture.inc",
+      "dir": "output/mamuta-pod-fixture-natural-02",
+      "exe_sha256": "2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B",
+      "controlled_start": "resetPosition captain to (actor.x, ground, actor.z+50) at start",
+      "note": "the -01 builds lacked the controlled start and were superseded"
+    },
+    "assisted": {
+      "fixture": "scripts/pikmin2_mamuta_pod_assisted_fixture.inc",
+      "dir": "output/mamuta-pod-fixture-assisted-02",
+      "exe_sha256": "0A1BDB954044568A2CE927EF432250BDF5EC1CDAF7F5C2AB004D7D2AB3204247",
+      "label": "assisted=1 direct native Transport assignment; never natural pickup"
+    },
+    "runner": "scripts/pikmin2_mamuta_pod_native.py (validate() classifies pod_ready/kill/corpse/carry/pod_receipt; natural vs assisted)"
+  },
+  "runtime": {
+    "window": "960x540 windowed",
+    "native_head": "a54f4af2",
+    "fixture_exe_sha256": "2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B",
+    "runs": [
+      {"run": "output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217", "died_tick": 472, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309", "died_tick": 500, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-natural-04/1dee7ce8db174f85a13ee29753c814ec", "died_tick": 466, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-assisted-02/57980bd6be8240468773c907fb9bcb4f", "died_tick": 553, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "assisted"}
+    ],
+    "classify": "natural_kill/natural_corpse/natural_carry/pod_receipt = PASS (3/3 natural runs); assisted_carry/pod_receipt = PASS (1/1, natural_carry UNPROVEN)",
+    "validator_fix": "validate() no longer anchors the P2_POD_RECEIPT regex to line start; native prefixes it with '[Pikipelago] '"
+  },
+  "not_claimed": [
+    "free-walk natural approach (captain was fixture-placed via resetPosition)",
+    "day/floor reset, save-load, Piklopedia"
+  ]
+}

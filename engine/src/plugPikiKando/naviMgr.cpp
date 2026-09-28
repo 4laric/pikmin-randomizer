@@ -3,6 +3,7 @@
 #include "Dolphin/os.h"
 #include "MemStat.h"
 #include "gameflow.h"
+#include "pc_p2_captain.h" // lane 12 (#130) inactive-captain follow hook
 #include "sysNew.h"
 
 /**
@@ -48,6 +49,7 @@ NaviMgr::NaviMgr()
 	memStat->end("navi animmgr");
 
 	mNaviID = 0;
+	mCaptainRoster.reset();
 	memStat->end("navi shape anim");
 }
 
@@ -75,6 +77,14 @@ Creature* NaviMgr::createObject()
 void NaviMgr::update()
 {
 	MonoObjectMgr::update();
+
+	// Lane 12 two-captain follow-up (#130): drive the inactive captain's follow
+	// state. update_inactive_captain_follow() returns immediately unless a real
+	// second Navi exists, and the guard here keeps the call out of the
+	// single-captain path entirely, so default play is unchanged.
+	if (mNumObjects > 1) {
+		pc_p2_captain::update_inactive_captain_follow();
+	}
 }
 
 /**
@@ -99,6 +109,140 @@ Navi* NaviMgr::getNavi(int idx)
 		return nullptr;
 	}
 	return static_cast<Navi*>(mObjectList[idx]);
+}
+
+// ---------------------------------------------------------------------------
+// Lane 12 second-captain primitives (#130). Additive: the object list is
+// untouched and every query degrades to slot 0 when only one Navi exists, so
+// the single-captain campaign behaves exactly as before.
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief The other live Navi, or null unless exactly two Navis exist.
+ */
+Navi* NaviMgr::getOtherNavi(Navi* navi)
+{
+	if (!navi) {
+		return nullptr;
+	}
+	int other = P2CaptainRoster::otherIndex(navi->getNaviIndex());
+	if (other < 0 || other >= mNumObjects) {
+		return nullptr;
+	}
+	return getNavi(other);
+}
+
+/**
+ * @brief The currently controlled Navi, falling back to the first alive slot.
+ */
+Navi* NaviMgr::getActiveNavi()
+{
+	int index = mCaptainRoster.active(mNumObjects);
+	return index < 0 ? nullptr : getNavi(index);
+}
+
+/**
+ * @brief First Navi that is not down, or null when all are down.
+ */
+Navi* NaviMgr::getAliveOrima()
+{
+	int index = mCaptainRoster.firstAlive(mNumObjects);
+	return index < 0 ? nullptr : getNavi(index);
+}
+
+/**
+ * @brief First down Navi, or null when none are down.
+ */
+Navi* NaviMgr::getDeadOrima()
+{
+	int index = mCaptainRoster.firstDead(mNumObjects);
+	return index < 0 ? nullptr : getNavi(index);
+}
+
+/**
+ * @brief Mark `navi` as the controlled captain (source getActiveNavi switch).
+ */
+void NaviMgr::setActiveNavi(Navi* navi)
+{
+	if (navi) {
+		mCaptainRoster.setActiveIndex(navi->getNaviIndex());
+	}
+}
+
+/**
+ * @brief Source NaviMgr::informOrimaDead: flag the captain down and, when it
+ * was active, hand control to the first surviving captain.
+ */
+void NaviMgr::informOrimaDead(Navi* navi)
+{
+	if (!navi) {
+		return;
+	}
+	int index = navi->getNaviIndex();
+	mCaptainRoster.markDead(index);
+	if (mCaptainRoster.activeIndex() == index) {
+		int survivor = mCaptainRoster.firstAlive(mNumObjects);
+		if (survivor >= 0) {
+			mCaptainRoster.setActiveIndex(survivor);
+		}
+	}
+}
+
+/**
+ * @brief Whether `navi` is flagged down (source mNaviDeadFlags).
+ */
+bool NaviMgr::isNaviDead(Navi* navi)
+{
+	return navi && mCaptainRoster.isDead(navi->getNaviIndex());
+}
+
+/**
+ * @brief Whether a second Navi is currently live.
+ */
+bool NaviMgr::hasSecondNavi() const
+{
+	return mNumObjects > 1;
+}
+
+/**
+ * @brief Number of live Navis (0 or 1 on the current port).
+ */
+int NaviMgr::getNaviCount() const
+{
+	return mNumObjects;
+}
+
+/**
+ * @brief Clear per-scene active/dead selection (scene reload / teardown).
+ */
+void NaviMgr::resetCaptainRoster()
+{
+	mCaptainRoster.reset();
+}
+
+/**
+ * @brief Point mNaviShapeObject[1] at slot 0's fully-initialised
+ * PikiShapeObject so a second Navi can index it without clobbering [0]'s
+ * animator overrides or reloading a crashing fresh, uncached model.
+ *
+ * Additive: does not create, activate or update any Navi. On the default
+ * single-captain port this is never called. The live opt-in path is now open
+ * (second_captain_live_allowed() defaults true, request-gated by
+ * PIKMIN_P2_SECOND_CAPTAIN); the two captains share mAnimatorA/B, so their
+ * poses couple (a documented cosmetic limitation).
+ */
+bool NaviMgr::ensureSecondNaviShapeObject()
+{
+	// Lane 12 (#130): share slot 0's fully-initialised PikiShapeObject. A fresh
+	// uncached `loadShape("pikis/nv3Model.mod", false)` crashed
+	// non-deterministically in the Navi::draw/demoDraw tail (fault location moved
+	// between runs), so the second captain reuses mNaviShapeObject[0] (same mesh,
+	// collision tree, animators and animation manager slot 0 already draws with).
+	// Consequence: the two captains drive the shared mAnimatorA/B, so their poses
+	// couple (a documented cosmetic limitation) while both are drawn at their own
+	// mSRT. mNaviShapeObject[1] is never deleted, so sharing is safe.
+	mNaviShapeObject[1] = mNaviShapeObject[0];
+	return mNaviShapeObject[1] != nullptr;
 }
 
 /**

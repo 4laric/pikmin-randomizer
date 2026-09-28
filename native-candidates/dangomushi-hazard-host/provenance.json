@@ -1,0 +1,38 @@
+{
+  "lane": "25 Snagrets and Crawbster",
+  "parent_issue": 174,
+  "child_issue": 376,
+  "related_issue": 407,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-13",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "native_base_branch": "opencode/p2-species-snagret",
+  "native_base": "8ae1e5b4ce5033a4eb413b60e5f94b3eace25f1d",
+  "native_head": "0140fb56b379b561c4418f0e205a98ac7cbae6d5",
+  "native_branch": "opencode/p2-crawbster-hazard-native",
+  "native_worktree": "output/native-lane25-crawbster",
+  "native_build": "output/native-lane25-crawbster-build",
+  "files": [
+    "pc_port/pc_p2_dangomushi.cpp",
+    "pc_port/pc_p2_dangomushi_hazard.h",
+    "pc_port/pc_p2_dangomushi_hazard.cpp",
+    "CMakeLists.txt"
+  ],
+  "scope": "Wire the engine-free DangoMushi Turn vulnerability window + Rock/Egg hazard policy into the #407 source Crawbster FSM host and emit P2_DANGOMUSHI_TURN_WINDOW / P2_DANGOMUSHI_HAZARD markers.",
+  "verification": {
+    "build": "cmake --build output/native-lane25-crawbster-build --target pikmin_pc -j 6 -> [525/525] Linking bin/nectar.exe (exit 0)",
+    "executable_sha256": "282BAD9B000E8B1D8E4359EC3176B9DBCD9A38A8A550C08EFD5A706716C966D3",
+    "runtime": "PASS; run output/p2-lane25-crawbster-run3/e1ce0fff75fd48a38398aacca51e7830; dangomushi-validation.json passed=true with turn_window=true, hazard_rain=true; native.log sha256 5B6FFEF67B9C71EFC492CF5ABD9F3B9291AEEC3073E7170833AC62D1E8EC93FD",
+    "markers": [
+      "P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=32.0 stickable=1 invulnerable=0",
+      "P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=108.5 stickable=0 invulnerable=1",
+      "P2_DANGOMUSHI_HAZARD generator=376003 rocks=10 lifetime=30.0 egg=0"
+    ],
+    "python_tests": "tests/test_pikmin2_dangomushi_behavior.py 10 passed"
+  },
+  "limitations": [
+    "The P1 proxy host has no EB_Invulnerable flag; the Turn window is observed/decided, not yet applied to a damage flag.",
+    "Rock/Egg are spawn decisions; real births need lane 20 projectile/child primitives.",
+    "The observation uses the DangoMushi fixture arena's explicit 20-red squad."
+  ]
+}

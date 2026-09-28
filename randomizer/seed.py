@@ -1,7 +1,9 @@
 """Strict, deterministic identity-placement milestone; no unproven relocation."""
 import hashlib
 import json
+import os
 from collections import Counter
+from pathlib import Path
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
                       can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS, modern_names)
@@ -9,6 +11,77 @@ from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
 CAPABILITIES = ["identity-placement-v1", "foh-day2-v1", "repair-goal-v1", "repeat-day29-v1"]
+
+ADMITTED_PLACEMENT_FILENAME = "PIKMIN2_ADMITTED_PLACEMENT.json"
+PROXY_PLACEMENT_FILENAME = "PIKMIN2_PROXY_PLACEMENT.json"
+
+
+def _default_admitted_placement():
+    """Committed lane 04 accepted-placement document for the admitted cohort.
+
+    Admitted P2 enemies are eligible for placement behind the ``p2_enemies`` /
+    AP ``p2_enemy_randomizer`` option. When no explicit document is supplied this
+    finds the committed accepted-placement document (repo ``docs/``, a
+    ``PIKMIN2_ADMITTED_PLACEMENT`` path override, or the packaged apworld data
+    file). It is deliberately fail-closed: an empty or unaccepted admitted set is
+    still rejected by ``resolve_placement_layout``.
+    """
+    candidates = []
+    override = os.environ.get("PIKMIN2_ADMITTED_PLACEMENT")
+    if override:
+        candidates.append(Path(override))
+    try:
+        candidates.append(Path(__file__).resolve().parents[1] / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    except (NameError, OSError):
+        pass
+    candidates.append(Path.cwd() / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    try:
+        from importlib.resources import files
+        package = __package__ or ""
+        if package.startswith("pikmin_randomizer"):
+            resource = files(package) / "data" / ADMITTED_PLACEMENT_FILENAME
+            return json.loads(resource.read_text(encoding="utf-8"))
+    except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
+        pass
+    raise ValueError(
+        "P2 enemies require the committed admitted-placement document "
+        f"(docs/{ADMITTED_PLACEMENT_FILENAME}); set PIKMIN2_ADMITTED_PLACEMENT to override")
+
+
+def _default_proxy_placement():
+    """Stage-A proxy-tier-only sibling document (never used without the tier).
+
+    Loaded only when ``p2_proxy_tier`` is requested; the default (no-tier)
+    path never reads this file, so default manifests stay byte-identical.
+    Fail-closed: a missing or invalid sibling rejects the proxy seed instead
+    of silently falling back to 33 targets.
+    """
+    candidates = []
+    override = os.environ.get("PIKMIN2_PROXY_PLACEMENT")
+    if override:
+        candidates.append(Path(override))
+    try:
+        candidates.append(Path(__file__).resolve().parents[1] / "docs" / PROXY_PLACEMENT_FILENAME)
+    except (NameError, OSError):
+        pass
+    candidates.append(Path.cwd() / "docs" / PROXY_PLACEMENT_FILENAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    try:  # packaged apworld: the sibling ships next to the admitted-placement document
+        from importlib.resources import files
+        package = __package__ or ""
+        if package.startswith("pikmin_randomizer"):
+            resource = files(package) / "data" / PROXY_PLACEMENT_FILENAME
+            return json.loads(resource.read_text(encoding="utf-8"))
+    except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
+        pass
+    raise ValueError(
+        "p2_proxy_tier requires the proxy-placement sibling "
+        f"(docs/{PROXY_PLACEMENT_FILENAME}); set PIKMIN2_PROXY_PLACEMENT to override")
 
 
 def canonical(value):
@@ -42,16 +115,472 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, death_link=False, death_link_pikmin=10):
+# Admission table for the playable P2 pool. Each row names one campaign-proven
+# species (source id + enum name) and cites the evidence that admitted it: what
+# was run and where the log lives, plus the family installer that stages it.
+# Adding a row does NOT admit a species on its own -- see
+# docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure.
+# Do NOT add the other installer-capable species (1 Kochappy, 45 Snow,
+# 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish, 27 Tadpole,
+# 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai) until their campaign
+# evidence lands; that evidence is owned by other lanes. 9 Kogane (and 10/11/16)
+# never enter: unkillable enemies carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS).
+P2_PLAYABLE_POOL = (
+    {
+        "source_id": 44,
+        "enum_name": "BlueKochappy",
+        "family": "dwarf_orange",
+        "evidence": {
+            "run": "Dwarf Orange natural run (#461): BlueKochappy spawned, "
+                   "movement/animation and attack-state transition observed, "
+                   "native death at health 0, corpse, Bestiary delivery check",
+            "log": "docs/PIKMIN2_DWARF_ORANGE_NATURAL_RUN_461.md; "
+                   "docs/PIKMIN2_DWARF_ORANGE_ROUTE_ACCEPTANCE_440.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 44 -> dwarf_orange "
+                         "(experimental/pikmin2_dwarf_orange_install)",
+        },
+    },
+    {
+        "source_id": 54,
+        "enum_name": "Miulin",
+        "family": "mamuta",
+        "evidence": {
+            "run": "Mamuta natural territory/flick/kill observation "
+                   "(lane 19, #221): squad entered territory, three natural "
+                   "buries, natural kill at tick 957, carryable corpse",
+            "log": "docs/PIKMIN2_MAMUTA_NATURAL.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 54 -> mamuta "
+                         "(experimental/pikmin2_mamuta_install)",
+        },
+    },
+    {
+        "source_id": 59,
+        "enum_name": "FireOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 59 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 60,
+        "enum_name": "WaterOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 60 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 61,
+        "enum_name": "GasOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 61 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 62,
+        "enum_name": "ElecOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 62 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 23,
+        "enum_name": "Sarai",
+        "family": "sarai",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, fight, P2_SARAI_DEAD health=0 on its own generator, corpse carried, Onion receipt onion:p2:23:3; movement/combat also seen in owner playtest",
+            "log": "C:/cop/botcamp-bc5-23-Sarai/session/runs/e4da72b1eb8f1d730171bd2cb671faa82557a579d3df53023988f02cb93f1f26/native.log (sha256 3231b0baf8077f23...) L1140 dead, L1239 receipt; output/claude-orch/evidence/botcamp-bc5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 23 -> sarai",
+        },
+    },
+    {
+        "source_id": 79,
+        "enum_name": "Sokkuri",
+        "family": "sokkuri",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, drawn, fight, natural death, corpse carried by 6, Onion receipt onion:p2:79:3; reveal also seen in owner playtest",
+            "log": "C:/cop/botcamp-bc5-79-Sokkuri/session/runs/ec5a69e36cc98c686de365365d36a3a064593214bce92675d457dbe183e5a6ec/native.log (sha256 77b9adba1959e718...) L1281 dead, L1413 receipt; output/claude-orch/evidence/botcamp-bc5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 79 -> sokkuri",
+        },
+    },
+    {
+        "source_id": 2,
+        "enum_name": "Chappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-2r2c (owner ruling 2026-09-25: power mode admits): campaign bind, P2 FSM fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:2:3",
+            "log": "C:/cop/botcamp-inst-chappy-2r2c-2-Chappy/session/runs/d317bc9411398f68bdfd6b5de32cb13fb87f93208db0bc130e89799ec76b69f9/native.log (sha256 42b170b28c6c721d...) L1463 bind, L2384 dead, L2552 receipt; output/claude-orch/evidence/botcamp-inst-chappy-2r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 2 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 33,
+        "enum_name": "FireChappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-33r2c (owner ruling 2026-09-25: power mode admits): campaign bind, fire-aura + bite fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:33:3",
+            "log": "C:/cop/botcamp-inst-chappy-33r2c-33-FireChappy/session/runs/3a4e60615eaab89ae7b8a7dcbe99523433f78bfe2b66497f753ebbf5ca51bb67/native.log (sha256 ad190f3ef357cc3c...) L1484 bind, L2427 dead, L2725 receipt; output/claude-orch/evidence/botcamp-inst-chappy-33r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 33 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 35,
+        "enum_name": "KumaChappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-35r2c (owner ruling 2026-09-25: power mode admits): campaign bind, patrol/chase/attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:35:3",
+            "log": "C:/cop/botcamp-inst-chappy-35r2c-35-KumaChappy/session/runs/9d74523516ee05540f6899e4f1e75089825c8816cd1dcba9df5173f11433bcfe/native.log (sha256 c327f8233b524391...) L1379 bind, L2236 dead, L2379 receipt; output/claude-orch/evidence/botcamp-inst-chappy-35r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 35 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 43,
+        "enum_name": "YellowChappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-43r2b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/eat/swallow fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:43:3",
+            "log": "C:/cop/botcamp-inst-chappy-43r2b-43-YellowChappy/session/runs/f73bd35b8d5753209de5eb1ba39bb200463284099a515cf3d198526a67f4d9d8/native.log (sha256 cb6622f8fb4afa5e...) L1535 bind, L2888 dead, L4275 receipt; output/claude-orch/evidence/botcamp-inst-chappy-43r2b.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 43 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 53,
+        "enum_name": "KingChappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3",
+            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 53 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 67,
+        "enum_name": "LeafChappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-67r2b (owner ruling 2026-09-25: power mode admits): campaign bind, Kuma-chase attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:67:3",
+            "log": "C:/cop/botcamp-inst-chappy-67r2b-67-LeafChappy/session/runs/a2f57b648a5c82aac00abace5994aac254cc6e41d206b72c6339c56cde1ea7d7/native.log (sha256 df677b77fdb4b3c0...) L1536 bind, L2624 dead, L3946 receipt; output/claude-orch/evidence/botcamp-inst-chappy-67r2b.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 67 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 76,
+        "enum_name": "KumaKochappy",
+        "family": "chappy",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-chappy-76r2 (owner ruling 2026-09-25: power mode admits): campaign bind, dwarf-frame attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:76:3",
+            "log": "C:/cop/botcamp-inst-chappy-76r2-76-KumaKochappy/session/runs/c5f6a83fa072e41d2970c84e85e2197e0e57ffb762066a30f5466da71d37f875/native.log (sha256 16ed59ee27b0389f...) L1514 bind, L2316 dead, L2963 receipt; output/claude-orch/evidence/botcamp-inst-chappy-76r2.md; output/claude-orch/review/rev2-chappy.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 76 -> chappy "
+                         "(experimental/pikmin2_chappy_content)",
+        },
+    },
+    {
+        "source_id": 12,
+        "enum_name": "UjiA",
+        "family": "uji",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3",
+            "log": "C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt; output/claude-orch/evidence/botcamp-inst-bugs-7c.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 12 -> uji "
+                         "(experimental/pikmin2_uji_content)",
+        },
+    },
+    {
+        "source_id": 13,
+        "enum_name": "UjiB",
+        "family": "uji",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3",
+            "log": "C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt; output/claude-orch/evidence/botcamp-inst-bugs-8.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 13 -> uji "
+                         "(experimental/pikmin2_uji_content)",
+        },
+    },
+    {
+        "source_id": 14,
+        "enum_name": "Tobi",
+        "family": "uji",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3",
+            "log": "C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt; output/claude-orch/evidence/botcamp-inst-bugs-9b.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 14 -> uji "
+                         "(experimental/pikmin2_uji_content)",
+        },
+    },
+    {
+        "source_id": 28,
+        "enum_name": "ElecBug",
+        "family": "elecbug",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3",
+            "log": "C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 d6b74d9abef0f6fc...) L1860 bind, L2043 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst-bugs-10.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 28 -> elecbug "
+                         "(experimental/pikmin2_elecbug_content)",
+        },
+    },
+    {
+        "source_id": 94,
+        "enum_name": "DangoMushi",
+        "family": "dangomushi",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
+            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 94 -> dangomushi "
+                         "(experimental/pikmin2_dangomushi_content)",
+        },
+    },
+    {
+        "source_id": 68,
+        "enum_name": "TamagoMushi",
+        "family": "tamago",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-bugs-12 (owner ruling 2026-09-25: power mode admits): campaign bind, ASTONISH receiver + TURN chain, DEAD + exactly-once HONEY on its own generator, receipt onion:p2:68:3",
+            "log": "C:/cop/botcamp-inst-bugs-12-68-TamagoMushi/session/runs/7540e2703f9dbf8ed6ec4e57f689f89a69091df3370521b5a86e9b803d48020d/native.log (sha256 6969d5021da9c359...) L1765 bind, L2103 dead, L2178 receipt; output/claude-orch/evidence/botcamp-inst-bugs-12.md; output/claude-orch/review/rev2-bugs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 68 -> tamago "
+                         "(experimental/pikmin2_tamago_content)",
+        },
+    },
+    {
+        "source_id": 17,
+        "enum_name": "Frog",
+        "family": "frog",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3",
+            "log": "C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt; output/claude-orch/review/rev2-frogs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 17 -> frog "
+                         "(experimental/pikmin2_frog_install)",
+        },
+    },
+    {
+        "source_id": 18,
+        "enum_name": "MaroFrog",
+        "family": "frog",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3",
+            "log": "C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt; output/claude-orch/review/rev2-frogs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 18 -> frog "
+                         "(experimental/pikmin2_frog_install)",
+        },
+    },
+    {
+        "source_id": 24,
+        "enum_name": "Tank",
+        "family": "tank",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3",
+            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 24 -> tank "
+                         "(experimental/pikmin2_tank_identity_install)",
+        },
+    },
+    {
+        "source_id": 75,
+        "enum_name": "Kabuto",
+        "family": "kabuto",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-frogs-6 (owner ruling 2026-09-25: power mode admits): campaign bind, stone-fire + flick fight, P2_KABUTO_DEAD on its own generator, corpse carried, Onion receipt onion:p2:75:3",
+            "log": "C:/cop/botcamp-inst-frogs-6-75-Kabuto/session/runs/12e38cfb44bbf91e25b587007f49f46c02d413f237ffc82c56806cf8d110a5f4/native.log (sha256 1c4fcd69d4c39360...) L1002 bind, L2025 dead, L2144 receipt; output/claude-orch/review/rev2-frogs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 75 -> kabuto "
+                         "(experimental/pikmin2_kabuto_identity_install)",
+        },
+    },
+    {
+        "source_id": 56,
+        "enum_name": "Damagumo",
+        "family": "long_legs",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3",
+            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 56 -> long_legs "
+                         "(experimental/pikmin2_long_legs_install)",
+        },
+    },
+    {
+        "source_id": 63,
+        "enum_name": "Jigumo",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-legs-63g (owner ruling 2026-09-25: power mode admits): campaign bind, BITE frame-13 + EAT kill chain, P2_JIGUMO_DEAD on its own generator, dead1 P2 corpse carried, Onion receipt onion:p2:63:3",
+            "log": "C:/cop/botcamp-inst-legs-63g-63-Jigumo/session/runs/de11d3a39c06c3f956c6e23fa8332d22ed62bc24ba3f0da5594b5a8490cf81c8/native.log (sha256 1a63f2dcdb8ab0e1...) L1763 bind, L2060 dead, L4256 receipt; output/claude-orch/review/rev2-legs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 63 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 69,
+        "enum_name": "BigFoot",
+        "family": "long_legs",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3",
+            "log": "C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 0fbcb5d984defcdf...) L1586 bind (own token 1945764764; DELIVERY_BIND L1581), L1751 dead, L1810 receipt; output/claude-orch/review/rev2-legs.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 69 -> long_legs "
+                         "(experimental/pikmin2_long_legs_install)",
+        },
+    },
+    {
+        "source_id": 34,
+        "enum_name": "SnakeCrow",
+        "family": "snagret",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst2-worms-34b (owner ruling 2026-09-25: power mode admits): campaign bind, bite/swallow fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:34:3",
+            "log": "C:/cop/botcamp-inst2-worms-34b-34-SnakeCrow/session/runs/dc225b9c2546438ff9f915eb7026e36bddd7c3027fca1ca58554a28124a0481b/native.log (sha256 b0d739e34150821b...) L1757 bind, L2066 dead, L2239 receipt; DRAW L1935 P2_SNAKEJOINT_DRAW own token 1945764764; output/claude-orch/evidence/botcamp-inst2-worms-34b.md; output/claude-orch/review/rev2-worms.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 34 -> snagret "
+                         "(experimental/pikmin2_snagret_install)",
+        },
+    },
+    {
+        "source_id": 70,
+        "enum_name": "SnakeWhole",
+        "family": "snagret",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst2-worms-70 (owner ruling 2026-09-25: power mode admits): campaign bind, Walk/Home + bite fight, P2_SNAKEJOINT_DEAD on its own generator, corpse carried, Onion receipt onion:p2:70:3",
+            "log": "C:/cop/botcamp-inst2-worms-70-70-SnakeWhole/session/runs/1fd7bc0224c8b33d7d816579a49401c239b547d438c5a5c85fba89c21437d058/native.log (sha256 90fd5518feab2872...) L1675 bind, L2163 dead, L2464 receipt; DRAW L1856 P2_SNAKEJOINT_DRAW own token 1945764764; output/claude-orch/evidence/botcamp-inst2-worms-70.md; output/claude-orch/review/rev2-worms.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 70 -> snagret "
+                         "(experimental/pikmin2_snagret_install)",
+        },
+    },
+    {
+        "source_id": 65,
+        "enum_name": "Imomushi",
+        "family": "ground_inverts",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3",
+            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 65 -> ground_inverts "
+                         "(experimental/pikmin2_ground_inverts_install)",
+        },
+    },
+    {
+        "source_id": 71,
+        "enum_name": "UmiMushi",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst2-worms-71b (owner ruling 2026-09-25: power mode admits): campaign bind, attack/bite/eat cycles with graduated damage, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:71:3",
+            "log": "C:/cop/botcamp-inst2-worms-71b-71-UmiMushi/session/runs/ad8b6c0a57bc5ec65f8f372ba7a0e10c640ac3933a1bc6842f2f5779a2312b0f/native.log (sha256 c6a4a34f6a9149e4...) L1778 bind, L2109 dead, L2254 receipt; output/claude-orch/evidence/botcamp-inst2-worms-71b.md; output/claude-orch/review/rev2-worms.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 71 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 101,
+        "enum_name": "UmiMushiBlind",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign inst2-worms-101 (owner ruling 2026-09-25: power mode admits): campaign bind with Blind split params, walk/attack/eat cycles, P2_UMIMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:101:3",
+            "log": "C:/cop/botcamp-inst2-worms-101-101-UmiMushiBlind/session/runs/efd65a456bc5d6e2fee2f0750a74472a1f18b2932883255a83fd4202cab43735/native.log (sha256 2cd7b541d1d6c453...) L1680 bind, L2140 dead, L2365 receipt; output/claude-orch/evidence/botcamp-inst2-worms-101.md; output/claude-orch/review/rev2-worms.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 101 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 25,
+        "enum_name": "Wtank",
+        "family": "tank",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign frogs5-25 (owner ruling 2026-09-25: power mode admits): blue squad POWER=30, campaign bind, breath-cone fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:25:3",
+            "log": "C:/cop/botcamp-frogs5-25-Wtank/session/runs/6f7f48ec5786daf3784f517aaf00786f6a5423af2950f18996a010955372c3a3/native.log (sha256 ba67a715fb46fb56...) L1060 bind, L1702 dead, L1930 receipt; output/claude-orch/evidence/botcamp-frogs5.md; output/claude-orch/review/rev6-frogs5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 25 -> tank "
+                         "(experimental/pikmin2_tank_identity_install)",
+        },
+    },
+    {
+        "source_id": 15,
+        "enum_name": "Armor",
+        "family": "armor",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign frogs5b-15 (owner ruling 2026-09-25: power mode admits): blue squad POWER=10, campaign bind, GoHome/flick/attack2 fight with two incremental DAMAGE lines, P2_ARMOR_DEAD on its own generator, corpse carried, Onion receipt onion:p2:15:3",
+            "log": "C:/cop/botcamp-frogs5b-15-Armor/session/runs/5994608956e0b4ce8d562b1f1d61bbcda85947a2d5996f6216fe0123483bc759/native.log (sha256 889febb33ff5c33...) L996 bind, L1918 dead, L2401 receipt; product-content loop C:/cop/botcamp-admitprod-b15-15-Armor/session/runs/12176a0d9c26dd39cdb48d0bdeeb8b895151c17f51678e44cf787203e84f7991/native.log (sha256 24219d621ef8ea6c...) L1037 bind, L1775 dead, L2170 receipt; output/claude-orch/evidence/botcamp-frogs5.md; output/claude-orch/review/rev6-frogs5.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 15 -> armor "
+                         "(ADAPTERS 'armor' via _adapt_ground_inverts)",
+        },
+    },
+)
+
+
+# Admitted P2 species the current launcher and native campaign path can actually run:
+# derived from P2_PLAYABLE_POOL so the table above is the single source of truth.
+# Roster admission must equal this set (#888, tests/test_p2_pool_roster_sync.py).
+PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
+
+
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
+    if type(prerelease_trap_weight) is not int or not 0 <= prerelease_trap_weight <= 10: raise ValueError("prerelease_trap_weight must be 0..10")
     if type(death_link) is not bool: raise ValueError("invalid death_link")
     if type(death_link_pikmin) is not int or not 1 <= death_link_pikmin <= 100: raise ValueError("death_link_pikmin must be 1..100")
     if death_link:
         if legacy_checks: raise ValueError("death link requires modern checks")
         collection_checks = True
-    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight:
+    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight or prerelease_trap_weight:
         if legacy_checks: raise ValueError("bomb deliveries require modern checks")
         collection_checks = True
     from .stats import validate_roll_bounds, validate_upgrade_limits
@@ -72,6 +601,45 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         collection_checks = miniboss_enemies = True
     if type(combined_captain) is not bool: raise ValueError("invalid combined_captain")
     if combined_captain: collection_checks = True
+    if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
+    if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
+        raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
+    if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
+    if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
+    if p2_proxy_tier is not None and not p2_enemies: raise ValueError("p2_proxy_tier requires p2_enemies")
+    if p2_species == "playable": p2_species = PLAYABLE_P2_SPECIES
+    if p2_species == "full":
+        if p2_proxy_tier is None:
+            raise ValueError("p2_species 'full' requires p2_proxy_tier")
+        from .p2_proxy import tier_ids as _tier_ids
+        p2_species = tuple(PLAYABLE_P2_SPECIES) + tuple(_tier_ids(p2_proxy_tier))
+    if p2_species is not None and (not isinstance(p2_species, (list, tuple, set, frozenset)) or not p2_species
+                                   or any(type(i) is not int for i in p2_species)):
+        raise ValueError("p2_species must be 'playable', 'full' or a nonempty list of admitted source ids")
+    if p2_species is not None and p2_proxy_tier is not None:
+        from .p2_proxy import tier_ids as _tier_ids
+        allowed_proxy = set(_tier_ids(p2_proxy_tier))
+        declared_proxy = set(_tier_ids("declared"))
+        for source_id in p2_species:
+            if source_id in declared_proxy and source_id not in allowed_proxy:
+                raise ValueError(
+                    f"p2_species proxy id {source_id} is not in the {p2_proxy_tier!r} tier")
+    if p2_proxy_tier is not None and p2_species is not None:
+        from .p2_proxy import tier_ids as _tier_ids
+        declared_proxy = set(_tier_ids("declared"))
+        if any(source_id in declared_proxy for source_id in p2_species):
+            if p2_density is not None:
+                from experimental.pikmin2_seed_bridge import DENSITY_SAMPLED
+                if p2_density != DENSITY_SAMPLED:
+                    raise ValueError(
+                        f"p2_proxy_tier forces the {DENSITY_SAMPLED} policy, not {p2_density!r}")
+    if p2_placement is not None and type(p2_placement) is not dict:
+        raise ValueError("p2_placement must be a placement document mapping")
+    if p2_enemies:
+        if legacy_checks: raise ValueError("P2 enemies require modern checks")
+        if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
+            raise ValueError("P2 enemies are mutually exclusive with P1 enemy layouts")
+        collection_checks = True
     if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
     if goal_mode == "emperor_bulblax": collection_checks = True
     if progressive_color_stats: permanent_checks = True  # 36 upgrades need the larger check pool.
@@ -153,6 +721,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if progg_trap_weight:
             result['progg_trap_weight'] = progg_trap_weight
             result['capabilities'].append('progg-ambush-v1')
+        if prerelease_trap_weight:
+            result['prerelease_trap_weight'] = prerelease_trap_weight
+            result['capabilities'].append('prerelease-trap-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -181,6 +752,49 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["death_link"] = True
         result["death_link_pikmin"] = death_link_pikmin
         result["capabilities"].append("death-link-v1")
+    if p2_enemies:
+        # Opt-in experimental bridge: the admitted cohort comes from lane 02, the
+        # ordered binding targets from lane 04. Fail closed while nothing is
+        # admitted. Kept behind a lazy import so ordinary seeds never load the
+        # experimental roster.
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        # Product path: legal targets come only from the lane 04 placement contract.
+        # Explicit-cohort binding stays a diagnostic bridge API, not a seed option.
+        from experimental.pikmin2_seed_bridge import resolve_placement_layout, validate_density
+        # Fail closed on an unknown density token before any layout work; the
+        # default None stays the unchanged legacy all-target fill.
+        validate_density(p2_density)
+        if result['schema'] != 9:
+            raise ValueError("P2 enemies require the modern schema-9 catalog")
+        if p2_placement is None:
+            # Admitted enemies are eligible for placement behind the p2_enemies
+            # option; the committed accepted-placement document supplies the legal
+            # targets and resolve_placement_layout still fails closed.
+            p2_placement = _default_admitted_placement()
+        proxy_rows = None
+        proxy_document = None
+        if p2_proxy_tier is not None:
+            from .p2_proxy import load_rows as _load_proxy_rows, tier_ids as _tier_ids
+            tier_set = set(_tier_ids(p2_proxy_tier))
+            wanted_proxy = set()
+            if p2_species is not None:
+                declared_proxy = set(_tier_ids("declared"))
+                wanted_proxy = {source_id for source_id in set(p2_species)
+                                if source_id in declared_proxy}
+            rows_by_id = {row["source_id"]: row for row in _load_proxy_rows()}
+            proxy_rows = [rows_by_id[source_id] for source_id in sorted(wanted_proxy)
+                          if source_id in tier_set and source_id in rows_by_id]
+            if proxy_rows:
+                proxy_document = _default_proxy_placement()
+        result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate(),
+                                                       species=None if p2_species is None else sorted(set(p2_species)),
+                                                       density=p2_density,
+                                                       proxy_rows=proxy_rows,
+                                                       proxy_document=proxy_document)
+        result['capabilities'].append('p2-enemy-bridge-v1')
+        if p2_proxy_tier is not None:
+            result['p2_proxy_tier'] = p2_proxy_tier
+            result['capabilities'].append('p2-proxy-tier-v1')
     validate(result)
     return result
 
@@ -268,6 +882,10 @@ def validate(m):
         expected.add('progg_trap_weight')
         if type(m['progg_trap_weight']) is not int or not 1 <= m['progg_trap_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid progg_trap_weight')
+    if type(m) is dict and 'prerelease_trap_weight' in m:
+        expected.add('prerelease_trap_weight')
+        if type(m['prerelease_trap_weight']) is not int or not 1 <= m['prerelease_trap_weight'] <= 10 or not m.get('benefit_items'):
+            raise ValueError('invalid prerelease_trap_weight')
     if type(m) is dict and 'combined_captain' in m:
         expected.add('combined_captain')
         if m['combined_captain'] is not True or not m.get('benefit_items'): raise ValueError('invalid combined_captain')
@@ -293,6 +911,55 @@ def validate(m):
         validate_upgrade_limits(m['stat_upgrade_counts'])
         if not m.get('progressive_color_stats') or 'progressive-color-stats-v2' not in m.get('capabilities', []):
             raise ValueError('custom upgrade counts require progressive stats v2')
+    if type(m) is dict and 'p2_proxy_tier' in m:
+        expected.add('p2_proxy_tier')
+        if m.get('schema') != 9 or m['p2_proxy_tier'] not in ('proven', 'declared'):
+            raise ValueError('invalid p2_proxy_tier')
+        if 'p2_layout' not in m:
+            raise ValueError('p2_proxy_tier requires a p2_layout')
+    if type(m) is dict and 'p2_layout' in m:
+        expected.add('p2_layout')
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        from experimental.pikmin2_seed_bridge import (SeedBridgeError, admitted_ids,
+                                                      validate_layout as validate_p2_layout)
+        if (m.get('schema') != 9 or m.get('enemy_mask') != 0
+                or any(key in m for key in ('spawn_layout', 'group_layout', 'campaign_layout'))):
+            raise ValueError('p2_layout is mutually exclusive with P1 enemy layouts and requires schema 9')
+        if 'p2-enemy-bridge-v1' not in m.get('capabilities', []):
+            raise ValueError('p2_layout requires the p2-enemy-bridge-v1 capability')
+        try:
+            roster = load_and_validate()
+            # Product path: a loaded seed must still satisfy the *current* admission set.
+            # With an opt-in proxy tier the admitted set is extended by that tier's ids.
+            admitted = admitted_ids(roster)
+            if m.get('p2_proxy_tier') is not None:
+                from .p2_proxy import tier_ids as _tier_ids
+                admitted = sorted(set(admitted) | set(_tier_ids(m['p2_proxy_tier'])))
+            # Roster wave (#871, rfix): the roster admits every pool species,
+            # so an admitted identity validates through the roster admission
+            # set above, never through the installer table. The union below
+            # is kept only for evidence staging of installed-but-unadmitted
+            # identities (lane runs whose campaign evidence is still in
+            # flight: 1,26,27,45,58,66,84,93,97, e.g. 26/27/84/93/66/97).
+            # It is scoped to installed AND non-pool AND unadmitted
+            # (_identity_ids - admitted - pool), so a pool species that
+            # loses roster admission is excluded and fails closed here
+            # instead of being masked by its installer row (the old
+            # A | (I - A) == A | I scoping was a no-op). A validate() pass
+            # is not admission: P2_PLAYABLE_POOL remains the single source
+            # of truth.
+            try:
+                from experimental.pikmin2_family_install import IDENTITY_FAMILY as _IDENTITY
+                _identity_ids = {k for k, v in _IDENTITY.items()
+                                 if type(k) is int and v != 'proxy'}
+                _pool_ids = {row["source_id"] for row in P2_PLAYABLE_POOL}
+                _staging_only = _identity_ids - set(admitted) - _pool_ids
+                admitted = sorted(set(admitted) | _staging_only)
+            except Exception:
+                pass
+            validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
+        except SeedBridgeError as exc:
+            raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
@@ -342,6 +1009,7 @@ def validate(m):
         if m.get('bomb_rock_weight'): fixed['capabilities'] += ['bomb-delivery-v1']
         if m.get('bomb_trap_weight'): fixed['capabilities'] += ['bomb-ambush-v1']
         if m.get('progg_trap_weight'): fixed['capabilities'] += ['progg-ambush-v1']
+        if m.get('prerelease_trap_weight'): fixed['capabilities'] += ['prerelease-trap-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:
@@ -352,6 +1020,8 @@ def validate(m):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
+    if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
+    if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

@@ -1,0 +1,5 @@
+{
+  "worker": "mac-pilot",
+  "platform": "Darwin",
+  "capabilities": ["source-edit", "review", "python-tests"]
+}

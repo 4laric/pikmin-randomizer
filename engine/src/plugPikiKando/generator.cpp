@@ -827,9 +827,10 @@ void Generator::read(RandomAccessStream& input)
 	STACK_PAD_TERNARY(this, 5);
 	STACK_PAD_INLINE(3);
 #if defined(PIKI_PC_PORT)
-    if (ramMode && pc_randomizer_spawn_slots() && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
-        if (input.getPending() < 8 || input.readInt() != 0x534c5431) pc_randomizer_bad_spawn_cache();
+    if (ramMode && (pc_randomizer_spawn_slots() || pc_randomizer_p2_bridge()) && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
+        if (input.getPending() < 12 || input.readInt() != 0x534c5431) pc_randomizer_bad_spawn_cache();
         pc_randomizer_set_generator_id(this, static_cast<unsigned>(input.readInt()));
+        _70 = static_cast<u32>(input.readInt());  // lane-03 (#439): preserve disk identity across cache resume
     }
 #endif
 }
@@ -904,9 +905,10 @@ void Generator::write(RandomAccessStream& output)
 		output.writeInt(0);
 	}
 #if defined(PIKI_PC_PORT)
-    if (ramMode && pc_randomizer_spawn_slots() && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
+    if (ramMode && (pc_randomizer_spawn_slots() || pc_randomizer_p2_bridge()) && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
         output.writeInt(0x534c5431);
         output.writeInt(static_cast<int>(pc_randomizer_generator_id(this)));
+        output.writeInt(static_cast<int>(_70));  // lane-03 (#439): preserve disk identity across cache resume
     }
 #endif
 }
@@ -1060,7 +1062,7 @@ void GeneratorMgr::read(RandomAccessStream& input, bool p2)
 			mGenListHead = new Generator();
 			mGenListHead->read(input);
 #if defined(PIKI_PC_PORT)
-            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(mGenListHead, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset);
+            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(mGenListHead, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset, mGenListHead->_70);
 #endif
 			mGenListHead->mMgr = this;
 			generatorList->mGenListHead->add(mGenListHead);
@@ -1069,7 +1071,7 @@ void GeneratorMgr::read(RandomAccessStream& input, bool p2)
 			newGen->mMgr      = this;
 			newGen->read(input);
 #if defined(PIKI_PC_PORT)
-            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(newGen, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset);
+            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(newGen, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset, newGen->_70);
 #endif
 
 			Generator* endList = mGenListHead;

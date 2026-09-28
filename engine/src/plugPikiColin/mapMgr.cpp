@@ -19,6 +19,10 @@
 #include "sysMath.h"
 #include "sysNew.h"
 #include "timers.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_bbft.h"
+#include "pc_p2_cargo_ground.h"
+#endif
 
 //////////////////////////////////////////////////////
 //////////////// FORWARD DECLARATIONS ////////////////
@@ -1962,6 +1966,28 @@ f32 MapMgr::getMinY(f32 x, f32 z, bool includePlatColl)
  * @param includePlatColl Whether to consider platform collision as valid "ground" to return.
  * @return Minimum Y value found, or 0.0f if none.
  */
+#if defined(PIKI_PC_PORT)
+// Height and normal come from the same positive-Y static triangle. No candidate
+// means no floor contact; unlike getMinY this never invents ground at zero.
+CollTriInfo* MapMgr::getStaticGroundBelow(f32 x, f32 z, f32 ceiling, f32& height)
+{
+    if (!std::isfinite(x) || !std::isfinite(z) || !std::isfinite(ceiling)) return nullptr;
+    CollTriInfo* result=nullptr;
+    for (CollGroup* group=getCollGroupList(x,z,false);group;group=group->mNextCollGroup) {
+        const int count=getGroundQueryTriCount(group);
+        for(int i=0;i<count;i++) {
+            CollTriInfo* tri=group->mTriangleList[i];
+            Vector3f point(x,0.f,z);
+            const Vector3f& n=tri->mTriangle.mNormal;
+            if (n.y>0.f && tri->inTriClampTo(point)
+                && pc_p2_cargo_ground_candidate(point.y,ceiling,n.x,n.y,n.z)
+                && (!result || point.y>height)) {result=tri;height=point.y;}
+        }
+    }
+    return result;
+}
+#endif
+
 f32 MapMgr::getMaxY(f32 x, f32 z, bool includePlatColl)
 {
 	// track how many times we call this each frame for some reason
@@ -2032,6 +2058,35 @@ CollTriInfo* MapMgr::getCurrTri(f32 x, f32 z, bool includePlatColl)
  * @param outNormal Unit vector from closest edge point or vertex to sphere center.
  * @return Penetration depth, if intersecting; 0.0f if not intersecting.
  */
+#if defined(PIKI_PC_PORT)
+// Imported P2 floors contain long coplanar triangulation seams. Treating each
+// seam as an exposed sphere/edge collision can oppose a slow load's movement.
+// Use reciprocal topology, not just proximity: boundaries and actual creases
+// still need their normal edge collision. This does not alter P1/platform maps.
+static bool p2SmoothStaticFloorEdge(BaseShape* model, const CollTriInfo& tri, int edge)
+{
+	if (!model || !model->mTriList || model->mTriCount <= 0) return false;
+	const int neighborIndex = tri.mAdjacentTriIndices[edge];
+	if (neighborIndex < 0 || neighborIndex >= model->mTriCount) return false;
+	const CollTriInfo& neighbor = model->mTriList[neighborIndex];
+	if (&neighbor == &tri || neighbor.mMapCode != tri.mMapCode) return false;
+	const Vector3f& a = tri.mTriangle.mNormal;
+	const Vector3f& b = neighbor.mTriangle.mNormal;
+	const float nx = a.x - b.x, ny = a.y - b.y, nz = a.z - b.z;
+	if (!(a.y > 0.6f && b.y > 0.6f && nx * nx + ny * ny + nz * nz < 0.0000000001f
+	      && absF(tri.mTriangle.mOffset - neighbor.mTriangle.mOffset) < 0.001f)) return false;
+	const u32 start = tri.mVertexIndices[edge];
+	const u32 end = tri.mVertexIndices[(edge + 1) % 3];
+	for (int otherEdge = 0; otherEdge < 3; ++otherEdge) {
+		const int back = neighbor.mAdjacentTriIndices[otherEdge];
+		if (back >= 0 && back < model->mTriCount && &model->mTriList[back] == &tri
+		    && neighbor.mVertexIndices[otherEdge] == end
+		    && neighbor.mVertexIndices[(otherEdge + 1) % 3] == start) return true;
+	}
+	return false;
+}
+#endif
+
 f32 MapMgr::findEdgePenetration(CollTriInfo& tri, immut Vector3f* vertexList, immut Vector3f& sphereCenter, f32 sphereRadius,
                                 Vector3f& outNormal)
 {
@@ -2048,6 +2103,14 @@ f32 MapMgr::findEdgePenetration(CollTriInfo& tri, immut Vector3f* vertexList, im
 			// calc normalised edge parameter - between 0 and 1 = edge point is closest; < 0 or > 1 = vertex is closest
 			f32 t = edgeVec.DP(sphereCenter - edgeStart) / edgeSqrLen;
 			if (t >= 0.0f && t < 1.0f) {
+#if defined(PIKI_PC_PORT)
+				if (t > 0.0f && pc_pikipelago_room_preview() && mMapModel
+				    && vertexList == mMapModel->mVertexList && p2SmoothStaticFloorEdge(mMapModel, tri, i)) {
+					// The neighboring face provides the floor contact. Keep the
+					// exact endpoints and all noncoplanar/boundary edges unchanged.
+					continue;
+				}
+#endif
 				// closest point is on an edge - get the position
 				Vector3f edgePos(edgeVec.x * t + edgeStart.x, edgeVec.y * t + edgeStart.y, edgeVec.z * t + edgeStart.z);
 				// calc direction from closest point to sphere center

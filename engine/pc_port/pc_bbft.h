@@ -24,3 +24,8 @@ bool pc_bbft_near_onion_site(int color, float x, float z, float radius);
 
 bool pc_bbft_shared_capabilities();
 bool pc_bbft_bomb_rocks();
+
+// Post-v0.1 isolated story-layout preview, never an AP session.
+int pc_pikipelago_challenge_level();
+
+bool pc_pikipelago_room_preview();

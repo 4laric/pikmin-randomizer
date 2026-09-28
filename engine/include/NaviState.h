@@ -53,7 +53,11 @@ enum NaviStateID {
 	NAVISTATE_PikiZero    = 33,
 	NAVISTATE_Clear       = 34,
 	NAVISTATE_IroIro      = 35,
-	NAVISTATE_Count, // 36
+#if defined(PIKI_PC_PORT)
+	NAVISTATE_DemonDrop = 36,
+	NAVISTATE_DemonEscape = 37,
+#endif
+	NAVISTATE_Count, // PC 38; retail 36
 };
 
 /**
@@ -77,6 +81,9 @@ public:
  */
 struct NaviStateMachine : public StateMachine<Navi> {
 	virtual void init(Navi*); // _08
+#if defined(PIKI_PC_PORT)
+	void transit(Navi*, int) override;
+#endif
 
 	NaviState* getNaviState(Navi*);
 

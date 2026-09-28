@@ -1,3 +1,6 @@
+#include "pc_p2_candypop.h"
+#include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
 #include "Interactions.h"
@@ -69,6 +72,23 @@ void PomAi::initAI(Pom* pom)
 	               + NsMathI::getRand(NsLibMath<int>::abs(C_POM_PARM(mPom, mMaxCycles) - C_POM_PARM(mPom, mMinCycles) + 1));
 	mCurrentDeform = 0.0f;
 	mDeformAmount  = 0.0f;
+    if(pc_p2_violet(mPom)) {
+        PomProp* props=static_cast<PomProp*>(mPom->mProps);
+        props->mPomProps.mMaxPikiPerCycle.mValue=5;
+        props->mPomProps.mCloseWaitTime.mValue=5.f;
+        props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
+        mMaxSeedCount=5; // Violet counts non-Purple inputs; same-color slots refund.
+    }
+    if(int candypopBudget=pc_p2_candypop_budget(mPom)) {
+        // Lane-23 real-engine colour bud: source ip01 budget, fp01 close wait,
+        // any-colour entry, and own-colour refund handled in createPikiHead.
+        PomProp* props=static_cast<PomProp*>(mPom->mProps);
+        props->mPomProps.mMaxPikiPerCycle.mValue=candypopBudget;
+        props->mPomProps.mCloseWaitTime.mValue=1.f;
+        props->mPomProps.mOpenOnInteractionOnly.mValue=0;
+        props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
+        mMaxSeedCount=candypopBudget;
+    }
 }
 
 /**
@@ -164,7 +184,7 @@ void PomAi::keyFinished()
 		effectMgr->create(EffectMgr::EFF_Teki_DeathWaveS, mPom->mSRT.t, nullptr, nullptr);
 
 		playSound(0);
-		mPom->createPellet(mPom->mSRT.t, 150.0f, true);
+		if(!pc_p2_violet(mPom))mPom->createPellet(mPom->mSRT.t, 150.0f, true);
 	}
 
 	mPom->setMotionFinish(1);
@@ -315,6 +335,16 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    // Lane-23 real-engine colour Candypop takes precedence when this Pom is a
+    // sidecar-bound BluePom/RedPom/YellowPom; returns -1 for every other Pom.
+    int candypopUsed=pc_p2_convert_candypop(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(candypopUsed>=0){mReleasedSeedCount+=candypopUsed;playSound(3);return;}
+    // The source-authored Pom cycle count owns capacity; White does not copy
+    // the preview's former fixed Violet allowance.
+    int whiteConverted=pc_p2_convert_ivory(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(whiteConverted>=0){mReleasedSeedCount+=whiteConverted;playSound(3);return;}
+    int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
+    if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
 	int seedCount = killStickPiki();
 	Navi* player  = naviMgr->getNavi();
 	f32 baseAngle = atan2f(mPom->mSRT.t.x - player->mSRT.t.x, mPom->mSRT.t.z - player->mSRT.t.z);

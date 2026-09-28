@@ -1,0 +1,158 @@
+From a21e12b5a49e11dcbf60b64d77f4f10b71b08b88 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:35:32 -0400
+Subject: [PATCH 6/7] Add versioned species/compartment schema policy (lane 11)
+
+---
+ pc_port/pc_p2_species_schema.h   | 76 ++++++++++++++++++++++++++++++++
+ tools/test_p2_species_schema.cpp | 55 +++++++++++++++++++++++
+ 2 files changed, 131 insertions(+)
+ create mode 100644 pc_port/pc_p2_species_schema.h
+ create mode 100644 tools/test_p2_species_schema.cpp
+
+diff --git a/pc_port/pc_p2_species_schema.h b/pc_port/pc_p2_species_schema.h
+new file mode 100644
+index 00000000..1cffa657
+--- /dev/null
++++ b/pc_port/pc_p2_species_schema.h
+@@ -0,0 +1,76 @@
++#pragma once
++#include "pc_p2_species.h"
++
++// Versioned species / compartment schema for P2 cave checkpoints and ship
++// storage, lane 11 (#131/#395). Coordinate the exact wire schema with #131 and
++// the seed/manifest bridge (#132) before either endpoint changes.
++//
++// Requirement (docs/PIKMIN2_WHITE_SPEC.md / #395): define a versioned
++// capability schema, retain old schema behavior, and reject unsupported or new
++// species explicitly in old readers. Current campaign code accepts four
++// species and `pc_p2_cave.cpp` accepts colors 0-3 under schema 1 / 0-4 under
++// schema 2; Bulbmin needs schema 3 rather than widening schema 2, so an old
++// reader never silently reinterprets an ID.
++//
++// Versions:
++//   v1 (Legacy) : Blue, Red, Yellow
++//   v2 (P2)     : + Purple, White
++//   v3 (Bulbmin): + Bulbmin
++//
++// Invariants enforced by the policy test:
++//   1. An unknown version is rejected, never treated as the latest.
++//   2. A reader rejects a nonzero count of a species newer than its version.
++//   3. Negative counts are rejected.
++//   4. Total population is the exact sum of its compartments.
++
++enum P2SpeciesSchema {
++    P2SpeciesSchemaLegacy = 1,
++    P2SpeciesSchemaP2 = 2,
++    P2SpeciesSchemaBulbmin = 3,
++    P2SpeciesSchemaLatest = P2SpeciesSchemaBulbmin,
++};
++
++// Highest species id a reader of `version` may legally see, or -1 if the
++// version itself is unknown.
++inline int p2_schema_max_species(int version) {
++    switch (version) {
++    case P2SpeciesSchemaLegacy: return P2SpeciesYellow;
++    case P2SpeciesSchemaP2: return P2SpeciesWhite;
++    case P2SpeciesSchemaBulbmin: return P2SpeciesBulbmin;
++    default: return -1;
++    }
++}
++
++inline bool p2_schema_valid(int version) {
++    return p2_schema_max_species(version) >= 0;
++}
++
++inline bool p2_schema_supports(int version, int species) {
++    const int max = p2_schema_max_species(version);
++    return max >= 0 && species >= P2SpeciesBlue && species <= max;
++}
++
++// Fixed per-species compartment counts (ship storage, field squad, transient
++// occupants). Index by P2PikminSpecies.
++struct P2SpeciesCounts {
++    int count[P2SpeciesBulbmin + 1] = {};
++};
++
++inline int p2_schema_total(const P2SpeciesCounts& c) {
++    int total = 0;
++    for (int s = 0; s <= P2SpeciesBulbmin; ++s) total += c.count[s];
++    return total;
++}
++
++// Reject an unknown version, a negative count, or a nonzero count of a species
++// newer than the version. A version-2 payload carrying Bulbmin is invalid; a
++// version-3 reader accepts everything.
++inline bool p2_schema_validate(int version, const P2SpeciesCounts& c) {
++    const int max = p2_schema_max_species(version);
++    if (max < 0) return false;
++    for (int s = 0; s <= P2SpeciesBulbmin; ++s) {
++        if (c.count[s] < 0) return false;
++        if (s > max && c.count[s] != 0) return false;
++    }
++    return true;
++}
+diff --git a/tools/test_p2_species_schema.cpp b/tools/test_p2_species_schema.cpp
+new file mode 100644
+index 00000000..bb3b6464
+--- /dev/null
++++ b/tools/test_p2_species_schema.cpp
+@@ -0,0 +1,55 @@
++#include "pc_p2_species_schema.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 11 policy test: versioned species/compartment schema must reject unknown
++// versions and new species in old readers, and must conserve totals.
++int main() {
++    assert(p2_schema_valid(P2SpeciesSchemaLegacy));
++    assert(p2_schema_valid(P2SpeciesSchemaP2));
++    assert(p2_schema_valid(P2SpeciesSchemaBulbmin));
++    assert(!p2_schema_valid(0) && !p2_schema_valid(4) && !p2_schema_valid(-1));
++
++    assert(p2_schema_max_species(P2SpeciesSchemaLegacy) == P2SpeciesYellow);
++    assert(p2_schema_max_species(P2SpeciesSchemaP2) == P2SpeciesWhite);
++    assert(p2_schema_max_species(P2SpeciesSchemaBulbmin) == P2SpeciesBulbmin);
++    assert(p2_schema_max_species(99) == -1);
++
++    // Each version admits only its own species and older ones.
++    assert(p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesBlue));
++    assert(p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesYellow));
++    assert(!p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesPurple));
++    assert(!p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesBulbmin));
++    assert(p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesPurple));
++    assert(p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesWhite));
++    assert(!p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesBulbmin));
++    assert(p2_schema_supports(P2SpeciesSchemaBulbmin, P2SpeciesBulbmin));
++    assert(!p2_schema_supports(99, P2SpeciesBlue));
++
++    // Old readers keep working and reject a newer species explicitly.
++    P2SpeciesCounts legacy;
++    legacy.count[P2SpeciesBlue] = 7;
++    legacy.count[P2SpeciesYellow] = 3;
++    assert(p2_schema_validate(P2SpeciesSchemaLegacy, legacy));
++    assert(p2_schema_total(legacy) == 10);
++
++    P2SpeciesCounts withPurple = legacy;
++    withPurple.count[P2SpeciesPurple] = 1;
++    assert(!p2_schema_validate(P2SpeciesSchemaLegacy, withPurple)); // v1 cannot carry Purple
++    assert(p2_schema_validate(P2SpeciesSchemaP2, withPurple));
++
++    P2SpeciesCounts withBulbmin = withPurple;
++    withBulbmin.count[P2SpeciesBulbmin] = 2;
++    assert(!p2_schema_validate(P2SpeciesSchemaP2, withBulbmin)); // v2 cannot carry Bulbmin
++    assert(p2_schema_validate(P2SpeciesSchemaBulbmin, withBulbmin));
++    assert(p2_schema_total(withBulbmin) == 13);
++
++    // Negative counts and unknown versions are always rejected.
++    P2SpeciesCounts bad = withBulbmin;
++    bad.count[P2SpeciesWhite] = -1;
++    assert(!p2_schema_validate(P2SpeciesSchemaBulbmin, bad));
++    assert(!p2_schema_validate(0, withBulbmin));
++
++    std::puts("PASS P2_SPECIES_SCHEMA");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

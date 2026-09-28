@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "lane": 32,
+  "issue": 246,
+  "parent_issue": 175,
+  "title": "BigTreasure merged: full encounter + full 29-clip motion + lane-owned save policy",
+  "kind": "integration-ready",
+  "native": {
+    "base": "d288dd7b7771b4fe6c45bdc35ace37bb3ff986de",
+    "base_branch": "opencode/p2-lane32-integ",
+    "head": "7908de309ef2b1ccb935c3a87fefac9d15de1c75",
+    "local_branch": "opencode/p2-lane32-merged",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Conflict-free merge of opencode/p2-lane32-encounter, opencode/p2-bigtreasure-motion, opencode/p2-bigtreasure-motionfull and opencode/p2-bigtreasure-save. Native origin/upstream not pushed."
+  },
+  "commits": [
+    "d19fb551",
+    "eb658d23",
+    "73b07690",
+    "7f86733d",
+    "b35ea3a7",
+    "43aa8528",
+    "e3730cf9",
+    "714fb299",
+    "7908de309ef2b1ccb935c3a87fefac9d15de1c75 (merge)"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/bigtreasure-merged/bigtreasure-merged-full.patch",
+      "size": 85585,
+      "sha256": "68220b4156b280d39397977d33772b0dafa632bf479a2e636c2a8b20aa48ed93"
+    },
+    "series_dir": "native-candidates/bigtreasure-merged/patches/ (0001..0008)"
+  },
+  "files": [
+    "tools/p2_bigtreasure_runtime.cpp",
+    "tools/p2_bigtreasure_runtime_run.py",
+    "pc_port/pc_p2_bigtreasure_attacks.h",
+    "pc_port/pc_p2_bigtreasure_attacks.cpp",
+    "pc_port/pc_p2_bigtreasure_visual.h",
+    "pc_port/pc_p2_bigtreasure_visual.cpp",
+    "pc_port/pc_p2_bigtreasure_save.h",
+    "pc_port/pc_p2_bigtreasure_save.cpp",
+    "tools/p2_bigtreasure_save_test.cpp",
+    "pc_port/pc_p2_bigtreasure.h",
+    "pc_port/pc_p2_bigtreasure_fsm.h",
+    "pc_port/pc_p2_hardlanes.h",
+    "pc_port/pc_p2_hardlanes.cpp"
+  ],
+  "runtime": {
+    "private_build": "output/native-lane32-merged-build",
+    "production_executable_sha256": "98e21ed7a88f043b34ba4e1b07219283b50a855aeb064ba3968ed0380a2ed308",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane32-merged-fixture-02",
+    "fixture_executable_sha256": "a563d64622e4b2268259897500d27631de485425ee9e84e8040847db710598ad",
+    "run_dir": "output/lane32-merged-runtime-02/edd65ed0e1c24f458b593185e43a5879",
+    "status": "passed",
+    "visual_stage": "output/bigtreasure-visual-stage-04 (29 clips)",
+    "markers": [
+      "P2_BIGTREASURE_VISUAL_READY clips=29 pellets=4 pellet_debug=1",
+      "P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4",
+      "P2_BIGTREASURE_ENCOUNTER_PASS knockoffs=4 hits=4 phase=Dead events=5",
+      "P2_BIGTREASURE_MOTION_PASS clips=27 events=61",
+      "P2_BIGTREASURE_MOTION_FULL_PASS clips=27 events=61 advanced=27",
+      "PASS BIGTREASURE_RUNTIME"
+    ]
+  },
+  "standalone_fixture": {
+    "save_policy": {
+      "executable": "output/p2_bigtreasure_save_test.exe",
+      "sha256": "dd1055023dc4d24ed16fdd657da590ea0a20633cf0ac6d328022e005cfc0cc24",
+      "result": "PASS BIGTREASURE_SAVE (exit 0)"
+    }
+  },
+  "limitations": [
+    "Fire/gas anchors via getMinY; elec/water through the real map trace. Encounter hits use a host-side health sink standing in for the lane-10 receiver adapter.",
+    "Motion: all 29 clips staged, 27 advanced per-clip; wait1/dead run in their dedicated phases. Harness wall-clock watchdog raised 75s->240s (harness-only).",
+    "Save policy is engine-free and NOT wired into the game save path; it is a proposal for lane 06/01 shared-save review (root offset/ordering, floor/day semantics, reward ownership open)."
+  ]
+}

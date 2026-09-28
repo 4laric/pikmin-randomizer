@@ -88,6 +88,13 @@ void pc_gfx_init_light_attn(void* ltObj, f32 a0, f32 a1, f32 a2, f32 k0, f32 k1,
 void pc_gfx_init_light_attn_a(void* ltObj, f32 a0, f32 a1, f32 a2);
 void pc_gfx_init_light_attn_k(void* ltObj, f32 k0, f32 k1, f32 k2);
 void pc_gfx_init_specular_dir(void* ltObj, f32 x, f32 y, f32 z);
+// Specular instrumentation (renderer-owned): how many times the corrected
+// half-vector path ran and how many draws activated a GX_AF_SPEC COLOR1 channel.
+unsigned pc_gfx_specular_dir_calls(void);
+unsigned pc_gfx_specular_channel_draws(void);
+void pc_gfx_specular_family_scope(int active);
+unsigned pc_gfx_specular_family_draws(void);
+unsigned pc_gfx_specular_family_delta_last(void);
 void pc_gfx_load_light(void* ltObj, u32 lightMask);
 void pc_gfx_set_tev_order(GXTevStageID stage, GXTexCoordID coord, GXTexMapID map, GXChannelID chan);
 void pc_gfx_set_tev_op(GXTevStageID stage, GXTevMode mode);

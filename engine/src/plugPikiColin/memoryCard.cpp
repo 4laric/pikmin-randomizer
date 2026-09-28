@@ -885,7 +885,7 @@ void MemoryCard::saveCurrentGame()
 #if defined(PIKI_PC_PORT)
 	// After the padding and before the checksum: the block lands in bytes the
 	// game zero-fills, and is covered by the sum computed just below.
-	pc_permadeath_write_block(*stream, pc_permadeath_active());
+	pc_permadeath_write_block(*stream, pc_permadeath_active(), pc_hardmode_active());
 #endif
 
 	u32 sum = calcChecksum(getGameFilePtr(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1), 0x7FF8);
@@ -1153,7 +1153,7 @@ void MemoryCard::delFile(CardQuickInfo& target)
 #if defined(PIKI_PC_PORT)
 	// A deleted slot is an empty slot: clear the block too, or the next file
 	// created here would inherit a rule nobody chose for it.
-	pc_permadeath_write_block(*stream, false);
+	pc_permadeath_write_block(*stream, false, false);
 #endif
 	u32 sum = calcChecksum(getGameFilePtr(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1), 0x7FF8);
 	stream->writeInt(gameflow.mGamePrefs.mMostRecentSaveIndex);
@@ -1434,6 +1434,7 @@ void MemoryCard::getQuickInfos(CardQuickInfo* infos)
 					// to build the list, and the run in progress is not
 					// whichever one happens to be read last.
 					pc_permadeath_note_slot(slot, pc_permadeath_peek_block(*stream));
+					pc_hardmode_note_slot(slot, pc_hardmode_peek_block(*stream));
 #endif
 				}
 			} else {

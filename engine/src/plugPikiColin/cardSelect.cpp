@@ -118,6 +118,7 @@ struct CardSelectSetupSection : public Node {
 				return;
 			}
 			pc_permadeath_set_pending(choice == PC_NEWGAME_PERMADEATH);
+			pc_hardmode_set_pending(pc_newgame_prompt_chose_hard());
 			commitSelectedFile(mPendingCard, mPendingSlot);
 			mState = Exit;
 			gsys->setFade(0.0f);
@@ -161,6 +162,7 @@ struct CardSelectSetupSection : public Node {
 							// prompt just chose. Loading an existing file takes
 							// its rule from the file instead, in readCurrentGame.
 							pc_permadeath_begin_new_run();
+							pc_hardmode_begin_new_run();
 #endif
 						}
 
@@ -175,6 +177,7 @@ struct CardSelectSetupSection : public Node {
 						// new-game prompt. Do it here rather than at the prompt
 						// so that backing out of the prompt leaves nothing set.
 						pc_permadeath_begin_new_run();
+						pc_hardmode_begin_new_run();
 #endif
 
 						// next subsection will be the new game intro cutscene

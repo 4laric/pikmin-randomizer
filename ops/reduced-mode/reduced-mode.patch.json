@@ -1,0 +1,85 @@
+{
+  "throughput": {
+    "enabled": false,
+    "auto_batch_claim": false,
+    "provisional_qa": false,
+    "autofill": {
+      "enabled": false,
+      "planner_pool": {
+        "enabled": false,
+        "use_idle_capacity": false,
+        "integration_support_dynamic": false,
+        "actionable_support": false,
+        "delegate_shared_reviews": false,
+        "cross_partition_recovery": false
+      },
+      "worker_adaptation": {
+        "enabled": false
+      }
+    }
+  },
+  "shepherd": {
+    "enabled": false
+  },
+  "setup_healing": {
+    "enabled": false
+  },
+  "queue_pressure": {
+    "enabled": false
+  },
+  "shared_review_routing": {
+    "enabled": false
+  },
+  "provider_stall_recovery": {
+    "enabled": true
+  },
+  "terminal_idle_recovery": {
+    "enabled": true
+  },
+  "terminal_cleanup": {
+    "enabled": true
+  },
+  "fixture_captain_safety": {
+    "enabled": true
+  },
+  "build_capacity": {
+    "enabled": true,
+    "base": 2,
+    "maximum": 3
+  },
+  "launches_per_tick": 2,
+  "model_launch_burst": 2,
+  "lanes": {
+    "muse-placement": null,
+    "muse-packaging": null,
+    "muse-kogane": null,
+    "muse-ground": null,
+    "muse-queen": null,
+    "muse-fuefuki": null,
+    "muse-kurage": null,
+    "muse-bombsarai": null,
+    "muse-groink": null,
+    "muse-bombotakara": null,
+    "muse-longlegs": null,
+    "muse-waterwraith": null,
+    "muse-breadbug": null,
+    "muse-honeywisp": null,
+    "muse-identityqa": null,
+    "muse-fixturetools": null,
+    "muse-review-494": null,
+    "muse-review-495": null,
+    "muse-review-497": null,
+    "muse-review-499": null,
+    "muse-review-505": null,
+    "muse-review-507": null,
+    "muse-cave50": null,
+    "muse-cave51": null,
+    "muse-cave-integrator": null,
+    "muse-p2-reconcile": null,
+    "muse-tooling-integrator": null,
+    "muse-cave-approvals": null,
+    "muse-p2-approvals": null,
+    "muse-kogane-evidence": null,
+    "species-integration-replacement": null
+  }
+}

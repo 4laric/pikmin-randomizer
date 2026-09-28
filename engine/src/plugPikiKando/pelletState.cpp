@@ -1,4 +1,5 @@
 #include "PelletState.h"
+#include "pc_p2_preview.h"
 #include "DebugLog.h"
 #include "FlowController.h"
 #include "GoalItem.h"
@@ -344,7 +345,9 @@ void PelletGoalState::exec(Pellet* pelt)
 	mSuckSpeed += gsys->getFrameTime() * 720.0f;
 
 	if (mSuckProgress >= 1.0f) {
-		if (pelt->mConfig->mPelletType() == PELTYPE_UfoPart) {
+		if (pc_p2_preview_deliver(pelt)) {
+			// Private treasure receipt; no Onion seeds or ship repair side effects.
+		} else if (pelt->mConfig->mPelletType() == PELTYPE_UfoPart) {
 			pelt->mTargetGoal->finishSuck(pelt);
 		} else {
 			pelt->mTargetGoal->suckMe(pelt);

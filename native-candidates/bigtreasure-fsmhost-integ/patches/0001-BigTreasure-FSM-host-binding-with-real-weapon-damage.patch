@@ -1,0 +1,461 @@
+From 1acc448178cf95df2943e403ae32096c51034638 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 02:17:37 -0400
+Subject: [PATCH 1/4] BigTreasure: FSM host binding with real weapon damage +
+ knock-off phase transition (#246)
+
+---
+ pc_port/pc_p2_bigtreasure_fsmhost.cpp |  80 ++++++++
+ pc_port/pc_p2_bigtreasure_fsmhost.h   |  69 +++++++
+ tools/p2_bigtreasure_fsmhost_test.cpp | 276 ++++++++++++++++++++++++++
+ 3 files changed, 425 insertions(+)
+ create mode 100644 pc_port/pc_p2_bigtreasure_fsmhost.cpp
+ create mode 100644 pc_port/pc_p2_bigtreasure_fsmhost.h
+ create mode 100644 tools/p2_bigtreasure_fsmhost_test.cpp
+
+diff --git a/pc_port/pc_p2_bigtreasure_fsmhost.cpp b/pc_port/pc_p2_bigtreasure_fsmhost.cpp
+new file mode 100644
+index 00000000..fa17e6c9
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_fsmhost.cpp
+@@ -0,0 +1,80 @@
++#include "pc_p2_bigtreasure_fsmhost.h"
++
++void P2BigTreasureFsmHost::reset(const P2BigTreasureFsmParms& parms)
++{
++    mFsm.reset(parms);
++    mChosenWeapon = -1;
++    mBossHealth   = 1.0f;
++    mKnockOffs    = 0;
++}
++
++void P2BigTreasureFsmHost::tick(P2BigTreasureHostSeam& seam,
++                                const P2BigTreasureFsmHostInput& in,
++                                P2BigTreasureFsmHostOutput& out)
++{
++    out = P2BigTreasureFsmHostOutput{};
++    if (!seam.active) {
++        return;
++    }
++    mBossHealth = in.bossHealth;
++
++    // 1. Incoming damage is routed by ownership against the current FSM phase
++    // (Land quarters Pikmin damage; body parts only register at zero weapons).
++    if (in.damage > 0.0f) {
++        out.damageResult = seam.ownership.damageCallBack(
++            /*fromPiki=*/true, /*hasCollPart=*/true, in.damageWeapon, in.damage, mFsm.state(),
++            in.damageBittered, &out.pinchSmoke);
++    }
++
++    // 2. Knock off every weapon that reached zero HP. This is the observable
++    // phase transition; the FSM observes the reduced loadout below.
++    P2BigTreasureDropEvent drops[P2BTWEAPON_Count];
++    const std::size_t dropped = seam.ownership.update(drops, P2BTWEAPON_Count);
++    out.knockedOff = static_cast<int>(dropped);
++    mKnockOffs += dropped;
++
++    // 3. Advance the FSM with the post-damage loadout.
++    P2BigTreasureFsmInput fsmIn;
++    fsmIn.health        = mBossHealth;
++    fsmIn.hasAnyWeapon  = seam.ownership.hasAnyWeapon();
++    for (int weapon = 0; weapon < P2BTWEAPON_Count; ++weapon) {
++        fsmIn.weaponAttached[weapon] = seam.ownership.isWeaponAttached(weapon);
++    }
++    fsmIn.chosenWeapon        = mChosenWeapon;
++    fsmIn.hasTarget           = in.hasTarget;
++    fsmIn.bootDemoPlayed      = in.bootDemoPlayed;
++    fsmIn.animEnd             = in.animEnd;
++    fsmIn.keyEvent2           = in.keyEvent2;
++    fsmIn.keyEvent100         = in.keyEvent100;
++    fsmIn.flickTrigger        = in.flickTrigger;
++    fsmIn.attackLimitTime     = in.attackLimitTime;
++    fsmIn.shouldFinishMotion  = in.shouldFinishMotion;
++    fsmIn.finishIKMotion      = in.finishIKMotion;
++    fsmIn.itemWalkSwapped     = in.itemWalkSwapped;
++    fsmIn.killed              = in.killed;
++    mFsm.update(fsmIn, out.fsm);
++
++    // 4. Perform the actions the policy requested last tick (order matters:
++    // pick first, then the attack start uses the chosen index).
++    if (out.fsm.pickWeapon) {
++        mChosenWeapon = seam.ownership.pickWeapon(in.pickThreshold);
++    }
++    if (out.fsm.resetAttackLimitTimer) {
++        seam.director.pacer.reset(seam.placement.initialTimer);
++    }
++    if (out.fsm.startAttack && mChosenWeapon >= 0) {
++        if (seam.director.pools.start(mChosenWeapon)) {
++            ++seam.attacksStarted;
++        }
++    }
++    if (out.fsm.finishAttack) {
++        seam.director.pools.finishAttack();
++    }
++    if (out.fsm.releaseLoozy) {
++        P2BigTreasureDropEvent drop;
++        seam.ownership.releaseLouie(&drop);
++    }
++
++    out.liveWeapons = seam.ownership.weaponCount();
++    out.bodyExposed = seam.ownership.isBodyExposed();
++}
+diff --git a/pc_port/pc_p2_bigtreasure_fsmhost.h b/pc_port/pc_p2_bigtreasure_fsmhost.h
+new file mode 100644
+index 00000000..79238a57
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_fsmhost.h
+@@ -0,0 +1,69 @@
++#pragma once
++
++#include "pc_p2_bigtreasure_fsm.h"
++#include "pc_p2_bigtreasure_host.h"
++
++#include <cstdint>
++
++// FSM host binding for the BigTreasure (Titan Dweevil, enemy ID 73) 12-state
++// policy, issue #246. Drives P2BigTreasureFsm against the lane-owned host seam
++// (P2BigTreasureHostSeam: ownership + attack director) at the 30 Hz source
++// rate, performs the actions the policy requests, and routes incoming Pikmin
++// damage to weapon HP. A weapon that reaches zero HP is knocked off through the
++// ownership update; that is the observable phase transition (weapon-count and
++// attack-pacing change while the body only becomes damageable at zero
++// weapons). Engine-free: no actor, map, damage receiver, sound or effect
++// dependency; every randomness input is host-supplied.
++
++// Per-tick host inputs. The animation flags are keyframe pulses supplied by
++// the caller; `damage` is the incoming Pikmin hit for this tick, with
++// `damageWeapon` naming the hit weapon coll part (or -1 for a body part).
++struct P2BigTreasureFsmHostInput {
++    bool hasTarget = false;
++    bool bootDemoPlayed = false;
++    bool animEnd = false;
++    bool keyEvent2 = false;
++    bool keyEvent100 = false;
++    bool flickTrigger = false;
++    bool attackLimitTime = false;
++    bool shouldFinishMotion = false;
++    bool finishIKMotion = false;
++    bool itemWalkSwapped = false;
++    bool killed = false;
++    float pickThreshold = 0.0f; // host randWeightFloat input for pickWeapon
++    float damage = 0.0f;        // 0 = no hit this tick
++    int damageWeapon = -1;      // weapon coll part, or -1 for a body part
++    bool damageBittered = false;
++    float bossHealth = 1.0f;    // body HP (source health); <= 0 kills via animEnd
++};
++
++struct P2BigTreasureFsmHostOutput {
++    P2BigTreasureFsmOutput fsm;
++    P2BigTreasureDamageResult damageResult = P2BTDMG_Ignored;
++    bool pinchSmoke = false;
++    int knockedOff = 0;      // weapons released by this tick's damage
++    int liveWeapons = 0;     // remaining attached weapons after the tick
++    bool bodyExposed = true; // tam1/tam2 damageable only at zero weapons
++};
++
++class P2BigTreasureFsmHost {
++public:
++    void reset(const P2BigTreasureFsmParms& parms);
++
++    // Advances one 30 Hz tick: applies incoming damage and knock-offs, steps
++    // the FSM with the post-damage loadout, then performs requested actions.
++    // Safe on an inactive seam (outputs stay default).
++    void tick(P2BigTreasureHostSeam& seam, const P2BigTreasureFsmHostInput& in,
++              P2BigTreasureFsmHostOutput& out);
++
++    P2BigTreasurePhase phase() const { return mFsm.state(); }
++    int chosenWeapon() const { return mChosenWeapon; }
++    std::uint64_t knockOffs() const { return mKnockOffs; }
++    float bossHealth() const { return mBossHealth; }
++
++private:
++    P2BigTreasureFsm mFsm;
++    int mChosenWeapon = -1;
++    float mBossHealth = 1.0f;
++    std::uint64_t mKnockOffs = 0;
++};
+diff --git a/tools/p2_bigtreasure_fsmhost_test.cpp b/tools/p2_bigtreasure_fsmhost_test.cpp
+new file mode 100644
+index 00000000..16c1653f
+--- /dev/null
++++ b/tools/p2_bigtreasure_fsmhost_test.cpp
+@@ -0,0 +1,276 @@
++// Standalone engine-free fixture for the BigTreasure FSM host binding
++// (pc_port/pc_p2_bigtreasure_fsmhost.h/.cpp), issue #246. Drives the real
++// 12-state policy against the host seam and proves real weapon damage plus a
++// natural phase transition (weapon knock-off changes the live loadout, the FSM
++// re-picks, and the body only becomes damageable at zero weapons). Build
++// (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_fsmhost_test.cpp pc_port/pc_p2_bigtreasure_fsmhost.cpp pc_port/pc_p2_bigtreasure_host.cpp pc_port/pc_p2_bigtreasure_fsm.cpp pc_port/pc_p2_bigtreasure.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o <private-output>/p2_bigtreasure_fsmhost_test.exe
++
++#include "pc_p2_bigtreasure_fsmhost.h"
++
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++#include <fstream>
++
++namespace {
++constexpr float kDt = 1.0f / 30.0f;
++const char* kProfilePath = "p2_bigtreasure_fsmhost_test_profile.txt";
++
++void writeProfile(const char* body)
++{
++    std::ofstream out(kProfilePath, std::ios::binary | std::ios::trunc);
++    out << body;
++}
++
++struct Rig {
++    P2BigTreasureHostSeam seam;
++    P2BigTreasureFsmHost host;
++    P2BigTreasureFsmHostOutput out;
++
++    Rig()
++    {
++        writeProfile("P2_BIGTREASURE_HOST_1\n"
++                     "placement 0 0 0 0\n"
++                     "target 0 0 100\n"
++                     "timer 0\n"
++                     "discharge 8\n");
++        assert(p2_bigtreasure_host_setup(kProfilePath, seam));
++        P2BigTreasureFsmParms parms;
++        host.reset(parms);
++    }
++
++    void tick(const P2BigTreasureFsmHostInput& in) { host.tick(seam, in, out); }
++};
++
++void advanceToAttack(Rig& rig)
++{
++    P2BigTreasureFsmHostInput in;
++    in.hasTarget = true;
++    int guard = 0;
++    while (rig.host.phase() != P2BT_Land && guard++ < 400) {
++        rig.tick(in);
++    }
++    assert(rig.host.phase() == P2BT_Land);
++
++    in.animEnd = true;
++    rig.tick(in);
++    assert(rig.host.phase() == P2BT_ItemWalk);
++
++    in = P2BigTreasureFsmHostInput{};
++    in.hasTarget = true;
++    in.attackLimitTime = true;
++    rig.tick(in);
++    assert(rig.host.phase() == P2BT_ItemWalk); // waiting for the IK finish gate
++
++    in = P2BigTreasureFsmHostInput{};
++    in.hasTarget = true;
++    in.finishIKMotion = true;
++    rig.tick(in);
++    assert(rig.host.phase() == P2BT_PreAttack);
++    assert(rig.host.chosenWeapon() == P2BTWEAPON_Elec); // threshold 0 picks elec band
++
++    in = P2BigTreasureFsmHostInput{};
++    in.animEnd = true;
++    rig.tick(in);
++    assert(rig.host.phase() == P2BT_Attack);
++
++    in = P2BigTreasureFsmHostInput{};
++    in.keyEvent2 = true;
++    rig.tick(in);
++    assert(rig.out.fsm.startAttack);
++    assert(rig.seam.director.pools.isStarted(P2BTWEAPON_Elec));
++    assert(rig.seam.attacksStarted == 1);
++}
++
++void testStateProgressionToAttack()
++{
++    Rig rig;
++    advanceToAttack(rig);
++    std::puts("PASS fsmhost_progression");
++}
++
++void testLandQuartersDamage()
++{
++    Rig rig;
++    P2BigTreasureFsmHostInput in;
++    in.hasTarget = true;
++    int guard = 0;
++    while (rig.host.phase() != P2BT_Land && guard++ < 400) {
++        rig.tick(in);
++    }
++    assert(rig.host.phase() == P2BT_Land);
++
++    in = P2BigTreasureFsmHostInput{};
++    in.damage = 100.0f;
++    in.damageWeapon = P2BTWEAPON_Elec;
++    rig.tick(in);
++    assert(rig.out.damageResult == P2BTDMG_Weapon);
++    assert(std::fabs(rig.seam.ownership.weaponHealth(P2BTWEAPON_Elec) - 5975.0f) < 1e-3f);
++    std::puts("PASS fsmhost_land_quarter");
++}
++
++void testKnockOffPhaseTransition()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    // Real damage to the chosen elec weapon drains it to zero HP.
++    P2BigTreasureFsmHostInput in;
++    in.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++    in.damageWeapon = P2BTWEAPON_Elec;
++    rig.tick(in);
++
++    assert(rig.out.damageResult == P2BTDMG_Weapon);
++    assert(rig.out.knockedOff == 1);
++    assert(rig.seam.ownership.weaponCount() == 3);
++    assert(!rig.seam.ownership.isWeaponAttached(P2BTWEAPON_Elec));
++    // The FSM observes the lost chosen weapon in the same tick and re-enters
++    // PreAttack, re-picking from the remaining band (fire next).
++    assert(rig.host.phase() == P2BT_PreAttack);
++    assert(rig.host.chosenWeapon() == P2BTWEAPON_Fire);
++    assert(rig.out.fsm.finishAttack); // Attack cleanup fired on the transition
++
++    // A second hit that does not kill the next weapon is still routed.
++    in = P2BigTreasureFsmHostInput{};
++    in.damage = 1000.0f;
++    in.damageWeapon = P2BTWEAPON_Fire;
++    rig.tick(in);
++    assert(rig.out.damageResult == P2BTDMG_Weapon);
++    assert(std::fabs(rig.seam.ownership.weaponHealth(P2BTWEAPON_Fire) - 5000.0f) < 1e-3f);
++    assert(rig.seam.ownership.weaponCount() == 3);
++    std::puts("PASS fsmhost_knockoff_phase");
++}
++
++void testBodyDamageOnlyAtZeroWeapons()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    // Armed body part (damageWeapon -1) is ignored while weapons remain.
++    P2BigTreasureFsmHostInput in;
++    in.damage = 500.0f;
++    in.damageWeapon = -1;
++    rig.tick(in);
++    assert(rig.out.damageResult == P2BTDMG_Ignored);
++    assert(rig.seam.ownership.weaponCount() == 4);
++
++    // Drain every weapon; each knock-off is a phase transition.
++    for (int weapon = 0; weapon < P2BTWEAPON_Count; ++weapon) {
++        in = P2BigTreasureFsmHostInput{};
++        in.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++        in.damageWeapon = weapon;
++        rig.tick(in);
++        assert(rig.out.damageResult == P2BTDMG_Weapon);
++        assert(rig.seam.ownership.weaponCount() == P2BTWEAPON_Count - 1 - weapon);
++    }
++    assert(rig.seam.ownership.isBodyExposed());
++    assert(rig.host.phase() == P2BT_PreAttack || rig.host.phase() == P2BT_DropItem);
++
++    // Body parts now route to boss HP.
++    in = P2BigTreasureFsmHostInput{};
++    in.damage = 250.0f;
++    in.damageWeapon = -1;
++    rig.tick(in);
++    assert(rig.out.damageResult == P2BTDMG_Body);
++    assert(rig.out.bodyExposed);
++    assert(rig.out.liveWeapons == 0);
++    std::puts("PASS fsmhost_body_exposure");
++}
++
++void testPinchSmokeCrossing()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    P2BigTreasureFsmHostInput in;
++    in.damage = 3500.0f; // 6000 -> 2500 crosses the strict 3000 boundary
++    in.damageWeapon = P2BTWEAPON_Elec;
++    rig.tick(in);
++    assert(rig.out.damageResult == P2BTDMG_Weapon);
++    assert(rig.out.pinchSmoke);
++    assert(!rig.seam.ownership.isNormalAttack(P2BTWEAPON_Elec));
++    std::puts("PASS fsmhost_pinch_smoke");
++}
++
++void testKillAndDeadKeys()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    P2BigTreasureFsmHostInput in;
++    in.killed = true;
++    rig.tick(in);
++    assert(rig.host.phase() == P2BT_Dead);
++
++    in = P2BigTreasureFsmHostInput{};
++    in.keyEvent100 = true;
++    rig.tick(in);
++    assert(rig.out.fsm.throwupItem);
++    assert(rig.out.fsm.releaseLoozy);
++    assert(!rig.seam.ownership.louieAttached());
++
++    in = P2BigTreasureFsmHostInput{};
++    in.animEnd = true;
++    rig.tick(in);
++    assert(rig.out.fsm.killRequested);
++    std::puts("PASS fsmhost_kill_dead");
++}
++
++void testInactiveSeamNoOp()
++{
++    P2BigTreasureHostSeam seam;
++    P2BigTreasureFsmHost host;
++    P2BigTreasureFsmParms parms;
++    host.reset(parms);
++    P2BigTreasureFsmHostInput in;
++    P2BigTreasureFsmHostOutput out;
++    in.damage = 1000.0f;
++    host.tick(seam, in, out);
++    assert(out.damageResult == P2BTDMG_Ignored);
++    assert(out.knockedOff == 0);
++    assert(host.phase() == P2BT_Stay);
++    std::puts("PASS fsmhost_inactive");
++}
++
++void testDefeatStillReleasesRest()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    P2BigTreasureFsmHostInput in;
++    in.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++    in.damageWeapon = P2BTWEAPON_Elec;
++    rig.tick(in);
++    assert(rig.seam.ownership.weaponCount() == 3);
++
++    P2BigTreasureDropEvent drops[P2BTWEAPON_Count + 1] = {};
++    const std::size_t events = p2_bigtreasure_host_defeat(rig.seam, drops, P2BTWEAPON_Count + 1);
++    assert(events == 4); // 3 remaining weapons + Louie
++    int mask = 0;
++    for (std::size_t i = 0; i < events; ++i) {
++        if (!drops[i].isLouie) {
++            assert(drops[i].weapon != P2BTWEAPON_Elec); // already knocked off
++            mask |= 1 << drops[i].weapon;
++        }
++    }
++    assert(mask == 0xE);
++    assert(drops[events - 1].isLouie);
++    std::puts("PASS fsmhost_defeat_rest");
++}
++} // namespace
++
++int main()
++{
++    testStateProgressionToAttack();
++    testLandQuartersDamage();
++    testKnockOffPhaseTransition();
++    testBodyDamageOnlyAtZeroWeapons();
++    testPinchSmokeCrossing();
++    testKillAndDeadKeys();
++    testInactiveSeamNoOp();
++    testDefeatStillReleasesRest();
++    std::remove(kProfilePath);
++    std::puts("PASS BIGTREASURE_FSMHOST");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

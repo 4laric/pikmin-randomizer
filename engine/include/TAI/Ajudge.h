@@ -37,7 +37,7 @@ public:
 protected:
 	virtual f32 getLifePercentThreshold(Teki&) = 0; // _1C
 
-	f32 getLifePercent(Teki& teki) { return teki.mHealth / teki.getParameterF(TPF_Life); }
+	f32 getLifePercent(Teki& teki) { return teki.mHealth / teki.getMaxLife(); }
 
 	// _04     = VTBL
 	// _00-_08 = TaiAction

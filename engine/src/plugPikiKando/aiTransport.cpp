@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "pc_randomizer.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
@@ -13,6 +14,7 @@
 #include "MoviePlayer.h"
 #include "Navi.h"
 #include "Pellet.h"
+#include "pc_p2_preview.h"
 #include "PelletState.h"
 #include "PikiAI.h"
 #include "PikiMgr.h"
@@ -147,7 +149,7 @@ f32 ActTransport::getCarriers()
 		{
 			Piki* piki = static_cast<Piki*>(*iter);
 			if (piki->isPiki()) {
-				carriers += (0.5f * piki->mHappa + 1.0f) * pc_randomizer_carry_strength(piki->mColor);
+				carriers += pc_piki_carry_power(piki);
 			}
 		}
 		if (pc_randomizer_color_stats() && carriers > 2.0f * pel->mConfig->mCarryMaxPikis()) carriers = 2.0f * pel->mConfig->mCarryMaxPikis();
@@ -186,7 +188,7 @@ int ActTransport::calcCarryStrength()
 		{
 			Creature* piki = *iter;
 			if (piki->isPiki()) {
-				count += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
+				count += pc_piki_carry_strength(static_cast<Piki*>(piki));
 			}
 		}
 
@@ -558,7 +560,7 @@ void ActTransport::doLift()
 			if (piki->mMode == PikiMode::TransportMode) {
 				ActTransport* action = static_cast<ActTransport*>(piki->mActiveAction->getCurrAction());
 				if (action->mIsLiftActionDone) {
-					count += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
+					count += pc_piki_carry_strength(static_cast<Piki*>(piki));
 				}
 			}
 		}
@@ -831,6 +833,7 @@ int ActTransport::exec()
 			f32 carriers = getCarriers();
 
 			f32 speed = ((carriers + 1.0f - f32(minCarry)) / f32(maxCarry)) * (maxSpeed - minSpeed) + minSpeed;
+            speed=pc_p2_transport_speed(pel,speed);
 			goalDir.y = 0.0f;
 			goalDir.multiply(speed);
 			pel->doCarry(mPiki, goalDir, numStickers);
@@ -978,6 +981,7 @@ int ActTransport::moveGuruGuru()
 		f32 factor   = (getCarriers() + 1.0f - f32(minWeight)) / f32(pel->mConfig->mCarryMaxPikis());
 		f32 speed    = factor * (maxSpeed - minSpeed);
 		speed        = (minSpeed + speed);
+        speed=pc_p2_transport_speed(pel,speed);
 		speed *= 0.5f;
 		vel.multiply(speed);
 		pel->doCarry(mPiki, vel, numStickers);
@@ -999,6 +1003,7 @@ int ActTransport::moveGuruGuru()
 void ActTransport::decideGoal(Creature* cargo)
 {
 	Pellet* pel = mPellet.getPtr();
+    if(Suckable* pod=pc_p2_preview_goal()) {mGoal=pod;pel->mTargetGoal=pod;return;}
 	PRINT("pellet type is %d\n", pel->mConfig->mPelletType());
 	if (pel->mConfig->mPelletType() == PELTYPE_UfoPart) {
 		mGoal = itemMgr->getUfo();
@@ -1231,6 +1236,13 @@ void ActTransport::crInit()
 		PRINT("\tref[%d] = (%.1f,%.1f)\n", i, mSplineControlPts[i].x, mSplineControlPts[i].z);
 	}
 	mOdometer.start(4.0f, 10.0f);
+    if(pc_p2_purples_enabled()) {
+        // The P1 detector assumes its much faster hauling speed. A heavy P2
+        // load can still be progressing while failing that fixed threshold.
+        // Require 10% of the expected four-second travel, retaining blockage detection.
+        float minimum=0.4f*pc_p2_transport_speed(mPellet.getPtr(),25.f);
+        mOdometer.start(4.f,minimum<1.f?1.f:minimum>10.f?10.f:minimum);
+    }
 
 	STACK_PAD_TERNARY(mPiki, 1);
 }
@@ -1605,6 +1617,7 @@ int ActTransport::moveToWayPoint()
 		f32 factor   = (getCarriers() + 1.0f - f32(minCarriers)) / f32(pel->mConfig->mCarryMaxPikis());
 		f32 speed    = factor * (maxSpeed - minSpeed);
 		speed        = (minSpeed + speed);
+        speed=pc_p2_transport_speed(pel,speed);
 		// speed *= 0.5f;
 		mMoveDir.y = 0.0f;
 		mMoveDir.normalise();

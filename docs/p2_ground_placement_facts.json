@@ -1,0 +1,204 @@
+{
+  "schema": "p2-placement-facts-v1",
+  "lane": 14,
+  "tracking_issue": 165,
+  "placement_issue": 440,
+  "evidence_level": "source-contract",
+  "generated": "2026-09-14",
+  "source": {
+    "tree": "native/pikmin2-research",
+    "revision": "632af93787b9c95b63f0c13be32b161375ce3a96",
+    "disc": "GPVE01 revision 0",
+    "roster": "docs/PIKMIN2_ENEMY_ROSTER.json"
+  },
+  "consumes": {
+    "module": "randomizer.p2_placement",
+    "schema": "p2-placement-v1",
+    "profile_fields": [
+      "terrains",
+      "footprint_radius",
+      "min_water_depth",
+      "requires_burrow_ground",
+      "requires_home",
+      "helper_budget",
+      "requires_corpse_route"
+    ],
+    "note": "Each identity.profile is a lane-04 p2-placement-v1 profile fragment. It deliberately omits identity, cohort, family_lane, accepted_gates and notes, which lane 02/04 own. Terrain/space/water/home/helper facts are source-contract only: no native XYZ/terrain/route evidence is claimed, so every (slot, identity) pair stays denied."
+  },
+  "identities": {
+    "Armor": {
+      "source_id": 15,
+      "common_name": "Cloaking Burrow-nit",
+      "profile": {
+        "terrains": ["ground"],
+        "footprint_radius": 40,
+        "min_water_depth": 0,
+        "requires_burrow_ground": true,
+        "requires_home": false,
+        "helper_budget": 0,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": false,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Strong",
+        "day_end_max": 4,
+        "helper_budget_cave": null,
+        "burrow_states": ["Appear", "Dive"]
+      },
+      "source_anchors": [
+        "src/plugProjectNishimuraU/ArmorState.cpp:17-30",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:32",
+        "docs/PIKMIN2_GROUND_INVERTEBRATE_ASSETS.md#4-collision"
+      ],
+      "placement_note": "Ground-only. Emerges from and burrows into ground (Appear/Dive), so the slot needs burrow_ground. No nest/child anchor and no spawned helpers. Surface presence is capped at four at day end (EFlag_DayEndMax4)."
+    },
+    "ElecBug": {
+      "source_id": 28,
+      "common_name": "Anode Beetle",
+      "profile": {
+        "terrains": ["ground"],
+        "footprint_radius": 32.5,
+        "min_water_depth": 0,
+        "requires_burrow_ground": false,
+        "requires_home": false,
+        "helper_budget": 0,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": false,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Normal",
+        "day_end_max": null,
+        "helper_budget_cave": null,
+        "burrow_states": [],
+        "needs_partner": true
+      },
+      "source_anchors": [
+        "src/plugProjectNishimuraU/ElecBugState.cpp:21-30",
+        "src/plugProjectNishimuraU/ElecBug.cpp:273-320",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:51"
+      ],
+      "placement_note": "Ground-only, no burrow. Discharge pairs two separately spawned beetles through reciprocal mPartner pointers (startChargeState/startChildChargeState); the partner is not a spawned child, so helper_budget stays 0, but a slot that must show the electric behaviour needs at least two ElecBug spawns in the same arena. Electrical emission/damage is lane 10/11."
+    },
+    "Imomushi": {
+      "source_id": 65,
+      "common_name": "Ravenous Whiskerpillar",
+      "profile": {
+        "terrains": ["ground"],
+        "footprint_radius": 17.5,
+        "min_water_depth": 0,
+        "requires_burrow_ground": true,
+        "requires_home": false,
+        "helper_budget": 0,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": false,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Weak",
+        "day_end_max": null,
+        "helper_budget_cave": null,
+        "burrow_states": ["Appear", "Dive"],
+        "needs_fruit_plant": true
+      },
+      "source_anchors": [
+        "src/plugProjectNishimuraU/ImomushiState.cpp:19-33",
+        "src/plugProjectNishimuraU/Imomushi.cpp:723-803",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:34"
+      ],
+      "placement_note": "Ground-only. Appears from and dives into ground (Appear/Dive). Climbs living fruit plants within its home-centred territory (getRandFruitsPlant/startClimbPlant) and eats Tsuyukusa, so berry predation additionally requires a compatible plant actor in the stage; this is a behaviour dependency, not a nest anchor. No spawned helpers."
+    },
+    "TamagoMushi": {
+      "source_id": 68,
+      "common_name": "Mitite",
+      "profile": {
+        "terrains": ["ground", "underground"],
+        "footprint_radius": 18,
+        "min_water_depth": 0,
+        "requires_burrow_ground": true,
+        "requires_home": false,
+        "helper_budget": 10,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": false,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Weak",
+        "day_end_max": null,
+        "helper_budget_cave": 30,
+        "burrow_states": ["Appear", "Hide"],
+        "group_leader": true
+      },
+      "source_anchors": [
+        "src/plugProjectMorimuraU/tamagoMushiState.cpp:18-23",
+        "src/plugProjectMorimuraU/tamagoMushiMgr.cpp:77-162",
+        "src/plugProjectYamashitaU/generalEnemyMgr.cpp:436-443",
+        "include/Game/enemyInfo.h:212",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:65,94,101"
+      ],
+      "placement_note": "Ground/underground. Appears from and hides in ground (Appear/Hide). Its natural placement is a group: the manager caps surface groups at 10 and cave groups at TAMAGOMUSHI_GROUP_COUNT (30), so helper_budget is 10 for surface slots and 30 for cave slots. A lone TamagoMushi is only the group leader frame; Egg (id 37) and BigFoot (id 69) are the usual spawners (child counts 10 and 30). The current surface slot table models helper_capacity 0, so this helper_budget marks a real slot-table gap before a group identity can be placed."
+    },
+    "Sokkuri": {
+      "source_id": 79,
+      "common_name": "Skitter Leaf",
+      "profile": {
+        "terrains": ["ground", "mixed", "water"],
+        "footprint_radius": 25,
+        "min_water_depth": 0,
+        "requires_burrow_ground": false,
+        "requires_home": false,
+        "helper_budget": 0,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": true,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Weak",
+        "day_end_max": null,
+        "helper_budget_cave": null,
+        "burrow_states": []
+      },
+      "source_anchors": [
+        "src/plugProjectNishimuraU/SokkuriState.cpp:18-26",
+        "src/plugProjectNishimuraU/Sokkuri.cpp:269-344",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:109"
+      ],
+      "placement_note": "Amphibious: MoveGround on land and MoveWater while inside a WaterBox (underwater move speed, upward buoyancy, splash/bubble effects). Terrains therefore include ground, mixed shore and submerged water; min_water_depth is 0 because it also walks on land. No burrow, no nest anchor, no helpers."
+    },
+    "Hana": {
+      "source_id": 84,
+      "common_name": "Creeping Chrysanthemum",
+      "profile": {
+        "terrains": ["ground"],
+        "footprint_radius": 75,
+        "min_water_depth": 0,
+        "requires_burrow_ground": true,
+        "requires_home": false,
+        "helper_budget": 0,
+        "requires_corpse_route": true
+      },
+      "facts": {
+        "water_capable": false,
+        "home_anchor": null,
+        "child_name": null,
+        "drop_type": "BDT_Strong",
+        "day_end_max": null,
+        "helper_budget_cave": null,
+        "burrow_states": ["Sleep"],
+        "mouth_slots": 3
+      },
+      "source_anchors": [
+        "include/Game/Entities/Hana.h:23-46",
+        "src/plugProjectNishimuraU/Hana.cpp:26-175",
+        "src/plugProjectYamashitaU/enemyInfo.cpp:59"
+      ],
+      "placement_note": "Ground-only. Hidden while buried (mBuried / Sleep state; setUnderGround/resetUnderGround) and wakes on nearby Olimar or Pikmin, so the slot needs burrow_ground. ChappyBase-derived body with three 30-radius mouth slots and a 75-radius root collision, the largest ground-invertebrate footprint; it still fits the default 100 slot radius. No nest anchor and no spawned helpers."
+    }
+  }
+}
