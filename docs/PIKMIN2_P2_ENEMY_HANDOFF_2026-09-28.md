@@ -111,10 +111,15 @@ The fork's `main` is now the maintained native line, and its CI is green.
    original slot uids, but check that a unique target exists.
 
 ### B. #886 fidelity sweep (native)
-- **Slice 1 was still running when this handoff was written**: captor mouth-slot rework (defect 3) plus the
-  Sheargrub/Shearwig attacks (defect 5). It is on branch `claude/p2-886-captors`, based on the co-op branch
-  and **not pushed**. If it was pushed and a PR opened, it will be linked on #886. If it is not on the fork,
-  assume it was lost and redo the slice from #886.
+- **Slice 1 is done and in PR `4laric/Open-Nectar---Pikmin-Native-PC-Port#5`** (`claude/p2-886-captors`): defect 3,
+  the captor mouth-slot rework with hold, swallow-only-if-held and forget hooks for Jigumo, Snagret, UmiMushi and Armor;
+  and defect 5, UjiA harmless to creatures and UjiB/Tobi striking once and then eating. Native ctest passes 169/169.
+  Its runtime markers are in the PR body. Follow-ups it found:
+  - Snagret has no captain attack when its box is empty, and no KEYEVENT_4 re-bite.
+  - Jigumo never calls `attackNavi`.
+  - The Armor attack gate is 45° against source 15°.
+  - Captor `isStartFlick` is a proximity approximation.
+  - Held Pikmin are drawn at the hidden host slot.
 - Remaining confirmed defects, all still present at `fd70a54ac` and checked against the decomp:
   - **4, UmiMushi 71/101:** an angle-free fallback at `pc_p2_umimushi.cpp:388-392` and `:467-468`, and
     `SHAKE_RANGE` 20 against the source default 120. This one needs an owner keep-or-replace decision.
