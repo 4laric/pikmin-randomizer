@@ -134,6 +134,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
 * 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
   ``<out>/FminiHoudai/``.
+* 41 Fuefuki (#245 OWN): ``pikmin2_fuefuki_assets.extract`` -> ``<out>/Fuefuki/``
+  (``fuefuki.json`` + ``identity.json`` + retail parms/animmgr, the ten BCA
+  clips incl. landing/landfail under the singular-scale policy, and
+  ``fuefuki_Fuefuki_<clip>_<ii>.mod`` poses); the Fuefuki adapter stages the
+  native source-FSM inputs through ``pikmin2_fuefuki_campaign_stage``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -233,6 +238,7 @@ ENUM_FOR_SOURCE = {
     93: "BombOtakara",
     97: "FminiHoudai",
     101: "UmiMushiBlind",
+    41: "Fuefuki",
 }
 
 
@@ -1200,6 +1206,40 @@ def extract_kabuto(iso, research, dest, pose_limit=6):
     return target
 
 
+def extract_fuefuki(iso, dest, pose_limit=12):
+    """Build <dest>/Fuefuki/ via the Fuefuki extractor (#245 OWN).
+
+    ``pikmin2_fuefuki_assets.extract`` writes the import directory (retail
+    parms, animmgr, ten BCA clips, sampled poses) plus ``fuefuki.json``; both
+    land in ``<dest>/Fuefuki`` with an ``identity.json`` (schema 1, 41,
+    ``Fuefuki``) for the family pre-flight. ``pose_limit`` defaults to 12 per
+    clip (the native bank allows 24) so the draw animates every clip.
+    """
+    from experimental import pikmin2_fuefuki_assets as fuefuki
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= fuefuki.MAX_POSES:
+        raise ValueError(f"pose limit must be 2..{fuefuki.MAX_POSES}: {pose_limit!r}")
+    target = dest / "Fuefuki"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-fuefuki"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        fuefuki.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp / fuefuki.ENEMY, target)
+        shutil.copy2(tmp / "fuefuki.json", target / "fuefuki.json")
+        (target / "identity.json").write_text(
+            json.dumps(dict(schema=1, source_id=41, enum_name="Fuefuki"), indent=2) + "\n",
+            encoding="utf-8")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -1330,6 +1370,7 @@ EXTRACTORS = {
     65: "extract_ground",
     71: "extract_aquatic",
     101: "extract_aquatic",
+    41: "extract_fuefuki",
 }
 for _row in _PROXY_ROWS:
     # An own-identity extractor (e.g. Chappy) wins over the generic proxy
@@ -1420,6 +1461,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 97:
             extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 41:
+            # Per-clip pose bank for the native draw, not the global limit.
+            extract_fuefuki(iso, out)
             extracted.append(source_id)
         elif source_id in (34, 70):
             if not snagret_done:
