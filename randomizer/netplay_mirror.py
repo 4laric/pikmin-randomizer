@@ -8,7 +8,7 @@ overlay and tracker read it unchanged.
 
 Line grammar (ASCII only, each line 1..256 bytes, ``\\n`` terminated)::
 
-    FRAME <frame> RECEIVED <item_id>
+    FRAME <frame> RECEIVED <index> <item_id>
     FRAME <frame> CHECKED <location>
     FRAME <frame> DEATHS <total>
     FRAME <frame> DEATHLINK <total>
@@ -16,19 +16,45 @@ Line grammar (ASCII only, each line 1..256 bytes, ``\\n`` terminated)::
     FRAME <frame> SAVE_RESULT <gen> <digest>
     FRAME <frame> SAVE_FAIL <gen>
 
-``<frame>`` is the netplay frame (0..4294967295). ``RECEIVED`` carries an
-Archipelago item id from the manifest pool. ``CHECKED`` carries the exact
-location name (which may contain spaces). ``DEATHS``/``DEATHLINK`` carry
-absolute monotonic totals of ordinary Pikmin deaths / received DeathLinks.
-``EMPEROR`` carries no argument. ``SAVE_RESULT`` carries the campaign
-checkpoint generation and the lowercase hex SHA-256 of the checkpoint file;
+``<frame>`` is the netplay frame (0..4294967295, canonical digits, no leading
+zeros). ``RECEIVED`` carries the 0-based AP receive index (the same index
+``Session.receive`` uses) plus the Archipelago item id from the manifest pool.
+``CHECKED`` carries the exact location name (which may contain spaces).
+``DEATHS``/``DEATHLINK`` carry absolute session-cumulative monotonic totals of
+ordinary Pikmin deaths / received DeathLinks (matching what host
+``session.json`` accumulates across days and reconnects, not the per-run
+``deaths.txt`` count). ``EMPEROR`` carries no argument. ``SAVE_RESULT``
+carries the campaign checkpoint generation (1..18446744073709551615,
+canonical digits) and the lowercase hex SHA-256 of the checkpoint file;
 ``SAVE_FAIL`` records a failed day-end save for the same generation.
 
+Frames are non-decreasing along the stream; a frame lower than the last
+applied frame is rejected. The native writer must emit ``RECEIVED`` lines in
+index order without gaps; ingest applies index ``len(received)`` and treats a
+lower index with a matching item as a no-op duplicate, rejecting gaps and
+conflicts. All other tags are naturally idempotent (set membership, monotonic
+totals, flags). The runner persists the ingest cursor (byte offset, last
+frame, prefix hash, checkpoint) so a relaunch of the same peer token resumes;
+each ``runs/<token>/`` directory is stable per peer token derived from the
+host bootstrap ``SESSION`` line. A malformed stream is fatal to the run
+(matching host semantics): the offending poll raises and applies nothing.
+
 The parser is strict: bounded lengths, single-space separators, ASCII
-printable characters only, and any unknown tag or out-of-range value raises
-``ValueError``. Ingest is idempotent: exact-duplicate lines are no-ops, and
-the underlying state updates (set membership, monotonic totals, flags) are
-no-ops when replayed.
+printable characters only (no ``\\r`` or other controls; lines are split on
+``\\n`` only), canonical numbers, and any unknown tag or out-of-range value
+raises ``ValueError``.
+
+Native file layout note: a native client launched from ``runs/<token>/``
+derives ``campaignDirectory = <run>/../../campaign`` and ``saveRoot =
+campaign/card`` (``pc_randomizer.cpp``), so real ``*.sav`` checkpoints live at
+``session/netplay/<fingerprint>/campaign/``. The ``runs/<token>/card/``
+directory here holds only the ``SAVE_RESULT.txt`` pointer copy for debugging.
+
+Debug ``state.txt`` note: the runner renders a host-format ``state.txt`` in
+the run directory for log comparison only. The native netplay client must
+ignore it in client mode and consume the net state stream instead; it is
+always rendered ``ready=1`` because the local-file link is live by
+construction.
 """
 
 import hashlib
@@ -36,25 +62,23 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from .benefits import benefit_state
 from .catalog import (
-    FLARLIC,
-    FOREST_ACCESS,
-    IMPACT_ACCESS,
     ITEM_IDS,
-    RED,
-    REPAIR,
-    UNLOCKS,
     active_names,
     item_pool,
 )
 from .seed import fingerprint, solo_rewards
-from .session import Session, atomic_write
-from .stats import upgrade_counts
+from .session import (
+    atomic_write,
+    initial_session_data,
+    render_session_state,
+    validate_session_data,
+)
 
 MIRROR_DIRNAME = "netplay"
 MIRROR_FILENAME = "mirror.json"
 EVENTS_FILENAME = "mirror-events.txt"
+HELLO_FILENAME = "hello.txt"
 STATE_FILENAME = "state.txt"
 BOOTSTRAP_FILENAME = "bootstrap.txt"
 CARD_DIRNAME = "card"
@@ -64,8 +88,9 @@ SAVE_RESULT_FILENAME = "SAVE_RESULT.txt"
 MAX_LINE_LEN = 256
 MAX_FRAME = 2 ** 32 - 1
 MAX_ITEM_ID = 2 ** 31 - 1
+MAX_RECEIVE_INDEX = 10_000_000
 MAX_TOTAL = 1_000_000
-MAX_GEN_DIGITS = 20
+MAX_GEN = 2 ** 64 - 1
 DIGEST_LEN = 64
 
 _TAGS = ("RECEIVED", "CHECKED", "DEATHS", "DEATHLINK", "EMPEROR", "SAVE_RESULT", "SAVE_FAIL")
@@ -78,9 +103,22 @@ def _fail(reason):
 def _uint(text, what, limit):
     if not text or len(text) > 10 or not text.isdigit():
         _fail(f"bad {what}")
+    if len(text) > 1 and text[0] == "0":
+        _fail(f"non-canonical {what}")
     value = int(text)
     if value > limit:
         _fail(f"{what} out of range")
+    return value
+
+
+def _gen(text):
+    if not text or len(text) > 20 or not text.isdigit():
+        _fail("bad checkpoint generation")
+    if len(text) > 1 and text[0] == "0":
+        _fail("non-canonical checkpoint generation")
+    value = int(text)
+    if value < 1 or value > MAX_GEN:
+        _fail("checkpoint generation out of range")
     return value
 
 
@@ -118,18 +156,20 @@ def parse_mirror_line(line):
             _fail(tag + " takes one argument")
         return (frame, tag, (_uint(rest[0], "total", MAX_TOTAL),))
     if tag == "RECEIVED":
-        if len(rest) != 1:
-            _fail("RECEIVED takes one argument")
-        return (frame, tag, (_uint(rest[0], "item id", MAX_ITEM_ID),))
+        if len(rest) != 2:
+            _fail("RECEIVED takes two arguments")
+        return (frame, tag, (_uint(rest[0], "index", MAX_RECEIVE_INDEX),
+                             _uint(rest[1], "item id", MAX_ITEM_ID)))
     if tag == "SAVE_RESULT":
-        if len(rest) != 2 or not rest[0] or len(rest[0]) > MAX_GEN_DIGITS or not rest[0].isdigit():
+        if len(rest) != 2:
             _fail("bad checkpoint generation")
+        gen = _gen(rest[0])
         if not _is_hex(rest[1], DIGEST_LEN):
             _fail("bad checkpoint digest")
-        return (frame, tag, (int(rest[0]), rest[1]))
-    if len(rest) != 1 or not rest[0] or len(rest[0]) > MAX_GEN_DIGITS or not rest[0].isdigit():
+        return (frame, tag, (gen, rest[1]))
+    if len(rest) != 1:
         _fail("bad checkpoint generation")
-    return (frame, tag, (int(rest[0]),))
+    return (frame, tag, (_gen(rest[0]),))
 
 
 def mirror_dir_for(session_dir, manifest_or_fingerprint):
@@ -171,70 +211,20 @@ def mirror_inventory(manifest, data):
 
 def render_mirror_state(manifest, data, token, ready):
     """Debug ``state.txt`` rendering for a mirror; same format as the host."""
-    inventory = mirror_inventory(manifest, data)
-    unlocks = sum(1 << i for i, name in enumerate(UNLOCKS) if inventory[name])
-    if manifest["schema"] >= 3 and inventory[FOREST_ACCESS]:
-        unlocks |= 32
-    if manifest["schema"] >= 4 and inventory[RED]:
-        unlocks |= 64
-    if manifest["schema"] >= 5 and inventory[IMPACT_ACCESS]:
-        unlocks |= 128
-    checks = sum(1 << i for i, name in enumerate(active_names(manifest)) if name in data["checked"])
-    if manifest["schema"] >= 8:
-        indices = [str(i) for i, n in enumerate(active_names(manifest)) if n in data["checked"]]
-        checks = "CHECKS " + str(len(indices)) + (" " + " ".join(indices) if indices else "")
-    emperor = (" EMPEROR " + str(int(data["emperor_defeated"]))) if manifest.get("goal_mode") == "emperor_bulblax" else ""
-    death_link = (" DEATHLINK " + str(data["death_links_received"])) if manifest.get("death_link") else ""
-    repairs = min(inventory[REPAIR], manifest["goal"])
-    if manifest["schema"] >= 2:
-        flarlic = min(10 - manifest.get("starting_flarlic", 2), inventory[FLARLIC])
-        return (f"PIKMIN_STATE {manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} "
-                f"{checks}{upgrade_counts(manifest, inventory)}{benefit_state(manifest, inventory)}"
-                f"{emperor}{death_link} END\n")
-    return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
+    return render_session_state(manifest, active_names(manifest),
+                                mirror_inventory(manifest, data), data, token, ready)
 
 
 def initial_mirror_data(manifest):
-    data = dict(schema=1, fingerprint=fingerprint(manifest), checked=[], received=[], ap_identity=None)
-    if manifest.get("goal_mode") == "emperor_bulblax":
-        data["emperor_defeated"] = False
-    if manifest.get("death_link"):
-        data["pikmin_deaths"] = 0
-        data["death_links_received"] = 0
-    return data
+    return initial_session_data(manifest)
 
 
 def validate_mirror_data(manifest, data):
     """Session-schema validation for ``mirror.json`` (same rules as Session)."""
-    probe = Session.__new__(Session)
-    probe.manifest = manifest
-    probe.fingerprint = fingerprint(manifest)
-    probe.names = active_names(manifest)
-    probe.allowed_items = {ITEM_IDS[n] for n in item_pool(manifest)}
-    expected = initial_mirror_data(manifest)
-    if type(data) is not dict or set(data) != set(expected):
-        raise ValueError("mirror data does not match the session schema")
-    if (type(data["schema"]) is not int or data["schema"] != 1
-            or data["fingerprint"] != probe.fingerprint):
-        raise ValueError("invalid mirror identity")
-    if (type(data["checked"]) is not list
-            or any(type(n) is not str or n not in probe.names for n in data["checked"])
-            or len(data["checked"]) != len(set(data["checked"]))):
-        raise ValueError("invalid mirror checks")
-    if (type(data["received"]) is not list
-            or any(type(i) is not int or i not in probe.allowed_items for i in data["received"])):
-        raise ValueError("invalid mirror received items")
-    identity = data["ap_identity"]
-    if identity is not None and (type(identity) is not list or len(identity) != 3
-            or type(identity[0]) is not str or any(type(v) is not int for v in identity[1:])):
-        raise ValueError("invalid mirror AP identity")
-    if manifest["mode"] == "solo" and (data["received"] or identity is not None):
-        raise ValueError("solo mirror contains AP state")
-    if "emperor_defeated" in data and type(data["emperor_defeated"]) is not bool:
-        raise ValueError("invalid mirror emperor state")
-    for key in ("pikmin_deaths", "death_links_received"):
-        if key in data and (type(data[key]) is not int or data[key] < 0):
-            raise ValueError("invalid mirror death link state")
+    try:
+        validate_session_data(manifest, data)
+    except ValueError as exc:
+        raise ValueError("mirror data does not match the session schema: " + str(exc))
     return True
 
 
@@ -264,10 +254,17 @@ class MirrorStore:
         """Apply a parsed event; return True when it changed ``data``."""
         frame, tag, args = event
         if tag == "RECEIVED":
-            (item,) = args
+            index, item = args
             if item not in self.allowed_items:
                 raise ValueError("unknown item in mirror stream")
-            data["received"].append(item)
+            have = data["received"]
+            if index < len(have):
+                if have[index] != item:
+                    raise ValueError("mirror item stream conflicts with persisted receipts")
+                return False
+            if index > len(have):
+                raise ValueError("mirror item stream gap; native must emit RECEIVED in index order")
+            have.append(item)
             return True
         if tag == "CHECKED":
             (name,) = args
@@ -312,8 +309,8 @@ class MirrorStore:
 def _checkpoint_candidates(session_dir):
     root = Path(session_dir)
     found = []
-    for path in list((root / "campaign").glob("*.sav")) + list(root.glob("runs/*/campaign/*.sav")):
-        if path.is_file() and path.stem.isdigit() and 1 <= len(path.stem) <= MAX_GEN_DIGITS:
+    for path in (root / "campaign").glob("*.sav"):
+        if path.is_file() and len(path.stem) == 20 and path.stem.isdigit():
             found.append(path)
     return found
 
@@ -325,11 +322,18 @@ def export_client_bundle(manifest, session_dir, peer_token, host_run_token=None)
     (``SESSION`` re-stamped, every other byte identical), the manifest
     fingerprint, and the latest campaign checkpoint path, generation and
     SHA-256 (or ``None`` when the host has no checkpoint yet).
+
+    The host runner calls this before the session starts and hands
+    ``bootstrap_text`` (plus the checkpoint out of band) to each peer. It
+    writes nothing into the host session.
     """
-    if not 8 <= len(peer_token) <= 128 or not _is_hex(peer_token, len(peer_token)):
+    if type(peer_token) is not str or not 8 <= len(peer_token) <= 128 or not _is_hex(peer_token, len(peer_token)):
         raise ValueError("invalid peer token")
     runs = Path(session_dir) / "runs"
     if host_run_token is not None:
+        if (type(host_run_token) is not str or not 8 <= len(host_run_token) <= 128
+                or not _is_hex(host_run_token, len(host_run_token))):
+            raise ValueError("invalid host run token")
         bootstrap_path = runs / host_run_token / BOOTSTRAP_FILENAME
         if not bootstrap_path.is_file():
             raise ValueError("unknown host run token")

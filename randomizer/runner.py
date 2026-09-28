@@ -1,5 +1,7 @@
 """Local file-IPC runner. Every launch has a private token and journal directory."""
 import asyncio
+import copy
+import hashlib
 import json
 import os
 import secrets
@@ -11,16 +13,15 @@ from .netplay_mirror import (
     BOOTSTRAP_FILENAME,
     CARD_DIRNAME,
     EVENTS_FILENAME,
+    HELLO_FILENAME,
     INGEST_FILENAME,
     MIRROR_FILENAME,
     SAVE_RESULT_FILENAME,
     STATE_FILENAME,
     MirrorStore,
-    export_client_bundle,
     mirror_dir_for,
     parse_mirror_line,
     render_mirror_state,
-    restamp_bootstrap_for_peer,
     run_dir_for,
 )
 from .seed import fingerprint
@@ -323,102 +324,204 @@ class NetplayClientRun:
 
     It owns only its mirror run directory
     (``<mirror>/runs/<token>/`` with ``bootstrap.txt``, ``mirror.json``,
-    ``mirror-events.txt``, a debug ``state.txt`` and ``card/``). It never
-    imports ``websockets``, never contacts Archipelago, and never writes the
-    host's ``session.json``, ``checks.txt`` or ``campaign/``. There is no
-    reference to ``websockets``, ``ap_connect`` or ``serve`` anywhere on this
-    code path by construction.
+    ``mirror-events.txt``, ``hello.txt``, a debug ``state.txt`` and ``card/``).
+    It never imports ``websockets``, never contacts Archipelago, and never
+    writes the host's ``session.json``, ``checks.txt`` or ``campaign/``.
+    There is no reference to ``websockets``, ``ap_connect`` or ``serve``
+    anywhere on this code path by construction.
+
+    The run token is the peer token the host chose in ``export_client_bundle``
+    and stamped into the bootstrap ``SESSION`` line: when ``run_token`` is
+    omitted it is derived from the bootstrap (validated as hex), so relaunching
+    with the same host bootstrap resumes the same ``runs/<token>/`` directory,
+    ``mirror.json`` and ingest cursor. Passing ``run_token`` explicitly still
+    requires it to match the bootstrap ``SESSION`` line.
     """
 
-    def __init__(self, manifest, mirror_dir, bootstrap_text, run_token=None):
+    def __init__(self, manifest, mirror_dir, bootstrap_text, run_token=None, seed_data=None):
         self.manifest = manifest
         self.fingerprint_value = fingerprint(manifest)
         self.mirror_dir = Path(mirror_dir)
-        token = run_token or secrets.token_hex(32)
-        self.directory = run_dir_for(self.mirror_dir, token)
-        self.token = self.directory.name
+        if type(bootstrap_text) is not str or not bootstrap_text:
+            raise ValueError("netplay client requires the host bootstrap")
         fields = bootstrap_text.split()
         try:
             session_line = fields[fields.index("SESSION") + 1]
             fingerprint_line = fields[fields.index("FINGERPRINT") + 1]
         except (ValueError, IndexError):
             raise ValueError("client bootstrap is missing SESSION/FINGERPRINT")
-        if session_line != self.token:
-            raise ValueError("client bootstrap SESSION does not match this run token")
+        if run_token is None:
+            token = session_line
+        else:
+            if session_line != run_token:
+                raise ValueError("client bootstrap SESSION does not match this run token")
+            token = run_token
+        self.directory = run_dir_for(self.mirror_dir, token)
+        self.token = self.directory.name
         if fingerprint_line != self.fingerprint_value:
             raise ValueError("client bootstrap fingerprint does not match manifest")
-        self.directory.mkdir(parents=True)
+        self.directory.mkdir(parents=True, exist_ok=True)
         atomic_write(self.directory / BOOTSTRAP_FILENAME, bootstrap_text)
         (self.directory / CARD_DIRNAME).mkdir(exist_ok=True)
         self.events = self.directory / EVENTS_FILENAME
+        self.hello = self.directory / HELLO_FILENAME
+        self.handshaken = False
+        if seed_data is not None and not (self.directory / MIRROR_FILENAME).exists():
+            from .netplay_mirror import validate_mirror_data
+            validate_mirror_data(manifest, seed_data)
+            atomic_write(self.directory / MIRROR_FILENAME,
+                         json.dumps(seed_data, indent=2) + "\n")
         self.mirror = MirrorStore(manifest, self.directory / MIRROR_FILENAME)
         self.ingest_path = self.directory / INGEST_FILENAME
         self.offset = 0
         self.seen = set()
         self.checkpoint = None
+        self.last_frame = -1
+        self.prefix_hash = hashlib.sha256(b"").hexdigest()
         if self.ingest_path.exists():
             try:
                 state = json.loads(self.ingest_path.read_text(encoding="utf-8"))
                 offset, seen, checkpoint = state["offset"], state["seen"], state.get("checkpoint")
+                last_frame = state.get("last_frame", -1)
+                prefix_hash = state.get("prefix_hash", self.prefix_hash)
                 if type(offset) is not int or offset < 0 or type(seen) is not list:
+                    raise ValueError("bad ingest state")
+                if type(last_frame) is not int or last_frame < -1:
+                    raise ValueError("bad ingest state")
+                if type(prefix_hash) is not str:
                     raise ValueError("bad ingest state")
             except (ValueError, KeyError, UnicodeDecodeError):
                 raise ValueError("mirror ingest state is damaged")
             self.offset = offset
             self.seen = set(seen)
             self.checkpoint = checkpoint
+            self.last_frame = last_frame
+            self.prefix_hash = prefix_hash
+        self._check_hello()
         self.write_state(True)
 
     def _save_ingest(self):
         atomic_write(self.ingest_path, json.dumps(
-            dict(offset=self.offset, seen=sorted(self.seen), checkpoint=self.checkpoint),
+            dict(offset=self.offset, seen=sorted(self.seen), checkpoint=self.checkpoint,
+                 last_frame=self.last_frame, prefix_hash=self.prefix_hash),
             indent=2) + "\n")
+
+    def _check_hello(self):
+        """Gate ingest on the native ``hello.txt`` handshake.
+
+        The native client advertises ``PIKMIN_HELLO <schema> <token>
+        <fingerprint> <capabilities...> END`` in the run directory, mirroring
+        the host ``NativeRun`` handshake. Nothing is ingested until it matches;
+        a present-but-wrong hello is fatal.
+        """
+        if self.handshaken:
+            return True
+        if not self.hello.exists():
+            return False
+        try:
+            fields = self.hello.read_text(encoding="ascii").split()
+        except (OSError, UnicodeDecodeError):
+            raise ValueError("mirror hello is unreadable")
+        expected = ["PIKMIN_HELLO", str(self.manifest["schema"]), self.token,
+                    self.fingerprint_value, *self.manifest["capabilities"], "END"]
+        if fields != expected:
+            raise ValueError("mirror hello handshake mismatch")
+        self.handshaken = True
+        return True
 
     def write_state(self, ready=True):
         atomic_write(self.directory / STATE_FILENAME,
                      render_mirror_state(self.manifest, self.mirror.load(), self.token, ready))
 
     def poll(self):
-        """Ingest newly appended events; return ``(applied, duplicates)``."""
+        """Ingest newly appended events; return ``(applied, duplicates)``.
+
+        Lines are split on ``b"\\n"`` only; any ``\\r`` or control byte stays
+        inside the line and is rejected by the strict parser. The whole batch
+        is parsed and validated before anything is applied, so a malformed
+        line leaves ``mirror.json``, the card pointer and the ingest cursor
+        untouched. A malformed stream is fatal to the run (matching host
+        semantics): the offending poll raises.
+        """
+        if not self._check_hello():
+            return (0, 0)
         raw = self.events.read_bytes() if self.events.exists() else b""
         complete = raw[:raw.rfind(b"\n") + 1] if raw else b""
         if len(complete) < self.offset:
             raise ValueError("mirror event file was truncated")
+        if self.offset and hashlib.sha256(bytes(complete[:self.offset])).hexdigest() != self.prefix_hash:
+            raise ValueError("mirror event file was rewritten")
         try:
             text = complete.decode("ascii")
         except UnicodeDecodeError:
             raise ValueError("mirror event file is not ASCII")
-        data = self.mirror.load()
-        applied = duplicates = 0
-        dirty = False
-        for line in text[self.offset:].splitlines():
+        chunk = text[self.offset:]
+        if not chunk:
+            return (0, 0)
+        raw_lines = chunk.split("\n")
+        if raw_lines[-1] != "":
+            raise ValueError("mirror event batch is not newline terminated")
+        lines = raw_lines[:-1]
+        if any(line == "" for line in lines):
+            raise ValueError("invalid mirror event: blank line")
+        # Phase 1: parse every line and check frame monotonicity, skipping
+        # exact duplicates (which are no-ops by construction).
+        parsed = []
+        running = self.last_frame
+        for line in lines:
             if line in self.seen:
-                duplicates += 1
+                parsed.append(None)
                 continue
             frame, tag, args = parse_mirror_line(line)
+            if frame < running:
+                raise ValueError("mirror frame retracted")
+            running = max(running, frame)
+            parsed.append((frame, tag, args))
+        # Phase 1b: validate the whole batch against a copy before mutating.
+        data_copy = copy.deepcopy(self.mirror.load())
+        checkpoint_copy = copy.deepcopy(self.checkpoint)
+        for line, event in zip(lines, parsed):
+            if event is None:
+                continue
+            frame, tag, args = event
+            if tag in ("SAVE_RESULT", "SAVE_FAIL"):
+                checkpoint_copy = (dict(gen=args[0], digest=args[1], ok=True, frame=frame)
+                                   if tag == "SAVE_RESULT"
+                                   else dict(gen=args[0], digest=None, ok=False, frame=frame))
+                continue
+            self.mirror.apply(data_copy, event)
+        # Phase 2: apply for real; card writes happen only after validation.
+        data = self.mirror.load()
+        applied = duplicates = 0
+        card_text = None
+        for line, event in zip(lines, parsed):
+            if event is None:
+                duplicates += 1
+                continue
+            frame, tag, args = event
             if tag in ("SAVE_RESULT", "SAVE_FAIL"):
                 if tag == "SAVE_RESULT":
                     gen, digest = args
                     self.checkpoint = dict(gen=gen, digest=digest, ok=True, frame=frame)
-                    atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME,
-                                 f"SAVE_RESULT {gen} {digest}\n")
+                    card_text = f"SAVE_RESULT {gen} {digest}\n"
                 else:
                     (gen,) = args
                     self.checkpoint = dict(gen=gen, digest=None, ok=False, frame=frame)
-                    atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME,
-                                 f"SAVE_FAIL {gen}\n")
+                    card_text = f"SAVE_FAIL {gen}\n"
                 self.seen.add(line)
                 applied += 1
-                dirty = True
                 continue
-            if self.mirror.apply(data, (frame, tag, args)):
+            if self.mirror.apply(data, event):
                 applied += 1
             else:
                 duplicates += 1
             self.seen.add(line)
-            dirty = True
         self.offset = len(complete)
-        if dirty:
+        self.last_frame = running
+        self.prefix_hash = hashlib.sha256(bytes(complete)).hexdigest()
+        if lines:
+            if card_text is not None:
+                atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME, card_text)
             self.mirror.save(data)
             self._save_ingest()
             self.write_state(True)
@@ -440,11 +543,9 @@ async def serve_netplay_client(manifest, run, process=None):
 
 def launch_netplay_client(manifest, session_dir, bootstrap_text, mirror_dir=None, exe=None, assets=None):
     """Run the mirror client. Only writes under the mirror directory."""
-    from .seed import fingerprint as _fingerprint
-
-    if manifest.get("mode") == "ap" and bootstrap_text is None:
+    if bootstrap_text is None:
         raise ValueError("netplay client requires the host bootstrap")
-    target = Path(mirror_dir) if mirror_dir else mirror_dir_for(session_dir, _fingerprint(manifest))
+    target = Path(mirror_dir) if mirror_dir else mirror_dir_for(session_dir, fingerprint(manifest))
     with SessionLock(target):
         return _launch_netplay_client(manifest, target, bootstrap_text, exe, assets)
 
