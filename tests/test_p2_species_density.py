@@ -21,6 +21,7 @@ import pytest
 
 from experimental.pikmin2_enemy_roster import load_and_validate
 from experimental.pikmin2_seed_bridge import (
+    admitted_ids,
     DENSITY_BOUNDED,
     DENSITY_LEGACY,
     SeedBridgeError,
@@ -83,28 +84,31 @@ def test_legacy_default_is_unchanged_and_deterministic():
     """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    # #888: roster admission equals the pool (35 on 35), so the bare
-    # default resolves again. None and the explicit legacy token agree.
-    first = resolve_placement_layout("seed-a", "Player1", document, roster)
-    second = resolve_placement_layout("seed-a", "Player1", document, roster)
+    # #893: the admitted pool (36) outgrew the 35 slots and a bare default
+    # now samples it; a 35-species subset still fits, and there None and the
+    # explicit legacy token agree.
+    fit = [source_id for source_id in admitted_ids(roster) if source_id != 78]
+    first = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
+    second = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     assert first == second
     assert resolve_placement_layout(
-        "seed-a", "Player1", document, roster, density=DENSITY_LEGACY) == first
+        "seed-a", "Player1", document, roster, species=fit, density=DENSITY_LEGACY) == first
 
 
 def test_legacy_multi_species_multiset_is_pinned():
-    """The 35-species pool keeps its exact-fit all-target multiset."""
+    """A 35-species selection keeps its exact-fit all-target multiset."""
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    assert len(PLAYABLE_P2_SPECIES) == 35
+    # #893: the pool is 36 on 35 slots; the pre-78 selection still fits.
+    assert len(PLAYABLE_P2_SPECIES) == 36
+    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id != 78]
     roster = load_and_validate()
     layout = resolve_placement_layout(
-        "seed-a", "Player1", committed_document(), roster,
-        species=list(PLAYABLE_P2_SPECIES))
+        "seed-a", "Player1", committed_document(), roster, species=fit)
     counts = Counter(binding["source_id"] for binding in layout["bindings"])
     assert sum(counts.values()) == 35
-    assert set(counts) == set(PLAYABLE_P2_SPECIES)
+    assert set(counts) == set(fit)
     assert all(count == 1 for count in counts.values())
 
 

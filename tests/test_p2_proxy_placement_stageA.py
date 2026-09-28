@@ -231,7 +231,9 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
                              p2_species="playable", p2_proxy_tier=None)
     assert manifest == manifest_none
     assert "p2_proxy_tier" not in manifest
-    assert manifest["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
+    # #893: a no-tier pool that outgrows the slots is sampled (sampled-v1);
+    # either way it never reaches the proxy-only slots (checked below).
+    assert manifest["p2_layout"].get("density", "all-targets-v1") in ("all-targets-v1", "sampled-v1")
     assert all(b["target"] not in PROXY_EXCLUSIVE for b in manifest["p2_layout"]["bindings"])
     validate(manifest)
 

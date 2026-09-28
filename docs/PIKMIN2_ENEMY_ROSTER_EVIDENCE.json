@@ -1388,25 +1388,27 @@
     "78": {
       "native_module": "pc_p2_groink",
       "owner_lane": "21",
-      "eligibility": "candidate",
-      "eligibility_reason": "Owner decision 2026-09-28 (#888): candidate until an OWN campaign run. Native #888 WP5 (Open-Nectar PR #4, branch claude/p2-groink-own) now drives a campaign-bound 78 with the engine-free source FSM pc_p2_groink_fsm (Frog host AI suppressed, stored-damage drain, 3-shell volleys, P2 pose draw hook, onion:p2:78 delivery bind); root stages its retail parms/bank/poses (experimental/pikmin2_groink_stage.py). No Windows OWN run has been recorded yet, so movement/attacks stay BLOCKED and 78 is not re-admitted.",
+      "eligibility": "admitted",
+      "eligibility_reason": "Gatling Groink (MiniHoudai, source 78): OWN campaign run on #888 section 4A plus the #892 shell visuals; the source MiniHoudai FSM drives the campaign Groink, which fights, dies naturally, is carried and delivers Onion receipt onion:p2:78:3 on its own generator token. Owner eye-checked the facing and the shell effects (2026-09-28).",
       "source": [
-        "PIKMIN2_GROINK_BURST.md"
+        "PIKMIN2_GROINK_BURST.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "BLOCKED",
-        "attacks_receivers": "BLOCKED",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "corpse:groink:201001 (P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0) output/dsw/l21-out/run-carcass-transport3/native.log:1378",
+      "delivery_receipt": "onion:p2:78:3 (P2_GROINK_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-groink-own/runs/fx1-78/session/runs/405a7edd3ba314b2f59c8d99c3633c583e0e545d4947efce9854d6c374e9510b/native.log:L2535 receipt (sha256 9fbb22ea6448eecbdebf2e0a6fde6236ccc26904ffad6a2035ab9e0322321152)",
       "notes": [
-        "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
-        "identity_spawn closed on the reviewed l52 accepted slot 328297937 (muse-l60 generated birth native.log:592-594); natural transport/reward receipt corpse:groink:201001 from the preserved l21 carcass-transport run (output/dsw/l21-out/run-carcass-transport3/native.log:1378).",
-        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run.",
-        "#888 WP5 (unverified at runtime): FminiHoudai 97 runs the same source FSM as FixMiniHoudai (no locomotion) and shares the staged bank; 78 now binds its ordinary delivery source, so the expected gate-5 receipt for a campaign run is onion:p2:78:<stage> (P2_ORDINARY_P2_RECEIPT). The corpse:groink:201001 receipt above is the older preview-pod carcass evidence, not the campaign Onion receipt."
+        "MiniHoudai (Gatling Groink): #888 WP5 source FSM pc_p2_groink_fsm (MiniHoudaiState.cpp) in the campaign, the P1 Frog AI suppressed with a stored-damage drain, P2 pose draw, onion:p2:78 delivery bind.",
+        "Campaign evidence, bot-driven power-mode run fx1 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator: output/claude-orch/p2-groink-own/runs/fx1-78/session/runs/405a7edd3ba314b2f59c8d99c3633c583e0e545d4947efce9854d6c374e9510b/native.log (sha256 9fbb22ea6448eecbdebf2e0a6fde6236ccc26904ffad6a2035ab9e0322321152) L1007 P2_GROINK_PARMS retail=1 health=1200, L1105 BANK staged_clips=8 muzzle_staged=1 poses=48 draw=p2_model, L1106 OWN_BIND variant=NormMiniHoudai, L1839 walkpath then turn/attack/flick states, L1893 VOLLEY shells=3 (4 volleys), L1907 SHELL_HIT bomb on Pikmin, L2169 FLICK stick=9/9, L2026 onward 71 DAMAGE lines falling 1200 to 15, L2295 DEAD, L2315 CARCASS_BECOME, L2535 receipt onion:p2:78:3 new=1, L2537 RESULT 1/1/1/1 in 56 s. Pins: root 9bac7d0a (content staged with p2_prepare_content --species <pool>,78,97, prepared.json sha256 4bc6641d5166818b...), native 4laric/Open-Nectar claude/p2-groink-shell-fx 65f8d281f (fork main 0b9f6c815 + #892 shell effects, PR #6), exe nectar.exe sha256 af13c9254f784a078e77a34facd6bdd141cd3cf3ad6a828c0eb16e49e80dadd9.",
+        "Earlier Windows runs on fork main 0b9f6c815 (exe 761fada8...): g1p and g2v power runs repeat the full loop (receipt onion:p2:78:3); g1n with the default 15-Pikmin squad kills naturally in 211 s over 8 volleys and 3 flicks but the bot stalls on the carry (corpse carry minimum 7, 4 carriers). Evidence on #888 (issuecomment-5875447908).",
+        "Shell visuals (#892): source TChibiShoot/TChibiShell/TChibiHit/THdamaHit3 timing mapped to P1 one-shot effects (pc_p2_groink_fx.h); run fx1 logs 5 P2_GROINK_FX kind=shoot (4 volleys plus the dead bomb) and 12 kind=hit. Facing: P2_GROINK_FACE shows the model +Z and the volley aim agree on screen.",
+        "cleanup_reentry keeps its earlier PASS; the OWN runs above did not end a day or re-enter the area. Known gaps: carcass revival birth not ported (P2_GROINK_CARCASS_REVIVE_SKIPPED), corpse carry minimum comes from the P1 Frog pellet config, charge/smoke body effects and shell sounds not ported."
       ]
     },
     "79": {

@@ -103,6 +103,23 @@ def test_row_evidence_proven(tmp_path, monkeypatch):
         load_rows(tmp_path)
 
 
+def _assert_playable_first(layout):
+    """Playable species are assigned first: while any playable species is
+    unplaced, every base-document slot (all of which accept every playable
+    species) carries a playable species, never a proxy (#893 keeps this
+    when the playable pool itself outgrows the slots)."""
+    from randomizer.seed import _default_admitted_placement
+
+    base = {str(slot["uid"]) for slot in _default_admitted_placement()["slots"]}
+    playable = set(PLAYABLE_P2_SPECIES)
+    unplaced_playable = playable & set(layout.get("unplaced", []))
+    on_base = [b["source_id"] for b in layout["bindings"] if b["target"] in base]
+    if unplaced_playable:
+        assert on_base and all(source_id in playable for source_id in on_base)
+    else:
+        assert playable <= {b["source_id"] for b in layout["bindings"]}
+
+
 def test_default_path_unchanged():
     first = generate("tier-default-seed", p2_enemies=True, p2_species="playable")
     second = generate("tier-default-seed", p2_enemies=True, p2_species="playable",
@@ -110,7 +127,8 @@ def test_default_path_unchanged():
     assert first == second
     assert "p2_proxy_tier" not in first
     assert "p2-proxy-tier-v1" not in first["capabilities"]
-    assert first["p2_layout"].get("density", "all-targets-v1") == "all-targets-v1"
+    # #893: the no-tier pool is sampled once it outgrows the slots.
+    assert first["p2_layout"].get("density", "all-targets-v1") in ("all-targets-v1", "sampled-v1")
     validate(first)
 
 
@@ -132,7 +150,7 @@ def test_full_plus_proven_is_playable_plus_every_proven_row():
     layout = manifest["p2_layout"]
     bound = {b["source_id"] for b in layout["bindings"]}
     assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids("proven"))
-    assert set(PLAYABLE_P2_SPECIES) <= bound
+    _assert_playable_first(layout)
     validate(manifest)
 
 
@@ -142,7 +160,12 @@ def test_full_plus_proven_equals_playable_six(monkeypatch):
                         p2_proxy_tier="proven", p2_species="full")
     assert manifest["p2_proxy_tier"] == "proven"
     assert "p2-proxy-tier-v1" in manifest["capabilities"]
-    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == set(PLAYABLE_P2_SPECIES)
+    layout = manifest["p2_layout"]
+    bound = {b["source_id"] for b in layout["bindings"]}
+    # #893: 36 playable species on 35 slots; with no proven proxies the
+    # layout is the sampled playable pool.
+    assert bound <= set(PLAYABLE_P2_SPECIES)
+    assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
     validate(manifest)
 
 
@@ -233,8 +256,7 @@ def test_sampled_assigns_playable_first():
     layout = resolve_placement_layout("seed-playable-first", "Player1", document, roster,
                                       species=[*PLAYABLE_P2_SPECIES, 42],
                                       proxy_rows=proxy_rows)
-    bound = {b["source_id"] for b in layout["bindings"]}
-    assert set(PLAYABLE_P2_SPECIES) <= bound
+    _assert_playable_first(layout)
     validate_layout(layout, roster)
 
 

@@ -48,8 +48,13 @@ def playable_manifest(mode="solo"):
 
 
 def test_playable_pool_binds_all_playable_species():
-    manifest = playable_manifest()
-    assert {b["source_id"] for b in manifest["p2_layout"]["bindings"]} == set(PLAYABLE_P2_SPECIES)
+    # #893: 36 playable species on 35 slots; the seed samples the pool, so
+    # every species is either bound once or listed as unplaced.
+    layout = playable_manifest()["p2_layout"]
+    bound = [b["source_id"] for b in layout["bindings"]]
+    assert len(bound) == len(set(bound))
+    assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
+    assert not set(bound) & set(layout.get("unplaced", []))
 
 
 def test_location_set_ignores_p2_kills():
