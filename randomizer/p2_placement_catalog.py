@@ -149,6 +149,9 @@ CANDIDATE_SPECS = (
     (56, 'Damagumo', 26, ['ground'], None, False),
     (69, 'BigFoot', 26, ['ground'], None, False),
     (75, 'Kabuto', 20, ['ground'], None, False),
+    # #898: Breadbug (PanModoki 38) binds campaign ground slots; its OWN
+    # campaign run bound spring_init_7002 (native TEKI_Collec placement type).
+    (38, 'PanModoki', 18, ['ground'], 8, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,

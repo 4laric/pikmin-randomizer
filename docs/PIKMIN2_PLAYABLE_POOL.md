@@ -44,6 +44,7 @@ every existing caller keeps working. Today the pool is:
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
 | 78 | MiniHoudai | minihoudai |
+| 38 | PanModoki | breadbug |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -69,10 +70,15 @@ never P2 identities and never enter this table.
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
   eye-checked the facing and the shell effects. Carcass revival and the
   body charge/smoke effects are not ported yet.
+- **38 PanModoki (Breadbug): admitted (#898).** The source FSM runs it in the
+  campaign: ordinary attacks do nothing, thrown Pikmin landing on it press it,
+  it steals carcasses and tugs them against the carriers, and a Breadbug sucked
+  off its cargo at the Onion takes container damage. It dies, is carried and
+  delivers `onion:p2:38:3`. The go-home/Hide cycle is unit-tested only.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 36 species on 35 slots, a given seed may leave out any
+  (`sampled-v1`). With 37 species on 35 slots, a given seed may leave out any
   one pool species. A pool that fits keeps the legacy fill unchanged.
 - **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
   11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so

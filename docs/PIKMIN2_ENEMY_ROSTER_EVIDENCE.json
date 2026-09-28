@@ -725,24 +725,28 @@
       ]
     },
     "38": {
-      "native_module": "pc_p2_breadbug_actor",
+      "native_module": "pc_p2_breadbug_teki",
       "owner_lane": "18",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Breadbug (PanModoki, source 38): OWN campaign run (#898). The engine-free source FSM pc_p2_breadbug_fsm (panModokiState.cpp) drives the campaign Breadbug: it wanders the route graph, grabs a carcass and tugs it against the Pikmin carriers, takes press damage from a thrown Pikmin landing on it, is sucked off its cargo at the Onion for container damage, dies in its Dead state, is carried and delivers Onion receipt onion:p2:38:3 on its own generator token.",
       "source": [
         "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
-        "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:38:3 (P2_BREADBUG_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-breadbug-own/runs/b3-38/session/runs/1e49bffa4b589388e65f29f27b132952181220f22de64fcbea0e63b7895333f8/native.log:L3536 receipt (sha256 41831a5543590988dcc711c850acb73f786b1c94f6ffa6db0fd0e96db41ff5b2)",
       "notes": [
-        "PanModoki (Breadbug): actor/proxy + contested cargo; natural contested cargo/nest ownership/reward remain (#168/#220)."
+        "PanModoki (Breadbug): #898 source FSM pc_p2_breadbug_fsm in the campaign; the P1 Collec TAI is suppressed and all of its events consumed; ordinary Pikmin attacks are refused (damageCallBack is bitter-only); press (proper fp06 200) and container (fp04 1000) damage; PelletCarry tug at (min+max)/2; P2 pose draw keyed on the FSM clip; onion:p2:38 delivery bind.",
+        "Campaign evidence, bot-driven power-mode run b3 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator: output/claude-orch/p2-breadbug-own/runs/b3-38/session/runs/1e49bffa4b589388e65f29f27b132952181220f22de64fcbea0e63b7895333f8/native.log (sha256 41831a5543590988dcc711c850acb73f786b1c94f6ffa6db0fd0e96db41ff5b2) L1026 P2_BREADBUG_PARMS retail=1 health=1100 press=200 suck=1000, L1151 BANK staged_clips=9 poses=62 draw=p2_model, L1161 OWN_BIND, L1162 DELIVERY_BIND, L2505-2506 walk->damage OWN_PRESS 1100->900 (thrown Pikmin landing), L2872-2874 walk->stick, OWN_STICK ok=1 on a carcass (carry 3..6, strength 4.5), L2875 onward OWN_CONTEST carriers 1-3 vs 4.5 (Breadbug wins, back), L3421-3422 back->pulled carriers=5, L3462-3467 OWN_SUCKED then sucked->damage OWN_SUCK_DAMAGE 900->-100, L3489 OWN_DEAD, L3505 ESCAPE, L3507 OWN_CORPSE carry 3..6, L3516 corpse carried by 5, L3536 receipt onion:p2:38:3 new=1, L3538 RESULT 1/1/1/1 in 280 s; zero OWN_TAI_TRANSITION lines, every health change is an OWN damage line. Pins: root claude/p2-port-38-breadbug 9f17880f (content staged with p2_prepare_content --species <pool>,38, prepared.json sha256 5df87ef5b98f68ab...), native 4laric/Open-Nectar claude/p2-port-38-breadbug e780dc0fe (fork main 0b9f6c815 + #898), exe nectar.exe sha256 e61c5aa3f6509bf3a5dc08594db89be8e1fc37ccb9fcd638e86680398fc4793a.",
+        "Attack refusal evidence, same seed, run b2 (native cbcd98f6c): output/claude-orch/p2-breadbug-own/runs/b2-38/session/runs/95df90983ab82c2984851abb36d24b59aa28c57b9c5f8707d971569bdb045524/native.log (sha256 4566b7d93a4fd3518003ef6e3c3aa46ab89cf6d839aca60a5729bca3b23898a6) L6143 OWN_ATTACK_IGNORED count=3250 at health 500 while the only health drops are the five OWN_PRESS lines (1100->100); zero OWN_TAI_TRANSITION.",
+        "Known gaps: the CarryEnd/Hide/Appear cycle (cargo taken home, Pikmin on it killed, health refill) is unit-tested only; no treasure hoarding (P1 ship parts are never targeted); the nest model is not spawned (home point only); corpse carry minimum comes from the P1 Collec pellet config; pose-bank draw, not skeletal playback; no bitter spray in the port."
       ]
     },
     "40": {
