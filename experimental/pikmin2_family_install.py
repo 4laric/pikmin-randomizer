@@ -105,6 +105,11 @@ IDENTITY_FAMILY = {
     # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
     # Still a candidate until the owner's Windows OWN run lands.
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # #898 OWN: Breadbug (PanModoki 38) stages the native source-FSM inputs
+    # (retail parms, clip/key-event/pose bank, poses) through
+    # experimental.pikmin2_breadbug_stage; the campaign actor is driven by
+    # pc_p2_breadbug_fsm on the TEKI_Collec vehicle and delivers onion:p2:38.
+    38: 'breadbug', 'panmodoki': 'breadbug',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
     # than forking it; the source dir holds the full aquatic import.
@@ -983,6 +988,41 @@ def _adapt_minihoudai(source, run, actors):
                 groink=groink)
 
 
+def _validate_breadbug(source):
+    """Pre-flight check for Breadbug (PanModoki, source 38) OWN content."""
+    _read_identity_source(source, 38, 'PanModoki')
+    from experimental.pikmin2_breadbug_stage import BreadbugStageError, plan
+    try:
+        if plan(Path(source)) is None:
+            raise StagingError(f'PanModoki extractor manifest missing under {source}')
+    except (BreadbugStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Breadbug content invalid: {error}') from error
+
+
+def _adapt_breadbug(source, run, actors):
+    """Adapter for Breadbug (source 38): stage exactly what native opens.
+
+    ``p2-breadbug-parms.txt`` (verbatim retail panmodoki/enemyparm.txt),
+    ``p2-breadbug-bank.txt`` and the ``breadbug_<clip>_<ii>.mod`` poses in
+    the private model room (``experimental.pikmin2_breadbug_stage``). The
+    native campaign setup binds actors from the seed (pc_p2_campaign_source
+    == 38), so no actor sidecar is written. Idempotent across repeat calls.
+    """
+    from experimental.pikmin2_breadbug_stage import BreadbugStageError, stage_from
+    _read_identity_source(source, 38, 'PanModoki')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'PanModoki':
+            raise StagingError(f'Breadbug adapter got non-PanModoki species: {species!r}')
+    if not generators:
+        raise StagingError('Breadbug install requires at least one generator')
+    try:
+        staged = stage_from(Path(source), Path(run))
+    except (BreadbugStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Breadbug staging failed: {error}') from error
+    return dict(species='PanModoki', source_id=38, generators=sorted(set(generators)), breadbug=staged)
+
+
 def _adapt_cannon_projectile(source, run, actors):
     """Cannon/projectile family (#350) plus the FminiHoudai (97) Groink inputs.
 
@@ -1371,6 +1411,7 @@ ADAPTERS = {
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
