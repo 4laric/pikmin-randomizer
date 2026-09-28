@@ -35,6 +35,7 @@ import re
 import struct
 from pathlib import Path
 
+from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_animation import resource_chunks, sample_frames
 from experimental.pikmin2_convert import blocks, decode, write_model
@@ -246,6 +247,9 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             raise ValueError(f'{enum_name} model missing enemy.bmd') from None
         motions = archive_files(read(disc, anim_path))
         params = archive_files(read(disc, PARM_PATH))
+        # Retail Obj::changeMaterial texture swaps (#895); enemy.bmd stays retail.
+        baked_model, change_textures = change_texture.apply(
+            model, enum_name, lambda path: read(disc, path))
     names = joints(model)
     if not names:
         raise ValueError(f'{enum_name} model carries no joints')
@@ -349,7 +353,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             try:
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 matrices = draw_matrices(model_blocks, pose)
-                decoded = decode(model, True, bake_rigid=True,
+                decoded = decode(baked_model, True, bake_rigid=True,
                                  draw_matrices=matrices, **policies)
                 name = pose_name(enum_name, out_stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
@@ -416,6 +420,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         clips=clips, unsupported_clips=unsupported_clips,
         total_pose_bytes=total_pose_bytes,
         limitations=list(LIMITATIONS))
+    if change_textures:
+        result['change_textures'] = change_textures
     (output / MANIFEST).write_text(
         json.dumps(result, sort_keys=True, indent=2) + '\n', encoding='utf-8')
     return result
