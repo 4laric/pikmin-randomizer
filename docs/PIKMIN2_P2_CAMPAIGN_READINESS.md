@@ -42,7 +42,7 @@ A species must clear **three** gates, in this order:
 | 78 | MiniHoudai / Groink | **no extractor** | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
 | 1 | Kochappy | **no extractor** | needs 3, **absent** | own module, `_70`-keyed | no |
 | 45 | Snow / YellowKochappy | **no extractor** | needs 3, **absent** | own module, source-blind | no |
-| 58 | BombSarai | **no extractor** | needs `TEKI_Napkid` 11, **absent** | **none in campaign** | no |
+| 58 | BombSarai | ✓ `extract_bombsarai` (#244) | `TEKI_Napkid` 11 ✓ (#244) | OWN module `pc_p2_bombsarai_own_teki.cpp` (#244) | no — OWN bot evidence passes, admission held (see below) |
 
 ✓ = present and matching what that species' own setup actually requires.
 
@@ -89,16 +89,56 @@ clears all three gates.
 
 ## What each "no" needs
 
-**58 BombSarai** — the largest gap, and the one most likely to crash rather than just look
-wrong. `pc_p2_bombsarai_teki.cpp:588,604` `std::abort()` unless the host is `TEKI_Napkid` (11),
-and `hostType` has no `case 58`. Beyond the table row it needs: the setup's
-`if (!pc_pikipelago_room_preview()) return;` gate at `:581` replaced with a bridge path;
-generator matching via `pc_p2_campaign_token()` rather than `mGenerator->_70` at `:601` (Sarai
-does this correctly in `pc_p2_generated_placement.cpp:75-88`); removal of the
-abort-on-multiple/abort-on-missing single-instance behaviour at `:583-593`, `:604`, `:615-620`,
-since a seed places N copies with ids unknown at authoring time; and a draw hook — there is no
-`pc_p2_bombsarai_*_draw` in either chain (`tekibteki.cpp:177,2118`), so it renders as a stock
-Napkid.
+**58 BombSarai** — OWN port on `claude/p2-port-58-bombsarai` (#244; native fork, root
+origin). The earlier gaps listed here (no extractor, no `case 58`, room-preview-only setup,
+`_70` matching, `std::abort()`, no draw hook) are closed on that branch: `extract_bombsarai`
+stages the retail parms, the own bank and the Bomb payload; `hostType` has `case 58: return 11`;
+the OWN module binds every source-58 actor by campaign token through
+`pc_randomizer_p2_bind_source(view, 58, token)`, uses `pc_p2_setup_skip` instead of `abort()`,
+suppresses the Napkid AI and draws the staged P2 model and Bomb.
+
+Fix stage (2026-09-28): the bomb blast is now lethal to Pikmin. P2
+`InteractBomb::actPiki` (`interactPiki.cpp:304-327`) blows every Pikmin with
+`BlowStateArg.mIsLethal = true`; the OWN blast had passed fp24 (10, captain damage) to Pikmin,
+which only flicked them. Pikmin now take the P1 host's own bomb-rock Pikmin damage
+(`PikiMgr` p77 `mBombDamagePiki`, 765 > health 100), resolved by P1 as flick then
+`PIKISTATE_Dead` on landing; captains keep fp24. Bot runs on native `36c7fce81` / `c5e11d51b`
+show the field count dropping by exactly the lethal hit count (power: 100 -> 62 with
+`pikmin_lethal=38`; normal squad: 20 -> 17 with `pikmin_lethal=3`), and the carrier is still
+killed, carried and received (`onion:p2:58:3`).
+
+Killing the carrier while it holds a bomb (bot run with
+`PIKMIN_RANDOMIZER_AUTOPLAY_BOMBSARAI_HOLD=0`, power x500) follows the source path:
+`getNextStateOnHeight` returns `Fall` at `mHealth <= 0` (`BombSarai.cpp:314-318`), the Fall
+key-2 event throws the held bomb (`BombSaraiState.cpp:590-596`, log `THROW kind=fall`), and
+`Fall` END transits to `Dead` (`:618-621`). The `onKill -> throwBomb(zero)` drop
+(`BombSarai.cpp:57-60`) is implemented but was not reached: through the FSM a carrier that dies
+holding a bomb always passes through `Fall` first, so that drop only fires on a kill that bypasses
+the state machine. `BombFlick` and `TakeOff2` were not seen on the final pins (TakeOff2 was seen
+at `8e0cf7a82`).
+
+Admission is **held** until (a) an independent adversarial OWN review passes on the fixed build
+and (b) the #893 per-seed sampling (root PR #894) is on main — main has 35 pool species on 35
+placement slots, so a 36th cannot be placed without it.
+
+Known fidelity gaps (accepted for now, not admission blockers on their own):
+
+* Carcass: the host Napkid pellet is used and never mutated. Its carry config (3/6) matches the
+  P2 retail BombSarai carcass entry (`user/Abe/Pellet/us/carcass_config.txt` min 3, max 6,
+  sha256 `a76c4763...de9de0`); the run logs `p2_match=1`. P2's `money 4` and carcass offset
+  (10.5, 0, -37) are not staged; the P1 pellet decides the Onion yield.
+* Draw: the nearest of 8 sampled rigid poses per clip, no interpolation. The balloons are baked
+  static. `supli1` has no convertible pose (zero joint scale) and draws as `wait2`.
+* No P2 sound effects; no balloon-pop, down or supply effects. Each blast plays the P1
+  bomb-rock explosion effect instead of the P2 Bomb efx.
+* Vertical motion uses P1 host gravity while grounded, not P2's. The grounded carrier drifts
+  ~90u under a 100-Pikmin crowd; this matches the decomp's direction of effect — P2
+  `Creature::resolveOneColl` (`creature.cpp:703-712`) splits collision push by mass ratio and
+  BombSarai fp05 is 0.01 against the Piki default 100 (`creature.cpp:33`), so the carrier takes
+  essentially all of the push — but the host push magnitude is not measured against P2's.
+* Bitter spray and purple Pikmin gates exist but cannot occur in P1.
+* The bot's 6 s "stand under the carrier" hold is bot input only. Release/Supply was reached
+  with that strategy; a throw-first player knocks the carrier down before it drops the bomb.
 
 **1 Kochappy** — `pc_p2_kochappy_setup()` is only reached from the room-preview branch of
 `pc_p2_preview.cpp` (call site `:280`, after the bridge branch returns at `:161-172`), so it
