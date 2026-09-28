@@ -1192,22 +1192,26 @@
     "66": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Man-at-Legs (Houdai, source 66): own source brain P2HoudaiFsm on native fork claude/p2-port-66-houdai 98f6d1d44, exe sha256 d73be98700dbe159...; all six gates natural PASS in bot-driven power-mode campaign f2-66 on the species' own generator token; Onion receipt onion:p2:66:3 (#173).",
       "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md"
+        "PIKMIN2_LONG_LEGS_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Houdai (Man-at-Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
-      ]
+        "Lane campaign evidence: Bot-driven power-mode campaign f2-66 (owner ruling 2026-09-25: power mode admits; damage_mult 3): own-brain bind (P2HoudaiFsm, disc parms), Stay->Land->Wait->Walk->Wait->Flick->Shot->Walk->Flick->Dead on its own generator 1945764764, stuck-only Flick shakes, straight shells hitting Pikmin, 59 incremental damage lines 2800->10, P2_LONG_LEGS_DEAD prior_health 10, P2 corpse carried by 10-11, Onion receipt onion:p2:66:3. Log output/claude-orch/p2-port-66/runs/f2-66/session/runs/1a61af1ca10b74d5b625091c66f2afe6910820accadcca6252dd0e9a8f36b29a/native.log (sha256 d2a5b6cfe626d66c...) L1516 own bind (P2_HOUDAI_OWN_BIND health=2800 parms=disc), L1517 delivery bind source_id=66, L1898 Stay->Land, L1956 Land->Wait, L1974 Wait->Walk, L2023 WALK_END distance=18.0, L2089 Flick shakes 7 stuck Pikmin, L2094 Flick->Shot, L2307 Shot->Walk, L2352 dead, L2380 corpse register, L2646 receipt onion:p2:66:3, L2647 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1.",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); the bot only publishes pad input; no state was written by the run. Regression controls 56/69 on the same exe: runs f2-56 and f2-69.",
+        "Open owner decisions (#173): corpse carry follows the 56/69 precedent (source Houdai leaves no carcass); legs stay in bind pose (no IKSystemMgr), body translation uses an IK stride-cycle approximation."
+      ],
+      "delivery_receipt": "onion:p2:66:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-66/runs/f2-66/session/runs/1a61af1ca10b74d5b625091c66f2afe6910820accadcca6252dd0e9a8f36b29a/native.log:L2646 receipt (sha256 d2a5b6cfe626d66c...)"
     },
     "68": {
       "native_module": "pc_p2_tamago",
