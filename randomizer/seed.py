@@ -374,8 +374,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "DangoMushi",
         "family": "dangomushi",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
-            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "run": "Bot-driven power-mode campaign r4 (#897 OWN fidelity; owner ruling 2026-09-25: power mode admits; native claude/p2-port-94-crawbster 0cec11053, exe 2d149650, root 9bac7d0a): own-token bind, two rolls ending in WALL_CRASH (Obj::wallCallback), per-frame PRESS crush on 68 targets in one roll, looped Turn window 7.45 s, 10 real Rocks drawn on each of 2 Turns, key-3 SHAKE, arm FLICK hitting the captain, DAMAGE_ACCEPTED only in state=turn (health 3000 -> 0), DEAD, corpse carried with the P2 carcass (20/30, 30 seeds), Onion receipt onion:p2:94:3; frame-dump eye check",
+            "log": "output/claude-orch/p2-port-94/runs/r4-94/session/runs/7d1574eb883aeac251cd5e50db0fca06fdb1fe4897e61f9fd843a2f9680b53e1/native.log (sha256 c0c3972f637be694...) L1309 bind, L1810/L2222 wall crash, L2016 shake, L2045 flick, L2377 dead, L2953 receipt; output/claude-orch/p2-port-94/runs/r4-94/score.json; sheets/crawbster94_visual_evidence.png",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",

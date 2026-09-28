@@ -1561,7 +1561,7 @@
       "native_module": "pc_p2_dangomushi",
       "owner_lane": "25",
       "eligibility": "admitted",
-      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:94:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): all six gates natural PASS on the #897 OWN-fidelity campaign line; Onion receipt onion:p2:94:3 on the species' own generator token (bot run r4).",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1570,12 +1570,14 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 4a5a138eaa228226...)",
+      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-94/runs/r4-94/session/runs/7d1574eb883aeac251cd5e50db0fca06fdb1fe4897e61f9fd843a2f9680b53e1/native.log:L2953 receipt (sha256 c0c3972f637be694aed9d603bf76bfab6642a0c4d774df5305634f6933562f70)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt.",
+        "Lane campaign evidence: Bot-driven power-mode campaign r4 (#897 OWN fidelity; owner ruling 2026-09-25: power mode admits; native claude/p2-port-94-crawbster 0cec11053, exe 2d149650, root 9bac7d0a): own-token bind, two rolls ending in WALL_CRASH (Obj::wallCallback), per-frame PRESS crush on 68 targets in one roll, looped Turn window 7.45 s, 10 real Rocks drawn on each of 2 Turns, key-3 SHAKE, arm FLICK hitting the captain, DAMAGE_ACCEPTED only in state=turn (health 3000 -> 0), DEAD, corpse carried with the P2 carcass (20/30, 30 seeds), Onion receipt onion:p2:94:3; frame-dump eye check. Log output/claude-orch/p2-port-94/runs/r4-94/session/runs/7d1574eb883aeac251cd5e50db0fca06fdb1fe4897e61f9fd843a2f9680b53e1/native.log (sha256 c0c3972f637be694aed9d603bf76bfab6642a0c4d774df5305634f6933562f70) L1309 bind, L1810/L2222 wall crash, L2016 shake, L2045 flick, L2377 dead, L2953 receipt.",
+        "Re-pinned 2026-09-28 (#897): the prior inst-bugs-11 log (C:/cop/...) was deleted and rested on an approximated boss loop (territory Turn exit, one-shot flick, 2.5 s window, 30-rock budget, invisible rain, Spotty Bulborb carcass weight).",
+        "Remaining documented adaptations: rain Rocks/Egg drawn with the P1 Iwagon stand-in mesh; arm flick is a sector, not the hand_R joint; no fp21 view cone; Stay does not hide the model; live model draws the nearest of 3 staged poses per clip (blend disabled for DangoMushi).",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
     },
