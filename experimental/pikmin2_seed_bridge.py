@@ -50,14 +50,14 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # without importing the seed module (which imports this bridge lazily).
 # Keep in sync with P2_PLAYABLE_POOL (tests/test_p2_pool_roster_sync.py pins
 # the equality); the 2026-09-26 roster wave grew this from the original six;
-# admit-frogs5 (#871) appends Wtank 25 + Armor 15.
+# admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78.
 PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 2, 33, 35, 43, 53, 67, 76,
                 12, 13, 14, 28, 94, 68,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15)
+                25, 15, 78)
 
 
 class SeedBridgeError(ValueError):
@@ -409,6 +409,15 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
                  if not any(source_id in ids for ids in eligible.values())]
     if uncovered:
         raise SeedBridgeError(f"admitted identities have no accepted placement target: {uncovered}")
+    # #893 (owner decision 2026-09-28): a pool with more species than eligible
+    # targets cannot give every species a unique target. Under the default
+    # density the seed then samples the pool (sampled-v1): each target gets a
+    # distinct species and the species that did not fit are recorded as
+    # ``unplaced``. A pool that fits keeps the legacy fill byte-for-byte, and
+    # an explicitly requested density still fails closed below.
+    sampled = density is None and len(admitted) > len(eligible)
+    if sampled:
+        policy = DENSITY_SAMPLED
 
     revision = roster_revision(roster)
     by_source = by_id(roster)
@@ -431,6 +440,22 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     if policy == DENSITY_LEGACY:
         for target in remaining:
             assigned[target] = rng.shuffle(eligible[target])[0]
+    if sampled:
+        # A target is left over only when every species it accepts already
+        # holds another target (the loop above gives each species with a free
+        # choice one), so it repeats an eligible species as the legacy fill does.
+        for target in remaining:
+            assigned[target] = rng.shuffle(eligible[target])[0]
+        bindings = [{"target": target, "source_id": source_id,
+                     "enum_name": by_source[source_id].enum_name}
+                    for target, source_id in sorted(assigned.items(), key=lambda item: (len(item[0]), item[0]))]
+        layout = {"version": LAYOUT_VERSION, "roster_schema": ROSTER_SCHEMA,
+                  "roster_revision": revision, DENSITY_POLICY_KEY: policy,
+                  "bindings": bindings}
+        unplaced = sorted(set(admitted) - set(assigned.values()))
+        if unplaced:
+            layout["unplaced"] = unplaced
+        return layout
     # Fail closed: every admitted identity must end up bound to at least one
     # target. A target is assigned to exactly one identity, so when two admitted
     # identities share only one accepted slot (e.g. Snow 45 and Dwarf Orange 44

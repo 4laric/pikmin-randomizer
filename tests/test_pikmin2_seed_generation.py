@@ -114,11 +114,12 @@ def test_diagnostic_explicit_cohort_stays_available():
 
 
 def test_shared_host_slot_must_not_silently_drop_an_admitted_identity(monkeypatch):
-    """A slot contract must fail closed when two admitted identities share only
-    one accepted host slot. Snow (45) and Dwarf Orange (44) reuse the same P1
-    Dwarf-Bulborb host slot, so a single accepted slot cannot cover both: the
-    resolver must raise rather than emit a binding set missing an admitted
-    identity.
+    """Snow (45) and Dwarf Orange (44) reuse the same P1 Dwarf-Bulborb host
+    slot, so a single accepted slot cannot cover both. An explicitly requested
+    density must fail closed rather than emit a binding set missing an admitted
+    identity. Under the default density this is an oversubscribed pool (two
+    species, one slot), which #893 samples: the missing identity is never
+    silently dropped, it is recorded as ``unplaced``.
     """
     doc = {
         "schema": "p2-placement-v1",
@@ -130,8 +131,13 @@ def test_shared_host_slot_must_not_silently_drop_an_admitted_identity(monkeypatc
         ],
     }
     monkeypatch.setattr(bridge, "admitted_ids", lambda roster: [45, 44])
-    with pytest.raises(ValueError, match="accepted placement target|binding"):
-        bridge.resolve_placement_layout("seed-a", "Player1", doc)
+    for density in (bridge.DENSITY_LEGACY, bridge.DENSITY_BOUNDED):
+        with pytest.raises(ValueError, match="accepted placement target|binding"):
+            bridge.resolve_placement_layout("seed-a", "Player1", doc, density=density)
+    layout = bridge.resolve_placement_layout("seed-a", "Player1", doc)
+    assert layout["density"] == bridge.DENSITY_SAMPLED
+    bound = {row["source_id"] for row in layout["bindings"]}
+    assert len(bound) == 1 and set(layout["unplaced"]) == {44, 45} - bound
 
 
 @pytest.mark.parametrize("seed", ["seed-a", "seed-b", "seed-c"])
