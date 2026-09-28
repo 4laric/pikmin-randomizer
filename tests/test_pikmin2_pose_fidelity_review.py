@@ -41,9 +41,9 @@ def test_resident_clip_bytes_counts_slots_and_vectors():
 
 def test_approved_budgets_restored():
     from experimental import pikmin2_proxy_assets as proxy
-    assert anim.RESIDENT_CLIP_BYTES == 512 * 1024
+    assert anim.RESIDENT_CLIP_BYTES == 1024 * 1024  # owner-approved (#895)
     assert anim.RESIDENT_TOTAL_BYTES == 48 * 1024 * 1024
-    assert proxy.CLIP_BYTES == 512 * 1024 and proxy.TOTAL_BYTES == 8 * 1024 * 1024
+    assert proxy.CLIP_BYTES == 1024 * 1024 and proxy.TOTAL_BYTES == 8 * 1024 * 1024
     assert anim.LEGACY_POSE_LIMIT == anim.DEFAULT_POSE_LIMIT == 16
 
 
@@ -128,7 +128,7 @@ def test_proxy_sweep_never_falls_back_to_fewer_poses(monkeypatch, tmp_path):
 
     def fake_extract(iso, enum, source_id, target, pose_limit, row):
         limits.append(pose_limit)
-        raise ValueError('X clip a.bca exceeds 512 KiB of resident pose bytes (600000 bytes) at pose_limit 16')
+        raise ValueError('X clip a.bca exceeds 1 MiB of resident pose bytes (1100000 bytes) at pose_limit 16')
 
     monkeypatch.setattr(sweep, 'extract', fake_extract)
     monkeypatch.setattr(sweep, '_failure_record',

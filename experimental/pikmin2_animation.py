@@ -18,11 +18,11 @@ TOTAL_BYTES = 2 * 1024 * 1024
 # Resident pose-bank accounting, mirroring native pc_p2_pose_loader.h (#895).
 # Each clip keeps FALLBACK_SHAPES evenly spread poses as full Shapes (their
 # file size) and every other pose as decoded positions+normals (12 bytes per
-# vector). The approved acceptance budgets are 512 KiB per clip and 48 MiB
+# vector). Budgets: 1 MiB per clip (owner-approved, was 512 KiB) and 48 MiB
 # per setup (RESIDENT_CLIP_BYTES / RESIDENT_TOTAL_BYTES); the proxy guard keeps
 # its 8 MiB per species on the same resident measure.
 FALLBACK_SHAPES = 4
-RESIDENT_CLIP_BYTES = 512 * 1024
+RESIDENT_CLIP_BYTES = 1024 * 1024
 RESIDENT_TOTAL_BYTES = 48 * 1024 * 1024
 
 

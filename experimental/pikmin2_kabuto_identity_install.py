@@ -12,7 +12,7 @@ CLIPS = ('dead', 'move', 'flick', 'attack', 'wait')
 # clip plus decoded vectors): the shared native row cap, and budgets on the
 # native resident measure (512 KiB per clip, 10 MiB per bank).
 MAX_POSES = POSE_LIMIT_MAX
-CLIP_BYTES = 512 * 1024
+CLIP_BYTES = 1024 * 1024
 TOTAL_BYTES = 10 * 1024 * 1024
 
 

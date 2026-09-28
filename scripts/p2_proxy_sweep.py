@@ -7,7 +7,7 @@ when the row carries none), catch every exception, and write ``--report``
 JSON with one record per species.
 
 There is no fallback to fewer poses (#895): a species that exceeds the
-proxy budget (512 KiB per clip, 8 MiB per species, measured as native
+proxy budget (1 MiB per clip, 8 MiB per species, measured as native
 resident bytes by pikmin2_proxy_assets) is recorded as a failure at the
 row's pose limit instead of being silently re-baked sparser.
 
@@ -42,7 +42,7 @@ DEAD = ("dead", "dead1", "pdead1")
 
 
 def _is_byte_budget_error(message: str) -> bool:
-    return "exceeds 512 KiB" in message or "exceeds 8 MiB" in message
+    return "exceeds 1 MiB" in message or "exceeds 8 MiB" in message
 
 
 def _roster_assets(source_id: int, enum_name: str):

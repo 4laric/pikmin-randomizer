@@ -19,7 +19,7 @@ CLIPS=('dead','wait1','waitact2','move1','waitact1','type1','wait2','type2','att
 # (resident_clip_bytes), checked once per clip.
 MAX_POSES=POSE_LIMIT_MAX
 DEFAULT_POSES=DEFAULT_POSE_LIMIT
-CLIP_BYTES=512*1024
+CLIP_BYTES=1024*1024
 TOTAL_BYTES=10*1024*1024
 LOOPS={0:'stop at end',1:'reset to start and stop',2:'repeat',3:'reverse once then stop',4:'ping-pong repeat'}
 

@@ -68,13 +68,13 @@ PARAM_DIR_RE = re.compile(r'[a-z][a-z0-9_]{0,31}')
 # Only "compute" is allowed; anything else fails closed in _row_overrides.
 MISSING_NORMALS_ALLOW = frozenset({'compute'})
 
-# The approved proxy budgets (512 KiB per clip, 8 MiB per species), measured
+# The proxy budgets (1 MiB per clip, owner-approved; 8 MiB per species), measured
 # the way native pays for them (#895): resident bytes as pc_p2_pose_loader.h
 # accounts them (a few full Shapes per clip plus decoded vectors), via
 # pikmin2_animation.resident_clip_bytes. On-disk bytes are still reported
 # (total_pose_bytes) but no longer gate the bake: every pose file carries its
 # full MOD, so a dense clip is larger on disk than in memory.
-CLIP_BYTES = 512 * 1024
+CLIP_BYTES = 1024 * 1024  # owner-approved per-clip resident budget (#895)
 TOTAL_BYTES = 8 * 1024 * 1024
 
 LIMITATIONS = [
@@ -398,7 +398,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         total_resident_bytes += clip_bytes
         if clip_bytes > CLIP_BYTES:
             raise ValueError(
-                f'{enum_name} clip {clip["file"]} exceeds 512 KiB of resident pose bytes '
+                f'{enum_name} clip {clip["file"]} exceeds 1 MiB of resident pose bytes '
                 f'({clip_bytes} bytes) at pose_limit {pose_limit}')
     if total_resident_bytes > TOTAL_BYTES:
         raise ValueError(

@@ -25,7 +25,7 @@ The colour and brightness half of #895 is a separate track on
 | `DEFAULT_POSE_LIMIT` | 16 | Campaign density for every family (proxy and Chappy rows included). |
 | `LEGACY_POSE_LIMIT` | = `DEFAULT_POSE_LIMIT` | Kept as an alias. There is no sparser legacy tier: Blue Kochappy, Miulin, Frog, Tank and Kabuto are on the compact loader. |
 | `FALLBACK_SHAPES` | 4 | Full Shapes native keeps per clip (mirror of `p2motion::Tunables::fallbackShapes`). |
-| `RESIDENT_CLIP_BYTES` | 512 KiB | Approved per-clip budget, resident (see below). |
+| `RESIDENT_CLIP_BYTES` | 1 MiB | Per-clip budget, resident (owner-approved raise from 512 KiB; see below). |
 | `RESIDENT_TOTAL_BYTES` | 48 MiB | Approved per-setup budget, resident. |
 
 `scripts/p2_prepare_content.py` exposes `--pose-limit` (default 16, range
@@ -60,14 +60,14 @@ These are read once per process from environment variables:
 
   The collapsed geometry stays a sub-visible point, and its normals keep the rotation's direction. Frames that decode normally are byte-identical to before. A retried frame records `normal_policy.collapsed_joint` in its pose report.
 - **Frames trailer.** Bank writers append the `frames f0,f1,...` trailer (`P2_BANK_FRAMES_1`) from each pose's real source frame. `frames_trailer` emits it only when the list satisfies the native validator: first frame 0, last frame `duration-1`, strictly increasing, at most 64 entries. With the collapsed frames converted, every row has its end frames. The DangoMushi snagret rows now carry the trailer as well.
-- **Budgets.** Budgets use the approved acceptance numbers, measured the way native pays for them, as resident bytes (`resident_clip_bytes`):
+- **Budgets.** Budgets are measured the way native pays for them, as resident bytes (`resident_clip_bytes`):
   - Each clip keeps `FALLBACK_SHAPES` spread poses as full Shapes, which cost their file size.
   - Every other pose costs 12 bytes per position or normal.
   - The limits are:
-    - 512 KiB per clip.
+    - 1 MiB per clip (the repo owner approved raising it from 512 KiB).
     - 48 MiB per native setup.
     - 8 MiB per proxy species (`pikmin2_proxy_assets`).
-    - 512 KiB per clip and 10 MiB per bank for the Frog, Tank and Kabuto installers, which previously used on-disk limits.
+    - 1 MiB per clip and 10 MiB per bank for the Frog, Tank and Kabuto installers, which previously used on-disk limits.
   - On-disk bytes are still reported but no longer gate the bake. Each pose file is a full MOD, so a 16-pose clip is larger on disk (up to 1.1 MiB, for DangoMushi) than resident (at most 490 KiB). A vector-only on-disk pose format would shrink the disk footprint, but no budget needs it; it is listed as a follow-up.
 - **No sparse fallback.** `p2_proxy_sweep` has no retry at fewer poses. A species over budget is recorded as a failure (`budget_failure`) at its row limit.
 
@@ -104,7 +104,7 @@ Sarai decodes its own sampled meshes (below).
 - **Transactional.** Every pose file is read, resource-checked and decoded before the first Shape is created. A rejected clip creates no Shapes and never becomes the material owner. A later failure restores the shared owner, reference and topology.
 - Each clip keeps `fallbackShapes` evenly spread poses as Shapes. Pose 0 is always one of them, because it owns the materials and textures and is the private-geometry base. Every pose is decoded to positions and normals.
 - **Loud fallback.** A clip whose vectors do not decode loads every pose as a Shape if the budget allows, otherwise as many evenly spread Shapes as fit. It prints `P2_POSE_LOADER_FALLBACK`. It no longer quietly drops to 4 poses.
-- Budgets: `PoseFileBytes` 1 MiB per file (the `decodeBaked` cap), `ClipBytes` 512 KiB and `TotalBytes` 48 MiB, all resident.
+- Budgets: `PoseFileBytes` 1 MiB per file (the `decodeBaked` cap), `ClipBytes` 1 MiB (owner-approved) and `TotalBytes` 48 MiB, all resident.
 
 ## Draw (`pc_p2_pose_shape.h`, `pc_p2_pose_family.h`)
 
