@@ -53,6 +53,7 @@ import json
 import re
 from pathlib import Path
 
+from experimental.pikmin2_animation import frames_trailer
 from experimental.pikmin2_staging import StagingError
 
 SOURCE_ID = 94
@@ -454,8 +455,10 @@ def plan(source, actors):
     for clip in clips:
         name = Path(clip['file']).stem
         token = _events_token(clip['file'], clip.get('events', []))
-        clip_rows.append((name, clip['source_frames'], token,
-                          len(clip['poses']), 'converted'))
+        row = (name, clip['source_frames'], token, len(clip['poses']), 'converted')
+        # P2_BANK_FRAMES_1 trailer (#895) from each pose's true source frame.
+        trailer = frames_trailer(clip['poses'], clip['source_frames'])
+        clip_rows.append(row + (trailer.split()[1],) if trailer else row)
     mesh_files = {}
     for clip in clips:
         for pose in clip['poses']:

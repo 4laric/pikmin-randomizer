@@ -1052,8 +1052,8 @@ def extract_frog(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
-        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     for enum_name in ("Frog", "MaroFrog"):
         if (dest / enum_name).exists():
             raise ValueError(f"content dir already exists: {dest / enum_name}")
@@ -1347,15 +1347,16 @@ del _row
 
 
 def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT, wanted=None,
-                         proxy_pose_limit=None, legacy_pose_limit=LEGACY_POSE_LIMIT):
+                         proxy_pose_limit=None, legacy_pose_limit=None):
     """Extract the identity-keyed content root for the wanted source ids.
 
-    ``pose_limit`` applies to the non-proxy family banks drawn through the
-    compact batch2/batch3 loader (#895: default DEFAULT_POSE_LIMIT poses per
-    clip, cap POSE_LIMIT_MAX). ``legacy_pose_limit`` applies to families whose
-    dedicated native loader still keeps every pose as a full Shape (Blue
-    Kochappy, Miulin, Frog, Tank, Kabuto); those draw paths interpolate the
-    poses they have (pc_p2_pose_family.h) but are not densified. Proxy species use
+    ``pose_limit`` applies to every non-proxy family bank (#895: default
+    DEFAULT_POSE_LIMIT poses per clip, cap POSE_LIMIT_MAX). Every native
+    pose-bank loader, including the dedicated Blue Kochappy, Miulin, Frog,
+    Tank and Kabuto loaders, now goes through pc_p2_pose_loader.h (a few full
+    Shapes per clip plus decoded vectors), so there is no sparser legacy
+    tier. ``legacy_pose_limit`` is kept only as an explicit override for those
+    five families (``None`` = ``pose_limit``). Proxy species use
     ``proxy_pose_limit`` when given, otherwise each row's own ``pose_limit``
     (``extract_proxy`` with ``pose_limit=None`` takes the declaration), so a
     product run without an explicit ``--pose-limit`` stages what the rows
@@ -1370,6 +1371,8 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
     if proxy_pose_limit is not None and (
             type(proxy_pose_limit) is not int or not 2 <= proxy_pose_limit <= POSE_LIMIT_MAX):
         raise ValueError(f"proxy pose limit must be 2..{POSE_LIMIT_MAX}: {proxy_pose_limit!r}")
+    if legacy_pose_limit is None:
+        legacy_pose_limit = pose_limit
     if type(legacy_pose_limit) is not int or not 2 <= legacy_pose_limit <= POSE_LIMIT_MAX:
         raise ValueError(f"legacy pose limit must be 2..{POSE_LIMIT_MAX}: {legacy_pose_limit!r}")
     if wanted is None:
@@ -1622,9 +1625,10 @@ def main(argv=None):
                         help="sampled poses per clip for the compact-loader family banks "
                              f"(default {DEFAULT_POSE_LIMIT}, max {POSE_LIMIT_MAX}; proxy and Chappy "
                              "species use their row pose_limit unless this flag is given explicitly)")
-    parser.add_argument("--legacy-pose-limit", type=int, default=LEGACY_POSE_LIMIT,
-                        help="poses per clip for families whose native loader keeps every pose "
-                             f"as a full Shape (Blue Kochappy, Miulin, Frog, Tank, Kabuto; default {LEGACY_POSE_LIMIT})")
+    parser.add_argument("--legacy-pose-limit", type=int, default=None,
+                        help="optional override of the poses per clip for Blue Kochappy, Miulin, Frog, "
+                             "Tank and Kabuto (default: the --pose-limit value; their native loaders "
+                             "are on the compact loader since #895)")
     parser.add_argument("--species", default=None,
                         help="'playable', 'admitted', or comma-separated source ids "
                              "(default: admitted)")
@@ -1634,7 +1638,7 @@ def main(argv=None):
         parser.error("--seed-manifest and --actors-out must be given together")
     if args.pose_limit is not None and not 2 <= args.pose_limit <= POSE_LIMIT_MAX:
         parser.error(f"--pose-limit must be 2..{POSE_LIMIT_MAX}")
-    if not 2 <= args.legacy_pose_limit <= POSE_LIMIT_MAX:
+    if args.legacy_pose_limit is not None and not 2 <= args.legacy_pose_limit <= POSE_LIMIT_MAX:
         parser.error(f"--legacy-pose-limit must be 2..{POSE_LIMIT_MAX}")
 
     if args.species is None or args.species == "admitted":

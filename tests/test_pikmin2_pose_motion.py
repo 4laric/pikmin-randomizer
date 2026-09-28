@@ -34,7 +34,7 @@ class PoseDensityPolicyTest(unittest.TestCase):
     def test_constants(self):
         self.assertEqual(POSE_LIMIT_MAX, 64)
         self.assertGreaterEqual(DEFAULT_POSE_LIMIT, 12)
-        self.assertEqual(LEGACY_POSE_LIMIT, 3)
+        self.assertEqual(LEGACY_POSE_LIMIT, DEFAULT_POSE_LIMIT)  # no sparser legacy tier (#895)
 
     def test_sample_frames_accepts_dense_limits(self):
         frames = sample_frames(61, 16)

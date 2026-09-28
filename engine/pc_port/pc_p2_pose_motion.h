@@ -10,11 +10,16 @@
 //   PIKMIN_P2_CROSSFADE_MS=<ms>   clip-change crossfade length (default 150,
 //                                 0 disables; clamped to 0..1000)
 //   PIKMIN_P2_MOVE_ENTER=<v>      horizontal speed^2 that enters the move clip
-//                                 (default 1.5)
-//   PIKMIN_P2_MOVE_LEAVE=<v>      speed^2 that falls back to wait (default 0.5)
+//                                 (default 1.0, the legacy `speed2 > 1` test)
+//   PIKMIN_P2_MOVE_LEAVE=<v>      speed^2 below which a moving actor falls back
+//                                 to wait (default 0.5; the 0.5..1.0 band is the
+//                                 hysteresis: a slow actor already moving keeps
+//                                 its move clip instead of flickering)
 //   PIKMIN_P2_CLIP_DWELL_MS=<ms>  minimum move/wait dwell (default 250)
-//   PIKMIN_P2_FALLBACK_SHAPES=<n> full pose Shapes kept per clip for the
-//                                 non-vector fallback (default 4, 1..64)
+//   PIKMIN_P2_FALLBACK_SHAPES=<n> full pose Shapes kept per clip whose vectors
+//                                 decode (default 4, 1..64). A clip whose
+//                                 vectors do not decode loads every pose as a
+//                                 Shape instead (loud P2_POSE_LOADER_FALLBACK).
 //
 // Gameplay timing stays on the authoritative P1 clock: these helpers only pick
 // what is drawn. See docs/PIKMIN2_POSE_FIDELITY.md.
@@ -24,6 +29,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 namespace p2motion {
@@ -31,7 +37,7 @@ namespace p2motion {
 struct Tunables {
     bool lerp = true;               // vertex lerp between bracketing poses
     float crossfadeSeconds = 0.15f; // clip-change crossfade
-    float moveEnter = 1.5f;         // speed^2 (x/z) entering the move clip
+    float moveEnter = 1.0f;         // speed^2 (x/z) entering the move clip (legacy threshold)
     float moveLeave = 0.5f;         // speed^2 (x/z) leaving the move clip
     float minDwellSeconds = 0.25f;  // move/wait minimum dwell
     int fallbackShapes = 4;         // Shapes per clip when vectors are unusable
@@ -51,7 +57,7 @@ inline Tunables loadTunables() {
     const char* lerp = std::getenv("PIKMIN_P2_INTERPOLATION");
     t.lerp = !(lerp && lerp[0] == '0');
     t.crossfadeSeconds = envNumber("PIKMIN_P2_CROSSFADE_MS", 150.f, 0.f, 1000.f) / 1000.f;
-    t.moveEnter = envNumber("PIKMIN_P2_MOVE_ENTER", 1.5f, 0.f, 1.0e6f);
+    t.moveEnter = envNumber("PIKMIN_P2_MOVE_ENTER", 1.0f, 0.f, 1.0e6f);
     t.moveLeave = envNumber("PIKMIN_P2_MOVE_LEAVE", 0.5f, 0.f, 1.0e6f);
     if (t.moveLeave > t.moveEnter) t.moveLeave = t.moveEnter;
     t.minDwellSeconds = envNumber("PIKMIN_P2_CLIP_DWELL_MS", 250.f, 0.f, 5000.f) / 1000.f;
@@ -190,5 +196,170 @@ inline bool interval(const std::vector<int>& frames, float sourceFrame, bool ler
     }
     return true;
 }
+
+
+// Largest per-vertex position distance between two poses (0 on mismatch).
+inline float maxDistance(const p2pose::Pose& a, const p2pose::Pose& b) {
+    if (a.positions.size() != b.positions.size()) return 0.f;
+    double best = 0.0;
+    for (std::size_t i = 0; i < a.positions.size(); ++i) {
+        const double dx = double(a.positions[i].x) - b.positions[i].x;
+        const double dy = double(a.positions[i].y) - b.positions[i].y;
+        const double dz = double(a.positions[i].z) - b.positions[i].z;
+        best = std::max(best, dx * dx + dy * dy + dz * dz);
+    }
+    return float(std::sqrt(best));
+}
+
+// Loop seam of a baked clip (#895). J3D repeat playback steps from source
+// frame duration-1 straight back to frame 0, so the seam spans one source
+// frame. The retail audit (scripts/p2_loop_seam_audit.py) shows most P2 loops
+// are authored that way: frame duration-1 is NOT a copy of frame 0, it is one
+// ordinary step before it, so a P1 wrap that shows pose last -> pose 0 is
+// continuous. Clips whose seam jumps (one-shot acts such as Chappy waitact2,
+// root-motion flights) are not; a P1 wrap of those gets a short blend instead
+// of a pop.
+//
+// Continuous: the seam distance is at most `factor` times the clip's largest
+// per-source-frame step between adjacent baked poses, with a small absolute
+// floor so a still clip is never flagged.
+template <class PoseAt>
+inline bool seamContinuous(std::size_t count, PoseAt poseAt, const std::vector<int>& frames,
+                           float factor = 3.f, float floor = 0.05f) {
+    if (count < 2 || frames.size() != count) return true;
+    float step = 0.f;
+    for (std::size_t i = 0; i + 1 < count; ++i) {
+        const int span = frames[i + 1] - frames[i];
+        if (span <= 0) return true;
+        step = std::max(step, maxDistance(poseAt(i), poseAt(i + 1)) / float(span));
+    }
+    const float seam = maxDistance(poseAt(count - 1), poseAt(0));
+    return seam <= std::max(floor, factor * step);
+}
+
+// Death clips (#895). Several retail P2 death animations end with the whole
+// body scaled to zero (Sokkuri dead1/pdead1, UmiMushi dead1, SnakeCrow and
+// SnakeWhole dead): P2 then hands the carcass to a separate pellet. The P1
+// port keeps the actor's own body as the corpse, so a death clip plays only
+// up to its last visible pose and the corpse holds that pose (the previous
+// sparse bake could not convert the collapsed frames at all, which kept the
+// corpse visible by accident).
+inline bool isDeathClip(const std::string& name) {
+    return name.rfind("dead", 0) == 0 || name.rfind("pdead", 0) == 0 || name == "kagebozu_dead";
+}
+
+// Bounding-box diagonal of a pose's positions.
+inline float extent(const p2pose::Pose& pose) {
+    if (pose.positions.empty()) return 0.f;
+    p2pose::Vec lo = pose.positions.front(), hi = lo;
+    for (const auto& v : pose.positions) {
+        lo = {std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z)};
+        hi = {std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z)};
+    }
+    const double dx = double(hi.x) - lo.x, dy = double(hi.y) - lo.y, dz = double(hi.z) - lo.z;
+    return float(std::sqrt(dx * dx + dy * dy + dz * dz));
+}
+
+// Last pose whose extent is at least `fraction` of the clip's largest (the
+// last visible pose; count-1 when nothing collapses).
+template <class PoseAt>
+inline std::size_t visibleEnd(std::size_t count, PoseAt poseAt, float fraction = 0.2f) {
+    if (!count) return 0;
+    float biggest = 0.f;
+    for (std::size_t i = 0; i < count; ++i) biggest = std::max(biggest, extent(poseAt(i)));
+    for (std::size_t i = count; i-- > 0;)
+        if (extent(poseAt(i)) >= fraction * biggest) return i;
+    return count - 1;
+}
+
+// A P1 loop wrap: the same clip's source frame jumped back by more than half
+// the clip. Forward motion and small jitters are not wraps.
+inline bool isWrap(float lastFrame, float sourceFrame, int lastBakedFrame) {
+    if (!(lastFrame >= 0.f) || !std::isfinite(sourceFrame) || lastBakedFrame < 2) return false;
+    return lastFrame - sourceFrame > 0.5f * float(lastBakedFrame);
+}
+
+// What one draw should show (engine-free; p2pose::present writes it into the
+// actor's private Shape).
+struct Shown {
+    const p2pose::Pose* pose = nullptr;
+    bool crossfadeStarted = false;  // a clip change began a fade
+    bool wrapBlend = false;         // a discontinuous loop seam began a fade
+    p2pose::Interval span;
+};
+
+// Per-actor presentation state: bracket/lerp at a source frame, and crossfade
+// from the last displayed geometry on a clip change or across a
+// discontinuous loop seam. advance() runs from the simulation update even
+// while the actor is not drawn; a display older than staleSeconds (the actor
+// was off-screen) is never faded from, so a later clip change or wrap
+// switches directly instead of blending from an out-of-date pose.
+class Presenter {
+public:
+    static constexpr float staleSeconds = 0.25f;
+    p2pose::Pose scratch, mixed, display;
+    Fade fade;
+    std::string clip;
+    float lastFrame = -1.f;
+    float idle = 1.0e9f;  // seconds since the last committed draw
+    bool shown = false;
+
+    void reset() {
+        fade.reset();
+        clip.clear();
+        lastFrame = -1.f;
+        idle = 1.0e9f;
+        shown = false;
+    }
+    void advance(float seconds) {
+        if (!std::isfinite(seconds) || seconds < 0.f) return;
+        fade.advance(seconds);
+        idle = std::min(1.0e9f, idle + seconds);
+    }
+    bool fresh() const { return shown && idle <= staleSeconds; }
+
+    template <class PoseAt>
+    Shown select(const std::string& name, std::size_t count, PoseAt poseAt, const std::vector<int>& frames,
+                 float sourceFrame, bool seamOk, const Tunables& tune) {
+        Shown out;
+        if (!count || frames.size() != count || !interval(frames, sourceFrame, tune.lerp, out.span)
+                || out.span.left >= count || out.span.right >= count)
+            return out;
+        const p2pose::Pose& a = poseAt(out.span.left);
+        const p2pose::Pose& b = poseAt(out.span.right);
+        if (scratch.positions.size() != a.positions.size() || scratch.normals.size() != a.normals.size()) {
+            scratch.positions.resize(a.positions.size());
+            scratch.normals.resize(a.normals.size());
+        }
+        if (!p2pose::blendInto(a, b, out.span.weight, scratch)) return out;
+        if (clip != name) {
+            if (fresh() && !clip.empty()) out.crossfadeStarted = fade.begin(display, tune.crossfadeSeconds);
+            else fade.reset();
+            clip = name;
+        } else if (!seamOk && isWrap(lastFrame, sourceFrame, frames.back())) {
+            if (fresh()) out.wrapBlend = fade.begin(display, tune.crossfadeSeconds);
+            else fade.reset();
+        } else if (!fresh()) {
+            fade.reset();  // never finish a fade from a stale display
+        }
+        lastFrame = sourceFrame;
+        out.pose = &scratch;
+        if (fade.active()) {
+            if (mixed.positions.size() != scratch.positions.size() || mixed.normals.size() != scratch.normals.size()) {
+                mixed.positions.resize(scratch.positions.size());
+                mixed.normals.resize(scratch.normals.size());
+            }
+            if (fade.mix(scratch, mixed)) out.pose = &mixed;
+        }
+        return out;
+    }
+    // Record what was actually drawn.
+    void commit(const p2pose::Pose& drawn) {
+        display.positions.assign(drawn.positions.begin(), drawn.positions.end());
+        display.normals.assign(drawn.normals.begin(), drawn.normals.end());
+        shown = true;
+        idle = 0.f;
+    }
+};
 
 }  // namespace p2motion

@@ -33,7 +33,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Concrete, spawnable dweevil family. IDs from include/Game/enemyInfo.h:
 # FireOtakara/WaterOtakara/GasOtakara/ElecOtakara at 118-121, BombOtakara at
@@ -399,12 +399,8 @@ def extract(iso, source, output, pose_limit=6):
                 for number, frame in enumerate(frames):
                     try:
                         tolerances = TOLERANCES.get(species, {})
-                        _, pose = bca_pose(raw, frame, len(names),
-                                           allow_scale=True)
-                        matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(model, True, bake_rigid=True,
-                                         draw_matrices=matrices,
-                                         **tolerances)
+                        decoded, pose = decode_pose(decode, model, model_blocks, raw, frame,
+                                                    len(names), **tolerances)
                         name = f'ota_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name,
                                                  'enemy.bmd')

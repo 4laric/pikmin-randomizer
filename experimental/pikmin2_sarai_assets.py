@@ -10,6 +10,7 @@ from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_rigid import joint_matrices
 from experimental.pikmin2_skinning import draw_matrices
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, decode_pose, sample_frames
 
 
 def frames_for(duration, events):
@@ -22,7 +23,11 @@ def frames_for(duration, events):
         frames.add(min(frame, duration-1))
     # Include capture-window boundaries in every sufficiently long clip.
     frames.update(f for f in (10, 16, 17, 30) if f < duration)
-    if len(frames) > 32:
+    # #895: plus the shared dense uniform sampling, so the native host can
+    # lerp between samples a few source frames apart (it used to hold one
+    # pose for up to 30 frames).
+    frames.update(sample_frames(duration, DEFAULT_POSE_LIMIT) if duration >= 2 else [0])
+    if len(frames) > 64:
         raise ValueError('Pose budget exceeded')
     return sorted(frames)
 
@@ -62,7 +67,8 @@ def extract(iso, output):
             duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
             clip['source_frames'] = duration
             for frame in frames_for(duration, row['events']):
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                path = output/(Path(row['file']).stem+f'_{frame:04}.mod')
+                decoded, pose = decode_pose(decode, model, blocks(model), raw, frame, len(names))
                 matrices = joint_matrices(blocks(model), pose)
                 mouths = []
                 for name in mouth_names:
@@ -70,8 +76,6 @@ def extract(iso, output):
                     if not all(math.isfinite(v) for r in matrix for v in r):
                         raise ValueError('Nonfinite mouth transform')
                     mouths.append(dict(joint=name, radius=15, matrix=matrix))
-                path = output/(Path(row['file']).stem+f'_{frame:04}.mod')
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=draw_matrices(blocks(model), pose))
                 conversion = write_model(decoded, path, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=path.name)
                 path.with_suffix('.json').write_text(json.dumps(conversion, indent=2)+'\n', encoding='utf-8')

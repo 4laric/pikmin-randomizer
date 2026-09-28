@@ -33,7 +33,7 @@ inline bool parse(std::istream& in,std::vector<Clip>& clips) {
     for(const char* name:{"wait1","move1","attack","dead","flick"}) {
         Clip clip;
         if(!(in>>clip.name>>clip.count>>clip.duration) || clip.name!=name || clip.count<1 ||
-           clip.count>(modern?24:12) || clip.duration<1 || clip.duration>10000)return false;
+           clip.count>(modern?64:12) || clip.duration<1 || clip.duration>10000)return false;
         if(modern) {
             for(int i=0;i<clip.count;++i) {
                 int frame;

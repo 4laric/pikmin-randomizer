@@ -51,7 +51,7 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_ground_inverts_assets import LOOPS
 from experimental.pikmin2_purple import bca_pose
@@ -237,10 +237,7 @@ def extract(iso, output, pose_limit=4):
             # occupies a slot.
             for frame in sample_frames(duration, pose_limit):
                 try:
-                    _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                    matrices = draw_matrices(model_blocks, pose)
-                    decoded = decode(model, True, bake_rigid=True,
-                                     draw_matrices=matrices)
+                    decoded, pose = decode_pose(decode, model, model_blocks, raw, frame, len(names))
                     name = pose_name(species, stem, len(clip['poses']))
                     conversion = write_model(decoded, root / name, 'enemy.bmd')
                     conversion.update(source='enemy.bmd', output=name,
