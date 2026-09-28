@@ -60,7 +60,7 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_convert import (LEGACY_VERTEX_CONTROL, MAT_SRC_ALPHA0_VERTEX,
-                                          MAT_SRC_COLOR0_VERTEX, P1_LIT_CONTROL, blocks,
+                                          MAT_SRC_COLOR0_VERTEX, P1_LIT_CONTROL, P1_UNLIT_CONTROL, blocks,
                                           diffuse_slot, lighting_control, source_lighting,
                                           u16, u32)
 from experimental.pikmin2_bulblax_assets import SPECIES
@@ -81,7 +81,7 @@ SOURCES = {'Queen': 'e4904b223fa388e53092dc67c80a3668782a314b6e7683bd2284f7413cf
 # via pikmin2_convert.lighting_control.
 LIT = P1_LIT_CONTROL
 VERTEX_COLOR_FLAG = LEGACY_VERTEX_CONTROL
-CONTROLS = tuple(sorted({base | vtx for base in (0, LIT)
+CONTROLS = tuple(sorted({base | vtx for base in (0, P1_UNLIT_CONTROL, LIT)
                          for vtx in (0, MAT_SRC_COLOR0_VERTEX, MAT_SRC_ALPHA0_VERTEX,
                                      MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX)}))
 
@@ -109,7 +109,7 @@ UNSUPPORTED = {
     ],
 }
 
-LIMITS = ['PVW lighting control is the retail P1 single-stage word (0xd1 lit / 0 unlit, verified on retail P1 teki MODs, #895); source light masks and the P2 light rig are not reproduced.',
+LIMITS = ['PVW lighting control is the retail P1 single-stage word (0xd1 lit / 0xd0 unlit, verified on retail P1 teki MODs, #895); source light masks and the P2 light rig are not reproduced.',
           'Queen diffuse base texture is retargeted but sampled with UV0 instead of the source TEX1 UV set (approximation; UV arrays differ).',
           'Queen (both materials) and KingChappy material 0 source diffuse stages use TEV scale 1 (x2; MAT3 stage 0 scale byte); the baked single stage uses scale 0, so the profiled base is half source intensity under equal lighting.',
           'Ambient/light environment remains P1; no source lighting parity claimed.',

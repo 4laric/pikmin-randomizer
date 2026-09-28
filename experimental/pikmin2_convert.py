@@ -32,13 +32,20 @@ def pack(fmt,*v): return struct.pack('>'+fmt,*v)
 # stage, so it never sets the specular bit.
 P1_LIT_CONTROL = 0xd1
 P1_LIT_SPECULAR_CONTROL = 0xd3
+# Source-unlit materials: retail kabekuiA writes 0xd0 (COLOR0 disabled, the
+# clamp/specular diffuse-function bits left as on the lit word). With
+# EnableColor0 clear the renderer ignores the diffuse-function bits
+# (dgxGraphics.cpp GXSetChanCtrl, oglGraphics.cpp setLighting), so this draws
+# exactly like the pre-#895 0 word while matching the retail encoding.
+P1_UNLIT_CONTROL = 0xd0
 MAT_SRC_COLOR0_VERTEX = 0x0800
 MAT_SRC_ALPHA0_VERTEX = 0x1000
 # Pre-#895 writer output: unlit, vertex colour/alpha as material when present.
 LEGACY_VERTEX_CONTROL = MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX
 # The base stage is written at x1 (TEV scale 0) like every retail P1 teki base
-# stage. P2 base stages are mostly x2, balanced by P2's own light rig;
-# carrying x2 into the P1 rig would overbrighten again.
+# stage. The converter already wrote 0 here before #895; this names the value
+# rather than changing it. P2 base stages are mostly x2, balanced by P2's own
+# light rig, so the source scale is deliberately not carried over.
 TEV_BASE_SCALE = 0
 
 def source_lighting(m, r):
@@ -71,13 +78,13 @@ def source_lighting(m, r):
                 rgba=rgba)
 
 LEGACY_MATERIAL_POLICY='vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced'
-LIT_MATERIAL_POLICY=('P1 PVW lighting from the source COLOR0 channel (lit 0xd1, unlit 0, vertex material/alpha source bits) '
+LIT_MATERIAL_POLICY=('P1 PVW lighting from the source COLOR0 channel (lit 0xd1, unlit 0xd0, vertex material/alpha source bits) '
                      'with the source material colour, times identifiable UV0 diffuse texture (first texture fallback) at x1; '
                      'original TEV not reproduced')
 
 def lighting_control(source, has_color):
     """PVW lighting word for one shape from its source channel control."""
-    control=P1_LIT_CONTROL if source['lit'] else 0
+    control=P1_LIT_CONTROL if source['lit'] else P1_UNLIT_CONTROL
     if has_color and source['color_vertex']: control|=MAT_SRC_COLOR0_VERTEX
     if has_color and source['alpha_vertex']: control|=MAT_SRC_ALPHA0_VERTEX
     return control

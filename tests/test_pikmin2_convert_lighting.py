@@ -14,7 +14,7 @@ from experimental.pikmin2_convert import (LEGACY_VERTEX_CONTROL, MAT_SRC_ALPHA0_
                                           MAT_SRC_COLOR0_VERTEX, P1_LIT_CONTROL, blocks,
                                           decode, lighting_control, source_lighting, u16,
                                           u32, write_model)
-from experimental.pikmin2_material_audit import (audit_content, check_pose, mod_materials,
+from experimental.pikmin2_material_audit import (audit_content, check_pose, mat3_channels, mod_materials,
                                                  mod_textures, shape_materials, source_table)
 from tests.test_pikmin2_convert_normals import normal_model
 
@@ -87,7 +87,7 @@ class SourceLightingTests(unittest.TestCase):
         src = dict(lit=True, color_vertex=True, alpha_vertex=True, rgba=(255,) * 4)
         self.assertEqual(lighting_control(src, True), P1_LIT_CONTROL | LEGACY_VERTEX_CONTROL)
         self.assertEqual(lighting_control(src, False), P1_LIT_CONTROL)
-        self.assertEqual(lighting_control(dict(src, lit=False), True), LEGACY_VERTEX_CONTROL)
+        self.assertEqual(lighting_control(dict(src, lit=False), True), 0xd0 | LEGACY_VERTEX_CONTROL)
         self.assertEqual(lighting_control(dict(src, alpha_vertex=False), True),
                          P1_LIT_CONTROL | MAT_SRC_COLOR0_VERTEX)
         self.assertEqual(lighting_control(dict(src, color_vertex=False), True),
@@ -109,7 +109,9 @@ class WriteModelTests(unittest.TestCase):
     def test_unlit_source_stays_unlit(self):
         raw, _ = converted(with_channels(normal_model(), lit=False, rgba=(204, 204, 204, 255)))
         material = mod_materials(raw)[0]
-        self.assertEqual(material['control'], 0)
+        # Retail kabekuiA unlit word; EnableColor0 (bit 0) stays clear.
+        self.assertEqual(material['control'], 0xd0)
+        self.assertEqual(material['control'] & 1, 0)
         self.assertEqual(material['rgba'], [204, 204, 204, 255])
 
     def test_vertex_bits_need_display_list_colour(self):
@@ -144,6 +146,22 @@ class WriteModelTests(unittest.TestCase):
         self.assertEqual((report['poses'], report['mismatched_poses']), (1, 0))
         self.assertEqual(report['controls'], {'0xd1': 1})
 
+    def test_audit_reads_mat3_independently_of_converter(self):
+        # The audit's named-offset MAT3 reader must agree with the converter's
+        # source_lighting on every channel combination (#895 review: the audit
+        # no longer imports source_lighting).
+        for kwargs in (dict(lit=True), dict(lit=False), dict(lit=True, channel_count=0),
+                       dict(lit=True, color_vertex=True), dict(lit=True, alpha_vertex=True),
+                       dict(lit=False, color_vertex=True, alpha_vertex=True, rgba=(200, 80, 0, 255))):
+            m = blocks(with_channels(normal_model(), **kwargs))['MAT3']
+            self.assertEqual(mat3_channels(m, 0), source_lighting(m, u32(m, 12)), kwargs)
+
+    def test_audit_expects_retail_unlit_word(self):
+        model = with_channels(normal_model(), lit=False)
+        raw, _ = converted(model)
+        self.assertEqual(check_pose(raw, source_table(model), shape_materials(model)), [])
+        self.assertEqual(mod_materials(raw)[0]['control'], 0xd0)
+
 
 def _bti(width, height, fill):
     header = bytearray(32)
@@ -154,6 +172,16 @@ def _bti(width, height, fill):
 
 
 class ChangeTextureTests(unittest.TestCase):
+    def test_bombotakara_swap_matches_dweevil_mgr_texture(self):
+        # BombOtakara is not tinted natively (pc_p2_batch2.h), so its retail
+        # swap is baked; the tinted four stay on the placeholder.
+        from experimental.pikmin2_change_texture import RUNTIME_TINTED
+        from experimental.pikmin2_dweevil_assets import CHANGE_TEXTURES as MGR_TEXTURES
+        self.assertEqual(CHANGE_TEXTURES['BombOtakara'],
+                         [(0, MGR_TEXTURES['BombOtakara'].lstrip('/'))])
+        self.assertNotIn('BombOtakara', RUNTIME_TINTED)
+        self.assertFalse(set(RUNTIME_TINTED) & set(CHANGE_TEXTURES))
+
     def model_with_textures(self, count):
         tex = bytearray(32 + 32 * count)
         tex[:4] = b'TEX1'

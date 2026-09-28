@@ -7,13 +7,28 @@ files and ``Obj::changeMaterial`` swaps them into the model with
 shows the placeholder, a flat grey intensity texture, instead of the species'
 colouring (e.g. Chappy renders pale grey instead of red-and-spotted).
 
-``CHANGE_TEXTURES`` lists every swap the decomp performs, keyed by the P2 enemy
-name, with its disc path and slot. ``apply`` returns the model with the swap
-done (same TEX1 rewrite as ``pikmin2_enemy.replace_texture_zero``, generalised
-to any slot) plus a provenance record. Families that already swap
-(``pikmin2_tank_assets``, the Kochappy/dwarf profiles) or that are tinted by the
-native draw path instead (dweevils: ``pc_p2_batch2.h`` ``p2batch2tint``; see
-``RUNTIME_TINTED``) are not routed through here.
+``CHANGE_TEXTURES`` lists the swaps baked through this module, keyed by the P2
+enemy name, with its disc path and slot. It is not every swap the decomp
+performs. ``apply`` returns the model with the swap done (same TEX1 rewrite as
+``pikmin2_enemy.replace_texture_zero``, generalised to any slot) plus a
+provenance record.
+
+Decomp ``changeMaterial`` swaps handled elsewhere, not through this table:
+
+* Ftank/Wtank: ``pikmin2_tank_assets``.
+* The Kochappy trio: the Kochappy/dwarf profiles.
+* Koganemushi, Wealthy and Fart: ``pikmin2_kogane_assets`` (``change_texture``).
+* Fire/Water/Gas/ElecOtakara: tinted by the native draw path instead
+  (``pc_p2_batch2.h`` ``p2batch2tint``); see ``RUNTIME_TINTED``.
+* BombOtakara: baked by ``pikmin2_dweevil_assets`` from the shared dweevil
+  model. The native tint deliberately skips it, so its entry here is applied
+  by that extractor (``BombOtakaraMgr.cpp`` ``otakara_bomb_s3tc.bti``, slot 0,
+  ``BombOtakara.cpp`` ``Obj::changeMaterial``).
+
+Remaining ``changeImage`` swaps in the decomp are outside the enemy pool:
+blackMan (Waterwraith) and ``pelletOtakara`` (treasure pellets). Other
+``changeMaterial`` overrides (e.g. FireChappy, DangoMushi, UmiMushi,
+BigTreasure) animate material/TEV colours at runtime rather than swap an image.
 """
 import hashlib
 import struct
@@ -34,6 +49,10 @@ CHANGE_TEXTURES = {
     'Kabuto': [(0, 'enemy/data/Kabuto/babykabuto_green_s3tc.bti')],
     'Fkabuto': [(0, 'enemy/data/Kabuto/babykabuto_green_s3tc.bti')],
     'Rkabuto': [(0, 'enemy/data/Rkabuto/babykabuto_red_s3tc.bti')],
+    # plugProjectNishimuraU/BombOtakara{,Mgr}.cpp: changeImage(texture, 0).
+    # Applied by pikmin2_dweevil_assets (not tinted natively, unlike the four
+    # RUNTIME_TINTED dweevils).
+    'BombOtakara': [(0, 'enemy/data/BombOtakara/otakara_bomb_s3tc.bti')],
 }
 
 # Species whose swap the native draw path approximates with a flat tint over

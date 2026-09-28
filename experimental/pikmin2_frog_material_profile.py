@@ -1,7 +1,7 @@
 """Opt-in Frog MAT3-to-PVW diagnostic profile; host lighting is still approximate."""
 import argparse,copy,hashlib,json,struct
 from pathlib import Path
-from experimental.pikmin2_convert import P1_LIT_CONTROL,P1_LIT_SPECULAR_CONTROL,blocks,u16,u32
+from experimental.pikmin2_convert import P1_LIT_CONTROL,P1_LIT_SPECULAR_CONTROL,P1_UNLIT_CONTROL,blocks,u16,u32
 from experimental.pikmin2_frog_visual_audit import chunks,emitted_material,source_material
 from experimental.pikmin2_frog_install import plan
 
@@ -22,7 +22,7 @@ def profile(model,species):
         # Retail P1 words (#895): 0xd3 only when a kept stage reads the COLOR1
         # specular raster channel (TEV order channel 5), else 0xd1.
         specular=any(s['order'][2]==5 for s in info['tev_stages'])
-        control=(P1_LIT_SPECULAR_CONTROL if specular else P1_LIT_CONTROL) if lit else 0
+        control=(P1_LIT_SPECULAR_CONTROL if specular else P1_LIT_CONTROL) if lit else P1_UNLIT_CONTROL
         stages=[]
         for j in range(info['tev_stage_count']):
             a=u32(m,92)+u16(m,r+0xe4+2*j)*20;o=u32(m,76)+u16(m,r+0xbc+2*j)*4
@@ -44,7 +44,7 @@ def rewrite(raw,materials):
     if len(materials)!=count:raise ValueError('Source/baked material count mismatch')
     tev=[];records=[];start=32+124*count
     for i,material in enumerate(materials):
-        if material['control'] not in (0,P1_LIT_CONTROL,P1_LIT_SPECULAR_CONTROL) or len(material['stages']) not in (1,2) or any(len(s)!=32 for s in material['stages']):raise ValueError('Unsupported Frog profile')
+        if material['control'] not in (0,P1_UNLIT_CONTROL,P1_LIT_CONTROL,P1_LIT_SPECULAR_CONTROL) or len(material['stages']) not in (1,2) or any(len(s)!=32 for s in material['stages']):raise ValueError('Unsupported Frog profile')
         r=start+152*i
         if u32(block,r+76)!=1 or u32(block,r+84)!=1 or len(block)<r+152:raise ValueError('Expected one texture per Frog material')
         # Only static material and lighting fields change; preserve pixel/texture state.

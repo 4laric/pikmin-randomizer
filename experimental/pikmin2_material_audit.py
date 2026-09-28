@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from experimental.pikmin2_convert import (MAT_SRC_ALPHA0_VERTEX, MAT_SRC_COLOR0_VERTEX,
-                                          P1_LIT_CONTROL, blocks, source_lighting, u16, u32)
+                                          P1_LIT_CONTROL, P1_UNLIT_CONTROL, blocks, u16, u32)
 
 VERTEX_BITS = MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX
 
@@ -202,13 +202,47 @@ def mod_textures(raw):
     return result
 
 
+# J3D MAT3 layout (J3DMaterialBlock / J3DMaterialInitData), read here with
+# named offsets independently of pikmin2_convert.source_lighting so the content
+# audit is not the converter checking itself. The two readers follow the same
+# J3D format description, so agreement is a code check, not proof that the
+# reading of MAT3 is right; the ground truth for the target words is the
+# retail P1 teki MODs (``mods`` subcommand: 0xd1/0xd3, kabekuiA also 0xd0) and
+# the in-game captures on #895.
+_MAT3_INIT, _MAT3_REMAP = 0x0c, 0x10
+_MAT3_MATCOLOR, _MAT3_CHAN_NUM, _MAT3_CHAN_INFO = 0x20, 0x24, 0x28
+_INIT_SIZE, _INIT_CHAN_NUM, _INIT_MATCOLOR0, _INIT_CHAN0 = 332, 0x02, 0x08, 0x0c
+_NONE = 0xffff
+
+
+def mat3_channels(m, index):
+    """COLOR0/ALPHA0 channel info and material colour 0 of MAT3 material ``index``."""
+    def at(table):
+        return struct.unpack_from('>I', m, table)[0]
+    init = at(_MAT3_INIT) + struct.unpack_from('>H', m, at(_MAT3_REMAP) + 2 * index)[0] * _INIT_SIZE
+    chan_num = m[at(_MAT3_CHAN_NUM) + m[init + _INIT_CHAN_NUM]]
+    color0_index, alpha0_index = struct.unpack_from('>HH', m, init + _INIT_CHAN0)
+    def chan(i):
+        if i == _NONE:
+            return None
+        enable, mat_src = struct.unpack_from('>BB', m, at(_MAT3_CHAN_INFO) + 8 * i)
+        return dict(enable=enable, mat_src=mat_src)
+    color0, alpha0 = chan(color0_index), chan(alpha0_index)
+    colour_index = struct.unpack_from('>H', m, init + _INIT_MATCOLOR0)[0]
+    rgba = (255, 255, 255, 255) if colour_index == _NONE else         struct.unpack_from('>4B', m, at(_MAT3_MATCOLOR) + 4 * colour_index)
+    return dict(lit=bool(chan_num and color0 and color0['enable']),
+                color_vertex=bool(color0 and color0['mat_src'] == 1),
+                alpha_vertex=bool(alpha0 and alpha0['mat_src'] == 1),
+                rgba=tuple(rgba))
+
+
 def source_table(model):
     """Per source material: COLOR0 lighting, vertex sources, colour and stage scales."""
     m = blocks(model)['MAT3']
     table = []
     for i in range(u16(m, 8)):
         r = u32(m, 12) + u16(m, u32(m, 16) + 2 * i) * 332
-        info = source_lighting(m, r)
+        info = mat3_channels(m, i)
         scales = [m[u32(m, 92) + u16(m, r + 0xe4 + 2 * s) * 20 + 7]
                   for s in range(m[u32(m, 88) + m[r + 4]])]
         table.append(dict(info, rgba=list(info['rgba']), tev_scales=scales))
@@ -237,7 +271,7 @@ def expected_control(source):
     """Lit/unlit base word and the vertex bits the source allows."""
     allowed = (MAT_SRC_COLOR0_VERTEX if source['color_vertex'] else 0) | \
               (MAT_SRC_ALPHA0_VERTEX if source['alpha_vertex'] else 0)
-    return (P1_LIT_CONTROL if source['lit'] else 0), allowed
+    return (P1_LIT_CONTROL if source['lit'] else P1_UNLIT_CONTROL), allowed
 
 
 def check_pose(raw, source, mapping):

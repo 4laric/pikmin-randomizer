@@ -9,6 +9,8 @@ import json
 import math
 import re
 
+from experimental.pikmin2_convert import LEGACY_MATERIAL_POLICY, LIT_MATERIAL_POLICY
+
 EXPECTED_GENERATOR = '221001'
 EXPECTED_CONTROL = '221002'
 EXPECTED_NATIVE_TYPE = '24'  # P1 Miurin proxy, tekimgr.cpp tekiNames[24]
@@ -23,9 +25,11 @@ READY_RE = re.compile(
 BOUND_POSES = ('miulin_wait.mod', 'miulin_dead.mod', 'miulin_attack1.mod')
 
 # Converter policy limits material fidelity by construction; see
-# experimental/pikmin2_convert.py write_model material handling.
-EXPECTED_MATERIAL_POLICY = ('vertex color times identifiable UV0 diffuse texture '
-                            '(first texture fallback); original TEV not reproduced')
+# experimental/pikmin2_convert.py write_model material handling. Conversions
+# made before #895 carry the legacy unlit policy; re-baked ones carry the P1
+# lit policy. Both are accepted; anything else is refused.
+EXPECTED_MATERIAL_POLICY = LEGACY_MATERIAL_POLICY
+ACCEPTED_MATERIAL_POLICIES = (LEGACY_MATERIAL_POLICY, LIT_MATERIAL_POLICY)
 
 
 def validate_session_log(text):
@@ -56,7 +60,7 @@ def material_profile(conversion):
     if conversion.get('textures') != 2 or conversion.get('shapes') != 2:
         raise ValueError('Unexpected Mamuta model texture/shape count')
     policy = conversion.get('material_policy', '')
-    if policy != EXPECTED_MATERIAL_POLICY:
+    if policy not in ACCEPTED_MATERIAL_POLICIES:
         raise ValueError('Unsupported material conversion policy')
     if conversion.get('discarded_attributes'):
         raise ValueError('Unexpected discarded attributes')
