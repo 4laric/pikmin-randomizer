@@ -140,3 +140,53 @@ wanted=[23, 78, 79])` extracts `['Sarai', 'MiniHoudai', 'Sokkuri']` with empty
 * No native work; no launch or modification of the user's game.
 * FminiHoudai 97 stays out of scope (pedestal variant params preserved for
   audit only; roaming MiniHoudai identity belongs here per the Groink lane).
+
+## Native OWN staging (#888 WP5)
+
+The native Groink sidecar now drives a campaign-bound 78 (and 97) with the
+engine-free source FSM (`pc_port/pc_p2_groink_fsm.cpp`, Open-Nectar PR #4).
+`experimental/pikmin2_groink_stage.py` stages what it reads, from the
+extraction above:
+
+| Run file | Content | Native reader |
+| --- | --- | --- |
+| `p2-groink-parms.txt` | verbatim retail `minihoudai/enemyparm.txt` | `p2groinkfsm::parseEnemyParm` |
+| `p2-groink-fixed-parms.txt` | verbatim retail `fminihoudai/enemyparm.txt` | same, for 97 |
+| `p2-groink-bank.txt` | `P2_GROINK_BANK_1` clip/key-event/pose/muzzle bank | `p2groinkfsm::parseBank` |
+| `assets/dataDir/courses/pikmin2room/minihoudai_<clip>_<ii>.mod` | sampled poses | `pc_p2_groink_teki_draw` |
+| `p2-groink-teki.txt` | carcass sidecar, SOURCE timeline (proper fp11/fp12, fp00) | `p2groink::read` |
+
+Bank grammar (whitespace separated, ASCII):
+
+```
+P2_GROINK_BANK_1 <clipCount 1..8>
+clip <animId 0..7> <name> <frames 2..10000> <eventCount 0..64> (<frame> <type>)* <poseCount 0..24> <poseFrame>*
+muzzle <c0x c0y c0z c1x c1y c1z c2x c2y c2z c3x c3y c3z>     (optional)
+END
+```
+
+`animId` is the enemyanimmgr.txt row index (= MiniHoudai AnimID: walk,
+search1, turn1, attack1, flick1, dead1, type5, rebirth); events are the
+registry `(frame, type)` rows in order; pose frames are strictly increasing;
+the muzzle is the model-space `kuti` joint matrix (columns) at the attack1
+type-4 emission frame, before the runtime aim callback. `tests/test_p2_groink_stage.py`
+round-trips the bank through a Python copy of the grammar and, when the native
+sources and a compiler are available, through the native parser itself.
+
+The extractor now samples poses per clip (`POSE_LIMITS`: walk 8, search1 4,
+turn1 4, attack1 10, flick1 6, dead1 8, type5 2, rebirth 6; 48 poses,
+a fail-closed 12 MiB budget, native cap 24 MiB) instead of 3 per clip. The 2.0/3.0/1200 gauge profile is
+no longer written by the family adapter. It remains available to the
+room-preview tools as `pikmin2_groink_carcass_teki.sidecar_config_short`. The
+native campaign setup ignores sidecar gauge values in any case: it takes the
+timeline from the parms file.
+
+97 FminiHoudai is extracted by the cannon extractor. The `cannon_projectile`
+family adapter stages `p2-groink-fixed-parms.txt`, and the shared bank and
+poses when no 78 install has staged them already (the cannon FminiHoudai
+bank uses the global pose limit). The cannon extractor also records the same
+`kuti` muzzle.
+
+Unverified without the ISO: real clip frame counts and pose bytes, the kuti
+basis orientation versus the native `+Z` forward assumption, and that every
+sampled frame converts.
