@@ -483,7 +483,9 @@ def extract_demon(iso, dest):
     meshes, named ``demon_<clip>_<frame>.mod`` so they never collide with
     Sarai's ``<clip>_<frame>.mod`` in the shared model room. Clips are sampled
     every third frame (up to the 32-pose budget) so the looping flight clips
-    read as motion. ``demon-provenance.json`` records the derivation. The
+    read as motion, and attack1 is sampled on every frame of the Attack
+    hunt/catch window (10..30) so the jaw sweep the retail catchTarget() tests
+    is frame-exact. ``demon-provenance.json`` records the derivation. The
     native banks (poses, mouths, retail events, parms) are derived at install
     time by ``experimental.pikmin2_demon_install``.
     """
@@ -501,7 +503,7 @@ def extract_demon(iso, dest):
     try:
         result = sarai.extract_species(iso, tmp, data_dir="Demon", parm_key="demon",
                                        species="Demon", enemy_id=32, file_prefix="demon_",
-                                       stride=3)
+                                       stride=3, windows={"attack1.bca": (10, 30)})
         target.mkdir(parents=True)
         (target / "demon.json").write_text(json.dumps(result, indent=2) + "\n",
                                            encoding="utf-8")
