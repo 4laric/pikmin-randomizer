@@ -51,7 +51,7 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_ground_inverts_assets import LOOPS
 from experimental.pikmin2_purple import bca_pose
@@ -127,8 +127,8 @@ def pose_name(species, clip, number):
 
 
 def extract(iso, output, pose_limit=4):
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f'Pose limit must be 2..8: {pose_limit!r}')
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f'Pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
     if not iso.is_file():
         raise ValueError(f'ISO not found: {iso}')

@@ -24,7 +24,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, u16, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
 
 # Identity (EnemyID registration) is kept separate from state IDs, event
 # streams and parameter values below. enemyInfo.h:88 (Mar = 29),
@@ -37,7 +37,7 @@ SHIJIMICHOU_GROUP_COUNT = 25  # enemyInfo.h:211
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # Clip order equals the AnimID enum registration order and the
 # enemyanimmgr.txt row order for each species.

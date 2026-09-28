@@ -152,8 +152,15 @@ def _parse_bank(text):
             assert len(tokens) == 3
             species_ids[tokens[1]] = tokens[2]
         elif tokens[0] == 'clip':
-            assert len(tokens) == 8, line
-            _, species, name, frames, events, marker, poses, status = tokens
+            # 8 tokens, or 10 with the P2_BANK_FRAMES_1 trailer (#895).
+            assert len(tokens) in (8, 10), line
+            if len(tokens) == 10:
+                assert tokens[8] == 'frames', line
+                listed = [int(value) for value in tokens[9].split(',')]
+                assert len(listed) == int(tokens[6]) and listed[0] == 0
+                assert listed[-1] == int(tokens[3]) - 1
+                assert all(a < b for a, b in zip(listed, listed[1:]))
+            _, species, name, frames, events, marker, poses, status = tokens[:8]
             assert species in species_ids, f'clip before its species row: {line}'
             assert marker == 'poses'
             assert int(frames) >= 0 and 0 <= int(poses) <= 64

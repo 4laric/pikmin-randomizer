@@ -45,7 +45,7 @@ import json
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, sample_frames
 from experimental.pikmin2_breadbug_assets import collision_nodes, parameter_blocks, sha
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_groink_assets import muzzle, profile
@@ -98,7 +98,7 @@ def emission_frame(events):
 
 
 def extract(iso, output, pose_limit=None):
-    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX):
         raise ValueError(f'Pose limit must be 2..8 or None: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
     if not iso.is_file():

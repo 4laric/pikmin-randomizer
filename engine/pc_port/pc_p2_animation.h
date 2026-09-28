@@ -17,7 +17,7 @@ struct Clip {
         if(corpse)return count-1;
         if(!std::isfinite(phase))phase=0;
         phase=std::max(0.f,std::min(1.f,phase));
-        if(frames.empty())return size_t(phase*(count-1)); // v1 compatibility
+        if(frames.empty())return count<=1?0:std::min(size_t(count-1),size_t(phase*(count-1)+.5f)); // v1: nearest uniform pose (#895)
         const float source=phase*(duration-1);
         size_t best=0;
         for(size_t i=1;i<frames.size();++i)

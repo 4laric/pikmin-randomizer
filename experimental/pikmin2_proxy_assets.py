@@ -36,7 +36,7 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
@@ -67,8 +67,11 @@ PARAM_DIR_RE = re.compile(r'[a-z][a-z0-9_]{0,31}')
 # Only "compute" is allowed; anything else fails closed in _row_overrides.
 MISSING_NORMALS_ALLOW = frozenset({'compute'})
 
-CLIP_BYTES = 512 * 1024
-TOTAL_BYTES = 8 * 1024 * 1024
+# On-disk bake guards (#895). Native budgets are resident bytes (a few full
+# Shapes per clip plus decoded vectors, pc_p2_pose_loader.h), so dense
+# banks are bounded here by disk size only.
+CLIP_BYTES = 4 * 1024 * 1024
+TOTAL_BYTES = 64 * 1024 * 1024
 
 LIMITATIONS = [
     'Sampled rigid poses with approximate materials; no skeletal playback or event execution.',
@@ -197,8 +200,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         raise ValueError(f'Proxy enum name invalid: {enum_name!r}')
     if type(source_id) is not int or isinstance(source_id, bool):
         raise ValueError(f'Proxy source id must be an int: {source_id!r}')
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f'Pose limit must be 2..8: {pose_limit!r}')
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f'Pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}')
     roster_enum, roster_assets = _roster_entry(source_id)
     if roster_enum != enum_name:
         raise ValueError(

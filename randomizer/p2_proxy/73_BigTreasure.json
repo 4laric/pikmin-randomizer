@@ -2,7 +2,7 @@
   "enum_name": "BigTreasure",
   "host_teki": 4,
   "notes": "Titan Dweevil; proxy over TEKI_Swallow; mixed-case registry filenames and duplicate wait2.bca row tolerated; motion files resolved case-insensitively",
-  "pose_limit": 3,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 73,
   "evidence": {

@@ -33,7 +33,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames
 
 # Concrete, spawnable dweevil family. IDs from include/Game/enemyInfo.h:
 # FireOtakara/WaterOtakara/GasOtakara/ElecOtakara at 118-121, BombOtakara at
@@ -51,7 +51,7 @@ HAZARDS = {'Hiba': 20, 'GasHiba': 21, 'ElecHiba': 22}
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # enemyInfo.cpp:96-99,110 alias every dweevil onto the FireOtakara model/anim
 # bank; OtakaraBaseMgr.cpp:24-69 shares the first loaded model/anim across the

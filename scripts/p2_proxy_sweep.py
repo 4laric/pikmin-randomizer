@@ -6,9 +6,11 @@ For every entry in a plan JSON (``--plan``), run the generic
 when the row carries none), catch every exception, and write ``--report``
 JSON with one record per species.
 
-If a species fails ONLY on a byte budget (a clip over 512 KiB of pose
-bytes or a bank over 8 MiB), retry automatically with ``pose_limit`` 3
-then 2 and record the limit that worked.
+If a species fails ONLY on the on-disk byte guard (a clip over 4 MiB of
+pose bytes or a bank over 64 MiB, pikmin2_proxy_assets), retry once at 12
+poses per clip, the fidelity floor (#895), and record the limit that worked.
+It never drops below that floor: native loads dense banks through the
+compact loader (pc_p2_pose_loader.h), whose budget is resident bytes.
 
 Plan entries may carry the declaration override fields (``asset_dir``,
 ``param_dir``, ``clips``); they are passed through to
@@ -27,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX
 from experimental.pikmin2_proxy_assets import extract  # noqa: E402
 
 DEFAULT_PLAN = Path(
@@ -180,19 +183,22 @@ def _failure_record(row, error, pose_limit_used, iso, seconds):
     }
 
 
+SWEEP_FLOOR = 12  # minimum poses per clip on a byte-guard retry (#895)
+
+
 def sweep_species(iso: Path, row: dict, out_root: Path) -> dict:
     target = out_root / str(row["source_id"])
-    initial = row.get("pose_limit", 4)
-    if type(initial) is not int or not 2 <= initial <= 8:
-        initial = 4
+    initial = row.get("pose_limit", DEFAULT_POSE_LIMIT)
+    if type(initial) is not int or not 2 <= initial <= POSE_LIMIT_MAX:
+        initial = DEFAULT_POSE_LIMIT
     started = time.monotonic()
     last_error = "unknown error"
     last_limit = initial
-    # First attempt at the row's limit, then 3, then 2 on byte budget only.
+    # First attempt at the row's limit, then the fidelity floor on byte
+    # budget only (never fewer poses than SWEEP_FLOOR).
     candidates = [initial]
-    for fallback in (3, 2):
-        if fallback not in candidates:
-            candidates.append(fallback)
+    if initial > SWEEP_FLOOR:
+        candidates.append(SWEEP_FLOOR)
     for attempt, limit in enumerate(candidates):
         if target.exists():
             shutil.rmtree(target)

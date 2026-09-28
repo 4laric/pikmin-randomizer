@@ -2,16 +2,42 @@
 import struct
 
 CLIPS = ('wait1', 'move1', 'attack', 'dead', 'flick')
-MAX_POSES = 24
+MAX_POSES = 24  # P2_SNOW_2 bank format cap (native p2animation::parse)
+# Pose-density policy (#895). POSE_LIMIT_MAX is the native bank row cap
+# (pc_p2_batch2 parseBank / p2sampled::Clip::valid). DEFAULT_POSE_LIMIT is
+# the campaign default for families drawn through the compact batch2/batch3
+# loader (decoded vectors per pose, a few full Shapes per clip). Families
+# whose dedicated native loader keeps every pose as a full Shape stay on
+# LEGACY_POSE_LIMIT until their loaders adopt pc_p2_pose_loader.h.
+POSE_LIMIT_MAX = 64
+DEFAULT_POSE_LIMIT = 16
+LEGACY_POSE_LIMIT = 3
 CLIP_BYTES = 512 * 1024
 TOTAL_BYTES = 2 * 1024 * 1024
 
 
 def sample_frames(duration, limit=MAX_POSES):
-    if type(duration) is not int or not 1 <= duration <= 10000 or not 2 <= limit <= MAX_POSES:
+    if type(duration) is not int or not 1 <= duration <= 10000 or not 2 <= limit <= POSE_LIMIT_MAX:
         raise ValueError('Invalid Snow sample limit/duration')
     count = min(limit, duration)
     return [round(i * (duration - 1) / max(1, count - 1)) for i in range(count)]
+
+
+
+def frames_trailer(poses, source_frames):
+    """Optional P2_BANK_FRAMES_1 ` frames f0,f1,...` trailer for one bank row.
+
+    Emitted only when every pose records its integer source ``frame`` and the
+    list is strictly increasing from 0 to ``source_frames - 1`` with at most
+    POSE_LIMIT_MAX entries (the native validator's contract); otherwise the
+    empty string, and native falls back to uniform frames.
+    """
+    frames = [pose.get('frame') if isinstance(pose, dict) else None for pose in poses]
+    if (not 2 <= len(frames) <= POSE_LIMIT_MAX or type(source_frames) is not int
+            or any(type(f) is not int for f in frames) or frames[0] != 0
+            or frames[-1] != source_frames - 1 or any(a >= b for a, b in zip(frames, frames[1:]))):
+        return ''
+    return ' frames ' + ','.join(str(f) for f in frames)
 
 
 def parse_bank(text):

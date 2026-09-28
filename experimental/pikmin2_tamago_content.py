@@ -41,6 +41,7 @@ import re
 from pathlib import Path
 
 from experimental import pikmin2_ground_species_content as ground
+from experimental.pikmin2_animation import frames_trailer
 from experimental.pikmin2_staging import StagingError
 
 SOURCE_ID = 68
@@ -199,6 +200,11 @@ def validate_source(source):
             _mesh_bytes(source, pose)
     return True
 
+def _trailer_row(row, poses, source_frames):
+    """Append the P2_BANK_FRAMES_1 list when the poses carry valid frames (#895)."""
+    trailer = frames_trailer(poses, source_frames)
+    return row + (trailer.split()[1],) if trailer else row
+
 
 def plan(source, actors):
     """Validate everything and return exact payloads; never writes.
@@ -229,8 +235,9 @@ def plan(source, actors):
     for clip in clips:
         name = Path(clip['file']).stem
         token = _events_token(clip['file'], clip.get('events', []))
-        clip_rows.append((name, clip['source_frames'], token,
-                          len(clip['poses']), 'converted'))
+        clip_rows.append(_trailer_row((name, clip['source_frames'], token,
+                                       len(clip['poses']), 'converted'),
+                                      clip['poses'], clip['source_frames']))
     mesh_files = {}
     for clip in clips:
         for pose in clip['poses']:
