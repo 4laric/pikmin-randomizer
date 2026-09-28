@@ -105,6 +105,12 @@ IDENTITY_FAMILY = {
     # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
     # Still a candidate until the owner's Windows OWN run lands.
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # #246 OWN: BigTreasure (Titan Dweevil, 73) stages the native source-order
+    # core inputs (retail parms, key-event table, pose/joint bank, poses and
+    # weapon pellets) through experimental.pikmin2_bigtreasure_campaign. The
+    # campaign actor is pc_p2_bigtreasure_teki (hostType 73 -> TEKI_Swallow).
+    # Candidate until the owner-reviewed OWN run lands; the proxy row is gone.
+    73: 'bigtreasure', 'bigtreasure': 'bigtreasure',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
     # than forking it; the source dir holds the full aquatic import.
@@ -983,6 +989,40 @@ def _adapt_minihoudai(source, run, actors):
                 groink=groink)
 
 
+def _validate_bigtreasure(source):
+    """Pre-flight check for BigTreasure (Titan Dweevil, source 73) content."""
+    _read_identity_source(source, 73, 'BigTreasure')
+    from experimental.pikmin2_bigtreasure_campaign import BigTreasureStageError, plan
+    try:
+        plan(source)
+    except (BigTreasureStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'BigTreasure content invalid: {error}') from error
+
+
+def _adapt_bigtreasure(source, run, actors):
+    """Adapter for BigTreasure (source 73): the native campaign core inputs.
+
+    Stages ``p2-bigtreasure-parms.txt`` (verbatim retail enemyparm.txt),
+    ``p2_bigtreasure_events.txt`` (29-clip key-event table), the
+    ``p2-bigtreasure-bank.txt`` pose/joint/leg bank and the pose + weapon
+    pellet meshes into the private model room. The native bridge setup binds
+    every seed actor whose source is 73; no generator sidecar is needed.
+    """
+    from experimental.pikmin2_bigtreasure_campaign import BigTreasureStageError, stage_from
+    _read_identity_source(source, 73, 'BigTreasure')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'BigTreasure':
+            raise StagingError(f'BigTreasure adapter got non-BigTreasure species: {species!r}')
+    if not generators:
+        raise StagingError('BigTreasure install requires at least one generator')
+    try:
+        receipt = stage_from(Path(source), Path(run))
+    except (BigTreasureStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'BigTreasure staging failed: {error}') from error
+    return dict(species='BigTreasure', source_id=73, generators=sorted(set(generators)), bigtreasure=receipt)
+
+
 def _adapt_cannon_projectile(source, run, actors):
     """Cannon/projectile family (#350) plus the FminiHoudai (97) Groink inputs.
 
@@ -1371,6 +1411,7 @@ ADAPTERS = {
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},
