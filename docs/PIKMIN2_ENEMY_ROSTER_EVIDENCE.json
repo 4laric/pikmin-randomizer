@@ -640,25 +640,25 @@
       ]
     },
     "30": {
-      "native_module": "pc_p2_queen",
+      "native_module": "pc_p2_queen_teki",
       "owner_lane": "24",
       "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility_reason": "fixture PASS gates revoked (#256): room-preview FixtureController run on a Chappy host (preview Pod, pokos=2) is not natural campaign evidence; OWN campaign binding implemented, admission pending a natural run + adversarial OWN review",
       "source": [
         "PIKMIN2_BULBLAX_RUNTIME.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
-        "death_corpse": "PASS",
-        "transport_reward": "PASS",
-        "cleanup_reentry": "PASS"
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
       },
-      "delivery_receipt": "corpse:queen:230010 (P2_POD_RECEIPT id=corpse:queen:230010 value=2 new=1 pokos=2 seeds=0) output/dsw/l24-out/queen-creature-runtime/queen/62b8ff57457c4edb90dd16958f665118/native.log:1386",
+      "delivery_receipt": null,
       "notes": [
-        "Queen (Empress Bulblax): queen vehicle + Baby child (boss_helper); natural combat/attachments/rewards remain (#172/#256).",
-        "Lane 24 gate5 (2026-09-17): natural generated-sidecar transport/reward receipt corpse:queen:230010 (P2_POD_RECEIPT value=2 new=1 pokos=2 seeds=0) in the queen-creature-runtime run (native.log:1386); free-mode carry and engine-driven death, no forced transport writes."
+        "Queen (Empress Bulblax): OWN campaign binding pc_p2_queen_teki (source FSM pc_p2_queen_own.h on TEKI_Swallow); Baby 31 larvae are real teki driven by the source Baby FSM (boss_helper).",
+        "2026-09-28 (#256): the six lane-24 PASS gates and receipt corpse:queen:230010 were REVOKED. They came from experimental/pikmin2_queen_creature_runtime.py (custom RoomApp + FixtureController, preview Pod, TEKI_Chappy host with suppressed AI, pokos=2 against the source 15) and the cited native.log no longer exists."
       ]
     },
     "31": {
