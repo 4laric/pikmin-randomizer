@@ -36,9 +36,14 @@ def committed_document():
 
 
 def trimmed_document(keep):
-    """The committed document with only its first ``keep`` slots."""
+    """The committed document with only its first ``keep`` ordinary slots.
+
+    The Queen's boss slots (#256) are always kept: without them the admitted
+    Queen has no accepted target at all, which fails closed by design.
+    """
     document = copy.deepcopy(committed_document())
-    document["slots"] = document["slots"][:keep]
+    ordinary = [slot for slot in document["slots"] if not slot["boss_slot"]]
+    document["slots"] = ordinary[:keep] + [slot for slot in document["slots"] if slot["boss_slot"]]
     kept = {slot["uid"] for slot in document["slots"]}
     for profile in document["profiles"]:
         if "accepted_slot_uids" in profile:
@@ -49,7 +54,10 @@ def trimmed_document(keep):
 def test_fitting_pool_keeps_the_legacy_fill():
     roster = load_and_validate()
     document = committed_document()
-    fit = sorted(admitted_ids(roster))[:len(document["slots"])]
+    # 32 ordinary slots + 3 Queen boss slots (#256): an exact fit is 32
+    # non-boss species plus the Queen (bound once; two boss slots vanilla).
+    ordinary = sum(1 for slot in document["slots"] if not slot["boss_slot"])
+    fit = [i for i in sorted(admitted_ids(roster)) if i != 30][:ordinary] + [30]
     layout = resolve_placement_layout("fit", "Player1", document, roster, species=fit)
     assert layout["density"] == DENSITY_LEGACY
     assert "unplaced" not in layout
@@ -58,16 +66,18 @@ def test_fitting_pool_keeps_the_legacy_fill():
 
 
 def test_committed_pool_samples_one_species_out():
-    # 36 admitted species on the 35 committed slots (Groink 78 admitted, #888).
+    # 37 admitted species (Groink 78 #888, Queen 30 #256) on 32 ordinary
+    # slots + 3 Queen boss slots: 33 distinct species bind (the Queen once).
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == len(document["slots"]) + 1
+    ordinary = sum(1 for slot in document["slots"] if not slot["boss_slot"])
+    assert len(pool) == ordinary + 5
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = [binding["source_id"] for binding in layout["bindings"]]
     assert layout["density"] == DENSITY_SAMPLED
-    assert len(bound) == len(set(bound)) == len(document["slots"])
-    assert len(layout["unplaced"]) == 1 and set(layout["unplaced"]) == pool - set(bound)
+    assert len(bound) == len(set(bound)) == ordinary + 1 and 30 in bound
+    assert len(layout["unplaced"]) == 4 and set(layout["unplaced"]) == pool - set(bound)
 
 
 def test_oversubscribed_pool_samples_distinct_species():
@@ -77,8 +87,8 @@ def test_oversubscribed_pool_samples_distinct_species():
     layout = resolve_placement_layout("over", "Player1", document, roster)
     assert layout["density"] == DENSITY_SAMPLED
     bound = [binding["source_id"] for binding in layout["bindings"]]
-    assert len(bound) == 20, "every target is still bound"
-    assert len(set(bound)) == 20, "no species repeats while others are unplaced"
+    assert len(bound) == 21, "every ordinary target is bound, plus the Queen once"
+    assert len(set(bound)) == 21, "no species repeats while others are unplaced"
     assert set(layout["unplaced"]) == pool - set(bound)
     assert layout["unplaced"] == sorted(layout["unplaced"])
     validate_layout(layout, roster, admitted=sorted(pool))

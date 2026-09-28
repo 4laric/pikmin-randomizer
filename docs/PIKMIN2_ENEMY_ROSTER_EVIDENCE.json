@@ -642,23 +642,30 @@
     "30": {
       "native_module": "pc_p2_queen_teki",
       "owner_lane": "24",
-      "eligibility": "denied",
-      "eligibility_reason": "fixture PASS gates revoked (#256): room-preview FixtureController run on a Chappy host (preview Pod, pokos=2) is not natural campaign evidence; OWN campaign binding implemented, admission pending a natural run + adversarial OWN review",
+      "eligibility": "admitted",
+      "eligibility_reason": "OWN campaign run q4 (#256): source FSM, natural bot-driven kill, carcass carry and onion:p2:30 receipt on its own seed token 3921089765",
       "source": [
         "PIKMIN2_BULBLAX_RUNTIME.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": null,
+      "delivery_receipt": "onion:p2:30:3 generator=3921089765 (P2_ORDINARY_P2_RECEIPT new=1) C:/Users/alari/pikmin-randomizer/output/wt-p2port-30-orch/runs/q4-30/session/runs/6c47facb96d45580cec7bb403343c6fd5c2907d9f499ca857b209e576b40e34c/native.log:4022",
       "notes": [
-        "Queen (Empress Bulblax): OWN campaign binding pc_p2_queen_teki (source FSM pc_p2_queen_own.h on TEKI_Swallow); Baby 31 larvae are real teki driven by the source Baby FSM (boss_helper).",
-        "2026-09-28 (#256): the six lane-24 PASS gates and receipt corpse:queen:230010 were REVOKED. They came from experimental/pikmin2_queen_creature_runtime.py (custom RoomApp + FixtureController, preview Pod, TEKI_Chappy host with suppressed AI, pokos=2 against the source 15) and the cited native.log no longer exists."
+        "Queen (Empress Bulblax): pc_p2_queen_teki drives the seeded actor with the source Queen FSM (pc_p2_queen_own.h); Baby 31 larvae run the source Baby FSM (boss_helper).",
+        "2026-09-28 (#256): the lane-24 room-preview gates and receipt corpse:queen:230010 were revoked (FixtureController, preview Pod, pokos=2); the gates below come from the campaign run only.",
+        "Campaign run q4, bot-driven (PIKMIN_RANDOMIZER_AUTOPLAY, AUTOPLAY_POWER squad=80 damage_mult=1), root 8065b4f9, native 3b5b4c60f, exe sha256 c109e5cdb3341d017001d413b31b9820be64208a5839cea6be3d69ebe88e6e19; log C:/Users/alari/pikmin-randomizer/output/wt-p2port-30-orch/runs/q4-30/session/runs/6c47facb96d45580cec7bb403343c6fd5c2907d9f499ca857b209e576b40e34c/native.log (sha256 5ec0274459eda8dc800b7ad2e5d07620369e96d07ae6b4418a66072fdfe6f5e4).",
+        "identity_spawn: L1400 P2_QUEEN_BANK retail_parms=1 draw=p2_model, L1401 P2_QUEEN_OWN_BIND generator=3921089765 source_id=30, P2_GENERATED_PLACEMENT source_id=30 target=3921089765 bound=1.",
+        "movement_animation: P2_QUEEN_STATE Wait->Damage L2326, Damage->Flick L2431, Flick->Rolling L2471, crashes L2495/L2540, Rolling->Wait L2573, Born with larva L2313; animated per-state pose draw.",
+        "attacks_receivers: rolling press on Pikmin L2480-2482 (65 accepted), key-2 flick of stuck Pikmin L2467 (12 flicked), engine health 5000 -> 0 over 395 P2_QUEEN_DAMAGE lines from 460 real Pikmin hits, max 12 latched.",
+        "death_corpse: L3831 P2_QUEEN_DEAD, L3865 P2_QUEEN_ESCAPE, P2_QUEEN_CARCASS carry_min=20 carry_max=30 pokos=15, L3867 corpse draw.",
+        "transport_reward: L4022 onion:p2:30:3 new=1 on generator 3921089765; AUTOPLAY_RESULT killed=1 carried=1 received=1 L4024.",
+        "cleanup_reentry: larva 12 outlived her (L3831 dead, L3897 larva killed by Pikmin, L3917 forget), L4023 P2_QUEEN_TEKI_FORGET; no P2_SETUP_SKIP and no FixtureController/room-preview lines in the log."
       ]
     },
     "31": {

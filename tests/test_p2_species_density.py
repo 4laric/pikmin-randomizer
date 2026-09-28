@@ -74,20 +74,27 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
     layout = resolve_placement_layout("seed-a", "Player1", document, roster, species=[SARAI])
     targets = {binding["target"] for binding in layout["bindings"]}
     # Every accepted, constraint-compatible target is bound, all to Sarai.
-    assert len(layout["bindings"]) == 35  # committed doc exposes 35 accepted slots
+    assert len(layout["bindings"]) == 32  # 35 slots; the 3 boss slots (#256) host only the Queen
     assert {binding["source_id"] for binding in layout["bindings"]} == {SARAI}
     assert layout["density"] == DENSITY_LEGACY
     assert targets  # nonempty
+
+
+def _fit(pool):
+    """32 non-boss species (the pre-78 order) plus the Queen: an exact fit."""
+    non_boss = [source_id for source_id in pool if source_id not in (30, 78)][:32]
+    return non_boss + [30]
 
 
 def test_legacy_default_is_unchanged_and_deterministic():
     """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    # #893: the admitted pool (36) outgrew the 35 slots and a bare default
-    # now samples it; a 35-species subset still fits, and there None and the
+    # #893: the admitted pool outgrew the slots and a bare default now
+    # samples it; a subset that fits the 32 non-boss slots plus the Queen on
+    # one of the 3 boss slots (#256) still fits, and there None and the
     # explicit legacy token agree.
-    fit = [source_id for source_id in admitted_ids(roster) if source_id != 78]
+    fit = _fit(admitted_ids(roster))
     first = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     second = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     assert first == second
@@ -100,14 +107,17 @@ def test_legacy_multi_species_multiset_is_pinned():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 36 on 35 slots; the pre-78 selection still fits.
-    assert len(PLAYABLE_P2_SPECIES) == 36
-    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id != 78]
+    # #893/#256: the pool is 37 on 32 non-boss slots + 3 boss slots; a
+    # selection of 32 non-boss species plus the Queen fits exactly, and the
+    # Queen (queen_arena, arena_slots.max 1) is bound once: the two other
+    # boss slots stay vanilla.
+    assert len(PLAYABLE_P2_SPECIES) == 37
+    fit = _fit(PLAYABLE_P2_SPECIES)
     roster = load_and_validate()
     layout = resolve_placement_layout(
         "seed-a", "Player1", committed_document(), roster, species=fit)
     counts = Counter(binding["source_id"] for binding in layout["bindings"])
-    assert sum(counts.values()) == 35
+    assert sum(counts.values()) == 33
     assert set(counts) == set(fit)
     assert all(count == 1 for count in counts.values())
 

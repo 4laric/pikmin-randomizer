@@ -531,16 +531,16 @@
       "label": "hope_0-29_3073",
       "stage": 1,
       "terrain": "ground",
-      "radius": 100.0,
+      "radius": 300.0,
       "water_depth": 0,
       "flight_space": false,
       "burrow_ground": true,
       "home": false,
-      "helper_capacity": 0,
+      "helper_capacity": 10,
       "projectile_corridor": false,
       "corpse_route": true,
       "protected": false,
-      "boss_slot": false,
+      "boss_slot": true,
       "first_day": 2,
       "respawn_days": 5,
       "source_identity": "campaign:ground:17",
@@ -556,16 +556,16 @@
       "label": "navel_0-29_1887",
       "stage": 2,
       "terrain": "ground",
-      "radius": 100.0,
+      "radius": 275.0,
       "water_depth": 0,
       "flight_space": false,
       "burrow_ground": true,
       "home": false,
-      "helper_capacity": 0,
+      "helper_capacity": 10,
       "projectile_corridor": false,
       "corpse_route": true,
       "protected": false,
-      "boss_slot": false,
+      "boss_slot": true,
       "first_day": 2,
       "respawn_days": 5,
       "source_identity": "campaign:ground:15",
@@ -706,16 +706,16 @@
       "label": "spring_0-14_231",
       "stage": 3,
       "terrain": "ground",
-      "radius": 100.0,
+      "radius": 250.0,
       "water_depth": 0,
       "flight_space": false,
       "burrow_ground": true,
       "home": false,
-      "helper_capacity": 0,
+      "helper_capacity": 10,
       "projectile_corridor": false,
       "corpse_route": true,
       "protected": false,
-      "boss_slot": false,
+      "boss_slot": true,
       "first_day": 2,
       "respawn_days": 30,
       "source_identity": "campaign:ground:32",
@@ -3532,8 +3532,67 @@
       "min_first_day": 0,
       "notes": "P2 source_id 45; lane-04 constraint seed; p1_equivalent none; placement cohort None; requires_home False; native placement gate pending family lane 13.",
       "cohort": null
+    },
+    {
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 24,
+      "footprint_radius": 250.0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 10,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": true,
+      "encounter_descriptor": "queen_arena",
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn",
+        "placement.boss_clearance"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "P2 source_id 30 (#256): boss profile on the queen_arena descriptor; accepted only on the four measured boss slots. Campaign run q4 (native 3b5b4c60f): P2_GENERATED_PLACEMENT source_id=30 target=3921089765 bound=1, P2_BOSS_SLOT_PROBE ok=1.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        2506165730,
+        2700289662,
+        3921089765
+      ]
     }
   ],
-  "encounters": [],
+  "encounters": [
+    {
+      "id": "queen_arena",
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 250.0,
+      "helper_budget": 10,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "roll",
+        "flick",
+        "larva_birth",
+        "death",
+        "reward"
+      ],
+      "notes": "Empress Bulblax arena (#256): territory 200 plus a 50 roll margin needs a flat, dry, wall-free disc of radius >= 250 (P2_BOSS_SLOT_PROBE, native pc_p2_placement_probe.cpp: 16 rays, 25-unit steps, no >20 height step, within 60 of the slot height, no water). Measured on native 7baec391e (runs output/wt-p2port-30-orch/runs/probe1-*): spring 3921089765 clear 250, forest 2049888785 clear 275, forest 2506165730 clear 300, navel 2700289662 clear 275; every other probed slot is < 250; impact slots (first_day 10) are unprobed and not boss slots. 2049888785 measured clear 275 but is the proxy-shared singleton slot (randomizer.p2_placement.PROXY_SHARED_UIDS), so it is left a normal slot. helper_budget = the native larva cap (10)."
+    }
+  ],
   "notes": "Lane-04 admitted-cohort placement: the admitted identities (23 Sarai, 44 BlueKochappy, 54 Miulin, 57 Kurage, 59-62 elemental Otakara Dweevils, 78 MiniHoudai) share one accepted constraint-compatible target set from the generated-placement bridge."
 }

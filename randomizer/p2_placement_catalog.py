@@ -266,7 +266,14 @@ WATERWRAITH_HELPER_IDS = frozenset({98})  # Tyre: manager child, never seeded
 BOSS_COHORT = (
     (71, 'UmiMushi', 16, ['water']),
     (101, 'UmiMushiBlind', 16, ['water']),
+    # #256: Empress Bulblax binds only measured boss slots through queen_arena
+    # (docs/PIKMIN2_ADMITTED_PLACEMENT.json carries the descriptor and slots).
+    (30, 'Queen', 24, ['ground']),
 )
+# Boss cohort members whose placement is carried by the committed placement
+# document (boss profile + encounter descriptor + boss slots), so they map
+# through binding_targets_for_sources like a non-boss candidate.
+DOCUMENT_BOSS_IDS = frozenset({30})
 
 # Encounter descriptors for the lane-16 aquatic bosses. A boss may only be
 # placed through one of these, and the campaign table contains no boss arena
@@ -752,14 +759,28 @@ def binding_targets_for_sources(source_ids, document=None):
     elif document is None:
         document = build_document()
     identities = []
+    source_ids = list(source_ids)
     for source_id in source_ids:
         identity = lane04.get(source_id) or muse.get(source_id)
         if identity is None or (identity not in {name for _, name, *_ in CANDIDATE_SPECS}
-                                and source_id not in MUSE_CANDIDATE_IDS):
+                                and source_id not in MUSE_CANDIDATE_IDS
+                                and source_id not in DOCUMENT_BOSS_IDS):
             raise ValueError(
                 f'source id {source_id} is not a non-boss lane-04 or muse #492 candidate')
         identities.append(identity)
-    return binding_targets(identities, document=document)
+    # A document boss (#256 Queen) never shares the flat non-boss target set:
+    # its footprint confines it to its boss slots, so intersecting it with the
+    # cohort would empty the cohort. Bosses contribute their own targets
+    # instead; acceptance is still enforced per identity downstream.
+    bosses = [identity for source_id, identity in zip(source_ids, identities) if source_id in DOCUMENT_BOSS_IDS]
+    others = [identity for source_id, identity in zip(source_ids, identities) if source_id not in DOCUMENT_BOSS_IDS]
+    if not bosses:
+        return binding_targets(identities, document=document)
+    by_identity = targets_by_identity(document)
+    result = set(binding_targets(others, targets=by_identity)) if others else set()
+    for identity in bosses:
+        result |= set(binding_targets([identity], targets=by_identity))
+    return sorted(result, key=int)
 
 
 def binding_target_groups(document=None):

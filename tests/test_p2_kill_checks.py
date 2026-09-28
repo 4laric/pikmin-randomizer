@@ -82,10 +82,16 @@ def test_replaced_hosts_keep_all_delivery_checks_reachable():
     assert bound and bound <= set(by_uid)
     totals = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS)
     hits = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS if str(row["uid"]) in bound)
+    boss_slots = {str(slot["uid"]) for slot in _default_admitted_placement()["slots"] if slot["boss_slot"]}
     for name, species in AFFECTED.items():
         stages = {stage for (stage, original) in totals if original == species}
         assert stages, name
-        assert all(hits[(stage, species)] == totals[(stage, species)] for stage in stages), name
+        # A boss slot (#256) the Queen did not take stays vanilla, so its P1
+        # host is still there to deliver; every other host slot is replaced.
+        vanilla = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS
+                          if str(row["uid"]) in boss_slots and str(row["uid"]) not in bound)
+        assert all(hits[(stage, species)] + vanilla[(stage, species)] == totals[(stage, species)]
+                   for stage in stages), name
         assert name in manifest["locations"], name
         assert bestiary_sources(name, manifest), name
     full = Counter({name: 99 for name in ITEM_IDS})
