@@ -1,0 +1,3 @@
+{"clips": 324, "violations": 1, "min_poses": 5, "max_clip_resident": 501760, "max_clip_disk": 1173504, "max_setup_resident": 19297472}
+VIOLATION unconverted: p2-aquatic-bank.txt UmiMushi sturn1 (0 poses)
+NOT_POSE_BANK p2-long-legs-bank.txt Long Legs bind meshes (no sampled pose bank; legs stay bind pose)

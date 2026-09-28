@@ -1,0 +1,353 @@
+{
+ "chappy-move1": {
+  "before_nearest": {
+   "poses": 4,
+   "max_step": 42.0571,
+   "median_step": 0.0,
+   "still_frames": 46,
+   "frames": 50
+  },
+  "before_lerp": {
+   "poses": 4,
+   "max_step": 2.4739,
+   "median_step": 1.7669,
+   "still_frames": 0,
+   "frames": 50
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 9.5101,
+   "median_step": 6.2748,
+   "still_frames": 0,
+   "frames": 50
+  },
+  "species": "Chappy",
+  "clip": "move1",
+  "source_frames": 50,
+  "baseline_drawn": "nearest"
+ },
+ "frog-move1": {
+  "before_nearest": {
+   "poses": 6,
+   "max_step": 33.1189,
+   "median_step": 0.0,
+   "still_frames": 29,
+   "frames": 35
+  },
+  "before_lerp": {
+   "poses": 6,
+   "max_step": 5.5198,
+   "median_step": 3.0656,
+   "still_frames": 0,
+   "frames": 35
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 9.7489,
+   "median_step": 3.9105,
+   "still_frames": 0,
+   "frames": 35
+  },
+  "species": "Frog",
+  "clip": "move1",
+  "source_frames": 35,
+  "baseline_drawn": "nearest"
+ },
+ "tank-move1": {
+  "before_nearest": {
+   "poses": 5,
+   "max_step": 6.0914,
+   "median_step": 0.0,
+   "still_frames": 50,
+   "frames": 55
+  },
+  "before_lerp": {
+   "poses": 5,
+   "max_step": 0.5138,
+   "median_step": 0.3583,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "after_lerp": {
+   "poses": 18,
+   "max_step": 2.016,
+   "median_step": 1.0364,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "species": "Tank",
+  "clip": "move1",
+  "source_frames": 55,
+  "baseline_drawn": "nearest"
+ },
+ "kabuto-move": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 16.4095,
+   "median_step": 0.0,
+   "still_frames": 52,
+   "frames": 55
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 1.2329,
+   "median_step": 0.6078,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 5.7195,
+   "median_step": 2.3017,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "species": "Kabuto",
+  "clip": "move",
+  "source_frames": 55,
+  "baseline_drawn": "nearest"
+ },
+ "dweevil-move1": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 12.6949,
+   "median_step": 0.0,
+   "still_frames": 17,
+   "frames": 20
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 2.1831,
+   "median_step": 1.4105,
+   "still_frames": 0,
+   "frames": 20
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 12.6544,
+   "median_step": 6.7684,
+   "still_frames": 0,
+   "frames": 20
+  },
+  "species": "FireOtakara",
+  "clip": "move1",
+  "source_frames": 20,
+  "baseline_drawn": "lerp"
+ },
+ "snagret-appear1": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 431.878,
+   "median_step": 0.0,
+   "still_frames": 52,
+   "frames": 55
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 177.5429,
+   "median_step": 15.9955,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 177.5429,
+   "median_step": 14.9571,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "species": "SnakeCrow",
+  "clip": "appear1",
+  "source_frames": 55,
+  "baseline_drawn": "lerp"
+ },
+ "snagret-dead": {
+  "before_nearest": {
+   "poses": 2,
+   "max_step": 95.4685,
+   "median_step": 0.0,
+   "still_frames": 164,
+   "frames": 165
+  },
+  "before_lerp": {
+   "poses": 2,
+   "max_step": 0.5821,
+   "median_step": 0.5821,
+   "still_frames": 1,
+   "frames": 165
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 25.2725,
+   "median_step": 1.207,
+   "still_frames": 56,
+   "frames": 165
+  },
+  "species": "SnakeCrow",
+  "clip": "dead",
+  "source_frames": 165,
+  "baseline_drawn": "lerp"
+ },
+ "umimushi-run1": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 25.4027,
+   "median_step": 0.0,
+   "still_frames": 57,
+   "frames": 60
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 0.9935,
+   "median_step": 0.876,
+   "still_frames": 0,
+   "frames": 60
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 1.5405,
+   "median_step": 1.3136,
+   "still_frames": 0,
+   "frames": 60
+  },
+  "species": "UmiMushi",
+  "clip": "run1",
+  "source_frames": 60,
+  "baseline_drawn": "lerp"
+ },
+ "sokkuri-pdead1": {
+  "before_nearest": {
+   "poses": 1,
+   "max_step": 0.0,
+   "median_step": 0.0,
+   "still_frames": 90,
+   "frames": 90
+  },
+  "before_lerp": {
+   "poses": 1,
+   "max_step": 0.0,
+   "median_step": 0.0,
+   "still_frames": 90,
+   "frames": 90
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 14.0797,
+   "median_step": 0.0,
+   "still_frames": 72,
+   "frames": 90
+  },
+  "species": "Sokkuri",
+  "clip": "pdead1",
+  "source_frames": 90,
+  "baseline_drawn": "lerp"
+ },
+ "bluekochappy-move1": {
+  "before_nearest": {
+   "poses": 5,
+   "max_step": 15.4499,
+   "median_step": 0.0,
+   "still_frames": 50,
+   "frames": 55
+  },
+  "before_lerp": {
+   "poses": 5,
+   "max_step": 1.5127,
+   "median_step": 0.9586,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "after_lerp": {
+   "poses": 18,
+   "max_step": 3.3253,
+   "median_step": 1.9579,
+   "still_frames": 0,
+   "frames": 55
+  },
+  "species": "BlueKochappy",
+  "clip": "move1",
+  "source_frames": 55,
+  "baseline_drawn": "nearest"
+ },
+ "miulin-move": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 20.9732,
+   "median_step": 0.0,
+   "still_frames": 74,
+   "frames": 77
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 0.9115,
+   "median_step": 0.5519,
+   "still_frames": 0,
+   "frames": 77
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 4.4221,
+   "median_step": 3.2374,
+   "still_frames": 0,
+   "frames": 77
+  },
+  "species": "Miulin",
+  "clip": "move",
+  "source_frames": 77,
+  "baseline_drawn": "nearest"
+ },
+ "groink-walk": {
+  "before_nearest": {
+   "poses": 3,
+   "max_step": 20.0629,
+   "median_step": 0.0,
+   "still_frames": 31,
+   "frames": 34
+  },
+  "before_lerp": {
+   "poses": 3,
+   "max_step": 6.859,
+   "median_step": 1.1802,
+   "still_frames": 0,
+   "frames": 34
+  },
+  "after_lerp": {
+   "poses": 16,
+   "max_step": 16.2271,
+   "median_step": 7.7654,
+   "still_frames": 0,
+   "frames": 34
+  },
+  "species": "MiniHoudai",
+  "clip": "walk",
+  "source_frames": 34,
+  "baseline_drawn": "nearest"
+ },
+ "sarai-move": {
+  "before_nearest": {
+   "poses": 5,
+   "max_step": 37.3426,
+   "median_step": 0.0,
+   "still_frames": 15,
+   "frames": 20
+  },
+  "before_lerp": {
+   "poses": 5,
+   "max_step": 17.7272,
+   "median_step": 3.7343,
+   "still_frames": 0,
+   "frames": 20
+  },
+  "after_lerp": {
+   "poses": 17,
+   "max_step": 18.2705,
+   "median_step": 17.583,
+   "still_frames": 0,
+   "frames": 20
+  },
+  "species": "Sarai",
+  "clip": "sarai-move-poses",
+  "source_frames": 20,
+  "baseline_drawn": "nearest"
+ }
+}

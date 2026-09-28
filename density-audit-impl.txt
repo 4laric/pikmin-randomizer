@@ -1,0 +1,73 @@
+{"clips": 321, "violations": 71, "min_poses": 3, "max_clip_resident": 478128, "max_clip_disk": 1173504, "max_setup_resident": 18235848}
+VIOLATION trailer: p2-ground-bank.txt Sokkuri appear1 missing
+VIOLATION trailer: p2-ground-bank.txt Sokkuri hide1 missing
+VIOLATION density: p2-ground-bank.txt Sokkuri dead1 poses=5 frames=90 max_gap=23
+VIOLATION trailer: p2-ground-bank.txt Sokkuri dead1 missing
+VIOLATION density: p2-ground-bank.txt Sokkuri pdead1 poses=4 frames=90 max_gap=30
+VIOLATION trailer: p2-ground-bank.txt Sokkuri pdead1 missing
+VIOLATION trailer: p2-aquatic-bank.txt UmiMushi dead1 missing
+VIOLATION unconverted: p2-aquatic-bank.txt UmiMushi sturn1 (0 poses)
+VIOLATION unconverted: p2-aquatic-bank.txt UmiMushi type5 (0 poses)
+VIOLATION density: p2-snagret-bank.txt SnakeCrow dead poses=11 frames=165 max_gap=17
+VIOLATION trailer: p2-snagret-bank.txt SnakeCrow dead missing
+VIOLATION density: p2-snagret-bank.txt SnakeWhole dead poses=8 frames=146 max_gap=21
+VIOLATION trailer: p2-snagret-bank.txt SnakeWhole dead missing
+VIOLATION density: p2-dwarf-orange-bank.txt BlueKochappy wait1 poses=6 frames=75 max_gap=27
+VIOLATION density: p2-dwarf-orange-bank.txt BlueKochappy move1 poses=5 frames=55 max_gap=17
+VIOLATION density: p2-dwarf-orange-bank.txt BlueKochappy attack poses=5 frames=90 max_gap=44
+VIOLATION density: p2-dwarf-orange-bank.txt BlueKochappy dead poses=3 frames=90 max_gap=45
+VIOLATION density: p2-dwarf-orange-bank.txt BlueKochappy flick poses=4 frames=80 max_gap=39
+VIOLATION density: p2-kabuto.txt Kabuto dead poses=3 frames=90 max_gap=45
+VIOLATION density: p2-kabuto.txt Kabuto move poses=3 frames=55 max_gap=27
+VIOLATION density: p2-kabuto.txt Kabuto flick poses=3 frames=82 max_gap=41
+VIOLATION density: p2-kabuto.txt Kabuto attack poses=3 frames=95 max_gap=47
+VIOLATION density: p2-kabuto.txt Kabuto wait poses=3 frames=50 max_gap=25
+VIOLATION density: p2-frog.txt Frog dead poses=6 frames=135 max_gap=34
+VIOLATION density: p2-frog.txt Frog wait1 poses=6 frames=30 max_gap=7
+VIOLATION density: p2-frog.txt Frog waitact2 poses=6 frames=60 max_gap=15
+VIOLATION density: p2-frog.txt Frog move1 poses=6 frames=35 max_gap=12
+VIOLATION density: p2-frog.txt Frog waitact1 poses=6 frames=40 max_gap=10
+VIOLATION density: p2-frog.txt Frog type1 poses=6 frames=25 max_gap=8
+VIOLATION density: p2-frog.txt Frog wait2 poses=6 frames=30 max_gap=9
+VIOLATION density: p2-frog.txt Frog attack poses=6 frames=27 max_gap=7
+VIOLATION density: p2-frog.txt Frog damage poses=6 frames=35 max_gap=9
+VIOLATION density: p2-frog.txt Frog type5 poses=6 frames=40 max_gap=10
+VIOLATION density: p2-frog.txt MaroFrog dead poses=6 frames=135 max_gap=34
+VIOLATION density: p2-frog.txt MaroFrog wait1 poses=6 frames=30 max_gap=7
+VIOLATION density: p2-frog.txt MaroFrog waitact2 poses=6 frames=60 max_gap=15
+VIOLATION density: p2-frog.txt MaroFrog move1 poses=6 frames=35 max_gap=12
+VIOLATION density: p2-frog.txt MaroFrog waitact1 poses=6 frames=40 max_gap=10
+VIOLATION density: p2-frog.txt MaroFrog type1 poses=6 frames=25 max_gap=8
+VIOLATION density: p2-frog.txt MaroFrog wait2 poses=6 frames=30 max_gap=9
+VIOLATION density: p2-frog.txt MaroFrog attack poses=6 frames=27 max_gap=7
+VIOLATION density: p2-frog.txt MaroFrog damage poses=6 frames=35 max_gap=9
+VIOLATION density: p2-frog.txt MaroFrog type5 poses=6 frames=40 max_gap=10
+VIOLATION density: p2-tank.txt Tank dead poses=3 frames=90 max_gap=45
+VIOLATION density: p2-tank.txt Tank move1 poses=5 frames=55 max_gap=17
+VIOLATION density: p2-tank.txt Tank flick poses=4 frames=95 max_gap=47
+VIOLATION density: p2-tank.txt Tank attack poses=4 frames=95 max_gap=47
+VIOLATION density: p2-tank.txt Tank waitact1 poses=3 frames=35 max_gap=17
+VIOLATION density: p2-tank.txt Tank waitact2 poses=3 frames=50 max_gap=25
+VIOLATION density: p2-tank.txt Tank type5 poses=5 frames=40 max_gap=10
+VIOLATION density: p2-tank.txt Wtank dead poses=3 frames=90 max_gap=45
+VIOLATION density: p2-tank.txt Wtank move1 poses=5 frames=55 max_gap=17
+VIOLATION density: p2-tank.txt Wtank flick poses=4 frames=95 max_gap=47
+VIOLATION density: p2-tank.txt Wtank attack poses=4 frames=95 max_gap=47
+VIOLATION density: p2-tank.txt Wtank waitact1 poses=3 frames=35 max_gap=17
+VIOLATION density: p2-tank.txt Wtank waitact2 poses=3 frames=50 max_gap=25
+VIOLATION density: p2-tank.txt Wtank type5 poses=5 frames=40 max_gap=10
+VIOLATION density: p2-mamuta-bank.txt Miulin wait poses=3 frames=90 max_gap=45
+VIOLATION density: p2-mamuta-bank.txt Miulin waitact poses=3 frames=30 max_gap=15
+VIOLATION density: p2-mamuta-bank.txt Miulin move poses=3 frames=77 max_gap=38
+VIOLATION density: p2-mamuta-bank.txt Miulin attack0 poses=3 frames=15 max_gap=7
+VIOLATION density: p2-mamuta-bank.txt Miulin attack1 poses=3 frames=38 max_gap=19
+VIOLATION density: p2-mamuta-bank.txt Miulin attack4 poses=3 frames=19 max_gap=9
+VIOLATION density: p2-mamuta-bank.txt Miulin flick poses=3 frames=45 max_gap=22
+VIOLATION density: p2-mamuta-bank.txt Miulin dead poses=3 frames=71 max_gap=35
+VIOLATION density: p2-mamuta-bank.txt Miulin type5 poses=3 frames=40 max_gap=20
+VIOLATION density: sarai-attack-poses.txt Sarai sarai-attack-poses poses=7 frames=50 max_gap=19
+VIOLATION density: sarai-move-poses.txt Sarai sarai-move-poses poses=5 frames=20 max_gap=10
+VIOLATION density: sarai-wait-poses.txt Sarai sarai-wait-poses poses=7 frames=60 max_gap=19
+VIOLATION density: sarai-waitact1-poses.txt Sarai sarai-waitact1-poses poses=8 frames=30 max_gap=8
+VIOLATION density: sarai-waitact2-poses.txt Sarai sarai-waitact2-poses poses=7 frames=50 max_gap=13
+NOT_POSE_BANK p2-long-legs-bank.txt Long Legs bind meshes (no sampled pose bank; legs stay bind pose)

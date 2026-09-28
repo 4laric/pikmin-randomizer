@@ -1,0 +1,2426 @@
+{
+ "summary": {
+  "clips": 260,
+  "last_equals_first": 6,
+  "continuous": 173,
+  "discontinuous": 87
+ },
+ "species": {
+  "Armor": {
+   "appear.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 33.63895,
+    "step": 2.49554,
+    "seam_ratio": 13.48,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 1.54532,
+    "step": 1.39762,
+    "seam_ratio": 1.106,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack2.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 26.24342,
+    "step": 2.19476,
+    "seam_ratio": 11.957,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack_fail.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 26.30426,
+    "step": 2.05671,
+    "seam_ratio": 12.789,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.15743,
+    "step": 0.42948,
+    "seam_ratio": 0.367,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 125,
+    "loop_attribute": 2,
+    "seam": 15.20772,
+    "step": 0.38777,
+    "seam_ratio": 39.218,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 29.17369,
+    "step": 1.32542,
+    "seam_ratio": 22.011,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "eat.bca": {
+    "duration": 65,
+    "loop_attribute": 2,
+    "seam": 26.63607,
+    "step": 1.45918,
+    "seam_ratio": 18.254,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.09369,
+    "step": 0.21862,
+    "seam_ratio": 0.429,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.71876,
+    "step": 0.72097,
+    "seam_ratio": 0.997,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "BigFoot": {
+   "dead.bca": {
+    "duration": 300,
+    "loop_attribute": 2,
+    "seam": 173.48505,
+    "step": 7.35052,
+    "seam_ratio": 23.602,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "filck.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 0.22598,
+    "step": 13.1161,
+    "seam_ratio": 0.017,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "flick.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 0.22598,
+    "step": 13.1161,
+    "seam_ratio": 0.017,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "landing.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 1380.97073,
+    "step": 11.06628,
+    "seam_ratio": 124.791,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait.bca": {
+    "duration": 76,
+    "loop_attribute": 2,
+    "seam": 0.10158,
+    "step": 0.29405,
+    "seam_ratio": 0.345,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Chappy": {
+   "attack.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.4304,
+    "step": 2.82401,
+    "seam_ratio": 0.152,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 55.79355,
+    "step": 4.59097,
+    "seam_ratio": 12.153,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.05146,
+    "step": 0.14646,
+    "seam_ratio": 0.351,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.32003,
+    "step": 0.972,
+    "seam_ratio": 0.329,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "rebirth.bca": {
+    "duration": 106,
+    "loop_attribute": 2,
+    "seam": 23.87308,
+    "step": 0.19053,
+    "seam_ratio": 125.301,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type1.bca": {
+    "duration": 180,
+    "loop_attribute": 2,
+    "seam": 0.06671,
+    "step": 0.8424,
+    "seam_ratio": 0.079,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 41,
+    "loop_attribute": 2,
+    "seam": 0.02435,
+    "step": 0.31429,
+    "seam_ratio": 0.077,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.70673,
+    "step": 7.29667,
+    "seam_ratio": 0.097,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.37163,
+    "step": 0.48392,
+    "seam_ratio": 0.768,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 27.77047,
+    "step": 4.80694,
+    "seam_ratio": 5.777,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "Damagumo": {
+   "dead.bca": {
+    "duration": 300,
+    "loop_attribute": 2,
+    "seam": 152.41465,
+    "step": 16.16019,
+    "seam_ratio": 9.431,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 0.28197,
+    "step": 12.14127,
+    "seam_ratio": 0.023,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "landing.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 1381.08958,
+    "step": 3.88062,
+    "seam_ratio": 355.894,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait.bca": {
+    "duration": 76,
+    "loop_attribute": 2,
+    "seam": 0.00504,
+    "step": 0.26627,
+    "seam_ratio": 0.019,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "DangoMushi": {
+   "attack.bca": {
+    "duration": 140,
+    "loop_attribute": 2,
+    "seam": 0.39955,
+    "step": 1.50658,
+    "seam_ratio": 0.265,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack_2.bca": {
+    "duration": 83,
+    "loop_attribute": 2,
+    "seam": 1.74528,
+    "step": 1.89397,
+    "seam_ratio": 0.921,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.19619,
+    "step": 0.39804,
+    "seam_ratio": 0.493,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 180,
+    "loop_attribute": 2,
+    "seam": 32.32692,
+    "step": 0.60329,
+    "seam_ratio": 53.584,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "fly.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 1177.08103,
+    "step": 84.62378,
+    "seam_ratio": 13.91,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.56795,
+    "step": 1.34288,
+    "seam_ratio": 0.423,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "recover.bca": {
+    "duration": 23,
+    "loop_attribute": 2,
+    "seam": 47.0479,
+    "step": 7.13442,
+    "seam_ratio": 6.594,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "turn.bca": {
+    "duration": 117,
+    "loop_attribute": 2,
+    "seam": 84.68176,
+    "step": 35.64436,
+    "seam_ratio": 2.376,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.38978,
+    "step": 1.07776,
+    "seam_ratio": 0.362,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "ElecBug": {
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.06573,
+    "step": 0.16432,
+    "seam_ratio": 0.4,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "charge.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 0.98334,
+    "step": 0.6273,
+    "seam_ratio": 1.568,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 110,
+    "loop_attribute": 2,
+    "seam": 4.78254,
+    "step": 0.25223,
+    "seam_ratio": 18.961,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "discharge.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.26738,
+    "step": 0.31623,
+    "seam_ratio": 0.846,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.29096,
+    "step": 0.47132,
+    "seam_ratio": 0.617,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "recover.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 8.05826,
+    "step": 0.07733,
+    "seam_ratio": 104.21,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "turn.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 8.05879,
+    "step": 0.46542,
+    "seam_ratio": 17.315,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait.bca": {
+    "duration": 13,
+    "loop_attribute": 2,
+    "seam": 0.0,
+    "step": 0.02953,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   }
+  },
+  "ElecOtakara": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "FireChappy": {
+   "attack.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.0612,
+    "step": 2.82401,
+    "seam_ratio": 0.022,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 55.79355,
+    "step": 4.59097,
+    "seam_ratio": 12.153,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.05146,
+    "step": 0.41711,
+    "seam_ratio": 0.123,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.32003,
+    "step": 0.84261,
+    "seam_ratio": 0.38,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type1.bca": {
+    "duration": 190,
+    "loop_attribute": 2,
+    "seam": 0.03287,
+    "step": 0.66565,
+    "seam_ratio": 0.049,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 41,
+    "loop_attribute": 2,
+    "seam": 0.0,
+    "step": 0.28991,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.70673,
+    "step": 1.76375,
+    "seam_ratio": 0.401,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.17111,
+    "step": 0.42778,
+    "seam_ratio": 0.4,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 27.77047,
+    "step": 2.38593,
+    "seam_ratio": 11.639,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "FireOtakara": {
+   "attack1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.93101,
+    "step": 1.90277,
+    "seam_ratio": 0.489,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 5.61948,
+    "step": 2.01331,
+    "seam_ratio": 2.791,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.05582,
+    "step": 0.13311,
+    "seam_ratio": 0.419,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 24.9341,
+    "step": 1.027,
+    "seam_ratio": 24.279,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dropitem2.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 7.64712,
+    "step": 0.79199,
+    "seam_ratio": 9.656,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.13713,
+    "step": 0.13713,
+    "seam_ratio": 1.0,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move2.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.16132,
+    "step": 0.24723,
+    "seam_ratio": 0.653,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "pivot1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.06857,
+    "step": 0.13713,
+    "seam_ratio": 0.5,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "pivot2.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.12875,
+    "step": 0.28325,
+    "seam_ratio": 0.455,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "takeitem.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 11.7602,
+    "step": 1.61131,
+    "seam_ratio": 7.299,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.39127,
+    "step": 0.41441,
+    "seam_ratio": 0.944,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.43239,
+    "step": 1.17382,
+    "seam_ratio": 0.368,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Frog": {
+   "attack.bca": {
+    "duration": 27,
+    "loop_attribute": 2,
+    "seam": 1.59901,
+    "step": 0.16269,
+    "seam_ratio": 9.829,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "damage.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 1.02442,
+    "step": 0.65261,
+    "seam_ratio": 1.57,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 135,
+    "loop_attribute": 2,
+    "seam": 13.22735,
+    "step": 0.86957,
+    "seam_ratio": 15.211,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move1.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 0.26692,
+    "step": 0.16913,
+    "seam_ratio": 1.578,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 1.66227,
+    "step": 0.48378,
+    "seam_ratio": 3.436,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type2.bca": {
+    "duration": 18,
+    "loop_attribute": 2,
+    "seam": 1.28643,
+    "step": 0.13555,
+    "seam_ratio": 9.491,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.04011,
+    "step": 0.08669,
+    "seam_ratio": 0.463,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.00249,
+    "step": 0.00319,
+    "seam_ratio": 0.781,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.56794,
+    "step": 0.52432,
+    "seam_ratio": 1.083,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.08017,
+    "step": 0.18801,
+    "seam_ratio": 0.426,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.11152,
+    "step": 0.13084,
+    "seam_ratio": 0.852,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "GasOtakara": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "Imomushi": {
+   "carry.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.78316,
+    "step": 0.98135,
+    "seam_ratio": 0.798,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 105,
+    "loop_attribute": 2,
+    "seam": 2.20297,
+    "step": 2.4614,
+    "seam_ratio": 0.895,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dive.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 24.65014,
+    "step": 0.90647,
+    "seam_ratio": 27.194,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "eat.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 2.17087,
+    "step": 1.9225,
+    "seam_ratio": 1.129,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "fall1.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 2.70088,
+    "step": 0.68831,
+    "seam_ratio": 3.924,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "fall2.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 2.20406,
+    "step": 0.55166,
+    "seam_ratio": 3.995,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move1.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 1.43786,
+    "step": 2.56214,
+    "seam_ratio": 0.561,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move2.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 0.8412,
+    "step": 1.56744,
+    "seam_ratio": 0.537,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "set.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 23.94238,
+    "step": 0.57898,
+    "seam_ratio": 41.353,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "Jigumo": {
+   "appear1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 48.23953,
+    "step": 0.61461,
+    "seam_ratio": 78.488,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 9.48876,
+    "step": 0.59743,
+    "seam_ratio": 15.883,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "backrun1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 5.03998,
+    "step": 4.56077,
+    "seam_ratio": 1.105,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "backwait1.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 0.15653,
+    "step": 0.2341,
+    "seam_ratio": 0.669,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 7.78248,
+    "step": 1.0503,
+    "seam_ratio": 7.41,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive1.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 17.05926,
+    "step": 1.61683,
+    "seam_ratio": 10.551,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 2.59843,
+    "step": 1.25082,
+    "seam_ratio": 2.077,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hide1.bca": {
+    "duration": 16,
+    "loop_attribute": 2,
+    "seam": 48.23953,
+    "step": 12.81944,
+    "seam_ratio": 3.763,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "rdive1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 45.75755,
+    "step": 3.16244,
+    "seam_ratio": 14.469,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "rflick1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 1.095,
+    "step": 1.24992,
+    "seam_ratio": 0.876,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "runaway1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 1.85921,
+    "step": 1.11553,
+    "seam_ratio": 1.667,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "sattack1.bca": {
+    "duration": 125,
+    "loop_attribute": 2,
+    "seam": 7.54712,
+    "step": 1.29143,
+    "seam_ratio": 5.844,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "smiss1.bca": {
+    "duration": 14,
+    "loop_attribute": 2,
+    "seam": 17.76856,
+    "step": 1.11491,
+    "seam_ratio": 15.937,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "to_runaway1.bca": {
+    "duration": 5,
+    "loop_attribute": 2,
+    "seam": 1.83595,
+    "step": 0.56006,
+    "seam_ratio": 3.278,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "turn1.bca": {
+    "duration": 16,
+    "loop_attribute": 2,
+    "seam": 1.52609,
+    "step": 0.36892,
+    "seam_ratio": 4.137,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.04879,
+    "step": 0.1171,
+    "seam_ratio": 0.417,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 3.14229,
+    "step": 0.19175,
+    "seam_ratio": 16.388,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "Kabuto": {
+   "attack.bca": {
+    "duration": 95,
+    "loop_attribute": 2,
+    "seam": 0.03216,
+    "step": 0.09138,
+    "seam_ratio": 0.352,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.00627,
+    "step": 0.00446,
+    "seam_ratio": 1.405,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 33.0,
+    "step": 0.09282,
+    "seam_ratio": 355.534,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 82,
+    "loop_attribute": 2,
+    "seam": 0.02848,
+    "step": 0.40222,
+    "seam_ratio": 0.071,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "k_appear.bca": {
+    "duration": 36,
+    "loop_attribute": 2,
+    "seam": 43.42461,
+    "step": 10.40695,
+    "seam_ratio": 4.173,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "k_attack.bca": {
+    "duration": 95,
+    "loop_attribute": 2,
+    "seam": 0.03216,
+    "step": 0.09138,
+    "seam_ratio": 0.352,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "k_dead.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 33.0,
+    "step": 0.09282,
+    "seam_ratio": 355.537,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "k_flick.bca": {
+    "duration": 82,
+    "loop_attribute": 2,
+    "seam": 0.02848,
+    "step": 0.40222,
+    "seam_ratio": 0.071,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "k_hide.bca": {
+    "duration": 18,
+    "loop_attribute": 2,
+    "seam": 58.448,
+    "step": 11.13428,
+    "seam_ratio": 5.249,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "k_pivot.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 0.22657,
+    "step": 0.40566,
+    "seam_ratio": 0.559,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "k_wait.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.06656,
+    "step": 0.14907,
+    "seam_ratio": 0.447,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 55,
+    "loop_attribute": 2,
+    "seam": 0.09511,
+    "step": 0.18051,
+    "seam_ratio": 0.527,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "pivot.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 0.2084,
+    "step": 0.40566,
+    "seam_ratio": 0.514,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.05344,
+    "step": 0.14907,
+    "seam_ratio": 0.359,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "KingChappy": {
+   "attack.bca": {
+    "duration": 95,
+    "loop_attribute": 2,
+    "seam": 2.70312,
+    "step": 3.10891,
+    "seam_ratio": 0.869,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.0,
+    "step": 0.08761,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   },
+   "cry.bca": {
+    "duration": 138,
+    "loop_attribute": 2,
+    "seam": 0.43626,
+    "step": 0.93103,
+    "seam_ratio": 0.469,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "damage.bca": {
+    "duration": 135,
+    "loop_attribute": 2,
+    "seam": 0.06944,
+    "step": 1.12337,
+    "seam_ratio": 0.062,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 200,
+    "loop_attribute": 2,
+    "seam": 32.5196,
+    "step": 1.68953,
+    "seam_ratio": 19.248,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 142,
+    "loop_attribute": 2,
+    "seam": 107.66389,
+    "step": 5.35736,
+    "seam_ratio": 20.096,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 0.36813,
+    "step": 2.05209,
+    "seam_ratio": 0.179,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.06943,
+    "step": 1.34898,
+    "seam_ratio": 0.051,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type1.bca": {
+    "duration": 45,
+    "loop_attribute": 2,
+    "seam": 2.7197,
+    "step": 1.08936,
+    "seam_ratio": 2.497,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type2.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 8.70605,
+    "step": 20.37932,
+    "seam_ratio": 0.427,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type3.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 107.48994,
+    "step": 7.59988,
+    "seam_ratio": 14.144,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait2.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.06404,
+    "step": 0.09605,
+    "seam_ratio": 0.667,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.572,
+    "step": 1.66426,
+    "seam_ratio": 0.344,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.12259,
+    "step": 0.56334,
+    "seam_ratio": 0.218,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "KumaChappy": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "KumaKochappy": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "LeafChappy": {
+   "attack.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.37187,
+    "step": 1.03943,
+    "seam_ratio": 0.358,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 29.01265,
+    "step": 3.31957,
+    "seam_ratio": 8.74,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.13417,
+    "step": 0.34921,
+    "seam_ratio": 0.384,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.50976,
+    "step": 0.50544,
+    "seam_ratio": 1.009,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 41,
+    "loop_attribute": 2,
+    "seam": 0.21331,
+    "step": 0.33176,
+    "seam_ratio": 0.643,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.58953,
+    "step": 0.57767,
+    "seam_ratio": 1.021,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 0.53998,
+    "step": 0.6622,
+    "seam_ratio": 0.815,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 14.76808,
+    "step": 2.45141,
+    "seam_ratio": 6.024,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "MaroFrog": {
+   "attack.bca": {
+    "duration": 27,
+    "loop_attribute": 2,
+    "seam": 1.59901,
+    "step": 0.16269,
+    "seam_ratio": 9.829,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "damage.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 1.02442,
+    "step": 0.65261,
+    "seam_ratio": 1.57,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 135,
+    "loop_attribute": 2,
+    "seam": 12.45549,
+    "step": 0.86957,
+    "seam_ratio": 14.324,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move1.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 0.26692,
+    "step": 0.16913,
+    "seam_ratio": 1.578,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 1.66227,
+    "step": 0.48378,
+    "seam_ratio": 3.436,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type2.bca": {
+    "duration": 18,
+    "loop_attribute": 2,
+    "seam": 1.28643,
+    "step": 0.13555,
+    "seam_ratio": 9.491,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.05587,
+    "step": 0.14279,
+    "seam_ratio": 0.391,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.00249,
+    "step": 0.00319,
+    "seam_ratio": 0.781,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait2.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.56794,
+    "step": 0.52432,
+    "seam_ratio": 1.083,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.08017,
+    "step": 0.18801,
+    "seam_ratio": 0.426,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.11152,
+    "step": 0.13084,
+    "seam_ratio": 0.852,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "MiniHoudai": {
+   "attack1.bca": {
+    "duration": 44,
+    "loop_attribute": 0,
+    "seam": 0.55936,
+    "step": 3.24762,
+    "seam_ratio": 0.172,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead1.bca": {
+    "duration": 66,
+    "loop_attribute": 0,
+    "seam": 22.78607,
+    "step": 2.9419,
+    "seam_ratio": 7.745,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick1.bca": {
+    "duration": 34,
+    "loop_attribute": 0,
+    "seam": 0.24928,
+    "step": 0.44677,
+    "seam_ratio": 0.558,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "rebirth.bca": {
+    "duration": 81,
+    "loop_attribute": 2,
+    "seam": 22.78607,
+    "step": 0.1832,
+    "seam_ratio": 124.378,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "search1.bca": {
+    "duration": 29,
+    "loop_attribute": 0,
+    "seam": 0.17121,
+    "step": 0.30705,
+    "seam_ratio": 0.558,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "turn1.bca": {
+    "duration": 24,
+    "loop_attribute": 0,
+    "seam": 0.75473,
+    "step": 0.7736,
+    "seam_ratio": 0.976,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 39,
+    "loop_attribute": 0,
+    "seam": 0.89815,
+    "step": 0.31435,
+    "seam_ratio": 2.857,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "walk.bca": {
+    "duration": 34,
+    "loop_attribute": 0,
+    "seam": 0.96198,
+    "step": 0.8053,
+    "seam_ratio": 1.195,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Miulin": {
+   "attack0.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 8.81031,
+    "step": 0.97966,
+    "seam_ratio": 8.993,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack1.bca": {
+    "duration": 38,
+    "loop_attribute": 2,
+    "seam": 0.39854,
+    "step": 4.6729,
+    "seam_ratio": 0.085,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack4.bca": {
+    "duration": 19,
+    "loop_attribute": 2,
+    "seam": 8.73682,
+    "step": 0.57981,
+    "seam_ratio": 15.068,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead.bca": {
+    "duration": 71,
+    "loop_attribute": 2,
+    "seam": 1.16199,
+    "step": 0.40065,
+    "seam_ratio": 2.9,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "flick.bca": {
+    "duration": 45,
+    "loop_attribute": 2,
+    "seam": 0.12654,
+    "step": 1.03873,
+    "seam_ratio": 0.122,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 77,
+    "loop_attribute": 2,
+    "seam": 0.18268,
+    "step": 0.33407,
+    "seam_ratio": 0.547,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.01435,
+    "step": 0.04461,
+    "seam_ratio": 0.322,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 0.0,
+    "step": 0.0,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   },
+   "waitact.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.12981,
+    "step": 0.29288,
+    "seam_ratio": 0.443,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Sarai": {
+   "attack1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 3.25343,
+    "step": 1.44258,
+    "seam_ratio": 2.255,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 4.13817,
+    "step": 0.98664,
+    "seam_ratio": 4.194,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.44652,
+    "step": 5.42035,
+    "seam_ratio": 0.082,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.57515,
+    "step": 0.72748,
+    "seam_ratio": 0.791,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 5.04155,
+    "step": 8.62394,
+    "seam_ratio": 0.585,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 17.80177,
+    "step": 0.82439,
+    "seam_ratio": 21.594,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type3.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 15.75722,
+    "step": 3.01873,
+    "seam_ratio": 5.22,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type4.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 4.97859,
+    "step": 1.46426,
+    "seam_ratio": 3.4,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.3531,
+    "step": 0.24106,
+    "seam_ratio": 1.465,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.57515,
+    "step": 0.72748,
+    "seam_ratio": 0.791,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.57526,
+    "step": 1.43153,
+    "seam_ratio": 0.402,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 3.25343,
+    "step": 0.75138,
+    "seam_ratio": 4.33,
+    "last_equals_first": false,
+    "continuous": false
+   }
+  },
+  "SnakeCrow": {
+   "appear1.bca": {
+    "duration": 55,
+    "loop_attribute": 2,
+    "seam": 169.61926,
+    "step": 33.57762,
+    "seam_ratio": 5.052,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "appear2.bca": {
+    "duration": 165,
+    "loop_attribute": 2,
+    "seam": 293.95117,
+    "step": 0.51373,
+    "seam_ratio": 572.187,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead.bca": {
+    "duration": 165,
+    "loop_attribute": 2,
+    "seam": 95.0,
+    "step": 0.08775,
+    "seam_ratio": 1082.621,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 36,
+    "loop_attribute": 2,
+    "seam": 293.95117,
+    "step": 16.53024,
+    "seam_ratio": 17.783,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "hit.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.04319,
+    "step": 0.04085,
+    "seam_ratio": 1.057,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_far.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.00696,
+    "step": 0.04679,
+    "seam_ratio": 0.149,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_l.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 0.00608,
+    "step": 0.02371,
+    "seam_ratio": 0.256,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_near.bca": {
+    "duration": 81,
+    "loop_attribute": 2,
+    "seam": 0.03745,
+    "step": 0.03739,
+    "seam_ratio": 1.002,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_r.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 0.00656,
+    "step": 0.05269,
+    "seam_ratio": 0.125,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.08834,
+    "step": 0.38672,
+    "seam_ratio": 0.228,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.00575,
+    "step": 0.00575,
+    "seam_ratio": 1.0,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 1.36028,
+    "step": 1.53579,
+    "seam_ratio": 0.886,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.06025,
+    "step": 1.14472,
+    "seam_ratio": 0.053,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "SnakeWhole": {
+   "appear1.bca": {
+    "duration": 55,
+    "loop_attribute": 2,
+    "seam": 200.24443,
+    "step": 40.28979,
+    "seam_ratio": 4.97,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "appear2.bca": {
+    "duration": 165,
+    "loop_attribute": 2,
+    "seam": 347.36372,
+    "step": 1.09615,
+    "seam_ratio": 316.896,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead.bca": {
+    "duration": 146,
+    "loop_attribute": 2,
+    "seam": 33.06216,
+    "step": 0.68559,
+    "seam_ratio": 48.224,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 225.49199,
+    "step": 85.31718,
+    "seam_ratio": 2.643,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.00618,
+    "step": 0.38569,
+    "seam_ratio": 0.016,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_far.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.00271,
+    "step": 0.38569,
+    "seam_ratio": 0.007,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_l.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 0.00649,
+    "step": 0.6649,
+    "seam_ratio": 0.01,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_near.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 0.00536,
+    "step": 0.6649,
+    "seam_ratio": 0.008,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hit_r.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 0.00568,
+    "step": 0.49722,
+    "seam_ratio": 0.011,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "run1.bca": {
+    "duration": 45,
+    "loop_attribute": 2,
+    "seam": 0.73922,
+    "step": 1.62629,
+    "seam_ratio": 0.455,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 8e-05,
+    "step": 0.84376,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.8325,
+    "step": 0.84197,
+    "seam_ratio": 0.989,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 70,
+    "loop_attribute": 2,
+    "seam": 0.22231,
+    "step": 0.63274,
+    "seam_ratio": 0.351,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 1.40585,
+    "step": 5.36607,
+    "seam_ratio": 0.262,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Sokkuri": {
+   "appear1.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 9.646,
+    "step": 1.71759,
+    "seam_ratio": 5.616,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead1.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 9.00942,
+    "step": 13.01773,
+    "seam_ratio": 0.692,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "flick1.bca": {
+    "duration": 45,
+    "loop_attribute": 2,
+    "seam": 0.37336,
+    "step": 0.5113,
+    "seam_ratio": 0.73,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "hide1.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 9.77866,
+    "step": 1.82195,
+    "seam_ratio": 5.367,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "pdead1.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 9.00942,
+    "step": 8.73315,
+    "seam_ratio": 1.032,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "run1.bca": {
+    "duration": 24,
+    "loop_attribute": 2,
+    "seam": 0.31659,
+    "step": 0.24827,
+    "seam_ratio": 1.275,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.3665,
+    "step": 0.92532,
+    "seam_ratio": 0.396,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 0.04918,
+    "step": 0.11727,
+    "seam_ratio": 0.419,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wrun1.bca": {
+    "duration": 36,
+    "loop_attribute": 2,
+    "seam": 0.14578,
+    "step": 0.74966,
+    "seam_ratio": 0.194,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "TamagoMushi": {
+   "carry.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.0,
+    "step": 0.48972,
+    "seam_ratio": 0.0,
+    "last_equals_first": true,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 71,
+    "loop_attribute": 2,
+    "seam": 13.85785,
+    "step": 3.7012,
+    "seam_ratio": 3.744,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 23.48756,
+    "step": 1.02528,
+    "seam_ratio": 22.908,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "move.bca": {
+    "duration": 10,
+    "loop_attribute": 2,
+    "seam": 0.63708,
+    "step": 0.72088,
+    "seam_ratio": 0.884,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "set.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 17.23435,
+    "step": 1.16249,
+    "seam_ratio": 14.825,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "wait.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 0.04585,
+    "step": 0.67288,
+    "seam_ratio": 0.068,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Tank": {
+   "attack.bca": {
+    "duration": 95,
+    "loop_attribute": 2,
+    "seam": 0.06282,
+    "step": 0.04802,
+    "seam_ratio": 1.308,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 90,
+    "loop_attribute": 2,
+    "seam": 32.33292,
+    "step": 0.13256,
+    "seam_ratio": 243.917,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick.bca": {
+    "duration": 95,
+    "loop_attribute": 2,
+    "seam": 0.10292,
+    "step": 0.21258,
+    "seam_ratio": 0.484,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move1.bca": {
+    "duration": 55,
+    "loop_attribute": 2,
+    "seam": 0.02637,
+    "step": 0.09368,
+    "seam_ratio": 0.281,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.09558,
+    "step": 0.2425,
+    "seam_ratio": 0.394,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact1.bca": {
+    "duration": 35,
+    "loop_attribute": 2,
+    "seam": 0.13285,
+    "step": 0.21552,
+    "seam_ratio": 0.616,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "waitact2.bca": {
+    "duration": 50,
+    "loop_attribute": 2,
+    "seam": 0.01525,
+    "step": 0.06134,
+    "seam_ratio": 0.249,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "Tobi": {
+   "appear.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 24.19413,
+    "step": 0.30296,
+    "seam_ratio": 79.859,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.467,
+    "step": 0.56537,
+    "seam_ratio": 0.826,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack2.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.19221,
+    "step": 4.16094,
+    "seam_ratio": 0.046,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 7.36034,
+    "step": 0.33388,
+    "seam_ratio": 22.045,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead_p.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 7.36053,
+    "step": 1.61583,
+    "seam_ratio": 4.555,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dive.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 17.0164,
+    "step": 0.81116,
+    "seam_ratio": 20.978,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "eat.bca": {
+    "duration": 65,
+    "loop_attribute": 2,
+    "seam": 0.11203,
+    "step": 0.30025,
+    "seam_ratio": 0.373,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "fly.bca": {
+    "duration": 120,
+    "loop_attribute": 2,
+    "seam": 0.05082,
+    "step": 1.49891,
+    "seam_ratio": 0.034,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.56538,
+    "step": 0.44952,
+    "seam_ratio": 1.258,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.00834,
+    "step": 0.22261,
+    "seam_ratio": 0.037,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "UjiA": {
+   "appear.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 15.10628,
+    "step": 0.30296,
+    "seam_ratio": 49.862,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "attack1.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.467,
+    "step": 0.56537,
+    "seam_ratio": 0.826,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "attack2.bca": {
+    "duration": 30,
+    "loop_attribute": 2,
+    "seam": 0.39683,
+    "step": 4.16094,
+    "seam_ratio": 0.095,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dead.bca": {
+    "duration": 75,
+    "loop_attribute": 2,
+    "seam": 4.36743,
+    "step": 0.33388,
+    "seam_ratio": 13.081,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead_p.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 4.36791,
+    "step": 1.61583,
+    "seam_ratio": 2.703,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "dive.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 17.01956,
+    "step": 0.81011,
+    "seam_ratio": 21.009,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "eat.bca": {
+    "duration": 65,
+    "loop_attribute": 2,
+    "seam": 0.11203,
+    "step": 0.30025,
+    "seam_ratio": 0.373,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "move.bca": {
+    "duration": 20,
+    "loop_attribute": 2,
+    "seam": 0.56538,
+    "step": 0.44952,
+    "seam_ratio": 1.258,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 0.00835,
+    "step": 0.22262,
+    "seam_ratio": 0.037,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "UjiB": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "UmiMushi": {
+   "attack1.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 22.08403,
+    "step": 4.3439,
+    "seam_ratio": 5.084,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "dead1.bca": {
+    "duration": 170,
+    "loop_attribute": 2,
+    "seam": 26.34349,
+    "step": 14.2202,
+    "seam_ratio": 1.853,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "eat1.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 19.6409,
+    "step": 2.60507,
+    "seam_ratio": 7.539,
+    "last_equals_first": false,
+    "continuous": false
+   },
+   "flick1.bca": {
+    "duration": 25,
+    "loop_attribute": 2,
+    "seam": 8.62333,
+    "step": 10.44331,
+    "seam_ratio": 0.826,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "fsearch1.bca": {
+    "duration": 15,
+    "loop_attribute": 2,
+    "seam": 7.75164,
+    "step": 11.3957,
+    "seam_ratio": 0.68,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "outview1.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 2.85956,
+    "step": 3.63483,
+    "seam_ratio": 0.787,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "run1.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 0.70748,
+    "step": 0.72854,
+    "seam_ratio": 0.971,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "search1.bca": {
+    "duration": 60,
+    "loop_attribute": 2,
+    "seam": 7.75164,
+    "step": 6.61032,
+    "seam_ratio": 1.173,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "srun1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 4.4131,
+    "step": 3.44133,
+    "seam_ratio": 1.282,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "sturn1.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 4.4131,
+    "step": 3.44133,
+    "seam_ratio": 1.282,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "type5.bca": {
+    "duration": 40,
+    "loop_attribute": 2,
+    "seam": 4.77097,
+    "step": 10.3087,
+    "seam_ratio": 0.463,
+    "last_equals_first": false,
+    "continuous": true
+   },
+   "wait1.bca": {
+    "duration": 80,
+    "loop_attribute": 2,
+    "seam": 5.31361,
+    "step": 5.2304,
+    "seam_ratio": 1.016,
+    "last_equals_first": false,
+    "continuous": true
+   }
+  },
+  "WaterOtakara": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "Wtank": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  },
+  "YellowChappy": {
+   "note": "no anim.szs (shares another species' animation or has none)"
+  }
+ }
+}
