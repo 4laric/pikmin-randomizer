@@ -561,6 +561,18 @@ P2_PLAYABLE_POOL = (
                          "(ADAPTERS 'armor' via _adapt_ground_inverts)",
         },
     },
+    {
+        "source_id": 78,
+        "enum_name": "MiniHoudai",
+        "family": "minihoudai",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign fx1 (owner ruling 2026-09-25: power mode admits; #888 section 4A, #892): red squad, campaign OWN bind of the source MiniHoudai FSM, 4 three-shell volleys with drawn shell effects, flick, 71 DAMAGE lines, P2_GROINK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:78:3; owner eye-checked facing and shells",
+            "log": "output/claude-orch/p2-groink-own/runs/fx1-78/session/runs/405a7edd3ba314b2f59c8d99c3633c583e0e545d4947efce9854d6c374e9510b/native.log (sha256 9fbb22ea6448eecb...) L1106 bind, L2295 dead, L2535 receipt; native claude/p2-groink-shell-fx 65f8d281f, exe sha256 af13c9254f784a07...; #888 issuecomment-5875447908",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 78 -> minihoudai "
+                         "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
+        },
+    },
 )
 
 

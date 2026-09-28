@@ -43,10 +43,11 @@ every existing caller keeps working. Today the pool is:
 | 101 | UmiMushiBlind | aquatic |
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
+| 78 | MiniHoudai | minihoudai |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 57 Kurage, 58 BombSarai, 78 MiniHoudai, plus 26 Catfish,
+9 Kogane, 57 Kurage, 58 BombSarai, plus 26 Catfish,
 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
@@ -63,12 +64,16 @@ never P2 identities and never enter this table.
   must generate.
 - **Pulled for now:** 9 Kogane (see the no-check rule below) and 57 Kurage.
   The campaign Kurage runs on the P1 Frog host AI, because its P2 FSM is env-gated.
-- **78 MiniHoudai (Gatling Groink): being finished.** It is back to `candidate`
-  until OWN evidence lands; it then re-enters with its pool row. The native
-  side (#888 WP5) now has the live source FSM with the Frog host suppressed,
-  the draw hook and the `onion:p2:78` delivery bind, and the root stages its
-  retail parms, bank and poses (`experimental/pikmin2_groink_stage.py`).
-  What is missing is the owner's Windows campaign run.
+- **78 MiniHoudai (Gatling Groink): admitted.** Its Windows OWN campaign run
+  (#888 §4A) and the shell visuals (#892) are in. The source FSM fights, the
+  Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
+  eye-checked the facing and the shell effects. Carcass revival and the
+  body charge/smoke effects are not ported yet.
+- **The pool may outgrow the placement slots (#893).** A seed then samples it:
+  under the default density every target gets a distinct species, and the
+  species that did not fit are listed as `unplaced` in the layout
+  (`sampled-v1`). With 36 species on 35 slots, a given seed may leave out any
+  one pool species. A pool that fits keeps the legacy fill unchanged.
 - **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
   11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster

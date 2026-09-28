@@ -48,11 +48,26 @@ def trimmed_document(keep):
 
 def test_fitting_pool_keeps_the_legacy_fill():
     roster = load_and_validate()
-    layout = resolve_placement_layout("fit", "Player1", committed_document(), roster)
+    document = committed_document()
+    fit = sorted(admitted_ids(roster))[:len(document["slots"])]
+    layout = resolve_placement_layout("fit", "Player1", document, roster, species=fit)
     assert layout["density"] == DENSITY_LEGACY
     assert "unplaced" not in layout
     bound = [binding["source_id"] for binding in layout["bindings"]]
-    assert set(bound) == set(admitted_ids(roster)), "every pool species appears when the pool fits"
+    assert set(bound) == set(fit), "every selected species appears when the selection fits"
+
+
+def test_committed_pool_samples_one_species_out():
+    # 36 admitted species on the 35 committed slots (Groink 78 admitted, #888).
+    roster = load_and_validate()
+    pool = set(admitted_ids(roster))
+    document = committed_document()
+    assert len(pool) == len(document["slots"]) + 1
+    layout = resolve_placement_layout("committed", "Player1", document, roster)
+    bound = [binding["source_id"] for binding in layout["bindings"]]
+    assert layout["density"] == DENSITY_SAMPLED
+    assert len(bound) == len(set(bound)) == len(document["slots"])
+    assert len(layout["unplaced"]) == 1 and set(layout["unplaced"]) == pool - set(bound)
 
 
 def test_oversubscribed_pool_samples_distinct_species():
