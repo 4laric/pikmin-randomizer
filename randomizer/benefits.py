@@ -17,16 +17,19 @@ MATURITY = {color: f'Progressive {color.title()} Maturity' for color in ('red', 
 DAY_LENGTH = 'Progressive Day Length'
 MATURITY_TIERS = 2
 DAY_LENGTH_LIMIT = 10
+# Unlocks the Whistle Pluck mod: holding the whistle over sprouts plucks them.
+WHISTLE_PLUCK = 'Whistle Pluck'
 # Append only: item IDs are assigned by position.
-ALL_BENEFIT_ITEMS = BENEFIT_ITEMS + (BOMBS, CAPTAIN, TRAP, PROGG, PRERELEASE) + tuple(MATURITY.values()) + (DAY_LENGTH,)
+ALL_BENEFIT_ITEMS = BENEFIT_ITEMS + (BOMBS, CAPTAIN, TRAP, PROGG, PRERELEASE) + tuple(MATURITY.values()) + (DAY_LENGTH, WHISTLE_PLUCK)
 
 
-def benefit_pool(slots, no_heal=False, bomb_weight=0, combined_captain=False, trap_weight=0, progg_weight=0, prerelease_weight=0, maturity=False, day_length=0):
+def benefit_pool(slots, no_heal=False, bomb_weight=0, combined_captain=False, trap_weight=0, progg_weight=0, prerelease_weight=0, maturity=False, day_length=0, whistle_pluck=False):
     fixed = [WHISTLE] * 2 + [CAPTAIN if combined_captain else PLUCK] * 2
     if maturity: fixed += [name for name in MATURITY.values() for _ in range(MATURITY_TIERS)]
     fixed += [DAY_LENGTH] * day_length
+    if whistle_pluck: fixed.append(WHISTLE_PLUCK)
     if slots < len(fixed):
-        raise ValueError('not enough locations for captain, maturity and day-length upgrades')
+        raise ValueError('not enough locations for captain, maturity, day-length and whistle-pluck upgrades')
     # Fixed upgrades first, then 50% deliveries, 25% flowers and 25% heals.
     repeat = (DELIVERY, FLOWERS, DELIVERY) if no_heal else (DELIVERY, FLOWERS, DELIVERY, HEAL)
     if bomb_weight: repeat = (DELIVERY, DELIVERY, FLOWERS) + (BOMBS,) * bomb_weight
@@ -48,6 +51,8 @@ def benefit_state(manifest, inventory):
         state += ' MATURITY ' + ' '.join(str(min(MATURITY_TIERS, inventory.get(MATURITY[c], 0))) for c in ('blue', 'red', 'yellow'))
     if manifest.get('progressive_day_length'):
         state += f" DAYLENGTH {min(manifest['progressive_day_length'], inventory.get(DAY_LENGTH, 0))}"
+    if manifest.get('whistle_pluck_item'):
+        state += f" WHISTLEPLUCK {min(1, inventory.get(WHISTLE_PLUCK, 0))}"
     return state
 
 
@@ -66,4 +71,6 @@ def benefit_lines(manifest, inventory):
         lines.append('MATURITY ' + '  '.join(f"{c.upper()} {stage[min(MATURITY_TIERS, inventory.get(MATURITY[c], 0))]}" for c in MATURITY))
     if manifest.get('progressive_day_length'):
         lines.append(f"DAY LENGTH {day_length_percent(manifest, inventory)}%  ({min(manifest['progressive_day_length'], inventory.get(DAY_LENGTH, 0))}/{manifest['progressive_day_length']})")
+    if manifest.get('whistle_pluck_item'):
+        lines.append('WHISTLE PLUCK ' + ('ON' if inventory.get(WHISTLE_PLUCK, 0) else 'LOCKED'))
     return lines
