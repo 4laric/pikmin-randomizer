@@ -10,6 +10,7 @@ from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_rigid import joint_matrices
 from experimental.pikmin2_skinning import draw_matrices
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, decode_pose, sample_frames
 
 
 def frames_for(duration, events, stride=None, window=None):
@@ -22,20 +23,23 @@ def frames_for(duration, events, stride=None, window=None):
         frames.add(min(frame, duration-1))
     # Include capture-window boundaries in every sufficiently long clip.
     frames.update(f for f in (10, 16, 17, 30) if f < duration)
-    # Optional dense sampling (Demon, source 32): add every ``stride``-th frame
-    # while the per-clip pose budget allows, so looping clips read as motion
-    # rather than a handful of key poses. Sarai keeps its sparse default.
+    # #895: plus the shared dense uniform sampling, so the native host can
+    # lerp between samples a few source frames apart (it used to hold one
+    # pose for up to 30 frames).
+    frames.update(sample_frames(duration, DEFAULT_POSE_LIMIT) if duration >= 2 else [0])
     # Optional every-frame window (Demon attack1 10..30: the Attack exec
     # hunt/catch window, where the two jaws sweep past the target within a
     # frame or two and a stride sample would miss the retail catch pose).
     if window:
         frames.update(f for f in range(window[0], window[1] + 1) if f < duration)
+    # Optional extra dense sampling (Demon, source 32): add every ``stride``-th
+    # frame while the clip stays within its historical 32-pose budget.
     if stride:
         for frame in range(0, duration, stride):
             if len(frames) >= 32:
                 break
             frames.add(frame)
-    if len(frames) > 32:
+    if len(frames) > 64:
         raise ValueError('Pose budget exceeded')
     return sorted(frames)
 
@@ -87,7 +91,8 @@ def extract_species(iso, output, *, data_dir='Sarai', parm_key='sarai', species=
             duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
             clip['source_frames'] = duration
             for frame in frames_for(duration, row['events'], stride, (windows or {}).get(row['file'])):
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                path = output/(file_prefix+Path(row['file']).stem+f'_{frame:04}.mod')
+                decoded, pose = decode_pose(decode, model, blocks(model), raw, frame, len(names))
                 matrices = joint_matrices(blocks(model), pose)
                 mouths = []
                 for name in mouth_names:
@@ -95,8 +100,6 @@ def extract_species(iso, output, *, data_dir='Sarai', parm_key='sarai', species=
                     if not all(math.isfinite(v) for r in matrix for v in r):
                         raise ValueError('Nonfinite mouth transform')
                     mouths.append(dict(joint=name, radius=15, matrix=matrix))
-                path = output/(file_prefix+Path(row['file']).stem+f'_{frame:04}.mod')
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=draw_matrices(blocks(model), pose))
                 conversion = write_model(decoded, path, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=path.name)
                 path.with_suffix('.json').write_text(json.dumps(conversion, indent=2)+'\n', encoding='utf-8')

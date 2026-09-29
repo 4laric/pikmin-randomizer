@@ -1,5 +1,9 @@
 """Restricted static J3D BMD -> Open Nectar MOD proof-of-concept.
-Material shading is reduced to vertex color times a diffuse texture.
+Material shading is reduced to one diffuse texture stage modulated by the
+rasterised COLOR0 channel. That channel follows the source MAT3 channel
+control translated to Pikmin 1's native PVW lighting word (see
+``P1_LIT_CONTROL``): source-lit materials are lit by the P1 scene lights and
+DayMgr ambient, and the source material colour is carried instead of white.
 Identity-root models are accepted by default; static rigid bind-pose baking is
 opt-in. This is not a general J3D exporter.
 """
@@ -16,6 +20,74 @@ def unpack(b, fmt, at=0):
 def u32(b, at): return unpack(b,'I',at)[0]
 def u16(b, at): return unpack(b,'H',at)[0]
 def pack(fmt,*v): return struct.pack('>'+fmt,*v)
+
+# --- P1 lighting policy (issue #895) -------------------------------------
+# PVW LightingControlFlags (engine/include/PVW.h): bit0 EnableColor0,
+# bits3-4 DiffFnColor0, bits5-6 DiffFnAlpha0, bits7-8 DiffFnSpecular,
+# bit11 MatSrcColor0Vtx, bit12 MatSrcAlpha0Vtx. Retail P1 teki MODs use 0xd1
+# (COLOR0 lit, clamp diffuse) on their diffuse materials; 0xd3 adds the COLOR1
+# specular channel and only appears with a second TEV stage that reads it
+# (verified on chappy/tank/frog/swallow/iwagon/beatle/kabekuiA, see
+# experimental/pikmin2_material_audit.py). The converter emits one diffuse
+# stage, so it never sets the specular bit.
+P1_LIT_CONTROL = 0xd1
+P1_LIT_SPECULAR_CONTROL = 0xd3
+# Source-unlit materials: retail kabekuiA writes 0xd0 (COLOR0 disabled, the
+# clamp/specular diffuse-function bits left as on the lit word). With
+# EnableColor0 clear the renderer ignores the diffuse-function bits
+# (dgxGraphics.cpp GXSetChanCtrl, oglGraphics.cpp setLighting), so this draws
+# exactly like the pre-#895 0 word while matching the retail encoding.
+P1_UNLIT_CONTROL = 0xd0
+MAT_SRC_COLOR0_VERTEX = 0x0800
+MAT_SRC_ALPHA0_VERTEX = 0x1000
+# Pre-#895 writer output: unlit, vertex colour/alpha as material when present.
+LEGACY_VERTEX_CONTROL = MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX
+# The base stage is written at x1 (TEV scale 0) like every retail P1 teki base
+# stage. The converter already wrote 0 here before #895; this names the value
+# rather than changing it. P2 base stages are mostly x2, balanced by P2's own
+# light rig, so the source scale is deliberately not carried over.
+TEV_BASE_SCALE = 0
+
+def source_lighting(m, r):
+    """Source J3D COLOR0/ALPHA0 channel control and material colour 0.
+
+    MAT3 record ``r``: +2 channel-count index, +8 material colour indices,
+    +12 channel-control indices (COLOR0, ALPHA0, COLOR1, ALPHA1). Channel
+    entries are enabled, material_source, light_mask, diffuse_fn, atten_fn,
+    ambient_source. A missing COLOR0 entry, or a zero channel count, is unlit.
+    Returns None when the MAT3 block has no colour/channel tables at all
+    (minimal synthetic fixtures); such shapes keep the legacy material.
+    """
+    if not (u32(m,32) and u32(m,36) and u32(m,40)): return None
+    def entry(table, index, size):
+        start=u32(m,table)+index*size
+        if not u32(m,table) or start+size>len(m): raise ValueError('Invalid material channel reference')
+        return m[start:start+size]
+    count=entry(36,m[r+2],1)[0]
+    channels=[]
+    for c in range(2):
+        index=u16(m,r+12+2*c)
+        channels.append(None if index==65535 else entry(40,index,8))
+    color_index=u16(m,r+8)
+    rgba=(255,255,255,255) if color_index==65535 else tuple(entry(32,color_index,4))
+    color0,alpha0=channels
+    if (color0 and color0[1]>1) or (alpha0 and alpha0[1]>1): raise ValueError('Unsupported channel material source')
+    return dict(lit=bool(count and color0 and color0[0]),
+                color_vertex=bool(color0 and color0[1]==1),
+                alpha_vertex=bool(alpha0 and alpha0[1]==1),
+                rgba=rgba)
+
+LEGACY_MATERIAL_POLICY='vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced'
+LIT_MATERIAL_POLICY=('P1 PVW lighting from the source COLOR0 channel (lit 0xd1, unlit 0xd0, vertex material/alpha source bits) '
+                     'with the source material colour, times identifiable UV0 diffuse texture (first texture fallback) at x1; '
+                     'original TEV not reproduced')
+
+def lighting_control(source, has_color):
+    """PVW lighting word for one shape from its source channel control."""
+    control=P1_LIT_CONTROL if source['lit'] else P1_UNLIT_CONTROL
+    if has_color and source['color_vertex']: control|=MAT_SRC_COLOR0_VERTEX
+    if has_color and source['alpha_vertex']: control|=MAT_SRC_ALPHA0_VERTEX
+    return control
 
 def texture_layout(kind, width, height):
     # GX tiled base-level bytes; MOD's format enumeration differs from GX.
@@ -208,7 +280,7 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
             mapping[idx]=mat;order.append(idx)
     if sorted(order)!=list(range(len(shapes))): raise ValueError('Expected each shape once in draw hierarchy')
     b['_draw_order']=order
-    m=b['MAT3']; materials=[]; states=[]
+    m=b['MAT3']; materials=[]; states=[]; lighting=[]
     for i in range(u16(m,8)):
         r=u32(m,12)+u16(m,u32(m,16)+2*i)*332
         if not approximate_materials and m[u32(m,88)+m[r+4]]!=1: raise ValueError('Only single-stage materials supported')
@@ -220,7 +292,9 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         tex=u16(m,r+132+2*slot); tex=-1 if tex==65535 else u16(m,u32(m,72)+tex*2)
         materials.append(tex)
         states.append(pixel_state(m,r))
+        lighting.append(source_lighting(m,r))
     b['_render_states']=[states[mapping[i]] for i in range(len(shapes))]
+    b['_source_lighting']=[lighting[mapping[i]] for i in range(len(shapes))]
     if billboard_shapes:
         b['_billboard_policy']=billboard
         b['_billboard_shapes']=list(billboard_shapes)
@@ -278,7 +352,14 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     b,a,shapes,mats=decoded; w=Writer()
     states=b['_render_states']
     if len(states)!=len(shapes): raise ValueError('Expected pixel state for every shape')
-    colors=material_colors if material_colors is not None else [(255,255,255,255)]*len(shapes)
+    # decode() records the source lighting; hand-assembled scenes (cave
+    # floors, merged rooms) carry none and keep the legacy unlit material.
+    lighting=b.get('_source_lighting')
+    if lighting is not None and len(lighting)!=len(shapes): raise ValueError('Expected source lighting for every shape')
+    if lighting is not None and all(x is None for x in lighting): lighting=None
+    if material_colors is not None: colors=material_colors
+    elif lighting is not None: colors=[(255,255,255,255) if x is None else tuple(x['rgba']) for x in lighting]
+    else: colors=[(255,255,255,255)]*len(shapes)
     if len(colors)!=len(shapes) or any(len(c)!=4 or any(type(v)!=int or not 0<=v<=255 for v in c) for c in colors):
         raise ValueError('Expected one RGBA8 material color per shape')
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
@@ -311,12 +392,16 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         for _ in range(3):w.put('4hIfII',255,255,255,255,0,0.,0,0)
         w.data+=bytes([255])*16;w.put('I',1)
         w.data+=bytes([0,0 if tex>=0 else 255,0 if tex>=0 else 255,4,0,0,0,0])
-        w.data+=bytes([15,8,10,15,0,0,0,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,0,1,0,0,0,0])
+        w.data+=bytes([15,8,10,15,0,0,TEV_BASE_SCALE,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,TEV_BASE_SCALE,1,0,0,0,0])
         w.data+=bytes([7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
+    controls=[]
+    for i,tris in enumerate(shapes):
+        if lighting is None or lighting[i] is None: controls.append(LEGACY_VERTEX_CONTROL if 11 in a else 0)
+        else: controls.append(lighting_control(lighting[i],bool(tris) and 11 in tris[0][0]))
     for i,tex in enumerate(mats):
         w.put('Ii4BI',states[i][0],tex,*colors[i],i)
         w.put('4BIfII',*colors[i],0,0.,0,0)
-        w.put('If',0x1800 if 11 in a else 0,0.)
+        w.put('If',controls[i],0.)
         w.put('4I',*states[i][1:])
         w.put('I3fI',0,1.,1.,1.,1 if tex>=0 else 0)
         if tex>=0:w.data+=bytes([0,1,4,10])
@@ -352,7 +437,10 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     for i in reversed(b['_draw_order']):w.put('HH',i,i)
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
-    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
+    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':(LIT_MATERIAL_POLICY if lighting is not None else LEGACY_MATERIAL_POLICY),'pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
+    if lighting is not None:
+        report['lighting_controls']=controls
+        report['material_colors']=[list(c) for c in colors]
     if '_discarded_matrix_attributes' in b:
         report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
     if '_normal_policy' in b:report['normal_policy']=b['_normal_policy']

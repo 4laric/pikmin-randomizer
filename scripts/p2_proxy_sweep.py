@@ -6,9 +6,10 @@ For every entry in a plan JSON (``--plan``), run the generic
 when the row carries none), catch every exception, and write ``--report``
 JSON with one record per species.
 
-If a species fails ONLY on a byte budget (a clip over 512 KiB of pose
-bytes or a bank over 8 MiB), retry automatically with ``pose_limit`` 3
-then 2 and record the limit that worked.
+There is no fallback to fewer poses (#895): a species that exceeds the
+proxy budget (1 MiB per clip, 8 MiB per species, measured as native
+resident bytes by pikmin2_proxy_assets) is recorded as a failure at the
+row's pose limit instead of being silently re-baked sparser.
 
 Plan entries may carry the declaration override fields (``asset_dir``,
 ``param_dir``, ``clips``); they are passed through to
@@ -27,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX
 from experimental.pikmin2_proxy_assets import extract  # noqa: E402
 
 DEFAULT_PLAN = Path(
@@ -40,7 +42,7 @@ DEAD = ("dead", "dead1", "pdead1")
 
 
 def _is_byte_budget_error(message: str) -> bool:
-    return "exceeds 512 KiB" in message or "exceeds 8 MiB" in message
+    return "exceeds 1 MiB" in message or "exceeds 8 MiB" in message
 
 
 def _roster_assets(source_id: int, enum_name: str):
@@ -182,36 +184,23 @@ def _failure_record(row, error, pose_limit_used, iso, seconds):
 
 def sweep_species(iso: Path, row: dict, out_root: Path) -> dict:
     target = out_root / str(row["source_id"])
-    initial = row.get("pose_limit", 4)
-    if type(initial) is not int or not 2 <= initial <= 8:
-        initial = 4
+    limit = row.get("pose_limit", DEFAULT_POSE_LIMIT)
+    if type(limit) is not int or not 2 <= limit <= POSE_LIMIT_MAX:
+        limit = DEFAULT_POSE_LIMIT
     started = time.monotonic()
-    last_error = "unknown error"
-    last_limit = initial
-    # First attempt at the row's limit, then 3, then 2 on byte budget only.
-    candidates = [initial]
-    for fallback in (3, 2):
-        if fallback not in candidates:
-            candidates.append(fallback)
-    for attempt, limit in enumerate(candidates):
-        if target.exists():
-            shutil.rmtree(target)
-        try:
-            result = extract(
-                iso, row["enum_name"], row["source_id"], target,
-                pose_limit=limit, row=row)
-        except Exception as error:  # noqa: BLE001 - sweep catches everything
-            last_error = f"{type(error).__name__}: {error}"
-            last_limit = limit
-            if attempt == 0 and not _is_byte_budget_error(str(error)):
-                break
-            if not _is_byte_budget_error(str(error)):
-                break
-            continue
+    if target.exists():
+        shutil.rmtree(target)
+    try:
+        result = extract(
+            iso, row["enum_name"], row["source_id"], target,
+            pose_limit=limit, row=row)
+    except Exception as error:  # noqa: BLE001 - sweep catches everything
         seconds = time.monotonic() - started
-        return _record_from_result(row, result, limit, seconds)
+        record = _failure_record(row, f"{type(error).__name__}: {error}", limit, iso, seconds)
+        record["budget_failure"] = _is_byte_budget_error(str(error))
+        return record
     seconds = time.monotonic() - started
-    return _failure_record(row, last_error, last_limit, iso, seconds)
+    return _record_from_result(row, result, limit, seconds)
 
 
 def main(argv=None) -> int:

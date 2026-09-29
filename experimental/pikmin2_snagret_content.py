@@ -57,6 +57,7 @@ from experimental.pikmin2_dangomushi_content import (
     _merge_actors,
     _merge_bank,
 )
+from experimental.pikmin2_animation import frames_trailer
 from experimental.pikmin2_staging import StagingError
 
 SPECIES_IDS = {"SnakeCrow": 34, "SnakeWhole": 70}
@@ -208,6 +209,12 @@ def validate_source(source):
     return True
 
 
+def _trailer_row(row, poses, source_frames):
+    """Append the P2_BANK_FRAMES_1 list when the poses carry valid frames (#895)."""
+    trailer = frames_trailer(poses, source_frames)
+    return row + (trailer.split()[1],) if trailer else row
+
+
 def plan(source, actors):
     """Validate everything and return exact payloads; never writes.
 
@@ -238,8 +245,10 @@ def plan(source, actors):
         for clip in clips:
             token = _events_token(clip["name"], clip.get("events", []))
             converted_poses = sum(1 for _pos, _pose in _converted_poses(clip))
-            clip_rows.append((clip["name"], clip["source_frames"], token,
-                              converted_poses, "converted"))
+            clip_rows.append(_trailer_row((clip["name"], clip["source_frames"], token,
+                                           converted_poses, "converted"),
+                                          [pose for _pos, pose in _converted_poses(clip)],
+                                          clip["source_frames"]))
         mesh_files = {}
         for clip in clips:
             for _position, pose in _converted_poses(clip):
