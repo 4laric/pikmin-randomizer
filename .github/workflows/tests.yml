@@ -1,0 +1,112 @@
+name: Root tests
+
+# Deterministic, green-on-main slice of the root test suite: P2 pool,
+# sampling, placement, roster, boss/cave arena, playable-pool and seed-bridge
+# tests, plus two fixed-seed `randomizer generate --p2-enemies --p2-species
+# playable` runs checked for byte-identical output.
+#
+# Excluded on purpose (they fail on origin/main for environmental or stale-pin
+# reasons, not because of a regression the job could catch):
+#   test_pikmin2_challenge_runtime_bridge_port.py  - absolute C:/Users/alari/... output/ paths
+#   test_pikmin2_admitted_placement.py             - admitted-id pin predates current roster
+#   test_pikmin2_enemy_roster.py                   - admitted-id pin predates current roster
+#   test_pikmin2_roster_coverage.py                - admitted-id pin predates current roster
+#   test_pikmin2_muse_placement.py                 - species subset outside current admitted ids
+#   test_pikmin2_placement_bridge.py               - species subset outside current admitted ids
+#   test_p2_proxy_placement_stageA.py              - pack-host seed binds no pack targets on main
+# Re-add a file here once it is green on main. The wider root suite (about 178
+# known p2/pool failures from local paths, missing native/ and fixtures) is not
+# run in CI.
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: root-tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: python -m pip install pytest
+
+      - name: P2 pool / placement / roster / arena / seed-bridge tests
+        run: >-
+          python -m pytest -q -p no:cacheprovider
+          tests/test_miniboss_pool.py
+          tests/test_p2_boss_arenas.py
+          tests/test_p2_ground_placement_facts.py
+          tests/test_p2_placement.py
+          tests/test_p2_placement_audit.py
+          tests/test_p2_placement_evidence.py
+          tests/test_p2_placement_native.py
+          tests/test_p2_placement_probe.py
+          tests/test_p2_placement_shared_evidence.py
+          tests/test_p2_playable_pool.py
+          tests/test_p2_pool_roster_sync.py
+          tests/test_p2_pool_sampling.py
+          tests/test_p2_seed_placement.py
+          tests/test_p2_seed_placement_native.py
+          tests/test_p2_sokkuri_roster_evidence.py
+          tests/test_pikmin2_beasts_witness_bridge.py
+          tests/test_pikmin2_bigtreasure_arena.py
+          tests/test_pikmin2_bombotakara93_bridge_pin_audit.py
+          tests/test_pikmin2_bulblax_arena.py
+          tests/test_pikmin2_bulbmin_bridge.py
+          tests/test_pikmin2_cave_arena_overlay.py
+          tests/test_pikmin2_cave_item_gate_placement.py
+          tests/test_pikmin2_challenge_trial_arena_thin_v2.py
+          tests/test_pikmin2_chiyogami89_placement_audit.py
+          tests/test_pikmin2_crawler_floor1_species_placement_pins.py
+          tests/test_pikmin2_damagumo_arena_assembly.py
+          tests/test_pikmin2_dwarf_bear_arena.py
+          tests/test_pikmin2_dwarf_orange_arena.py
+          tests/test_pikmin2_forest1_arena_materialization_diagnosis.py
+          tests/test_pikmin2_frog_arena.py
+          tests/test_pikmin2_fuefuki_arena.py
+          tests/test_pikmin2_groink_arena.py
+          tests/test_pikmin2_kochappy_arena.py
+          tests/test_pikmin2_kochappy_arena_combat.py
+          tests/test_pikmin2_kochappy_arena_delivery.py
+          tests/test_pikmin2_kochappy_arena_fixture.py
+          tests/test_pikmin2_kochappy_arena_reentry.py
+          tests/test_pikmin2_kogane_arena.py
+          tests/test_pikmin2_purple_flight_arena.py
+          tests/test_pikmin2_roster.py
+          tests/test_pikmin2_seed_bridge.py
+          tests/test_pikmin2_waterwraith_placement_provider.py
+          tests/test_planner_pool.py
+          tests/test_pool_completion_evidence.py
+          tests/test_pool_recovery_rebind.py
+          tests/test_worker_roster.py
+
+      - name: Generate fixed P2 playable seeds (deterministic)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-seeds
+          for seed in 1234 98765; do
+            for run in a b; do
+              python -m randomizer generate --seed "$seed" --p2-enemies --p2-species playable --output "ci-seeds/seed-$seed-$run.json"
+            done
+            cmp "ci-seeds/seed-$seed-a.json" "ci-seeds/seed-$seed-b.json"
+            python -c "import json,sys; d=json.load(open(sys.argv[1])); assert d.get('p2_layout'), 'no p2_layout'" "ci-seeds/seed-$seed-a.json"
+          done
+          sha256sum ci-seeds/*-a.json
