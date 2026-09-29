@@ -374,8 +374,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "DangoMushi",
         "family": "dangomushi",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
-            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "run": "Bot-driven power-mode campaign ar12 in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY start day 11): P2_BOSS_ARENA_BIRTH on the arena primary, bind, Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse carried by 23, Onion receipt onion:p2:94:0",
+            "log": "output/claude-orch/p2-port-94/runs/ar12-94/session/runs/edb6d38e2ce6ecc166a5304b73431766baf012d08296af96857bbd9bece72484/native.log (sha256 8c9285a82d0381ab...) L1101 bind, L2078 dead, L2334 receipt; repeat ar13 (sha256 63f3707efb480c14...) L1963 dead, L2103 receipt; native claude/p2-port-94-arena @ 211e8b9bc, nectar.exe sha256 902981c98fe7efae...",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",
