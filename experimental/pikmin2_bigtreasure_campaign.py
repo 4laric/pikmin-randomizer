@@ -15,6 +15,10 @@ Reads a verified ``pikmin2_bigtreasure_assets`` import tree (the
   (``IKSystemMgr::startProgramedIK``: distance from the owner to the rhand3jnt
   foot and each foot's angle from the face direction, measured on the
   ``wait2`` frame-0 standing pose)
+* ``p2-bigtreasure-coll.txt``  verbatim retail ``bigtreasure/enemycoll.txt``
+  (the Titan's own collision tree: body, weapon and leg parts; the native
+  actor builds real P1 CollParts from it so a hit lands on the part the
+  Pikmin is stuck to, #246)
 * ``assets/dataDir/courses/pikmin2room/bigtreasure_<clip>_<ii>.mod`` (the
   sampled poses) and ``bigtreasure_pellet_<weapon>.mod`` (the four weapons;
   Louie's model is unsupported by the converter and stays undrawn)
@@ -36,6 +40,7 @@ ROOM = 'assets/dataDir/courses/pikmin2room'
 PARMS_TXT = 'p2-bigtreasure-parms.txt'
 EVENTS_TXT = 'p2_bigtreasure_events.txt'
 BANK_TXT = 'p2-bigtreasure-bank.txt'
+COLL_TXT = 'p2-bigtreasure-coll.txt'
 BANK_HEADER = 'P2_BIGTREASURE_BANK_1'
 
 # BigTreasure.h AnimID order == enemyanimmgr.txt rows (slot 29 is wait2 again).
@@ -105,6 +110,9 @@ def plan(source):
     parms = (root / 'BigTreasure' / 'enemyparm.txt').read_bytes()
     if _sha(parms) != boss['metadata_sha256']['enemyparm.txt']:
         raise BigTreasureStageError('enemyparm.txt hash mismatch')
+    coll = (root / 'BigTreasure' / 'enemycoll.txt').read_bytes()
+    if _sha(coll) != boss['metadata_sha256'].get('enemycoll.txt'):
+        raise BigTreasureStageError('enemycoll.txt hash mismatch')
     events = motion.encode(root / 'BigTreasure', root / 'bigtreasure.json')
 
     clips = {c['name']: c for c in boss['clips']}
@@ -165,7 +173,7 @@ def plan(source):
         raise BigTreasureStageError(f'staged bytes {total} over budget')
     rows.append('end')
     bank = ('\n'.join(rows) + '\n').encode('ascii')
-    return dict(parms={PARMS_TXT: parms, EVENTS_TXT: events, BANK_TXT: bank}, room=room,
+    return dict(parms={PARMS_TXT: parms, EVENTS_TXT: events, BANK_TXT: bank, COLL_TXT: coll}, room=room,
                 legs=dict(distance=distance, angles=angles), pose_bytes=total)
 
 

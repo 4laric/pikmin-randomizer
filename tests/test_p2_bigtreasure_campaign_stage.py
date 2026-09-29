@@ -63,7 +63,11 @@ def test_plan_derives_bank_legs_and_poses_from_the_import():
 
     plan = camp.plan(_import_dir())
     parms = plan['parms']
-    assert set(parms) == {camp.PARMS_TXT, camp.EVENTS_TXT, camp.BANK_TXT}
+    assert set(parms) == {camp.PARMS_TXT, camp.EVENTS_TXT, camp.BANK_TXT, camp.COLL_TXT}
+    # The Titan's own collision tree is the verbatim retail enemycoll.txt (#246).
+    coll = parms[camp.COLL_TXT].decode('ascii')
+    for part in ('{tam1}', '{tam2}', '{elec}', '{fire}', '{gasi}', '{mizu}', '{lft1}', '{rht5}'):
+        assert part in coll
     assert parms[camp.PARMS_TXT].startswith(b'# Creature::Property')
     assert parms[camp.EVENTS_TXT].startswith(b'P2_RETAIL_EVENTS_1 ')
     rows = parms[camp.BANK_TXT].decode('ascii').splitlines()
@@ -95,7 +99,7 @@ def test_stage_writes_run_files_idempotently_and_refuses_changes(tmp_path):
     (run / camp.ROOM).mkdir(parents=True)
     receipt = camp.stage_from(_import_dir(), run)
     assert receipt['room'] == 'private' and receipt['room_files'] > 100
-    for name in (camp.PARMS_TXT, camp.EVENTS_TXT, camp.BANK_TXT):
+    for name in (camp.PARMS_TXT, camp.EVENTS_TXT, camp.BANK_TXT, camp.COLL_TXT):
         assert (run / name).is_file()
     again = camp.stage_from(_import_dir(), run)
     assert again['bank_sha256'] == receipt['bank_sha256']
