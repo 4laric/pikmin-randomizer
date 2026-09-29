@@ -10,6 +10,9 @@
 //   * The P1 engine has no InteractAstonish; contact with a Pikmin is resolved
 //     as an InteractFlick knockback (the closest P1 panic/scatter receiver),
 //     applied once per contact.
+//   * Walk ends into Turn (source KEYEVENT_END) before Hide; Hide recycles to
+//     Appear as a bounded port approximation (source Hide despawns the actor,
+//     which would end the campaign encounter before any kill).
 //   * The source manager-owned group birth (tamagoMushiMgr.cpp::createGroup:77/
 //     122, 10 surface / 30 cave from TAMAGOMUSHI_GROUP_COUNT) has TWO port paths:
 //     - the pre-staged approximation (no p2-tamago-host.txt): the arena stages a
@@ -27,6 +30,9 @@
 //     the host corpse is suppressed so the reward is exactly-once.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_tamago.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
+#include "pc_randomizer.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -107,6 +113,7 @@ struct Tamago {
     std::set<Piki*> inContact;
     bool honeyDropped = false;
     bool deadLogged = false;
+    bool escaped = false;
     std::string clip = "move";
     float phase = 0.0f;
     float logTimer = 0.0f;
@@ -218,6 +225,10 @@ void pc_p2_tamago_reset() {
     ready = false;
 }
 void pc_p2_tamago_forget(BTeki* actor) {
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit it. Idempotent with the
+    // central pc_p2_forget_teki seam.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     auto it = actors.find(static_cast<PelletView*>(actor));
     if (it == actors.end()) return;
     const bool wasLeader = it->second.isLeader;
@@ -269,6 +280,9 @@ void pc_p2_tamago_forget(BTeki* actor) {
 unsigned long pc_p2_tamago_count() { return (unsigned long)actors.size(); }
 bool pc_p2_tamago_registered(BTeki* actor) {
     return actors.count(static_cast<PelletView*>(actor)) != 0;
+}
+bool pc_p2_tamago_suppress_ai(const BTeki* actor) {
+    return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
 }
 
 void pc_p2_tamago_tick() {
@@ -332,6 +346,8 @@ void pc_p2_tamago_birth_group(BTeki* host, int count) {
         enter(s, TAMAGO_APPEAR, "set");
         std::printf("P2_TAMAGO_GROUP leader=%u follower=%u source_id=68\n", hostGen, gen);
         // born=1 flags the synthetic (manager-birth) id, distinct from a staged id.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(child), 68, gen);
+        std::printf("P2_TAMAGO_DELIVERY_BIND generator=%u source_id=68 born=1\n", gen);
         std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0 born=1\n", gen);
         ++born;
     }
@@ -363,7 +379,13 @@ float pc_p2_tamago_param_f(const BTeki* actor, int idx, float fallback) {
 
 int pc_p2_tamago_corpse_type(const BTeki* actor, int fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
-    return TEKICORPSE_NoCorpse; // honey reward instead of a corpse
+    // inst-bugs lane (#871): a killed Mitite leaves its natural carriable
+    // corpse (the campaign kill->carry->Onion loop needs a real pellet for
+    // the onion:p2:68 receipt) alongside the exactly-once honey drop
+    // (dropHoney). Previously NoCorpse here made every identity corpse
+    // uncarriable (carry_no_grab, carriers=0): the dead Teki slid without
+    // ever pelletizing because dieSoon saw NoCorpse.
+    return fallback;
 }
 
 bool pc_p2_tamago_clip(const BTeki* actor, const char*& name, float& phase) {
@@ -418,6 +440,14 @@ void pc_p2_tamago_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "TamagoMushi") wanted[unsigned(generator)] = species;
     }
+    // inst-bugs lane (#871): in bridge campaigns the seed owns the binding,
+    // so the filed ids are placeholders replaced from pc_p2_campaign_ids(68)
+    // (mirrors pc_p2_sokkuri_setup).
+    const bool bridge = pc_randomizer_p2_bridge();
+    if (bridge) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(68)) wanted[id] = "TamagoMushi";
+    }
     if (wanted.empty()) return;
 
     // Manager-driven birth mode: a single staged host births its own group on
@@ -441,13 +471,18 @@ void pc_p2_tamago_setup() {
         Iterator hit(tekiMgr);
         CI_LOOP(hit) {
             Teki* actor = static_cast<Teki*>(*hit);
-            if (actor && actor->mGenerator && actor->mGenerator->_70 == hostGenerator) {
+            if (!actor) continue;
+            const unsigned key =
+                bridge ? pc_p2_campaign_token(actor)
+                       : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+            if (key == hostGenerator) {
                 hostActor = actor;
                 break;
             }
         }
         if (!hostActor) {
             std::printf("P2_TAMAGO_ERROR missing_host host=%u\n", hostGenerator);
+            if (pc_p2_setup_skip(bridge, "TamagoMushi", "actor_roster_incomplete")) return;
             std::abort();
         }
         Tamago& s = actors[static_cast<PelletView*>(hostActor)];
@@ -465,6 +500,10 @@ void pc_p2_tamago_setup() {
         std::printf("P2_TAMAGO_LEADER generator=%u followers=0 surface_count=%d cave_count=%d "
                     "source_group=createGroup\n",
                     hostGenerator, SOURCE_GROUP_SURFACE, SOURCE_GROUP_CAVE);
+        // Ordinary-delivery bridge (lane 06 contract): bind source 68 so
+        // GoalItem::suckMe grants onion:p2:68 exactly once. Single-use.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(hostActor), 68, hostGenerator);
+        std::printf("P2_TAMAGO_DELIVERY_BIND generator=%u source_id=68\n", hostGenerator);
         std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0\n", hostGenerator);
         const Vector3f pos = hostActor->getPosition();
         std::printf("P2_ENEMY_READY species=TamagoMushi native_family=Chappy generator=%u "
@@ -482,18 +521,27 @@ void pc_p2_tamago_setup() {
     Iterator it(tekiMgr);
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
-        if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        if (!actor) continue;
+        const unsigned key =
+            bridge ? pc_p2_campaign_token(actor)
+                   : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+        if (!bridge && key == 0u) continue;
+        auto match = wanted.find(key);
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_TAMAGO_ERROR native_type generator=%u\n", actor->mGenerator->_70);
+            std::printf("P2_TAMAGO_ERROR native_type generator=%u\n", key);
+            if (pc_p2_setup_skip(bridge, "TamagoMushi", "actor_type_mismatch")) return;
             std::abort();
         }
-        if (!found.insert(actor->mGenerator->_70).second) continue;
-        matched.emplace_back(actor, actor->mGenerator->_70);
+        // Swarm members share one campaign token: bind every live member
+        // (each corpse needs its own delivery source) while counting the
+        // token once toward the roster check.
+        found.insert(key);
+        matched.emplace_back(actor, key);
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_TAMAGO_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
+        if (pc_p2_setup_skip(bridge, "TamagoMushi", "actor_roster_incomplete")) return;
         std::abort();
     }
     if (matched.empty()) return;
@@ -529,6 +577,8 @@ void pc_p2_tamago_setup() {
             std::printf("P2_TAMAGO_GROUP leader=%u follower=%u source_id=68\n",
                         leaderGenerator, generator);
         }
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 68, generator);
+        std::printf("P2_TAMAGO_DELIVERY_BIND generator=%u source_id=68\n", generator);
         std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0\n", generator);
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=TamagoMushi native_family=Chappy generator=%u "
@@ -548,6 +598,10 @@ void pc_p2_tamago_update(BTeki* actor) {
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
     const unsigned generator = s.generator;
+
+    // The P1 TAI damage reaction lives in the suppressed host strategy, so
+    // the P2 FSM drains queued Pikmin damage itself (frog pattern).
+    if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
 
     // Manager-driven birth trigger: the host births its group exactly once on its
     // first Appear (source createFellow, guarded by mHasMadeFellow).
@@ -588,8 +642,10 @@ void pc_p2_tamago_update(BTeki* actor) {
             }
             wander(actor, s);
             if (s.stateTime > WALK_TIME) {
-                std::printf("P2_TAMAGO_STATE generator=%u state=hide\n", generator);
-                enter(s, TAMAGO_HIDE, "dive");
+                // Source Walk ends on KEYEVENT_END into Turn; the port Turn
+                // reorients briefly before hiding (was dead code).
+                std::printf("P2_TAMAGO_STATE generator=%u state=turn\n", generator);
+                enter(s, TAMAGO_TURN, "move");
             }
             break;
         case TAMAGO_HIDE:
@@ -615,11 +671,20 @@ void pc_p2_tamago_update(BTeki* actor) {
             break;
         case TAMAGO_TURN:
             stop(actor);
-            if (s.stateTime > TURN_TIME) enter(s, TAMAGO_WALK, "move");
+            if (s.stateTime > TURN_TIME) {
+                std::printf("P2_TAMAGO_STATE generator=%u state=hide\n", generator);
+                enter(s, TAMAGO_HIDE, "dive");
+            }
             break;
         case TAMAGO_DEAD:
+            // dieSoon() only runs inside the suppressed host doAI; finalize
+            // the carriable corpse outside doAI once the dead clip completes
+            // (frog pattern). Honey already dropped exactly-once at entry.
             stop(actor);
-            if (s.stateTime >= clipDuration("dead")) actor->die();
+            if (!s.escaped && s.stateTime >= clipDuration("dead")) {
+                s.escaped = true;
+                actor->pcEscapeNow();
+            }
             break;
         default:
             break;

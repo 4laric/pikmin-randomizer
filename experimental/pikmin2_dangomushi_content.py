@@ -53,6 +53,7 @@ import json
 import re
 from pathlib import Path
 
+from experimental.pikmin2_animation import frames_trailer
 from experimental.pikmin2_staging import StagingError
 
 SOURCE_ID = 94
@@ -266,19 +267,22 @@ def _parse_bank(data):
                 status, width = value, 8
             if not name or not status:
                 raise StagingError('snagret bank clip row names no clip')
+            current.append((name, frames, events, poses, status))
             pos += width
             if pos < len(tokens) and tokens[pos] == 'frames':
-                # Optional pose-frame list (batch-3 parseBank `frames a,b,..`).
-                if pos + 1 >= len(tokens):
-                    raise StagingError('snagret bank clip frames list truncated')
-                pose_frames = _parse_pose_frames(tokens[pos + 1], frames, poses)
-                current.append((name, frames, events, poses, status, pose_frames))
+                # P2_BANK_FRAMES_1 trailer (#895): carried through verbatim.
+                if pos + 1 >= len(tokens) or not _frames_token_ok(tokens[pos + 1]):
+                    raise StagingError(f'snagret bank clip row frames trailer malformed: {name!r}')
+                current[-1] = current[-1] + (tokens[pos + 1],)
                 pos += 2
-            else:
-                current.append((name, frames, events, poses, status))
         else:
             raise StagingError(f'snagret bank token rejected by the native grammar: {word!r}')
     return blocks
+
+
+def _frames_text(value):
+    """A clip row's pose-frame list as its ``f0,f1,..`` token (str or int tuple)."""
+    return value if isinstance(value, str) else ','.join(str(v) for v in value)
 
 
 def _parse_pose_frames(token, duration, poses):
@@ -294,6 +298,12 @@ def _parse_pose_frames(token, duration, poses):
     return values
 
 
+def _frames_token_ok(token):
+    """``f0,f1,...`` digits/commas only, at most 64 entries (native grammar)."""
+    parts = token.split(',')
+    return 1 <= len(parts) <= 64 and all(part.isdigit() and len(part) <= 6 for part in parts)
+
+
 def _render_bank(blocks):
     """Render bank blocks in the canonical ``bank_text`` shape."""
     lines = [BANK_HEADER]
@@ -301,10 +311,8 @@ def _render_bank(blocks):
         lines.append(f'species {species} {SNAGRET_SPECIES_IDS[species]}')
         for row in clips:
             name, frames, events, poses, status = row[:5]
-            line = f'clip {species} {name} {frames} {events} poses {poses} status {status}'
-            if len(row) > 5:
-                line += ' frames ' + ','.join(str(value) for value in row[5])
-            lines.append(line)
+            trailer = f' frames {_frames_text(row[5])}' if len(row) > 5 else ''
+            lines.append(f'clip {species} {name} {frames} {events} poses {poses} status {status}{trailer}')
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
@@ -314,8 +322,10 @@ def _merge_bank(existing, species, source_id, clip_rows):
         raise StagingError(f'snagret bank species identity mismatch: {species} {source_id}')
     for row in clip_rows:
         _name, frames, events, poses, status = row[:5]
+        if len(row) > 6 or (len(row) == 6 and not _frames_token_ok(_frames_text(row[5]))):
+            raise StagingError(f'snagret bank clip frames trailer malformed: {_name!r}')
         if len(row) > 5:
-            _parse_pose_frames(','.join(str(v) for v in row[5]), frames, poses)
+            _parse_pose_frames(_frames_text(row[5]), frames, poses)
         if type(frames) is not int or frames < 0:
             raise StagingError(f'snagret bank clip frames outside the native range: {_name!r}')
         if type(poses) is not int or poses < 0 or poses > _MAX_BANK_POSES:
@@ -492,15 +502,10 @@ def plan(source, actors):
     for clip in clips:
         name = Path(clip['file']).stem
         token = _events_token(clip['file'], clip.get('events', []))
-        pose_frames = tuple(pose['frame'] for pose in clip['poses'])
         row = (name, clip['source_frames'], token, len(clip['poses']), 'converted')
-        duration = clip['source_frames']
-        if (pose_frames != tuple(_uniform_frames(len(pose_frames), duration))
-                and pose_frames[0] == 0 and pose_frames[-1] == duration - 1):
-            # Adaptive sampling (#897): the native blend needs the real frame
-            # of every pose, not the uniform spacing it assumes otherwise.
-            row += (pose_frames,)
-        clip_rows.append(row)
+        # P2_BANK_FRAMES_1 trailer (#895) from each pose's true source frame.
+        trailer = frames_trailer(clip['poses'], clip['source_frames'])
+        clip_rows.append(row + (trailer.split()[1],) if trailer else row)
     mesh_files = {}
     for clip in clips:
         for pose in clip['poses']:

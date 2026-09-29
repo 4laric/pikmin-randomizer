@@ -22,3 +22,8 @@ bool pc_p2_dangomushi_clip(const BTeki*, const char*& name, float& phase);
 // EB_Invulnerable clears (DangoMushiState.cpp:530). Always false for an
 // unregistered actor, so the shared hook stays a no-op for P1 controls.
 bool pc_p2_dangomushi_invulnerable(const BTeki*);
+// P2 FSM owns movement/targeting/attacks every tick for registered DangoMushi
+// (frog pattern): BTeki::doAI returns early so the Swallow host strategy
+// never runs. Damage still reaches mHealth via the update-phase
+// mStoredDamage -> makeDamaged() drain; death finalizes via pcEscapeNow().
+bool pc_p2_dangomushi_suppress_ai(const BTeki*);

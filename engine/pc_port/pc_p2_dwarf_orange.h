@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+namespace p2pose {struct Pose;}
 class BTeki;
 class PelletView;
 class Graphics;
@@ -14,3 +16,4 @@ bool pc_p2_dwarf_orange_registered(const BTeki*);
 // across death/forget/respawn/re-entry cycles.
 unsigned long pc_p2_dwarf_orange_count();
 bool pc_p2_dwarf_orange_draw(BTeki*,Graphics&,const Matrix4f&,bool corpse=false);
+bool pc_p2_dwarf_orange_geometry(BTeki*,p2pose::Pose&,std::string& clip,float& frame,bool& corpse);

@@ -1,4 +1,5 @@
 #include "pc_p2_campaign_policy.h"
+#include "pc_p2_proxy.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
@@ -37,6 +38,7 @@ bool slotEnemies = false, campaignEnemies = false;
 // P2 enemy bridge: a versioned roster revision with target->source_id bindings.
 // Lane 02 enforces admission; the native side only validates identity and revision.
 bool p2EnemyBridge = false;
+bool p2ProxyTier = false;
 std::unordered_map<std::string, unsigned> p2Bindings;
 unsigned campaignAssignments[72] = {};
 bool groupEnemies = false;
@@ -50,12 +52,22 @@ std::unordered_map<const void*, unsigned> p2TekiSources;
 std::unordered_map<const void*, unsigned> p2TekiGeneratorUids;
 // The randomizer's one ordinary delivery ledger (campaign directory), opened once.
 P2DeliveryHostHandle p2DeliveryHost = nullptr;
+// bot-v2 gap 1: in-memory copy of granted Onion corpse receipts this process,
+// so the TEST-ONLY autoplay bot can sense its own receipt without touching
+// the ledger (read-only query via pc_randomizer_p2_receipt_seen).
+std::set<unsigned> p2ReceiptGenerators;
 unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
 bool benefitItems = false, bombDeliveries = false, combinedCaptain = false, bombTraps = false, proggTraps = false, prereleaseTraps = false;
 unsigned benefits[9] = {}, consumedBenefits[7] = {};
+// Level-style rewards: never consumed, only raised by newer state.
+bool maturityItems = false;
+unsigned maturity[3] = {};
+unsigned dayLengthItems = 0, dayLengthStep = 0, dayLength = 0;
+// Whistle Pluck item: the seed carries it, and once received it stays on.
+bool whistlePluckItem = false, whistlePluck = false;
 // DeathLink: the first state value read is the baseline, so links received while
 // the game was closed never replay. Pending links are bounded; each applies once.
 unsigned deathLinkUnit = 0, deathLinksSeen = 0, deathLinksPending = 0, deathsReported = 0;
@@ -148,6 +160,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (!bootstrap) return false;
     if (bbft) fail("standalone and BBFT modes cannot be combined");
+    p2ProxyTier = false;
     std::ifstream input(bootstrap);
     if (!input) fail("cannot open standalone bootstrap");
     expect(input, "PIKMIN_RANDOMIZER");
@@ -243,6 +256,23 @@ bool pc_randomizer_init(int argc, char** argv) {
         prereleaseTraps = ((mode - 1) & 16) != 0;
         input >> end;
     }
+    if (end == "MATURITY") {
+        unsigned version;
+        if (!benefitItems || !(input >> version) || version != 1) fail("invalid maturity mode");
+        maturityItems = true;
+        input >> end;
+    }
+    if (end == "DAY_LENGTH") {
+        if (!benefitItems || !(input >> dayLengthItems >> dayLengthStep) || dayLengthItems < 1 || dayLengthItems > 10
+            || dayLengthStep < 10 || dayLengthStep > 100 || dayLengthStep % 5) fail("invalid day length mode");
+        input >> end;
+    }
+    if (end == "WHISTLE_PLUCK") {
+        unsigned version;
+        if (!benefitItems || !(input >> version) || version != 1) fail("invalid whistle pluck mode");
+        whistlePluckItem = true;
+        input >> end;
+    }
     if (end == "DEATHLINK") {
         if (schema != 9 || !(input >> deathLinkUnit) || deathLinkUnit < 1 || deathLinkUnit > 100) fail("invalid DeathLink unit");
         input >> end;
@@ -261,7 +291,14 @@ bool pc_randomizer_init(int argc, char** argv) {
                 fail("invalid P2 enemy binding");
         }
         p2EnemyBridge = true;
+        p2ProxyTier = false;
         input >> end;
+        if (end == "P2_PROXY_TIER") {
+            unsigned tier = 0;
+            if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
+            p2ProxyTier = true;
+            input >> end;
+        }
         if (end != "END") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (end == "ENEMY_CAMPAIGN") {
@@ -356,6 +393,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (bombTraps) hello << " bomb-ambush-v1";
     if (proggTraps) hello << " progg-ambush-v1";
     if (prereleaseTraps) hello << " prerelease-trap-v1";
+    if (maturityItems) hello << " progressive-maturity-v1";
+    if (dayLengthItems) hello << " progressive-day-length-v1";
+    if (whistlePluckItem) hello << " whistle-pluck-item-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
     if (campaignEnemies) hello << " enemy-campaign-v1";
@@ -363,6 +403,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (emperorGoal) hello << " emperor-goal-v1";
     if (deathLinkUnit) hello << " death-link-v1";
     if (p2EnemyBridge) hello << " p2-enemy-bridge-v1";
+    if (p2ProxyTier) hello << " p2-proxy-tier-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -421,6 +462,25 @@ void pc_randomizer_update() {
                 fail("invalid or retracted benefit receipt");
         parsed = bool(input >> end);
     }
+    unsigned newMaturity[3] = {};
+    if (maturityItems) {
+        if (!parsed || end != "MATURITY") fail("missing maturity state");
+        for (int c = 0; c < 3; ++c)
+            if (!(input >> newMaturity[c]) || newMaturity[c] > 2 || newMaturity[c] < maturity[c]) fail("invalid or retracted maturity");
+        parsed = bool(input >> end);
+    }
+    unsigned newDayLength = 0;
+    if (dayLengthItems) {
+        if (!parsed || end != "DAYLENGTH" || !(input >> newDayLength) || newDayLength > dayLengthItems || newDayLength < dayLength)
+            fail("invalid or retracted day length");
+        parsed = bool(input >> end);
+    }
+    unsigned newWhistlePluck = 0;
+    if (whistlePluckItem) {
+        if (!parsed || end != "WHISTLEPLUCK" || !(input >> newWhistlePluck) || newWhistlePluck > 1 || (whistlePluck && !newWhistlePluck))
+            fail("invalid or retracted whistle pluck");
+        parsed = bool(input >> end);
+    }
     unsigned newEmperor = 0;
     if (emperorGoal) {
         if (!parsed || end != "EMPEROR" || !(input >> newEmperor) || newEmperor > 1 || (newEmperor && newRepairs < 25)) fail("invalid Emperor state");
@@ -445,6 +505,14 @@ void pc_randomizer_update() {
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
     for (int kind = 0; kind < 9; ++kind) benefits[kind] = newBenefits[kind];
+    for (int c = 0; c < 3; ++c) {
+        if (maturity[c] != newMaturity[c]) std::printf("[Pikmin Randomizer] MATURITY color=%d tier=%u\n", c, newMaturity[c]);
+        maturity[c] = newMaturity[c];
+    }
+    if (dayLength != newDayLength) std::printf("[Pikmin Randomizer] DAY_LENGTH count=%u percent=%u\n", newDayLength, 100 + dayLengthStep * newDayLength);
+    dayLength = newDayLength;
+    if (!whistlePluck && newWhistlePluck) std::printf("[Pikmin Randomizer] WHISTLE_PLUCK received\n");
+    whistlePluck = newWhistlePluck != 0;
     emperorDefeated = emperorDefeated || newEmperor != 0;
     if (deathLinkUnit) {
         if (!deathLinkBaseline) { deathLinksSeen = newDeathLinks; deathLinkBaseline = true; }
@@ -469,6 +537,16 @@ void pc_randomizer_update() {
 }
 
 bool pc_randomizer_prerelease_traps() { return enabled && prereleaseTraps; }
+int pc_randomizer_maturity(int color) {
+    return enabled && maturityItems && color >= 0 && color < 3 ? int(maturity[color]) : 0;
+}
+int pc_randomizer_whistle_pluck() {
+    if (!enabled || !whistlePluckItem) return -1;
+    return whistlePluck ? 1 : 0;
+}
+float pc_randomizer_day_length_multiplier() {
+    return enabled && dayLengthItems ? 1.0f + 0.01f * float(dayLengthStep * dayLength) : 1.0f;
+}
 bool pc_randomizer_progg_traps() { return enabled && proggTraps; }
 bool pc_randomizer_benefit_pending(PcBenefit kind) {
     return enabled && benefitItems && ready && ((kind >= 0 && kind < 3) || (kind == PC_BENEFIT_BOMBS && bombDeliveries) || (kind == PC_BENEFIT_BOMB_TRAP && bombTraps) || (kind == PC_BENEFIT_PROGG && proggTraps) || (kind == PC_BENEFIT_PRERELEASE && prereleaseTraps)) && benefits[kind] > consumedBenefits[consumedIndex(kind)];
@@ -501,6 +579,7 @@ int pc_randomizer_start_color() { return startColor; }
 bool pc_randomizer_spawn_slots() { return enabled && (slotEnemies || campaignEnemies); }
 bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
 bool pc_randomizer_p2_bridge() { return p2EnemyBridge; }
+bool pc_randomizer_p2_proxy_tier() { return p2EnemyBridge && p2ProxyTier; }
 unsigned pc_randomizer_p2_source(const char* target) {
     if (!p2EnemyBridge || !target) return 0;
     const auto it = p2Bindings.find(target);
@@ -541,6 +620,11 @@ void pc_randomizer_p2_delivery_reset() {
         pc_p2_delivery_host_close(p2DeliveryHost);
         p2DeliveryHost = nullptr;
     }
+    p2ReceiptGenerators.clear();
+}
+bool pc_randomizer_p2_receipt_seen(unsigned generatorUid)
+{
+    return generatorUid != 0 && p2ReceiptGenerators.count(generatorUid) != 0;
 }
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay) {
     if (!enabled || !ready || !gameplay || !tekiview) return false;
@@ -571,6 +655,9 @@ bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage
     const P2DeliveryHostResult result = pc_p2_delivery_host_deliver(p2DeliveryHost, seed.c_str(), sourceId, type, stage, generatorUid, "corpse");
     std::printf("[Pikmin Randomizer] P2_ORDINARY_P2_RECEIPT seed=%s id=onion:p2:%u:%d generator=%u new=%d\n",
         seed.c_str(), sourceId, stage, generatorUid, int(result == P2DeliveryHostResult::Granted));
+    if (result == P2DeliveryHostResult::Granted || result == P2DeliveryHostResult::Duplicate) {
+        p2ReceiptGenerators.insert(generatorUid);
+    }
     // Single-use: consume the binding so the address can be safely recycled.
     pc_randomizer_p2_forget_source(tekiview);
     return true;
@@ -648,6 +735,16 @@ bool pc_randomizer_p2_room_bootstrap(const char* path) {
                 || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
                 fail("invalid P2 enemy binding");
         }
+        // Finding 4: skip the optional P2_PROXY_TIER pair the same way as the
+        // full-session reader so a tier seed's bootstrap parses here too. The
+        // room preview never takes the campaign tier; the flag is left alone.
+        std::string tierWord;
+        if (input >> tierWord) {
+            if (tierWord == "P2_PROXY_TIER") {
+                unsigned tier = 0;
+                if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
+            }
+        }
         p2EnemyBridge = true;
         return true;
     }
@@ -656,7 +753,11 @@ bool pc_randomizer_p2_room_bootstrap(const char* path) {
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
     if (pc_randomizer_p2_bridge()) {
         const unsigned source = pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(generator));
-        return p2campaign::hostType(source, original, protectedSpawn);
+        if (protectedSpawn || p2campaign::hasStaticHost(source))
+            return p2campaign::hostType(source, original, protectedSpawn);
+        const int proxy = pc_p2_proxy_host(source);
+        if (proxy >= 0) return proxy;
+        return original;
     }
     if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);
     if (campaignEnemies) {
@@ -786,13 +887,48 @@ void pc_randomizer_check(const char* name) {
 
 bool pc_randomizer_expanded() { return enabled && schema >= 2; }
 bool pc_randomizer_color_stats() { return enabled && (configuredStats || progressiveStats); }
+namespace {
+// bot-v4 power mode (TEST-ONLY): PIKMIN_RANDOMIZER_AUTOPLAY_POWER scales Pikmin
+// attack power through the EXISTING color-multiplier lever. Off by default and
+// ONLY meaningful when the autoplay gate is already on; inert in normal play
+// (autoplay gate closed => normal 1.0x path, no matter what POWER is set to).
+// A numeric POWER value configures the multiplier, otherwise x10.
+bool autoplayPowerOn()
+{
+    const char* gate = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY");
+    if (!gate || !gate[0] || !std::strcmp(gate, "0")) return false;
+    const char* v = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY_POWER");
+    return v && v[0] && std::strcmp(v, "0") != 0;
+}
+float autoplayPowerDamageMult() {
+    if (!autoplayPowerOn()) return 1.0f;
+    const char* v = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY_POWER");
+    char* end = nullptr;
+    const double d = std::strtod(v, &end);
+    if (end && end != v && *end == 0 && d > 0.0 && d < 1000000.0) return float(d);
+    return 10.0f;
+}
+}
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat) {
+    if (stat == PC_PIKI_DAMAGE) {
+        const float power = autoplayPowerDamageMult();
+        if (power != 1.0f) return power;
+    }
     return pc_randomizer_color_stats() && color >= 0 && color < 3 && stat >= 0 && stat < 3 ? colorStats[color][stat] / 100.0f : 1.0f;
 }
 int pc_randomizer_carry_strength(int color) {
     return pc_randomizer_color_stats() && color >= 0 && color < 3 ? colorStats[color][3] : 1;
 }
-int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100; }
+int pc_randomizer_field_capacity()
+{
+    // bot-v4b power mode (TEST-ONLY): the campaign field cap is 10xFlarlic
+    // (20-40 at campaign start), which binds the withdraw menu (DrawContainer
+    // squad caps), the Onion exit queue, and the birth pool below the power
+    // squad. Lift to 100 while power mode is on (BOTH gates, same as the
+    // damage lever); inert otherwise, so probe asserts on 20 still hold.
+    if (autoplayPowerOn()) return 100;
+    return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100;
+}
 namespace {
 bool accessibleStage(int stage) {
     return (stage == 0 && pc_randomizer_has("Pikmin: Impact Site Access")) || (stage == 1 && pc_randomizer_has("Pikmin: Forest of Hope Access")) || (stage == 2 && pc_randomizer_has("Pikmin: Forest Navel Access"))

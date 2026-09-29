@@ -1,11 +1,13 @@
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_setup_failsafe.h"
 #include "pc_p2_kurage_teki.h"
+#include "pc_p2_kurage_campaign.h"
 #include "pc_p2_kurage_fsm.h"
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_kurage_teki_policy.h"
 #include "pc_p2_kurage_visual.h"
 #include "pc_p2_retail_player.h"
+#include "pc_bbft.h"
 #include "Camera.h"
 #include "Collision.h"
 #include "Generator.h"
@@ -78,6 +80,17 @@ Vector3f sCorpseOrigin;
 int sCorpseProbeTick = 0;
 bool sCorpseDelivered = false;
 bool sCaptainParked = false;
+int sHoverProbeTick = 0;
+bool sCorpseDrawLogged = false;
+// Campaign (seed bridge without the room preview): the playtested path. All
+// labelled fixture concessions (ground pin + seek, captain park, recruit ring,
+// mode changes, carry/pellet mutations) are skipped here and kept ONLY for the
+// room-preview / staged-sidecar fixtures that already test them.
+inline bool kurageCampaignMode()
+{
+    return p2kurage_campaign::isCampaignMode(pc_randomizer_p2_bridge(),
+                                             pc_pikipelago_room_preview());
+}
 // Injected ground-engagement seal for the production preview: a FreeMode P1
 // squad rejects a flying Teki outright (piki.cpp:951; aiAttack.cpp:189/297), so
 // pin the bound proxy to the floor and hold it within the squad's attack volume.
@@ -198,12 +211,18 @@ void groundAndSeal(BTeki* t)
     t->mSRT.t.z += dz / d * move;
 }
 
-// Corpse -> Pod carry tail, run for every tick (including after the live binding
-// is revoked) before the binding lookup. Returns true when a corpse is active.
-bool corpseTail()
+// Corpse -> Pod carry tail, run from every teki tick (including after the live
+// binding is revoked) before the binding lookup. Bookkeeping itself runs once
+// per frame on the corpse actor's own tick: the caller invokes this once per
+// TEKI per frame, so an unguarded counter would advance N times per frame and
+// the "every 60 calls" recruit would fire several times a second. Returns true
+// when a corpse is active.
+bool corpseTail(BTeki* t)
 {
+    if (sCorpseTeki && t != sCorpseTeki) return true;
     if (sCorpseTeki && sCorpseDelivered) {
-        if (naviMgr && pikiMgr && naviMgr->getNavi()) {
+        // Campaign: no forced mode changes; just end the tail.
+        if (!kurageCampaignMode() && naviMgr && pikiMgr && naviMgr->getNavi()) {
             Navi* n = naviMgr->getNavi();
             Iterator fp(pikiMgr);
             CI_LOOP(fp) {
@@ -251,6 +270,9 @@ bool corpseTail()
         }
     }
     if (!sCorpsePellet) return true;
+    // Fixture-only holds and mutations (mirrors lane 27): the campaign carries
+    // the corpse naturally with untouched physics and config.
+    if (!kurageCampaignMode()) {
     // Hold the freshly spawned corpse at the kill site until a carrier latches;
     // its spawn velocity otherwise flings it clear of the ringed squad.
     if (sCorpsePellet->getMinFreeSlotIndex() != -1) sCorpsePellet->mVelocity.set(0.0f, 0.0f, 0.0f);
@@ -261,6 +283,7 @@ bool corpseTail()
         // route -> Pod credit).
         sCorpsePellet->mConfig->mCarryMinPikis.mValue = 1;
     }
+    } // !campaign: velocity hold + carry mutations
     // Suppress stray Red number pellets (pr01) while the carcass is being hauled:
     // the proxy's death (and any Pikmin it killed) drops `pr01` number pellets,
     // and a FreeMode Pikmin carrying one to the Pod hits the preview's
@@ -268,7 +291,7 @@ bool corpseTail()
     // re-formed survivors only *after* the receipt; this closes the pre-receipt
     // race. Only free (uncarried) pellets are touched so an in-flight carrier is
     // never disrupted. Labelled fixture concession.
-    if (pelletMgr) {
+    if (!kurageCampaignMode() && pelletMgr) {
         Iterator pit(pelletMgr);
         CI_LOOP(pit) {
             Pellet* pel = static_cast<Pellet*>(*pit);
@@ -279,7 +302,11 @@ bool corpseTail()
             pel->mConfig->mCarryMaxPikis.mValue = 0;
         }
     }
-    if (naviMgr && pikiMgr && naviMgr->getNavi()) {
+    // Fixture-only recruit (labelled concession): park the captain beyond the
+    // 250u join-party range and ring the survivors onto the carcass in FreeMode
+    // until a carrier latches. Never in campaign (no captain/Pikmin teleports,
+    // no forced mode changes).
+    if (!kurageCampaignMode() && naviMgr && pikiMgr && naviMgr->getNavi()) {
         Navi* n = naviMgr->getNavi();
         int carriers = 0, squad = 0;
         Iterator pc(pikiMgr);
@@ -318,8 +345,10 @@ bool corpseTail()
     }
     // Natural carry only -- no injected delivery fallback. The FreeMode release
     // latches Transport onto the corpse (carriers > 0) and the receipt lands
-    // through pc_p2_preview_deliver -> pc_p2_kurage_receipt.
-    if (++sCorpseProbeTick % 30 == 0) {
+    // through pc_p2_preview_deliver -> pc_p2_kurage_receipt. Rate-limited to
+    // about once per second now that the tail runs once per frame, and silent
+    // once delivered/forgotten (the tail clears itself there).
+    if (p2kurage_campaign::corpseProbeDue(++sCorpseProbeTick)) {
         const Vector3f& cp = sCorpsePellet->mSRT.t;
         const float dx = cp.x - sCorpseOrigin.x, dz = cp.z - sCorpseOrigin.z;
         int transport = 0;
@@ -350,6 +379,8 @@ void pc_p2_kurage_teki_reset()
     sCorpseProbeTick = 0;
     sCorpseDelivered = false;
     sCaptainParked = false;
+    sHoverProbeTick = 0;
+    sCorpseDrawLogged = false;
     sShowcase = false;
     sShowcaseBaitSpawned = false;
     sShowcaseBait = nullptr;
@@ -366,6 +397,15 @@ void pc_p2_kurage_teki_forget(BTeki* t)
     const bool wasCorpse = corpses.count(t) != 0;
     revoke(t);
     corpses.erase(t);
+    if (t == sCorpseTeki) {
+        // The forget seam recycles the slot: stop the tail so the probe line
+        // cannot outlive the corpse (delivered already stops the same way).
+        sCorpseTeki = nullptr;
+        sCorpsePellet = nullptr;
+        sCorpseProbeTick = 0;
+        sCorpseDelivered = false;
+        sCaptainParked = false;
+    }
     if (wasBound || wasCorpse) {
         std::printf("P2_KURAGE_TEKI_FORGET bound=%d corpse=%d remaining=%d\n",
                     int(wasBound), int(wasCorpse), int(s.size() + corpses.size()));
@@ -405,6 +445,14 @@ void pc_p2_kurage_teki_setup()
         if (!pc_p2_kurage_receiver_setup(t, &b.mouth)) { if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kurage", "receiver_setup_failed")) return; }
         std::printf("P2_KURAGE_TEKI_READY generator=%u type=%d binding=private_adapter\n", gen, type);
         std::printf("P2_KURAGE_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:kurage:%u\n", gen, gen);
+        // bot-deliver (#871): lane-06 ordinary-delivery source bind so
+        // GoalItem::suckMe grants onion:p2:57 instead of the P1 bestiary
+        // CHECK (Yellow Wollywog). Mirrors Sokkuri/Sarai/ElecBug and proxy
+        // batch2. Single-use: consumed on delivery, cleared on forget.
+        // Additive: hover/draw/corpseTail campaign gates untouched.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(t), 57, gen);
+        std::printf("P2_KURAGE_DELIVERY_BIND generator=%u source_id=57\n", gen);
+        std::fflush(stdout);
         if (std::getenv("PIKMIN_P2_KURAGE_SHOWCASE")) {
             b.fsmEnabled = true;
             b.fsm = p2kurage::Fsm();
@@ -420,8 +468,9 @@ void pc_p2_kurage_teki_tick(BTeki* t)
 {
     ++gTickCalls;
     // Corpse -> Pod carry tail runs even after the live binding is revoked, so it
-    // must precede the binding lookup.
-    corpseTail();
+    // must precede the binding lookup. Keyed to the corpse actor's own tick so
+    // the bookkeeping runs once per frame, not once per teki per frame.
+    corpseTail(t);
     auto i = s.find(t);
     if (i == s.end()) return;
     if (!t->isAlive()) {
@@ -453,9 +502,27 @@ void pc_p2_kurage_teki_tick(BTeki* t)
     Binding& b = i->second;
     const float dt = gsys->getFrameTime();
     if (!b.fsmEnabled) {
-        // Injected engagement seal: make the P1 proxy reachable and killable by
-        // the ordinary FreeMode squad (fixture concession, see groundAndSeal).
-        groundAndSeal(t);
+        if (kurageCampaignMode()) {
+            // Campaign hover: the P1 Frog host keeps its natural locomotion
+            // (no finishFlying, no y-pin, no seek toward Pikmin), so its
+            // collision stays sane and the body stays killable on the ground.
+            // The Jellyfloat floats as a visual-only offset in the draw path.
+            // The ported FSM float/descend was rejected here: its 90u cruise
+            // plus patrol wander would put the bell out of Pikmin melee reach
+            // and fight the host's jump/land each tick (unkillable risk).
+            if (mapMgr && ++sHoverProbeTick % 60 == 0) {
+                const float groundY = mapMgr->getMinY(t->mSRT.t.x, t->mSRT.t.z, true);
+                std::printf("P2_KURAGE_HOVER tick=%d y=%.3f ground_y=%.3f above=%.3f visual_above=%.3f\n",
+                            sHoverProbeTick, t->mSRT.t.y, groundY,
+                            t->mSRT.t.y - groundY,
+                            t->mSRT.t.y + p2kurage_campaign::kHoverHeight - groundY);
+                std::fflush(stdout);
+            }
+        } else {
+            // Injected engagement seal: make the P1 proxy reachable and killable by
+            // the ordinary FreeMode squad (fixture concession, see groundAndSeal).
+            groundAndSeal(t);
+        }
         refresh(t, b);
         pc_p2_kurage_receiver_update(dt, true, t->mHealth > 0.0f, false);
         return;
@@ -571,6 +638,27 @@ void pc_p2_kurage_teki_tick(BTeki* t)
 
 bool pc_p2_kurage_teki_draw(BTeki* t, Graphics& gfx, const Matrix4f& matrix, bool corpse)
 {
+    if (corpse) {
+        // The live binding is revoked at death, so a corpse resolves through
+        // the corpses map. Draw the Kurage dead pose when the converted clips
+        // exist (dead1/dead2 ship: optional_loaded=8/8), else the last/idle
+        // pose -- never the stock P1 Frog body the fallthrough would draw.
+        // The corpse Pellet itself stays naturally carriable (grasp -> carry
+        // to Onion -> pc_p2_kurage_receipt); only the drawn model changes.
+        if (corpses.count(t) == 0) return false;
+        Shape* dead = pc_p2_kurage_visual_shape("dead1");
+        const char* pose = "dead1";
+        if (!dead) { dead = pc_p2_kurage_visual_shape("dead2"); pose = "dead2"; }
+        if (!dead) return pc_p2_kurage_visual_draw(t, gfx, matrix, true);
+        dead->updateAnim(gfx, matrix, nullptr, t);
+        dead->drawshape(gfx, *gfx.mCamera, nullptr);
+        if (!sCorpseDrawLogged) {
+            sCorpseDrawLogged = true;
+            std::printf("P2_KURAGE_CORPSE_DRAW corpse=1 pose=%s\n", pose);
+            std::fflush(stdout);
+        }
+        return true;
+    }
     auto i = s.find(t);
     if (i == s.end()) return false;
     if (i->second.fsmEnabled) {
@@ -581,6 +669,15 @@ bool pc_p2_kurage_teki_draw(BTeki* t, Graphics& gfx, const Matrix4f& matrix, boo
             shape->drawshape(gfx, *gfx.mCamera, nullptr);
             return true;
         }
+    }
+    if (kurageCampaignMode()) {
+        // Campaign hover, visual half: the actor stays grounded (see the tick
+        // path) and only the drawn bell floats. Camera-space +Y reads as up
+        // on screen; on-screen look stays owner-verified.
+        Matrix4f floatMat;
+        floatMat.set(matrix);
+        floatMat.mMtx[1][3] += p2kurage_campaign::kHoverHeight;
+        return pc_p2_kurage_visual_draw(t, gfx, floatMat, false);
     }
     return pc_p2_kurage_visual_draw(t, gfx, matrix, corpse);
 }

@@ -14,7 +14,7 @@ from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_convert import blocks, decode, u16, u32, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import sample_frames
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX, sample_frames, decode_pose
 from experimental.pikmin2_snow_policy import animation_events, parameter_groups
 
 SPECIES = 'Miulin'
@@ -191,9 +191,9 @@ def profile(parameters, events):
             'implemented_delta': 'Source assets and reference semantics only; no native Mamuta behavior substitution.'}
 
 
-def extract(iso, output, pose_limit=3):
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError('Pose limit must be 2..8')
+def extract(iso, output, pose_limit=DEFAULT_POSE_LIMIT):
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f'Pose limit must be 2..{POSE_LIMIT_MAX}')
     output.mkdir(parents=True, exist_ok=False)
     index = disc_files(iso)
     hashes = {}
@@ -232,10 +232,8 @@ def extract(iso, output, pose_limit=3):
             duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
             entry['source_frames'] = duration
             for i, frame in enumerate(sample_frames(duration, pose_limit)):
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 name = Path(clip).stem + f'_{i:02}.mod'
-                matrices = draw_matrices(blocks(model), pose)
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
+                decoded, _ = decode_pose(decode, model, blocks(model), raw, frame, len(names))
                 conversion = write_model(decoded, root / name, 'enemy.bmd')
                 conversion['weighted_pose_baked'] = True
                 conversion['source'] = 'enemy.bmd'
@@ -266,7 +264,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--iso', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--pose-limit', type=int, default=3)
+    parser.add_argument('--pose-limit', type=int, default=DEFAULT_POSE_LIMIT)
     args = parser.parse_args()
     result = extract(args.iso, args.output, args.pose_limit)
     print(json.dumps({'joints': len(result['joints']), 'clips': len(result['clips']),

@@ -111,7 +111,8 @@ int main() {
     assert(clip.index(-1)==0 && clip.index(2)==2 && clip.index(std::numeric_limits<float>::quiet_NaN())==0);
     assert(clip.index(0,true)==2); // corpse remains at final source pose
     clip.frames.clear();
-    assert(clip.index(.49f)==0 && clip.index(.51f)==1); // legacy floor selection
+    // v1 uniform selection rounds to the nearest pose (#895; was floor).
+    assert(clip.index(.24f)==0 && clip.index(.26f)==1 && clip.index(.74f)==1 && clip.index(.76f)==2);
     std::stringstream duplicate("P2_SNOW_2 wait1 3 9 0 4 4");
     assert(!p2animation::parse(duplicate,clips));
     std::vector<unsigned char> bad={0,0,0,32,255,255,255,255},out;

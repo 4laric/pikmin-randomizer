@@ -24,21 +24,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX
+
 # Row overrides carried over verbatim from the retired
 # ``randomizer/p2_proxy/<id>_<Enum>.json`` declarations, so extraction stays
 # byte-identical after the proxy row is removed. Keys mirror
 # ``pikmin2_proxy_assets._row_overrides`` (asset_dir/param_dir/clips/
 # param_files/missing_normals); only set keys travel with the call.
 CHAPPY_ROWS = {
-    2: {"enum_name": "Chappy", "pose_limit": 4},
-    33: {"enum_name": "FireChappy", "pose_limit": 4},
-    35: {"enum_name": "KumaChappy", "pose_limit": 4},
-    43: {"enum_name": "YellowChappy", "pose_limit": 4,
+    2: {"enum_name": "Chappy", "pose_limit": DEFAULT_POSE_LIMIT},
+    33: {"enum_name": "FireChappy", "pose_limit": DEFAULT_POSE_LIMIT},
+    35: {"enum_name": "KumaChappy", "pose_limit": DEFAULT_POSE_LIMIT},
+    43: {"enum_name": "YellowChappy", "pose_limit": DEFAULT_POSE_LIMIT,
         "asset_dir": "Chappy", "param_dir": "chappy"},
-    53: {"enum_name": "KingChappy", "pose_limit": 4,
+    53: {"enum_name": "KingChappy", "pose_limit": DEFAULT_POSE_LIMIT,
         "missing_normals": "compute"},
-    67: {"enum_name": "LeafChappy", "pose_limit": 4},
-    76: {"enum_name": "KumaKochappy", "pose_limit": 4,
+    67: {"enum_name": "LeafChappy", "pose_limit": DEFAULT_POSE_LIMIT},
+    76: {"enum_name": "KumaKochappy", "pose_limit": DEFAULT_POSE_LIMIT,
         "asset_dir": "Kochappy", "param_dir": "kochappy"},
 }
 
@@ -83,8 +85,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=None, row=None):
             f"{enum_name!r} != {declared['enum_name']!r}")
     if pose_limit is None:
         pose_limit = declared["pose_limit"]
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     proxy_row = {key: declared[key] for key in
                  ("asset_dir", "param_dir", "clips", "param_files", "missing_normals")
                  if key in declared}

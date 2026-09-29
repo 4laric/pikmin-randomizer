@@ -8,9 +8,21 @@
 #include "MapMgr.h"
 #include "Route.h"
 #include "UfoItem.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#include <queue>
+#include <vector>
+#endif
 #include "UtilityKando.h"
 #include "bugprint.h"
 #include "sysNew.h"
+
+#if defined(PIKI_PC_PORT)
+#include "pc_route_planner.h"
+#include "settings/pc_settings.h"
+#include <cstdlib>
+#include <vector>
+#endif
 
 /**
  * @todo: Documentation
@@ -28,6 +40,250 @@ u16 PathFinder::mode;
 int PathFinder::avoidWayPointIndex = -1;
 
 RouteMgr* routeMgr;
+
+#if defined(PIKI_PC_PORT)
+/*
+ * "Better Pathfinding" (F1 > Mods). Pikmin routes come from an exact
+ * shortest-path search instead of the greedy walk below; see pc_route_planner.h.
+ * Nothing here runs while the mod is off.
+ */
+static std::vector<PcRouteNode> sPcRouteNodes;
+static std::vector<int> sPcRoutePath;
+
+// Copies the waypoint graph, including which gates are currently open.
+static int pcCopyRouteGraph(RouteMgr::Group& group)
+{
+	const int count = group.mNumPoints;
+	sPcRouteNodes.resize(count > 0 ? count : 1);
+	for (int i = 0; i < count; i++) {
+		WayPoint& wp       = group.mWayPoints[i];
+		PcRouteNode& node  = sPcRouteNodes[i];
+		node.x             = wp.mPosition.x;
+		node.y             = wp.mPosition.y;
+		node.z             = wp.mPosition.z;
+		for (int k = 0; k < PC_ROUTE_MAX_LINKS; k++) {
+			node.links[k] = wp.mLinkIndices[k];
+		}
+		node.open  = wp.mIsOpen;
+		node.water = wp.inWater();
+	}
+	return count;
+}
+
+int PathFinder::findSyncShortest(PathFinder::Buffer* bufferList, int startWPIdx, int destWPIdx, bool includeBlockedPaths)
+{
+	const int count = pcCopyRouteGraph(*mGroup);
+	sPcRoutePath.resize(mBufferSize > 0 ? mBufferSize : 1);
+	const int length = pc_route_shortest_path(sPcRouteNodes.data(), count, startWPIdx, destWPIdx, includeBlockedPaths,
+	                                          checkMode(PathFinderMode::AvoidWater), sPcRoutePath.data(), mBufferSize);
+	for (int i = 0; i < length; i++) {
+		bufferList[i].mWayPointIdx = sPcRoutePath[i];
+		bufferList[i].mDirection   = 0xFF;
+	}
+	return length;
+}
+
+f32 PathFinder::shortestRouteLength(int startWPIdx, int destWPIdx, bool includeBlockedPaths, bool avoidWater)
+{
+	const int count = pcCopyRouteGraph(*mGroup);
+	sPcRoutePath.resize(mBufferSize > 0 ? mBufferSize : 1);
+	f32 length = -1.0f;
+	if (!pc_route_shortest_path(sPcRouteNodes.data(), count, startWPIdx, destWPIdx, includeBlockedPaths, avoidWater, sPcRoutePath.data(),
+	                            mBufferSize, &length)) {
+		return -1.0f;
+	}
+	return length;
+}
+
+/*
+ * Nearest-edge searches measure straight-line distance, so a route running
+ * along the top of a ledge, or behind a bank of terrain, can win over the one
+ * the Pikmin is actually standing beside. Sample the ground on the straight
+ * line to the edge; a step up too steep to walk makes that edge cost more.
+ */
+static f32 pcEdgeClimbPenalty(immut Vector3f& pos, WayPoint& start, WayPoint& end, f32 projection)
+{
+	Vector3f target;
+	if (projection < 0.0f || projection > 1.0f) {
+		Vector3f toStart = start.mPosition - pos;
+		Vector3f toEnd   = end.mPosition - pos;
+		target           = (toEnd.length() < toStart.length()) ? end.mPosition : start.mPosition;
+	} else {
+		target = start.mPosition + (end.mPosition - start.mPosition) * projection;
+	}
+
+	const f32 dx       = target.x - pos.x;
+	const f32 dz       = target.z - pos.z;
+	const f32 flatDist = sqrtf(dx * dx + dz * dz);
+	if (flatDist < 1.0f) {
+		return 0.0f;
+	}
+
+	const f32 kSampleStep  = 15.0f; // world units between ground samples
+	const f32 kMaxStepRise = 25.0f; // more than this over one step is a wall, not a slope
+	const f32 kPenalty     = 300.0f;
+	int samples            = int(flatDist / kSampleStep) + 1;
+	if (samples > 12) {
+		samples = 12;
+	}
+
+	f32 prevY = mapMgr->getMinY(pos.x, pos.z, true);
+	for (int i = 1; i <= samples; i++) {
+		const f32 t = f32(i) / f32(samples);
+		const f32 y = mapMgr->getMinY(pos.x + dx * t, pos.z + dz * t, true);
+		if (y - prevY > kMaxStepRise * (flatDist / f32(samples)) / kSampleStep + 0.01f) {
+			return kPenalty;
+		}
+		prevY = y;
+	}
+	return 0.0f;
+}
+
+WayPoint* RouteMgr::pickRouteStart(immut Vector3f& pos, WayPoint* a, WayPoint* b, int destWPIdx, bool avoidWater)
+{
+	if (!a || !b) {
+		return a ? a : b;
+	}
+
+	Vector3f toA      = a->mPosition - pos;
+	Vector3f toB      = b->mPosition - pos;
+	const f32 distA   = toA.length();
+	const f32 distB   = toB.length();
+	WayPoint* nearer  = (distA > distB) ? b : a; // retail's choice
+	PathFinder* finder = getPathFinder('test');
+	if (!finder || destWPIdx < 0) {
+		return nearer;
+	}
+
+	f32 routeA = finder->shortestRouteLength(a->mIndex, destWPIdx, false, avoidWater);
+	f32 routeB = finder->shortestRouteLength(b->mIndex, destWPIdx, false, avoidWater);
+	if (routeA < 0.0f && routeB < 0.0f) {
+		routeA = finder->shortestRouteLength(a->mIndex, destWPIdx, true, avoidWater);
+		routeB = finder->shortestRouteLength(b->mIndex, destWPIdx, true, avoidWater);
+	}
+	if (routeA < 0.0f && routeB < 0.0f) {
+		return nearer;
+	}
+	if (routeA < 0.0f) {
+		return b;
+	}
+	if (routeB < 0.0f) {
+		return a;
+	}
+	return (distA + routeA <= distB + routeB) ? a : b;
+}
+
+static f32 pcBufferPathLength(PathFinder* finder, PathFinder::Buffer* buf, int count)
+{
+	f32 total = 0.0f;
+	for (int i = 0; i + 1 < count; i++) {
+		Vector3f step = finder->getWayPoint(buf[i + 1].mWayPointIdx)->mPosition - finder->getWayPoint(buf[i].mWayPointIdx)->mPosition;
+		total += step.length();
+	}
+	return total;
+}
+
+/*
+ * PIKMIN_ROUTE_AUDIT=1: after the route graph is built, compare the retail
+ * searches with the shortest path on this map and print one summary line per
+ * search kind. Diagnostic only; it does not change any route.
+ */
+static void pcRouteAudit(RouteMgr* mgr)
+{
+	if (!getenv("PIKMIN_ROUTE_AUDIT")) {
+		return;
+	}
+	PathFinder* finder = mgr->getPathFinder('test');
+	const int count    = mgr->getNumWayPoints('test');
+	if (!finder || count <= 1) {
+		return;
+	}
+	PathFinder::Buffer* buf = new PathFinder::Buffer[count];
+	PathFinder::clearMode();
+
+	static const char* const kGoalNames[4] = { "blue", "red", "yellow", "ship" };
+	for (int goalType = 0; goalType < 4; goalType++) {
+		int dest = -1;
+		if (goalType < 3) {
+			GoalItem* onion = itemMgr->getContainer(goalType);
+			dest            = onion ? onion->mWaypointIdx : -1;
+		} else {
+			UfoItem* ufo = itemMgr->getUfo();
+			dest         = ufo ? ufo->mWaypointID : -1;
+		}
+		if (dest < 0) {
+			continue;
+		}
+		int routes = 0, retailMissed = 0, longer = 0;
+		f32 retailSum = 0.0f, bestSum = 0.0f, worstRatio = 1.0f;
+		int worstStart = -1;
+		for (int s = 0; s < count; s++) {
+			if (s == dest) {
+				continue;
+			}
+			const f32 best = finder->shortestRouteLength(s, dest, false, false);
+			if (best <= 0.0f) {
+				continue;
+			}
+			routes++;
+			const int points = finder->findSyncOnyon(finder->getWayPoint(s)->mPosition, buf, s, goalType, false);
+			if (points <= 0) {
+				retailMissed++;
+				continue;
+			}
+			const f32 retail = pcBufferPathLength(finder, buf, points);
+			retailSum += retail;
+			bestSum += best;
+			if (retail > best * 1.1f) {
+				longer++;
+			}
+			if (retail / best > worstRatio) {
+				worstRatio = retail / best;
+				worstStart = s;
+			}
+		}
+		fprintf(stderr,
+		        "[PC Route] audit onion=%s dest=%d routes=%d retail_missed=%d retail_over_10pct=%d retail_total=%.0f shortest_total=%.0f "
+		        "worst_ratio=%.2f worst_start=%d\n",
+		        kGoalNames[goalType], dest, routes, retailMissed, longer, retailSum, bestSum, worstRatio, worstStart);
+	}
+
+	// General routes (followers, onion entry): a fixed sample of pairs.
+	unsigned int seed = 12345u;
+	int routes = 0, retailMissed = 0, longer = 0;
+	f32 retailSum = 0.0f, bestSum = 0.0f, worstRatio = 1.0f;
+	for (int i = 0; i < 2000; i++) {
+		seed           = seed * 1103515245u + 12345u;
+		const int s    = int((seed >> 8) % unsigned(count));
+		seed           = seed * 1103515245u + 12345u;
+		const int d    = int((seed >> 8) % unsigned(count));
+		const f32 best = finder->shortestRouteLength(s, d, false, false);
+		if (s == d || best <= 0.0f) {
+			continue;
+		}
+		routes++;
+		const int points = finder->findSync(buf, s, d, false);
+		if (points <= 0) {
+			retailMissed++;
+			continue;
+		}
+		const f32 retail = pcBufferPathLength(finder, buf, points);
+		retailSum += retail;
+		bestSum += best;
+		if (retail > best * 1.1f) {
+			longer++;
+		}
+		if (retail / best > worstRatio) {
+			worstRatio = retail / best;
+		}
+	}
+	fprintf(stderr,
+	        "[PC Route] audit general points=%d routes=%d retail_missed=%d retail_over_10pct=%d retail_total=%.0f shortest_total=%.0f "
+	        "worst_ratio=%.2f\n",
+	        count, routes, retailMissed, longer, retailSum, bestSum, worstRatio);
+	delete[] buf;
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -262,8 +518,73 @@ int PathFinder::findSync(WayPoint** pathWayPoints, int numWPsToFind, int startWP
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+// VS: la búsqueda original es voraz en profundidad (siempre el vecino más
+// cercano al destino, retrocediendo al atascarse). Va bien en las redes
+// escasas de los mapas originales, pero en la cuadrícula densa de la arena
+// con un muro delante da caminos larguísimos y retorcidos. Aquí, camino más
+// corto de verdad (Dijkstra) con las mismas reglas que selectWay: sin puntos
+// cerrados (salvo reintento), sin salir de puntos en el agua en modo
+// AvoidWater y sin pasar por el punto a evitar.
+static int pcShortestPath(PathFinder* finder, WayPoint* (PathFinder::*getWp)(int), PathFinder::Buffer* bufferList, int bufferSize,
+                          int count, int startWPIdx, int destWPIdx, bool includeBlockedPaths, int avoidIdx)
+{
+	std::vector<f32> dist(count, 1e30f);
+	std::vector<int> prev(count, -1);
+	typedef std::pair<f32, int> Item;
+	std::priority_queue<Item, std::vector<Item>, std::greater<Item>> open;
+	dist[startWPIdx] = 0.0f;
+	open.push(Item(0.0f, startWPIdx));
+	while (!open.empty()) {
+		const Item top = open.top();
+		open.pop();
+		const int u = top.second;
+		if (top.first > dist[u]) continue;
+		if (u == destWPIdx) break;
+		WayPoint* wp = (finder->*getWp)(u);
+		if (avoidIdx != -1 && wp->mIndex == avoidIdx) {
+			continue;
+		}
+		if (PathFinder::checkMode(PathFinderMode::AvoidWater) && wp->inWater()) {
+			continue;
+		}
+		for (int i = 0; i < 8; i++) {
+			const int v = wp->mLinkIndices[i];
+			if (v < 0 || v >= count || v == u) continue;
+			WayPoint* next = (finder->*getWp)(v);
+			if (!includeBlockedPaths && !next->mIsOpen) continue;
+			const f32 d = dist[u] + (next->mPosition - wp->mPosition).length();
+			if (d < dist[v]) {
+				dist[v] = d;
+				prev[v] = u;
+				open.push(Item(d, v));
+			}
+		}
+	}
+	if (dist[destWPIdx] >= 1e30f) {
+		return 0;
+	}
+	std::vector<int> path;
+	for (int v = destWPIdx; v != -1; v = prev[v]) path.push_back(v);
+	if (int(path.size()) > bufferSize) {
+		return 0;
+	}
+	for (int i = 0; i < int(path.size()); i++) {
+		bufferList[i].mWayPointIdx = path[path.size() - 1 - i];
+	}
+	return int(path.size());
+}
+#endif
+
 int PathFinder::findSync(PathFinder::Buffer* bufferList, int startWPIdx, int destWPIdx, bool includeBlockedPaths)
 {
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) {
+		const int avoid = checkMode(PathFinderMode::AvoidOwnIndex) ? avoidWayPointIndex : -1;
+		return pcShortestPath(this, &PathFinder::getWayPoint, bufferList, mBufferSize, mGroup->mNumPoints, startWPIdx, destWPIdx,
+		                      includeBlockedPaths, avoid);
+	}
+#endif
 	if (checkMode(PathFinderMode::AvoidWater)) {
 		PRINT("*** AVOID_WATER ROUTE FINDING START (%d - %d)\n", destWPIdx, startWPIdx);
 	}
@@ -643,6 +964,13 @@ void RouteMgr::findNearestEdge(WayPoint** outNearestStart, WayPoint** outNearest
 						distanceToEdge    = offset.normalise() - blendedRadius;
 					}
 
+#if defined(PIKI_PC_PORT)
+					// Penalties only add, so edges already beaten need no sampling.
+					if (closestDist > distanceToEdge && pc_settings_get_better_pathfinding()) {
+						distanceToEdge += pcEdgeClimbPenalty(pos, *startWp, *wpLink, projection);
+					}
+#endif
+
 					// Keep closest edge
 					if (closestDist > distanceToEdge) {
 						bestStart   = startWp;
@@ -754,6 +1082,12 @@ void RouteMgr::findNearestEdgeAvoidOff(WayPoint** outNearestStart, WayPoint** ou
 							f32 radius = (1.0f - projection) * startWP->mRadius + projection * endWP->mRadius;
 							distance   = offset.normalise() - radius;
 						}
+
+#if defined(PIKI_PC_PORT)
+						if (closestDist > distance && pc_settings_get_better_pathfinding()) {
+							distance += pcEdgeClimbPenalty(pos, *startWP, *endWP, projection);
+						}
+#endif
 
 						// Store the closest valid edge
 						if (closestDist > distance) {
@@ -1045,6 +1379,10 @@ void RouteMgr::initLinks()
 		WayPoint* wp = getWayPoint('test', i);
 		wp->initLinkInfos();
 	}
+
+#if defined(PIKI_PC_PORT)
+	pcRouteAudit(this);
+#endif
 
 #if defined(WIN32)
 #else

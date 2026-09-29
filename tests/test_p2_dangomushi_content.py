@@ -169,11 +169,10 @@ def _parse_bank(text):
             species_blocks[current][name] = (frames, events, poses)
             pos += width
             if pos < len(tokens) and tokens[pos] == 'frames':
-                # batch-3 parseBank optional pose-frame list (#897): exactly
-                # `poses` strictly increasing frames from 0 to frames-1.
-                listed = [int(value) for value in tokens[pos + 1].split(',')]
+                # Optional P2_BANK_FRAMES_1 trailer (#895): 0..frames-1, rising.
+                listed = [int(v) for v in tokens[pos + 1].split(',')]
                 assert len(listed) == poses and listed[0] == 0 and listed[-1] == frames - 1
-                assert all(b > a for a, b in zip(listed, listed[1:]))
+                assert all(a < b for a, b in zip(listed, listed[1:]))
                 pos += 2
         else:
             raise AssertionError(f'unexpected bank token: {word}')

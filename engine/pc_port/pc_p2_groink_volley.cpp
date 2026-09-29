@@ -24,7 +24,8 @@ void P2GroinkVolley::reset() {
     mPrimary = {};
     mActive = {};
     mTerminals = {};
-    mActiveCount = mTerminalCount = 0;
+    mSegments = {};
+    mActiveCount = mTerminalCount = mSegmentCount = 0;
     mInactiveCount = kCapacity;
     for (std::size_t i = 0; i < kCapacity; ++i) mInactive[i] = i;
 }
@@ -52,6 +53,8 @@ bool P2GroinkVolley::update(const P2GroinkVec3& owner, float delta,
         || !std::isfinite(owner.x) || !std::isfinite(owner.y) || !std::isfinite(owner.z)) return false;
     mTerminals = {};
     mTerminalCount = 0;
+    mSegments = {};
+    mSegmentCount = 0;
     std::size_t survivors = 0;
     bool valid = true;
     const auto previous = mActive;
@@ -60,15 +63,21 @@ bool P2GroinkVolley::update(const P2GroinkVec3& owner, float delta,
         const std::size_t slot = previous[i];
         auto& node = mNodes[slot];
         node.clearTerminalStep();
+        const P2GroinkVec3 before = node.shell().position;
         RequiredTrace required{trace, context};
         node.update(owner, delta, RequiredTrace::call, &required);
         if (!node.shell().active) {
             const auto terminal = node.lastTerminalStep();
             mTerminals[mTerminalCount++] = {slot, mPrimary[slot], terminal};
             mInactive[mInactiveCount++] = slot;
+            if (terminal.valid)
+                mSegments[mSegmentCount++] = {slot, mPrimary[slot], true, terminal.start, terminal.end};
             valid = valid && !required.failed && terminal.reason != P2GroinkTerminalReason::Invalid;
         } else {
             mActive[survivors++] = slot;
+            const P2GroinkVec3 after = node.shell().position;
+            mSegments[mSegmentCount++] = {slot, mPrimary[slot], false,
+                {before.x, before.y - 10.0f, before.z}, {after.x, after.y - 10.0f, after.z}};
         }
     }
     mActiveCount = survivors;

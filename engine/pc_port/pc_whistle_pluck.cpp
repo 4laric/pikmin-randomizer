@@ -1,5 +1,7 @@
 #include "pc_whistle_pluck.h"
 #include "settings/pc_settings.h"
+#include "pc_coop.h"
+#include "pc_randomizer.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
 #include "Navi.h"
@@ -15,7 +17,10 @@
 
 bool pc_whistle_pluck(Navi* navi, float radius)
 {
-    if (!pc_settings_get_whistle_pluck() || !navi || !pikiMgr || !itemMgr
+    // A seed carrying the Whistle Pluck item decides; otherwise the Mods setting does.
+    const int fromItem = pc_randomizer_whistle_pluck();
+    const bool allowed = fromItem >= 0 ? fromItem == 1 : pc_settings_get_whistle_pluck() != 0;
+    if (!allowed || !navi || !pikiMgr || !itemMgr
         || !std::isfinite(radius) || radius <= 0.0f || navi->mHealth <= 0.0f
         || !playerState || playerState->inDayEnd()
         || gameflow.mPauseAll || gameflow.mIsUIOverlayActive
@@ -29,6 +34,8 @@ bool pc_whistle_pluck(Navi* navi, float radius)
         if (item->mObjType != OBJTYPE_Pikihead) continue;
         PikiHeadItem* sprout = static_cast<PikiHeadItem*>(item);
         if (!sprout->canPullout()) continue;
+        // VS: a captain cannot pluck the rival's sprouts, as with manual plucking.
+        if (pc_vs_active() && sprout->mPcOwner >= 0 && sprout->mPcOwner != navi->mNaviID) continue;
         const Vector3f delta = sprout->mSRT.t - navi->mCursorWorldPos;
         // Match manual plucking's vertical reach; don't pluck through floors.
         if (std::fabs(delta.y) >= 25.0f) continue;
@@ -51,6 +58,7 @@ bool pc_whistle_pluck(Navi* navi, float radius)
     piki->initColor(nearest->mSeedColor);
     if (nearest->mP2Purple) pc_p2_make_purple(piki);
     if (nearest->mP2White) pc_p2_make_white(piki);
+    if (pc_vs_active() && nearest->mPcOwner >= 0) piki->mPlayerId = nearest->mPcOwner;
     piki->setFlower(nearest->mFlowerStage);
     piki->resetPosition(nearest->mSRT.t);
     piki->mFSM->transit(piki, PIKISTATE_AutoNuki);

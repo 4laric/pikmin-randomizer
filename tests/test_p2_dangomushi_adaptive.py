@@ -61,7 +61,7 @@ def test_adaptive_keys_keep_event_anchors_and_skip_static_clips():
 
 
 def test_bank_rows_carry_pose_frames_and_merge_with_snagret_rows():
-    dango = [('attack', 140, '23:4', 3, 'converted', (0, 70, 139)),
+    dango = [('attack', 140, '23:4', 3, 'converted', '0,70,139'),
              ('wait', 40, '-', 2, 'converted')]
     text = _merge_bank(None, 'DangoMushi', 94, dango)
     assert b'clip DangoMushi attack 140 23:4 poses 3 status converted frames 0,70,139' in text
@@ -74,12 +74,12 @@ def test_bank_rows_carry_pose_frames_and_merge_with_snagret_rows():
     assert _merge_bank(merged, 'DangoMushi', 94, dango) == merged
     with pytest.raises(StagingError):
         _merge_bank(merged, 'DangoMushi', 94,
-                    [('attack', 140, '23:4', 3, 'converted', (0, 71, 139))] + dango[1:])
+                    [('attack', 140, '23:4', 3, 'converted', '0,71,139')] + dango[1:])
 
 
 @pytest.mark.parametrize('frames', [(0, 70), (1, 70, 139), (0, 70, 138), (0, 70, 70)])
 def test_bank_rejects_frame_lists_the_native_parser_refuses(frames):
-    rows = [('attack', 140, '-', len(frames), 'converted', frames)]
+    rows = [('attack', 140, '-', len(frames), 'converted', ','.join(map(str, frames)))]
     with pytest.raises(StagingError):
         _merge_bank(None, 'DangoMushi', 94, rows)
 

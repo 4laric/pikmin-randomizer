@@ -44,6 +44,7 @@ every existing caller keeps working. Today the pool is:
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
 | 78 | MiniHoudai | minihoudai |
+| 32 | Demon | demon |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -72,8 +73,15 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 36 species on 35 slots, a given seed may leave out any
-  one pool species. A pool that fits keeps the legacy fill unchanged.
+  (`sampled-v1`). With 37 species on 35 slots, a given seed may leave out any
+  two pool species. A pool that fits keeps the legacy fill unchanged.
+- **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
+  with its own retail profile and bank. It grabs the captain, flies, drops him
+  (10 damage), is knocked down by Pikmin weight, dies naturally, is carried as
+  the Demon carcass and delivers `onion:p2:32:3` on its own generator. Known
+  accommodations: the Chappy anchor's collision stands in for the body, gravity
+  is assumed, the corpse carry config is the P1 host's, and a captain flick is
+  a plain release.
 - **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
   11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster

@@ -17,11 +17,13 @@ CLIP_FILES = {'wait1.bca', 'move1.bca', 'attack1.bca', 'waitact2.bca', 'waitact1
 
 class SaraiAssetUnitTests(unittest.TestCase):
     def test_capture_and_event_frames(self):
-        self.assertEqual(frames_for(50, [[13, 2], [50, 1000]]), [0, 10, 13, 16, 17, 30, 49])
+        # Events + capture-window boundaries + the dense uniform sampling (#895).
+        self.assertEqual(frames_for(50, [[13, 2], [50, 1000]]),
+                         [0, 3, 7, 10, 13, 16, 17, 20, 23, 26, 29, 30, 33, 36, 39, 42, 46, 49])
         self.assertEqual(frames_for(1, []), [0])
 
     def test_invalid_and_budget(self):
-        for duration, events in [(0, []), (5, [[6, 2]]), (100, [[i, 2] for i in range(40)])]:
+        for duration, events in [(0, []), (5, [[6, 2]]), (200, [[i, 2] for i in range(70)])]:
             with self.assertRaises(ValueError):
                 frames_for(duration, events)
 

@@ -241,6 +241,12 @@ public:
 	void createOffPlane(u32 handle, Plane& plane, WayPoint* wp);
 	WayPoint* findNearestWayPointAll(u32 handle, immut Vector3f& pos);
 	WayPoint* getWayPoint(u32 handle, int wpIdx);
+#if defined(PIKI_PC_PORT)
+	// Better Pathfinding: of the two ends of the nearest edge, the one that makes
+	// the whole trip to destWPIdx shortest (retail takes the nearer end, which
+	// can send a Pikmin backwards first). Falls back to the nearer end.
+	WayPoint* pickRouteStart(immut Vector3f& pos, WayPoint* a, WayPoint* b, int destWPIdx, bool avoidWater);
+#endif
 	void construct(MapMgr* map);
 	void initLinks();
 	void refresh(Graphics& gfx);
@@ -340,6 +346,16 @@ public:
 	                   bool ignoreClosedWaypoints);
 	int selectSecondBestWayOnyon(immut Vector3f& curPos, int& secondBestCost, int goalType, Buffer& buf, int destWPIdx, Buffer* bufferList,
 	                             int bufIdx, bool ignoreClosedWaypoints);
+
+#if defined(PIKI_PC_PORT)
+	// "Better Pathfinding" (pc_settings_get_better_pathfinding). Shortest path
+	// under selectWay's rules, honouring the AvoidWater mode; same return
+	// convention as findSync (points in the path, 0 when there is none).
+	int findSyncShortest(Buffer* bufferList, int startWPIdx, int destWPIdx, bool includeBlockedPaths);
+	// Length in world units of the shortest path, or a negative value when there
+	// is none. Takes the water rule explicitly rather than from the mode.
+	f32 shortestRouteLength(int startWPIdx, int destWPIdx, bool includeBlockedPaths, bool avoidWater);
+#endif
 
 	// unused/inlined:
 	void updateASync();

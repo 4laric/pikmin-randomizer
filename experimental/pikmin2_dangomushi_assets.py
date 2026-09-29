@@ -38,7 +38,7 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import resource_chunks, sample_frames, decode_pose
 from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nodes
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
@@ -338,9 +338,8 @@ def extract(iso, output, pose_limit=6, sampling='uniform'):
         if adaptive:
             baked = []
             for frame in range(duration):
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                baked.append(decode(model, True, bake_rigid=True,
-                                    draw_matrices=draw_matrices(model_blocks, pose))[1][9])
+                decoded, _ = decode_pose(decode, model, model_blocks, raw, frame, len(names))
+                baked.append(decoded[1][9])
         cap = pose_limit
         while True:
             if adaptive:
@@ -357,9 +356,7 @@ def extract(iso, output, pose_limit=6, sampling='uniform'):
             pose_datas = []
             for frame in frames:
                 try:
-                    _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                    matrices = draw_matrices(model_blocks, pose)
-                    decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
+                    decoded, _ = decode_pose(decode, model, model_blocks, raw, frame, len(names))
                     name = pose_name(stem, len(clip['poses']))
                     colors = None
                     if adaptive:

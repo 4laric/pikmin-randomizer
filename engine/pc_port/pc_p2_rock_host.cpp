@@ -2,6 +2,7 @@
 #include "MapMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include <cmath>
@@ -87,9 +88,11 @@ P2RockHazardDetection detectRock(const P2RockHazardVec3& from, float sightRadius
         const float dx = p.x - from.x, dy = p.y - from.y, dz = p.z - from.z;
         return dx * dx + dy * dy + dz * dz <= sightSq;
     };
-    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
-    if (navi && navi->isAlive() && inRange(navi)) {
-        detection.olimarInSight = true;
+    for (Navi* navi : pc_p2_navis()) {
+        if (navi->isAlive() && inRange(navi)) {
+            detection.olimarInSight = true;
+            break;
+        }
     }
     if (pikiMgr) {
         Iterator it(pikiMgr);

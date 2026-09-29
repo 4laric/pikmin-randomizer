@@ -44,6 +44,12 @@ def committed_document():
     return json.loads(ADMITTED_PLACEMENT_DOC.read_text(encoding="utf-8"))
 
 
+def ordinary_bindings(layout):
+    """Bindings outside the #901 held-part layer (its own RNG stream)."""
+    held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
+    return [binding for binding in layout["bindings"] if binding["target"] not in held]
+
+
 def accepted_document_for(*identities):
     """Minimal accepted document granting each named identity every ground target."""
     roster = load_and_validate()
@@ -72,9 +78,9 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
     roster = load_and_validate()
     document = committed_document()
     layout = resolve_placement_layout("seed-a", "Player1", document, roster, species=[SARAI])
-    targets = {binding["target"] for binding in layout["bindings"]}
+    targets = {binding["target"] for binding in ordinary_bindings(layout)}
     # Every accepted, constraint-compatible target is bound, all to Sarai.
-    assert len(layout["bindings"]) == 35  # committed doc exposes 35 accepted slots
+    assert len(ordinary_bindings(layout)) == 35  # committed doc exposes 35 accepted slots
     assert {binding["source_id"] for binding in layout["bindings"]} == {SARAI}
     assert layout["density"] == DENSITY_LEGACY
     assert targets  # nonempty
@@ -84,10 +90,10 @@ def test_legacy_default_is_unchanged_and_deterministic():
     """Default policy is deterministic: repeated calls agree byte-for-byte."""
     roster = load_and_validate()
     document = committed_document()
-    # #893: the admitted pool (36) outgrew the 35 slots and a bare default
+    # #893: the admitted pool (37) outgrew the 35 slots and a bare default
     # now samples it; a 35-species subset still fits, and there None and the
     # explicit legacy token agree.
-    fit = [source_id for source_id in admitted_ids(roster) if source_id != 78]
+    fit = [source_id for source_id in admitted_ids(roster) if source_id not in (78, 32)]
     first = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     second = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     assert first == second
@@ -100,14 +106,14 @@ def test_legacy_multi_species_multiset_is_pinned():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 36; #899 moved the Crawbster 94 to the boss arenas,
-    # so the 35 ordinary species fit the 35 ordinary slots exactly.
-    assert len(PLAYABLE_P2_SPECIES) == 36
-    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id != 94]
+    # #893: the pool is 37; #899 moved the Crawbster 94 to the boss arenas,
+    # so the 35 ordinary slots fit once Demon 32 is left out.
+    assert len(PLAYABLE_P2_SPECIES) == 37
+    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (94, 32)]
     roster = load_and_validate()
     layout = resolve_placement_layout(
         "seed-a", "Player1", committed_document(), roster, species=fit)
-    counts = Counter(binding["source_id"] for binding in layout["bindings"])
+    counts = Counter(binding["source_id"] for binding in ordinary_bindings(layout))
     assert sum(counts.values()) == 35
     assert set(counts) == set(fit)
     assert all(count == 1 for count in counts.values())

@@ -49,6 +49,7 @@
 #include "Generator.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -332,8 +333,8 @@ void fuefukiProbe(void*, P2FuefukiProbeResult& out)
     const Vector3f velocity = sFuefukiVehicle->getVelocity();
     out.vx = velocity.x;
     out.vz = velocity.z;
-    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
-    if (navi && fuefukiXzSq(navi->mSRT.t, anchor) < 3600.0f) out.intruder = true;
+    for (Navi* navi : pc_p2_navis())
+        if (fuefukiXzSq(navi->mSRT.t, anchor) < 3600.0f) out.intruder = true;
     Iterator it(pikiMgr);
     CI_LOOP(it) {
         Piki* piki = static_cast<Piki*>(*it);
@@ -516,8 +517,8 @@ bool bigTreasureTargetInBox()
     auto inside = [&](float x, float z) {
         return std::fabs(x - bx) <= box && std::fabs(z - bz) <= box;
     };
-    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
-    if (navi && inside(navi->mSRT.t.x, navi->mSRT.t.z)) return true;
+    for (Navi* navi : pc_p2_navis())
+        if (inside(navi->mSRT.t.x, navi->mSRT.t.z)) return true;
     Iterator it(pikiMgr);
     CI_LOOP(it) {
         Piki* piki = static_cast<Piki*>(*it);
@@ -981,8 +982,7 @@ void pc_p2_hardlanes_update()
                         const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
                                                         sBigTreasureGround,
                                                         sBigTreasure.placement.owner.z };
-                        Navi* liveNavi = naviMgr ? naviMgr->getNavi() : nullptr;
-                        if (liveNavi) {
+                        for (Navi* liveNavi : pc_p2_navis()) {
                             const P2BigTreasureVec3 target{ liveNavi->mSRT.t.x,
                                                             liveNavi->mSRT.t.y,
                                                             liveNavi->mSRT.t.z };

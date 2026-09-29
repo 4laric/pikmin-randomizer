@@ -5,6 +5,7 @@
 #include "P2D/TextBox.h"
 #include "P2D/Window.h"
 #include "sysNew.h"
+#include <cstring>
 #include "zen/ogSub.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
@@ -158,8 +159,45 @@ P2DPane* P2DScreen::stop()
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+// Pantalla completa (issue #46): los .blo aparcan paneles justo fuera del
+// 640x480 (burbujas dot_*, textos y marcos de menús que entran deslizándose).
+// En 4:3 nunca se veían; en ancho asoman por los lados. Mientras se dibuja se
+// oculta cada imagen o texto sin hijos que esté entero fuera del 640 en ese
+// momento, y se restaura después: lo que cruza el borde o el código mete
+// dentro sigue igual. Bajo un panel escalado la posición no es fiable y no
+// se toca nada (fondo y cortinillas del mapa, iconos que laten).
+static int pcHideOffscreenPanes(P2DPane* pane, int parentX, P2DPane** hidden, int count, int max)
+{
+	for (PSUTree<P2DPane>* it = pane->getFirstChild(); it; it = it->getNextChild()) {
+		P2DPane* child = it->getObject();
+		if (!child->IsVisible()) continue;
+		const Vector3f& sc = child->getScale();
+		if (sc.x != 1.0f || sc.y != 1.0f) continue;
+		const int x      = parentX + child->getPosH();
+		const u16 type   = child->getTypeID();
+		const bool leaf  = child->getFirstChild() == nullptr;
+		if (leaf && (type == PANETYPE_Picture || type == PANETYPE_TextBox) && count < max
+		    && (x + child->getWidth() <= 0 || x >= 640)) {
+			child->hide();
+			hidden[count++] = child;
+			continue;
+		}
+		count = pcHideOffscreenPanes(child, x, hidden, count, max);
+	}
+	return count;
+}
+#endif
+
 void P2DScreen::draw(int x, int y, const P2DGrafContext* grafContext)
 {
+#if defined(PIKI_PC_PORT)
+	P2DPane* hiddenPanes[512];
+	// Solo pantallas del juego (raíz 640 de ancho): las superposiciones del
+	// port se maquetan ya en el ancho real (selector de capitán, ajustes).
+	const bool pcGameLayout = getWidth() == 640 && getScale().x == 1.0f;
+	const int hiddenCount   = pcGameLayout ? pcHideOffscreenPanes(this, 0, hiddenPanes, 0, 512) : 0;
+#endif
 	if (grafContext) {
 		P2DGrafContext context(*grafContext);
 		P2DPane::draw(x, y, grafContext, _EC);
@@ -173,6 +211,9 @@ void P2DScreen::draw(int x, int y, const P2DGrafContext* grafContext)
 		P2DPane::draw(x, y, &ortho, _EC);
 		ortho.setScissor();
 	}
+#if defined(PIKI_PC_PORT)
+	for (int i = 0; i < hiddenCount; i++) hiddenPanes[i]->show();
+#endif
 
 	GXSetNumTexGens(0);
 	GXSetNumTevStages(1);
