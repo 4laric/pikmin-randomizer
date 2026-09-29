@@ -73,9 +73,12 @@ never P2 identities and never enter this table.
 - **41 Fuefuki (Antenna Beetle): admitted (#245, 2026-09-29).** Its OWN
   campaign port runs the source FSM on a P1 Chappy teki with its AI suppressed. The beetle
   whistles followers away, is pressed into Struggle by a thrown Pikmin, dies
-  naturally, is carried and delivers `onion:p2:41:3`; its owner-death Panic
-  followers come back to a captain whistle. The whistle ring is a P1
-  ground-band stand-in, not the retail effect.
+  naturally, is carried and delivers its Onion receipt on Distant Spring,
+  on Forest Navel (a natural seed, no rebind) and on Forest of Hope. Its
+  owner-death Panic followers come back to a captain whistle. A P1 safety
+  guard keeps its Land/Walk targets on ground routed to home: before the
+  guard, run d4 stranded the corpse on a ledge behind a closed waypoint. The
+  whistle ring is a P1 ground-band stand-in, not the retail effect.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
