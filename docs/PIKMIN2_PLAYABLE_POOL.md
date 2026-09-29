@@ -44,6 +44,7 @@ every existing caller keeps working. Today the pool is:
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
 | 78 | MiniHoudai | minihoudai |
+| 41 | Fuefuki | fuefuki |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -69,11 +70,17 @@ never P2 identities and never enter this table.
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
   eye-checked the facing and the shell effects. Carcass revival and the
   body charge/smoke effects are not ported yet.
+- **41 Fuefuki (Antenna Beetle): admitted (#245, 2026-09-29).** Its OWN
+  campaign port runs the source FSM on a P1 Chappy teki with its AI suppressed. The beetle
+  whistles followers away, is pressed into Struggle by a thrown Pikmin, dies
+  naturally, is carried and delivers `onion:p2:41:3`; its owner-death Panic
+  followers come back to a captain whistle. The whistle ring is a P1
+  ground-band stand-in, not the retail effect.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 36 species on 35 slots, a given seed may leave out any
-  one pool species. A pool that fits keeps the legacy fill unchanged.
+  (`sampled-v1`). With 37 species on 35 slots, a given seed may leave out any
+  two pool species. A pool that fits keeps the legacy fill unchanged.
 - **Unkillable enemies carry no Archipelago check.** 9 Kogane, 10 Wealthy,
   11 Fart and 16 Qurione are invulnerable in P2 source and leave no carcass, so
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster

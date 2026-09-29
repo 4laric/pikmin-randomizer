@@ -766,23 +766,28 @@
       ]
     },
     "41": {
-      "native_module": "pc_p2_fuefuki_visual",
+      "native_module": "pc_p2_fuefuki_teki",
       "owner_lane": "28",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Antenna Beetle (Fuefuki, source 41): OWN campaign port (#245). The source Fuefuki FSM drives the campaign beetle on a P1 Chappy teki whose AI is suppressed; it whistles away and releases followers, is pressed into Struggle by a thrown Pikmin, dies naturally, is carried and delivers Onion receipt onion:p2:41:3 on its own generator token. The earlier arena-derived gates are replaced by this campaign evidence.",
       "source": [
-        "PIKMIN2_HARD_LANES_HANDOFF.md"
+        "PIKMIN2_HARD_LANES_HANDOFF.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:41:3 (P2_FUEFUKI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-41/runs/d6-41/session/runs/322dcb65d8732584c7aab987bb0b518ee0930f61b0d5897ad3e9116135d2028d/native.log:L3201 receipt (sha256 6430c094fa1bea7c4ed89808a024dfd976fd4ba7260fb7d488443984654f2903)",
       "notes": [
-        "Fuefuki (Antenna Beetle): fuefuki motion/visual; natural claim/panic/death release + follow locomotion remain (#245)."
+        "Fuefuki (Antenna Beetle): source FSM pc_p2_fuefuki_fsm (FuefukiState.cpp) bound per campaign token via pc_p2_fuefuki_teki; P1 TEKI_Chappy teki with its AI suppressed and stored damage drained; retail parms, 10 staged clips (120 poses) and P2 model draw; whistle theft follows ActTeki (footmark trail, Formation blocked while the beetle lives, emote then Free on take-off, astonish Panic on death); press seam before the organic-Teki early return in PikiFlyingState::procCollideMsg; dead pin cancels P1 crowd separation push on the carcass.",
+        "Campaign evidence, bot-driven power-mode run d6 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator: output/claude-orch/p2-port-41/runs/d6-41/session/runs/322dcb65d8732584c7aab987bb0b518ee0930f61b0d5897ad3e9116135d2028d/native.log (sha256 6430c094fa1bea7c4ed89808a024dfd976fd4ba7260fb7d488443984654f2903): P2_GENERATED_PLACEMENT bound=1 module=fuefuki_teki, OWN_BIND host_ai=suppressed retail_parms=1, FSM states land/whisle/wait/turn/walk/jump/stay/struggle/dead, 5 casts and 83 whistle claims, L2206 PRESS_INTERACT route=flying_contact result=struggle then L2209 land->struggle (health 610 -> 145 while struggling), 46 DAMAGE lines falling 685 to 0, L2731 DEAD followers_panic=76, 76 RECLAIM released=owner_dead via=whistle, DEAD_PIN push_cancelled=18.4, CARCASS carry 3..6, L3201 receipt onion:p2:41:3 new=1, L3205 RESULT 1/1/1/1 in 85 s. Pins: native 4laric/Open-Nectar claude/p2-port-41-antenna-beetle-v2 (fork main a6cee5e85 + #245), exe nectar.exe sha256 4a2133c1e2dd8aa2691176c6f959f5c568fb9564f6eb885daee041118db387cc.",
+        "Earlier runs d3 (51 whistle reclaims of airborne-released followers, full chain) and d5 (owner-death Panic reclaim via=whistle, full chain) on the same seed. Frame eye-check: struggle roll with Pikmin latched (d6 frames 01110-01170), walk facing head-first in both directions (d6 01965, 02070-02100), whistle ring band, dead then carry pose, no P1 Chappy model drawn; hidden while in Stay.",
+        "Known gaps: whistle ring is a P1 ground-band stand-in, not the retail efx; P1 has no bitter spray, so the EB_Bittered branch is inert; the P1 teki position drifts while hidden in Stay before Land teleports it; a cast can take most of a squad and a death mid-cast panics them until the player whistles (source behaviour, attackRadius 130)."
       ]
     },
     "45": {

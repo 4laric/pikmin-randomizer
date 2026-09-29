@@ -573,6 +573,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
         },
     },
+    {
+        "source_id": 41,
+        "enum_name": "Fuefuki",
+        "family": "fuefuki",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign d6 (owner ruling 2026-09-25: power mode admits; #245): red squad, campaign OWN bind of the source Fuefuki FSM on a P1 Chappy teki with its AI suppressed, whistle casts steal and release followers, a thrown Pikmin lands in the mCanStruggle window and flips it into Struggle, jump/stay/land cycle, 46 DAMAGE lines, P2_FUEFUKI_DEAD on its own generator, owner-death Panic followers whistled back, corpse carried, Onion receipt onion:p2:41:3",
+            "log": "output/claude-orch/p2-port-41/runs/d6-41/session/runs/322dcb65d8732584c7aab987bb0b518ee0930f61b0d5897ad3e9116135d2028d/native.log (sha256 6430c094fa1bea7c...) L2206 press->struggle, L2731 dead, L3201 receipt; native claude/p2-port-41-antenna-beetle-v2, exe sha256 4a2133c1e2dd8aa2...; #245",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 41 -> fuefuki "
+                         "(stages p2-fuefuki-parms/motion/bank and the fuefuki pose meshes)",
+        },
+    },
 )
 
 
