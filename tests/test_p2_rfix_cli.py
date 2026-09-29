@@ -47,4 +47,6 @@ def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
          "--p2-species", "playable", "--output", str(out_file)])
     assert code == 0
     manifest = json.loads(out_file.read_text(encoding="utf-8"))
-    assert len(manifest["p2_layout"]["bindings"]) == 35
+    # 35 ordinary slots plus the Crawbster's one boss-arena binding (#899).
+    assert len(manifest["p2_layout"]["bindings"]) == 36
+    assert [row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]] == [94]

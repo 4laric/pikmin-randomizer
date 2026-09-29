@@ -77,7 +77,10 @@ def test_every_location_reachable_on_playable_seed():
 
 def test_replaced_hosts_keep_all_delivery_checks_reachable():
     manifest = playable_manifest()
-    bound = {b["target"] for b in manifest["p2_layout"]["bindings"]}
+    all_bound = {b["target"] for b in manifest["p2_layout"]["bindings"]}
+    # #899: a boss binds a P1 boss arena, not a campaign teki slot.
+    arena = {t for row in manifest["p2_layout"].get("boss_arenas", {}).get("placed", []) for t in row["targets"]}
+    bound = all_bound - arena
     by_uid = {str(row["uid"]): row for row in CAMPAIGN_SLOTS}
     assert bound and bound <= set(by_uid)
     totals = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS)
@@ -93,8 +96,9 @@ def test_replaced_hosts_keep_all_delivery_checks_reachable():
         assert can_reach_manifest(name, full, manifest), name
     # Every bound slot keeps a corpse route home, so deliveries stay physical.
     doc_slots = {str(slot["uid"]): slot for slot in _default_admitted_placement()["slots"]}
-    assert bound <= set(doc_slots)
-    assert all(doc_slots[target]["corpse_route"] for target in bound)
+    assert all_bound <= set(doc_slots)
+    assert all(doc_slots[target]["corpse_route"] for target in all_bound)
+    assert all(doc_slots[target]["boss_slot"] for target in arena)
 
 
 def test_fill_pool_unchanged_by_p2():

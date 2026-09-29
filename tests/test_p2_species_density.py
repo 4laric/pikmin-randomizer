@@ -100,9 +100,10 @@ def test_legacy_multi_species_multiset_is_pinned():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 36 on 35 slots; the pre-78 selection still fits.
+    # #893: the pool is 36; #899 moved the Crawbster 94 to the boss arenas,
+    # so the 35 ordinary species fit the 35 ordinary slots exactly.
     assert len(PLAYABLE_P2_SPECIES) == 36
-    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id != 78]
+    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id != 94]
     roster = load_and_validate()
     layout = resolve_placement_layout(
         "seed-a", "Player1", committed_document(), roster, species=fit)

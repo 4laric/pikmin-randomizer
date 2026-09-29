@@ -32,6 +32,11 @@ ENCOUNTER_REQUIRED = ('id', 'identity', 'terrains', 'footprint_radius', 'helper_
 ENCOUNTER_ALLOWED = ENCOUNTER_REQUIRED + ('notes',)
 ARENA_SLOT_KEYS = ('min', 'max')
 DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
+# P2 boss arenas (#899): optional top-level list naming the P1 boss generators
+# an arena slot (boss_slot true, uid == primary_uid) spans.
+ARENA_REQUIRED = ('id', 'stage', 'primary_uid', 'spawn_uids', 'suppress_uids', 'p1_boss')
+ARENA_ALLOWED = ARENA_REQUIRED + ('p1_kind', 'p1_type', 'center', 'first_day', 'respawn_days',
+                                  'protected_drop', 'measured', 'notes')
 
 PROXY_SCHEMA = 'p2-proxy-placement-v1'
 PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
@@ -432,8 +437,46 @@ def validate_encounter_descriptor(descriptor):
     return descriptor
 
 
+def _int_list(value):
+    return (isinstance(value, list)
+            and all(isinstance(item, int) and not isinstance(item, bool) for item in value))
+
+
+def normalize_arena(data, slots_by_uid):
+    """Validate one boss-arena record against the document's slots (#899)."""
+    _check_keys('arena', data, ARENA_REQUIRED, ARENA_ALLOWED)
+    arena = dict(data)
+    if not isinstance(arena['id'], str) or not arena['id']:
+        _fail('arena id must be a non-empty string')
+    if not isinstance(arena['stage'], int) or isinstance(arena['stage'], bool) or arena['stage'] < 0:
+        _fail('arena stage must be a non-negative integer')
+    if not _int_list(arena['spawn_uids']) or not arena['spawn_uids']:
+        _fail(f"arena {arena['id']} spawn_uids must be a non-empty list of integers")
+    if not _int_list(arena['suppress_uids']):
+        _fail(f"arena {arena['id']} suppress_uids must be a list of integers")
+    members = list(arena['spawn_uids']) + list(arena['suppress_uids'])
+    if len(set(members)) != len(members):
+        _fail(f"arena {arena['id']} repeats a generator uid")
+    if arena['primary_uid'] != arena['spawn_uids'][0]:
+        _fail(f"arena {arena['id']} primary_uid must be its first spawn uid")
+    protected_drop = arena.get('protected_drop')
+    if protected_drop is not None and not isinstance(protected_drop, str):
+        _fail(f"arena {arena['id']} protected_drop must be a string or null")
+    # An arena whose slot a caller removed is inert (never eligible); a slot
+    # that is present must be its boss slot.
+    slot = slots_by_uid.get(arena['primary_uid'])
+    if slot is not None:
+        if not slot['boss_slot']:
+            _fail(f"arena {arena['id']} primary_uid must name a boss_slot slot")
+        if slot['stage'] != arena['stage']:
+            _fail(f"arena {arena['id']} stage does not match its slot")
+        if bool(protected_drop) != slot['protected']:
+            _fail(f"arena {arena['id']} protected_drop and slot protected disagree")
+    return arena
+
+
 def validate_document(document):
-    _check_keys('document', document, DOCUMENT_REQUIRED, DOCUMENT_REQUIRED + ('notes', 'encounters'))
+    _check_keys('document', document, DOCUMENT_REQUIRED, DOCUMENT_REQUIRED + ('notes', 'encounters', 'arenas'))
     if document['schema'] != SCHEMA:
         _fail(f'document schema must be {SCHEMA}')
     if not isinstance(document['slots'], list) or not isinstance(document['profiles'], list):
@@ -462,8 +505,27 @@ def validate_document(document):
             _fail(f"boss profile {profile['identity']} requires an encounter_descriptor")
         if reference not in descriptors_by_id:
             _fail(f"boss profile {profile['identity']} references unknown encounter descriptor {reference}")
-    return {'schema': SCHEMA, 'slots': slots, 'profiles': profiles,
-            'encounters': encounters, 'notes': document.get('notes', '')}
+    result = {'schema': SCHEMA, 'slots': slots, 'profiles': profiles,
+              'encounters': encounters, 'notes': document.get('notes', '')}
+    if 'arenas' in document:
+        if not isinstance(document['arenas'], list):
+            _fail('document arenas must be a list')
+        slots_by_uid = {slot['uid']: slot for slot in slots}
+        arenas = [normalize_arena(arena, slots_by_uid) for arena in document['arenas']]
+        ids = [arena['id'] for arena in arenas]
+        if len(set(ids)) != len(ids):
+            _fail('document has duplicate arena ids')
+        members = [uid for arena in arenas for uid in arena['spawn_uids'] + arena['suppress_uids']]
+        if len(set(members)) != len(members):
+            _fail('document arenas share a generator uid')
+        arena_primaries = {arena['primary_uid'] for arena in arenas}
+        stray = sorted(slot['uid'] for slot in slots
+                       if slot['boss_slot'] and slot['uid'] not in arena_primaries
+                       and slot['uid'] in members)
+        if stray:
+            _fail(f'arena member uids must not be separate boss slots: {stray}')
+        result['arenas'] = arenas
+    return result
 
 
 def load_document(path):
