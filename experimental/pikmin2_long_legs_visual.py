@@ -17,6 +17,12 @@ elsewhere, per #186):
   ``EVP1`` matrix envelopes (weighted skinning), which the strict rigid path
   rejects. The table is the authored inverse-bind blend at the bind pose.
 
+A rigid (envelope-free) mesh, i.e. Houdai, also gets a rigid skin sidecar
+(``longlegs_<species>_skin_00.txt``, ``P2_LONG_LEGS_SKIN_1``): every joint's
+bind matrix and, per baked position/normal, its owning joint and joint-local
+value. The native draw re-poses the twelve leg joints with the ported source
+IKSystemMgr so the legs walk (#173); everything else stays at the bind pose.
+
 Output is deterministic (no clock, no environment), refuses to overwrite, and
 records every source/output SHA-256. No disc assets, generated models or
 receipts are committed; evidence stays under private ``output/``.
@@ -33,6 +39,8 @@ from experimental.pikmin2_skinning import draw_matrices
 SPECIES = {'Houdai': 66, 'BigFoot': 69}
 MESH = '{species}_enemy.bmd'
 MOD = 'longlegs_{species}_bind_00.mod'
+SKIN = 'longlegs_{species}_skin_00.txt'
+SKIN_HEADER = 'P2_LONG_LEGS_SKIN_1'
 RECEIPT = 'long-legs-visual.json'
 SCHEMA = 1
 FAMILY = 'Long Legs'
@@ -61,7 +69,8 @@ def _conversion(model):
     draw = None
     if envelopes:
         draw = draw_matrices(model_blocks)
-    decoded = decode(model, True, bake_rigid=True, draw_matrices=draw)
+    bindings = {} if not envelopes else None
+    decoded = decode(model, True, bake_rigid=True, draw_matrices=draw, bindings=bindings)
     # write_model writes a path-bearing sidecar next to the .mod; write into a
     # throwaway path then capture the bytes so no sidecar is left in the room.
     import tempfile
@@ -74,7 +83,62 @@ def _conversion(model):
     report['bind_draw_matrices'] = len(draw or [])
     if len(data) > MAX_MOD_BYTES:
         raise ValueError('Converted bind mesh exceeds budget')
+    if bindings is not None:
+        # Rigid mesh: every baked vertex follows exactly one joint, so the
+        # native IK leg draw can re-pose it (#173 walk animation).
+        report['skin_text'] = skin_text(model_blocks, bindings)
     return data, report
+
+
+def joint_names(model_blocks):
+    """JNT1 name table, in joint index order."""
+    j = model_blocks['JNT1']
+    count = struct.unpack_from('>H', j, 8)[0]
+    table = struct.unpack_from('>I', j, 20)[0]
+    if struct.unpack_from('>H', j, table)[0] != count:
+        raise ValueError('Joint name table count mismatch')
+    names = []
+    for i in range(count):
+        offset = struct.unpack_from('>H', j, table + 4 + 4 * i + 2)[0]
+        start = table + offset
+        end = j.index(b'\0', start)
+        names.append(j[start:end].decode('ascii'))
+    return names
+
+
+def skin_text(model_blocks, bindings):
+    """Rigid skin sidecar for the native Long Legs IK draw (#173).
+
+    One row per joint (its bind model-space 3x4 matrix, the matrix the bind
+    bake used) and one row per baked ``.mod`` position/normal in ``.mod``
+    order: the owning joint and the joint-local value. The native draw
+    evaluates ``matrix[joint] * local`` per vertex, so the bind matrices
+    reproduce the bind ``.mod`` exactly and IK-posed leg joints move only
+    the vertices they own.
+    """
+    from experimental.pikmin2_rigid import joint_matrices
+    names = joint_names(model_blocks)
+    matrices = joint_matrices(model_blocks)
+    if len(names) != len(matrices):
+        raise ValueError('Joint name/matrix count mismatch')
+
+    def f(v):
+        return format(float(v), '.9g')
+
+    rows = [SKIN_HEADER, f'joints {len(matrices)}']
+    for index, (name, matrix) in enumerate(zip(names, matrices)):
+        if not name or any(c.isspace() for c in name):
+            raise ValueError('Unsupported joint name')
+        rows.append(f'j {index} {name} ' + ' '.join(f(v) for row in matrix for v in row))
+    for label, attr in (('positions', 9), ('normals', 10)):
+        entries = bindings[attr]
+        rows.append(f'{label} {len(entries)}')
+        for joint, value in entries:
+            if not 0 <= joint < len(matrices):
+                raise ValueError('Skin joint out of range')
+            rows.append(f'{joint} ' + ' '.join(f(v) for v in value))
+    rows.append('end')
+    return ('\n'.join(rows) + '\n').encode('ascii')
 
 
 def plan(room):
@@ -96,6 +160,7 @@ def convert(room):
         return dict(schema=SCHEMA, family=FAMILY, visuals='absent_baseline_preserved',
                     species={}, files={})
     targets = [room / MOD.format(species=name) for name in wanted]
+    targets += [room / SKIN.format(species=name) for name in wanted]
     if any(target.exists() or target.is_symlink() for target in targets):
         raise ValueError('Refusing existing/conflicting Long Legs visual conversion')
     if (room / RECEIPT).exists():
@@ -104,7 +169,10 @@ def convert(room):
     for name in wanted:
         source = (room / MESH.format(species=name)).read_bytes()
         data, report = _conversion(source)
+        skin = report.pop('skin_text', None)
         (room / MOD.format(species=name)).write_bytes(data)
+        if skin is not None:
+            (room / SKIN.format(species=name)).write_bytes(skin)
         files[name] = dict(
             enemy_id=SPECIES[name], mesh=MESH.format(species=name),
             model='bind', output=MOD.format(species=name),
@@ -116,8 +184,13 @@ def convert(room):
             discarded_attributes=report.get('discarded_attributes', []),
             discarded_texture_matrix_attributes=report.get(
                 'discarded_texture_matrix_attributes', []))
+        if skin is not None:
+            files[name].update(skin=SKIN.format(species=name), skin_bytes=len(skin),
+                               skin_sha256=sha(skin))
+    skinned = sorted(name for name, row in files.items() if 'skin' in row)
     receipt = dict(schema=SCHEMA, family=FAMILY, visual='bind_pose_static',
                    pose_bank=False, skeletal_playback=False,
+                   **({'ik_leg_skin': skinned} if skinned else {}),
                    species={name: SPECIES[name] for name in wanted}, files=files)
     (room / RECEIPT).write_bytes(
         (json.dumps(receipt, sort_keys=True, indent=2) + '\n').encode('ascii'))
@@ -146,6 +219,13 @@ def verify(room):
         source = (room / MESH.format(species=name)).read_bytes()
         if sha(source) != row['source_sha256']:
             raise ValueError('Staged mesh changed: ' + name)
+        if 'skin' in row:
+            skin = room / row['skin']
+            if not skin.is_file():
+                raise ValueError('Installed skin sidecar missing: ' + name)
+            skin_data = skin.read_bytes()
+            if sha(skin_data) != row['skin_sha256'] or len(skin_data) != row['skin_bytes']:
+                raise ValueError('Installed skin sidecar mismatch: ' + name)
     return dict(verified=sorted(wanted), receipt=RECEIPT, visuals='installed')
 
 

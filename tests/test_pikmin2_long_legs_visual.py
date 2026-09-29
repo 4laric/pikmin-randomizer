@@ -121,3 +121,42 @@ def test_conversion_rejects_non_bmd(tmp_path):
     (room / MESH.format(species='Houdai')).write_bytes(b'not a model')
     with pytest.raises(ValueError, match='J3D2bmd3'):
         convert(room)
+
+
+def test_rigid_skin_sidecar_is_written_bound_and_verified(tmp_path, monkeypatch):
+    """#173 walk: a rigid (envelope-free) mesh also gets the IK skin sidecar."""
+    def _fake(model):
+        report = dict(vertices=1, triangles=2, shapes=1, textures=1, envelopes=0,
+                      bind_draw_matrices=0, discarded_attributes=[])
+        if model.startswith(b'Houdai'):
+            report['skin_text'] = b'P2_LONG_LEGS_SKIN_1\n' + sha(model).encode() + b'\nend\n'
+        return b'MOD\x00' + sha(model).encode(), report
+    monkeypatch.setattr(visual, '_conversion', _fake)
+    room = make_room(tmp_path)
+    receipt = convert(room)
+    assert receipt['ik_leg_skin'] == ['Houdai']
+    row = receipt['files']['Houdai']
+    skin = room / visual.SKIN.format(species='Houdai')
+    assert row['skin'] == skin.name and row['skin_bytes'] == skin.stat().st_size
+    assert row['skin_sha256'] == sha(skin.read_bytes())
+    assert 'skin' not in receipt['files']['BigFoot']
+    assert not (room / visual.SKIN.format(species='BigFoot')).exists()
+    assert verify(room)['verified'] == ['BigFoot', 'Houdai']
+    skin.write_bytes(b'tampered')
+    with pytest.raises(ValueError, match='skin sidecar mismatch'):
+        verify(room)
+
+
+def test_skin_text_rows_follow_joint_and_vertex_order(monkeypatch):
+    import experimental.pikmin2_rigid as rigid
+    monkeypatch.setattr(visual, 'joint_names', lambda blocks: ['kosi', 'lfoot1jnt'])
+    identity = [[1, 0, 0, 0], [0, 1, 0, 138], [0, 0, 1, 0]]
+    monkeypatch.setattr(rigid, 'joint_matrices', lambda blocks: [identity, identity])
+    text = visual.skin_text({}, {9: [(1, (1.0, 2.0, 3.0)), (0, (0.5, 0, 0))], 10: [(1, (0, 1, 0))]})
+    lines = text.decode('ascii').splitlines()
+    assert lines[0] == visual.SKIN_HEADER and lines[1] == 'joints 2'
+    assert lines[2].startswith('j 0 kosi ') and lines[3].startswith('j 1 lfoot1jnt ')
+    assert lines[4:7] == ['positions 2', '1 1 2 3', '0 0.5 0 0']
+    assert lines[7:] == ['normals 1', '1 0 1 0', 'end']
+    with pytest.raises(ValueError, match='out of range'):
+        visual.skin_text({}, {9: [(2, (0, 0, 0))], 10: []})
