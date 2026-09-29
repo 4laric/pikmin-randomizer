@@ -328,6 +328,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     document = json.loads(args.document.read_text(encoding="utf-8"))
     document = apply_to_document(document, ARENA_MEASUREMENTS)
+    # #901: P1 ship-part holder teki slots (held_part_transfer per slot).
+    from .p2_held_parts import apply_to_document as apply_held_parts
+    document = apply_held_parts(document)
     from .p2_placement import validate_document
     validate_document(document)
     args.document.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")

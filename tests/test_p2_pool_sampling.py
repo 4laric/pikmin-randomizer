@@ -36,13 +36,15 @@ def committed_document():
 
 
 def ordinary_slots(document):
-    """Placement slots outside the boss arenas (#899)."""
-    return [slot for slot in document["slots"] if not slot.get("boss_slot")]
+    """Placement slots outside the boss arenas (#899) and the #901 holder slots."""
+    held = {row["uid"] for row in document.get("held_parts", [])}
+    return [slot for slot in document["slots"] if not slot.get("boss_slot") and slot["uid"] not in held]
 
 
 def ordinary_bound(layout):
-    """Bound source ids outside the boss arenas (#899)."""
+    """Bound source ids outside the boss arenas (#899) and holder slots (#901)."""
     arena = {target for row in layout.get("boss_arenas", {}).get("placed", []) for target in row["targets"]}
+    arena |= {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
     return [binding["source_id"] for binding in layout["bindings"] if binding["target"] not in arena]
 
 

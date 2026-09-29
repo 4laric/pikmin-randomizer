@@ -51,7 +51,8 @@ def test_playable_pool_binds_all_playable_species():
     # #893: 36 playable species on 35 slots; the seed samples the pool, so
     # every species is either bound once or listed as unplaced.
     layout = playable_manifest()["p2_layout"]
-    bound = [b["source_id"] for b in layout["bindings"]]
+    held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
+    bound = [b["source_id"] for b in layout["bindings"] if b["target"] not in held]
     assert len(bound) == len(set(bound))
     assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
     assert not set(bound) & set(layout.get("unplaced", []))
@@ -80,7 +81,10 @@ def test_replaced_hosts_keep_all_delivery_checks_reachable():
     all_bound = {b["target"] for b in manifest["p2_layout"]["bindings"]}
     # #899: a boss binds a P1 boss arena, not a campaign teki slot.
     arena = {t for row in manifest["p2_layout"].get("boss_arenas", {}).get("placed", []) for t in row["targets"]}
-    bound = all_bound - arena
+    # #901: a held-part layer target is a P1 ship-part holder slot, not a
+    # campaign teki slot; it never removes a species' last host (p2_held_parts).
+    held = {row["target"] for row in manifest["p2_layout"].get("held_parts", {}).get("placed", [])}
+    bound = all_bound - arena - held
     by_uid = {str(row["uid"]): row for row in CAMPAIGN_SLOTS}
     assert bound and bound <= set(by_uid)
     totals = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS)

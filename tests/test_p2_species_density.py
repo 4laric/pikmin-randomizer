@@ -44,6 +44,12 @@ def committed_document():
     return json.loads(ADMITTED_PLACEMENT_DOC.read_text(encoding="utf-8"))
 
 
+def ordinary_bindings(layout):
+    """Bindings outside the #901 held-part layer (its own RNG stream)."""
+    held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
+    return [binding for binding in layout["bindings"] if binding["target"] not in held]
+
+
 def accepted_document_for(*identities):
     """Minimal accepted document granting each named identity every ground target."""
     roster = load_and_validate()
@@ -72,9 +78,9 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
     roster = load_and_validate()
     document = committed_document()
     layout = resolve_placement_layout("seed-a", "Player1", document, roster, species=[SARAI])
-    targets = {binding["target"] for binding in layout["bindings"]}
+    targets = {binding["target"] for binding in ordinary_bindings(layout)}
     # Every accepted, constraint-compatible target is bound, all to Sarai.
-    assert len(layout["bindings"]) == 35  # committed doc exposes 35 accepted slots
+    assert len(ordinary_bindings(layout)) == 35  # committed doc exposes 35 accepted slots
     assert {binding["source_id"] for binding in layout["bindings"]} == {SARAI}
     assert layout["density"] == DENSITY_LEGACY
     assert targets  # nonempty
@@ -107,7 +113,7 @@ def test_legacy_multi_species_multiset_is_pinned():
     roster = load_and_validate()
     layout = resolve_placement_layout(
         "seed-a", "Player1", committed_document(), roster, species=fit)
-    counts = Counter(binding["source_id"] for binding in layout["bindings"])
+    counts = Counter(binding["source_id"] for binding in ordinary_bindings(layout))
     assert sum(counts.values()) == 35
     assert set(counts) == set(fit)
     assert all(count == 1 for count in counts.values())

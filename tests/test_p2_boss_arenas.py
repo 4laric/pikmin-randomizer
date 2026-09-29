@@ -137,7 +137,8 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
     def test_rebuild_is_idempotent(self):
-        rebuilt = arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS)
+        from randomizer.p2_held_parts import apply_to_document as apply_held_parts
+        rebuilt = apply_held_parts(arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS))
         self.assertEqual(rebuilt, _document())
 
 

@@ -485,7 +485,8 @@ def normalize_arena(data, slots_by_uid):
 
 
 def validate_document(document):
-    _check_keys('document', document, DOCUMENT_REQUIRED, DOCUMENT_REQUIRED + ('notes', 'encounters', 'arenas'))
+    _check_keys('document', document, DOCUMENT_REQUIRED,
+                DOCUMENT_REQUIRED + ('notes', 'encounters', 'arenas', 'held_parts'))
     if document['schema'] != SCHEMA:
         _fail(f'document schema must be {SCHEMA}')
     if not isinstance(document['slots'], list) or not isinstance(document['profiles'], list):
@@ -534,7 +535,45 @@ def validate_document(document):
         if stray:
             _fail(f'arena member uids must not be separate boss slots: {stray}')
         result['arenas'] = arenas
+    if 'held_parts' in document:
+        if not isinstance(document['held_parts'], list):
+            _fail('document held_parts must be a list')
+        slots_by_uid = {slot['uid']: slot for slot in slots}
+        held = [normalize_held_part(row, slots_by_uid) for row in document['held_parts']]
+        held_uids = [row['uid'] for row in held]
+        if len(set(held_uids)) != len(held_uids):
+            _fail('document has duplicate held_parts uids')
+        arena_members = {uid for arena in result.get('arenas', [])
+                         for uid in arena['spawn_uids'] + arena['suppress_uids']}
+        if set(held_uids) & arena_members:
+            _fail('a held_parts slot must not be a boss arena member')
+        result['held_parts'] = held
     return result
+
+
+HELD_PART_REQUIRED = ('uid', 'label', 'stage', 'p1_teki', 'part', 'location', 'held_part_transfer')
+HELD_PART_ALLOWED = HELD_PART_REQUIRED + ('evidence',)
+
+
+def normalize_held_part(data, slots_by_uid):
+    """#901 P1 ship-part holder teki slot (randomizer/p2_held_parts.py)."""
+    _check_keys('held_part', data, HELD_PART_REQUIRED, HELD_PART_ALLOWED)
+    row = dict(data)
+    if type(row['uid']) is not int or type(row['stage']) is not int or type(row['p1_teki']) is not int:
+        _fail(f"held_part {row.get('label')} uid/stage/p1_teki must be integers")
+    if not isinstance(row['part'], str) or len(row['part']) != 4 or row['part'][0] != 'u':
+        _fail(f"held_part {row['label']} part must be a four-character UFO part id")
+    if not isinstance(row['held_part_transfer'], bool):
+        _fail(f"held_part {row['label']} held_part_transfer must be a boolean")
+    slot = slots_by_uid.get(row['uid'])
+    if slot is None:
+        # Like an arena whose slot a caller removed: inert, never bound.
+        return row
+    if slot['stage'] != row['stage'] or slot['boss_slot']:
+        _fail(f"held_part {row['label']} slot stage/boss_slot mismatch")
+    if slot['protected'] != (not row['held_part_transfer']):
+        _fail(f"held_part {row['label']} held_part_transfer and slot protected disagree")
+    return row
 
 
 def load_document(path):
