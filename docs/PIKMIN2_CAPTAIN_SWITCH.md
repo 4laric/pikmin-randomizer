@@ -26,7 +26,7 @@ states, stale sticks/buttons, preserved device/freeze fields, switching both way
 without ownership writes, refreshed zero health and captive-target rejection.
 This is an engine-double test; it does not establish walking/camera/throw gameplay.
 
-Production build and fresh guarded runtime acceptance are pending. No existing
+Private native production build passes; fresh guarded runtime acceptance is pending. No existing
 player sessions were launched or modified for this slice.
 
 Focused command (private candidate selected using `PIKMIN_NATIVE_ROOT`):
@@ -51,3 +51,7 @@ canonical workspace. Independent review then found the free-camera drag path
 still selected a physical input stream by target captain ID. The follow-up maps
 this shared local mode to player 0's mouse/touch/right-stick stream, preserving
 co-op/VS routing. A further production build is required for that correction.
+
+Final source candidate: native `d723aae1107bdeefab7f32f37d1318a8faa3a1d1`, clean. Private Release/Ninja build in `output/native-p2-wip-captain-build` passed with four jobs; source identity stayed unchanged. Executable SHA-256: `78e9e0a8c2f8eff383b17f185b536560fe3cc3b302f174f123e4a866129abe21`. Follow-up dry-run: `ninja: no work to do.` Evidence: `output/p2-wip-landing/captain-build-03/` in the canonical workspace.
+
+The root engine snapshot receives only the seven-file captain delta from native base `c7dae173f87fc18dedcc903f789b65fb67986b17`; unrelated snapshot differences are preserved. Five focused tests also pass against that resulting snapshot. The production build above certifies the private native tree, not a complete root-snapshot build. Independent review covers shared control routing and camera device ownership. This remains source-only draft delivery until fresh rendered acceptance; two external netplay processes occupied the current runtime limit during delivery.

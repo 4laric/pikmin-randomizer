@@ -411,6 +411,10 @@ bool set_health(int captain, float value);
 bool capture_captain(int captain, std::uint64_t captorEpoch);
 bool release_captain(int captain, std::uint64_t captorEpoch);
 bool switch_active(int captain);
+// Opt-in single-player only; never intercept co-op/VS input.
+bool single_player_switch_enabled();
+// Called exactly once after NaviMgr updates both captains.
+void update_player_switch();
 bool reload();
 int adopt_squad();
 
