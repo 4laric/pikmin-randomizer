@@ -684,22 +684,28 @@
     "32": {
       "native_module": "pc_p2_demon_host",
       "owner_lane": "30",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Demon (Bumbling Snitchbug, source 32): OWN campaign port on #215; the Demon profile of the Sarai FSM with its retail parms drives the campaign Demon, which grabs and drops the captain, is knocked down by Pikmin weight, dies naturally, is carried as its type5 carcass and delivers Onion receipt onion:p2:32:3 on its own generator token.",
       "source": [
-        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md"
+        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Demon (Bumbling Snitchbug): host + capture/drop/escape modules; ordinary captor + moving attachment + teardown remain (#215-#242)."
-      ]
+        "Demon (Bumbling Snitchbug): #215 OWN port. Native 4laric/Open-Nectar claude/p2-port-32-demon-v2 6e88fad0d (fork main a6cee5e85 + 3 #215 commits): Demon profile of the Sarai FSM (retail demon parms, 12-clip bank, captain grab/CatchFly/FallMeck drop, 3 s re-grab gate), P1 Chappy anchor AI suppressed with a stored-damage drain, type5 carcass draw, onion:p2:32 delivery bind.",
+        "Campaign evidence, bot-driven power-mode run v2b (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 32, all on the species' own generator: output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a) L1574 P2_DEMON_PARMS retail=1 life=1500, L1575 BANK clips=12 carcass=type5, L1578 OWN_BIND anchor_ai=suppressed; states wait/attack/fail/move, fall/damage/takeoff/flick (L2770 P2_DEMON_FLICK flicked=9), then four captain grabs L2812/L2933/L3109/L3345 P2_DEMON_CAPTURE captain=1 each followed by P2_DEMON_DROP damage=10 (L2876/L2995/L3172/L3418, captain 90 to 50 in 10-point DEMON_STATE_DAMAGE steps), re-grab gaps 4.4 to 15.7 s after each gate reset; 82 monotone P2_DEMON_DAMAGE lines 1485 to 0; L3632 P2_DEMON_DEAD, L3664 CARCASS_BECOME, L3665 DRAW corpse=1 pose=type5, carried by 3, L3926 receipt onion:p2:32:3 new=1, L3928 AUTOPLAY_RESULT 1/1/1/1 in 129 s.",
+        "Pins: root claude/p2-port-32-demon-v2 (origin/main ec593341 + #215 staging), content output/wt-p2port-32-content-full (prepared.json sha256 4bc6641d5166818b...), exe nectar.exe sha256 c329ed2d0a0e5209d74d3cabffce58f05ac24648ab4782858e1faad64e3e8f99 (private build output/wt-p2port-32-build, ninja -n no work for pikmin_pc). Earlier runs p2/p3/n3 on the pre-rebase branch are on #215.",
+        "cleanup_reentry: the Demon binds through the shared Sarai manager, whose stage reset (P2_SARAI_RESET) forgets every live and corpse binding; Sarai 23 holds a natural re-entry PASS on that path, and p2_sarai_lifecycle_test covers the Demon profile teardown. No Demon-specific day-end or area re-entry run has been recorded yet.",
+        "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the Chappy anchor's collision stands in for the Demon body, gravity 1000 is assumed (retail constants not staged), carcass carry weight and pokos come from the P1 Chappy carcass config, and a captain flick is a plain release without knockback. In normal-squad runs the bot does not kill the Demon."
+      ],
+      "delivery_receipt": "onion:p2:32:3 (P2_DEMON_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log:L3926 receipt (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a)"
     },
     "34": {
       "native_module": "pc_p2_snakejoint",
