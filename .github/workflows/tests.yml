@@ -35,6 +35,8 @@ concurrency:
 
 jobs:
   tests:
+    # Same-repo PRs from claude/** branches are already built by their push run.
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'claude/')
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
