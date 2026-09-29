@@ -63,7 +63,13 @@ restored day 3 with exactly one Flower Purple, then withdrew and redeposited it.
 This is one tested native day boundary, not a full campaign playthrough. The
 fixture injects maturity and uses scripted confirmation buttons for this check.
 
-Actual ten-strength transport, Violet terrain clearance and navigation,
+A separate run passed actual native ten-strength transport: one ordinary Red
+remained below two units of displacement, while one naturally acquired Purple
+attached and moved a native weight-10 pellet 10.22 units. The fixture spawns cargo
+with the supported instant-spawn option and stages each carrier at its selected
+slot. Native attachment, lift and movement are observed; approach is excluded.
+
+Violet terrain clearance and navigation,
 physical storage controls, a full campaign playthrough,
 and enemy receiver breadth require fresh runtime acceptance. Parser tests and a
 successful compile do not establish those gates. This is a draft implementation,
