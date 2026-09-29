@@ -50,14 +50,15 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # without importing the seed module (which imports this bridge lazily).
 # Keep in sync with P2_PLAYABLE_POOL (tests/test_p2_pool_roster_sync.py pins
 # the equality); the 2026-09-26 roster wave grew this from the original six;
-# admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78.
+# admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78;
+# #215 appends Demon 32.
 PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 2, 33, 35, 43, 53, 67, 76,
                 12, 13, 14, 28, 94, 68,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78)
+                25, 15, 78, 32)
 
 
 class SeedBridgeError(ValueError):
@@ -760,7 +761,12 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         if binding.get("enum_name") != entry.enum_name:
             raise SeedBridgeError(f"binding {target} enum mismatch: {binding.get('enum_name')!r} != {entry.enum_name!r}")
     if unplaced is not None:
-        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings})
+        # A holder slot (#901) prefers a species the ordinary fill left unplaced
+        # (#893); that binding does not un-sample the species from the fill.
+        held_targets = {row.get("target") for row in
+                        (layout.get(HELD_PART_KEY) or {}).get("placed", []) if isinstance(row, dict)}
+        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings
+                                          if binding.get("target") not in held_targets})
         if overlap:
             raise SeedBridgeError(f"P2 layout unplaced ids overlap bound ids: {overlap}")
     arena_block = layout.get(BOSS_ARENA_KEY)

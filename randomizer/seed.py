@@ -573,6 +573,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
         },
     },
+    {
+        "source_id": 32,
+        "enum_name": "Demon",
+        "family": "demon",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign v2b (owner ruling 2026-09-25: power mode admits; #215): red squad, campaign OWN bind of the Demon profile of the Sarai FSM with retail parms, 4 captain grabs each dropped for 10 damage, flick, fall under Pikmin weight, 82 DAMAGE lines, P2_DEMON_DEAD on its own generator, type5 carcass carried, Onion receipt onion:p2:32:3",
+            "log": "output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a82...) L1578 bind, L2812 capture, L2876 drop, L3632 dead, L3926 receipt; native claude/p2-port-32-demon-v2 6e88fad0d, exe sha256 c329ed2d0a0e5209...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 32 -> demon "
+                         "(stages the demon-* parms/bank and the demon pose meshes)",
+        },
+    },
 )
 
 

@@ -76,21 +76,21 @@ def test_fitting_pool_keeps_the_legacy_fill():
     assert set(bound) == set(fit), "every selected species appears when the selection fits"
 
 
-def test_committed_pool_fits_once_the_arena_boss_leaves_the_ordinary_slots():
-    # 36 admitted species (Groink 78 admitted, #888) on 35 ordinary slots
-    # sampled one species out (#893). The Crawbster 94 now lives only in a
-    # boss arena (#899), so the other 35 fill the 35 ordinary slots exactly.
+def test_committed_pool_samples_one_ordinary_species_out():
+    # 37 admitted species (Groink 78 #888, Demon 32 #215). The Crawbster 94
+    # lives only in a boss arena (#899), so 36 species compete for the 35
+    # ordinary slots and one is sampled out per seed (#893).
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == len(ordinary_slots(document)) + 1
+    assert len(pool) == len(ordinary_slots(document)) + 2
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)
-    assert layout["density"] == DENSITY_LEGACY
-    assert "unplaced" not in layout
-    assert len(bound) == len(set(bound)) == len(ordinary_slots(document))
+    assert layout["density"] == DENSITY_SAMPLED
     assert arena_bosses(layout) == {94}
-    assert set(bound) | arena_bosses(layout) == pool
+    assert len(bound) == len(set(bound)) == len(ordinary_slots(document))
+    assert len(layout["unplaced"]) == 1
+    assert set(layout["unplaced"]) == pool - set(bound) - arena_bosses(layout)
 
 
 def test_oversubscribed_pool_samples_distinct_species():
