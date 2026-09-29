@@ -30,6 +30,7 @@ from pathlib import Path
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
 from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nodes
+from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
@@ -368,6 +369,15 @@ def extract(iso, source, output, pose_limit=6):
             rows = animation_rows(
                 params[SHARED_PARM + '/enemyanimmgr.txt'].decode('shift_jis'))
             info = profile(species, blocks_list, rows)
+            # Retail texture swap baked in for species the native draw path
+            # does not tint (BombOtakara; #895). The four RUNTIME_TINTED
+            # dweevils keep the placeholder and get p2batch2tint at draw time.
+            if species in change_texture.RUNTIME_TINTED:
+                baked_model, swaps = model, []
+            else:
+                baked_model, swaps = change_texture.apply(model, species, read)
+            if swaps:
+                info['change_textures'] = swaps
             info.update(model_sha256=sha(model), joints=names,
                         change_texture=CHANGE_TEXTURES[species],
                         metadata_sha256=metadata,
@@ -402,7 +412,7 @@ def extract(iso, source, output, pose_limit=6):
                         _, pose = bca_pose(raw, frame, len(names),
                                            allow_scale=True)
                         matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(model, True, bake_rigid=True,
+                        decoded = decode(baked_model, True, bake_rigid=True,
                                          draw_matrices=matrices,
                                          **tolerances)
                         name = f'ota_{species}_{clip["name"]}_{number:02}.mod'
