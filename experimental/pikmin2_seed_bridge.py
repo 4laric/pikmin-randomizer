@@ -761,7 +761,12 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         if binding.get("enum_name") != entry.enum_name:
             raise SeedBridgeError(f"binding {target} enum mismatch: {binding.get('enum_name')!r} != {entry.enum_name!r}")
     if unplaced is not None:
-        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings})
+        # A holder slot (#901) prefers a species the ordinary fill left unplaced
+        # (#893); that binding does not un-sample the species from the fill.
+        held_targets = {row.get("target") for row in
+                        (layout.get(HELD_PART_KEY) or {}).get("placed", []) if isinstance(row, dict)}
+        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings
+                                          if binding.get("target") not in held_targets})
         if overlap:
             raise SeedBridgeError(f"P2 layout unplaced ids overlap bound ids: {overlap}")
     arena_block = layout.get(BOSS_ARENA_KEY)
