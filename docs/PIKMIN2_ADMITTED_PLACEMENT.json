@@ -2600,7 +2600,7 @@
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "#898 (2026-09-28): Breadbug OWN admission. Constraint-compatible ground campaign/generated slots accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). The OWN campaign run bound spring_init_7002 (1945764764). The retail nest is only the spawn home point.",
+      "notes": "#898 (2026-09-28): Breadbug OWN admission. Constraint-compatible ground campaign/generated slots accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Runtime binding shown on spring_init_7002 (1945764764, stage 3, full chain z2/z3/z6) and hope_0-29_1831 (3138990329, stage 1, run f1, Collec not native to the day-2 Forest generators). Impact Site slots all open on day 8 or later and were not run. The retail nest is only the spawn home point.",
       "cohort": null,
       "accepted_slot_uids": [
         5465461,

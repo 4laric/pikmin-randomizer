@@ -76,7 +76,11 @@ never P2 identities and never enter this table.
   steals carcasses, tugs them against the carriers and hauls them home to hide.
   A carcass it takes home is spared at the nest, so its check is never lost.
   It dies to six presses (or container damage when it is sucked off its cargo
-  at the Onion), is carried and delivers `onion:p2:38:3`.
+  at the Onion), is carried and delivers `onion:p2:38:3` (three bot runs on the
+  pinned exe, z2/z3/z6). Eating a plain pellet (retail `endCarry`) is untested
+  at runtime. Pikmin still holding the cargo when it hides are killed, as in
+  retail; this needs an owner eye-check. Binding is shown on Distant Spring and
+  Forest of Hope; no Impact Site slot opens before day 8, so none was run.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
