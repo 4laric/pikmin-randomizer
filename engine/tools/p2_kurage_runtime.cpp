@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // Private real-GL display fixture; no production registration or receiver claims.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>

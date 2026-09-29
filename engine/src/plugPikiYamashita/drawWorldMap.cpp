@@ -1,5 +1,13 @@
 #include "zen/DrawWorldMap.h"
 #include "pc_bbft.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_gfx.h"
+// Estrellas fugaces por todo el ancho (los efectos del mapa centran en 320).
+#define PC_WM_STAR_X (zen::Rand(640.0f + 2.0f * f32(pc_gfx_menu_shift_center())) - f32(pc_gfx_menu_shift_center()))
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
+#endif
+#endif
 #include "DebugLog.h"
 #include "P2D/Pane.h"
 #include "P2D/TextBox.h"
@@ -89,8 +97,15 @@ public:
 	// might be wait
 	void appear()
 	{
+#if defined(PIKI_PC_PORT)
+		// Pantalla completa (issue #46, como pikminws): entra desde el borde
+		// ancho y reposa pegado a él.
+		mStartPos.set(640.0f + f32(pc_gfx_menu_shift_center()), 30.0f, 0.0f);
+		mTargetPos.set(40.0f - f32(pc_gfx_menu_shift_center()), 30.0f, 0.0f);
+#else
 		mStartPos.set(640.0f, 30.0f, 0.0f);
 		mTargetPos.set(40.0f, 30.0f, 0.0f);
+#endif
 		mAnimTimer = 0.0f;
 		mAnimState = TitleAnimState::Appearing;
 		show();
@@ -1192,6 +1207,24 @@ public:
 			mCurrentSelection = Yes;
 		}
 
+		bool touchDecide = false;
+#if PIKI_PC_TOUCH
+		pc_touch_claim_game_menu();
+		{
+			float nx = 0.0f, ny = 0.0f, tx = 0.0f, ty = 0.0f;
+			if (pc_touch_take_game_menu_tap(&nx, &ny) && pc_gfx_menu_tap_to_graph(nx, ny, &tx, &ty)) {
+				for (int i = 0; i < 2; i++) {
+					const PUTRect& b = mMenuItems[i].getTouchBounds();
+					constexpr float margin = 12.0f;
+					if (tx >= b.mMinX - margin && tx <= b.mMaxX + margin && ty >= b.mMinY - margin && ty <= b.mMaxY + margin) {
+						mCurrentSelection = i;
+						touchDecide       = true;
+						break;
+					}
+				}
+			}
+		}
+#endif
 		currItem = &mMenuItems[mCurrentSelection];
 		for (int i = 0; i < 2; i++) {
 			mMenuItems[i].update(i == mCurrentSelection, mCharColor, mGradColor);
@@ -1202,7 +1235,7 @@ public:
 			mRightSpecCursor.move(currItem->getIconRPosH(), currItem->getIconRPosV(), 0.5f);
 		}
 
-		if (controller->keyClick(KBBTN_START | KBBTN_A)) {
+		if (controller->keyClick(KBBTN_START | KBBTN_A) || touchDecide) {
 			SeSystem::playSysSe(SYSSE_DECIDE1);
 			res = true;
 		}
@@ -1415,6 +1448,12 @@ public:
 
 	void init(P2DScreen* wipeScreen)
 	{
+#if defined(PIKI_PC_PORT)
+		// Las cortinillas cubren todo el ancho (escala uniforme, como pikminws).
+		const f32 wide = f32(pc_gfx_menu_virt_width()) / 640.0f;
+		wipeScreen->setScale(wide, wide, 1.0f);
+		wipeScreen->setOffset(320, 240);
+#endif
 		mWipes[0].init(wipeScreen, 'wp00');
 		mWipes[1].init(wipeScreen, 'wp01');
 		mWipes[2].init(wipeScreen, 'wp02');
@@ -1717,6 +1756,7 @@ public:
 	u32 getEventFlag() { return mEventFlag; }
 
 	bool getOpenSw() { return mIsVisible; }
+	P2DPicture* getPicForTouch() { return mUnselectedPic; }
 
 	WorldMapCoursePoint* getLinkCoursePointPtr(linkFlag id) { return mLinkPoints[id]; }
 
@@ -1949,6 +1989,15 @@ protected:
 			STACK_PAD_VAR(1);
 		}
 		if (controller) {
+#if PIKI_PC_TOUCH
+			pc_touch_claim_game_menu();
+			if (p2) {
+				float nx = 0.0f, ny = 0.0f, tx = 0.0f, ty = 0.0f;
+				if (pc_touch_take_game_menu_tap(&nx, &ny) && pc_gfx_menu_tap_to_graph(nx, ny, &tx, &ty)) {
+					touchOperation(tx, ty);
+				}
+			}
+#endif
 			if (p2) {
 				keyOperation(controller, KBBTN_MSTICK_UP, WorldMapCoursePoint::LINK_Up);
 				keyOperation(controller, KBBTN_MSTICK_DOWN, WorldMapCoursePoint::LINK_Down);
@@ -1966,6 +2015,35 @@ protected:
 		}
 		return false;
 	}
+
+#if PIKI_PC_TOUCH
+	// Toque en un punto del mapa: si es el seleccionado, confirma (como A);
+	// si es otro punto abierto, lo selecciona. Coordenadas del espacio de
+	// dibujo de la pantalla de puntos (getGlobalBounds de sus imágenes).
+	void touchOperation(float tx, float ty)
+	{
+		WorldMapCoursePoint* point = mCoursePoints;
+		for (int i = 0; i < 5; i++, point++) {
+			if (!point->getOpenSw()) continue;
+			P2DPicture* pic = point->getPicForTouch();
+			if (!pic) continue;
+			const PUTRect& b = pic->getGlobalBounds();
+			constexpr float margin = 16.0f;
+			if (tx < b.mMinX - margin || tx > b.mMaxX + margin || ty < b.mMinY - margin || ty > b.mMaxY + margin) continue;
+			if (point == mSelectedPoint) {
+				SeSystem::playSysSe(SYSSE_DECIDE1);
+				mEventFlag |= 0x10;
+			} else {
+				SeSystem::playSysSe(SYSSE_MOVE1);
+				mSelectedPoint->nonSelect();
+				mSelectedPoint = point;
+				mSelectedPoint->select();
+				mEventFlag |= 0x1;
+			}
+			return;
+		}
+	}
+#endif
 
 	void keyOperation(Controller* controller, u32 button, WorldMapCoursePoint::linkFlag linkID)
 	{
@@ -2196,7 +2274,7 @@ public:
 	void update()
 	{
 		if (zen::Rand(100.0f) < mStarFallChance) {
-			WMeffMgr->create(EFF2D_MapShootingStar, Vector3f(zen::Rand(640.0f), 500.0f - zen::Rand(50.0f), -zen::Rand(150.0f)), nullptr,
+			WMeffMgr->create(EFF2D_MapShootingStar, Vector3f(PC_WM_STAR_X, 500.0f - zen::Rand(50.0f), -zen::Rand(150.0f)), nullptr,
 			                 nullptr);
 		}
 		if (mIsRapidFireMode) {
@@ -2244,6 +2322,12 @@ zen::DrawWorldMap::DrawWorldMap()
 	// SET UP EFFECTS MGR
 	mEffectMgr2D = new EffectMgr2D(96, 500, 650);
 	WMeffMgr     = mEffectMgr2D;
+#if defined(PIKI_PC_PORT)
+	// Las posiciones de los efectos (humo de la nave, brillos, estrellas
+	// fugaces) están en el 640x480 del mapa; sin esto salían desplazadas
+	// hacia la izquierda por el centrado del marco ancho.
+	mEffectMgr2D->mPcKeep640Origin = true;
+#endif
 
 	// SET UP SCREENS
 	mWipeScreen  = new DrawScreen("screen/blo/w_wipe.blo", nullptr, true, true);
@@ -2255,6 +2339,14 @@ zen::DrawWorldMap::DrawWorldMap()
 	mPointScreen = new DrawScreen("screen/blo/w_point.blo", nullptr, true, true);
 	mLineScreen  = new DrawScreen("screen/blo/w_line.blo", nullptr, true, true);
 	mBackScreen  = new DrawScreen("screen/blo/w_back.blo", nullptr, true, true);
+#if defined(PIKI_PC_PORT)
+	// El fondo se estira solo en horizontal hasta el borde ancho.
+	{
+		P2DScreen* back = mBackScreen->getScreenPtr();
+		back->setScale(f32(pc_gfx_menu_virt_width()) / 640.0f, 1.0f, 1.0f);
+		back->setOffset(320, 240);
+	}
+#endif
 
 	mModeTimer    = 0.0f;
 	mCurrentMode  = DrawWorldMapMode::Null;
@@ -2429,6 +2521,15 @@ bool zen::DrawWorldMap::update(Controller* controller)
 				if (controller->keyClick(KBBTN_START)) {
 					mPause.start();
 					mCurrentMode = DrawWorldMapMode::Paused;
+#if PIKI_PC_TOUCH
+				} else if (pc_touch_visible() && controller->keyClick(KBBTN_B) && mCursorMgr->isMoveOK()) {
+					// Capa táctil: el botón "atrás" (B) sale del mapa al selector
+					// de partida; en el original B no hace nada aquí.
+					SeSystem::playSysSe(SYSSE_CANCEL);
+					mCurrentMode  = DrawWorldMapMode::Null;
+					res           = true;
+					mReturnStatus = RET_ReturnToCardSelect;
+#endif
 				} else if (controller->keyClick(KBBTN_Y)) {
 					if (mCursorMgr->isMoveOK()) {
 						mWipeMgr->setDefault();
@@ -2472,6 +2573,16 @@ bool zen::DrawWorldMap::update(Controller* controller)
 void zen::DrawWorldMap::draw(Graphics& gfx)
 {
 	if (mCurrentMode != DrawWorldMapMode::Diary) {
+#if defined(PIKI_PC_PORT)
+		// Las pantallas del mapa dibujan en el lienzo ancho de menús
+		// (DrawScreen::draw). El espacio de toque se toma con ese modo ya
+		// activo; tomado antes salía el 640 estirado y los toques caían
+		// desplazados respecto a los puntos del mapa.
+		pc_gfx_begin_menu_2d();
+		pc_gfx_note_menu_tap_space(640, 480);
+		// Pantalla completa (issue #46): sin recorte 4:3. Fondo y cortinillas
+		// se estiran al ancho; los paneles que asomen se esconden aparte.
+#endif
 		mBackScreen->draw();
 		mLineScreen->draw();
 		mPointScreen->draw();

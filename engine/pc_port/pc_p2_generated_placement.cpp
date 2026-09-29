@@ -5,6 +5,7 @@
 #include "pc_p2_sarai_manager.h"
 #include "pc_p2_otakara.h"
 #include "pc_p2_bluechappy.h"
+#include "pc_p2_chappy.h"
 #include "teki.h"
 #include <cstdio>
 #include <set>
@@ -147,6 +148,20 @@ bool pc_p2_generated_placement_bind(BTeki* actor, unsigned sourceId, unsigned se
     case 42: // Orange Bulborb (BlueChappy, adult); lane 42.
         if (pc_p2_bluechappy_bind_dynamic(actor, generatorId, sourceId)) {
             std::printf("P2_GENERATED_PLACEMENT source_id=42 target=%u bound=1\n", seedTargetUid);
+            std::fflush(stdout);
+            return true;
+        }
+        return false;
+    case 2: // Red Bulborb (Chappy); inst-chappy lane.
+    case 33: // Fiery Bulblax (FireChappy); inst-chappy lane.
+    case 35: // Spotty Bulbear (KumaChappy); inst-chappy lane.
+    case 43: // Hairy Bulborb (YellowChappy); inst-chappy lane.
+    case 53: // Emperor Bulblax (KingChappy); inst-chappy lane.
+    case 67: // Bulbmin (LeafChappy); inst-chappy lane.
+    case 76: // Dwarf Bulbear (KumaKochappy); inst-chappy lane.
+        if (pc_p2_chappy_bind_dynamic(actor, generatorId, sourceId)) {
+            std::printf("P2_GENERATED_PLACEMENT source_id=%u target=%u bound=1\n", sourceId,
+                        seedTargetUid);
             std::fflush(stdout);
             return true;
         }

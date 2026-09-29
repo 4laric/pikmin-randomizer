@@ -434,6 +434,10 @@ class PelletMgr : public MonoObjectMgr {
 	friend void PlayerState::UfoParts::initAnim(PelletShapeObject*); // Accesses `mUfoMotionTable`.
 
 public:
+#if defined(PIKI_PC_PORT)
+	/// Primera configuración de la lista (recorrer con mNext). Solo lectura.
+	PelletConfig* pcFirstConfig() { return static_cast<PelletConfig*>(mConfigList.mChild); }
+#endif
 	/**
 	 * @brief TODO
 	 */

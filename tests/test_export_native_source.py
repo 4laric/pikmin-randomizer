@@ -31,12 +31,15 @@ class ExportNativeSourceTest(unittest.TestCase):
             'android/app/icon.png': b'\x89PNG\x00\x01',
             'third_party/SDL2-android/demo/font.bmp': b'BM\x00\x00',
             'pc_port/touch/assets/art/whistle.png': b'\x89PNG\x00\x02',
+            'packaging/icon/nectar.ico': b'\x00\x00\x01\x00',
         })
         export_native_source.export(source, target)
         self.assertEqual((target / 'src/game.cpp').read_bytes(), b'int main() {}\n')
         self.assertFalse((target / 'android').exists())
         self.assertFalse((target / 'third_party').exists())
         self.assertFalse((target / 'pc_port/touch/assets').exists())
+        # The Windows resource script embeds the icon, so it is copied.
+        self.assertEqual((target / 'packaging/icon/nectar.ico').read_bytes(), b'\x00\x00\x01\x00')
 
     def test_unexpected_binary_still_stops_the_export(self):
         source, target = self._repo({

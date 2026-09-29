@@ -30,6 +30,11 @@ void pc_p2_tamago_birth_group(BTeki* host, int count);
 // Registration observability for the group-birth lifecycle fixture.
 unsigned long pc_p2_tamago_count();
 bool pc_p2_tamago_registered(BTeki*);
+// P2 FSM owns movement every tick for registered TamagoMushi (frog pattern):
+// BTeki::doAI returns early so the Chappy host strategy never runs. Damage
+// still reaches mHealth via the update-phase mStoredDamage -> makeDamaged()
+// drain; death finalizes via pcEscapeNow() so the carriable pellet forms.
+bool pc_p2_tamago_suppress_ai(const BTeki*);
 // Once-per-frame drain of deferred born-follower kills (queued by the forget
 // group branch; hooked after tekiMgr->update() in gameCoreSection.cpp).
 void pc_p2_tamago_tick();

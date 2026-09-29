@@ -14,12 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Binary files the native line carries for builds this snapshot does not ship
 # (the Android app, its SDL copy and the touch-control layer, which desktop
-# builds leave off). Binaries under these folders are skipped; a binary
-# anywhere else still stops the export.
+# builds leave off). Binaries under these folders are skipped.
 SKIPPED_BINARY_PREFIXES = (
     'android/',
     'third_party/SDL2-android/',
     'pc_port/touch/assets/',
+)
+# Binary build inputs the desktop build does need: the Windows resource script
+# embeds packaging/icon/nectar.ico. These are copied as they are. Any other
+# binary still stops the export.
+COPIED_BINARY_PREFIXES = (
     'packaging/icon/',
 )
 
@@ -38,7 +42,7 @@ def export(source=None, target=None):
         if path.parts[0] in {'.github', '.vscode'} or path.suffix.lower() in {'.exe', '.gz'}:
             continue
         data = (source / path).read_bytes()
-        if b'\0' in data:
+        if b'\0' in data and not name.startswith(COPIED_BINARY_PREFIXES):
             if skippable_binary(name):
                 skipped += 1
                 continue

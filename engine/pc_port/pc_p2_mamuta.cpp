@@ -1,6 +1,10 @@
 #include "pc_p2_campaign_actor.h"
-// Optional P2 Mamuta source pose banks on exact P1 Miurin actors. Gameplay stays P1.
+// P2 Mamuta source pose banks on exact P1 Miurin actors. In bridge-mode
+// campaign sessions the P2 FSM (pc_p2_mamuta_fsm) owns registered actors and
+// the P1 host AI is suppressed; outside bridge (room preview without
+// p2-mamuta-fsm.txt) gameplay stays P1.
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_fsm.h"
 #include "pc_p2_mamuta_policy.h"
 #include "pc_p2_mamuta_rules.h"
 #include "pc_p2_animation.h"
@@ -150,7 +154,25 @@ void pc_p2_mamuta_setup() {
     pc_p2_mamuta_rules_setup();
     loadManifest();
     for (int k=0; k<kClips; ++k) loadBank(k);
-    for (const auto& e: actors) std::printf("P2_MAMUTA_READY generator=%u native_type=24 xyz=%.6f,%.6f,%.6f P1_proxy_source_pose_banks_no_P2_planting\n", e.second,e.first->mSRT.t.x,e.first->mSRT.t.y,e.first->mSRT.t.z);
+    for (const auto& e: actors) {
+        // deliv4 (#871): lane-06 ordinary-delivery source bind so
+        // GoalItem::suckMe grants onion:p2:54 instead of suppressing the P1
+        // host CHECK (bc6/bc7 hauled the corpse with carriers>0 but no receipt:
+        // P2_P1_CHECK_SUPPRESSED host_type=24). Mirrors Otakara/Kurage/ElecBug.
+        // Single-use: consumed on delivery, cleared on forget/recycle.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(e.first), 54, e.second);
+        std::printf("P2_MAMUTA_DELIVERY_BIND generator=%u source_id=54\n", e.second);
+        // own44b (#871): the bank binding is gameplay-neutral; in bridge mode
+        // (and not room preview, or with p2-mamuta-fsm.txt) pc_p2_mamuta_fsm
+        // owns the actor and the P1 host AI is suppressed (BTeki::doAI
+        // early-return at src/plugPikiNakata/tekibteki.cpp:639, driven
+        // per-frame by BTeki::update at tekibteki.cpp:522 - same pattern as
+        // pc_p2_armor_suppress_ai at tekibteki.cpp:660). Predicate exactly
+        // matches pc_p2_mamuta_fsm_setup's bridge gate.
+        const bool fsmOwns = (pc_randomizer_p2_bridge() && !pc_pikipelago_room_preview()) || std::ifstream("p2-mamuta-fsm.txt").good();
+        std::printf("P2_MAMUTA_READY generator=%u native_type=24 xyz=%.6f,%.6f,%.6f %s\n", e.second,e.first->mSRT.t.x,e.first->mSRT.t.y,e.first->mSRT.t.z,
+            fsmOwns ? "source_pose_banks_FSM_owned_P2_planting" : "P1_proxy_source_pose_banks_no_P2_planting");
+    }
 }
 bool pc_p2_mamuta_draw(BTeki* actor, Graphics& gfx, const Matrix4f& view, bool corpse) {
     auto entry=actors.find(actor);
@@ -185,7 +207,8 @@ bool pc_p2_mamuta_draw(BTeki* actor, Graphics& gfx, const Matrix4f& view, bool c
     shape->updateAnim(gfx,view,nullptr,actor);
     shape->drawshape(gfx,*gfx.mCamera,nullptr);
     if (logged.insert({actor,k}).second)
-        std::printf("P2_MAMUTA_DRAW generator=%u anchor=%s poses=%d animated=%d src_frame=%.1f sample=%d events=%d P1_gameplay_unchanged\n",
-                    entry->second,names[k],poses,int(animated[k]),srcFrame,index,int(eventFrames[k].size()));
+        std::printf("P2_MAMUTA_DRAW generator=%u anchor=%s poses=%d animated=%d src_frame=%.1f sample=%d events=%d %s\n",
+                    entry->second,names[k],poses,int(animated[k]),srcFrame,index,int(eventFrames[k].size()),
+                    pc_p2_mamuta_fsm_suppress_ai(actor) ? "OWN_FSM_driven" : "P1_gameplay_unchanged");
     return true;
 }

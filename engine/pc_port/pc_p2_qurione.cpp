@@ -42,6 +42,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include <map>
 #include <set>
 #include <vector>
@@ -133,8 +134,8 @@ Creature* nearestTarget(const Vector3f& pos) {
     Creature* best = nullptr;
     float bestSq = SIGHT * SIGHT;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive()) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
             const Vector3f p = n->getPosition();
             const float dx = p.x - pos.x, dz = p.z - pos.z;
             const float d = dx * dx + dz * dz;

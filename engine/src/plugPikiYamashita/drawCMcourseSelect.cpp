@@ -2,6 +2,9 @@
 #include "gameflow.h"
 #include "zen/DrawCM.h"
 #include "zen/EffectMgr2D.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_gfx.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -214,9 +217,14 @@ zen::DrawCMcourseSelect::DrawCMcourseSelect()
 	P2DScreen* bestScreen  = mBestScreen->getScreenPtr();
 
 	P2DPane* pane = scoreScreen->search('rank', true);
-	pane->move(355, 234);
+#if defined(PIKI_PC_PORT)
+	const int m = pc_gfx_menu_shift_center();
+#else
+	const int m = 0;
+#endif
+	pane->move(355 + m, 234);
 	pane = bestScreen->search('best', true);
-	pane->move(405, 164);
+	pane->move(405 + m, 164);
 
 	mABtnPane      = selScreen->search('abtn', true);
 	mABtnPaneAlpha = 0;

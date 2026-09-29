@@ -1,4 +1,7 @@
 #include "MapMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "gl/pc_gfx.h"
+#endif
 
 #include "AIPerf.h"
 #include "Creature.h"
@@ -2296,7 +2299,11 @@ void MapMgr::recTraceMove(CollGroup* collGroupList, MoveTrace& trace, f32 timeSt
 				}
 
 				// if collision is too close to vertical, call it a wall and do the appropriate callback
-				if (collisionType != NoCollision && tri->mTriangle.mNormal.y < 0.5f && tri->mTriangle.mNormal.y > -0.5f) {
+				// PC port (#884 round 4): opt-in P2 wall rule (see MoveTrace::mP2WallThreshold).
+				const bool isWall = trace.mP2WallThreshold
+				                      ? (collNormal.y < 0.6f && collNormal.y <= 0.70710677f && collNormal.y >= -0.70710677f)
+				                      : (tri->mTriangle.mNormal.y < 0.5f && tri->mTriangle.mNormal.y > -0.5f);
+				if (collisionType != NoCollision && isWall) {
 					trace.mObject->wallCallback(tri->mTriangle, currGroup->mPlatCollision);
 				}
 				trace.mObject->mCollPlatform = currGroup->mPlatCollision;
@@ -2381,6 +2388,10 @@ void MapMgr::traceMove(Creature* creature, MoveTrace& trace, f32 timeStep)
 			FOREACH_NODE(DynCollShape, mCollShapeList->mChild, coll)
 			{
 				if (coll->mCreature && coll->mCreature == creature) {
+					continue;
+				}
+				// PC port (#884): opt-in skip of enemy/boss body platforms (see MoveTrace::mIgnoreEnemyCollParts).
+				if (trace.mIgnoreEnemyCollParts && coll->mCreature && (coll->mCreature->isTeki() || coll->mCreature->isBoss())) {
 					continue;
 				}
 				if (collCheckBox.intersects(coll->mBoundingBox)) {
