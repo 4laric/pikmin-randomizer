@@ -4,6 +4,9 @@
 #include "GoalItem.h"
 #include "FlowController.h"
 #include "teki.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
 #include "BaseInf.h"
 #include "CreatureCollPart.h"
 #include "DebugLog.h"
@@ -364,7 +367,21 @@ void GoalItem::suckMe(Pellet* item)
                     && pc_randomizer_p2_corpse_delivered(item->mPelletView, type,
                         flowCont.mCurrentStage->mStageID, gameplay);
                 if (!deliveredP2) {
-                    pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID, gameplay);
+                    // bot-unkilled (wf11): under the P2 bridge a Teki corpse with
+                    // a pellet view is a P2 actor's corpse even when unbound
+                    // (static-host families like dwarf_orange/otakara never bind
+                    // lane-06, and consumed single-use bindings read unbound on
+                    // a recycled address). Its P1 host type (e.g. 3/Chappy for
+                    // Wealthy/Fart/BlueKochappy/Otakara) must not mint the P1
+                    // host CHECK (e.g. Deliver Dwarf Bulborb) with zero P2
+                    // deaths. Bound P2 corpses already returned true above;
+                    // unbound P2-actor corpses grant nothing here.
+                    if (pc_randomizer_p2_bridge() && item->mPelletView) {
+                        std::printf("[Pikmin Randomizer] P2_P1_CHECK_SUPPRESSED host_type=%d stage=%d\n",
+                            type, flowCont.mCurrentStage->mStageID);
+                    } else {
+                        pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID, gameplay);
+                    }
                 }
                 break;
             }
@@ -449,11 +466,22 @@ Piki* GoalItem::exitPiki()
 	}
 
 	Navi* navi = naviMgr->getNavi();
+#if defined(PIKI_PC_PORT)
+	// VS: salen hacia el capitán dueño de la cebolla.
+	if (pc_vs_active() && mPcOwner >= 0 && naviMgr->getNavi(mPcOwner)) navi = naviMgr->getNavi(mPcOwner);
+#endif
 	piki->init(navi);
 	piki->resetPosition(legColl->mCentre);
 
 	// always pull the highest stage pikmin out first
 	int happa;
+#if defined(PIKI_PC_PORT)
+	// VS: cada cebolla tiene su propio almacén; el recuento global mezcla a
+	// los dos jugadores.
+	if (pc_vs_active()) {
+		happa = mHeldPikis[Flower] > 0 ? Flower : (mHeldPikis[Bud] > 0 ? Bud : Leaf);
+	} else
+#endif
 	if (pikiInfMgr.mPikiCounts[mOnionColour][Flower] > 0) {
 		happa = Flower;
 	} else if (pikiInfMgr.mPikiCounts[mOnionColour][Bud] > 0) {
@@ -463,6 +491,9 @@ Piki* GoalItem::exitPiki()
 	}
 	piki->setFlower(happa);
 	piki->initColor(mOnionColour);
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) piki->mPlayerId = mPcOwner;
+#endif
 	pikiInfMgr.decPiki(piki);
 	piki->mSRT.s.set(1.0f, 1.0f, 1.0f);
 	piki->mFSM->transit(piki, PIKISTATE_Normal);

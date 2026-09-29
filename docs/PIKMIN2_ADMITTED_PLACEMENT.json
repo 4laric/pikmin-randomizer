@@ -875,6 +875,231 @@
         "terrain": true,
         "route": true
       }
+    },
+    {
+      "uid": 613834665,
+      "label": "spring_puffy_blowhog_uf02",
+      "stage": 3,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 0,
+      "source_identity": "p1_holder:teki:16:uf02",
+      "cohort": "ground",
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 3406893972,
+      "label": "navel_breadbug_un09",
+      "stage": 2,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": false,
+      "protected": true,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 0,
+      "source_identity": "p1_holder:teki:8:un09",
+      "cohort": "ground",
+      "evidence": {
+        "xyz": false,
+        "terrain": false,
+        "route": false
+      }
+    },
+    {
+      "uid": 4019261003,
+      "label": "impact_goolix",
+      "stage": 0,
+      "terrain": "ground",
+      "radius": 275.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": true,
+      "first_day": 9,
+      "respawn_days": 0,
+      "source_identity": "p1_boss:boss:2",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 295337326,
+      "label": "hope_snagret_pit",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 200.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 5,
+      "source_identity": "p1_boss:boss:7",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 4260179239,
+      "label": "hope_snagret_part",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 200.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": true,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 30,
+      "source_identity": "p1_boss:boss:7",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 304372265,
+      "label": "navel_beady_long_legs",
+      "stage": 2,
+      "terrain": "ground",
+      "radius": 250.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": true,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 30,
+      "source_identity": "p1_boss:boss:0",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 2974383966,
+      "label": "navel_puffstool",
+      "stage": 2,
+      "terrain": "ground",
+      "radius": 350.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": true,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 30,
+      "source_identity": "p1_boss:teki:9",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 2903640892,
+      "label": "spring_cannon_beetle",
+      "stage": 3,
+      "terrain": "ground",
+      "radius": 250.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": true,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 30,
+      "source_identity": "p1_boss:teki:17",
+      "cohort": null,
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 3759070123,
+      "label": "last_emperor",
+      "stage": 4,
+      "terrain": "ground",
+      "radius": 0.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 10,
+      "projectile_corridor": false,
+      "corpse_route": false,
+      "protected": true,
+      "boss_slot": true,
+      "first_day": 2,
+      "respawn_days": 30,
+      "source_identity": "p1_boss:boss:3",
+      "cohort": null,
+      "evidence": {
+        "xyz": false,
+        "terrain": false,
+        "route": false
+      }
     }
   ],
   "profiles": [
@@ -940,7 +1165,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1005,7 +1231,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1093,7 +1320,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1119,7 +1347,8 @@
       "notes": "P2 source_id 58; muse placement slice #492; legacy lane 27 / muse observer lane 59; vehicle Napkid11; accepted generated slot 1787125272; native placement gate pending family lane 27.",
       "cohort": null,
       "accepted_slot_uids": [
-        1787125272
+        1787125272,
+        613834665
       ]
     },
     {
@@ -1207,7 +1436,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1272,15 +1502,16 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
-      "identity": "DangoMushi",
+      "identity": "Demon",
       "terrains": [
         "ground"
       ],
-      "family_lane": 25,
+      "family_lane": 30,
       "footprint_radius": 0,
       "min_water_depth": 0,
       "requires_flight_space": false,
@@ -1300,7 +1531,7 @@
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "P2 source_id 94; Admitted cohort placement (2026-09-26): constraint-compatible campaign/generated slot accepting the admitted identity; accepted gates record the generated-placement bridge contract (P2_PLACEMENT_SLOT xyz/terrain/route -> P2_GENERATED_PLACEMENT bound=1 -> identity READY). Identity behaviour is each family lane's six natural gates.",
+      "notes": "#215 (2026-09-29): Demon (Bumbling Snitchbug, 32) admitted on the Sarai host with its own retail profile; same constraint-compatible slot set and generated-placement bridge contract as Sarai (the setup sweep claims the slot, P2_GENERATED_PLACEMENT reason=deferred_to_setup_sweep then P2_DEMON_READY/OWN_BIND). Identity behaviour is the lane's natural gates on #215.",
       "cohort": null,
       "accepted_slot_uids": [
         5465461,
@@ -1337,7 +1568,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1402,7 +1634,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1467,7 +1700,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1532,7 +1766,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1597,7 +1832,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1663,7 +1899,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1689,7 +1926,8 @@
       "notes": "P2 source_id 41; muse placement slice #492; legacy lane 28 / muse observer lane 57; vehicle Napkid11; accepted generated slot 1254096625; native placement gate pending family lane 28.",
       "cohort": null,
       "accepted_slot_uids": [
-        1254096625
+        1254096625,
+        613834665
       ]
     },
     {
@@ -1754,7 +1992,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1842,7 +2081,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1907,7 +2147,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1972,7 +2213,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2037,7 +2279,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2120,7 +2363,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2185,7 +2429,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2250,7 +2495,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2311,7 +2557,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2376,7 +2623,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2442,7 +2690,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2507,7 +2756,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2572,7 +2822,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2637,7 +2888,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2702,7 +2954,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2767,7 +3020,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2834,7 +3088,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2922,7 +3177,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2987,7 +3243,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3052,7 +3309,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3117,7 +3375,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3182,7 +3441,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3247,7 +3507,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3312,7 +3573,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3377,7 +3639,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3442,7 +3705,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3507,7 +3771,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3532,8 +3797,424 @@
       "min_first_day": 0,
       "notes": "P2 source_id 45; lane-04 constraint seed; p1_equivalent none; placement cohort None; requires_home False; native placement gate pending family lane 13.",
       "cohort": null
+    },
+    {
+      "identity": "DangoMushi",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 25,
+      "footprint_radius": 150.0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 0,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": true,
+      "encounter_descriptor": "dangomushi_arena",
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn",
+        "placement.boss_arena"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "P2 source_id 94; boss arena placement (#899, owner ruling 2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; accepted on every measured, unprotected arena whose clearance fits the dangomushi_arena footprint. Pool admission is still the family lane's natural kill -> carry -> Onion receipt.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        4019261003,
+        295337326
+      ]
     }
   ],
-  "encounters": [],
-  "notes": "Lane-04 admitted-cohort placement: the admitted identities (23 Sarai, 44 BlueKochappy, 54 Miulin, 57 Kurage, 59-62 elemental Otakara Dweevils, 78 MiniHoudai) share one accepted constraint-compatible target set from the generated-placement bridge."
+  "encounters": [
+    {
+      "id": "dangomushi_arena",
+      "identity": "DangoMushi",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 150.0,
+      "helper_budget": 0,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "roll",
+        "crush",
+        "flick",
+        "rock_rain",
+        "death",
+        "reward"
+      ],
+      "notes": "Segmented Crawbster arena (#899, #897): the roll crashes into the arena wall by design, so it needs a floor of radius >= 150 rather than an open field."
+    },
+    {
+      "id": "queen_arena",
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 250.0,
+      "helper_budget": 10,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "roll",
+        "flick",
+        "larva_birth",
+        "death",
+        "reward"
+      ],
+      "notes": "Empress Bulblax arena (#899, #256): territory 200 plus a 50 roll margin; helper_budget is the native larva cap."
+    },
+    {
+      "id": "bigtreasure_arena",
+      "identity": "BigTreasure",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 250.0,
+      "helper_budget": 0,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "weapons",
+        "element_attacks",
+        "flick",
+        "death",
+        "reward"
+      ],
+      "notes": "Titan Dweevil arena (#899, #246): 4-leg IK gait spans about 207 units."
+    },
+    {
+      "id": "houdai_arena",
+      "identity": "Houdai",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 250.0,
+      "helper_budget": 0,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "walk",
+        "volley",
+        "flick",
+        "death",
+        "reward"
+      ],
+      "notes": "Man-at-Legs arena (#899): admission waits for a real walk animation (owner ruling 4)."
+    }
+  ],
+  "notes": "Lane-04 admitted-cohort placement: the admitted identities (23 Sarai, 44 BlueKochappy, 54 Miulin, 57 Kurage, 59-62 elemental Otakara Dweevils, 78 MiniHoudai) share one accepted constraint-compatible target set from the generated-placement bridge.",
+  "arenas": [
+    {
+      "id": "impact_goolix",
+      "stage": 0,
+      "primary_uid": 4019261003,
+      "spawn_uids": [
+        4019261003,
+        2380628347,
+        2299547974,
+        2215518465,
+        2163994940,
+        2654126479,
+        336062330,
+        284309319,
+        502023936,
+        421107517,
+        131114894
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Goolix (GenObjectBoss Slime 2)",
+      "p1_kind": "boss",
+      "p1_type": 2,
+      "center": [
+        -815.7,
+        20.0,
+        654.3
+      ],
+      "first_day": 9,
+      "respawn_days": 0,
+      "protected_drop": null,
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 4019261003,
+        "clear": 275,
+        "median": 350,
+        "max": 500,
+        "water_rays": 0,
+        "wall_rays": 14,
+        "offmap_rays": 0,
+        "route_distance": 73.9,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-impact-none native.log sha256 9d699fffeaf8ca4773981ef1bd111a5ebcc4ac66dbdd428d8643a1167cf00a67"
+      }
+    },
+    {
+      "id": "hope_snagret_pit",
+      "stage": 1,
+      "primary_uid": 295337326,
+      "spawn_uids": [
+        295337326
+      ],
+      "suppress_uids": [
+        2026735859
+      ],
+      "p1_boss": "Burrowing Snagret pair (BoxSnake 7 + Snake 1)",
+      "p1_kind": "boss",
+      "p1_type": 7,
+      "center": [
+        -867.4,
+        -17.5,
+        3901.8
+      ],
+      "first_day": 2,
+      "respawn_days": 5,
+      "protected_drop": null,
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 295337326,
+        "clear": 200,
+        "median": 488,
+        "max": 500,
+        "water_rays": 3,
+        "wall_rays": 5,
+        "offmap_rays": 0,
+        "route_distance": 166.9,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "suppressed_mate": {
+          "uid": 2026735859,
+          "clear": 250,
+          "median": 488,
+          "route_distance": 241.6
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-forest-none native.log sha256 c3ec900e6fa7c04758c9858b7ca99a280aea71578c242baf2f338e3c94ebfd5c"
+      }
+    },
+    {
+      "id": "hope_snagret_part",
+      "stage": 1,
+      "primary_uid": 4260179239,
+      "spawn_uids": [
+        4260179239
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Burrowing Snagret (BoxSnake 7) holding a ship part",
+      "p1_kind": "boss",
+      "p1_type": 7,
+      "center": [
+        -460.0,
+        -17.2,
+        3708.6
+      ],
+      "first_day": 2,
+      "respawn_days": 30,
+      "protected_drop": "ship part (pellet config 29)",
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 4260179239,
+        "clear": 200,
+        "median": 412,
+        "max": 500,
+        "water_rays": 1,
+        "wall_rays": 9,
+        "offmap_rays": 0,
+        "route_distance": 191.6,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-forest-none native.log sha256 c3ec900e6fa7c04758c9858b7ca99a280aea71578c242baf2f338e3c94ebfd5c"
+      }
+    },
+    {
+      "id": "navel_beady_long_legs",
+      "stage": 2,
+      "primary_uid": 304372265,
+      "spawn_uids": [
+        304372265
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Beady Long Legs (Spider 0)",
+      "p1_kind": "boss",
+      "p1_type": 0,
+      "center": [
+        1543.1,
+        -195.1,
+        618.9
+      ],
+      "first_day": 2,
+      "respawn_days": 30,
+      "protected_drop": "ship part (pellet config 26)",
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 304372265,
+        "clear": 250,
+        "median": 300,
+        "max": 500,
+        "water_rays": 0,
+        "wall_rays": 15,
+        "offmap_rays": 0,
+        "route_distance": 44.2,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-navel-none native.log sha256 ac2f2a17a4a8803b9328023f86ee0119fc4c57c461d8f21aa5457d6c65f11470"
+      }
+    },
+    {
+      "id": "navel_puffstool",
+      "stage": 2,
+      "primary_uid": 2974383966,
+      "spawn_uids": [
+        2974383966
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Puffstool (TEKI_Kinoko 9)",
+      "p1_kind": "teki",
+      "p1_type": 9,
+      "center": [
+        1394.5,
+        -267.8,
+        1784.6
+      ],
+      "first_day": 2,
+      "respawn_days": 30,
+      "protected_drop": "ship part uf09",
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 2974383966,
+        "clear": 350,
+        "median": 412,
+        "max": 500,
+        "water_rays": 0,
+        "wall_rays": 13,
+        "offmap_rays": 0,
+        "route_distance": 70.5,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-navel-none native.log sha256 ac2f2a17a4a8803b9328023f86ee0119fc4c57c461d8f21aa5457d6c65f11470"
+      }
+    },
+    {
+      "id": "spring_cannon_beetle",
+      "stage": 3,
+      "primary_uid": 2903640892,
+      "spawn_uids": [
+        2903640892
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Armored Cannon Beetle (TEKI_Beatle 17)",
+      "p1_kind": "teki",
+      "p1_type": 17,
+      "center": [
+        -450.9,
+        89.0,
+        -941.4
+      ],
+      "first_day": 2,
+      "respawn_days": 30,
+      "protected_drop": "ship part ust1",
+      "held_part_transfer": false,
+      "measured": {
+        "uid": 2903640892,
+        "clear": 250,
+        "median": 300,
+        "max": 500,
+        "water_rays": 0,
+        "wall_rays": 15,
+        "offmap_rays": 0,
+        "route_distance": 23.8,
+        "evidence": {
+          "xyz": true,
+          "terrain": true,
+          "route": true
+        },
+        "run": "output/claude-orch/p2-boss-arenas/runs/m1-spring-none native.log sha256 7d16e9ff55f100c4e0deb86b57e539e9f5a7a1bfb04106740b25735f47a59a47"
+      }
+    },
+    {
+      "id": "last_emperor",
+      "stage": 4,
+      "primary_uid": 3759070123,
+      "spawn_uids": [
+        3759070123
+      ],
+      "suppress_uids": [],
+      "p1_boss": "Emperor Bulblax (King 3)",
+      "p1_kind": "boss",
+      "p1_type": 3,
+      "center": [
+        0.0,
+        -25.0,
+        2700.0
+      ],
+      "first_day": 2,
+      "respawn_days": 30,
+      "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal",
+      "held_part_transfer": false
+    }
+  ],
+  "held_parts": [
+    {
+      "uid": 613834665,
+      "label": "spring_puffy_blowhog_uf02",
+      "stage": 3,
+      "p1_teki": 16,
+      "part": "uf02",
+      "location": "Pikmin: Interstellar Radio",
+      "held_part_transfer": true,
+      "evidence": "output/claude-orch/p2-held-part runs b9/b10 (hand-bound BlueKochappy 44: DROP via=die, carried, CHECK 5 = vanilla index) and the seed-generated binding run recorded on #901"
+    },
+    {
+      "uid": 3406893972,
+      "label": "navel_breadbug_un09",
+      "stage": 2,
+      "p1_teki": 8,
+      "part": "un09",
+      "location": "Pikmin: Space Float",
+      "held_part_transfer": false,
+      "evidence": "u4/u5: DROP part=un09 via=die ok=1 (late un** shape); carry and CHECK not yet proven"
+    }
+  ]
 }

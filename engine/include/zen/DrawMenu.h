@@ -42,6 +42,7 @@ public:
 	void setScale(f32 xScale, f32 yScale);
 
 	bool getActiveSw() { return mIsActive; }
+	const PUTRect& getTouchBounds();
 
 	void setActiveSw(bool isActive) { mIsActive = isActive; }
 
@@ -113,6 +114,7 @@ public:
 	int getIconRPosV() { return mIconRPane->getPosV(); }
 
 	bool getActiveSw() { return mText->getActiveSw(); }
+	const PUTRect& getTouchBounds() { return mText->getTouchBounds(); }
 	void setActiveSw(bool isActive) { mText->setActiveSw(isActive); }
 
 	void setScale(f32 xScale, f32 yScale) { mText->setScale(xScale, yScale); }
@@ -217,6 +219,20 @@ protected:
 /**
  * @brief TODO
  */
+#if defined(PIKI_PC_PORT)
+/// Huecos extra en un menú .blo (PC): clona el último ítem (he/hm/i??l/i??r)
+/// `extraItems` veces, recoloca todos con paso `spacing` (0 = el del .blo)
+/// desplazados `shiftY`, y estira las imágenes sin tag hijas de
+/// `panelParentTag` (el cristal del panel) lo que crezca la lista.
+struct PcMenuExtend {
+	int extraItems;
+	int spacing;
+	int shiftY;
+	u32 panelParentTag;
+	int widen; ///< px extra de ancho del cristal, repartidos a ambos lados.
+};
+#endif
+
 struct DrawMenu : public DrawScreen {
 public:
 	/**
@@ -229,7 +245,12 @@ public:
 		STATUS_FadeOut  = 3,
 	};
 
+#if defined(PIKI_PC_PORT)
+	DrawMenu(immut char*, bool, bool, immut PcMenuExtend* ext = nullptr);
+	void pcExtendMenu(immut PcMenuExtend& ext);
+#else
 	DrawMenu(immut char*, bool, bool);
+#endif
 
 	void start(int);
 	bool update(Controller*);

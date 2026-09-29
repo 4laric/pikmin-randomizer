@@ -47,6 +47,7 @@
 #include "pc_p2_tamago.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
+#include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_long_legs.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
@@ -62,6 +63,18 @@
 #include "settings/pc_settings.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_photo_mode.h"
+#include "pc_coop.h"
+#include "mods/pc_vs_arena.h"
+#include "pc_vs.h"
+#include "BuildingItem.h"
+#include "PikiAI.h"
+#include "ItemObject.h"
+#include "UfoItem.h"
+#include "TekiPersonality.h"
+#include "teki.h"
+#include <algorithm>
+#include <vector>
+#include "pc_window.h"
 #include "gl/pc_gfx.h"
 #endif
 #endif
@@ -131,6 +144,25 @@ static bool lastDamage;
 static bool currDamage;
 static u32 damageParm;
 u16 GameCoreSection::pauseFlag;
+
+#if defined(PIKI_PC_PORT)
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <execinfo.h>
+#endif
+void GameCoreSection::startPause(u16 pause)
+{
+	pauseFlag = pause;
+	// Traza de depuración del coop (solo glibc: backtrace no existe en MinGW/bionic).
+#if defined(__linux__) && !defined(__ANDROID__)
+	if (getenv("PIKMIN_COOP_TRACE")) {
+		fprintf(stderr, "[COOP] startPause(%04x)\n", pause);
+		void* frames[8];
+		int n = backtrace(frames, 8);
+		backtrace_symbols_fd(frames, n, 2);
+	}
+#endif
+}
+#endif
 #if defined(PIKI_PC_PORT)
 // What the pause gates held before photo mode took them, so leaving restores
 // whatever the game was doing rather than assuming it was unpaused.
@@ -143,9 +175,19 @@ u16 GameCoreSection::textDemoTimer;
 int GameCoreSection::textDemoIndex;
 PcamCameraManager* cameraMgr;
 zen::DrawContainer* containerWindow;
+#if defined(PIKI_PC_PORT)
+zen::DrawContainer* containerWindow2 = nullptr;
+#endif
 zen::DrawHurryUp* hurryupWindow;
 zen::DrawAccount* accountWindow;
 
+
+// VS: sin escena de extinción (se empieza sin Pikmin en el campo).
+#if defined(PIKI_PC_PORT)
+#define PC_NOT_VS && !pc_vs_active()
+#else
+#define PC_NOT_VS
+#endif
 /**
  * @todo: Documentation
  * @note UNUSED Size: 00009C
@@ -288,10 +330,21 @@ void GameCoreSection::startMovie(u32 flags, bool useMovieBackCamera)
 		}
 	}
 
+#if defined(PIKI_PC_PORT)
+	// Cooperativo: los dos Olimar se congelan (DemoWait) durante el vídeo; el
+	// que lo disparó (getMovieNavi) es el que la cinemática anima y mueve.
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+	Navi* orima = naviMgr->getNavi(ni);
+#else
 	Navi* orima = naviMgr->getNavi();
+#endif
 	if (orima) {
 		orima->mNaviLightEfx->changeEffect(EffectMgr::EFF_Navi_Light);
 		orima->mNaviLightGlowEfx->changeEffect(EffectMgr::EFF_Navi_LightGlow);
+		orima->applyPlayerLightTint();
+		orima->mCursorTrailEfx->changeEffect(EffectMgr::EFF_Navi_LightGlow);
+		orima->mCursorTrailEfx->scaleSize(kCursorTrailScale);
+		orima->mCursorTrailEfx->setEmitting(false);
 		if (orima->mDamageEfxA) {
 			orima->mDamageEfxA->invisible();
 		}
@@ -316,6 +369,9 @@ void GameCoreSection::startMovie(u32 flags, bool useMovieBackCamera)
 			orima->mStateMachine->transit(orima, NAVISTATE_DemoWait);
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
 	{
 		Iterator it(pikiMgr);
@@ -371,6 +427,12 @@ void GameCoreSection::endMovie(int movieIdx)
 
 	mNavi->mNaviLightEfx->restart();
 	mNavi->mNaviLightGlowEfx->restart();
+#if defined(PIKI_PC_PORT)
+	if (mNavi2) {
+		mNavi2->mNaviLightEfx->restart();
+		mNavi2->mNaviLightGlowEfx->restart();
+	}
+#endif
 	mHideFlags = 0;
 
 	if (mNavi) {
@@ -396,6 +458,13 @@ void GameCoreSection::endMovie(int movieIdx)
 		cameraMgr->mCamera->makeCurrentPosition(angle);
 		cameraMgr->update();
 	}
+#if defined(PIKI_PC_PORT)
+	// Issues #47/#48: la escena de fin de día termina después de exitStage(),
+	// que ya ha puesto naviMgr a nullptr al desmontar la fase.
+	if (naviMgr) {
+		naviMgr->setMovieNavi(nullptr);
+	}
+#endif
 
 	STACK_PAD_VAR(6);
 }
@@ -625,11 +694,19 @@ void GameCoreSection::cleanupDayEnd()
 	}
 	playerState->setDayEnd(true);
 
+#if defined(PIKI_PC_PORT)
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+		if (Navi* navi = naviMgr->getNavi(ni)) {
+			navi->mRippleEffect->kill();
+		}
+	}
+#else
 	if (naviMgr->getNavi()) {
 		PRINT("********** KILL RIPPLE EFFECT****\n");
 		Navi* navi = naviMgr->getNavi();
 		navi->mRippleEffect->kill();
 	}
+#endif
 	seSystem->resetSystem();
 
 	if (!playerState->isChallengeMode() && !playerState->isGameCourse()) {
@@ -815,7 +892,18 @@ void GameCoreSection::cleanupDayEnd()
 	if (!playerState->isChallengeMode()) {
 		playerState->update();
 	}
+#if defined(PIKI_PC_PORT)
+	// Fin del día: los dos Olimar pasan al estado de vídeo.
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+		Navi* navi = naviMgr->getNavi(ni);
+		if (navi->getCurrState()->getID() == NAVISTATE_Dead) {
+			continue; // caído: el cuerpo se queda durante el fin del día
+		}
+		navi->startMovieInf();
+	}
+#else
 	naviMgr->getNavi()->startMovieInf();
+#endif
 	if (!playerState->isChallengeMode()) {
 		playerState->mResultFlags.dump();
 	}
@@ -920,6 +1008,11 @@ void GameCoreSection::exitStage()
 	effectMgr->exit();
 	memStat->reset();
 	flowCont.mIsVersusMode = FALSE;
+#if defined(PIKI_PC_PORT)
+	// Fin de la partida (VS/cooperativo): la siguiente vuelve a leer lo pendiente.
+	gameflow.mPauseAll = FALSE;
+	pc_coop_end_run();
+#endif
 }
 
 /**
@@ -976,6 +1069,321 @@ ASM void asmTest(f32, f32)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+// ── VS: piezas ──────────────────────────────────────────────────────────────
+// Se eligen entre las piezas de la nave del juego por lo que pesan (Pikmin
+// mínimos para cargarlas): las tres más ligeras son las pequeñas, dos de
+// entre 5 y 10 Pikmin las medianas y la más pesada la gorda. Cada pareja
+// simétrica del mapa usa la misma pieza, así los dos cargan lo mismo.
+static u32 sVsPieceIds[PC_VS_PIECE_KINDS];
+
+static void pcVsChoosePieces()
+{
+	for (u32& id : sVsPieceIds) id = 0;
+	pc_vs_set_missing_pieces(false);
+	std::vector<PelletConfig*> parts;
+	for (CoreNode* n = pelletMgr->pcFirstConfig(); n; n = n->mNext) {
+		PelletConfig* c = static_cast<PelletConfig*>(n);
+		if (c->mPelletType() == PELTYPE_UfoPart) parts.push_back(c);
+	}
+	if (parts.size() < PC_VS_PIECE_KINDS) {
+		fprintf(stderr, "[VS] only %zu ship parts available\n", parts.size());
+		pc_vs_set_missing_pieces(true);
+		return;
+	}
+	std::stable_sort(parts.begin(), parts.end(), [](PelletConfig* a, PelletConfig* b) {
+		if (a->mCarryMinPikis() != b->mCarryMinPikis()) return a->mCarryMinPikis() < b->mCarryMinPikis();
+		return a->mCarryMaxPikis() < b->mCarryMaxPikis();
+	});
+	std::vector<bool> used(parts.size(), false);
+	auto take = [&](size_t i, int kind, int points) {
+		used[i]             = true;
+		sVsPieceIds[kind]   = parts[i]->mPelletId.mId;
+		pc_vs_set_piece_points(parts[i]->mPelletId.mId, points);
+		fprintf(stderr, "[VS] piece kind %d = %s (carry %d-%d, %d pts)\n", kind, parts[i]->mPelletId.mStringID,
+		        parts[i]->mCarryMinPikis(), parts[i]->mCarryMaxPikis(), points);
+	};
+	take(parts.size() - 1, PC_VS_PIECE_BIG, 5);
+	for (int k = 0; k < 3; k++) take(k, PC_VS_PIECE_SMALL_A + k, 1);
+	int medium = PC_VS_PIECE_GUARDED;
+	for (size_t i = 0; i < parts.size() && medium <= PC_VS_PIECE_POND; i++) {
+		if (!used[i] && parts[i]->mCarryMinPikis() >= 5 && parts[i]->mCarryMinPikis() <= 10) take(i, medium++, 2);
+	}
+	for (size_t i = 0; i < parts.size() && medium <= PC_VS_PIECE_POND; i++) {
+		if (!used[i]) take(i, medium++, 2);
+	}
+}
+
+static Pellet* pcVsSpawnPellet(MapMgr* map, u32 id, f32 x, f32 z)
+{
+	if (!id) return nullptr;
+	Pellet* pellet = pelletMgr->newPellet(id, nullptr);
+	if (!pellet) return nullptr;
+	Vector3f pos(x, 0.0f, z);
+	pos.y = map->getMinY(x, z, true);
+	pellet->init(pos);
+	pellet->startAI(0);
+	return pellet;
+}
+
+// Reloj y eventos, cada fotograma de juego.
+static void pcVsUpdate(MapMgr* map)
+{
+	const bool wasOver = pc_vs_match_over();
+	pc_vs_match_update(gsys->getFrameTime());
+
+	if (pc_vs_take_big_piece_event()) {
+		Vector3f pos;
+		pc_vs_arena_big_piece(pos);
+		pcVsSpawnPellet(map, sVsPieceIds[PC_VS_PIECE_BIG], pos.x, pos.z);
+		pc_vs_announce("BIG PIECE IN THE CRATER!", 4.0f);
+	}
+	if (pc_vs_take_pellet_event()) {
+		// Solo si el sitio está libre, para que no se amontonen.
+		PcVsPelletSpot spots[8];
+		const int n = pc_vs_arena_pellet_spots(spots, 8);
+		for (int i = 0; i < n; i++) {
+			bool busy = false;
+			Iterator it(pelletMgr);
+			CI_LOOP(it)
+			{
+				Creature* c = *it;
+				const f32 dx = c->mSRT.t.x - spots[i].x, dz = c->mSRT.t.z - spots[i].z;
+				if (dx * dx + dz * dz < 80.0f * 80.0f) busy = true;
+			}
+			if (!busy) pcVsSpawnPellet(map, spots[i].pelletId, spots[i].x, spots[i].z);
+		}
+	}
+	// Asedio: cada Pikmin rival libre junto a un cohete le quita vida y lo
+	// golpea. Su IA libre se suspende mientras tanto (si no, vuelve a su
+	// animación de espera cada fotograma) y se reanuda al dejar de asediar.
+	const f32 dt = gsys->getFrameTime();
+	int sieging[2] = { 0, 0 };
+	int alive[2]   = { 0, 0 };
+	const bool siegeOn = pc_vs_rules().rocketWin && !pc_vs_countdown_holding();
+	UfoItem* ufos[2] = { itemMgr->pcGetUfo(0), itemMgr->pcGetUfo(1) };
+	Iterator it(pikiMgr);
+	CI_LOOP(it)
+	{
+		Piki* piki   = static_cast<Piki*>(*it);
+		if (piki->isAlive() && (piki->mPlayerId == 0 || piki->mPlayerId == 1)) alive[piki->mPlayerId]++;
+		const int target = 1 - piki->mPlayerId; // cohete rival
+		bool siege   = siegeOn && !pc_vs_match_over() && piki->isAlive() && piki->mPlayerId >= 0 && ufos[target & 1]
+		           && piki->mMode == PikiMode::FreeMode && piki->getState() == PIKISTATE_Normal;
+		f32 dx = 0.0f, dz = 0.0f;
+		if (siege) {
+			dx    = ufos[target]->mSRT.t.x - piki->mSRT.t.x;
+			dz    = ufos[target]->mSRT.t.z - piki->mSRT.t.z;
+			siege = dx * dx + dz * dz <= PC_VS_SIEGE_RADIUS * PC_VS_SIEGE_RADIUS;
+		}
+		if (!siege) {
+			if (piki->mPcSieging) {
+				piki->mPcSieging                   = false;
+				piki->mActiveAction->pcSetSuspended(false);
+			}
+			continue;
+		}
+		sieging[target]++;
+		piki->mPcSieging                   = true;
+		piki->mActiveAction->pcSetSuspended(true);
+		piki->mFaceDirection               = atan2f(dx, dz);
+		piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+		PaniPikiAnimator& upper = piki->mPikiAnimMgr.getUpperAnimator();
+		// Job2: los golpes contra las compuertas.
+		if (upper.getCurrentMotionIndex() != PIKIANIM_Job2 || upper.isFinished()) {
+			piki->startMotion(PaniMotionInfo(PIKIANIM_Job2), PaniMotionInfo(PIKIANIM_Job2));
+		}
+	}
+	// Refuerzos: un jugador sin ningún Pikmin (campo, brotes, cebollas) no
+	// puede recuperarse; a los 3 s recibe 3 en cada una de sus cebollas.
+	static int sVsSerial        = -1;
+	static f32 sEmptyFor[2]     = { 0.0f, 0.0f };
+	static f32 sReinforceCd[2]  = { 0.0f, 0.0f };
+	if (sVsSerial != pc_vs_match_serial()) {
+		sVsSerial = pc_vs_match_serial();
+		sEmptyFor[0] = sEmptyFor[1] = sReinforceCd[0] = sReinforceCd[1] = 0.0f;
+	}
+	for (int player = 0; player < 2 && !pc_vs_match_over() && !pc_vs_countdown_holding(); player++) {
+		if (sReinforceCd[player] > 0.0f) sReinforceCd[player] -= dt;
+		if (pcVsFieldPikis(player) > 0) {
+			sEmptyFor[player] = 0.0f;
+			continue;
+		}
+		int stored = 0;
+		for (int color = PikiMinColor; color < PikiColorCount; color++) {
+			if (GoalItem* goal = itemMgr->pcGetContainer(color, player)) stored += goal->getTotalStorePikis();
+		}
+		if (stored > 0) {
+			sEmptyFor[player] = 0.0f;
+			continue;
+		}
+		sEmptyFor[player] += dt;
+		if (sEmptyFor[player] < 3.0f || sReinforceCd[player] > 0.0f) continue;
+		for (int color = PikiMinColor; color < PikiColorCount; color++) {
+			GoalItem* goal = itemMgr->pcGetContainer(color, player);
+			if (!goal) continue;
+			for (int k = 0; k < 3; k++) {
+				pikiInfMgr.incPiki(color, Leaf);
+				goal->mHeldPikis[Leaf]++;
+				GameStat::containerPikis.inc(color);
+			}
+		}
+		GameStat::update();
+		sEmptyFor[player]    = 0.0f;
+		sReinforceCd[player] = 20.0f;
+		SeSystem::playSysSe(SYSSE_CONTAINER_OK);
+		pc_vs_announce(player == 0 ? "P1: REINFORCEMENTS IN YOUR ONIONS" : "P2: REINFORCEMENTS IN YOUR ONIONS", 4.0f);
+	}
+
+	// Daño fijo por Pikmin: con 20, la vida baja aguanta ~24 s, la normal
+	// ~40 s y la alta ~60 s. Los dos a la vez: si caen en el mismo fotograma, empate.
+	pc_vs_damage_rockets(sieging[0] * PC_VS_SIEGE_DPS * dt, sieging[1] * PC_VS_SIEGE_DPS * dt);
+	for (int player = 0; player < 2; player++) pc_vs_set_alive(player, alive[player]);
+
+	if (!wasOver && pc_vs_match_over()) {
+		const int w = pc_vs_winner();
+		const bool destroyed = pc_vs_rocket_hp(0) <= 0.0f || pc_vs_rocket_hp(1) <= 0.0f;
+		const char* msg = w == 2 ? (destroyed ? "BOTH ROCKETS DESTROYED! DRAW" : "TIME! DRAW")
+		                : destroyed ? (w == 0 ? "ROCKET DESTROYED! PLAYER 1 WINS" : "ROCKET DESTROYED! PLAYER 2 WINS")
+		                            : (w == 0 ? "TIME! PLAYER 1 WINS" : "TIME! PLAYER 2 WINS");
+		pc_vs_announce(msg, 600.0f);
+	}
+}
+
+/// VS (fase 2): cada jugador recibe sus tres cebollas, 15 Pikmin (5 de cada
+/// color) en su grupo, y aparecen las pastillas de prueba del mapa.
+static void pcVsSetupBases(MapMgr* map)
+{
+	// Cuenta atrás 3, 2, 1, START con el mundo en pausa (la lleva el HUD).
+	pc_vs_countdown_arm();
+	if (pc_vs_missing_pieces()) pc_vs_announce("NO SHIP PARTS FOUND - CHECK GAME FILES", 60.0f);
+
+	// Sin escenas de la historia: todas cuentan como ya vistas (descubrir
+	// cebollas, primer motor, primeros amarillos/azules...). VS no guarda.
+	for (int d = 0; d < DEMOFLAG_COUNT; d++) playerState->mDemoFlags.setFlagOnly(d);
+
+	// Cebollas ya activas: sin la secuencia de despertar, listas desde el
+	// principio y con su punto de camino abierto.
+	for (int color = Blue; color <= Yellow; color++) {
+		playerState->setContainer(color);
+		playerState->setBootContainer(color);
+	}
+	for (int player = 0; player < 2; player++) {
+		Navi* navi = naviMgr->getNavi(player);
+		for (int color = Blue; color <= Yellow; color++) {
+			Vector3f pos;
+			pc_vs_arena_onion(player, color, pos);
+			pos.y          = map->getMinY(pos.x, pos.z, true);
+			GoalItem* goal = static_cast<GoalItem*>(itemMgr->birth(OBJTYPE_Goal));
+			if (!goal) continue;
+			goal->setColorType(color);
+			goal->mPcOwner = player;
+			goal->init(pos);
+			goal->mFaceDirection = player == 0 ? 1.5707963f : -1.5707963f;
+			goal->mSRT.r.set(0.0f, goal->mFaceDirection, 0.0f);
+			goal->startAI(0);
+			// startAI copia el recuento global de Pikmin guardados; en VS cada
+			// cebolla tiene el suyo, y empieza vacía.
+			goal->mHeldPikis[Leaf] = goal->mHeldPikis[Bud] = goal->mHeldPikis[Flower] = 0;
+
+			// 5 Pikmin de este color en el grupo del capitán.
+			for (int i = 0; navi && i < 5; i++) {
+				Piki* piki = static_cast<Piki*>(pikiMgr->birth());
+				if (!piki) break;
+				GameStat::workPikis.inc(color);
+				piki->init(navi);
+				Vector3f at = navi->mSRT.t;
+				at.x += (color - 1) * 25.0f;
+				at.z += (i - 2) * 20.0f;
+				at.y = map->getMinY(at.x, at.z, true);
+				piki->Creature::init(at);
+				piki->initColor(color);
+				piki->mPlayerId = player;
+				piki->changeMode(PikiMode::FormationMode, navi);
+			}
+		}
+	}
+	GameStat::update();
+
+	PcVsPelletSpot spots[8];
+	const int n = pc_vs_arena_pellet_spots(spots, 8);
+	for (int i = 0; i < n; i++) {
+		Pellet* pellet = pelletMgr->newPellet(spots[i].pelletId, nullptr);
+		if (!pellet) continue;
+		Vector3f pos(spots[i].x, 0.0f, spots[i].z);
+		pos.y = map->getMinY(pos.x, pos.z, true);
+		pellet->init(pos);
+		pellet->startAI(0);
+	}
+
+	// Cohete de cada jugador: recibe las piezas.
+	for (int player = 0; player < 2; player++) {
+		Vector3f pos;
+		f32 face;
+		pc_vs_arena_rocket(player, pos, face);
+		pos.y        = map->getMinY(pos.x, pos.z, true);
+		UfoItem* ufo = static_cast<UfoItem*>(itemMgr->birth(OBJTYPE_Ufo));
+		if (!ufo) continue;
+		ufo->mPcOwner = player;
+		ufo->init(pos);
+		ufo->mFaceDirection = face;
+		ufo->mSRT.r.set(0.0f, face, 0.0f);
+		ufo->startAI(0);
+	}
+
+	// Piezas del principio (la gorda sale en el minuto 5).
+	PcVsPieceSpot pieces[16];
+	const int np = pc_vs_arena_piece_spots(pieces, 16);
+	for (int i = 0; i < np; i++) {
+		pcVsSpawnPellet(map, sVsPieceIds[pieces[i].kind], pieces[i].x, pieces[i].z);
+	}
+
+	// Compuerta de roca-bomba en cada base y un montón de bombas para abrirla.
+	for (int player = 0; player < 2; player++) {
+		Vector3f pos;
+		f32 face;
+		pc_vs_arena_gate(player, pos, face);
+		pos.y = map->getMinY(pos.x, pos.z, true);
+		if (BuildingItem* gate = static_cast<BuildingItem*>(itemMgr->birth(OBJTYPE_SluiceBomb))) {
+			gate->mNumStages = 2;
+			gate->init(pos);
+			gate->mFaceDirection = face;
+			gate->mSRT.r.set(0.0f, face, 0.0f);
+			gate->startAI(0);
+			// startAI no cierra el paso (solo lo hace al restaurar una partida):
+			// cerrada, los caminos rodean por las salidas hasta que se rompa.
+			if (gate->mWayPoint) gate->mWayPoint->setFlag(false);
+		}
+		pc_vs_arena_bomb_pile(player, pos);
+		pos.y = map->getMinY(pos.x, pos.z, true);
+		if (BombGenItem* pile = static_cast<BombGenItem*>(itemMgr->birth(OBJTYPE_BombGen))) {
+			pile->init(pos);
+			pile->startAI(0);
+			pile->mCapacity = pile->mRemaining = 4;
+			pile->mGrid.updateGrid(pile->mSRT.t);
+		}
+	}
+
+	// Bulborbs grandes durmiendo junto a las medianas custodiadas.
+	Vector3f guards[4];
+	const int ng = pc_vs_arena_guard_spots(guards, 4);
+	for (int i = 0; i < ng; i++) {
+		Teki* teki = tekiMgr->newTeki(TEKI_Swallow);
+		if (!teki) continue;
+		TekiPersonality pers;
+		pers.mPosition = guards[i];
+		pers.mPosition.y = map->getMinY(guards[i].x, guards[i].z, true);
+		pers.mNestPosition  = pers.mPosition;
+		pers.mFaceDirection = i == 0 ? 1.5707963f : -1.5707963f;
+		pers.setF(TekiPersonality::FLT_TerritoryRange, 250.0f);
+		teki->mPersonality->input(pers);
+		teki->reset();
+		teki->startAI(0);
+		teki->mSRT.r.set(0.0f, pers.mFaceDirection, 0.0f);
+	}
+}
+#endif
+
 void GameCoreSection::initStage()
 {
 #if defined(VERSION_PIKIDEMO)
@@ -1086,6 +1494,10 @@ void GameCoreSection::initStage()
 	memStat->start("initStage");
 	flowCont.mIsVersusMode = FALSE;
 	PRINT("initStage start\n");
+#if defined(PIKI_PC_PORT)
+	// El constructor ya lo activó para el VS; la línea de arriba lo apaga.
+	flowCont.mIsVersusMode = pc_vs_active() ? TRUE : FALSE;
+#endif
 	seMgr->setPikiNum(0);
 	mNavi->_730 = flowCont._250;
 	mNavi->mSeedCollectionCount = flowCont.mNaviSeedCount;
@@ -1169,6 +1581,18 @@ void GameCoreSection::initStage()
 		mNavi->mSRT.r.set(0.0f, 0.0f, 0.0f);
 	}
 	mNavi->reset();
+#if defined(PIKI_PC_PORT)
+	if (mNavi2) {
+		// P2 aparece al lado de P1, mirando hacia el mismo sitio.
+		Vector3f side(cosf(mNavi->mFaceDirection), 0.0f, -sinf(mNavi->mFaceDirection));
+		mNavi2->mSRT.t         = mNavi->mSRT.t + side * 30.0f;
+		mNavi2->mLastPosition  = mNavi2->mSRT.t;
+		mNavi2->mDayEndPosition = mNavi2->mSRT.t;
+		mNavi2->mFaceDirection = mNavi->mFaceDirection;
+		mNavi2->mSRT.r         = mNavi->mSRT.r;
+		mNavi2->reset();
+	}
+#endif
 
 	sprintf(path2, "%s%d.gen", path, (gameflow.mWorldClock.mCurrentDay - 1) % MAX_DAYS);
 	data = gsys->openFile(path2);
@@ -1236,6 +1660,23 @@ void GameCoreSection::initStage()
 		i++;
 	}
 
+#if defined(PIKI_PC_PORT)
+	// VS: la arena no tiene .gen, así que las pastillas que pone el modo se
+	// registran aquí para que se carguen sus modelos.
+	if (pc_vs_active()) {
+		pc_settings_apply_vs_rules(); // reglas del menú previo
+		pc_vs_match_reset();
+		PcVsPelletSpot spots[8];
+		const int n = pc_vs_arena_pellet_spots(spots, 8);
+		for (int i = 0; i < n; i++) pelletMgr->addUseList(spots[i].pelletId);
+		pcVsChoosePieces();
+		for (u32 id : sVsPieceIds) {
+			if (id) pelletMgr->addUseList(id);
+		}
+		tekiMgr->mUsingType[TEKI_Swallow] = true; // Bulborbs custodios
+		itemMgr->addUseList(OBJTYPE_SluiceBomb);   // compuertas de roca-bomba
+	}
+#endif
 	generatorList->updateUseList();
 	memStat->start("item");
 	itemMgr->initialise();
@@ -1313,10 +1754,40 @@ void GameCoreSection::initStage()
 		piki->initColor(piki->mColor);
 	}
 
+#if defined(PIKI_PC_PORT)
+	// VS: cada capitán empieza en su base de la arena (no hay .gen).
+	if (pc_vs_active()) {
+		for (int i = 0; i < 2; i++) {
+			Navi* navi = naviMgr->getNavi(i);
+			if (!navi) continue;
+			Vector3f pos;
+			f32 face;
+			pc_vs_arena_base(i, pos, face);
+			pos.y                  = mMapMgr->getMinY(pos.x, pos.z, true);
+			navi->mSRT.t           = pos;
+			navi->mLastPosition    = pos;
+			navi->mDayEndPosition  = pos;
+			navi->mFaceDirection   = face;
+			navi->mSRT.r.set(0.0f, face, 0.0f);
+		}
+		pcVsSetupBases(mMapMgr);
+	}
+#endif
 	attentionCamera = new AttentionCamera;
 	cameraMgr->startCamera(naviMgr->getActiveNavi());
 	cameraMgr->update();
+#if defined(PIKI_PC_PORT)
+	if (mCameraMgr2) {
+		mCameraMgr2->startCamera(mNavi2);
+		mCameraMgr2->update();
+	}
+#endif
 	mNavi->mIsCursorVisible = TRUE;
+#if defined(PIKI_PC_PORT)
+	if (mNavi2) {
+		mNavi2->mIsCursorVisible = TRUE; // sin esto P2 no tiene cursor ni silbato
+	}
+#endif
 
 #if defined(VERSION_PIKIDEMO)
 #else
@@ -1411,7 +1882,7 @@ void GameCoreSection::finalSetup()
 	PRINT("********* BONUS PIKI CHECK\n");
 	GameStat::dump();
 
-	if (playerState->mHasExtinctionDemoPlayed == false && !playerState->isTutorial()
+	if (playerState->mHasExtinctionDemoPlayed == false && !playerState->isTutorial() PC_NOT_VS
 	    && ((GameStat::allPikis[Blue] == 0 && playerState->hasContainer(Blue))
 	        || (GameStat::allPikis[Red] == 0 && playerState->hasContainer(Red))
 	        || (GameStat::allPikis[Yellow] == 0 && playerState->hasContainer(Yellow)))) {
@@ -1432,6 +1903,18 @@ void GameCoreSection::finalSetup()
 			itemMgr->getUfo();
 			cameraMgr->mCamera->startCamera(navi, 1, 0);
 		}
+#if defined(PIKI_PC_PORT)
+		if (mNavi2) {
+			// P2 también sale de la nave, un poco a un lado para no solaparse.
+			mNavi2->mStateMachine->transit(mNavi2, 23);
+			if (UfoItem* ufo = itemMgr->getUfo()) {
+				Vector3f side(cosf(ufo->mFaceDirection), 0.0f, -sinf(ufo->mFaceDirection));
+				mNavi2->mSRT.t = mNavi2->mSRT.t + side * 30.0f;
+				mNavi2->mSRT.t.y = mMapMgr->getMinY(mNavi2->mSRT.t.x, mNavi2->mSRT.t.z, true);
+				mNavi2->mLastPosition = mNavi2->mSRT.t;
+			}
+		}
+#endif
 	} else {
 		if (playerState->isTutorial()) {
 			cameraMgr->mCamera->startCamera(mNavi, 0, 0);
@@ -1443,6 +1926,11 @@ void GameCoreSection::finalSetup()
 			cameraMgr->mCamera->startCamera(mNavi, 1, 0);
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	if (mCameraMgr2) {
+		mCameraMgr2->mCamera->startCamera(mNavi2, 1, 0);
+	}
+#endif
 
 	// Lane 12 (#130): finish the second captain's live setup now that the first
 	// captain's spawn position, the shared camera and every stage manager exist.
@@ -1534,6 +2022,9 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 
 	memStat->start("gui");
 	containerWindow = new zen::DrawContainer();
+#if defined(PIKI_PC_PORT)
+	containerWindow2 = nullptr; // se crea más abajo, cuando ya existe mNavi2
+#endif
 	hurryupWindow   = new zen::DrawHurryUp();
 	accountWindow   = new zen::DrawAccount();
 	memStat->end("gui");
@@ -1613,7 +2104,9 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 	// half the 24-hour cycle this parameter describes -- so double it. The
 	// clock recomputes its speed from here every tick, and each stage's own
 	// day_multiply still applies on top, as designed.
-	gameflow.mParameters->mRealMinutesPerGameDay(f32(pc_settings_get_day_minutes()) * 2.0f);
+	// 0 means the original value: 27 min per 24h, 13.5 min of play.
+	const int dayMinutes = pc_settings_get_day_minutes();
+	gameflow.mParameters->mRealMinutesPerGameDay(dayMinutes ? f32(dayMinutes) * 2.0f : 27.0f);
 #endif
 	gameflow.addGenNode("AI定数", AIConstant::_instance); // 'AI Constants'
 
@@ -1630,22 +2123,35 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 	PRINT("================== NAVI ===================\n");
 	memStat->start("navi");
 	naviMgr = new NaviMgr();
-	// Lane 12 (#130): opt-in second captain. navi_capacity() is 1 unless
-	// PIKMIN_P2_SECOND_CAPTAIN is set (the live gate now defaults open); normal
-	// single-captain play is unchanged because the request defaults off.
-	int naviCapacity = pc_p2_captain::navi_capacity();
-	if (naviCapacity > 1 && !pc_p2_captain::prepare_second_captain_assets(naviMgr)) {
+#if defined(PIKI_PC_PORT)
+	pc_coop_begin_run();
+	// VS: reaprovecha el modo versus que Nintendo dejó a medias (Pikmin con
+	// dueño, rivales como enemigos). Se puso a FALSE justo arriba.
+	flowCont.mIsVersusMode = pc_vs_active() ? TRUE : FALSE;
+	// Lane 12 (#130): opt-in P2 second captain. navi_capacity() is 1 unless
+	// PIKMIN_P2_SECOND_CAPTAIN is set; normal single-captain play is unchanged
+	// because the request defaults off. Upstream local co-op owns the second
+	// Navi slot when it is active, so the P2 opt-in path only runs without it.
+	const bool pcCoop = pc_coop_active();
+	int naviCapacity  = pcCoop ? 2 : pc_p2_captain::navi_capacity();
+	if (!pcCoop && naviCapacity > 1 && !pc_p2_captain::prepare_second_captain_assets(naviMgr)) {
 		naviCapacity = 1;
 	}
 	naviMgr->create(naviCapacity);
 	mNavi = static_cast<Navi*>(naviMgr->birth());
-	if (naviCapacity > 1) pc_p2_captain::birth_second_captain(naviMgr);
+	// mNaviID 1 -> Kontroller(2) -> pad 1 (segundo mando, fase 0).
+	mNavi2 = pcCoop ? static_cast<Navi*>(naviMgr->birth()) : nullptr;
+	if (!pcCoop && naviCapacity > 1) pc_p2_captain::birth_second_captain(naviMgr);
 	// Lane 12 (#130): bind the live slot-0 captain/squad adapter now that the
 	// Navi object exists, so a captor family can resolve target identity and
 	// claim/release through pc_p2_captain against the real NaviMgr/PikiMgr.
 	// Idempotent; with one Navi the zero-control guard keeps only-captain
 	// capture refused, exactly as the source refuses to strand the player.
 	pc_p2_captain::setup_from_navi_mgr();
+#else
+	naviMgr->create(1);
+	mNavi = static_cast<Navi*>(naviMgr->birth());
+#endif
 	PRINT("********* navi ==== %x\n", mNavi);
 	gameflow.addGenNode("naviMgr", naviMgr);
 	memStat->end("navi");
@@ -1720,15 +2226,42 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 
 	mNavi->mNaviCamera = &camera;
 	mNavi->init();
+#if defined(PIKI_PC_PORT)
+	if (mNavi2) {
+		// Fase 1: cámara única que sigue a P1; P2 comparte la misma cámara.
+		mNavi2->mNaviCamera = &camera;
+		mNavi2->init();
+	}
+#endif
 	camera.mPosition.x = 500.0f * sinf(camera.mRotation.x);
 	camera.mPosition.y = 140.0f;
 	camera.mPosition.z = 500.0f * cosf(camera.mRotation.x);
 	gsys->setFade(1.0f);
 	cameraMgr = new PcamCameraManager(&camera, mNavi->mKontroller);
 	gameflow.addGenNode("cameraMgr", cameraMgr);
+#if defined(PIKI_PC_PORT)
+	cameraMgrP1 = cameraMgr;
+	if (mNavi2) {
+		mGameCamera2 = new Camera();
+		mGameCamera2->mRotation = camera.mRotation;
+		mGameCamera2->mPosition = camera.mPosition;
+		mGameCamera2->mFov      = camera.mFov;
+		mNavi2->mNaviCamera     = mGameCamera2;
+		mCameraMgr2 = new PcamCameraManager(mGameCamera2, mNavi2->mKontroller);
+		cameraMgrP2 = mCameraMgr2;
+	} else {
+		cameraMgrP2 = nullptr;
+	}
+#endif
 	memStat->end("gamecore");
 
 	mDrawGameInfo = new zen::DrawGameInfo(!gameflow.mIsChallengeMode ? zen::DrawGameInfo::MODE_Story : zen::DrawGameInfo::MODE_Challenge);
+#if defined(PIKI_PC_PORT)
+	if (mNavi2) {
+		containerWindow2 = new zen::DrawContainer(2);
+		mDrawGameInfo2 = new zen::DrawGameInfo(!gameflow.mIsChallengeMode ? zen::DrawGameInfo::MODE_Story : zen::DrawGameInfo::MODE_Challenge, 1);
+	}
+#endif
 }
 
 /**
@@ -1745,6 +2278,32 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
  * and 20 Pikmin banked, so testing anything past the first level does not mean
  * playing the first level again.
  */
+// VS (fase 1): F8 apunta dónde está cada capitán en vs_positions.txt, para
+// colocar bases y piezas del mapa VS paseando por él.
+static void pcVsMarkKey()
+{
+	if (!pc_vs_active() || !naviMgr) {
+		return;
+	}
+	const Uint8* keys = SDL_GetKeyboardState(nullptr);
+	static bool wasDown = false;
+	const bool isDown   = keys != nullptr && keys[SDL_SCANCODE_F8] != 0;
+	if (isDown && !wasDown) {
+		static int mark = 0;
+		mark++;
+		FILE* out = fopen("vs_positions.txt", "a");
+		for (int i = 0; i < 2; i++) {
+			Navi* navi = naviMgr->getNavi(i);
+			if (!navi) continue;
+			const Vector3f& p = navi->mSRT.t;
+			fprintf(stderr, "[VS] marca %d  P%d  %.1f %.1f %.1f\n", mark, i + 1, p.x, p.y, p.z);
+			if (out) fprintf(out, "marca %d  P%d  %.1f %.1f %.1f\n", mark, i + 1, p.x, p.y, p.z);
+		}
+		if (out) fclose(out);
+	}
+	wasDown = isDown;
+}
+
 static void pcDebugKeys()
 {
 	// Off unless asked for: a stray F5 would otherwise fill someone's Onion
@@ -1802,7 +2361,7 @@ static void pcDebugKeys()
 		WorldClock& clock = gameflow.mWorldClock;
 		const f32 next    = clock.mTimeOfDay + 1.0f;
 		clock.setTime(next >= clock.mHoursInDay ? clock.mHoursInDay - 0.01f : next);
-		fprintf(stderr, "[DEBUG] clock -> %02d:00 (day is %d min of play)\n",
+		fprintf(stderr, "[DEBUG] clock -> %02d:00 (day is %d min of play, 0 = original)\n",
 		        clock.mCurrentGameHour, pc_settings_get_day_minutes());
 		fflush(stderr);
 	}
@@ -1858,8 +2417,14 @@ static void pcDebugKeys()
 void GameCoreSection::update()
 {
 	STACK_PAD_VAR(2);
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) {
+		pcVsUpdate(mMapMgr);
+	}
+#endif
 #if defined(PIKI_PC_PORT) && PIKI_DEBUG_KEYS
 	pcDebugKeys();
+	pcVsMarkKey();
 #endif
 	if (!gameflow.mMoviePlayer->mIsActive && !mDoneSundownWarn && gameflow.mWorldClock.mTimeOfDay >= gameflow.mParameters->mNightWarning()
 	    && (flowCont.mGameEndFlag != GAMEEND_PikminExtinction || flowCont.mGameEndFlag != GAMEEND_NaviDown)) {
@@ -1884,12 +2449,28 @@ void GameCoreSection::update()
 	}
 	pc_p2_hardlanes_update();
 	pc_p2_projectiles_update();
+	pc_p2_kabuto_fsm_update_stones();
 	pc_p2_long_legs_update_all();
 
 	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
+#if defined(PIKI_PC_PORT)
+		// Cooperativo: la secuencia de extinción la hace un Olimar vivo, no
+		// un cuerpo caído. Si el vivo ya está en ella, no se repite.
+		Navi* navi = naviMgr->getMovieNavi();
+		int id     = navi->getCurrState()->getID();
+		if (mNavi2) {
+			bool anyInPikiZero = false;
+			for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+				if (naviMgr->getNavi(ni)->getCurrState()->getID() == NAVISTATE_PikiZero) anyInPikiZero = true;
+			}
+			if (anyInPikiZero) id = NAVISTATE_PikiZero;
+		}
+#else
 		Navi* navi = mNavi;
 		int id     = navi->getCurrState()->getID();
-		if (id != NAVISTATE_PikiZero && id != NAVISTATE_DemoSunset && id != NAVISTATE_DemoWait && id != NAVISTATE_DemoInf) {
+#endif
+		if (id != NAVISTATE_PikiZero && id != NAVISTATE_DemoSunset && id != NAVISTATE_DemoWait && id != NAVISTATE_DemoInf
+		    && id != NAVISTATE_Dead) {
 			PRINT("**** PIKI ZERO GAME OVER *******\n");
 			PRINT("deadpikis %d pellets %d killtekis %d maxpikis %d" MISSING_NEWLINE, static_cast<int>(GameStat::deadPikis),
 			      static_cast<int>(GameStat::getPellets), static_cast<int>(GameStat::killTekis), GameStat::maxPikis);
@@ -1900,12 +2481,60 @@ void GameCoreSection::update()
 
 	if (!gameflow.mMoviePlayer->mIsActive) {
 		cameraMgr->update();
+#if defined(PIKI_PC_PORT)
+		updateCoopCameras();
+#endif
 	}
+#if defined(PIKI_PC_PORT)
+	// Los textos de tutorial muestran los controles del jugador que los
+	// disparó (setMovieNavi se fija en cada disparador, fase 2).
+	Navi* promptNavi = (mNavi2 && naviMgr) ? naviMgr->getMovieNavi() : nullptr;
+	pc_window_set_prompt_player(promptNavi ? promptNavi->mNaviID : -1);
+
+	// Issue #40: con una escena, un texto (la nave, un tutorial) o la pausa en
+	// pantalla, Navi no lee el ratón y su movimiento se acumula. Al volver, el
+	// cursor salía disparado todo lo acumulado. Se descarta mientras dura.
+	if (gameflow.mMoviePlayer->mIsActive || gameflow.mIsUIOverlayActive || gameflow.mPauseAll) {
+		pc_window_clear_mouse_cursor_delta();
+	}
+#endif
 
 
+#if defined(PIKI_PC_PORT)
+	fillHudInfo(mDrawGameInfo->info(), mNavi);
+	if (mNavi2 && mDrawGameInfo2) {
+		fillHudInfo(mDrawGameInfo2->info(), mNavi2);
+	}
+	Node::update();
+}
+
+int GameCoreSection::countFormationPikis(Navi* navi)
+{
+	int count = 0;
+	Iterator iter(pikiMgr);
+	CI_LOOP(iter)
+	{
+		Piki* piki = static_cast<Piki*>(*iter);
+		if (piki->isAlive() && piki->mMode == PikiMode::FormationMode && piki->mNavi == navi) {
+			count++;
+		}
+	}
+	return count;
+}
+
+void GameCoreSection::fillHudInfo(zen::GameInfo* info, Navi* navi)
+{
+	// Lane 12 (#130): with the opt-in P2 second captain (no co-op second HUD),
+	// the single HUD follows whichever captain is currently controlled.
+	if (!mNavi2 && navi == mNavi) {
+		if (Navi* active = naviMgr->getActiveNavi()) navi = active;
+	}
+	Piki* nextThrowPiki = navi->mNextThrowPiki;
+#else
 	Navi* activeThrowNavi = naviMgr->getActiveNavi();
 	if (!activeThrowNavi) activeThrowNavi = naviMgr->getNavi();
 	Piki* nextThrowPiki = activeThrowNavi->mNextThrowPiki;
+#endif
 	int encodedNextThrowType;
 	if (nextThrowPiki) {
 		int color = nextThrowPiki->mColor;
@@ -1934,6 +2563,31 @@ void GameCoreSection::update()
 		// 0 = no next throw piki
 		encodedNextThrowType = 0;
 	}
+#if defined(PIKI_PC_PORT)
+	info->mEncodedNextThrowType = encodedNextThrowType;
+	info->mTotalPikiNum         = GameStat::allPikis;
+	info->mMapPikiNum           = GameStat::mapPikis;
+	info->mFormationPikiNum     = mNavi2 ? countFormationPikis(navi) : (short)GameStat::formationPikis;
+	// VS: cada HUD cuenta solo lo de su jugador (campo y, en total, también
+	// lo guardado en sus cebollas).
+	if (pc_vs_active() && navi) {
+		const int player = navi->mNaviID;
+		int map          = 0;
+		Iterator it(pikiMgr);
+		CI_LOOP(it)
+		{
+			Piki* piki = static_cast<Piki*>(*it);
+			if (piki->isAlive() && piki->mPlayerId == player) map++;
+		}
+		int stored = 0;
+		for (int color = PikiMinColor; color < PikiColorCount; color++) {
+			if (GoalItem* goal = itemMgr->pcGetContainer(color, player)) stored += goal->getTotalStorePikis();
+		}
+		info->mMapPikiNum   = short(map);
+		info->mTotalPikiNum = short(map + stored);
+	}
+}
+#else
 	zen::pGameInfo->mEncodedNextThrowType = encodedNextThrowType;
 	zen::pGameInfo->mTotalPikiNum         = GameStat::allPikis;
 	zen::pGameInfo->mMapPikiNum           = GameStat::mapPikis;
@@ -1945,6 +2599,7 @@ void GameCoreSection::update()
 	pc_p2_bombotakara_update();
 	Node::update();
 }
+#endif
 
 /**
  * @todo: Documentation
@@ -2289,6 +2944,44 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
             } else for (int i = 0; i < count; ++i) spawned[i]->kill(false);
         }
     }
+    // Progressive maturity is a level, not a consumable: keep every Pikmin of a
+    // color at or above its received tier. Field Pikmin grow only in ordinary
+    // states (never mid-pluck, eaten, dying or mushroomed) and are caught on a
+    // later sweep; Onion stock moves up in both counters the withdrawal uses.
+    static float maturitySweep = 0.0f;
+    maturitySweep = std::max(0.0f, maturitySweep - gsys->getFrameTime());
+    if (maturitySweep == 0.0f) {
+        maturitySweep = 0.25f;
+        int grown = 0;
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* piki = static_cast<Piki*>(*it);
+            if (!piki || !piki->isAlive() || piki->mColor < 0 || piki->mColor > 2) continue;
+            const int tier = pc_randomizer_maturity(piki->mColor);
+            if (piki->mHappa >= tier || !piki->getCurrState()) continue;
+            const int state = piki->getCurrState()->getID();
+            if (state != PIKISTATE_Normal && state != PIKISTATE_LookAt && state != PIKISTATE_Emotion) continue;
+            piki->setFlower(tier);
+            if (grown++ == 0) seSystem->playPikiSound(SEF_PIKI_GROW4, piki->mSRT.t);
+        }
+        for (int color = 0; color < 3; ++color) {
+            const int tier = pc_randomizer_maturity(color);
+            GoalItem* onion = itemMgr->getContainer(color);
+            for (int happa = Leaf; happa < tier; ++happa) {
+                grown += pikiInfMgr.mPikiCounts[color][happa];
+                pikiInfMgr.mPikiCounts[color][tier] += pikiInfMgr.mPikiCounts[color][happa];
+                pikiInfMgr.mPikiCounts[color][happa] = 0;
+                if (onion) {
+                    onion->mHeldPikis[tier] += onion->mHeldPikis[happa];
+                    onion->mHeldPikis[happa] = 0;
+                }
+            }
+        }
+        if (grown) {
+            std::printf("[Pikmin Randomizer] MATURITY_APPLIED count=%d\n", grown);
+            std::fflush(stdout);
+        }
+    }
     if (navi->mHealth < C_NAVI_PARM(navi, mHealth) && pc_randomizer_consume_benefit(PC_BENEFIT_HEAL))
         navi->mHealth = C_NAVI_PARM(navi, mHealth);
 }
@@ -2431,12 +3124,20 @@ void GameCoreSection::updateAI()
     if (pc_bbft_skip_tutorial() && !pc_randomizer_resumed() && !gameflow.mMoviePlayer->mIsActive
         && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive && itemMgr) {
         GoalItem* redOnion = itemMgr->getContainer(initialColor);
-        const int initialField = bbftRedsQueued ? bbftInitialField : pc_randomizer_enabled() && pc_randomizer_field_capacity() < 20 ? pc_randomizer_field_capacity() : 20;
+        // Real play keeps the 20 starting Pikmin in the Onion, as vanilla does:
+        // Olimar withdraws them himself. Auto-withdrawing dropped them next to
+        // whatever a randomized seed placed by the start area, on the wrong side
+        // of its wall. The scripted/headless harnesses (TEST_BACKGROUND) still
+        // withdraw so their field=N readiness markers keep their meaning.
+        const bool manualStart = pc_randomizer_enabled()
+            && (!std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND") || std::getenv("PIKMIN_RANDOMIZER_MANUAL_START"));
+        const int initialField = bbftRedsQueued ? bbftInitialField : manualStart ? 0 : pc_randomizer_enabled() && pc_randomizer_field_capacity() < 20 ? pc_randomizer_field_capacity() : 20;
         if (!bbftRedsQueued && redOnion && redOnion->getTotalStorePikis() >= 20) {
             // Use normal Onion withdrawal: initialized actors descend the legs
             // and join Olimar through their native exit state, no fake count.
             bbftInitialField = initialField;
-            redOnion->exitPikis(initialField);
+            if (initialField > 0) redOnion->exitPikis(initialField);
+            else std::printf("[Pikmin Randomizer] START_ONION_HELD stage=%d color=%d stored=%d\n", flowCont.mCurrentStage->mStageID, initialColor, redOnion->getTotalStorePikis());
             bbftRedsQueued = true;
         }
         if (bbftRedsQueued && !bbftRedsReady && redOnion && redOnion->getTotalStorePikis() == 20 - initialField
@@ -2722,6 +3423,26 @@ void GameCoreSection::updateAI()
             if (!pc_randomizer_checked("Population: 500 total Pikmin") || pc_randomizer_field_capacity() != 20) std::abort();
             delivered = true;
             std::puts("[Pikmin Randomizer] TEST_ONLY corpse_delivered_after_death_no_kill_check");
+        }
+    }
+    // bot-v7 (wf10): dump every corpse pellet config's carry data (min/max
+    // carriers per PelletConfig p01/p02) so the haul wall can be attributed to
+    // content/data (min > max, or max 1-4) vs bot behaviour. TEST_ONLY: gated
+    // by PIKMIN_RANDOMIZER_TEST_SCRIPT=corpse-weights, prints once, exits 0.
+    if (scripted && !std::strcmp(scripted, "corpse-weights") && background && !std::strcmp(background, "1")
+        && pc_randomizer_ready() && pelletMgr) {
+        static bool dumped = false;
+        if (!dumped && pelletMgr->getNumConfigs() > 0) {
+            dumped = true;
+            for (int type = 0; type < TEKI_TypeCount; ++type) {
+                PelletConfig* config = pelletMgr->getConfig(TekiMgr::getTypeId(type));
+                if (!config || config->mPelletType() != PELTYPE_Corpse) continue;
+                std::printf("[Pikmin Randomizer] TEST_ONLY corpse_weight teki_type=%d name=%s min=%d max=%d\n",
+                            type, TekiMgr::getTypeName(type),
+                            config->mCarryMinPikis(), config->mCarryMaxPikis());
+            }
+            std::fflush(stdout);
+            std::exit(0);
         }
     }
     if (scripted && !std::strcmp(scripted, "save") && background && !std::strcmp(background, "1") && bbftRedsReady) {
@@ -3131,6 +3852,302 @@ void GameCoreSection::updateAI()
 #endif
 }
 
+#if defined(PIKI_PC_PORT)
+static PcamCameraManager* sCameraMgrP1 = nullptr;
+
+void GameCoreSection::updateCoopCameras()
+{
+	if (!mCameraMgr2) {
+		return;
+	}
+	// La cámara de P2 se actualiza con el singleton apuntando a ella, porque
+	// PcamCamera y sus eventos leen `cameraMgr` por dentro.
+	setActiveView(1);
+	mCameraMgr2->update();
+	setActiveView(0);
+	updateDynamicSplit(gsys->getFrameTime());
+}
+
+// Cámara unificada: foco en el punto medio de los dos focos, orientación de
+// la cámara de J1 y distancia media más un extra proporcional a la
+// separación, para que quepan los dos Olimar.
+void GameCoreSection::updateDynamicSplit(f32 dt)
+{
+	Camera* own[2] = { mNavi->mNaviCamera, mGameCamera2 };
+	if (!pc_settings_get_coop_merge_camera()) {
+		// Pantalla partida fija: J1 izquierda/arriba, cámaras propias.
+		mSplitBlend = 1.0f;
+		mP1Side     = 0;
+		mNavi->mControlCamera = nullptr;
+		if (mNavi2) mNavi2->mControlCamera = nullptr;
+		return;
+	}
+	if (!own[0] || !own[1] || !mNavi2 || !sCameraMgrP1 && !cameraMgr) {
+		return;
+	}
+	// NCamera::makeCamera solo escribe mPosition; el foco hay que sacarlo
+	// del watchpoint de cada PcamCamera.
+	PcamCameraManager* mgrs[2] = { sCameraMgrP1 ? sCameraMgrP1 : cameraMgr, mCameraMgr2 };
+	for (int i = 0; i < 2; i++) {
+		NVector3f& wp = mgrs[i]->mCamera->getWatchpoint();
+		own[i]->mFocus.set(wp.x, wp.y, wp.z);
+	}
+	Vector3f p0 = mNavi->mSRT.t, p1 = mNavi2->mSRT.t;
+	const f32 sep = p0.distance(p1);
+	Vector3f dir[2];
+	f32 dist[2];
+	for (int i = 0; i < 2; i++) {
+		dir[i]  = own[i]->mPosition - own[i]->mFocus;
+		dist[i] = dir[i].length();
+		if (dist[i] > 0.001f) dir[i].scale(1.0f / dist[i]);
+	}
+	const f32 dAvg = 0.5f * (dist[0] + dist[1]);
+	// Orientación: la de J1 (promediar las dos se anula cuando miran en
+	// sentidos opuestos y la cámara gira sola).
+	Vector3f dirU = dir[0];
+	mUnifiedCam = *own[0];
+	mUnifiedCam.mFocus.set(0.5f * (own[0]->mFocus.x + own[1]->mFocus.x), 0.5f * (own[0]->mFocus.y + own[1]->mFocus.y),
+	                       0.5f * (own[0]->mFocus.z + own[1]->mFocus.z));
+	mUnifiedCam.mPosition = mUnifiedCam.mFocus + dirU * (dAvg + 0.7f * sep);
+	mUnifiedCam.mFov      = 0.5f * (own[0]->mFov + own[1]->mFov);
+	mUnifiedCam.calcLookAt(mUnifiedCam.mPosition, mUnifiedCam.mFocus, nullptr);
+	mUnifiedCam.update(1.0f, mUnifiedCam.mFov, mUnifiedCam.mNear, mUnifiedCam.mFar);
+
+	// Umbral con histéresis relativo a la distancia de cámara propia.
+	const f32 target = sep > 0.6f * dAvg ? 1.0f : (sep < 0.4f * dAvg ? 0.0f : (mSplitBlend > 0.5f ? 1.0f : 0.0f));
+	const f32 step   = dt / 0.45f;
+	if (mSplitBlend < target) {
+		mSplitBlend = mSplitBlend + step > target ? target : mSplitBlend + step;
+	} else if (mSplitBlend > target) {
+		mSplitBlend = mSplitBlend - step < target ? target : mSplitBlend - step;
+	}
+
+	// Lado por posición en pantalla, solo mientras está unificada y con
+	// margen para que el HUD no salte cuando los dos se cruzan.
+	if (mSplitBlend <= 0.0f) {
+		const bool horizontal = pc_settings_get_coop_split() == 1;
+		immut Vector3f& axis  = horizontal ? mUnifiedCam.mViewYAxis : mUnifiedCam.mViewXAxis;
+		const f32 a0 = (p0 - mUnifiedCam.mPosition).dot(axis);
+		const f32 a1 = (p1 - mUnifiedCam.mPosition).dot(axis);
+		const f32 d  = horizontal ? a1 - a0 : a0 - a1; // < 0: P1 a la izquierda / arriba.
+		if (d < -12.0f) mP1Side = 0;
+		else if (d > 12.0f) mP1Side = 1;
+	}
+
+	// Cámaras de cada vista: lerp unificada -> propia.
+	const f32 b = mSplitBlend;
+	for (int i = 0; i < 2; i++) {
+		Camera& c = mViewCam[i];
+		c         = *own[i];
+		c.mPosition.set(mUnifiedCam.mPosition.x + (own[i]->mPosition.x - mUnifiedCam.mPosition.x) * b,
+		                mUnifiedCam.mPosition.y + (own[i]->mPosition.y - mUnifiedCam.mPosition.y) * b,
+		                mUnifiedCam.mPosition.z + (own[i]->mPosition.z - mUnifiedCam.mPosition.z) * b);
+		c.mFocus.set(mUnifiedCam.mFocus.x + (own[i]->mFocus.x - mUnifiedCam.mFocus.x) * b,
+		             mUnifiedCam.mFocus.y + (own[i]->mFocus.y - mUnifiedCam.mFocus.y) * b,
+		             mUnifiedCam.mFocus.z + (own[i]->mFocus.z - mUnifiedCam.mFocus.z) * b);
+		c.mFov = mUnifiedCam.mFov + (own[i]->mFov - mUnifiedCam.mFov) * b;
+		c.calcLookAt(c.mPosition, c.mFocus, nullptr);
+		// update() rehace mPlanePointers, que tras la copia apuntan a los
+		// planos de la cámara origen.
+		c.update(1.0f, c.mFov, c.mNear, c.mFar);
+	}
+	// Los controles siguen a la vista mostrada (con la cámara unificada, la
+	// orientación de J1), no a la cámara propia de cada uno.
+	mNavi->mControlCamera  = &mViewCam[0];
+	mNavi2->mControlCamera = &mViewCam[1];
+}
+
+// HUD en la misma mitad que la vista 3D del jugador (lado y orientación).
+void GameCoreSection::setViewSubrect(int view)
+{
+	const int side = viewSide(view);
+	if (pc_settings_get_coop_split() == 1) {
+		pc_gfx_set_view_subrect(0.0f, side == 0 ? 0.5f : 0.0f, 1.0f, side == 0 ? 1.0f : 0.5f);
+	} else {
+		pc_gfx_set_view_subrect(side == 0 ? 0.0f : 0.5f, 0.0f, side == 0 ? 0.5f : 1.0f, 1.0f);
+	}
+}
+
+void GameCoreSection::setActiveView(int view)
+{
+	if (!mCameraMgr2) {
+		return;
+	}
+	if (view == 1) {
+		if (!sCameraMgrP1) {
+			sCameraMgrP1 = cameraMgr;
+		}
+		cameraMgr = mCameraMgr2;
+	} else if (sCameraMgrP1) {
+		cameraMgr    = sCameraMgrP1;
+		sCameraMgrP1 = nullptr;
+	}
+}
+
+Camera* GameCoreSection::getViewCamera(int view)
+{
+	if (!pc_settings_get_coop_merge_camera()) {
+		return view == 1 ? mGameCamera2 : mNavi->mNaviCamera;
+	}
+	return &mViewCam[view == 1 ? 1 : 0];
+}
+
+void GameCoreSection::drawGameInfoHud(Graphics& gfx)
+{
+	if (!isSplitScreen() || !mDrawGameInfo2 || gameflow.mMoviePlayer->mIsActive) {
+		mDrawGameInfo->draw(gfx);
+		return;
+	}
+	// Parte de cada jugador dentro de su mitad: el espacio GX 640x480 se
+	// mapea al sub-rectángulo (pc_gfx_set_view_subrect) y el ancho virtual
+	// del HUD sale del aspecto de la mitad.
+	const f32 windowAspect = pc_gfx_get_window_aspect_ratio();
+	const f32 viewAspect   = pc_settings_get_coop_split() == 1 ? windowAspect * 2.0f : windowAspect * 0.5f;
+	zen::DrawGameInfo* huds[2] = { mDrawGameInfo, mDrawGameInfo2 };
+	for (int view = 0; view < 2; view++) {
+		// Sub-rectángulo normalizado con origen abajo-izquierda (GL).
+		setViewSubrect(view);
+		pc_gfx_set_view_aspect_override(viewAspect);
+		// El HUD de J2 con el tinte de distinción de su capitán (suavizado
+		// hacia blanco para no apagar la fuente); sin tinte si van distintos.
+		const bool hudTinted = view == 1 && pc_coop_p2_tinted();
+		if (hudTinted) {
+			unsigned char r, g, b;
+			pc_coop_p2_tint(&r, &g, &b);
+			pc_gfx_set_out_tint(1.0f - (1.0f - r / 255.0f) * 0.4f, 1.0f - (1.0f - g / 255.0f) * 0.4f,
+			                    1.0f - (1.0f - b / 255.0f) * 0.4f);
+		}
+		huds[view]->drawPlayer(gfx);
+		drawDownedLabel(gfx, view == 0 ? mNavi : mNavi2, viewAspect);
+		if (hudTinted) pc_gfx_clear_out_tint();
+	}
+	pc_gfx_set_view_aspect_override(0.0f);
+	pc_gfx_clear_view_subrect();
+	gfx.setViewport(AREA_FULL_SCREEN(gfx));
+	gfx.setScissor(AREA_FULL_SCREEN(gfx));
+	mDrawGameInfo->drawShared(gfx);
+}
+
+// Menú de cebolla/nave: en pantalla partida cada jugador ve el suyo dentro
+// de su mitad, con el mismo espacio virtual que su HUD.
+void GameCoreSection::drawContainerWindows(Graphics& gfx)
+{
+	if (!isSplitScreen() || !containerWindow2 || gameflow.mMoviePlayer->mIsActive) {
+		containerWindow->draw(gfx);
+		return;
+	}
+	const f32 windowAspect = pc_gfx_get_window_aspect_ratio();
+	const f32 viewAspect   = pc_settings_get_coop_split() == 1 ? windowAspect * 2.0f : windowAspect * 0.5f;
+	int virtW = int(lroundf(480.0f * viewAspect));
+	int virtH = 480;
+	if (virtW < 640) {
+		virtW = 640;
+		virtH = int(lroundf(640.0f / viewAspect));
+	}
+	zen::DrawContainer* wins[2] = { containerWindow, containerWindow2 };
+	for (int view = 0; view < 2; view++) {
+		setViewSubrect(view);
+		pc_gfx_set_view_aspect_override(viewAspect);
+		pc_gfx_set_hud_virtual_size(virtW, virtH);
+		wins[view]->draw(gfx);
+	}
+	pc_gfx_set_hud_virtual_size(0, 0);
+	pc_gfx_set_view_aspect_override(0.0f);
+	pc_gfx_clear_view_subrect();
+	gfx.setViewport(AREA_FULL_SCREEN(gfx));
+	gfx.setScissor(AREA_FULL_SCREEN(gfx));
+}
+
+// Rótulo en la vista de un Olimar caído (fase 5). Mismo espacio virtual que
+// el HUD de esa mitad, para que no salga estirado.
+void GameCoreSection::drawDownedLabel(Graphics& gfx, Navi* navi, f32 viewAspect)
+{
+	if (!navi || !gsys->mConsFont || navi->getCurrState()->getID() != NAVISTATE_Dead) {
+		return;
+	}
+	int virtW = int(lroundf(480.0f * viewAspect));
+	int virtH = 480;
+	if (virtW < 640) {
+		virtW = 640;
+		virtH = int(lroundf(640.0f / viewAspect));
+	}
+	pc_gfx_set_hud_virtual_size(virtW, virtH);
+	pc_gfx_set_hud_wide(1);
+	Matrix4f ortho;
+	gfx.setOrthogonal(ortho.mMtx, RectArea(0, 0, virtW, virtH));
+	gfx.setViewport(RectArea(0, 0, virtW, virtH));
+	gfx.setScissor(RectArea(0, 0, virtW, virtH));
+	gfx.setFog(false);
+	gfx.useTexture(nullptr, GX_TEXMAP0);
+	const char* text = "OLIMAR DOWN";
+	const int textW  = gsys->mConsFont->stringWidth(text);
+	const int x      = (virtW - textW) / 2;
+	const int y      = virtH / 2 - gsys->mConsFont->mCharHeight / 2;
+	gfx.setColour(Colour(0, 0, 0, 200), true);
+	gfx.setAuxColour(Colour(0, 0, 0, 200));
+	gfx.texturePrintf(gsys->mConsFont, x + 2, y + 2, "%s", text);
+	gfx.setColour(Colour(255, 90, 90, 255), true);
+	gfx.setAuxColour(Colour(255, 90, 90, 255));
+	gfx.texturePrintf(gsys->mConsFont, x, y, "%s", text);
+	pc_gfx_set_hud_wide(0);
+	pc_gfx_set_hud_virtual_size(0, 0);
+}
+
+RectArea GameCoreSection::splitViewRect(Graphics& gfx, int view)
+{
+	const int w = gfx.mScreenWidth, h = gfx.mScreenHeight;
+	const int side = viewSide(view);
+	if (pc_settings_get_coop_split() == 1) {
+		return side == 0 ? RectArea(0, 0, w, h / 2) : RectArea(0, h / 2, w, h);
+	}
+	return side == 0 ? RectArea(0, 0, w / 2, h) : RectArea(w / 2, 0, w, h);
+}
+
+RectArea GameCoreSection::currentViewRect(Graphics& gfx)
+{
+	return mViewRectActive ? splitViewRect(gfx, mActiveViewIndex) : AREA_FULL_SCREEN(gfx);
+}
+
+void GameCoreSection::beginView(Graphics& gfx, int view, f32 farClip)
+{
+	Camera* cam = getViewCamera(view);
+	setActiveView(view);
+	mActiveViewIndex = view;
+	mViewRectActive  = true;
+	// Frustum de pantalla completa corrido en NDC hacia el lado de la vista
+	// y recortado a su mitad: con blend 0 las dos mitades componen una sola
+	// imagen; con blend 1 cada Olimar queda centrado en la suya.
+	const bool horizontal = pc_settings_get_coop_split() == 1;
+	const f32 shift       = 0.5f * mSplitBlend * (viewSide(view) == 0 ? 1.0f : -1.0f);
+	pc_gfx_set_proj_offset(horizontal ? 0.0f : -shift, horizontal ? shift : 0.0f);
+	gfx.setCamera(cam);
+	cam->update(pc_gfx_get_window_aspect_ratio(), cam->mFov, pc_first_person_active() ? 3.0f : 100.0f, farClip);
+	gfx.setViewport(AREA_FULL_SCREEN(gfx));
+	gfx.setScissor(currentViewRect(gfx));
+	// initRender() vacía luces y shapes cacheadas una vez por frame; cada
+	// pasada vuelve a añadir las mismas Light (DayMgr::refresh) y encola sus
+	// translúcidos. Sin esto la lista de luces se vuelve circular y la
+	// segunda vista repinta los cascos de la primera con matrices ajenas.
+	if (view > 0) {
+		gfx.mActiveLightMask = 0;
+		gfx.mLight.initCore("");
+		gfx.resetCacheBuffer();
+		gfx.resetMatrixBuffer();
+	}
+}
+
+void GameCoreSection::endViews(Graphics& gfx, Camera* mainCamera)
+{
+	pc_gfx_set_proj_offset(0.0f, 0.0f);
+	mViewRectActive  = false;
+	mActiveViewIndex = 0;
+	setActiveView(0);
+	gfx.setCamera(mainCamera);
+	gfx.setViewport(AREA_FULL_SCREEN(gfx));
+	gfx.setScissor(AREA_FULL_SCREEN(gfx));
+}
+#endif
+
 /**
  * @todo: Documentation
  */
@@ -3142,12 +4159,22 @@ void GameCoreSection::draw(Graphics& gfx)
 #if defined(PIKI_PC_PORT)
 	advanceState = pc_render_is_authoritative();
 #endif
+#if defined(PIKI_PC_PORT)
+	// Segunda vista de la frame: solo dibujar, no avanzar sonido.
+	if (mRenderPass != 0) advanceState = false;
+#endif
 	gsys->mTimer->start("se updt", true);
 	if (advanceState && gameflow.mMoviePlayer->mIsActive) {
 		Vector3f pos;
 		gameflow.mMoviePlayer->getLookAtPos(pos);
 		seSystem->update(gfx, pos);
 	} else if (advanceState) {
+#if defined(PIKI_PC_PORT)
+		// Pantalla partida: el escuchador va al punto medio entre los dos.
+		if (mNavi2 && mNavi2->isAlive()) {
+			seSystem->update(gfx, (mNavi->mSRT.t + mNavi2->mSRT.t) * 0.5f);
+		} else
+#endif
 		seSystem->update(gfx, mNavi->mSRT.t);
 	}
 	gsys->mTimer->stop("se updt");
@@ -3222,15 +4249,21 @@ void GameCoreSection::draw(Graphics& gfx)
 	gfx.setLighting(false, nullptr);
 	gfx.useTexture(mShadowTexture, GX_TEXMAP0);
 	gfx.setColour(Colour(255, 255, 255, 128), true);
-	if (AIPerf::optLevel <= 1) {
-		pikiMgr->drawShadow(gfx, mShadowTexture);
+#if defined(PIKI_PC_PORT)
+	// Con sombras proyectadas (shadow map) las manchas originales sobran.
+	if (pc_settings_get_shadows() == 0)
+#endif
+	{
+		if (AIPerf::optLevel <= 1) {
+			pikiMgr->drawShadow(gfx, mShadowTexture);
+		}
+		itemMgr->drawShadow(gfx, mShadowTexture);
+		pelletMgr->drawShadow(gfx, mShadowTexture);
+		if (tekiMgr && !hideTeki()) {
+			tekiMgr->drawShadow(gfx, mShadowTexture);
+		}
+		naviMgr->drawShadow(gfx);
 	}
-	itemMgr->drawShadow(gfx, mShadowTexture);
-	pelletMgr->drawShadow(gfx, mShadowTexture);
-	if (tekiMgr && !hideTeki()) {
-		tekiMgr->drawShadow(gfx, mShadowTexture);
-	}
-	naviMgr->drawShadow(gfx);
 
 	gfx.setCBlending(blend);
 	gfx.setDepth(true);
@@ -3255,6 +4288,7 @@ void GameCoreSection::draw(Graphics& gfx)
 	pc_p2_queen_draw(gfx);
 	pc_p2_king_draw(gfx);
 	pc_p2_tank_draw_water(gfx);
+	pc_p2_kabuto_fsm_draw_stones(gfx);
 }
 
 /**
@@ -3378,10 +4412,18 @@ void GameCoreSection::draw2D(Graphics& gfx)
 		AState<Navi>* s = navi->getCurrState();
 		int state       = s->getID();
 		if (state != NAVISTATE_DemoSunset) {
+#if defined(PIKI_PC_PORT)
+			drawGameInfoHud(gfx);
+#else
 			mDrawGameInfo->draw(gfx);
+#endif
 		}
 		gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
+#if defined(PIKI_PC_PORT)
+		drawContainerWindows(gfx);
+#else
 		containerWindow->draw(gfx);
+#endif
 		if (!gameflow.mMoviePlayer->mIsActive && !gameflow.mIsUIOverlayActive) {
 			hurryupWindow->draw(gfx);
 		}

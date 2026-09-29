@@ -2,6 +2,7 @@
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_fsm.h"
 #include "pc_p2_waterwraith_register.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hiba.h"
@@ -19,6 +20,7 @@
 #include "pc_p2_kochappy.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_bluechappy.h"
+#include "pc_p2_chappy.h"
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
@@ -33,7 +35,9 @@
 #include "pc_p2_plant.h"
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
+#include "pc_p2_uji.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_otakara.h"
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
@@ -165,9 +169,45 @@ void pc_p2_preview_setup() {
             pc_p2_kochappy_fsm_setup();
             pc_p2_kogane_setup();
             pc_p2_mamuta_setup();
+            pc_p2_mamuta_fsm_setup();
             pc_p2_sokkuri_setup();
             pc_p2_otakara_setup();
+            pc_p2_chappy_setup();
+            pc_p2_frog_setup();
+            pc_p2_armor_setup();
+            pc_p2_tank_setup();
+            pc_p2_kabuto_fsm_setup();
+            pc_p2_catfish_setup();
+            pc_p2_tadpole_setup();
+            pc_p2_hana_setup();
+            pc_p2_bombotakara_setup();
+            pc_p2_long_legs_setup();
+            pc_p2_groink_teki_setup();
             pc_p2_batch2_setup();  // P2 models for the Otakara/Sokkuri behaviour hosts
+            // inst-bugs lane (#871): campaign-identity behavior hosts. The
+            // room-preview session list below never runs in a campaign, so
+            // these four must bind here; each is a no-op when its sidecars
+            // are absent (species not staged in this run).
+            pc_p2_uji_setup();
+            pc_p2_elecbug_setup();
+            pc_p2_tamago_setup();
+            pc_p2_dangomushi_setup();
+            pc_p2_batch3_setup_bridge(); // snagret P2 models for DangoMushi
+            // inst-legs lane (#871): Jigumo FSM + aquatic visuals, Long Legs
+            // FSM + bind visuals. Bridge-mode setups degrade via
+            // pc_p2_setup_skip when their sidecars are absent.
+            pc_p2_jigumo_setup();
+            pc_p2_batch3_setup();
+            pc_p2_long_legs_setup();
+            // inst-worms lane (#871) round 2: the P2 FSM must actually run in
+            // bridge mode. Round-1 review found these setups never ran in a
+            // campaign session (bridge branch omitted them), so every tick
+            // was P1 Chappy host AI (PROXY). Bind them here alongside the
+            // visuals (batch2 covers ground Imomushi, batch3 covers
+            // snagret/aquatic).
+            pc_p2_snakejoint_setup();
+            pc_p2_imomushi_setup();
+            pc_p2_umimushi_setup();
         }
         return;
     }
@@ -280,6 +320,7 @@ void pc_p2_preview_setup() {
     pc_p2_kochappy_setup();
     pc_p2_dwarf_orange_setup();
     pc_p2_bluechappy_setup();
+    pc_p2_chappy_setup();
     pc_p2_kochappy_fsm_setup();
     pc_p2_breadbug_visual_setup();
     pc_p2_giant_breadbug_visual_setup();
@@ -291,6 +332,7 @@ void pc_p2_preview_setup() {
     pc_p2_frog_setup();
     pc_p2_kogane_setup();
     pc_p2_mamuta_setup();
+    pc_p2_mamuta_fsm_setup();
     pc_p2_tank_setup();
     pc_p2_hiba_setup();
     pc_p2_flora_setup();
@@ -303,7 +345,9 @@ void pc_p2_preview_setup() {
     pc_p2_shijimi_setup();
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();
+    pc_p2_uji_setup();
     pc_p2_armor_setup();
+    pc_p2_kabuto_fsm_setup();
     pc_p2_otakara_setup();
     pc_p2_elecbug_setup();
     pc_p2_tamago_setup();
@@ -400,6 +444,9 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         else if(unsigned generator=0;pc_p2_otakara_receipt(pellet->mPelletView,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"otakara:"+std::to_string(generator);value=corpseValue;
         }
+        else if(unsigned generator=0;pc_p2_chappy_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"chappy:"+std::to_string(generator);value=corpseValue;
+        }
         else if(unsigned generator=0;pc_p2_waterwraith_receipt(pellet,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"waterwraith:"+std::to_string(generator);value=corpseValue;
             waterwraithCorpse=true;
@@ -423,13 +470,26 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         else if(unsigned generator=0;pc_p2_long_legs_receipt(pellet,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"longlegs:"+std::to_string(generator);value=corpseValue;
         }
+        // inst-worms lane (#871): snagret pair (34/70), Imomushi (65) and
+        // bloyster pair (71/101) carcass receipts. The generator-keyed
+        // corpse:<name>:<gen> flows to onion:p2:<id> via the ordinary
+        // delivery ledger (GoalItem::suckMe -> pc_randomizer_p2_corpse_delivered).
+        else if(unsigned generator=0;pc_p2_snakejoint_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"snakejoint:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_imomushi_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"imomushi:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_umimushi_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"umimushi:"+std::to_string(generator);value=corpseValue;
+        }
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle(std::string(waterwraithCorpse ? "Waterwraith" : (c?c->spec.instance.c_str():pellet==previewTreasure?treasureId.c_str():(pc_p2_king_teki_name(pellet->mPelletView)?pc_p2_king_teki_name(pellet->mPelletView):pc_p2_queen_teki_name(pellet->mPelletView)?pc_p2_queen_teki_name(pellet->mPelletView):pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))) + " +" + std::to_string(added?value:0));
+        podTitle(std::string(waterwraithCorpse ? "Waterwraith" : (c?c->spec.instance.c_str():pellet==previewTreasure?treasureId.c_str():(pc_p2_king_teki_name(pellet->mPelletView)?pc_p2_king_teki_name(pellet->mPelletView):pc_p2_queen_teki_name(pellet->mPelletView)?pc_p2_queen_teki_name(pellet->mPelletView):pc_p2_chappy_name(pellet->mPelletView)?pc_p2_chappy_name(pellet->mPelletView):pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))) + " +" + std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

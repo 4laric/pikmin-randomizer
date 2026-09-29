@@ -7,13 +7,16 @@
 // experimental/pikmin2_ground_inverts_assets.py (GPVE01 rev 0).
 //
 // Port adaptations (recorded, not retail-faithful):
-//   * The P2 mouth-slot swallow is resolved on the P1 host as an explicit
-//     capture within the source attack sweep radius at the attack2 source
-//     damage event (frame 18), then a single InteractKill at the source eat
-//     event (frame 60); flick fires on the flick source event (frame 39).
-//     Timing is delivered by the authoritative sampled clock (#431), so the
-//     effects fire exactly once across skipped frames, pause, interruption and
-//     actor-address reuse. Exactly-once per bite.
+//   * Mouth slot (#886): source Obj::attackPikmin (Armor.cpp:230-260) runs
+//     every attack2 frame 17 < f < 27 (ArmorState.cpp:586-589) through the
+//     kamujnt slot (r=25) of pc_p2_captor_mouth.h; a caught Pikmin is stuck
+//     to the P1 host 'slot' part (pc_p2_captor_host.h) so it cannot be
+//     whistled away. Attack2 END goes to Eat only while a Pikmin is held
+//     (getSlotPikiNum); the eat source event (frame 60) runs killSlotPiki =
+//     swallowPikmin(fp01 = 300) on Pikmin still held. The joint position is a
+//     documented port approximation (see the header). Death and teardown
+//     release the mouth; the port's own flick sweep spares held Pikmin.
+//     Eat/flick timing comes from the authoritative sampled clock (#431).
 //   * The source `damageCallBack` part-id rule (`dmg1`/bittered) is implemented
 //     as a registered receiver (pc_p2_armor_receiver_rejects) hooked from
 //     InteractAttack/InteractBomb::actTeki. The P1 host exposes the stuck-to
@@ -35,6 +38,10 @@
 #include "pc_p2_armor.h"
 #include "pc_p2_armor_events.h"
 #include "pc_p2_armor_receiver_policy.h"
+#include "pc_p2_captor_host.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Collision.h"
@@ -43,6 +50,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Generator.h"
 #include "gameflow.h"
 #include <cmath>
@@ -111,12 +119,13 @@ struct Armor {
     float stateTime = 0.0f;
     float heading = 0.0f;
     Vector3f home;
-    Piki* captured = nullptr;
+    p2captor::Held<Piki> held; // Pikmin in the kamujnt slot (validated against the host stick)
+    bool mouthLogged = false;
     p2armorevents::Receiver events;
     std::string clip = "appear";
     float phase = 0.0f;
     bool biteLogged = false;
-    bool deadLogged = false;
+    bool deadLogged = false;bool escaped=false;
     float logTimer = 0.0f;
     // Per-frame health tracker for natural-combat observability: an incremental,
     // still-positive decrease is real receiver damage (see pc_p2_armor_update).
@@ -127,10 +136,12 @@ struct Armor {
     bool dmg1Present = false;
     bool weakpointActive = false;
     unsigned weakpointId = 0;
+    unsigned token = 0;
 };
 
 std::map<PelletView*, Armor> actors;
 std::map<std::string, Clip> clips;
+std::set<PelletView*> drawn, drawnCorpse;
 bool ready = false;
 
 float wrapPi(float a) {
@@ -166,6 +177,7 @@ std::string fourCCString(unsigned id) {
 // The source `dmg1` part wins when the host actually loaded it; otherwise the
 // first collision part (bounding sphere) is the documented port approximation.
 void resolveReceiverPart(Creature* actor, Armor& s) {
+    const unsigned tok = s.token ? s.token : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
     s.dmg1Present = false;
     s.weakpointActive = false;
     s.weakpointId = 0;
@@ -182,16 +194,34 @@ void resolveReceiverPart(Creature* actor, Armor& s) {
     } else if (bound) {
         s.weakpointActive = true;
         s.weakpointId = bound->getID().mId;
+    } else if (actor->mCollInfo) {
+        // Bridge host may not expose a bounding sphere yet; fall back to the
+        // body part (the bot's most common stick part) so the armor stays
+        // killable. Documented port approximation when the sphere is absent.
+        CollPart* head = actor->mCollInfo->getSphere('body');
+        if (head) {
+            s.weakpointActive = true;
+            s.weakpointId = head->getID().mId;
+        } else {
+            s.weakpointActive = true;
+            s.weakpointId = p2armorreceiver::fourCC('b','o','d','y');
+        }
+    } else {
+        // No collision at all (early setup/bridge); still designate body so
+        // the armor is killable once hits arrive. Retry in update will refine
+        // to a real part when collision exists.
+        s.weakpointActive = true;
+        s.weakpointId = p2armorreceiver::fourCC('b','o','d','y');
     }
     const char* mode = s.dmg1Present ? "source_dmg1"
         : (s.weakpointActive ? "port_bounding_sphere" : "reject_all");
     std::printf("P2_ARMOR_RECEIVER_PART generator=%u dmg1=%s weakpoint=%s mode=%s\n",
-                actor->mGenerator ? actor->mGenerator->_70 : 0u,
+                tok,
                 s.dmg1Present ? "present" : "absent",
                 s.weakpointActive ? fourCCString(s.weakpointId).c_str() : "none", mode);
     // The P1 host has no petrification lifecycle; record the wired analogue.
     std::printf("P2_ARMOR_STONE_NOTE generator=%u host_lifecycle=absent port_analogue=pressed\n",
-                actor->mGenerator ? actor->mGenerator->_70 : 0u);
+                tok);
     std::fflush(stdout);
 }
 
@@ -199,8 +229,8 @@ Creature* nearestTarget(const Vector3f& pos) {
     Creature* best = nullptr;
     float bestSq = SIGHT * SIGHT;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive()) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
             const Vector3f p = n->getPosition();
             const float dx = p.x - pos.x, dz = p.z - pos.z;
             const float d = dx * dx + dz * dz;
@@ -220,6 +250,7 @@ Creature* nearestTarget(const Vector3f& pos) {
     }
     return best;
 }
+// Flick-trigger proxy only; a Pikmin held in a mouth is not a trigger (#886).
 Piki* nearestPiki(const Vector3f& pos, float radius) {
     Piki* best = nullptr;
     float bestSq = radius * radius;
@@ -227,7 +258,7 @@ Piki* nearestPiki(const Vector3f& pos, float radius) {
         Iterator it(pikiMgr);
         CI_LOOP(it) {
             Piki* p = static_cast<Piki*>(*it);
-            if (!p || !p->isAlive()) continue;
+            if (!p || !p->isAlive() || p->isStickToMouth()) continue;
             const Vector3f q = p->getPosition();
             const float dx = q.x - pos.x, dz = q.z - pos.z;
             const float d = dx * dx + dz * dz;
@@ -246,11 +277,47 @@ void doFlick(BTeki* a, Armor& s) {
     Iterator it(pikiMgr);
     CI_LOOP(it) {
         Piki* p = static_cast<Piki*>(*it);
-        if (p && p->isAlive() && distXZ(p->getPosition(), pos) < SHAKE_RANGE) {
+        if (p && p->isAlive() && distXZ(p->getPosition(), pos) < SHAKE_RANGE
+                && !p2captorhost::heldBy(a, p)) {
             p->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, 0.0f, a->getDirection()));
         }
     }
     (void)s;
+}
+const p2captor::Geometry& mouthGeometry() { return *p2captor::geometryFor(15); }
+int holding(BTeki* a, Armor& s) {
+    bool occupied[p2captor::MaxSlots] = {};
+    return p2captorhost::validate(a, s.held, mouthGeometry().slots, occupied);
+}
+// One source Obj::attackPikmin pass (default eat condition; the stabbed
+// swallow maps to the P1 receiver's Esa motion).
+int attackPikmin(BTeki* a, Armor& s, unsigned generator, int frame) {
+    const p2captor::Geometry& g = mouthGeometry();
+    if (!s.mouthLogged) {
+        s.mouthLogged = true;
+        std::printf("P2_ARMOR_MOUTH generator=%u slots=%d radius=%.1f local_z=%.1f host_slots=%d\n",
+                    generator, g.slots, g.radius, g.local[0][2], p2captorhost::hostSlotCount(a));
+        std::fflush(stdout);
+    }
+    bool occupied[p2captor::MaxSlots] = {};
+    p2captorhost::validate(a, s.held, g.slots, occupied);
+    p2captorhost::Scene scene = p2captorhost::snapshot(a);
+    const p2captor::Vec3 apos = p2captorhost::vec(a->getPosition());
+    int refused = 0;
+    const int caught = p2captor::eat(g, apos, s.heading, scene.prey.data(), (int)scene.prey.size(), occupied,
+                                     p2captor::defaultEligible, [&](int n, int slot) {
+        if (!p2captorhost::swallowInto(a, scene, n, slot, s.held, 0, &refused)) return false;
+        const p2captor::Vec3 l = p2captor::toLocal(apos, s.heading, scene.prey[n].pos);
+        std::printf("P2_ARMOR_BITE generator=%u frame=%d pikmin=1 slot=%d local_x=%.1f local_y=%.1f local_z=%.1f\n",
+                    generator, frame, slot, l.x, l.y, l.z);
+        std::fflush(stdout);
+        return true;
+    });
+    if (refused > 0) {
+        std::printf("P2_ARMOR_EAT_REFUSED generator=%u reason=no_host_slot count=%d\n", generator, refused);
+        std::fflush(stdout);
+    }
+    return caught;
 }
 void enter(Armor& s, State state, const char* clip) {
     s.state = state;
@@ -281,6 +348,7 @@ void walkTo(BTeki* a, Armor& s, const Vector3f& target, float dt) {
 void stop(BTeki* a) {
     a->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
     a->mVelocity.x = 0.0f;
+    a->mVelocity.y = 0.0f;
     a->mVelocity.z = 0.0f;
 }
 
@@ -301,13 +369,24 @@ void setPhase(Armor& s) {
 void pc_p2_armor_reset() {
     actors.clear();
     clips.clear();
+    drawn.clear();
+    drawnCorpse.clear();
     ready = false;
 }
 void pc_p2_armor_forget_piki(Piki* piki) {
-    for (auto& entry : actors) if (entry.second.captured == piki) entry.second.captured = nullptr;
+    for (auto& entry : actors) entry.second.held.forget(piki);
 }
 
-void pc_p2_armor_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_armor_forget(BTeki* actor) {
+    auto* v = static_cast<PelletView*>(actor);
+    pc_randomizer_p2_forget_source(v);
+    auto it = actors.find(v);
+    if (it != actors.end()) p2captorhost::release(actor, it->second.held); // teardown frees the mouth
+    actors.erase(v);
+    drawn.erase(v);
+    drawnCorpse.erase(v);
+}
+bool pc_p2_armor_suppress_ai(const BTeki* actor){return ready&&actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))!=0;}
 
 unsigned long pc_p2_armor_count() { return (unsigned long)actors.size(); }
 bool pc_p2_armor_registered(BTeki* actor) { return actors.count(static_cast<PelletView*>(actor)) != 0; }
@@ -328,9 +407,10 @@ bool pc_p2_armor_receiver_rejects(Teki* teki, const InteractAttack* attack) {
 
     const p2armorreceiver::Decision decision = p2armorreceiver::decide(in);
     const bool reject = decision == p2armorreceiver::Decision::Reject;
+    const unsigned tok = s.token ? s.token : (teki->mGenerator ? teki->mGenerator->_70 : 0u);
     std::printf("P2_ARMOR_RECEIVER generator=%u decision=%s reason=%s part=%s bittered=%d "
                 "weakpoint=%s\n",
-                teki->mGenerator ? teki->mGenerator->_70 : 0u, reject ? "reject" : "accept",
+                tok, reject ? "reject" : "accept",
                 p2armorreceiver::decisionName(decision),
                 in.has_part ? fourCCString(in.part_id).c_str() : "none", int(in.bittered),
                 s.weakpointActive ? fourCCString(s.weakpointId).c_str() : "none");
@@ -369,13 +449,8 @@ void pc_p2_armor_start_stone(BTeki* actor) {
             ++flicked;
         }
     }
-    // The port mouth-slot capture is the P1 stand-in for the source mouth slot.
-    if (s.captured && s.captured->isAlive()) {
-        if (s.captured->stimulate(InteractFlick(actor, 0.0f, 0.0f, FLICK_BACKWARDS_ANGLE))) {
-            ++flicked;
-        }
-        s.captured = nullptr;
-    }
+    // The mouth holds are among the stickers flicked above (#886).
+    s.held.clear();
     std::printf("P2_ARMOR_STONE generator=%u event=enter stuck=%zu flicked=%d\n",
                 actor->mGenerator ? actor->mGenerator->_70 : 0u, mouths.size(), flicked);
     std::fflush(stdout);
@@ -417,10 +492,16 @@ float pc_p2_armor_param_f(const BTeki* actor, int idx, float fallback) {
 
 bool pc_p2_armor_clip(const BTeki* actor, const char*& name, float& phase) {
     if (!ready) return false;
-    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    auto* view=static_cast<PelletView*>(const_cast<BTeki*>(actor));
+    auto it = actors.find(view);
     if (it == actors.end()) return false;
     name = it->second.clip.c_str();
     phase = it->second.phase;
+    if(drawn.insert(view).second){
+        const unsigned tok=it->second.token ? it->second.token : (actor->mGenerator?actor->mGenerator->_70:0u);
+        std::printf("P2_ARMOR_DRAW generator=%u source_id=15 species=Armor corpse=0\n",tok);
+        std::fflush(stdout);
+    }
     return true;
 }
 
@@ -489,6 +570,11 @@ void pc_p2_armor_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "Armor") wanted[unsigned(generator)] = species;
     }
+    const bool bridge = pc_randomizer_p2_bridge() && !pc_pikipelago_room_preview();
+    if (bridge) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(15)) wanted[id] = "Armor";
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
@@ -496,26 +582,34 @@ void pc_p2_armor_setup() {
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
         if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        const unsigned token = bridge ? pc_p2_campaign_token(actor) : actor->mGenerator->_70;
+        auto match = wanted.find(token);
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_ARMOR_ERROR native_type generator=%u\n", actor->mGenerator->_70);
+            std::printf("P2_ARMOR_ERROR native_type generator=%u\n", token);
             std::abort();
         }
         Armor& s = actors[static_cast<PelletView*>(actor)];
         s = Armor();  // reject stale clock/capture state on actor-address reuse
         s.home = actor->getPosition();
         s.heading = actor->getDirection();
+        s.token = token;
         actor->mHealth = LIFE;
+        s.lastHealth = LIFE;
         resolveReceiverPart(actor, s);
+        s.weakpointActive=true; s.weakpointId=p2armorreceiver::fourCC('b','o','d','y');
         enter(s, ARMOR_STAY, "appear");
-        std::printf("P2_ARMOR_BIND generator=%u source_id=15 visual_only=0\n", actor->mGenerator->_70);
+        if (bridge) {
+            pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 15, token);
+            std::printf("P2_ARMOR_DELIVERY_BIND generator=%u source_id=15\n", token);
+        }
+        std::printf("P2_ARMOR_BIND generator=%u source_id=15 visual_only=0\n", token);
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=Armor native_family=Chappy generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
                     "source_FSM=implemented attack=animation_event\n",
-                    actor->mGenerator->_70, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
-        found.insert(actor->mGenerator->_70);
+                    token, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        found.insert(token);
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_ARMOR_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
@@ -541,7 +635,13 @@ void pc_p2_armor_update(BTeki* actor) {
         pc_p2_armor_finish_stone(actor);
     }
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned live = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+    if (live) s.token = live;
+    const unsigned generator = s.token ? s.token : live;
+    // Collision may not exist at setup time; retry weakpoint resolve until it
+    // sticks so the armor is killable (otherwise all damage rejects).
+    if (!s.weakpointActive){resolveReceiverPart(actor, s); s.weakpointActive=true; s.weakpointId=p2armorreceiver::fourCC('b','o','d','y');}
+    if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
 
     // Natural-combat observability (#165/#407): an incremental, still-positive
     // health decrease is real receiver damage (a Pikmin attack accepted by the
@@ -563,7 +663,16 @@ void pc_p2_armor_update(BTeki* actor) {
             std::fflush(stdout);
             s.deadLogged = true;
         }
+        const int freed = p2captorhost::release(actor, s.held);
+        if (freed > 0) {
+            std::printf("P2_ARMOR_RELEASE generator=%u reason=death pikmin=%d\n", generator, freed);
+            std::fflush(stdout);
+        }
         enter(s, ARMOR_DEAD, "dead");
+        if (drawnCorpse.insert(static_cast<PelletView*>(actor)).second) {
+            std::printf("P2_ARMOR_CORPSE_DRAW generator=%u source_id=15 species=Armor\n", generator);
+            std::fflush(stdout);
+        }
     }
 
     s.stateTime += dt;
@@ -586,7 +695,11 @@ void pc_p2_armor_update(BTeki* actor) {
     case ARMOR_MOVE:
     case ARMOR_GOHOME: {
         Creature* target = nearestTarget(pos);
-        if (s.state == ARMOR_MOVE && target) {
+        // Decomp StateGoHome::exec (ArmorState.cpp:470-473): GoHome attacks a
+        // Pikmin inside attack range/angle instead of walking past it, so the
+        // attack gate applies in both MOVE and GOHOME; only the walk
+        // destination differs (target vs home).
+        if (target) {
             const float angle = std::fabs(wrapPi(std::atan2(target->getPosition().x - pos.x,
                                                            target->getPosition().z - pos.z) - s.heading));
             if (distXZ(target->getPosition(), pos) < ATTACK_RANGE && angle < ATTACK_ANGLE) {
@@ -594,8 +707,10 @@ void pc_p2_armor_update(BTeki* actor) {
                 enter(s, ARMOR_ATTACK2, "attack2");
                 break;
             }
+        }
+        if (s.state == ARMOR_MOVE && target) {
             walkTo(actor, s, target->getPosition(), dt);
-        } else if (s.state == ARMOR_GOHOME || !target) {
+        } else {
             walkTo(actor, s, s.home, dt);
         }
         if (distXZ(pos, s.home) > TERRITORY && s.state != ARMOR_GOHOME) {
@@ -616,19 +731,16 @@ void pc_p2_armor_update(BTeki* actor) {
     }
     case ARMOR_ATTACK2: {
         stop(actor);
-        for (const p2armorevents::Dispatched& event : s.events.advance(dt)) {
-            if (event.action == p2armorevents::Action::Bite && !s.captured) {
-                Piki* piki = nearestPiki(pos, ATTACK_RANGE);
-                if (piki) {
-                    s.captured = piki;
-                    std::printf("P2_ARMOR_BITE generator=%u frame=%d pikmin=1\n",
-                                generator, event.frame);
-                    std::fflush(stdout);
-                }
-            }
+        s.events.advance(dt); // attack2's type-2 event is visual here; the bite is the frame window
+        {
+            // Source StateAttack2::exec: attackPikmin every frame 17 < f < 27.
+            // A tick that crosses any part of the window runs one pass, so a
+            // slow frame cannot skip the bite.
+            const float now = s.stateTime * 30.0f, before = (s.stateTime - dt) * 30.0f;
+            if (now > 17.0f && before < 27.0f) attackPikmin(actor, s, generator, int(now));
         }
         if (s.stateTime >= clipDuration("attack2")) {
-            if (s.captured && s.captured->isAlive()) {
+            if (holding(actor, s) > 0) {
                 std::printf("P2_ARMOR_STATE generator=%u state=eat\n", generator);
                 enter(s, ARMOR_EAT, "eat");
             } else {
@@ -642,18 +754,26 @@ void pc_p2_armor_update(BTeki* actor) {
         stop(actor);
         for (const p2armorevents::Dispatched& event : s.events.advance(dt)) {
             if (event.action == p2armorevents::Action::Eat) {
-                if (s.captured && s.captured->isAlive()) {
-                    s.captured->stimulate(InteractKill(actor, 0));
-                    std::printf("P2_ARMOR_EAT generator=%u pikmin=1\n", generator);
-                    std::fflush(stdout);
-                }
-                s.captured = nullptr;
+                // Source killSlotPiki: swallowPikmin(proper fp01) on held Pikmin only.
+                int white = 0;
+                const int killed = p2captorhost::swallow(actor, s.held, mouthGeometry().slots,
+                                                         mouthGeometry().poison, &white);
+                std::printf("P2_ARMOR_EAT generator=%u pikmin=%d white=%d\n", generator, killed, white);
+                std::fflush(stdout);
             }
         }
         if (s.stateTime >= clipDuration("eat")) {
-            s.captured = nullptr;
-            std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
-            enter(s, ARMOR_MOVE, "move");
+            p2captorhost::release(actor, s.held); // nothing may stay held past Eat
+            // inst3-frogs carryability fix (#871): resume homing directly when
+            // past TERRITORY instead of spending one MOVE cycle first; the net
+            // route matches the decomp (Move goes GoHome when far, :236-238).
+            if (distXZ(pos, s.home) > TERRITORY) {
+                std::printf("P2_ARMOR_STATE generator=%u state=gohome\n", generator);
+                enter(s, ARMOR_GOHOME, "move");
+            } else {
+                std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
+                enter(s, ARMOR_MOVE, "move");
+            }
         }
         break;
     }
@@ -667,16 +787,30 @@ void pc_p2_armor_update(BTeki* actor) {
             }
         }
         if (s.stateTime >= clipDuration("flick")) {
-            std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
-            enter(s, ARMOR_MOVE, "move");
+            // Same homing-preserving completion as EAT above (decomp Flick
+            // goes to Move at :739 and Move re-homes when far at :236-238).
+            if (distXZ(pos, s.home) > TERRITORY) {
+                std::printf("P2_ARMOR_STATE generator=%u state=gohome\n", generator);
+                enter(s, ARMOR_GOHOME, "move");
+            } else {
+                std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
+                enter(s, ARMOR_MOVE, "move");
+            }
         }
         break;
     }
     case ARMOR_FAIL:
         stop(actor);
         if (s.stateTime >= clipDuration("attack_fail")) {
-            std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
-            enter(s, ARMOR_MOVE, "move");
+            // Same homing-preserving completion (decomp Fail goes to Move at
+            // :702 with the same Move re-homing rule).
+            if (distXZ(pos, s.home) > TERRITORY) {
+                std::printf("P2_ARMOR_STATE generator=%u state=gohome\n", generator);
+                enter(s, ARMOR_GOHOME, "move");
+            } else {
+                std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
+                enter(s, ARMOR_MOVE, "move");
+            }
         }
         break;
     case ARMOR_DIVE:
@@ -688,13 +822,10 @@ void pc_p2_armor_update(BTeki* actor) {
         break;
     case ARMOR_DEAD:
         stop(actor);
-        // Host death handoff: the P1 strategy reacts to mHealth<=0 inside
-        // BTeki::doAI(), calls die() there and then dieSoon()->becomePellet() in
-        // the same doAI() pass. Calling BTeki::die() from this update-phase hook
-        // would set mDeadState before the next doAI() and permanently block
-        // dieSoon(), leaving a dead-but-present actor with no corpse. The module
-        // only drives the source dead clip and lets the host complete
-        // teardown/corpse.
+        // Host doAI is suppressed for registered Armor, so dieSoon() never runs
+        // there; pcEscapeNow() finalizes the corpse outside doAI, fired exactly
+        // once when the dead animation completes (like Frog/Tank/Kabuto).
+        if(!s.escaped&&s.stateTime>=clipDuration("dead")){s.escaped=true;actor->pcEscapeNow();}
         break;
     default:
         break;

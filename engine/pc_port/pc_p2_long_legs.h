@@ -34,6 +34,11 @@ bool pc_p2_long_legs_receiver_rejects(Teki*, const InteractAttack*);
 // (the gun-exposed state), so the fixture can stage the squad until Shot is
 // reached before assigning attacks (source timings, no clip compression).
 bool pc_p2_long_legs_shot(const BTeki*);
+// OWN-identity host suppression (round 2): the P2 FSM schedules every tick
+// and drives Walk translation/landing crush/flick shake/death intents, so the
+// P1 Chappy TAI must not run movement/targeting/attacks for a registered
+// actor. Wired into BTeki::doAI (tekibteki.cpp), mirroring pc_p2_frog_suppress_ai.
+bool pc_p2_long_legs_suppress_ai(const BTeki*);
 // Pod receipt lookup (ordinary corpse delivery, mirrors lane 31's Waterwraith
 // receipt + kurage/otakara): true and writes the source generator id when the
 // delivered Pellet is a registered Long Legs corpse. Keyed on the corpse Pellet*
@@ -44,3 +49,9 @@ bool pc_p2_long_legs_receipt(Pellet*, unsigned& generator);
 // returns the surviving count. Proves the receipt is one-shot (a delivered corpse
 // leaves no registration) and the liveness sweep runs.
 unsigned long pc_p2_long_legs_corpse_count();
+// Host suppression + parameter blinding (inst3-misc OWN, Catfish pattern):
+// a bound Long Legs disables the P1 Swallow/Chappy TAI (doAI suppress) and
+// zeroes its sight/attack ranges so the P2 FSM has last word on
+// movement/targeting/attacks each tick in bridge campaign.
+bool pc_p2_long_legs_suppress_ai(const BTeki*);
+float pc_p2_long_legs_param_f(const BTeki*, int idx, float fallback);

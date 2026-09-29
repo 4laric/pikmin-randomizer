@@ -1,4 +1,8 @@
 #include "UfoItem.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#include "pc_vs.h"
+#endif
 #include "DebugLog.h"
 #include "Graphics.h"
 #include "MoviePlayer.h"
@@ -556,6 +560,16 @@ void UfoItem::finishSuck(Pellet* pelt)
 			efx->setEmitDir(dir);
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	// VS: la pieza puntúa para el dueño del cohete; nada de la historia
+	// (registro de piezas, nivel de la nave, escenas).
+	if (pc_vs_active()) {
+		pc_vs_add_score(mPcOwner, pc_vs_piece_points(pelt->mConfig->mPelletId.mId));
+		pc_vs_repair_rocket(mPcOwner, PC_VS_REPAIR_PER_PIECE);
+		mAnimator.setMotionSpeed(0, 30.0f);
+		return;
+	}
+#endif
 	mShipUpgradeLevel    = playerState->mShipUpgradeLevel;
 	PelletConfig* config = pelt->mConfig;
 	if (config->mRepairAnimJointIndex != -1) {

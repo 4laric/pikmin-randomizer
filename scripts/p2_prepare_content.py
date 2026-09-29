@@ -25,6 +25,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   validator-required ``sarai-attack-mouths.txt`` mouth bank is derived from that
   extraction result (mouth joints + sampled pose files + sha256); the Sarai
   adapter stages the eight native host files through ``pikmin2_sarai_install``.
+* 32 Demon: ``pikmin2_sarai_assets.extract_species`` over ``enemy/data/Demon``
+  (Demon::Obj is a Sarai::Obj subclass) -> ``<out>/Demon/`` (``demon.json``,
+  all twelve clips as ``demon_<clip>_<frame>.mod``, the retail parm files); the
+  Demon adapter stages the native host files through ``pikmin2_demon_install``.
 * 9 Kogane: ``pikmin2_kogane_assets.extract`` -> ``<out>/Kogane/``
   (``beetles.json`` plus the pose meshes flattened beside it); the Kogane
   adapter stages the room meshes through ``pikmin2_kogane_content``.
@@ -208,6 +212,7 @@ ENUM_FOR_SOURCE = {
     17: "Frog",
     18: "MaroFrog",
     23: "Sarai",
+    32: "Demon",
     24: "Tank",
     25: "Wtank",
     26: "Catfish",
@@ -467,6 +472,66 @@ def extract_sarai(iso, dest):
              "mouth_joints": mouths,
              "pose_files": sorted(pose_files)}, indent=2) + "\n",
             encoding="utf-8")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_demon(iso, dest):
+    """Build <dest>/Demon/ (Bumbling Snitchbug, source 32) from the retail disc.
+
+    Demon::Obj is a Sarai::Obj subclass (pikmin2 Demon.h) with its own model,
+    animations and parms (``enemy/data/Demon``, ``enemyParms.szs`` ``demon/``).
+    ``pikmin2_sarai_assets.extract_species`` is parameterised over that data
+    directory: it writes ``demon.json`` (every clip of ``demon/enemyanimmgr.txt``
+    with its key events, the ``rkamujnt``/``lkamujnt`` mouth matrices per sampled
+    pose and the parsed ``demon/enemyparm.txt`` blocks) plus the sampled pose
+    meshes, named ``demon_<clip>_<frame>.mod`` so they never collide with
+    Sarai's ``<clip>_<frame>.mod`` in the shared model room. Clips are sampled
+    every third frame (up to the 32-pose budget) so the looping flight clips
+    read as motion, and attack1 is sampled on every frame of the Attack
+    hunt/catch window (10..30) so the jaw sweep the retail catchTarget() tests
+    is frame-exact. ``demon-provenance.json`` records the derivation. The
+    native banks (poses, mouths, retail events, parms) are derived at install
+    time by ``experimental.pikmin2_demon_install``.
+    """
+    from experimental import pikmin2_sarai_assets as sarai
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Demon"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-demon"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        result = sarai.extract_species(iso, tmp, data_dir="Demon", parm_key="demon",
+                                       species="Demon", enemy_id=32, file_prefix="demon_",
+                                       stride=3, windows={"attack1.bca": (10, 30)})
+        target.mkdir(parents=True)
+        (target / "demon.json").write_text(json.dumps(result, indent=2) + "\n",
+                                           encoding="utf-8")
+        pose_files = []
+        for clip in result.get("clips", []):
+            for pose in clip.get("poses", []):
+                name = pose.get("file")
+                if name and (tmp / name).is_file():
+                    shutil.copyfile(tmp / name, target / name)
+                    pose_files.append(name)
+        for name in ("enemyparm.txt", "enemycoll.txt", "enemyanimmgr.txt"):
+            if (tmp / name).is_file():
+                shutil.copyfile(tmp / name, target / name)
+        (target / "demon-provenance.json").write_text(json.dumps(
+            {"derived_from": "experimental.pikmin2_sarai_assets.extract_species",
+             "disc": {"model": "enemy/data/Demon/model.szs", "anim": "enemy/data/Demon/anim.szs",
+                      "parms": "enemy/parm/enemyParms.szs:demon/enemyparm.txt"},
+             "source_sha256": result.get("source_sha256", {}),
+             "mouth_joints": ["rkamujnt", "lkamujnt"],
+             "clips": [dict(file=c.get("file"), status=c.get("status"), poses=len(c.get("poses", [])))
+                       for c in result.get("clips", [])],
+             "pose_files": sorted(pose_files)}, indent=2) + "\n", encoding="utf-8")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return target
@@ -1306,6 +1371,7 @@ EXTRACTORS = {
     61: "extract_dweevil",
     62: "extract_dweevil",
     23: "extract_sarai",
+    32: "extract_demon",
     9: "extract_kogane",
     17: "extract_frog",
     18: "extract_frog",
@@ -1405,6 +1471,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 23:
             extract_sarai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 32:
+            extract_demon(iso, out)
             extracted.append(source_id)
         elif source_id == 57:
             extract_kurage(iso, out)

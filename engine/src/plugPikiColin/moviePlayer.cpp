@@ -757,12 +757,15 @@ void MoviePlayer::requestSkip()
          info = static_cast<MovieInfo*>(info->mNext)) {
         if (info->mPlayer) { info->mPlayer->requestSkip(); requested = true; }
     }
+#if PIKI_USE_JAUDIO
     if (requested) Jac_NoteDemoSkipped();
+#endif
 }
 
 void MoviePlayer::skipScene(int sceneSkipFlag)
 {
-#if defined(PIKI_PC_PORT)
+#if defined(PIKI_PC_PORT) && PIKI_USE_JAUDIO
+	// Only the native JAudio engine tracks demo skips; the default build links without it.
 	if (sceneSkipFlag == SCENESKIP_Skip || sceneSkipFlag == SCENESKIP_SkipAll) {
 		Jac_NoteDemoSkipped();
 	}
