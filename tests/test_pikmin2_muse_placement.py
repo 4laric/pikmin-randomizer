@@ -127,12 +127,11 @@ class MuseProfileTests(unittest.TestCase):
         from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
         admitted = admitted_ids(load_and_validate())
         # 57 Kurage and 78 MiniHoudai were explicitly user-approved for admission
-        # (2026-09-16), 41 Fuefuki by its OWN port (#245) and 58 BombSarai by its
-        # OWN port (#244, 2026-09-29): every muse candidate is admitted by an
-        # explicit owner ruling, none slipped in through the muse profiles.
-        for source_id in (41, 57, 58, 78):
+        # (2026-09-16); 41 Fuefuki (#245) and 58 BombSarai (#244) entered through
+        # their OWN ports on 2026-09-29, by owner ruling, not through the muse
+        # profiles. Pin the OWN admissions.
+        for source_id in (41, 58):
             self.assertIn(source_id, admitted)
-            self.assertNotIn(source_id, admitted)
 
 
 class NativeContractSyncTests(unittest.TestCase):

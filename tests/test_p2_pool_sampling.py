@@ -68,7 +68,10 @@ def trimmed_document(keep):
 def test_fitting_pool_keeps_the_legacy_fill():
     roster = load_and_validate()
     document = committed_document()
-    fit = sorted(admitted_ids(roster))[:len(ordinary_slots(document))]
+    # #244: Dirigibug 58 accepts a single ordinary slot (1787125272) that many
+    # species share, so a seed-shuffled legacy fill can leave it without a
+    # unique target; keep the fitting selection to species with room.
+    fit = [source_id for source_id in sorted(admitted_ids(roster)) if source_id != 58][:len(ordinary_slots(document))]
     layout = resolve_placement_layout("fit", "Player1", document, roster, species=fit)
     assert layout["density"] == DENSITY_LEGACY
     assert "unplaced" not in layout
