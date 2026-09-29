@@ -374,8 +374,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "DangoMushi",
         "family": "dangomushi",
         "evidence": {
-            "run": "Bot-driven power-mode campaign ar12 in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY start day 11): P2_BOSS_ARENA_BIRTH on the arena primary, bind, Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse carried by 23, Onion receipt onion:p2:94:0",
-            "log": "output/claude-orch/p2-port-94/runs/ar12-94/session/runs/edb6d38e2ce6ecc166a5304b73431766baf012d08296af96857bbd9bece72484/native.log (sha256 8c9285a82d0381ab...) L1101 bind, L2078 dead, L2334 receipt; repeat ar13 (sha256 63f3707efb480c14...) L1963 dead, L2103 receipt; native claude/p2-port-94-arena @ 211e8b9bc, nectar.exe sha256 902981c98fe7efae...",
+            "run": "Bot-driven power-mode campaign v2f in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY PIKMIN_P2_TEST_START_DAY=11, since the arena goes live on day 9, so a normal campaign meets 94 there on day 9 or later): P2_BOSS_ARENA_BIRTH on the arena primary, bind, rain drawn (ROCK_DRAW), Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse drawn on the carried pellet (CORPSE_DRAW) and carried by 22, Onion receipt onion:p2:94:0",
+            "log": "output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a...",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",
