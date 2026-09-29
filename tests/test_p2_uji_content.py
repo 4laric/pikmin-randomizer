@@ -179,6 +179,13 @@ def _parse_bank(text):
                     assert 0 <= int(kind) < 1000
             species_blocks[current].append((name, frames, events, poses))
             pos += 8
+            # Optional P2_BANK_FRAMES_1 trailer (#895): one source frame per
+            # pose, strictly increasing from 0 to the last source frame.
+            if pos < len(tokens) and tokens[pos] == 'frames':
+                listed = [int(value) for value in tokens[pos + 1].split(',')]
+                assert len(listed) == poses and listed[0] == 0 and listed[-1] == frames - 1
+                assert all(a < b for a, b in zip(listed, listed[1:]))
+                pos += 2
         else:
             raise AssertionError(f'unexpected bank token: {word}')
     assert species_blocks

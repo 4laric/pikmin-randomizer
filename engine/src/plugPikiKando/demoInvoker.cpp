@@ -4,6 +4,7 @@
 #include "GoalItem.h"
 #include "ItemMgr.h"
 #include "Navi.h"
+#include "NaviMgr.h"
 #include "Pellet.h"
 #include "Piki.h"
 #include "PikiHeadItem.h"
@@ -30,6 +31,7 @@ bool Navi::demoCheck()
 {
 	int stage = flowCont.mCurrentStage->mStageID;
 	if (!playerState->isTutorial() && !playerState->mDemoFlags.isFlag(DEMOFLAG_OnyonMenuInfo) && stage <= STAGE_Forest) {
+		naviMgr->setMovieNavi(this);
 		playerState->mDemoFlags.setFlag(DEMOFLAG_OnyonMenuInfo, nullptr);
 		return true;
 	}
@@ -38,6 +40,7 @@ bool Navi::demoCheck()
 	if (stage == STAGE_Practice && !playerState->mDemoFlags.isFlag(DEMOFLAG_DiscoverRedOnyon)) {
 		GoalItem* redOnyon = itemMgr->getContainer(Red);
 		if (redOnyon && qdist2(redOnyon, this) <= demoParms->mParms.mOnionBootTriggerRadius()) {
+			naviMgr->setMovieNavi(this);
 			playerState->mDemoFlags.setFlag(DEMOFLAG_DiscoverRedOnyon, redOnyon);
 			return true;
 		}
@@ -52,6 +55,7 @@ bool Navi::demoCheck()
                 playerState->mDemoFlags.setFlagOnly(DEMOFLAG_DiscoverBlueOnyon);
                 return false;
             }
+            naviMgr->setMovieNavi(this);
             playerState->mDemoFlags.setFlag(DEMOFLAG_DiscoverBlueOnyon, blueOnyon);
 			blueOnyon->setMotionSpeed(30.0f);
 			return true;
@@ -67,6 +71,7 @@ bool Navi::demoCheck()
                 playerState->mDemoFlags.setFlagOnly(DEMOFLAG_DiscoverYellowOnyon);
                 return false;
             }
+            naviMgr->setMovieNavi(this);
             playerState->mDemoFlags.setFlag(DEMOFLAG_DiscoverYellowOnyon, yellowOnyon);
 			yellowOnyon->setMotionSpeed(30.0f);
 			return true;
@@ -78,8 +83,10 @@ bool Navi::demoCheck()
 		PikiHeadItem* item = (PikiHeadItem*)itemMgr->getPikiHeadMgr()->findClosest(mSRT.t, nullptr);
 		if (item && item->mGroundTriangle && item->getCurrState()->getID() == 6
 		    && qdist2(item, this) <= demoParms->mParms.mSeedDemoTriggerRadius()) {
+			naviMgr->setMovieNavi(this);
 			playerState->mDemoFlags.setFlag(DEMOFLAG_ApproachSeed, item);
 			PRINT("** SET TIMER %.1f\n", demoParms->mParms.mSeedDemoTriggerRadius());
+			naviMgr->setMovieNavi(this);
 			playerState->mDemoFlags.setTimer(demoParms->mParms.mSeedDemoWaitTime(), DEMOFLAG_NoPikminTimeout, item);
 			return true;
 		}
@@ -97,6 +104,7 @@ bool Navi::demoCheck()
 				f32 len       = sqrtf(diff.x * diff.x + diff.z * diff.z);
 				len -= obj->getBottomRadius();
 				if (len <= maxDist) {
+					naviMgr->setMovieNavi(this);
 					playerState->mDemoFlags.setFlag(DEMOFLAG_ApproachEngine, obj);
 					return true;
 				}
@@ -122,6 +130,7 @@ bool Navi::demoCheck()
 				if (!playerState->mDemoFlags.isFlag(id + DEMOFLAG_UfoPartDiscoveryOffset)) {
 					gameflow.mShipTextType   = SHIPTEXT_PartDiscovery;
 					gameflow.mShipTextPartID = id;
+					naviMgr->setMovieNavi(this);
 					playerState->mDemoFlags.setFlag(id + DEMOFLAG_UfoPartDiscoveryOffset, obj);
 					PRINT("*** set ufo-parts flag %d\n", id);
 					return true;
@@ -150,6 +159,7 @@ void Piki::demoCheck()
 				f32 len       = sqrtf(diff.x * diff.x + diff.z * diff.z);
 				len -= obj->getBottomRadius();
 				if (len <= maxDist) {
+					naviMgr->setMovieNavi(mNavi ? mNavi : naviMgr->getNearestNavi(mSRT.t));
 					playerState->mDemoFlags.setFlag(DEMOFLAG_ApproachEngine, obj);
 				}
 			}

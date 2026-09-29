@@ -11,7 +11,12 @@ from experimental.pikmin2_convert import blocks,convert,u32,u16
 from experimental.pikmin2_rigid import local_matrix,joint_matrices
 
 
-SINGULAR_SCALE_MODES=('error','allow')
+SINGULAR_SCALE_MODES=('error','allow','clamp')
+# 'clamp' (#895) replaces an authored near-zero axis scale by a tiny scale of
+# the same sign. The joint's geometry stays collapsed (invisible) but its draw
+# matrix is invertible, so its normals keep the rotation's direction instead of
+# failing as a singular transform. Used only as a retry for frames that fail.
+COLLAPSED_SCALE_FLOOR=1e-4
 
 def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'):
     if singular_scale not in SINGULAR_SCALE_MODES:
@@ -43,6 +48,8 @@ def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'
             # converter's explicit collapsed-normal decode policy when needed,
             # because such poses produce a singular draw matrix.
             if abs(values[0])<1e-8 and singular_scale=='error':raise ValueError('Singular animation scale')
+            if singular_scale=='clamp' and abs(values[0])<COLLAPSED_SCALE_FLOOR:
+                values[0]=math.copysign(COLLAPSED_SCALE_FLOOR,values[0]) if values[0] else COLLAPSED_SCALE_FLOOR
             scale.append(values[0])
             r.append(values[1]);t.append(values[2])
         matrix=local_matrix(r,t)

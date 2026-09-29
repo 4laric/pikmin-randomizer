@@ -7,6 +7,15 @@ Enable **Whistle Pluck** in **F1 → Mods**, return to the main settings panel,
 and select **Save**. It is off by default. The persisted setting is
 `whistlePluck = 1` in the game's local `pikmin_settings.conf`.
 
+## As an Archipelago item (#907)
+
+New seeds can carry one **Whistle Pluck** item (`whistle_pluck_item`, on by
+default in AP; CLI `--whistle-pluck-item`). In such a seed the ability is off
+until the item is received and on afterwards, whatever the Mods setting says.
+Seeds without the item leave the Mods setting in charge. The runner sends
+`WHISTLE_PLUCK 1` at bootstrap and `WHISTLEPLUCK 0|1` in the benefit state;
+the native side rejects a missing, out-of-range or retracted value.
+
 A whistle press plucks the nearest eligible sprout inside the current whistle
 circle. Holding continues with at least 80 ms between sprouts. Releasing stops
 new plucks; an emergence already started finishes normally. Expanding or moving

@@ -154,6 +154,19 @@ zen::ogScrFileChkSelMgr::returnStatusFlag zen::ogScrFileChkSelMgr::update(Contro
 	return mState;
 }
 
+#if defined(PIKI_PC_PORT)
+void zen::ogScrFileChkSelMgr::drawBackdrop(Graphics& gfx)
+{
+	pc_gfx_begin_menu_2d();
+	P2DPerspGraph perspGraph(0, 0, pc_gfx_menu_virt_width(), 480, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+	pc_gfx_apply_menu_clip_43();
+	mDataBScreen->draw(pc_gfx_menu_shift_center(), 0, &perspGraph);
+	pc_gfx_set_menu_clip_43(0);
+	mFileSelectMgr->drawFxOnly(gfx);
+}
+#endif
+
 /**
  * @todo: Documentation
  */
@@ -172,7 +185,6 @@ void zen::ogScrFileChkSelMgr::draw(Graphics& gfx)
 		// 1280×1280; the water/dew art is the sibling picture ws08_160, also
 		// oversized. Letting either of them draw unclipped is exactly the
 		// black bars + bubbles. Same clip as the title 2D.
-		pc_gfx_set_menu_clip_43(1);
 		pc_gfx_apply_menu_clip_43();
 		mDataBScreen->draw(pc_gfx_menu_shift_center(), 0, &perspGraph);
 		pc_gfx_set_menu_clip_43(0);

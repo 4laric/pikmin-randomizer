@@ -75,7 +75,7 @@ def entries(shapes):
 class RewriteTests(unittest.TestCase):
     def test_texture_retarget_and_lighting_fields_only(self):
         raw = tex_model([(0, [255] * 4, 0), (1, [255] * 4, 0)])
-        materials = entries([(0, [255] * 4, 0x93), (2, [255] * 4, 0x93)])
+        materials = entries([(0, [255] * 4, 0xd1), (2, [255] * 4, 0xd1)])
         materials[0]['texture'] = 0
         materials[1]['replace_texture'] = 1
         materials[1]['texture'] = 2
@@ -91,11 +91,11 @@ class RewriteTests(unittest.TestCase):
                 self.assertEqual(a[tag], b[tag])
         self.assertEqual(len(a[48]), len(b[48]))
         start = 32 + 124 * 2
-        self.assertEqual(u32(b[48], start + 36), 0x93)
+        self.assertEqual(u32(b[48], start + 36), 0xd1)
         self.assertEqual(struct.unpack_from('>i', b[48], start + 4)[0], 0)
         # second record: control updated, texture untouched
         r2 = start + 152
-        self.assertEqual(u32(b[48], r2 + 36), 0x93)
+        self.assertEqual(u32(b[48], r2 + 36), 0xd1)
         self.assertEqual(struct.unpack_from('>i', b[48], r2 + 4)[0], 1)
         self.assertEqual(struct.unpack_from('>i', b[48], r2 + 88)[0], 1)
 
@@ -118,20 +118,20 @@ class RewriteTests(unittest.TestCase):
 
     def test_refusals(self):
         raw = tex_model([(0, [255] * 4, 0), (1, [255] * 4, 0)])
-        good = entries([(0, [255] * 4, 0x93), (1, [255] * 4, 0x93)])
+        good = entries([(0, [255] * 4, 0xd1), (1, [255] * 4, 0xd1)])
         with self.assertRaises(ValueError):
             bm.rewrite(raw, good[:1])  # count mismatch
-        bad = entries([(0, [255] * 4, 0xffff), (1, [255] * 4, 0x93)])
+        bad = entries([(0, [255] * 4, 0xffff), (1, [255] * 4, 0xd1)])
         with self.assertRaises(ValueError):
             bm.rewrite(raw, bad)  # control outside bounded set
-        bad = entries([(0, [255] * 4, 0x93), (1, [300, 0, 0, 255], 0x93)])
+        bad = entries([(0, [255] * 4, 0xd1), (1, [300, 0, 0, 255], 0xd1)])
         with self.assertRaises(ValueError):
             bm.rewrite(raw, bad)  # invalid rgba
-        bad = entries([(0, [255] * 4, 0x93), (1, [255] * 4, 0x93)])
+        bad = entries([(0, [255] * 4, 0xd1), (1, [255] * 4, 0xd1)])
         bad[1]['replace_texture'] = 0
         with self.assertRaises(ValueError):
             bm.rewrite(raw, bad)  # tampered/double application
-        bad = entries([(0, [255] * 4, 0x93), (1, [255] * 4, 0x93)])
+        bad = entries([(0, [255] * 4, 0xd1), (1, [255] * 4, 0xd1)])
         bad[0]['texture'] = -1
         with self.assertRaises(ValueError):
             bm.rewrite(raw, bad)  # cannot drop texture from textured record
@@ -231,7 +231,7 @@ class AuditTests(unittest.TestCase):
 
 class PrepareTests(unittest.TestCase):
     def fake_profile(self, model, species, has_vertex_colors):
-        return entries([(0, [204, 204, 204, 255], 0x93)])
+        return entries([(0, [204, 204, 204, 255], 0xd1)])
 
     def run_prepare(self, root, imported, bank, output):
         with patch.object(bm, 'profile', side_effect=self.fake_profile):
@@ -259,7 +259,7 @@ class PrepareTests(unittest.TestCase):
             # Emitted material actually updated.
             raw = (Path(d) / 'profiled' / 'Queen' / 'bulblax_Queen_wait1_00.mod').read_bytes()
             b = chunks(raw)[48]
-            self.assertEqual(u32(b, 32 + 124 + 36), 0x93)
+            self.assertEqual(u32(b, 32 + 124 + 36), 0xd1)
             self.assertEqual(b[32 + 124 + 8:32 + 124 + 12], bytes([204, 204, 204, 255]))
 
     def test_double_run_byte_identical(self):

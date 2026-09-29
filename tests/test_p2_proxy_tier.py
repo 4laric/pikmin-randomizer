@@ -235,7 +235,8 @@ def test_sampled_layout_pool_larger_than_targets_reports_unplaced():
     pool = [44, 54, 59, 60, 61, 62, 42, 23, 79, 2, 12, 13, 14]
     tiny = {"schema": document["schema"],
             "slots": document["slots"][:3],
-            "profiles": document["profiles"]}
+            "profiles": document["profiles"],
+            "encounters": document.get("encounters", [])}
     proxy_rows = _proxy_rows_for([42])
     layout = resolve_placement_layout("seed-unplaced", "Player1", tiny, roster,
                                       species=pool, proxy_rows=proxy_rows)

@@ -198,6 +198,10 @@ class TopAction : public Action {
 	friend struct PikiSwallowedState;
 
 public:
+#if defined(PIKI_PC_PORT)
+	/// VS: congelar la acción (asedio al cohete rival) y reanudarla.
+	void pcSetSuspended(bool suspended) { mIsSuspended = suspended; }
+#endif
 	/**
 	 * @brief TODO
 	 *
@@ -838,6 +842,23 @@ protected:
 	bool mIsWaiting;              // _7D
 	bool mWasWaiting;             // _7E
 	bool mHasRoute;               // _7F
+#if defined(PIKI_PC_PORT)
+	// "Better Pathfinding": a follower that makes no headway towards its
+	// slot routes round whatever is in the way (see aiCrowd.cpp).
+	bool pcFollowerBlocked(f32 plateDist, immut Vector3f& plateDir);
+	void pcStartRoute();
+	int pcExecRoute();
+	void pcEndRoute(f32 cooldown);
+
+	Vector3f mPcLastPos;     // position last frame, for progress towards the slot
+	f32 mPcWindowTimer;      // time in the current progress window
+	f32 mPcWindowProgress;   // distance made towards the slot in that window
+	f32 mPcRouteTimer;       // time spent on the current route
+	f32 mPcRouteCooldown;    // wait before another route may start
+	f32 mPcRepathTimer;      // time since the route was last planned
+	Vector3f mPcRouteGoal;   // leader position the route was planned to
+	bool mPcOwnsRoute;       // mHasRoute was set by the code above
+#endif
 	                              // _80-_88 = SlotChangeListner
 };
 
@@ -2041,6 +2062,12 @@ protected:
 	Suckable* mGoal;               // _B0, either GoalItem* or UfoItem*
 	bool mCanCarry;                // _B4
 	                               // _B8-_C0 = PaniAnimKeyListener
+#if defined(PIKI_PC_PORT)
+	// Mod "Better Pathfinding": stall watchdog for the carry route.
+	Vector3f mPcStallCheckPos;
+	f32 mPcStallTimer = 0.0f;
+	bool mPcStallArmed = false;
+#endif
 };
 
 /**

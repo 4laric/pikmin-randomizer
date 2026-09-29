@@ -11,6 +11,10 @@
 #include "ViewPiki.h"
 #include "gameflow.h"
 #include <stdlib.h>
+#if defined(PIKI_PC_PORT)
+#include "settings/pc_settings.h"
+#include <cstdio>
+#endif
 
 static bool newVer = true;
 
@@ -94,6 +98,16 @@ void ActCrowd::init(Creature* target)
 	GameStat::update();
 	mHasRoute = false;
 	mOdometer.start(2.0f, 20.0f);
+#if defined(PIKI_PC_PORT)
+	mPcLastPos        = mPiki->mSRT.t;
+	mPcWindowTimer    = 0.0f;
+	mPcWindowProgress = 0.0f;
+	mPcRouteTimer     = 0.0f;
+	mPcRouteCooldown  = 0.0f;
+	mPcRepathTimer    = 0.0f;
+	mPcRouteGoal      = mPiki->mSRT.t;
+	mPcOwnsRoute      = false;
+#endif
 }
 
 /**
@@ -130,6 +144,9 @@ void ActCrowd::setFormed()
 {
 	mState = STATE_Formed;
 	if (mPiki->hasBomb() && !playerState->mDemoFlags.isFlag(DEMOFLAG_GrabFirstBomb)) {
+		#if defined(PIKI_PC_PORT)
+		if (mPiki->mNavi) naviMgr->setMovieNavi(mPiki->mNavi);
+#endif
 		playerState->mDemoFlags.setFlag(DEMOFLAG_GrabFirstBomb, mPiki);
 	}
 }
@@ -234,6 +251,11 @@ int ActCrowd::exec()
 {
 	mPrevMode = mMode;
 	mMode = 5;
+#if defined(PIKI_PC_PORT)
+	if (mHasRoute && mPcOwnsRoute) {
+		return pcExecRoute();
+	}
+#endif
 	if (mHasRoute) {
 		exeRouteMove();
 		if (mPiki->mUseAsyncPathfinding) {
@@ -295,6 +317,9 @@ int ActCrowd::exec()
 	f32 travelDist  = effDir.length();
 
 	if (mPiki->hasBomb() && !playerState->mDemoFlags.isFlag(DEMOFLAG_GrabFirstBomb) && travelDist < 100.0f) {
+		#if defined(PIKI_PC_PORT)
+		if (mPiki->mNavi) naviMgr->setMovieNavi(mPiki->mNavi);
+#endif
 		playerState->mDemoFlags.setFlag(DEMOFLAG_GrabFirstBomb, mPiki);
 	}
 
@@ -307,7 +332,11 @@ int ActCrowd::exec()
 
 		// idk why they did this in two rand checks, but go figure
 		// approximately a 0.003% chance of tripping
-		if (gsys->getRand(1.0f) >= 0.9999f && gsys->getRand(1.0f) > 0.7f) {
+		if (gsys->getRand(1.0f) >= 0.9999f && gsys->getRand(1.0f) > 0.7f
+#if defined(PIKI_PC_PORT)
+		    && !pc_settings_get_no_trip() // Mod "No Tripping"
+#endif
+		) {
 			mIsTripping      = true;
 			mTripLoopCounter = int((4.0f * gsys->getRand(1.0f))) + 3; // length of trip is a random number of anim loops, between 3 and 7
 			mPiki->startMotion(PaniMotionInfo(PIKIANIM_Korobu, mPiki), PaniMotionInfo(PIKIANIM_Korobu));
@@ -481,6 +510,19 @@ int ActCrowd::exec()
 		mMode = 4;
 		mPiki->setSpeed(1.0f, plateDir);
 
+#if defined(PIKI_PC_PORT)
+		// Retail steers straight at the slot and never routes, so a follower
+		// with a wall between it and the leader pushes into the wall until the
+		// lost-child timer drops it. Better Pathfinding sends it round instead.
+		if (pc_settings_get_better_pathfinding() && pcFollowerBlocked(plateDist2D, plateDir)) {
+			mPcRouteTimer = 0.0f;
+			pcStartRoute();
+			if (mHasRoute) {
+				return ACTOUT_Continue;
+			}
+		}
+#endif
+
 		Vector3f pikiDir      = mPiki->mSRT.t - mPiki->mNavi->mSRT.t;
 		Vector3f naviPlateDir = mPiki->mNavi->mSRT.t - mPlateMgr->mPlateOffset;
 		naviPlateDir.normalise();
@@ -533,6 +575,149 @@ int ActCrowd::exec()
 
 	return ACTOUT_Continue;
 }
+
+#if defined(PIKI_PC_PORT)
+/**
+ * Better Pathfinding: true when this follower has made little headway towards
+ * its slot over the last window while running at it. Only asked while the
+ * follower is running to a distant slot (mode 4).
+ */
+bool ActCrowd::pcFollowerBlocked(f32 plateDist, immut Vector3f& plateDir)
+{
+	const f32 kWindow       = 0.75f; // seconds of movement judged at once
+	const f32 kMinDist      = 70.0f; // closer than this, crowding is the likelier cause
+	const f32 kMinHeadway   = 0.25f; // share of full-speed progress that counts as moving
+	const f32 kTeleportStep = 50.0f; // a jump this large in one frame restarts the window
+
+	const f32 dt = gsys->getFrameTime();
+	if (mPcRouteCooldown > 0.0f) {
+		mPcRouteCooldown -= dt;
+	}
+
+	Vector3f step = mPiki->mSRT.t - mPcLastPos;
+	mPcLastPos    = mPiki->mSRT.t;
+	step.y        = 0.0f;
+	if (mPrevMode != 4 || step.length() > kTeleportStep) {
+		mPcWindowTimer    = 0.0f;
+		mPcWindowProgress = 0.0f;
+		return false;
+	}
+
+	f32 flatLen = sqrtf(plateDir.x * plateDir.x + plateDir.z * plateDir.z);
+	if (flatLen > 0.0f) {
+		mPcWindowProgress += (step.x * plateDir.x + step.z * plateDir.z) / flatLen;
+	}
+	mPcWindowTimer += dt;
+	if (mPcWindowTimer < kWindow) {
+		return false;
+	}
+
+	const f32 expected = mPiki->getSpeed(1.0f) * mPcWindowTimer;
+	const bool blocked = plateDist > kMinDist && mPcRouteCooldown <= 0.0f && mPcWindowProgress < kMinHeadway * expected;
+	mPcWindowTimer     = 0.0f;
+	mPcWindowProgress  = 0.0f;
+	return blocked;
+}
+
+// PIKMIN_ROUTE_TRACE=1 logs follower routes, for checking the mod in play.
+static bool pcRouteTrace()
+{
+	static int sTrace = -1;
+	if (sTrace < 0) {
+		sTrace = getenv("PIKMIN_ROUTE_TRACE") ? 1 : 0;
+	}
+	return sTrace != 0;
+}
+
+/**
+ * Better Pathfinding: plans a waypoint route to the leader's current position.
+ */
+void ActCrowd::pcStartRoute()
+{
+	mHasRoute    = false;
+	mPcOwnsRoute = false;
+	if (mPiki->initRouteTrace(mPiki->mNavi->mSRT.t, false)) {
+		mHasRoute       = true;
+		mPcOwnsRoute    = true;
+		mPcRouteGoal    = mPiki->mNavi->mSRT.t;
+		mPcRepathTimer  = 0.0f;
+		mLostChildTimer = 0.0f;
+		if (pcRouteTrace()) {
+			fprintf(stderr, "[PC Route] follower %p routes round a blockage (%d points)\n", (void*)mPiki, mPiki->mNumRoutePoints);
+		}
+	} else {
+		// No route either (e.g. the leader is across water): try again later.
+		pcEndRoute(2.0f);
+	}
+}
+
+void ActCrowd::pcEndRoute(f32 cooldown)
+{
+	if (mPcOwnsRoute && pcRouteTrace()) {
+		fprintf(stderr, "[PC Route] follower %p route ended after %.1fs\n", (void*)mPiki, mPcRouteTimer);
+	}
+	mHasRoute         = false;
+	mPcOwnsRoute      = false;
+	mPcRouteCooldown  = cooldown;
+	mPcWindowTimer    = 0.0f;
+	mPcWindowProgress = 0.0f;
+	mPcLastPos        = mPiki->mSRT.t;
+}
+
+/**
+ * Better Pathfinding: follows the planned route until the follower is near its
+ * slot again. The retail break-range rule still applies, so a leader who runs
+ * far enough away still loses the follower, as in the original.
+ */
+int ActCrowd::pcExecRoute()
+{
+	const f32 kArrivedDist  = 60.0f;  // near enough to the slot to steer normally
+	const f32 kMaxRouteTime = 15.0f;  // give up on one route after this long
+	const f32 kRepathMove   = 120.0f; // leader moved this far from the planned goal
+	const f32 kRepathDelay  = 1.0f;   // at most one new plan per this many seconds
+
+	if (mPiki->mNavi->isStickTo()) {
+		pcEndRoute(0.0f);
+		mPiki->mActionState = 2;
+		return ACTOUT_Fail;
+	}
+	if (!pc_settings_get_better_pathfinding() || !mPlateMgr->validSlot(mCPlateSlotID)) {
+		pcEndRoute(0.0f);
+		return ACTOUT_Continue;
+	}
+
+	const f32 dt = gsys->getFrameTime();
+	mPcRouteTimer += dt;
+	mPcRepathTimer += dt;
+
+	Vector3f platePos = mPlateMgr->mSlotList[mCPlateSlotID].mOffsetFromCenter + mPlateMgr->mPlateCenter;
+	Vector3f toPlate  = platePos - mPiki->mSRT.t;
+	const f32 plateDist = sqrtf(toPlate.x * toPlate.x + toPlate.z * toPlate.z);
+	if (plateDist >= C_PIKI_PARM(mPiki, mFormationBreakRange)) {
+		pcEndRoute(0.0f);
+		return ACTOUT_Fail;
+	}
+	if (plateDist < kArrivedDist || mPcRouteTimer > kMaxRouteTime) {
+		pcEndRoute(1.0f);
+		return ACTOUT_Continue;
+	}
+
+	Vector3f leaderMoved = mPiki->mNavi->mSRT.t - mPcRouteGoal;
+	if (mPcRepathTimer > kRepathDelay && leaderMoved.length() > kRepathMove) {
+		pcStartRoute();
+		if (!mHasRoute) {
+			return ACTOUT_Continue;
+		}
+	}
+
+	if (mPiki->moveRouteTrace(1.0f) != 2) {
+		// End of the route (next to the leader) or no route after all.
+		pcEndRoute(0.5f);
+	}
+	mLostChildTimer = 0.0f;
+	return ACTOUT_Continue;
+}
+#endif
 
 /**
  * @todo: Documentation

@@ -91,7 +91,7 @@ def test_load_rows_rejects_duplicate_enum(tmp_path, monkeypatch):
 
 
 def test_load_rows_rejects_bad_pose_limit(tmp_path):
-    write_decl(tmp_path, 10, "Wealthy", pose_limit=9)
+    write_decl(tmp_path, 10, "Wealthy", pose_limit=65)  # native bank row cap is 64 (#895)
     with pytest.raises(ValueError, match="pose_limit"):
         load_rows(tmp_path)
     write_decl(tmp_path, 42, "BlueChappy", pose_limit=1)

@@ -81,6 +81,13 @@ class MaterialProfileTests(unittest.TestCase):
         self.assertEqual(result['textures'], 2)
         self.assertEqual(result['vertices'], 401)
 
+    def test_rebaked_lit_conversion_profile_accepted(self):
+        # #895 re-bakes carry the P1 lit policy; the legacy string stays valid
+        # for conversions made before it.
+        from experimental.pikmin2_convert import LIT_MATERIAL_POLICY
+        result = material_profile(conversion(material_policy=LIT_MATERIAL_POLICY))
+        self.assertEqual(result['textures'], 2)
+
     def test_unsupported_material_variants_rejected(self):
         for bad in ({'textures': 1}, {'shapes': 1}, {'material_policy': 'full TEV'},
                     {'discarded_attributes': ['nbt']}, {'vertices': 0},

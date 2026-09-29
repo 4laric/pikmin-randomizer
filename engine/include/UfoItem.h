@@ -180,6 +180,9 @@ public:
 	bool mIsPca2FxActive;                                 // _549
 	Vector3f mSpotlightPosition;                          // _54C
 	int mWaypointID;                                      // _558
+#if defined(PIKI_PC_PORT)
+	int mPcOwner = -1; ///< VS: jugador dueño de este cohete (-1 fuera de VS)
+#endif
 	UfoShapeObject* mShipModel;                           // _55C
 	SeContext mShipSe;                                    // _560
 	ShapeDynMaterials* mAnimatedMaterialsList;            // _588

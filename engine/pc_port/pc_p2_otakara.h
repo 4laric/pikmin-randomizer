@@ -19,9 +19,9 @@ class PelletView;
 // host Chappy TAI fulfils the reaction → makeDamaged → dieSoon → corpse, and this
 // module only drives the source dead clip.
 //
-// BombOtakara (93) is deliberately NOT bound here: it consumes the lane-20 shared
-// Bomb blast contract and remains covered by pc_p2_bombotakara plus the batch-2
-// visual path. Every hook is a no-op for unregistered actors.
+// BombOtakara (93) IS bound here (inst3-misc OWN): the carrier FSM drives
+// locomotion/targeting and detonates the carried Bomb via the shared blast
+// primitive on its own BTeki tick. The lane-20 sidecar remains preview-only.
 void pc_p2_otakara_setup();
 // Generated-placement bridge (lane 03/04): register the randomizer-claimed
 // actor for its seeded elemental-dweevil source (59-62) by generator ID.
@@ -61,3 +61,14 @@ bool pc_p2_otakara_clip(const BTeki*, const char*& name, float& phase);
 // that a bound actor is damageable. Additive; no runtime behavior changes.
 unsigned long pc_p2_otakara_count();
 bool pc_p2_otakara_registered(BTeki*);
+
+// Press/landing hooks (#884, pc_p2_otakara_press_policy.h). Both return true only
+// for a registered Dweevil (59-62, 93), meaning "consumed: skip the P1 host squash".
+// Source OtakaraBase has no pressCallBack/flyCollisionCallBack override, so a press
+// or a thrown Pikmin landing does no damage and the Pikmin latches on (P2
+// pikiState.cpp:2321-2342). Each logs P2_OTAKARA_PRESS once per press.
+//   pc_p2_otakara_pressed: InteractPress::actTeki, before the host Pressed event.
+//   pc_p2_otakara_smashed: TaiSmashedAction::actByEvent, for a PIKISTATE_Flying
+//                          Piki Entity contact, before the host smash transit.
+bool pc_p2_otakara_pressed(BTeki*, Creature* presser);
+bool pc_p2_otakara_smashed(BTeki*, Creature* presser);

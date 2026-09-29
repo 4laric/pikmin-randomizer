@@ -32,6 +32,13 @@ class Texture;
 
 /// Checks course open flags for a given stage.
 #define IS_STAGE_OPEN(flags, stageID) ((flags) & (1 << (stageID)))
+#if defined(PIKI_PC_PORT)
+/// Depuración: con PIKMIN_UNLOCK_ALL=1 todos los mapas (historia y desafío)
+/// cuentan como abiertos, sin tocar la partida guardada.
+bool pc_unlock_all_stages();
+/// Cheat "Unlock All Zones": a diferencia del anterior, sí se graba en la partida.
+bool pc_cheat_unlock_zones();
+#endif
 
 /// PAL-exclusive packing of language preference flag (to save to card).
 #define PACK_LANG_FLAG(flag, lang) ((flag) & 0xFFFFFFC3 | ((lang) & 0xF) << 2)
@@ -227,6 +234,12 @@ public:
 	 */
 	bool isStageOpen(int storyStageID)
 	{
+#if defined(PIKI_PC_PORT)
+		if (pc_unlock_all_stages() && storyStageID >= STAGE_START && storyStageID <= STAGE_TESTMAP) return true;
+		if (pc_cheat_unlock_zones() && storyStageID >= STAGE_START && storyStageID <= STAGE_Last) {
+			SET_STAGE_OPEN(mCourseOpenFlags, storyStageID);
+		}
+#endif
 		if (storyStageID >= STAGE_START && storyStageID <= STAGE_TESTMAP) {
 			return IS_STAGE_OPEN(mCourseOpenFlags, storyStageID) != false;
 		}
@@ -531,6 +544,9 @@ struct GamePrefs : public CoreNode {
 	/// Checks if a challenge mode stage/map is unlocked.
 	bool isStageOpen(int chalStageID)
 	{
+#if defined(PIKI_PC_PORT)
+		if (pc_unlock_all_stages() && chalStageID >= CHALSTAGE_START && chalStageID <= CHALSTAGE_COUNT) return true;
+#endif
 		// Lesser than *or equal to* `CHALSTAGE_COUNT` is probably a bug; inherited from Story Mode's handling of stage IDs for test maps.
 		if (chalStageID >= CHALSTAGE_START && chalStageID <= CHALSTAGE_COUNT) {
 			return IS_STAGE_OPEN(mChalCourseOpenFlags, chalStageID) != false;
@@ -713,6 +729,9 @@ public:
 
 extern GameFlow gameflow;
 
+// Recomputes the world clock speed each tick (stage multiplier, day setting, day-length items).
+void syncWorldClockSpeed();
+
 /**
  * @brief Managing class for anything list-based that needs to update each frame (pikiMgr, naviMgr, etc).
  *
@@ -734,8 +753,7 @@ struct GameGenFlow : public Node {
 	virtual void update() // _10
 	{
 		gameflow.mGenFlowUpdateTickCount++;
-		gameflow.mWorldClock.mRealSecsPerGameDay  = 60.0f * (gameflow.mTimeMultiplier * gameflow.mParameters->mRealMinutesPerGameDay());
-		gameflow.mWorldClock.mRealSecsPerGameHour = gameflow.mWorldClock.mRealSecsPerGameDay / gameflow.mWorldClock.mHoursInDay;
+		syncWorldClockSpeed();
 		Node::update();
 	}
 

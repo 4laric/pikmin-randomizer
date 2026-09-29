@@ -336,7 +336,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     Pool (8 playable + 10 pool identities + all 17 declared proxies) fits
     the 35-slot base document exactly: placement-cap admitted 2 more slots,
     so the exact-fit pool is 8 playable + 10 more pool identities
-    (Chappy/Uji/Sarai/Sokkuri) + 2 small-host + 15 large-host proxies = 35.
+    (Chappy/Uji/Sarai/Sokkuri/Fuefuki) + 2 small-host + 14 large-host proxies = 35.
     The sibling layout (49 targets) still needs repeats, and which species
     the sampler repeats there is pool-sensitive (not an invariant), so this
     pins the real guarantees instead: eligibility soundness on every
@@ -361,21 +361,27 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
     # All 38 own-identity species left the proxy tier for their own
     # installers (integ #871), so this pins the declared shape, not a
-    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 15
-    # large-host proxies remain.
-    assert len(small_ids) == 2 and len(large_ids) == 15
+    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 11 large-host
+    # proxies remain (BigTreasure 73 left for its own campaign installer, #246,
+    # #215 retired the Demon 32 proxy for its own Sarai-host profile, Breadbug 38
+    # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245).
+    assert len(small_ids) == 2 and len(large_ids) == 11
     assert sorted(small_ids) == [10, 11]
     for finished in (2, 33, 35, 43, 53, 67, 76,
                      12, 13, 14, 28, 68, 94,
                      17, 18, 24, 25, 15, 75,
                      56, 63, 69,
                      34, 70, 65, 71, 101,
-                     26, 27, 66, 84, 93, 97):
+                     26, 27, 66, 84, 93, 97, 73, 32, 38, 41):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     # Twelve more pool identities (admitted, non-proxy) bring the pool to the
     # exact 35-slot fit: 8 playable + 10 pool + 17 proxies = 35.
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79]
+    # (#215: SnakeCrow 34 takes the slot the retired Demon proxy held; #246: one
+    # more admitted identity, 28 ElecBug, takes the slot BigTreasure 73 held;
+    # #898: 17 takes the slot the Breadbug 38 proxy held; #245: 18 takes the
+    # slot the Antenna Beetle 41 proxy held.)
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18]
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
@@ -413,10 +419,14 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             proxy_rows=proxy_rows)
         base_unplaced = set(base.get("unplaced", []))
         assert not base_unplaced, (seed, base_unplaced)
-        base_counts = Counter(b["source_id"] for b in base["bindings"])
+        # The #901 held-part layer binds holder slots from its own stream
+        # after the ordinary fill; count the ordinary fill only.
+        held = {row["target"] for row in base.get("held_parts", {}).get("placed", [])}
+        base_ordinary = [b for b in base["bindings"] if b["target"] not in held]
+        base_counts = Counter(b["source_id"] for b in base_ordinary)
         assert all(count == 1 for count in base_counts.values()), (
             seed, base_counts)
-        assert {b["source_id"] for b in base["bindings"]} == set(pool), (
+        assert {b["source_id"] for b in base_ordinary} == set(pool), (
             seed, base_unplaced)
 
 
@@ -452,7 +462,13 @@ def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
         assert pool > len(layout["bindings"]), "test needs a pool larger than the target set"
         pack_counts = Counter()
         plain_counts = Counter()
+        # #901: a held-part holder slot draws from the roster-admitted pool
+        # only; the unplaced species here are proxies it cannot host, so a
+        # repeat there is not a wasted slot.
+        held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
         for binding in layout["bindings"]:
+            if binding["target"] in held:
+                continue
             (pack_counts if binding["target"] in PACKS else plain_counts)[binding["source_id"]] += 1
         assert len(plain_counts) == sum(plain_counts.values()), (
             {k: v for k, v in plain_counts.items() if v > 1})

@@ -92,5 +92,16 @@ int main() {
         }
     check(std::fabs(pool.shell(0).position.x-125) < 0.001f, "one second source movement");
     check(clock.step(0.2,false)==0 && clock.step(0,true)==0, "pause adds no volley steps");
+    // #888: every advanced shell reports its y-10 sweep, not only terminals.
+    pool.reset();
+    pool.emit(muzzle,100,samples);
+    Trace one{0,1u<<2,0};
+    check(pool.update({},dt,Trace::run,&one) && pool.segmentCount() == 3, "every advanced shell sweeps");
+    check(!pool.segments()[0].terminal && !pool.segments()[1].terminal && pool.segments()[2].terminal,
+          "only the recycled shell's sweep is terminal");
+    const auto live = pool.shell(pool.segments()[0].slot);
+    check(pool.segments()[0].start.y == 30 && pool.segments()[0].end.y == live.position.y - 10
+          && pool.segments()[0].end.x == live.position.x, "live sweep is shifted down 10 from the traced centre");
+    check(pool.segments()[0].primary && !pool.segments()[1].primary, "segment primary flag");
     std::puts("p2_groink_volley_test PASS");
 }

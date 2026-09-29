@@ -10,6 +10,8 @@
 // mirroring P2DangoMushiHazardPolicy::attackRejected
 // (tools/p2_dangomushi_hazard_test.cpp). No engine, GL or arena is required.
 #include "pc_p2_snakejoint.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_umimushi.h"
 
 // Release builds pass -DNDEBUG; force assertions (and their embedded
 // side effects) on so this engine-free gate is not vacuous under ctest.
@@ -46,12 +48,33 @@ void testNonSnakeUnaffected() {
     std::puts("CASE non_snake_unaffected PASS");
 }
 
+// Round 2 (#871 inst2-worms): the P2 FSM drives every tick in bridge mode, so
+// the P1 Chappy host strategy (BTeki::doAI) must not run for a registered
+// actor of any worms family; unregistered actors are unaffected. The engine
+// glue (pc_p2_*_suppress_ai) routes through these header-inline predicates,
+// mirroring pc_p2_frog_suppress_ai.
+void testWormsSuppressRegistered() {
+    assert(pc_p2_snakejoint_suppressed(true));
+    assert(pc_p2_imomushi_suppressed(true));
+    assert(pc_p2_umimushi_suppressed(true));
+    std::puts("CASE worms_suppress_registered PASS");
+}
+
+void testWormsSuppressUnregistered() {
+    assert(!pc_p2_snakejoint_suppressed(false));
+    assert(!pc_p2_imomushi_suppressed(false));
+    assert(!pc_p2_umimushi_suppressed(false));
+    std::puts("CASE worms_suppress_unregistered PASS");
+}
+
 }  // namespace
 
 int main() {
     testBuriedSnakeRejects();
     testEmergedSnakeAdmits();
     testNonSnakeUnaffected();
+    testWormsSuppressRegistered();
+    testWormsSuppressUnregistered();
     std::puts("PASS p2_snakejoint_gate_test");
     return 0;
 }
