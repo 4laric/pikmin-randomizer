@@ -99,8 +99,8 @@ never P2 identities and never enter this table.
   four weapons off by hitting each weapon's own part, the body takes damage
   only after the last drop, and it dies naturally. A carryable corpse is the
   reward (ruling #1; the source Titan leaves none) and delivers
-  `onion:p2:73:0` on its own generator token (bot power-mode runs a12, a13
-  and a14, #246). Its gas stays lethal to every P1 colour (ruling #2). The
+  `onion:p2:73:0` on its own generator token (bot power-mode run e7 and
+  repeats, plus a day 11-15 re-entry run rc2, #246). Its gas stays lethal to every P1 colour (ruling #2). The
   knocked-off weapons and Louie are not carryable pellets yet.
 
 ## Admission bar
