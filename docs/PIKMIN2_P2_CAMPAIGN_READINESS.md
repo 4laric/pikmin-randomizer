@@ -42,7 +42,7 @@ A species must clear **three** gates, in this order:
 | 78 | MiniHoudai / Groink | **no extractor** | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
 | 1 | Kochappy | **no extractor** | needs 3, **absent** | own module, `_70`-keyed | no |
 | 45 | Snow / YellowKochappy | **no extractor** | needs 3, **absent** | own module, source-blind | no |
-| 58 | BombSarai | ✓ `extract_bombsarai` (#244) | `TEKI_Napkid` 11 ✓ (#244) | OWN module `pc_p2_bombsarai_own_teki.cpp` (#244) | no — OWN bot evidence passes, admission held (see below) |
+| 58 | BombSarai | ✓ `extract_bombsarai` (#244) | `TEKI_Napkid` 11 ✓ (#244) | OWN module `pc_p2_bombsarai_own_teki.cpp` (#244) | yes — admitted 2026-09-29 on OWN bot evidence (see below) |
 
 ✓ = present and matching what that species' own setup actually requires.
 
@@ -117,9 +117,13 @@ holding a bomb always passes through `Fall` first, so that drop only fires on a 
 the state machine. `BombFlick` and `TakeOff2` were not seen on the final pins (TakeOff2 was seen
 at `8e0cf7a82`).
 
-Admission is **held** until (a) an independent adversarial OWN review passes on the fixed build
-and (b) the #893 per-seed sampling (root PR #894) is on main — main has 35 pool species on 35
-placement slots, so a 36th cannot be placed without it.
+Admitted 2026-09-29 (#244) after the adversarial OWN review and with #894 per-seed sampling on
+main. Both admission runs (v1 normal squad, v2p power mode) rebind `spring_init_7002`
+(1945764764) through the driver's manifest rebind; real seeds place 58 on `spring_init_7416`
+(1787125272, respawn 5 days). Two `--no-rebind` bot runs on that slot bind and drive the carrier
+normally but end without a kill: the bot captain stalls 11u short of standing under it and the
+thrown squad never latches. The natural slot kill, its respawn and a day-end/re-entry with the OWN
+binding (`pc_p2_bombsarai_teki_reset` -> `own_reset`) are still unexercised.
 
 Known fidelity gaps (accepted for now, not admission blockers on their own):
 
@@ -132,11 +136,15 @@ Known fidelity gaps (accepted for now, not admission blockers on their own):
 * No P2 sound effects; no balloon-pop, down or supply effects. Each blast plays the P1
   bomb-rock explosion effect instead of the P2 Bomb efx.
 * Vertical motion uses P1 host gravity while grounded, not P2's. The grounded carrier drifts
-  ~90u under a 100-Pikmin crowd; this matches the decomp's direction of effect — P2
+  ~90u under a 100-Pikmin crowd (v1, 20 Pikmin: ~114u during Damage and ~120u from Fall->Damage to
+  Dead, leaving the corpse ~150u from the DEAD position); this matches the decomp's direction of effect — P2
   `Creature::resolveOneColl` (`creature.cpp:703-712`) splits collision push by mass ratio and
   BombSarai fp05 is 0.01 against the Piki default 100 (`creature.cpp:33`), so the carrier takes
   essentially all of the push — but the host push magnitude is not measured against P2's.
 * Bitter spray and purple Pikmin gates exist but cannot occur in P1.
+* `EB_NoInterrupt` is not modelled: StateDamage's KEY2/KEY3 toggling and the
+  Supply/Release/Fall flags (`BombSaraiState.cpp:127-130, 464, 511-533, 565-596`) have no P1
+  receiver.
 * The bot's 6 s "stand under the carrier" hold is bot input only. Release/Supply was reached
   with that strategy; a throw-first player knocks the carrier down before it drops the bomb.
 
