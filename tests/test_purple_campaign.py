@@ -11,7 +11,7 @@ from randomizer.purple_campaign import add_violet, bank_files, bind_campaign_mod
 def generator():
     row = bytearray(100)
     row[:8] = b'    0.0v'
-    struct.pack_into('>I', row, 8, 27)
+    struct.pack_into('<I', row, 8, 27)
     row[72:80] = b'ssob\x02\x00\x00\x00'
     return b'1.0v' + struct.pack('>4fI', 5, 10, 15, 45, 1) + row
 
@@ -63,7 +63,9 @@ class PurpleCampaignTests(unittest.TestCase):
             self.assertEqual(result[24:len(data)], data[24:])
             rows = split_records(result)
             self.assertEqual(len(rows), 2)
-            self.assertEqual(struct.unpack_from('>I', rows[1], 8)[0], 900)
+            # Native readID swaps the big-endian numeric readInt result.
+            native_id = int.from_bytes(struct.unpack_from('>I', rows[1], 8)[0].to_bytes(4, 'little'), 'big')
+            self.assertEqual(native_id, 900)
             self.assertEqual(struct.unpack_from('>I', rows[1], 80)[0], 5 | color << 6)
             self.assertEqual(struct.unpack_from('>6f', rows[1], 48), (105, 10, 15, 0, 0, 0))
         with self.assertRaises(ValueError):

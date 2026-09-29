@@ -49,7 +49,7 @@ def add_violet(data, template, generator_id, color=1):
     if color not in (0, 1, 2):
         raise ValueError('Invalid Violet legacy birth color')
     rows = split_records(data)
-    if any(struct.unpack_from('>I', row, 8)[0] == generator_id for row in rows):
+    if any(struct.unpack_from('<I', row, 8)[0] == generator_id for row in rows):
         raise ValueError('Violet generator identity already exists')
     if template[72:80] != b'ssob\x02\x00\x00\x00':
         raise ValueError('Expected version-two Boss generator template')
@@ -59,7 +59,8 @@ def add_violet(data, template, generator_id, color=1):
         raise ValueError('Invalid landing origin')
     row = bytearray(template)
     row[:8] = b'    0.0v'
-    struct.pack_into('>I', row, 8, generator_id)
+    # Generator::read uses readID (byte-swapped readInt), unlike numeric fields.
+    struct.pack_into('<I', row, 8, generator_id)
     row[16:48] = b'campaign violet'.ljust(32, b'\0')
     struct.pack_into('>6f', row, 48, x + 100, y, z, 0, 0, 0)
     struct.pack_into('>I', row, 80, 5 | (color << 6))
@@ -138,7 +139,7 @@ def stage_campaign(run, assets, bank, motion, manifest):
     generator = 0x50555000 + stage
     # Check every scheduled source in the chosen stage, not just default.gen.
     for path in (source / f'dataDir/stages/{folder}').glob('*.gen'):
-        if struct.pack('>I', generator) in path.read_bytes():
+        if struct.pack('<I', generator) in path.read_bytes():
             raise ValueError('Reserved Violet identity occurs in stage source')
     overrides = {key: add_violet(data, template, generator, {"blue": 0, "red": 1, "yellow": 2}[manifest.get("starting_color", "red")])}
     overrides.update({f'dataDir/courses/pikmin2room/{name}': value for name, value in models.items()})
