@@ -46,6 +46,7 @@ every existing caller keeps working. Today the pool is:
 | 78 | MiniHoudai | minihoudai |
 | 73 | BigTreasure | bigtreasure |
 | 32 | Demon | demon |
+| 38 | PanModoki | breadbug |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -71,12 +72,23 @@ never P2 identities and never enter this table.
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
   eye-checked the facing and the shell effects. Carcass revival and the
   body charge/smoke effects are not ported yet.
+- **38 PanModoki (Breadbug): admitted (#898).** The source FSM runs it in the
+  campaign. Pikmin and the captain never target it (in retail it is only a
+  living thing while bittered), and thrown Pikmin landing on it press it. It
+  steals carcasses, tugs them against the carriers and hauls them home to hide.
+  A carcass it takes home is spared at the nest, so its check is never lost.
+  It dies to six presses (or container damage when it is sucked off its cargo
+  at the Onion), is carried and delivers `onion:p2:38:3` (three bot runs on the
+  pinned exe, z2/z3/z6). Eating a plain pellet (retail `endCarry`) is untested
+  at runtime. Pikmin still holding the cargo when it hides are killed, as in
+  retail; this needs an owner eye-check. Binding is shown on Distant Spring and
+  Forest of Hope; no Impact Site slot opens before day 8, so none was run.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 38 species on 35 slots, a given seed may leave out any
-  one ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
-  boss arenas outside the ordinary slots, so 36 ordinary species share 35
+  (`sampled-v1`). With 39 species on 35 slots, a given seed may leave out any
+  two ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  boss arenas outside the ordinary slots, so 37 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him

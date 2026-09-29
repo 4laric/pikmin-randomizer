@@ -156,6 +156,9 @@ CANDIDATE_SPECS = (
     # arenas (#899; randomizer.p2_boss_arenas.apply_to_document writes its
     # arena profile), like the Crawbster above.
     (73, 'BigTreasure', 32, ['ground'], None, False),
+    # #898: Breadbug (PanModoki 38) binds campaign ground slots; its OWN
+    # campaign run bound spring_init_7002 (native TEKI_Collec placement type).
+    (38, 'PanModoki', 18, ['ground'], 8, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,

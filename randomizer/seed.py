@@ -597,6 +597,18 @@ P2_PLAYABLE_POOL = (
                          "(stages the demon-* parms/bank and the demon pose meshes)",
         },
     },
+    {
+        "source_id": 38,
+        "enum_name": "PanModoki",
+        "family": "breadbug",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs z2, z3 and z6 (owner ruling 2026-09-25: power mode admits; #898 second review): red squad, campaign OWN bind of the source PanModoki FSM, never a Pikmin or captain target (0 attacks), grabs a carcass and hauls it home through Back, CarryEnd, Hide (refill, carcass spared) and Appear, dies to six thrown-Pikmin presses 1100->-100, OWN_DEAD on its own generator, corpse carried, Onion receipt onion:p2:38:3 in all three runs",
+            "log": "output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log (sha256 f89d2a6eb8691c51...) L1259 bind, L4732 dead, L4898 receipt; z3 L5526 receipt, z6 L6902 receipt; native claude/p2-port-38-breadbug-v2 91fe15a50, exe sha256 0248be824d662aea...; #898",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 38 -> breadbug "
+                         "(stages p2-breadbug-parms/bank and the breadbug pose meshes)",
+        },
+    },
 )
 
 

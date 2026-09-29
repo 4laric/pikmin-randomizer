@@ -42,6 +42,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   the private model room) plus the ``p2-groink-teki.txt`` carcass sidecar
   (source timeline). Poses are sampled per clip
   (``pikmin2_groink_stage.POSE_LIMITS``), not by the global pose limit.
+* 38 PanModoki: ``pikmin2_breadbug_own_assets.extract`` -> ``<out>/PanModoki/``
+  (``breadbug.json`` + ``identity.json`` + ``breadbug_<clip>_<ii>.mod``);
+  the Breadbug adapter stages exactly the native OWN inputs through
+  ``experimental.pikmin2_breadbug_stage`` (retail ``p2-breadbug-parms.txt``,
+  ``p2-breadbug-bank.txt`` and the poses into the private model room).
 * 79 Sokkuri: ``pikmin2_sokkuri_assets.extract`` -> ``<out>/Sokkuri/``
   (``sokkuri.json`` + ``ginv_Sokkuri_<clip>_<ii>.mod``); the Sokkuri adapter
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
@@ -224,6 +229,7 @@ ENUM_FOR_SOURCE = {
     27: "Tadpole",
     28: "ElecBug",
     34: "SnakeCrow",
+    38: "PanModoki",
     68: "TamagoMushi",
     94: "DangoMushi",
     44: "BlueKochappy",
@@ -624,6 +630,31 @@ def extract_minihoudai(iso, dest, pose_limit=None):
         shutil.rmtree(tmp, ignore_errors=True)
     try:
         minihoudai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_breadbug(iso, dest):
+    """Build <dest>/PanModoki/ via the Breadbug OWN extractor (#898).
+
+    Poses are sampled per clip (``pikmin2_breadbug_own_assets.POSE_LIMITS``
+    plus every key-event frame), not by the global pose limit.
+    """
+    from experimental import pikmin2_breadbug_own_assets as breadbug
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "PanModoki"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-breadbug"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        breadbug.extract(iso, tmp)
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1428,6 +1459,7 @@ EXTRACTORS = {
     75: "extract_kabuto",
     57: "extract_kurage",
     78: "extract_minihoudai",
+    38: "extract_breadbug",
     79: "extract_sokkuri",
     26: "extract_catfish",
     27: "extract_tadpole",
@@ -1531,6 +1563,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
         elif source_id == 78:
             # Per-clip pose limits (native Groink bank), not the global limit.
             extract_minihoudai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 38:
+            # Per-clip pose limits (native Breadbug bank), not the global limit.
+            extract_breadbug(iso, out)
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
