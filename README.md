@@ -110,7 +110,9 @@ YAML options for the `Pikmin Randomizer` game. Defaults are those of the .apworl
 | `death_link_pikmin` | DeathLink unit: deaths per outgoing link and casualties per received link, 1 to 100. | `10` |
 | `bomb_trap_weight` | Filler weight for Bomb Ambush: five lit bomb rocks in a ring around Olimar, classified as a trap. 0 disables. | `0` |
 | `progg_trap_weight` | Filler weight for Smoky Progg Ambush: spawns one native Smoky Progg nearby, classified as a trap. 0 disables. | `0` |
-| `bomb_rock_weight` | Filler weight for Bomb Rock Delivery (3); Pikmin Delivery / Flower Shower weights are 2 / 1. 0 disables. | 1 |
+| `bomb_rock_weight` | Filler weight for Bomb Rock Delivery (3); Pikmin Delivery weight is 2. 0 disables. | 1 |
+| `progressive_day_length` | Progressive Day Length items in the pool (0–10). Each lengthens the playable day by `day_length_increment` percent of a normal day; a mid-day receipt slows the clock without moving it. Useful, not in logic. The smallest check set fits 8. | 0 |
+| `day_length_increment` | Percent of a normal day added per Progressive Day Length item (10–100, multiple of 5). | 25 |
 | `campaign_enemies` | Campaign-wide ground, frog, flying, small-enemy and aquatic pools with a Teki miniboss in Hope, Navel and Spring. Overrides the older enemy toggles. | false |
 | `enemy_shuffle` | Seeded compatible enemy-family swaps. | false |
 | `per_spawn_enemies` | Individual adult Bulborb/Bulbear assignments at 15 named points; overrides `enemy_shuffle`. | false |
@@ -134,7 +136,7 @@ Controls and quality-of-life additions:
 - Pikmin attacking a Pellet Posy wait for it to die and carry the dropped pellet.
 - A progress overlay shows current status, including whistle and movement percentages and each color's stats once its Onion is known.
 
-Reward items: Ship Repair (30 in the pool, 25 required), Onion unlocks for the other colors, area access items, Flarlic (+10 field capacity each, up to 100), Pikmin Delivery (10 leaf Pikmin to the smallest unlocked Onion), Flower Shower (five drinkable nectar drops near Olimar), Progressive Whistle Radius (two +25% steps), Progressive Olimar Speed (two +25% steps to movement and plucking), Bomb Rock Delivery (three loose bombs near a landing Onion), the optional Bomb Ambush (five lit bombs around Olimar) and Smoky Progg Ambush traps, and per-color stat upgrades. Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end.
+Reward items: Ship Repair (30 in the pool, 25 required), Onion unlocks for the other colors, area access items, Flarlic (+10 field capacity each, up to 100), Pikmin Delivery (10 leaf Pikmin to the smallest unlocked Onion), Progressive Red/Yellow/Blue Maturity (two steps each: every Pikmin of that color, on the field or in the Onion, grows to bud then flower; replaces Flower Shower in new seeds, which keep its item ID for older ones), optional Progressive Day Length, Progressive Whistle Radius (two +25% steps), Progressive Olimar Speed (two +25% steps to movement and plucking), Bomb Rock Delivery (three loose bombs near a landing Onion), the optional Bomb Ambush (five lit bombs around Olimar) and Smoky Progg Ambush traps, and per-color stat upgrades. Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end.
 
 Check categories: exploration (area access and Onion discovery), population milestones at 10/25/50/100 per color (field, stored and sprouts of that color), bestiary corpse deliveries to an Onion (Puffy Blowhog by defeat, Clamclamp by pearl; each species once), and with permanent checks the completion of individual walls, bridges and pushable boxes. Structure work uses each Pikmin's actual damage and attack rate, so stat upgrades speed it up.
 
