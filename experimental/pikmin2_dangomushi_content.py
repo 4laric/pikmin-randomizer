@@ -77,6 +77,11 @@ _POSE_RE = re.compile(r'snake_DangoMushi_([a-z0-9_]+)_([0-9]{2})\.mod')
 
 # Native bank clip-row budget (pc_p2_batch3.cpp parseBank): poses in 0..64.
 _MAX_BANK_POSES = 64
+# Carcass sidecar read by pc_p2_dangomushi.cpp loadCarcassRow (#897): the
+# retail carcass_config.txt DangoMushi row, `P2_DANGOMUSHI_CARCASS_1 min max
+# seeds`.
+CARCASS_TXT = 'p2-dangomushi-carcass.txt'
+CARCASS_HEADER = 'P2_DANGOMUSHI_CARCASS_1'
 # Native actor-row budget (parseActors): 1..100 rows.
 _MAX_ACTORS = 100
 
@@ -261,11 +266,32 @@ def _parse_bank(data):
                 status, width = value, 8
             if not name or not status:
                 raise StagingError('snagret bank clip row names no clip')
-            current.append((name, frames, events, poses, status))
             pos += width
+            if pos < len(tokens) and tokens[pos] == 'frames':
+                # Optional pose-frame list (batch-3 parseBank `frames a,b,..`).
+                if pos + 1 >= len(tokens):
+                    raise StagingError('snagret bank clip frames list truncated')
+                pose_frames = _parse_pose_frames(tokens[pos + 1], frames, poses)
+                current.append((name, frames, events, poses, status, pose_frames))
+                pos += 2
+            else:
+                current.append((name, frames, events, poses, status))
         else:
             raise StagingError(f'snagret bank token rejected by the native grammar: {word!r}')
     return blocks
+
+
+def _parse_pose_frames(token, duration, poses):
+    """Validate a pose-frame list exactly as batch-3 ``parseBank`` accepts it."""
+    try:
+        values = tuple(int(value) for value in token.split(','))
+    except ValueError as error:
+        raise StagingError('snagret bank clip frames list not ints') from error
+    span = duration if duration >= 2 else max(poses, 2)
+    if (len(values) != poses or not values or values[0] != 0 or values[-1] != span - 1
+            or any(b <= a for a, b in zip(values, values[1:]))):
+        raise StagingError('snagret bank clip frames list outside the native grammar')
+    return values
 
 
 def _render_bank(blocks):
@@ -273,8 +299,12 @@ def _render_bank(blocks):
     lines = [BANK_HEADER]
     for species, _identity, clips in blocks:
         lines.append(f'species {species} {SNAGRET_SPECIES_IDS[species]}')
-        for name, frames, events, poses, status in clips:
-            lines.append(f'clip {species} {name} {frames} {events} poses {poses} status {status}')
+        for row in clips:
+            name, frames, events, poses, status = row[:5]
+            line = f'clip {species} {name} {frames} {events} poses {poses} status {status}'
+            if len(row) > 5:
+                line += ' frames ' + ','.join(str(value) for value in row[5])
+            lines.append(line)
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
@@ -282,7 +312,10 @@ def _merge_bank(existing, species, source_id, clip_rows):
     """Merge one species' bank block; a differing restaged block refuses."""
     if species not in SNAGRET_SPECIES_IDS or source_id != SNAGRET_SPECIES_IDS[species]:
         raise StagingError(f'snagret bank species identity mismatch: {species} {source_id}')
-    for _name, frames, events, poses, status in clip_rows:
+    for row in clip_rows:
+        _name, frames, events, poses, status = row[:5]
+        if len(row) > 5:
+            _parse_pose_frames(','.join(str(v) for v in row[5]), frames, poses)
         if type(frames) is not int or frames < 0:
             raise StagingError(f'snagret bank clip frames outside the native range: {_name!r}')
         if type(poses) is not int or poses < 0 or poses > _MAX_BANK_POSES:
@@ -408,6 +441,28 @@ def validate_source(source):
     return True
 
 
+def _uniform_frames(count, duration):
+    """batch-3 ``uniformFramesFor`` (the spacing assumed without a list)."""
+    if count <= 1:
+        return [0] if count == 1 else []
+    return [min(duration - 1, max(0, int(i * (duration - 1) / (count - 1) + 0.5)))
+            for i in range(count)]
+
+
+def carcass_text(document):
+    """The carcass sidecar bytes for a manifest carrying the retail row."""
+    row = document.get('carcass')
+    if row is None:
+        return None
+    try:
+        mn, mx, seeds = int(row['min']), int(row['max']), int(row['pikicount'])
+    except (KeyError, TypeError, ValueError) as error:
+        raise StagingError('DangoMushi carcass row malformed') from error
+    if not (0 < mn <= mx <= 100 and 0 < seeds <= 100):
+        raise StagingError('DangoMushi carcass row outside the native range')
+    return f'{CARCASS_HEADER} {mn} {mx} {seeds}\n'.encode('ascii')
+
+
 def plan(source, actors):
     """Validate everything and return exact payloads; never writes.
 
@@ -437,8 +492,15 @@ def plan(source, actors):
     for clip in clips:
         name = Path(clip['file']).stem
         token = _events_token(clip['file'], clip.get('events', []))
-        clip_rows.append((name, clip['source_frames'], token,
-                          len(clip['poses']), 'converted'))
+        pose_frames = tuple(pose['frame'] for pose in clip['poses'])
+        row = (name, clip['source_frames'], token, len(clip['poses']), 'converted')
+        duration = clip['source_frames']
+        if (pose_frames != tuple(_uniform_frames(len(pose_frames), duration))
+                and pose_frames[0] == 0 and pose_frames[-1] == duration - 1):
+            # Adaptive sampling (#897): the native blend needs the real frame
+            # of every pose, not the uniform spacing it assumes otherwise.
+            row += (pose_frames,)
+        clip_rows.append(row)
     mesh_files = {}
     for clip in clips:
         for pose in clip['poses']:
@@ -476,6 +538,9 @@ def stage_dangomushi(source, run, actors):
         bank_path.read_bytes() if bank_path.is_file() else None,
         SPECIES, SOURCE_ID, clip_rows)
     targets = {ACTORS_TXT: actors_payload, BANK_TXT: bank_payload}
+    carcass = carcass_text(_load_manifest(source)[0])
+    if carcass is not None:
+        targets[CARCASS_TXT] = carcass
     targets.update({str(ROOM / name): payload for name, payload in mesh_files.items()})
     # Sidecar conflicts surface inside the merge above; only a mesh file that
     # exists with different bytes is a conflict here.

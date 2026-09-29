@@ -1148,21 +1148,24 @@ def extract_tamago(iso, dest, pose_limit=6):
     return target
 
 
-def extract_dangomushi(iso, dest, pose_limit=6):
+def extract_dangomushi(iso, dest, pose_limit=None):
     """Build <dest>/DangoMushi/ via the DangoMushi extractor.
 
     ``pikmin2_dangomushi_assets.extract`` produces the source poses
     (``dangomushi.json`` + ``snake_DangoMushi_<clip>_<ii>.mod``); the
     DangoMushi adapter stages its rows of the shared snagret files from that
     tree via ``experimental.pikmin2_dangomushi_content.stage_dangomushi``.
+    ``pose_limit=None`` (what ``prepare_content_root`` uses) samples adaptive
+    key poses up to ``ADAPTIVE_MAX_POSES`` per clip (#897); an int keeps the
+    historical uniform sampling (2..8).
     """
     from experimental import pikmin2_dangomushi_assets as dangomushi
 
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
+        raise ValueError(f"pose limit must be 2..8 or None: {pose_limit!r}")
     target = dest / "DangoMushi"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1170,7 +1173,11 @@ def extract_dangomushi(iso, dest, pose_limit=6):
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
-        dangomushi.extract(iso, tmp, pose_limit=pose_limit)
+        if pose_limit is None:
+            dangomushi.extract(iso, tmp, pose_limit=dangomushi.ADAPTIVE_MAX_POSES,
+                               sampling="adaptive")
+        else:
+            dangomushi.extract(iso, tmp, pose_limit=pose_limit)
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1471,7 +1478,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extract_tamago(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 94:
-            extract_dangomushi(iso, out, pose_limit=pose_limit)
+            # #897: the boss draws from adaptive key poses (its own cap), not
+            # the global uniform pose limit (like 78's POSE_LIMITS).
+            extract_dangomushi(iso, out, pose_limit=None)
             extracted.append(source_id)
         elif source_id == 12:
             if not uji_done:
