@@ -35,10 +35,29 @@ def committed_document():
     return json.loads(ADMITTED_PLACEMENT_DOC.read_text(encoding="utf-8"))
 
 
+def ordinary_slots(document):
+    """Placement slots outside the boss arenas (#899) and the #901 holder slots."""
+    held = {row["uid"] for row in document.get("held_parts", [])}
+    return [slot for slot in document["slots"] if not slot.get("boss_slot") and slot["uid"] not in held]
+
+
+def ordinary_bound(layout):
+    """Bound source ids outside the boss arenas (#899) and holder slots (#901)."""
+    arena = {target for row in layout.get("boss_arenas", {}).get("placed", []) for target in row["targets"]}
+    arena |= {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
+    return [binding["source_id"] for binding in layout["bindings"] if binding["target"] not in arena]
+
+
+def arena_bosses(layout):
+    return {row["source_id"] for row in layout.get("boss_arenas", {}).get("placed", [])}
+
+
 def trimmed_document(keep):
-    """The committed document with only its first ``keep`` slots."""
+    """The committed document with only its first ``keep`` ordinary slots
+    (the boss arenas, #899, are kept)."""
     document = copy.deepcopy(committed_document())
-    document["slots"] = document["slots"][:keep]
+    document["slots"] = ordinary_slots(document)[:keep] + [
+        slot for slot in document["slots"] if slot.get("boss_slot")]
     kept = {slot["uid"] for slot in document["slots"]}
     for profile in document["profiles"]:
         if "accepted_slot_uids" in profile:
@@ -49,7 +68,7 @@ def trimmed_document(keep):
 def test_fitting_pool_keeps_the_legacy_fill():
     roster = load_and_validate()
     document = committed_document()
-    fit = sorted(admitted_ids(roster))[:len(document["slots"])]
+    fit = sorted(admitted_ids(roster))[:len(ordinary_slots(document))]
     layout = resolve_placement_layout("fit", "Player1", document, roster, species=fit)
     assert layout["density"] == DENSITY_LEGACY
     assert "unplaced" not in layout
@@ -57,17 +76,21 @@ def test_fitting_pool_keeps_the_legacy_fill():
     assert set(bound) == set(fit), "every selected species appears when the selection fits"
 
 
-def test_committed_pool_samples_one_species_out():
-    # 36 admitted species on the 35 committed slots (Groink 78 admitted, #888).
+def test_committed_pool_fits_once_the_arena_boss_leaves_the_ordinary_slots():
+    # 36 admitted species (Groink 78 admitted, #888) on 35 ordinary slots
+    # sampled one species out (#893). The Crawbster 94 now lives only in a
+    # boss arena (#899), so the other 35 fill the 35 ordinary slots exactly.
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == len(document["slots"]) + 1
+    assert len(pool) == len(ordinary_slots(document)) + 1
     layout = resolve_placement_layout("committed", "Player1", document, roster)
-    bound = [binding["source_id"] for binding in layout["bindings"]]
-    assert layout["density"] == DENSITY_SAMPLED
-    assert len(bound) == len(set(bound)) == len(document["slots"])
-    assert len(layout["unplaced"]) == 1 and set(layout["unplaced"]) == pool - set(bound)
+    bound = ordinary_bound(layout)
+    assert layout["density"] == DENSITY_LEGACY
+    assert "unplaced" not in layout
+    assert len(bound) == len(set(bound)) == len(ordinary_slots(document))
+    assert arena_bosses(layout) == {94}
+    assert set(bound) | arena_bosses(layout) == pool
 
 
 def test_oversubscribed_pool_samples_distinct_species():
@@ -76,10 +99,10 @@ def test_oversubscribed_pool_samples_distinct_species():
     document = trimmed_document(20)
     layout = resolve_placement_layout("over", "Player1", document, roster)
     assert layout["density"] == DENSITY_SAMPLED
-    bound = [binding["source_id"] for binding in layout["bindings"]]
+    bound = ordinary_bound(layout)
     assert len(bound) == 20, "every target is still bound"
     assert len(set(bound)) == 20, "no species repeats while others are unplaced"
-    assert set(layout["unplaced"]) == pool - set(bound)
+    assert set(layout["unplaced"]) == pool - set(bound) - arena_bosses(layout)
     assert layout["unplaced"] == sorted(layout["unplaced"])
     validate_layout(layout, roster, admitted=sorted(pool))
 

@@ -51,7 +51,8 @@ def test_playable_pool_binds_all_playable_species():
     # #893: 36 playable species on 35 slots; the seed samples the pool, so
     # every species is either bound once or listed as unplaced.
     layout = playable_manifest()["p2_layout"]
-    bound = [b["source_id"] for b in layout["bindings"]]
+    held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
+    bound = [b["source_id"] for b in layout["bindings"] if b["target"] not in held]
     assert len(bound) == len(set(bound))
     assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
     assert not set(bound) & set(layout.get("unplaced", []))
@@ -77,7 +78,13 @@ def test_every_location_reachable_on_playable_seed():
 
 def test_replaced_hosts_keep_all_delivery_checks_reachable():
     manifest = playable_manifest()
-    bound = {b["target"] for b in manifest["p2_layout"]["bindings"]}
+    all_bound = {b["target"] for b in manifest["p2_layout"]["bindings"]}
+    # #899: a boss binds a P1 boss arena, not a campaign teki slot.
+    arena = {t for row in manifest["p2_layout"].get("boss_arenas", {}).get("placed", []) for t in row["targets"]}
+    # #901: a held-part layer target is a P1 ship-part holder slot, not a
+    # campaign teki slot; it never removes a species' last host (p2_held_parts).
+    held = {row["target"] for row in manifest["p2_layout"].get("held_parts", {}).get("placed", [])}
+    bound = all_bound - arena - held
     by_uid = {str(row["uid"]): row for row in CAMPAIGN_SLOTS}
     assert bound and bound <= set(by_uid)
     totals = Counter((row["stage"], row["original"]) for row in CAMPAIGN_SLOTS)
@@ -93,8 +100,9 @@ def test_replaced_hosts_keep_all_delivery_checks_reachable():
         assert can_reach_manifest(name, full, manifest), name
     # Every bound slot keeps a corpse route home, so deliveries stay physical.
     doc_slots = {str(slot["uid"]): slot for slot in _default_admitted_placement()["slots"]}
-    assert bound <= set(doc_slots)
-    assert all(doc_slots[target]["corpse_route"] for target in bound)
+    assert all_bound <= set(doc_slots)
+    assert all(doc_slots[target]["corpse_route"] for target in all_bound)
+    assert all(doc_slots[target]["boss_slot"] for target in arena)
 
 
 def test_fill_pool_unchanged_by_p2():

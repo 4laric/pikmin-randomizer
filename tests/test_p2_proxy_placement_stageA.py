@@ -413,10 +413,14 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             proxy_rows=proxy_rows)
         base_unplaced = set(base.get("unplaced", []))
         assert not base_unplaced, (seed, base_unplaced)
-        base_counts = Counter(b["source_id"] for b in base["bindings"])
+        # The #901 held-part layer binds holder slots from its own stream
+        # after the ordinary fill; count the ordinary fill only.
+        held = {row["target"] for row in base.get("held_parts", {}).get("placed", [])}
+        base_ordinary = [b for b in base["bindings"] if b["target"] not in held]
+        base_counts = Counter(b["source_id"] for b in base_ordinary)
         assert all(count == 1 for count in base_counts.values()), (
             seed, base_counts)
-        assert {b["source_id"] for b in base["bindings"]} == set(pool), (
+        assert {b["source_id"] for b in base_ordinary} == set(pool), (
             seed, base_unplaced)
 
 
@@ -452,7 +456,13 @@ def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
         assert pool > len(layout["bindings"]), "test needs a pool larger than the target set"
         pack_counts = Counter()
         plain_counts = Counter()
+        # #901: a held-part holder slot draws from the roster-admitted pool
+        # only; the unplaced species here are proxies it cannot host, so a
+        # repeat there is not a wasted slot.
+        held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
         for binding in layout["bindings"]:
+            if binding["target"] in held:
+                continue
             (pack_counts if binding["target"] in PACKS else plain_counts)[binding["source_id"]] += 1
         assert len(plain_counts) == sum(plain_counts.values()), (
             {k: v for k, v in plain_counts.items() if v > 1})
