@@ -47,6 +47,7 @@ every existing caller keeps working. Today the pool is:
 | 73 | BigTreasure | bigtreasure |
 | 32 | Demon | demon |
 | 38 | PanModoki | breadbug |
+| 41 | Fuefuki | fuefuki |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -72,6 +73,15 @@ never P2 identities and never enter this table.
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
   eye-checked the facing and the shell effects. Carcass revival and the
   body charge/smoke effects are not ported yet.
+- **41 Fuefuki (Antenna Beetle): admitted (#245, 2026-09-29).** Its OWN
+  campaign port runs the source FSM on a P1 Chappy teki with its AI suppressed. The beetle
+  whistles followers away, is pressed into Struggle by a thrown Pikmin, dies
+  naturally, is carried and delivers its Onion receipt on Distant Spring,
+  on Forest Navel (a natural seed, no rebind) and on Forest of Hope. Its
+  owner-death Panic followers come back to a captain whistle. A P1 safety
+  guard keeps its Land/Walk targets on ground routed to home: before the
+  guard, run d4 stranded the corpse on a ledge behind a closed waypoint. The
+  whistle ring is a P1 ground-band stand-in, not the retail effect.
 - **38 PanModoki (Breadbug): admitted (#898).** The source FSM runs it in the
   campaign. Pikmin and the captain never target it (in retail it is only a
   living thing while bittered), and thrown Pikmin landing on it press it. It
@@ -86,9 +96,9 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 39 species on 35 slots, a given seed may leave out any
-  two ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
-  boss arenas outside the ordinary slots, so 37 ordinary species share 35
+  (`sampled-v1`). With 40 species on 35 slots, a given seed may leave out any
+  three ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  boss arenas outside the ordinary slots, so 38 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him

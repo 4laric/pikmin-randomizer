@@ -127,8 +127,9 @@ class MuseProfileTests(unittest.TestCase):
         from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
         admitted = admitted_ids(load_and_validate())
         # 57 Kurage and 78 MiniHoudai were explicitly user-approved for admission
-        # (2026-09-16); the remaining muse candidates must still not enter it.
-        for source_id in (41, 58):
+        # (2026-09-16) and 41 Fuefuki by its OWN port (#245, 2026-09-29); the
+        # remaining muse candidate must still not enter it.
+        for source_id in (58,):
             self.assertNotIn(source_id, admitted)
 
 
