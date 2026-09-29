@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // Private real-GL Fuefuki natural-combat fixture, issue #245. Compiled by the
 // isolated fixture build only; runs inside the cargo-free practice arena so the
 // Napkid 11 vehicle births through the real generator and `pc_p2_hardlanes`

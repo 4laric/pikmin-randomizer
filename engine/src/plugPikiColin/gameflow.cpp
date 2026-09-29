@@ -604,7 +604,11 @@ void GameFlow::hardReset(BaseApp* baseApp)
 	mMoviePlayer = new MoviePlayer();
 
 	// set up controller rumble manager
+#if defined(PIKI_PC_PORT)
+	rumbleMgr = new RumbleMgr(true, true, false, false); // P2 en cooperativo
+#else
 	rumbleMgr = new RumbleMgr(true, false, false, false);
+#endif
 	rumbleMgr->reset();
 	rumbleMgr->rumbleOption(true);
 
@@ -825,4 +829,23 @@ void GameFlow::update()
 void GameFlow::addGenNode(immut char* name, CoreNode* node)
 {
 	mFlowManager->add(new GameGenNode((name) ? name : node->mName, node));
+}
+
+/**
+ * @brief Recomputes clock speed from the stage multiplier, day-length setting and
+ * received Progressive Day Length items.
+ */
+void syncWorldClockSpeed()
+{
+	const f32 dayScale    = pc_randomizer_day_length_multiplier();
+	const f32 oldSecsHour = gameflow.mWorldClock.mRealSecsPerGameHour;
+	gameflow.mWorldClock.mRealSecsPerGameDay  = 60.0f * (gameflow.mTimeMultiplier * gameflow.mParameters->mRealMinutesPerGameDay()) * dayScale;
+	gameflow.mWorldClock.mRealSecsPerGameHour = gameflow.mWorldClock.mRealSecsPerGameDay / gameflow.mWorldClock.mHoursInDay;
+	// A Progressive Day Length receipt slows the clock from here on. Rescale the
+	// seconds already spent in this hour so the time of day never moves.
+	static f32 lastDayScale = 1.0f;
+	if (dayScale != lastDayScale && oldSecsHour > 0.0f) {
+		gameflow.mWorldClock.mRealSecsIntoHour *= gameflow.mWorldClock.mRealSecsPerGameHour / oldSecsHour;
+	}
+	lastDayScale = dayScale;
 }

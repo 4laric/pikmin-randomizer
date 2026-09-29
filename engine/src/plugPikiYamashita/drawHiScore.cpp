@@ -74,7 +74,11 @@ zen::DrawHiScore::DrawHiScore()
 
 	// If we haven't unlocked any challenge modes, hide the challenge mode records.
 	if (stageCount == 0) {
+#if defined(PIKI_PC_PORT)
+		mTotalsPane->move(27 - pc_gfx_menu_shift_center(), 130);
+#else
 		mTotalsPane->move(27, 130);
+#endif
 		mCMRecordsPane->hide();
 	}
 }

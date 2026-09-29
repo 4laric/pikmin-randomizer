@@ -16,7 +16,7 @@
 #include "Generator.h"
 #include "pc_randomizer.h"
 #include "Shape.h"
-#include "System.h"
+#include "system.h"
 #include "Joint.h"
 #include "pc_p2_pose_bank.h"
 #include "pc_p2_skin.h"

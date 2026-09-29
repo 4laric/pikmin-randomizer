@@ -684,22 +684,28 @@
     "32": {
       "native_module": "pc_p2_demon_host",
       "owner_lane": "30",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Demon (Bumbling Snitchbug, source 32): OWN campaign port on #215; the Demon profile of the Sarai FSM with its retail parms drives the campaign Demon, which grabs and drops the captain, is knocked down by Pikmin weight, dies naturally, is carried as its type5 carcass and delivers Onion receipt onion:p2:32:3 on its own generator token.",
       "source": [
-        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md"
+        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Demon (Bumbling Snitchbug): host + capture/drop/escape modules; ordinary captor + moving attachment + teardown remain (#215-#242)."
-      ]
+        "Demon (Bumbling Snitchbug): #215 OWN port. Native 4laric/Open-Nectar claude/p2-port-32-demon-v2 6e88fad0d (fork main a6cee5e85 + 3 #215 commits): Demon profile of the Sarai FSM (retail demon parms, 12-clip bank, captain grab/CatchFly/FallMeck drop, 3 s re-grab gate), P1 Chappy anchor AI suppressed with a stored-damage drain, type5 carcass draw, onion:p2:32 delivery bind.",
+        "Campaign evidence, bot-driven power-mode run v2b (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 32, all on the species' own generator: output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a) L1574 P2_DEMON_PARMS retail=1 life=1500, L1575 BANK clips=12 carcass=type5, L1578 OWN_BIND anchor_ai=suppressed; states wait/attack/fail/move, fall/damage/takeoff/flick (L2770 P2_DEMON_FLICK flicked=9), then four captain grabs L2812/L2933/L3109/L3345 P2_DEMON_CAPTURE captain=1 each followed by P2_DEMON_DROP damage=10.0 (L2876/L2995/L3172/L3418; the navi_health on each DROP line is the pre-drop value 90/80/70/60) and the applied drop DEMON_STATE_DAMAGE generation=1..4 accepted=1 (L2883 90->80, L3009 80->70, L3187 70->60, L3431 60->50). The captain's other losses are not Demon damage: 100->90 before the first capture (AUTOPLAY_NAVI navi_hp L886 100 to L2593 90, while Umimushi 101 generator 3921089765 was cycling attack states nearby, L2528-L2600) and 50->30 during the carry (L3765 to L3852, the carry route passes the attacking Umimushi 101, likely cause). re-grab gaps 4.4 to 15.7 s after each gate reset; 82 monotone P2_DEMON_DAMAGE lines 1485 to 0; L3632 P2_DEMON_DEAD, L3664 CARCASS_BECOME, L3665 DRAW corpse=1 pose=type5, carried by 3, L3926 receipt onion:p2:32:3 new=1, L3928 AUTOPLAY_RESULT 1/1/1/1 in 129 s.",
+        "Pins: root claude/p2-port-32-demon-v2 (origin/main ec593341 + #215 staging), content output/wt-p2port-32-content-full (prepared.json sha256 4bc6641d5166818b...), exe nectar.exe sha256 c329ed2d0a0e5209d74d3cabffce58f05ac24648ab4782858e1faad64e3e8f99 (private build output/wt-p2port-32-build, ninja -n no work for pikmin_pc). Earlier runs p2/p3/n3 on the pre-rebase branch are on #215.",
+        "cleanup_reentry (test-backed, restated after the #215 review): the Demon keeps its own teardown state that Sarai 23 never exercises (escaped binding retained after demonAnchorFinalize, carcass drawn from it, private-room receipt refused), so Sarai 23's runtime re-entry PASS is NOT inherited. Native claude/p2-port-32-demon-v2 a99f9d19b adds p2_sarai_lifecycle_test case 10, which drives the production pc_p2_sarai_manager.cpp (real buildDemonHost, p2demon::loadParms, real delivery ledger) through bind, Dead KEYEVENT_END finalise, retained-binding carcass draw, onion delivery Granted, stage reset (pc_p2_reset_all_teki: day end and area exit) clearing the live and corpse entries and the central source-32 binding, a same-token re-entry anchor rebinding fresh with the old anchor absent, the second delivery a durable Duplicate, forget after delivery, a stale-revalidation Demon corpse refused as corpse:sarai, and a missing-staging refusal (76 checks, 40 Demon; ctest p2_(sarai|demon|generated|campaign|navi) 25/25). No runtime day-end or area re-entry has been observed for the Demon: run v3a (output/claude-orch/p2-demon-own/runs/v3a-32, exe ef01fbf2..., log sha256 2393aef994a681a6...) stayed 29 min on the stage after its receipt without the day ending; it shows one onion:p2:32:3 receipt only (L3167), the P2_SARAI_FORGET at delivery (L3168) and no second DEMON_READY.",
+        "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the Chappy anchor's collision stands in for the Demon body, gravity 1000 is assumed (retail constants not staged), carcass carry weight and pokos come from the P1 Chappy carcass config, and a captain flick is a plain release without knockback. In normal-squad runs the bot does not kill the Demon."
+      ],
+      "delivery_receipt": "onion:p2:32:3 (P2_DEMON_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log:L3926 receipt (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a)"
     },
     "34": {
       "native_module": "pc_p2_snakejoint",
@@ -1571,7 +1577,7 @@
       "native_module": "pc_p2_dangomushi",
       "owner_lane": "25",
       "eligibility": "admitted",
-      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:94:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): #897 OWN-fidelity build placed in the impact_goolix boss arena (#899); natural power-mode kill in the Turn window, corpse carried, Onion receipt onion:p2:94:0 on the species' own generator token (v2f, repeat v2h). The arena goes live on day 9: a normal campaign meets 94 there on day 9 or later.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1580,13 +1586,15 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 4a5a138eaa228226...)",
+      "delivery_receipt": "onion:p2:94:0 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a...",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt.",
-        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+        "Arena campaign evidence: Bot-driven power-mode campaign v2f in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY PIKMIN_P2_TEST_START_DAY=11, since the arena goes live on day 9, so a normal campaign meets 94 there on day 9 or later): P2_BOSS_ARENA_BIRTH on the arena primary, bind, rain drawn (ROCK_DRAW), Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse drawn on the carried pellet (CORPSE_DRAW) and carried by 22, Onion receipt onion:p2:94:0. Log output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a....",
+        "Arena availability: the impact_goolix arena is live from day 9. The evidence runs start on day 11 through the TEST-ONLY PIKMIN_P2_TEST_START_DAY hook (logged TEST_ONLY); a normal campaign reaches the arena, and 94, on day 9 or later.",
+        "Full behaviour cycle on the same arena line (power 1, v2c, build e988a0306 = the admitted build minus the corpse cull radius and bot RESULT-latch fixes; log sha256 05094252febf0c1e...): two rolls into WALL_CRASH, two Turn windows, rain drawn each Turn (ROCK_DRAW L1465, L1744), claw FLICK L1668/L1673/L1865, lethal roll crush CRUSH_TALLY pressed_pikmin=25 dead=25 (L1727) and 9/9 (L1994). No kill in that run (health 1845/3000 at the 2400 s cap).",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); owner ruling 2026-09-29 keeps 94 in the pool."
       ]
     },
     "95": {

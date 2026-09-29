@@ -254,6 +254,9 @@ def print_plan(plan):
             print(f"  command: {' '.join(str(part) for part in step.command)}")
 
 
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX  # noqa: E402  #895
+
+
 def ensure_content(iso, content_dir, pool, pose_limit, research):
     """Extract the content root once per ISO hash; return whether it was rebuilt."""
     if content_is_cached(content_dir):
@@ -388,16 +391,17 @@ def main(argv=None):
                         help="local Archipelago install (AP mode)")
     parser.add_argument("--research", type=Path, default=None,
                         help="native/pikmin2-research checkout (default: %(default)s)")
-    parser.add_argument("--pose-limit", type=int, default=3,
-                        help="sampled poses per clip for the family banks (default 3)")
+    parser.add_argument("--pose-limit", type=int, default=DEFAULT_POSE_LIMIT,
+                        help="sampled poses per clip for the compact-loader family banks "
+                             f"(default {DEFAULT_POSE_LIMIT}, max {POSE_LIMIT_MAX})")
     parser.add_argument("--stage-timeout", type=int, default=900,
                         help="seconds to wait for the binding receipt (stage-only)")
     parser.add_argument("--dry-run", action="store_true",
                         help="print every step and path without doing anything")
     args = parser.parse_args(argv)
 
-    if not 2 <= args.pose_limit <= 8:
-        parser.error("--pose-limit must be 2..8")
+    if not 2 <= args.pose_limit <= POSE_LIMIT_MAX:
+        parser.error(f"--pose-limit must be 2..{POSE_LIMIT_MAX}")
 
     plan = build_plan(args)
     if args.dry_run:

@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from experimental.pikmin2_frog_assets import SPECIES, CLIPS, MAX_POSES, CLIP_BYTES, TOTAL_BYTES
-from experimental.pikmin2_animation import resource_chunks
+from experimental.pikmin2_animation import resident_clip_bytes, resource_chunks
 
 
 def plan(bank, actors):
@@ -19,7 +19,7 @@ def plan(bank, actors):
     if manifest.get('schema')!=1 or manifest.get('policy')!='P2_FROG_IMPORT_1' or manifest.get('disc_id')!='GPVE01' or manifest.get('disc_revision')!=0 or set(manifest.get('species',{}))!=set(SPECIES):
         raise ValueError('Unexpected Frog source manifest')
     lines=['P2_FROG_1',str(len(actors))]+[f'{i} {s}' for i,s in actors]
-    files=[];total=0
+    files=[];total=0;resident_total=0
     for species,enemy_id in SPECIES.items():
         info=manifest['species'][species]
         if info.get('enemy_id')!=enemy_id or [c.get('name') for c in info.get('clips',[])]!=list(CLIPS):raise ValueError('Unexpected Frog species/clip identity')
@@ -28,15 +28,18 @@ def plan(bank, actors):
             duration=clip['source_frames'];poses=clip['poses'];frames=[p['frame'] for p in poses]
             if clip.get('status')!='converted' or type(duration) is not int or not 1<=duration<=10000 or not 2<=len(poses)<=MAX_POSES or any(type(f) is not int for f in frames) or frames[0]!=0 or frames[-1]!=duration-1 or any(a>=b for a,b in zip(frames,frames[1:])):raise ValueError('Invalid Frog frame sequence')
             lines.append(f"{clip['name']} {len(poses)} {duration} "+' '.join(map(str,frames)))
-            size=0
+            clip_data=[]
             for index,pose in enumerate(poses):
                 name=f"frog_{species}_{clip['name']}_{index:02}.mod"
                 if pose['file']!=name:raise ValueError('Unexpected Frog pose filename')
-                data=(bank/species/name).read_bytes();size+=len(data);total+=len(data)
-                if not data or size>CLIP_BYTES or total>TOTAL_BYTES or len(data)!=pose['bytes'] or hashlib.sha256(data).hexdigest()!=pose['sha256']:raise ValueError('Frog pose size/hash mismatch')
+                data=(bank/species/name).read_bytes();total+=len(data);clip_data.append(data)
+                if not data or len(data)!=pose['bytes'] or hashlib.sha256(data).hexdigest()!=pose['sha256']:raise ValueError('Frog pose size/hash mismatch')
                 resources=resource_chunks(data)
                 if reference is not None and reference!=resources:raise ValueError('Frog immutable resource mismatch')
                 reference=resources;files.append((name,data))
+            # #895: budgets are native resident bytes (pc_p2_pose_loader.h).
+            resident=resident_clip_bytes(clip_data);resident_total+=resident
+            if resident>CLIP_BYTES or resident_total>TOTAL_BYTES:raise ValueError('Frog pose size/hash mismatch')
     if total!=manifest.get('total_pose_bytes'):raise ValueError('Frog total byte mismatch')
     return ('\n'.join(lines)+'\n').encode(),files,hashlib.sha256(raw).hexdigest()
 

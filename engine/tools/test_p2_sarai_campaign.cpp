@@ -101,6 +101,7 @@ void pc_randomizer_set_generator_id(const void*, unsigned) {}
 // --- Sibling modules (not under test here) --------------------------------
 bool pc_p2_otakara_bind_dynamic(BTeki*, unsigned, unsigned) { return false; }
 bool pc_p2_bluechappy_bind_dynamic(BTeki*, unsigned, unsigned) { return false; }
+bool pc_p2_chappy_bind_dynamic(BTeki*, unsigned, unsigned) { return false; }
 
 // --- Sarai dynamic binder double (real contract) ---------------------------
 // Mirrors pc_p2_sarai_manager_bind_dynamic: refuses null/zero/already-bound

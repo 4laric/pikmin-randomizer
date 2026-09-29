@@ -9,11 +9,17 @@
 #include "Piki.h"
 #include "ShadowCaster.h"
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include "Dolphin/gx.h"
+#endif
 
 class CPlate;
 struct BurnEffect;
 struct RippleEffect;
 struct PermanentEffect;
+// PC: la estela del cursor usa el resplandor de la antena, ampliado para
+// cubrir el anillo del cursor.
+constexpr f32 kCursorTrailScale = 1.5f;
 struct SlimeEffect;
 struct Kontroller;
 struct NaviDrawer;
@@ -26,6 +32,15 @@ struct PikiHeadItem;
 // Redundant parenthesis surrounding the call to `Parm::Operator()` fixes matching for the DLL
 #define NAVI_PARM(parm)         C_NAVI_PARM(this, parm)
 #define C_NAVI_PARM(navi, parm) (static_cast<NaviProp*>((navi)->mProps)->mNaviProps.parm())
+
+#if defined(PIKI_PC_PORT)
+extern "C" int pc_settings_get_whistle_radius_pct(void);
+// Mod "Whistle Radius": el radio máximo escalado; el mínimo no cambia.
+#define NAVI_WHISTLE_MAX_RADIUS(navi) \
+	(C_NAVI_PARM(navi, mWhistleMaxRadius) * (f32)pc_settings_get_whistle_radius_pct() / 100.0f)
+#else
+#define NAVI_WHISTLE_MAX_RADIUS(navi) C_NAVI_PARM(navi, mWhistleMaxRadius)
+#endif
 
 /**
  * @brief TODO
@@ -169,6 +184,27 @@ public:
 	bool mIsPellet;                       // _2E1, is lying down/carryable
 	Kontroller* mKontroller;              // _2E4
 	Camera* mNaviCamera;                  // _2E8, could be CullFrustum*, but probably Camera*
+#if defined(PIKI_PC_PORT)
+	/// Cámara con la que se interpretan stick/ratón. En coop con cámara
+	/// dinámica es la vista realmente mostrada (lerp unificada->propia), no
+	/// mNaviCamera; nullptr = mNaviCamera.
+	Camera* mControlCamera = nullptr;
+	Camera* controlCamera() { return mControlCamera ? mControlCamera : mNaviCamera; }
+	/// Coop: color de la luz de la antena según capitán/tinte. Llamar tras
+	/// cada changeEffect.
+	void applyPlayerLightTint();
+	/// Capitán de este Olimar (PcCaptain): Olimar, Louie o un Pikmin.
+	int pcCaptain();
+	/// Capitán Pikmin: dibuja el Pikmin del color elegido (con hoja) usando
+	/// la animación de Olimar. false si el capitán no es un Pikmin.
+	bool pcDrawAsPikmin(Graphics& gfx);
+	PaniPikiAnimMgr mPcPikiAnimMgr;
+	int mPcPikiAnimColor = -1;
+	Vector3f mPcPikiLeafTip; ///< punta de la hoja: ahí brilla la luz del capitán
+	/// Tinte de distinción (solo J2 cuando ambos llevan el mismo capitán).
+	bool pcHasTint();
+	GXColor pcTint();
+#endif
 	immut Vector3f* mLookAtPosPtr;        // _2EC
 	u8 mLookTimer;                        // _2F0
 	f32 mHeadYawOffsetRel;                // _2F4
@@ -191,6 +227,12 @@ public:
 	f32 mCursorNaviDist;                  // _6E0, how far is the cursor from us?
 	Vector3f mCursorTargetPosition;       // _6E4, where we want cursor to be
 	Vector3f mCursorWorldPos;             // _6F0, also cursor related?
+#if defined(PIKI_PC_PORT)
+	void pcUpdateLockOn();
+	void pcPinCursorToLock();
+	void pcPinCursorFirstPerson();
+	Creature* mPcLockTarget = nullptr; ///< Mod "Lock-On": enemigo fijado.
+#endif
 	int mPendingLowerMotionId;            // _6FC
 	int mLowerMotionCooldown;             // _700
 	f32 mFlickIntensity;                  // _704
@@ -216,8 +258,9 @@ public:
 	u32 _770;                             // _770, unused
 	PermanentEffect* mNaviLightEfx;       // _774
 	PermanentEffect* mNaviLightGlowEfx;   // _778
-	PermanentEffect* _77C;                // _77C, unused
+	PermanentEffect* mCursorTrailEfx;     // _77C, unused in retail; PC: estela del cursor (nav_blur)
 	PermanentEffect* _780;                // _780, unused
+	Vector3f mCursorTrailLastPos;         // PC: última posición con la que emitió la estela
 	Vector3f mNaviLightPosition;          // _784
 	Vector3f mDayEndPosition;             // _790
 	Vector3f mWalkAnimPrevPos;            // _79C
@@ -299,6 +342,13 @@ int pc_preferred_throw_color(); // Selection class, including bomb yellows.
 int pc_throw_selection_class(Piki*);
 /// Handle one D-pad color-selection edge; returns a different-color candidate.
 Piki* pc_cycle_throw_color(Navi*, Piki* current);
+/// Color preferido de la rueda para un Olimar concreto: solo cuenta para el
+/// jugador que tiene teclado y ratón; el otro no tiene rueda (-1).
+int pc_preferred_throw_color_for(Navi* navi);
+/// Avanza el color preferido con rueda/táctil/cruceta; true si la cruceta lo
+/// cambió en este tick (para cambiar el Pikmin ya sujeto, issue #43).
+bool pc_navi_step_throw_color(Navi* navi);
+bool pcIsLastNaviStanding(Navi* navi);
 #endif
 
 #endif

@@ -3,7 +3,7 @@
 #include "Shape.h"
 #include "Joint.h"
 #include "Material.h"
-#include "System.h"
+#include "system.h"
 
 namespace p2pose {
 // Call on the App heap. Geometry is private; audited bank resources are shared.

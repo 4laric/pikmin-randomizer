@@ -877,6 +877,56 @@
       }
     },
     {
+      "uid": 613834665,
+      "label": "spring_puffy_blowhog_uf02",
+      "stage": 3,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 0,
+      "source_identity": "p1_holder:teki:16:uf02",
+      "cohort": "ground",
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 3406893972,
+      "label": "navel_breadbug_un09",
+      "stage": 2,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": false,
+      "protected": true,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 0,
+      "source_identity": "p1_holder:teki:8:un09",
+      "cohort": "ground",
+      "evidence": {
+        "xyz": false,
+        "terrain": false,
+        "route": false
+      }
+    },
+    {
       "uid": 4019261003,
       "label": "impact_goolix",
       "stage": 0,
@@ -1115,7 +1165,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1180,7 +1231,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1268,7 +1320,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1294,7 +1347,8 @@
       "notes": "P2 source_id 58; muse placement slice #492; legacy lane 27 / muse observer lane 59; vehicle Napkid11; accepted generated slot 1787125272; native placement gate pending family lane 27.",
       "cohort": null,
       "accepted_slot_uids": [
-        1787125272
+        1787125272,
+        613834665
       ]
     },
     {
@@ -1382,7 +1436,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1447,7 +1502,74 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
+      ]
+    },
+    {
+      "identity": "Demon",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 30,
+      "footprint_radius": 0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 0,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": false,
+      "encounter_descriptor": null,
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "#215 (2026-09-29): Demon (Bumbling Snitchbug, 32) admitted on the Sarai host with its own retail profile; same constraint-compatible slot set and generated-placement bridge contract as Sarai (the setup sweep claims the slot, P2_GENERATED_PLACEMENT reason=deferred_to_setup_sweep then P2_DEMON_READY/OWN_BIND). Identity behaviour is the lane's natural gates on #215.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        5465461,
+        328297937,
+        407876267,
+        513430982,
+        568677317,
+        873045719,
+        983680291,
+        1254096625,
+        1646783045,
+        1725053560,
+        1787125272,
+        1808550463,
+        1849273021,
+        1858120135,
+        1866045954,
+        1877315663,
+        1911597745,
+        1945764764,
+        2049888785,
+        2074106479,
+        2175753366,
+        2506165730,
+        2700289662,
+        3138990329,
+        3640055869,
+        3731060235,
+        3850487044,
+        3886812794,
+        3921089765,
+        3960948767,
+        4063112254,
+        4141612035,
+        4222852521,
+        4224027716,
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1512,7 +1634,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1577,7 +1700,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1642,7 +1766,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1707,7 +1832,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1773,7 +1899,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1799,7 +1926,8 @@
       "notes": "P2 source_id 41; muse placement slice #492; legacy lane 28 / muse observer lane 57; vehicle Napkid11; accepted generated slot 1254096625; native placement gate pending family lane 28.",
       "cohort": null,
       "accepted_slot_uids": [
-        1254096625
+        1254096625,
+        613834665
       ]
     },
     {
@@ -1864,7 +1992,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -1952,7 +2081,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2017,7 +2147,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2082,7 +2213,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2147,7 +2279,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2230,7 +2363,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2295,7 +2429,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2360,7 +2495,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2421,7 +2557,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2486,7 +2623,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2552,7 +2690,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2617,7 +2756,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2682,7 +2822,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2747,7 +2888,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2812,7 +2954,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2877,7 +3020,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -2944,7 +3088,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3032,7 +3177,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3097,7 +3243,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3162,7 +3309,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3227,7 +3375,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3292,7 +3441,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3357,7 +3507,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3422,7 +3573,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3487,7 +3639,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3552,7 +3705,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3617,7 +3771,8 @@
         4141612035,
         4222852521,
         4224027716,
-        4281359481
+        4281359481,
+        613834665
       ]
     },
     {
@@ -3840,6 +3995,7 @@
       "first_day": 9,
       "respawn_days": 0,
       "protected_drop": null,
+      "held_part_transfer": false,
       "measured": {
         "uid": 4019261003,
         "clear": 275,
@@ -3878,6 +4034,7 @@
       "first_day": 2,
       "respawn_days": 5,
       "protected_drop": null,
+      "held_part_transfer": false,
       "measured": {
         "uid": 295337326,
         "clear": 200,
@@ -3920,6 +4077,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part (pellet config 29)",
+      "held_part_transfer": false,
       "measured": {
         "uid": 4260179239,
         "clear": 200,
@@ -3956,6 +4114,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part (pellet config 26)",
+      "held_part_transfer": false,
       "measured": {
         "uid": 304372265,
         "clear": 250,
@@ -3992,6 +4151,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part uf09",
+      "held_part_transfer": false,
       "measured": {
         "uid": 2974383966,
         "clear": 350,
@@ -4028,6 +4188,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part ust1",
+      "held_part_transfer": false,
       "measured": {
         "uid": 2903640892,
         "clear": 250,
@@ -4063,7 +4224,30 @@
       ],
       "first_day": 2,
       "respawn_days": 30,
-      "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal"
+      "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal",
+      "held_part_transfer": false
+    }
+  ],
+  "held_parts": [
+    {
+      "uid": 613834665,
+      "label": "spring_puffy_blowhog_uf02",
+      "stage": 3,
+      "p1_teki": 16,
+      "part": "uf02",
+      "location": "Pikmin: Interstellar Radio",
+      "held_part_transfer": true,
+      "evidence": "output/claude-orch/p2-held-part runs b9/b10 (hand-bound BlueKochappy 44: DROP via=die, carried, CHECK 5 = vanilla index) and the seed-generated binding run recorded on #901"
+    },
+    {
+      "uid": 3406893972,
+      "label": "navel_breadbug_un09",
+      "stage": 2,
+      "p1_teki": 8,
+      "part": "un09",
+      "location": "Pikmin: Space Float",
+      "held_part_transfer": false,
+      "evidence": "u4/u5: DROP part=un09 via=die ok=1 (late un** shape); carry and CHECK not yet proven"
     }
   ]
 }

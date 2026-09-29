@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // rd-p2-kurage-natural (#832): guarded natural-engagement observation fixture
 // for the private-adapter Kurage (source id 57).
 //

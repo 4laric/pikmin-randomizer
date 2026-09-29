@@ -48,6 +48,9 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_dangomushi.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
+#include "pc_randomizer.h"
 #include "pc_p2_dangomushi_hazard.h"
 #include "pc_p2_egg_hazard.h"
 #include "pc_p2_rock_hazard.h"
@@ -58,6 +61,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Generator.h"
 #include "gameflow.h"
 #include "GameStat.h"
@@ -160,6 +164,7 @@ struct Dango {
     std::string clip = "fly";
     float phase = 0.0f;
     bool deadLogged = false;
+    bool escaped = false;
     float logTimer = 0.0f;
     // Lane-25 hazard policy (#376): Turn vulnerability window + Rock/Egg rain.
     P2DangoMushiHazardPolicy hazard;
@@ -226,8 +231,8 @@ Creature* nearestTarget(const Vector3f& pos, float radius) {
     Creature* best = nullptr;
     float bestSq = radius * radius;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive()) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
             const Vector3f p = n->getPosition();
             const float dx = p.x - pos.x, dz = p.z - pos.z;
             const float d = dx * dx + dz * dz;
@@ -306,7 +311,10 @@ void enter(Dango& s, State state, const char* clip) {
 }
 void setState(BTeki* a, Dango& s, State state, const char* clip) {
     enter(s, state, clip);
-    const unsigned generator = a->mGenerator ? a->mGenerator->_70 : 0u;
+    // Bridge pack actors may carry a placeholder _70; the seed token is the
+    // stable own-token for evidence. Fixes generator=0 STATE attribution.
+    const unsigned generator = pc_p2_campaign_token(a) ? pc_p2_campaign_token(a)
+        : (a->mGenerator ? a->mGenerator->_70 : 0u);
     std::printf("P2_DANGOMUSHI_STATE generator=%u state=%s\n", generator, stateName(state));
     std::fflush(stdout);
 }
@@ -316,7 +324,7 @@ void setState(BTeki* a, Dango& s, State state, const char* clip) {
 void rollingMove(BTeki* a, Dango& s, const Vector3f& pos) {
     Creature* target = nullptr;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
+        Navi* n = pc_p2_source_active_navi(pos); // source getActiveNavi (DangoMushi.cpp:414)
         if (n && n->isAlive()) target = n;
     }
     if (!target) target = nearestTarget(pos, SIGHT);
@@ -565,7 +573,9 @@ void tickRain(Dango& s, BTeki* actor, const Vector3f& pos, float dt) {
     if (ticks > 6) ticks = 6;
     s.rainDebt -= ticks * static_cast<double>(kRainDelta);
     if (ticks <= 0) return;
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned campaignToken = pc_p2_campaign_token(actor);
+    const unsigned generator = campaignToken ? campaignToken
+        : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
     const P2RockHazardConfig config = rainRockConfig();
     const float radiusSq = (config.collisionRadius + kRainContactPad)
         * (config.collisionRadius + kRainContactPad);
@@ -623,7 +633,7 @@ void tickRain(Dango& s, BTeki* actor, const Vector3f& pos, float dt) {
                 if (dx * dx + dy * dy + dz * dz > radiusSq) return;
                 applyRainRockContact(s, k, kind, creature, actor, generator);
             };
-            consider(naviMgr ? naviMgr->getNavi() : nullptr, P2RockHazardContactKind::NaviPiki);
+            for (Navi* navi : pc_p2_navis()) consider(navi, P2RockHazardContactKind::NaviPiki);
             if (pikiMgr) {
                 Iterator pikiIt(pikiMgr);
                 CI_LOOP(pikiIt) {
@@ -647,8 +657,8 @@ void tickRain(Dango& s, BTeki* actor, const Vector3f& pos, float dt) {
                 return dx * dx + dy * dy + dz * dz
                     <= kRainEggContactRadius * kRainEggContactRadius;
             };
-            Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
-            if (navi && navi->isAlive() && near(navi)) touched = true;
+            for (Navi* navi : pc_p2_navis())
+                if (navi->isAlive() && near(navi)) { touched = true; break; }
             if (!touched && pikiMgr) {
                 Iterator it(pikiMgr);
                 CI_LOOP(it) {
@@ -677,7 +687,13 @@ void pc_p2_dangomushi_reset() {
     flickStartFrame = FALLBACK_FLICK_START;
     ready = false;
 }
-void pc_p2_dangomushi_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_dangomushi_forget(BTeki* actor) {
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit it. Idempotent with the
+    // central pc_p2_forget_teki seam.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
+    actors.erase(static_cast<PelletView*>(actor));
+}
 
 float pc_p2_dangomushi_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
@@ -707,13 +723,18 @@ bool pc_p2_dangomushi_clip(const BTeki* actor, const char*& name, float& phase) 
     phase = it->second.phase;
     return true;
 }
+bool pc_p2_dangomushi_suppress_ai(const BTeki* actor) {
+    return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
+}
 
 bool pc_p2_dangomushi_invulnerable(const BTeki* actor) {
     if (!ready || !actor) return false;
     auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
     if (it == actors.end()) return false;
     Dango& s = it->second;
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned campaignToken = pc_p2_campaign_token(const_cast<BTeki*>(actor));
+    const unsigned generator = campaignToken ? campaignToken
+        : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
     if (!P2DangoMushiHazardPolicy::attackRejected(s.stickable)) {
         // Inside the Turn stickable window: EB_Invulnerable is clear and the
         // attack is admitted (return false so the normal damage path runs).
@@ -805,17 +826,34 @@ void pc_p2_dangomushi_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "DangoMushi") wanted[unsigned(generator)] = species;
     }
+    // inst-bugs lane (#871): in bridge campaigns the seed owns the binding,
+    // so the filed ids are placeholders replaced from pc_p2_campaign_ids(94)
+    // (mirrors pc_p2_sokkuri_setup). Actors match by campaign token: scene
+    // members may carry no mGenerator, exactly like the batch-2 bind.
+    const bool bridge = pc_randomizer_p2_bridge();
+    if (bridge) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(94)) wanted[id] = "DangoMushi";
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
     Iterator it(tekiMgr);
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
-        if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        if (!actor) continue;
+        const unsigned key =
+            bridge ? pc_p2_campaign_token(actor)
+                   : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+        if (!bridge && key == 0u) continue;
+        auto match = wanted.find(key);
         if (match == wanted.end()) continue;
-        if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_DANGOMUSHI_ERROR native_type generator=%u\n", actor->mGenerator->_70);
+        // Campaign vehicle is TEKI_Swallow (proxy row host_teki 4); the arena
+        // path keeps whatever the sidecar staged on (historically Chappy).
+        const int wantType = bridge ? TEKI_Swallow : TEKI_Chappy;
+        if (actor->mTekiType != wantType) {
+            std::printf("P2_DANGOMUSHI_ERROR native_type generator=%u\n", key);
+            if (pc_p2_setup_skip(bridge, "DangoMushi", "actor_type_mismatch")) return;
             std::abort();
         }
         Dango& s = actors[static_cast<PelletView*>(actor)];
@@ -825,20 +863,24 @@ void pc_p2_dangomushi_setup() {
         s.moveTarget = s.home;
         actor->mHealth = LIFE;
         enter(s, DANGO_STAY, "fly");
-        std::printf("P2_DANGOMUSHI_BIND generator=%u source_id=94 visual_only=0\n",
-                    actor->mGenerator->_70);
+        // Ordinary-delivery bridge (lane 06 contract): bind source 94 so
+        // GoalItem::suckMe grants onion:p2:94 exactly once. Single-use.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 94, key);
+        std::printf("P2_DANGOMUSHI_DELIVERY_BIND generator=%u source_id=94\n", key);
+        std::printf("P2_DANGOMUSHI_BIND generator=%u source_id=94 visual_only=0\n", key);
         const Vector3f pos = actor->getPosition();
-        std::printf("P2_ENEMY_READY species=DangoMushi native_family=Chappy generator=%u "
+        std::printf("P2_ENEMY_READY species=DangoMushi native_family=Swallow generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
                     "source_FSM=implemented attack=interactflick_roll\n",
-                    actor->mGenerator->_70, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
-        std::printf("P2_DANGOMUSHI_STATE generator=%u state=stay\n", actor->mGenerator->_70);
+                    key, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        std::printf("P2_DANGOMUSHI_STATE generator=%u state=stay\n", key);
         std::fflush(stdout);
-        found.insert(actor->mGenerator->_70);
+        found.insert(key);
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_DANGOMUSHI_ERROR missing_actor wanted=%zu found=%zu\n",
                     wanted.size(), found.size());
+        if (pc_p2_setup_skip(bridge, "DangoMushi", "actor_roster_incomplete")) return;
         std::abort();
     }
     ready = true;
@@ -852,7 +894,15 @@ void pc_p2_dangomushi_update(BTeki* actor) {
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned campaignToken = pc_p2_campaign_token(actor);
+    const unsigned generator = campaignToken ? campaignToken
+        : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+
+    // The P1 TAI damage reaction lives in the suppressed host strategy, so
+    // the P2 FSM drains queued Pikmin damage itself (frog pattern). The Turn
+    // stickable-window gate (pc_p2_dangomushi_invulnerable) still swallows
+    // attack/bomb interactions outside the window; this applies admitted damage.
+    if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
 
     if (actor->mHealth <= 0.0f && s.state != DANGO_DEAD) {
         if (!s.deadLogged) {
@@ -968,7 +1018,7 @@ void pc_p2_dangomushi_update(BTeki* actor) {
             // captain (the source rain centre). No-op when the slot pool is full.
             Vector3f rainCentre = pos;
             if (naviMgr) {
-                Navi* active = naviMgr->getNavi();
+                Navi* active = pc_p2_source_active_navi(pos); // DangoMushi.cpp:563
                 if (active && active->isAlive()) rainCentre = active->getPosition();
             }
             spawnRainRocks(s, actor, rainCentre, s.heading, hzo.rocksToSpawn,
@@ -1022,7 +1072,12 @@ void pc_p2_dangomushi_update(BTeki* actor) {
     }
     case DANGO_DEAD:
         stop(actor);
-        if (s.stateTime >= clipDuration("dead")) actor->die();
+        // dieSoon() only runs inside the suppressed host doAI; finalize the
+        // corpse outside doAI once the dead clip completes (frog pattern).
+        if (!s.escaped && s.stateTime >= clipDuration("dead")) {
+            s.escaped = true;
+            actor->pcEscapeNow();
+        }
         break;
     default:
         break;

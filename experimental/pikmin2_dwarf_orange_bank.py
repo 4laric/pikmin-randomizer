@@ -11,7 +11,15 @@ import json
 import time
 from pathlib import Path
 
-from experimental.pikmin2_animation import CLIPS, CLIP_BYTES, TOTAL_BYTES, parse_bank as parse_timing, resource_chunks, sample_frames
+from experimental.pikmin2_animation import (CLIPS, DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX, RESIDENT_CLIP_BYTES,
+                                            RESIDENT_TOTAL_BYTES, parse_bank as parse_timing, resident_clip_bytes,
+                                            resource_chunks, sample_frames)
+
+# #895: native Dwarf Orange loads through pc_p2_pose_loader.h (a few Shapes
+# per clip plus decoded vectors), so budgets are native resident bytes and
+# the pose cap is the shared native row cap.
+CLIP_BYTES = RESIDENT_CLIP_BYTES
+TOTAL_BYTES = RESIDENT_TOTAL_BYTES
 from experimental.pikmin2_convert import blocks, convert, u16
 from experimental.pikmin2_purple import bca_pose
 
@@ -36,7 +44,7 @@ def sample_with_events(duration, events, limit):
     frames.update(f for f in events if 0 <= f < duration)
     frames.add(0)
     frames.add(duration - 1)
-    if len(frames) > 24:
+    if len(frames) > POSE_LIMIT_MAX:
         raise ValueError('Event-preserving sample exceeds pose limit')
     return sorted(frames)
 
@@ -49,29 +57,39 @@ def parse_bank(text):
 
 
 def validate_files(directory, bank):
+    """Check every pose file; returns (paths, on-disk bytes).
+
+    The budget is native resident bytes (resident_clip_bytes) per clip and
+    per bank, as pc_p2_pose_loader.h accounts it.
+    """
     paths = []
     total = 0
+    resident_total = 0
     reference = None
     for name, info in bank.items():
-        count = 0
+        clip_data = []
         for index in range(info['poses']):
             path = directory / f'{POSE_PREFIX}_{name}_{index:02}.mod'
-            size = path.stat().st_size
-            count += size
-            total += size
-            if not size or count > CLIP_BYTES or total > TOTAL_BYTES:
+            data = path.read_bytes()
+            if not data:
                 raise ValueError('Dwarf Orange bank exceeds byte budget')
-            resources = resource_chunks(path.read_bytes())
+            total += len(data)
+            clip_data.append(data)
+            resources = resource_chunks(data)
             if reference is not None and reference != resources:
                 raise ValueError('Dwarf Orange materials/textures differ between poses')
             reference = resources
             paths.append(path)
+        resident = resident_clip_bytes(clip_data)
+        resident_total += resident
+        if resident > CLIP_BYTES or resident_total > TOTAL_BYTES:
+            raise ValueError('Dwarf Orange bank exceeds byte budget')
     return paths, total
 
 
-def build(imported, output, pose_limit=12):
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 24:
-        raise ValueError('Expected 2..24 pose limit')
+def build(imported, output, pose_limit=DEFAULT_POSE_LIMIT):
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f'Expected 2..{POSE_LIMIT_MAX} pose limit')
     reference = json.loads((imported / PROFILE_JSON).read_text())
     if reference.get('schema') != 1 or reference.get('species') != 'BlueKochappy':
         raise ValueError('Expected BlueKochappy reference import')
@@ -123,6 +141,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--imported', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--pose-limit', type=int, default=12)
+    parser.add_argument('--pose-limit', type=int, default=DEFAULT_POSE_LIMIT)
     args = parser.parse_args()
     print(json.dumps(build(args.imported, args.output, args.pose_limit), indent=2))

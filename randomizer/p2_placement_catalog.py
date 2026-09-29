@@ -138,6 +138,9 @@ CANDIDATE_SPECS = (
     # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
     # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
     (23, 'Sarai', 30, ['ground'], None, False),
+    # #215: Demon (Bumbling Snitchbug) is a Sarai::Obj subclass and binds the
+    # same generated ground slots on the Sarai manager (profile Demon).
+    (32, 'Demon', 30, ['ground'], None, False),
     # Roster wave (#871): campaign-proven ground bindings for the remaining
     # pool identities. Segmented Crawbster (94) shares the snagret bank/family
     # with the snagret pair (34/70, lane 25); Beady/Raging Long Legs (56/69,

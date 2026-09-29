@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // Sarai23 campaign-behavior observation fixture (#834).
 //
 // Self-contained replacement-main TU (tools/preview_p2_room.cpp is never

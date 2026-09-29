@@ -42,7 +42,7 @@ def stage(bank, assets, output):
     (output / 'frog-specular-stage.json').write_text(json.dumps(dict(
         policy=POLICY, bank=str(bank),
         files={key: hashlib.sha256(value).hexdigest() for key, value in overrides.items()},
-        rendered_material='Frog diffuse+specular profile (control 0x93)',
+        rendered_material='Frog diffuse+specular profile (control 0xd3)',
         fixture='scripts/pikmin2_frog_specular_fixture.cpp'), indent=2) + '\n', encoding='utf-8')
     return output
 

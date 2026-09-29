@@ -191,7 +191,7 @@ def test_build_rejects_bad_inputs(tmp_path):
     with pytest.raises(ValueError, match='pose limit'):
         build(imported, tmp_path / 'out', pose_limit=1)
     with pytest.raises(ValueError, match='pose limit'):
-        build(imported, tmp_path / 'out', pose_limit=25)
+        build(imported, tmp_path / 'out', pose_limit=65)
     with pytest.raises(ValueError, match='pose limit'):
         build(imported, tmp_path / 'out', pose_limit=True)
     with pytest.raises(ValueError, match='model hash mismatch'):

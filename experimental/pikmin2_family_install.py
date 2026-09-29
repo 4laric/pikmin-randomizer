@@ -82,6 +82,11 @@ IDENTITY_FAMILY = {
     # installer (p2-dweevil-actors.txt) rather than forking it; Sarai gets the
     # new actor-sidecar installer below. Anything else still fails closed.
     23: 'sarai', 'sarai': 'sarai',
+    # #215: Demon (Bumbling Snitchbug, 32) is a Sarai::Obj subclass; it stages
+    # its own retail model/anims/parms for the Sarai host's Demon profile. The
+    # retired randomizer/p2_proxy/32_Demon.json (P2 model over TEKI_Napkid)
+    # must never coexist with this row.
+    32: 'demon', 'demon': 'demon',
     59: 'dweevil', 'fireotakara': 'dweevil',
     60: 'dweevil', 'waterotakara': 'dweevil',
     61: 'dweevil', 'gasotakara': 'dweevil',
@@ -360,6 +365,43 @@ def _adapt_sarai(source, run, actors):
     text = f'{SARAI_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
     path.write_text(text, encoding='ascii')
     return dict(species='Sarai', source_id=23, generators=merged,
+                actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
+
+
+DEMON_ACTORS_TXT = 'p2-demon-actors.txt'
+DEMON_ACTORS_HEADER = 'P2_DEMON_ACTORS_1'
+
+
+def _validate_demon(source):
+    """Pre-flight check for the Demon (Bumbling Snitchbug, source 32) content."""
+    from experimental.pikmin2_demon_install import MANIFEST as _DEMON_MANIFEST
+    source = Path(source)
+    if not (source / _DEMON_MANIFEST).is_file():
+        raise StagingError(f'Demon manifest missing for identity content: {source / _DEMON_MANIFEST}')
+
+
+def _adapt_demon(source, run, actors):
+    """Adapter for the Demon (source 32) install: stage the native host files
+    through ``experimental.pikmin2_demon_install`` and accumulate the audit
+    sidecar ``p2-demon-actors.txt`` (same shape as the Sarai sidecar; the
+    native binder selects by the seed source directly)."""
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    if not generators:
+        raise StagingError('Demon install requires at least one generator')
+    from experimental.pikmin2_demon_install import stage_demon_host
+    stage_demon_host(source, run)
+    path = run / DEMON_ACTORS_TXT
+    existing = []
+    if path.is_file():
+        tokens = path.read_text(encoding='ascii').split()
+        if len(tokens) < 2 or tokens[0] != DEMON_ACTORS_HEADER or int(tokens[1]) != len(tokens) - 2:
+            raise StagingError(f'existing {DEMON_ACTORS_TXT} is malformed')
+        existing = [int(token) for token in tokens[2:]]
+    merged = list(dict.fromkeys(existing + generators))
+    text = f'{DEMON_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
+    path.write_text(text, encoding='ascii')
+    return dict(species='Demon', source_id=32, generators=merged,
                 actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
 
 
@@ -1402,6 +1444,7 @@ ADAPTERS = {
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
     'kochappy': {'install': _adapt_kochappy, 'validate': _validate_kochappy},
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
+    'demon': {'install': _adapt_demon, 'validate': _validate_demon},
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},

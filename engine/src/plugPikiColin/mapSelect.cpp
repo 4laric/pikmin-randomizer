@@ -1,5 +1,6 @@
 #include "pc_randomizer.h"
 #include "MapSelect.h"
+#include <cstdint>
 
 #include "Camera.h"
 #include "Controller.h"
@@ -17,6 +18,9 @@
 #include "system.h"
 #include "zen/DrawCM.h"
 #include "zen/DrawWorldMap.h"
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
+#endif
 
 /// Size of the message heap (102 kb).
 #define MESSAGE_HEAP_SIZE (0x19800)
@@ -125,13 +129,13 @@ public:
 				bool valid = gameflow.mGamePrefs.isStageOpen(inf->mChalStageID);
 				// must be both open and marked visible in its .ini
 				if (inf->mIsVisible && valid) {
-					mMapListMenu->addOption((int)inf, StdSystem::stringDup(inf->mStageName), nullptr);
+					mMapListMenu->addOption((int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
 				}
 			} else {
 				bool valid = gameflow.mPlayState.isStageOpen(inf->mStageID);
 				// must be open, marked visible in its .ini, and also *not* a challenge mode stage (to avoid dupes)
 				if (inf->mIsVisible && valid && inf->mChalStageID == CHALSTAGE_NOT) {
-					mMapListMenu->addOption((int)inf, StdSystem::stringDup(inf->mStageName), nullptr);
+					mMapListMenu->addOption((int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
 				}
 			}
 		}
@@ -243,6 +247,11 @@ public:
 		}
 #endif
 
+#if PIKI_PC_TOUCH
+		// Es un menú, no la partida: la capa solo enseña B/atrás; los
+		// puntos del mapa y el sí/no se tocan directamente (DrawWorldMap).
+		pc_touch_claim_game_menu();
+#endif
 		// update debug menu if we have it
 		if (mActiveOverlayMenu) {
 			mActiveOverlayMenu = mActiveOverlayMenu->doUpdate(false);
@@ -291,6 +300,11 @@ public:
 					if (returnStatus == zen::DrawWorldMap::RET_ReturnToTitle) {
 						// player wants to exit, so exit
 						mSectionState = Exit;
+						gsys->setFade(0.0f);
+					} else if (returnStatus == zen::DrawWorldMap::RET_ReturnToCardSelect) {
+						// atrás (táctil): al selector de partida, no al título
+						mNextSectionsFlag = PACK_NEXT_ONEPLAYER(ONEPLAYER_CardSelect);
+						mSectionState     = Exit;
 						gsys->setFade(0.0f);
 					} else {
 						// player made a positive selection

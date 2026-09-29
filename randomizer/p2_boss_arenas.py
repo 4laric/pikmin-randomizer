@@ -20,10 +20,18 @@ An arena is a set of P1 generator uids at one encounter site:
 * ``suppress_uids`` are P1 boss arena mates that native keeps empty while the
   arena holds a P2 boss (``native pc_port/pc_p2_boss_arena_policy.h``
   ``kSuppress``; ``tests/test_p2_boss_arenas.py`` pins the mirror).
-* ``protected_drop`` names a held ship part or the goal boss. The P2 vehicle
-  does not carry a P1 ship part yet, so a protected arena is catalogued and
-  measured but never eligible. Its placement slot carries ``protected: true``,
-  which :func:`randomizer.p2_placement.evaluate` denies.
+* ``protected_drop`` names a held ship part or the goal boss. A protected
+  arena is catalogued and measured but never eligible. Its placement slot
+  carries ``protected: true``, which :func:`randomizer.p2_placement.evaluate`
+  denies.
+* ``held_part_transfer`` (#901) lifts that protection for an arena whose only
+  protected drop is a ship part: the P2 boss born there holds the P1 boss's
+  part (native ``pc_p2_boss_arena_birth`` puts the generator's pellet-config
+  part in the personality ``mID``; teki-hosted arenas already carry it in the
+  generator personality) and drops it on a real death through the generic
+  BTeki death funnel (native ``pc_port/pc_held_part.cpp``). The part keeps its
+  vanilla stage, so logic, checks and the Archipelago location are unchanged.
+  The goal boss (Emperor) and the Puffstool bestiary check stay protected.
 
 The Hope Cannon Beetle (``hope_0-29_3073``, uid 2506165730) is deliberately
 **not** an arena. It is already an ordinary admitted P2 slot, and turning it
@@ -60,6 +68,7 @@ P1_BOSS_ARENAS = (
         "first_day": 9,
         "respawn_days": 0,
         "protected_drop": None,
+        "held_part_transfer": False,
     },
     {
         "id": "hope_snagret_pit",
@@ -76,6 +85,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 5,
         "protected_drop": None,
+        "held_part_transfer": False,
     },
     {
         "id": "hope_snagret_part",
@@ -88,6 +98,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 29)",
+        "held_part_transfer": False,
     },
     {
         "id": "navel_beady_long_legs",
@@ -100,6 +111,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 26)",
+        "held_part_transfer": False,
     },
     {
         "id": "navel_puffstool",
@@ -112,6 +124,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part uf09",
+        "held_part_transfer": False,
     },
     {
         "id": "spring_cannon_beetle",
@@ -124,6 +137,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part ust1",
+        "held_part_transfer": False,
     },
     {
         "id": "last_emperor",
@@ -136,8 +150,14 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal",
+        "held_part_transfer": False,
     },
 )
+
+
+def arena_protected(arena):
+    """True when the arena's held drop keeps a P2 boss out (#899/#901)."""
+    return bool(arena["protected_drop"]) and not arena.get("held_part_transfer", False)
 
 
 def arenas_by_id():
@@ -216,7 +236,7 @@ def _arena_slot(arena, measured):
         "helper_capacity": ARENA_HELPER_CAPACITY,
         "projectile_corridor": False,
         "corpse_route": bool(evidence.get("route")),
-        "protected": bool(arena["protected_drop"]),
+        "protected": arena_protected(arena),
         "boss_slot": True,
         "first_day": arena["first_day"],
         "respawn_days": arena["respawn_days"],
@@ -240,6 +260,7 @@ def _arena_record(arena, measured):
         "first_day": arena["first_day"],
         "respawn_days": arena["respawn_days"],
         "protected_drop": arena["protected_drop"],
+        "held_part_transfer": bool(arena.get("held_part_transfer", False)),
     }
     if measured:
         record["measured"] = dict(measured)
@@ -256,7 +277,7 @@ def apply_to_document(document, measurements, pool_ids=None):
     slots = [slot for slot in document["slots"] if slot["uid"] not in arena_uids]
     slots += [_arena_slot(arena, measurements.get(arena["id"])) for arena in P1_BOSS_ARENAS]
     primaries = [arena["spawn_uids"][0] for arena in P1_BOSS_ARENAS
-                 if not arena["protected_drop"] and measurements.get(arena["id"])]
+                 if not arena_protected(arena) and measurements.get(arena["id"])]
     profiles = [profile for profile in document["profiles"] if profile["identity"] not in boss_names]
     encounters = [enc for enc in document.get("encounters", []) if enc["id"] not in descriptor_ids]
     if pool_ids is None:
@@ -307,6 +328,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     document = json.loads(args.document.read_text(encoding="utf-8"))
     document = apply_to_document(document, ARENA_MEASUREMENTS)
+    # #901: P1 ship-part holder teki slots (held_part_transfer per slot).
+    from .p2_held_parts import apply_to_document as apply_held_parts
+    document = apply_held_parts(document)
     from .p2_placement import validate_document
     validate_document(document)
     args.document.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")

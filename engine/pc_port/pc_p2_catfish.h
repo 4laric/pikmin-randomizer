@@ -35,5 +35,6 @@ void pc_p2_catfish_setup();
 void pc_p2_catfish_reset();
 void pc_p2_catfish_forget(BTeki*);
 void pc_p2_catfish_update(BTeki*);
+bool pc_p2_catfish_suppress_ai(const BTeki*);
 float pc_p2_catfish_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_catfish_clip(const BTeki*, const char*& name, float& phase);

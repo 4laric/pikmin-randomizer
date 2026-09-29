@@ -50,14 +50,15 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # without importing the seed module (which imports this bridge lazily).
 # Keep in sync with P2_PLAYABLE_POOL (tests/test_p2_pool_roster_sync.py pins
 # the equality); the 2026-09-26 roster wave grew this from the original six;
-# admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78.
+# admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78;
+# #215 appends Demon 32.
 PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 2, 33, 35, 43, 53, 67, 76,
                 12, 13, 14, 28, 94, 68,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78, 73)
+                25, 15, 78, 73, 32)
 
 
 class SeedBridgeError(ValueError):
@@ -86,6 +87,74 @@ def arena_boss_ids(document, roster: list[RosterEntry] | None = None) -> set[int
 def _boss_slot_uids(document) -> set[str]:
     return {str(item.get("uid")) for item in (document or {}).get("slots", []) or []
             if isinstance(item, dict) and item.get("boss_slot")}
+
+
+# P1 ship-part holder teki slots (#901, randomizer/p2_held_parts.py): a slot
+# whose held_part_transfer flag is set is listed in the document's
+# ``held_parts`` and accepted for the compatible ordinary identities, but it
+# never joins the ordinary target fill. Its own RNG stream binds one pool
+# species there after the ordinary layout, so the ordinary layout is
+# byte-identical with or without the holder slots. The P2 occupant holds the
+# P1 holder's part natively (pc_held_part.cpp).
+HELD_PART_KEY = "held_parts"
+HELD_PART_VERSION = "p2-held-part-v1"
+
+
+def _held_part_uids(document) -> set[str]:
+    return {str(item.get("uid")) for item in (document or {}).get(HELD_PART_KEY, []) or []
+            if isinstance(item, dict)}
+
+
+def _assign_held_parts(seed, slot, document, roster: list[RosterEntry], pool,
+                       bound=()) -> tuple[list[dict], dict]:
+    """Bind one pool species to each transferable holder slot for this seed.
+
+    A species the ordinary layout left unplaced is preferred, so a holder slot
+    never repeats a species while an eligible one is missing from the seed.
+    """
+    from randomizer.p2_placement import validate_document
+    validated = validate_document(document)
+    holders = [row for row in validated.get(HELD_PART_KEY, []) if row["held_part_transfer"]]
+    accepted = _accepted_placement_targets(document, roster)
+    by_source = by_id(roster)
+    rng = SeedRandom(f"{seed}/{HELD_PART_VERSION}/{slot}")
+    pool = sorted(set(pool))
+    bindings, placed = [], []
+    for row in sorted(holders, key=lambda item: item["uid"]):
+        token = str(row["uid"])
+        choices = [source_id for source_id in pool if token in accepted.get(source_id, set())]
+        if not choices:
+            continue
+        taken = set(bound) | {binding["source_id"] for binding in bindings}
+        fresh = [source_id for source_id in choices if source_id not in taken]
+        source_id = rng.shuffle(fresh or choices)[0]
+        bindings.append({"target": token, "source_id": source_id,
+                         "enum_name": by_source[source_id].enum_name})
+        placed.append({"slot": row["label"], "target": token, "part": row["part"],
+                       "source_id": source_id})
+    return bindings, {"version": HELD_PART_VERSION, "placed": placed}
+
+
+def _attach_held_parts(layout: dict, seed, slot, document, roster: list[RosterEntry], pool) -> dict:
+    # The bounded policy binds the minimum number of targets; holder slots
+    # stay vanilla there like every other spare target.
+    if not _held_part_uids(document) or not pool or layout.get(DENSITY_POLICY_KEY) == DENSITY_BOUNDED:
+        return layout
+    bound = [binding["source_id"] for binding in layout["bindings"]]
+    bindings, info = _assign_held_parts(seed, slot, document, roster, pool, bound)
+    if not bindings:
+        return layout
+    combined = list(layout["bindings"]) + bindings
+    if len({binding["target"] for binding in combined}) != len(combined):
+        raise SeedBridgeError("held-part target collides with an ordinary P2 target")
+    layout["bindings"] = _sort_bindings(combined)
+    layout[HELD_PART_KEY] = info
+    return layout
+
+
+def _finish_layout(layout: dict, seed, slot, document, roster: list[RosterEntry], pool, boss_pool) -> dict:
+    layout = _attach_held_parts(layout, seed, slot, document, roster, pool)
+    return _attach_boss_arenas(layout, seed, slot, document, roster, boss_pool)
 
 
 def _sort_bindings(bindings):
@@ -328,6 +397,8 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
         union.update(tokens)
     # A boss arena (#899) hosts only its P2 boss, never a proxy.
     union -= _boss_slot_uids(document)
+    # A held-part slot (#901) is filled by its own layer, never by a proxy.
+    union -= _held_part_uids(document)
     validated = validate_document(document)
     terrain_by_uid = {str(item["uid"]): item["terrain"] for item in validated["slots"]}
     reserved: set[str] = set()
@@ -432,7 +503,9 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         pool = [source_id for source_id in pool if source_id not in bosses]
         if not pool:
             return _boss_only_layout(seed, slot, document, roster, boss_pool, policy)
-        targets = binding_targets_from_placement(document, roster)
+        held = _held_part_uids(document)
+        targets = [target for target in binding_targets_from_placement(document, roster)
+                   if target not in held]
         accepted = _accepted_placement_targets(document, roster)
         proxy_accepted = _proxy_accepted_targets(document, proxy_rows, roster,
                                                  proxy_document=proxy_document)
@@ -503,7 +576,8 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
                   "bindings": bindings}
         if unplaced:
             layout["unplaced"] = unplaced
-        return _attach_boss_arenas(layout, seed, slot, document, roster, boss_pool)
+        held_pool = [source_id for source_id in pool if source_id in set(roster_admitted)]
+        return _finish_layout(layout, seed, slot, document, roster, held_pool, boss_pool)
     admitted = list(roster_admitted)
     if species is not None:
         wanted = set(species)
@@ -519,7 +593,8 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     admitted = [source_id for source_id in admitted if source_id not in bosses]
     if not admitted:
         return _boss_only_layout(seed, slot, document, roster, boss_pool, policy)
-    targets = binding_targets_from_placement(document, roster)
+    held = _held_part_uids(document)
+    targets = [target for target in binding_targets_from_placement(document, roster) if target not in held]
     accepted = _accepted_placement_targets(document, roster)
     admitted_set = set(admitted)
     eligible = {}
@@ -580,7 +655,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         unplaced = sorted(set(admitted) - set(assigned.values()))
         if unplaced:
             layout["unplaced"] = unplaced
-        return _attach_boss_arenas(layout, seed, slot, document, roster, boss_pool)
+        return _finish_layout(layout, seed, slot, document, roster, admitted, boss_pool)
     # Fail closed: every admitted identity must end up bound to at least one
     # target. A target is assigned to exactly one identity, so when two admitted
     # identities share only one accepted slot (e.g. Snow 45 and Dwarf Orange 44
@@ -597,7 +672,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     layout = {"version": LAYOUT_VERSION, "roster_schema": ROSTER_SCHEMA,
               "roster_revision": revision, DENSITY_POLICY_KEY: policy,
               "bindings": bindings}
-    return _attach_boss_arenas(layout, seed, slot, document, roster, boss_pool)
+    return _finish_layout(layout, seed, slot, document, roster, admitted, boss_pool)
 
 
 def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None = None, *,
@@ -694,7 +769,12 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         if binding.get("enum_name") != entry.enum_name:
             raise SeedBridgeError(f"binding {target} enum mismatch: {binding.get('enum_name')!r} != {entry.enum_name!r}")
     if unplaced is not None:
-        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings})
+        # A holder slot (#901) prefers a species the ordinary fill left unplaced
+        # (#893); that binding does not un-sample the species from the fill.
+        held_targets = {row.get("target") for row in
+                        (layout.get(HELD_PART_KEY) or {}).get("placed", []) if isinstance(row, dict)}
+        overlap = sorted(set(unplaced) & {binding["source_id"] for binding in bindings
+                                          if binding.get("target") not in held_targets})
         if overlap:
             raise SeedBridgeError(f"P2 layout unplaced ids overlap bound ids: {overlap}")
     arena_block = layout.get(BOSS_ARENA_KEY)
@@ -714,6 +794,17 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, ad
         if (not isinstance(arena_unplaced, list)
                 or set(arena_unplaced) & {row["source_id"] for row in placed}):
             raise SeedBridgeError(f"invalid P2 boss arena unplaced list: {arena_unplaced!r}")
+    held_block = layout.get(HELD_PART_KEY)
+    if held_block is not None:
+        by_target = {binding["target"]: binding["source_id"] for binding in bindings}
+        if not isinstance(held_block, dict) or held_block.get("version") != HELD_PART_VERSION:
+            raise SeedBridgeError(f"unsupported P2 held-part block: {held_block!r}")
+        held_placed = held_block.get("placed")
+        if not isinstance(held_placed, list) or not held_placed:
+            raise SeedBridgeError("P2 held-part block has no placed list")
+        for row in held_placed:
+            if not isinstance(row, dict) or by_target.get(row.get("target")) != row.get("source_id"):
+                raise SeedBridgeError(f"P2 held-part row does not match the bindings: {row!r}")
     if admitted is not None:
         allowed = set(admitted)
         unadmitted = sorted({binding["source_id"] for binding in bindings if binding["source_id"] not in allowed})

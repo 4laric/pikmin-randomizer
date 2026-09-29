@@ -12,6 +12,7 @@ void pc_p2_hana_setup();
 void pc_p2_hana_reset();
 void pc_p2_hana_forget(BTeki*);
 void pc_p2_hana_update(BTeki*);
+bool pc_p2_hana_suppress_ai(const BTeki*);
 float pc_p2_hana_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_hana_clip(const BTeki*, const char*& name, float& phase);
 

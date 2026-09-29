@@ -4,7 +4,7 @@ from pathlib import Path
 from experimental.pikmin2_assets import disc_files,archive_files
 from experimental.pikmin2_breadbug_assets import sha,parameter_blocks,collision_nodes
 from experimental.pikmin2_sheargrub_assets import animation_rows,joints
-from experimental.pikmin2_animation import sample_frames
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX, sample_frames, decode_pose
 from experimental.pikmin2_enemy import replace_texture_zero
 from experimental.pikmin2_convert import blocks,decode,write_model
 from experimental.pikmin2_purple import bca_pose
@@ -23,7 +23,7 @@ def write_pose(converted,target):
     target.with_suffix('.json').write_bytes((json.dumps(report,indent=2,sort_keys=True)+'\n').encode())
 
 def event_frames(duration,events,limit):
-    if type(duration) is not int or not 2<=duration<=10000 or type(limit) is not int or not 2<=limit<=8:raise ValueError('Invalid duration/sample budget')
+    if type(duration) is not int or not 2<=duration<=10000 or type(limit) is not int or not 2<=limit<=POSE_LIMIT_MAX:raise ValueError('Invalid duration/sample budget')
     if not isinstance(events,list) or len(events)>32:raise ValueError('Invalid event budget')
     last=-1
     for row in events:
@@ -49,7 +49,7 @@ def receiver(species,pikmin,*,invincible=False,transittable=True):
     immune=('red','bulbmin') if species=='Tank' else ('blue','bulbmin')
     return None if invincible or not transittable or pikmin in immune else ('fire_panic' if species=='Tank' else 'water_panic')
 
-def extract(iso,output,source,pose_limit=3):
+def extract(iso,output,source,pose_limit=DEFAULT_POSE_LIMIT):
     event_frames(2,[],pose_limit);index=disc_files(iso)
     revision=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
     source_hashes={name:sha((source/name).read_bytes()) for name in SOURCE_FILES}
@@ -85,7 +85,7 @@ def extract(iso,output,source,pose_limit=3):
                     for i,frame in enumerate(frames):
                         _,pose=bca_pose(raw,frame,len(names),allow_scale=True);anchor=emitter(joint_matrices(blocks(model),pose)[names.index('hoppe')]);filename=Path(row['file']).stem+f'_{i:02}.mod'
                         try:
-                            matrices=draw_matrices(blocks(rendered),pose);converted=decode(rendered,True,bake_rigid=True,draw_matrices=matrices);write_pose(converted,root/filename)
+                            converted,_=decode_pose(decode,rendered,blocks(rendered),raw,frame,len(names));write_pose(converted,root/filename)
                             data=(root/filename).read_bytes()
                             if len(data)>MAX_MODEL or budget+len(data)>MAX_TOTAL:raise RuntimeError('Pose byte budget exceeded; import aborted')
                             budget+=len(data);clip['poses'].append(dict(frame=frame,file=filename,sha256=sha(data),bytes=len(data),emitter=anchor))
@@ -101,5 +101,5 @@ def extract(iso,output,source,pose_limit=3):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('iso','output','source'):p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--pose-limit',type=int,default=3);a=p.parse_args();start=time.perf_counter();r=extract(a.iso,a.output,a.source,a.pose_limit)
+    p.add_argument('--pose-limit',type=int,default=DEFAULT_POSE_LIMIT);a=p.parse_args();start=time.perf_counter();r=extract(a.iso,a.output,a.source,a.pose_limit)
     print(json.dumps(dict(seconds=time.perf_counter()-start,budget=r['budget'],clips={v:[(c['file'],c['status']) for c in data['clips']] for v,data in r['variants'].items()})))

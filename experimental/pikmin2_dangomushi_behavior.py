@@ -14,6 +14,7 @@ nearest starting red Pikmin (x in [-140, -68]), inside the source fp11=150 Stay
 private radius and fp12=500 sight radius, so no behavior-fixture position
 override is needed; `plan_positions` applies one only if the actor would sit
 outside the private radius. The bank file `p2-snagret-bank.txt` is materialized
+from experimental.pikmin2_animation import frames_trailer
 from the batch-1 `snagret.json` manifest because the snagret install stores the
 actor config/poses but not the clip listing the native bank loader consumes.
 """
@@ -76,7 +77,9 @@ def bank_text(manifest):
                               for frame, kind in clip.get('events', [])) or '-'
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f"clip {name} {clip['name']} {clip.get('source_frames', 0)} "
-                        f"{events} poses {poses} status {clip.get('status', '')}")
+                        f"{events} poses {poses} status {clip.get('status', '')}"
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return '\n'.join(rows) + '\n'
 
 
