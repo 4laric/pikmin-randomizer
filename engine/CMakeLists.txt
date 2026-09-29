@@ -12,6 +12,9 @@
 ###############################################################################
 cmake_minimum_required(VERSION 3.16)
 project(PikminPC VERSION 0.1.0 LANGUAGES C CXX)
+if (WIN32)
+    enable_language(RC) # icono .rc de los ejecutables (windres de MinGW)
+endif()
 
 # Native MinGW defines WIN32 too; the original game uses that spelling for
 # its incompatible legacy renderer. Keep _WIN32 for the actual host APIs.
@@ -42,13 +45,29 @@ endif()
 # ─── Compiler Flags ───
 # Force-include our PC types header BEFORE anything else.
 # This overrides MetroWerks and MSVC macros, fixes type sizes, etc.
-set(PC_PORT_DIR "${CMAKE_SOURCE_DIR}/pc_port")
+set(PC_PORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/pc_port")
 
 # Legacy code (decompiled GameCube sources) needs permissive compilation.
 # Modern GCC would reject many Metrowerks-era constructs.
+#
+# -fsigned-char: plain char is signed on x86-64 but UNSIGNED on ARM64 (and on
+# the original PowerPC). The desktop port has only ever run with signed char,
+# and the decompilation has latent bugs in both directions (Font::charToIndex,
+# see AI_HANDOFF.md). Pinning the sign here makes every platform and compiler
+# behave like the tested desktop build, instead of inheriting the ABI.
+# Clang (el compilador del NDK) convierte en error dos cosas que GCC deja
+# pasar con -fpermissive: el especificador `register` y tomar la dirección de
+# un temporal (stack_new). Ambas se relajan sólo en Clang.
+set(CLANG_LEGACY_RELAXATIONS
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-register>
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-address-of-temporary>
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-unknown-warning-option>
+)
 set(LEGACY_COMPILE_OPTIONS
     -include "${PC_PORT_DIR}/pc_types.h"
+    -fsigned-char
     -fpermissive
+    ${CLANG_LEGACY_RELAXATIONS}
     -Wno-narrowing
     -Wno-multichar
     -Wno-write-strings
@@ -68,10 +87,12 @@ set(LEGACY_COMPILE_OPTIONS
 # We keep -fpermissive because native code includes legacy Dolphin headers.
 set(NATIVE_COMPILE_OPTIONS
     -include "${PC_PORT_DIR}/pc_types.h"
+    -fsigned-char
     -fpermissive
+    ${CLANG_LEGACY_RELAXATIONS}
     -Wall
     -Wextra
-    -Wno-changes-meaning
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-changes-meaning>
     -Wno-narrowing
     -Wno-multichar
     -Wno-write-strings
@@ -96,6 +117,38 @@ option(PIKMIN_NATIVE_JAUDIO "Drive audio with the original src/jaudio engine" OF
 # on with -DPIKMIN_DEBUG_KEYS=ON while working on the Mods settings.
 option(PIKMIN_DEBUG_KEYS "Build the F5/F6 testing shortcuts" OFF)
 
+# ─── Render backend ───
+# GLES 3.0 for Android and as an optional desktop path. When ON, shaders emit
+# #version 300 es and the GL context requests ES via SDL. When OFF (default for
+# desktop), the classic OpenGL 3.3 compatibility path is used.
+if(ANDROID)
+    set(PIKMIN_GLES_DEFAULT ON)
+else()
+    set(PIKMIN_GLES_DEFAULT OFF)
+endif()
+option(PIKMIN_GLES "Build with OpenGL ES 3.0 renderer" ${PIKMIN_GLES_DEFAULT})
+
+# Controles táctiles (pc_port/touch): de serie en Android; en escritorio se
+# pueden activar para probarlos con ratón (SDL_HINT_MOUSE_TOUCH_EVENTS=1).
+option(PIKMIN_TOUCH "Build the touch control layer" ${PIKMIN_GLES_DEFAULT})
+
+# ─── Qué partes del árbol se construyen ───
+# El launcher es un programa de escritorio (diálogos nativos, dolphin-tool): en
+# Android no se compila; se rehace como interfaz Android en la fase 7 del plan
+# de docs/ANDROID_PLAN.md. Los tests se ejecutan en la máquina que compila,
+# así que tampoco tienen sentido al cruzar hacia un dispositivo.
+if(ANDROID)
+    set(PIKMIN_DESKTOP_DEFAULT OFF)
+else()
+    set(PIKMIN_DESKTOP_DEFAULT ON)
+endif()
+option(PIKMIN_BUILD_LAUNCHER "Build the standalone first-run launcher" ${PIKMIN_DESKTOP_DEFAULT})
+option(PIKMIN_BUILD_TESTS "Build the host-run test executables" ${PIKMIN_DESKTOP_DEFAULT})
+
+if(PIKMIN_BUILD_TESTS)
+    enable_testing()
+endif()
+
 # ─── Which release of the game this binary is built for ───
 #
 # The port compiles the game's own code, and that code is conditional on the
@@ -109,6 +162,8 @@ add_compile_definitions(
     PIKI_PC_PORT=1
     ${PIKMIN_GAME_VERSION}
     DTK_CONFIG_NONMATCHING=1
+    PIKI_USE_GLES=$<BOOL:${PIKMIN_GLES}>
+    PIKI_PC_TOUCH=$<BOOL:${PIKMIN_TOUCH}>
     # The Linux renderer translates the game's native GX command stream to
     # OpenGL.  Selecting the old Win32/OpenGL code path here mixes two
     # incompatible texture/rendering backends and leaves GXTexObj uninitialised.
@@ -120,18 +175,20 @@ add_compile_definitions(
     PIKI_USE_JAUDIO=$<BOOL:${PIKMIN_NATIVE_JAUDIO}>
     PIKI_DEBUG_KEYS=$<BOOL:${PIKMIN_DEBUG_KEYS}>
     # Some SDL2 builds (including current Arch configurations) remap main to
-    # SDL_main unless the application explicitly owns its entry point.
-    SDL_MAIN_HANDLED=1
+    # SDL_main unless the application explicitly owns its entry point. En
+    # Android es al revés: SDLActivity busca el símbolo SDL_main en la
+    # biblioteca, así que ahí se deja que SDL_main.h renombre main.
+    $<$<NOT:$<BOOL:${ANDROID}>>:SDL_MAIN_HANDLED=1>
     # In-game settings menu (F1). Remove this to disable the overlay entirely.
     PIKI_PC_SETTINGS_MENU=1
 )
 
 # ─── Include paths ───
 include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/include/Dolphin
-    ${CMAKE_SOURCE_DIR}/include/Dolphin/OS
-    ${CMAKE_SOURCE_DIR}/include/Dolphin/GX
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Dolphin
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Dolphin/OS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/Dolphin/GX
     ${PC_PORT_DIR}
     ${PC_PORT_DIR}/gl
 )
@@ -143,10 +200,28 @@ include_directories(
 ###############################################################################
 
 # ─── External Dependencies (SDL2 & OpenGL) ───
-find_package(SDL2 QUIET)
-if (NOT SDL2_FOUND)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED sdl2)
+# En Android SDL2 se compila en el mismo árbol: el proyecto Gradle
+# (android/app/jni/CMakeLists.txt) añade las fuentes de SDL2 antes que este
+# fichero y deja el target `SDL2` definido, con sus cabeceras como interfaz.
+if (ANDROID)
+    if (NOT TARGET SDL2)
+        message(FATAL_ERROR "Android: SDL2 must be added as a target before this project (see android/app/jni/CMakeLists.txt)")
+    endif()
+    set(SDL2_LIBRARIES SDL2)
+    # El port incluye <SDL2/SDL.h> (la disposición de los paquetes de
+    # escritorio); el árbol de fuentes de SDL2 tiene SDL.h suelto. Un enlace
+    # simbólico en el directorio de build reproduce esa disposición, y sirve
+    # también a pikmin_legacy, que ve las cabeceras sin enlazar SDL2.
+    get_target_property(_sdl2_src SDL2 SOURCE_DIR)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include")
+    file(CREATE_LINK "${_sdl2_src}/include" "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include/SDL2" SYMBOLIC)
+    set(SDL2_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include" "${_sdl2_src}/include")
+else()
+    find_package(SDL2 QUIET)
+    if (NOT SDL2_FOUND)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SDL2 REQUIRED sdl2)
+    endif()
 endif()
 
 # SDL2main supplies a WinMain that forwards to SDL_main. This project declares
@@ -156,7 +231,9 @@ if (SDL2_LIBRARIES)
     list(FILTER SDL2_LIBRARIES EXCLUDE REGEX "SDL2main")
 endif()
 
-if (NOT WIN32)
+# OpenGL de escritorio no existe en Android: allí el contexto es GLES/EGL y lo
+# aporta el NDK (fase 3 del plan de Android).
+if (NOT WIN32 AND NOT ANDROID)
     find_package(OpenGL REQUIRED)
 endif()
 
@@ -218,10 +295,15 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_teki_lifetime.cpp
     pc_port/pc_p2_placement_probe.cpp
     pc_port/pc_p2_input_script.cpp
+    # TEST-ONLY headless autoplay bot (bot-impl): scripted player driving the
+    # normal pad path. Env-gated (PIKMIN_RANDOMIZER_AUTOPLAY), inert otherwise.
+    pc_port/pc_p2_autoplay.cpp
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_purple_motion.cpp
     pc_port/pc_p2_purple_impact.cpp
     pc_port/pc_p2_purple_direct.cpp
+    pc_port/pc_whistle_pluck.cpp
+    pc_port/pc_route_planner.cpp
     pc_port/pc_p2_purple_flight.cpp
     pc_port/pc_p2_purple_feedback.cpp
     pc_port/pc_p2_kochappy_stun.cpp
@@ -242,6 +324,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_kochappy.cpp
     pc_port/pc_p2_dwarf_orange.cpp
     pc_port/pc_p2_bluechappy.cpp
+    pc_port/pc_p2_chappy.cpp
     pc_port/pc_p2_kochappy_fsm.cpp
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_giant_breadbug_visual.cpp
@@ -257,6 +340,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_kogane.cpp
     pc_port/pc_p2_mamuta.cpp
     pc_port/pc_p2_mamuta_rules.cpp
+    pc_port/pc_p2_mamuta_fsm.cpp
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_hiba.cpp
     pc_port/pc_p2_flora_actor.cpp
@@ -275,6 +359,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_shijimi.cpp
     pc_port/pc_p2_kurage_receiver.cpp
     pc_port/pc_p2_sokkuri.cpp
+    pc_port/pc_p2_uji.cpp
     pc_port/pc_p2_armor.cpp
     pc_port/pc_p2_otakara.cpp
     pc_port/pc_p2_otakara_fx.cpp
@@ -292,6 +377,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_jigumo.cpp
     pc_port/pc_p2_umimushi.cpp
     pc_port/pc_p2_batch2.cpp
+    pc_port/pc_p2_proxy.cpp
     pc_port/pc_p2_batch3.cpp
     pc_port/pc_p2_snagret_fsm.cpp
     pc_port/pc_p2_dangomushi_hazard.cpp
@@ -304,6 +390,7 @@ pc_port/pc_p2_kabuto_events.cpp
 pc_port/pc_p2_kabuto_muzzle.cpp
 pc_port/pc_p2_kabuto_binding.cpp
 pc_port/pc_p2_kabuto_host.cpp
+pc_port/pc_p2_kabuto_fsm.cpp
 pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
     pc_port/pc_p2_rock_host.cpp
@@ -318,7 +405,9 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_groink_hit.cpp
     pc_port/pc_p2_groink_strike.cpp
     pc_port/pc_p2_groink_carcass.cpp
+    pc_port/pc_p2_groink_fsm.cpp
     pc_port/pc_p2_groink_teki.cpp
+    pc_port/pc_p2_groink_fx.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_fuefuki_visual.cpp
@@ -355,14 +444,25 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_onikurage_teki.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp
+    pc_port/pc_gyro.cpp
     pc_port/pc_pad_axis.cpp
     pc_port/pc_menu_repeat.cpp
     pc_port/pc_photo_mode.cpp
     pc_port/pc_permadeath.cpp
+    pc_port/pc_coop.cpp
+    pc_port/pc_art.cpp
+    pc_port/pc_icon.cpp
+    pc_port/settings/pc_glass_menu.cpp
     pc_port/pc_gpu_preference.cpp
+    pc_port/mods/pc_hd_models.cpp
+    pc_port/mods/pc_hd_model_convert.cpp
+    pc_port/mods/pc_vs_arena.cpp
+    pc_port/pc_vs.cpp
+    pc_port/pc_file_dialog.cpp
     pc_port/gl/pc_gfx.cpp
     pc_port/gl/pc_tev_shader.cpp
     pc_port/gl/pc_postprocess.cpp
+    pc_port/gl/pc_texpack.cpp
     pc_port/timing/pc_frame_scheduler.cpp
     pc_port/timing/pc_render_phase.cpp
     pc_port/timing/pc_visual_snapshot.cpp
@@ -391,10 +491,22 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/dolphin_stubs/jaudio_hw_stubs.cpp
     pc_port/dolphin_stubs/misc_stubs.cpp
 )
+if (ANDROID)
+    list(APPEND PC_PORT_SOURCES
+        pc_port/android/pc_android.cpp
+        pc_port/android/pc_texpack_android.cpp
+        pc_port/android/pc_save_android.cpp)
+endif()
+if (PIKMIN_TOUCH)
+    list(APPEND PC_PORT_SOURCES pc_port/touch/pc_touch.cpp)
+endif()
 
 include_directories(
     ${SDL2_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/bcdec
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/xxhash
 )
 
 # ─── System Common (platform-independent game engine) ───
@@ -528,7 +640,23 @@ file(GLOB PLUGPIKI_YAMASHITA_SOURCES "src/plugPikiYamashita/*.cpp")
 ###############################################################################
 # Create a static library for legacy (decompiled) sources with permissive flags.
 # This isolates the legacy compilation from the strict native compilation.
-add_library(pikmin_legacy STATIC
+# En Android el mismo árbol se añade dos veces (USA y PAL) desde
+# android/app/jni/CMakeLists.txt; los nombres de target llevan entonces un
+# sufijo para no chocar, y la biblioteca resultante se llama según la
+# versión (libnectar.so / libnectar-pal.so), igual que los ejecutables del
+# paquete de escritorio.
+set(PIKMIN_TARGET_SUFFIX "" CACHE STRING "Suffix for the game targets when the tree is added more than once")
+set(NECTAR_LEGACY pikmin_legacy${PIKMIN_TARGET_SUFFIX})
+set(NECTAR_GAME pikmin_pc${PIKMIN_TARGET_SUFFIX})
+# Solo en Android: en escritorio el ejecutable PAL sigue saliendo como
+# `nectar` en su propio directorio de build y lo renombra el empaquetado.
+if(ANDROID AND PIKMIN_GAME_VERSION STREQUAL "VERSION_GPIP01_00")
+    set(NECTAR_OUTPUT_NAME "nectar-pal")
+else()
+    set(NECTAR_OUTPUT_NAME "nectar")
+endif()
+
+add_library(${NECTAR_LEGACY} STATIC
     ${SYSCOMMON_SOURCES}
     ${SYSDOLPHIN_SOURCES}
     ${PLUGPIKI_KANDO_SOURCES}
@@ -538,18 +666,28 @@ add_library(pikmin_legacy STATIC
     ${PLUGPIKI_OGAWA_SOURCES}
     ${PLUGPIKI_YAMASHITA_SOURCES}
     # Empty unless PIKMIN_NATIVE_JAUDIO is on. The engine belongs here rather
-    # than in pikmin_pc because it is decompiled code and needs the permissive
+    # than in ${NECTAR_GAME} because it is decompiled code and needs the permissive
     # legacy flags, not the strict ones the port's own sources build with.
     ${JAUDIO_TARGET_SOURCES}
 )
-target_compile_options(pikmin_legacy PRIVATE ${LEGACY_COMPILE_OPTIONS})
+target_compile_options(${NECTAR_LEGACY} PRIVATE ${LEGACY_COMPILE_OPTIONS})
 
-# Native executable with strict flags
-add_executable(pikmin_pc
-    ${PC_PORT_SOURCES}
-)
-target_compile_options(pikmin_pc PRIVATE ${NATIVE_COMPILE_OPTIONS})
-target_link_libraries(pikmin_pc PRIVATE pikmin_legacy)
+# Native executable with strict flags. En Android es una biblioteca
+# compartida que carga la actividad Java de SDL (libnectar.so, con SDL_main
+# como punto de entrada).
+if (ANDROID)
+    add_library(${NECTAR_GAME} SHARED ${PC_PORT_SOURCES})
+else()
+    add_executable(${NECTAR_GAME} ${PC_PORT_SOURCES})
+    if (WIN32)
+        # Icono del .exe (recurso Windows).
+        target_sources(${NECTAR_GAME} PRIVATE packaging/windows/nectar.rc)
+    endif()
+endif()
+target_compile_options(${NECTAR_GAME} PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_link_libraries(${NECTAR_GAME} PRIVATE ${NECTAR_LEGACY})
+# P2 fork targets (desktop only; the Android build is a shared library).
+if (NOT ANDROID)
 # Lane 29 replacement-main runtime fixture (#243). Built as an ordinary target so
 # the lane wrapper (`build_lane.py l29 --target p2_kurage_runtime`) produces it
 # under the normal build semaphore; it runs the same engine as pikmin_pc with the
@@ -573,20 +711,24 @@ if(WIN32)
     target_link_libraries(jaudio_bbft_test PRIVATE ${SDL2_LIBRARIES})
     add_test(NAME jaudio_bbft_test COMMAND jaudio_bbft_test)
 endif()
+endif()
 
 # GX display lists, game logic and the software audio mixer execute on the host
 # CPU. Keep optimization level, machine-specific ISA and link-time optimization
 # independent so release archives can remain portable.
 #
 # Both targets must receive all three. The bulk of the per-frame CPU work is in
-# pikmin_legacy, not in pikmin_pc: renderall(), the scene traversal, the matrix
+# ${NECTAR_LEGACY}, not in ${NECTAR_GAME}: renderall(), the scene traversal, the matrix
 # and collision maths and every GX call the translator consumes are decompiled
-# sources. When these options were attached to pikmin_pc alone -- which they
+# sources. When these options were attached to ${NECTAR_GAME} alone -- which they
 # were from the moment the legacy sources were split out into their own library
 # -- the game code silently lost -march=native and LTO, and the library
 # boundary also stopped the translator from inlining into it. That is a
 # performance regression with no visible symptom other than the frame time.
-set(PIKMIN_OPTIMIZED_TARGETS pikmin_pc pikmin_legacy p2_kurage_runtime)
+set(PIKMIN_OPTIMIZED_TARGETS ${NECTAR_GAME} ${NECTAR_LEGACY})
+if (NOT ANDROID)
+    list(APPEND PIKMIN_OPTIMIZED_TARGETS p2_kurage_runtime)
+endif()
 
 foreach(target IN LISTS PIKMIN_OPTIMIZED_TARGETS)
     target_compile_options(${target} PRIVATE
@@ -624,176 +766,106 @@ if (WIN32)
     # SDL2main NO se enlaza: aporta un WinMain que llama a SDL_main, y este
     # proyecto declara SDL_MAIN_HANDLED y define su propio main. Enlazarlo deja
     # SDL_main sin definir en todos los ejecutables.
-    target_link_libraries(pikmin_pc PRIVATE ${SDL2_LIBRARIES} opengl32)
-    target_link_libraries(p2_kurage_runtime PRIVATE ${SDL2_LIBRARIES} opengl32)
+    target_link_libraries(${NECTAR_GAME} PRIVATE ${SDL2_LIBRARIES} opengl32 comdlg32)
+    target_link_libraries(p2_kurage_runtime PRIVATE ${SDL2_LIBRARIES} opengl32 comdlg32)
+elseif (ANDROID)
+    # En Android no hay X11 ni OpenGL de escritorio. GLESv3 y EGL vienen del
+    # NDK; log y android los necesita la capa de plataforma (logcat, ciclo de
+    # vida de la actividad) cuando el ejecutable se convierta en biblioteca
+    # compartida en la fase 4.
+    target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES} GLESv3 EGL log android)
+    # Android 15 exige bibliotecas alineadas a páginas de 16 KB en arm64.
+    target_link_options(${NECTAR_GAME} PRIVATE "-Wl,-z,max-page-size=16384")
 else()
-    target_link_libraries(pikmin_pc PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
-    target_link_libraries(p2_kurage_runtime PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
+    if(PIKMIN_GLES)
+        target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES} OpenGL::GLES3 X11)
+        target_link_libraries(p2_kurage_runtime PRIVATE m ${SDL2_LIBRARIES} OpenGL::GLES3 X11)
+    else()
+        target_link_libraries(${NECTAR_GAME} PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
+        target_link_libraries(p2_kurage_runtime PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
+    endif()
 endif()
 # Export symbol names so the diagnostic backtrace in pc_gfx.cpp prints function
 # names rather than bare addresses. Costs nothing at runtime.
 #
 # GNU-ld only: MinGW rejects the flag outright, and the backtrace it serves is
 # compiled out on Windows anyway (glibc's execinfo.h has no equivalent there).
-if (NOT WIN32)
-    target_link_options(pikmin_pc PRIVATE -rdynamic)
+# En Android tampoco: el binario será una biblioteca compartida, no un
+# ejecutable con símbolos exportados.
+if (NOT WIN32 AND NOT ANDROID)
+    target_link_options(${NECTAR_GAME} PRIVATE -rdynamic)
     target_link_options(p2_kurage_runtime PRIVATE -rdynamic)
-else()
+elseif (WIN32)
     # SDL2's CMake package links -mwindows, which hides the console and with it
     # every printf the port uses to report what it is doing. Keep a console on
     # the game so a failed launch says why instead of vanishing. The launcher
     # stays windowed: it talks through native dialogs.
-    target_link_options(pikmin_pc PRIVATE -mconsole)
+    target_link_options(${NECTAR_GAME} PRIVATE -mconsole)
     target_link_options(p2_kurage_runtime PRIVATE -mconsole)
 endif()
 
 # Set output name
-set_target_properties(pikmin_pc PROPERTIES
-    OUTPUT_NAME "nectar"
+set_target_properties(${NECTAR_GAME} PROPERTIES
+    OUTPUT_NAME "${NECTAR_OUTPUT_NAME}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
-if(NOT WIN32)
-add_custom_command(TARGET pikmin_pc POST_BUILD
-    COMMAND /bin/chmod 775 "$<TARGET_FILE:pikmin_pc>"
-    COMMENT "Ensuring the native Pikmin executable is runnable")
+if (NOT ANDROID AND NOT WIN32)
+    add_custom_command(TARGET ${NECTAR_GAME} POST_BUILD
+        COMMAND /bin/chmod 775 "$<TARGET_FILE:${NECTAR_GAME}>"
+        COMMENT "Ensuring the native Pikmin executable is runnable")
 endif()
 
 # Standalone first-run launcher. It accepts an original, uncompressed
 # GameCube ISO/GCM supplied by the user, extracts its FST into the per-user
 # data directory and then starts the game from there. Keeping the extractor in
 # a small library also lets CI test the legal install path without game assets.
-add_library(pikmin_disc_image STATIC
-    pc_port/launcher/gamecube_image.cpp
-    pc_port/launcher/sha256.cpp)
-target_include_directories(pikmin_disc_image PUBLIC
-    ${CMAKE_SOURCE_DIR}/pc_port/launcher)
-target_compile_options(pikmin_disc_image PRIVATE ${NATIVE_COMPILE_OPTIONS})
-
-# La capa de plataforma aísla lo único del launcher que depende del sistema:
-# rutas del ejecutable, diálogos y arranque del juego.
-if (WIN32)
-    set(LAUNCHER_PLATFORM_SOURCE pc_port/launcher/launcher_platform_win32.cpp)
-else()
-    set(LAUNCHER_PLATFORM_SOURCE pc_port/launcher/launcher_platform_posix.cpp)
+#
+# Es un programa de escritorio con diálogos nativos y dolphin-tool: en Android
+# se rehace como interfaz propia (fase 7 del plan de docs/ANDROID_PLAN.md),
+# así que con PIKMIN_BUILD_LAUNCHER=OFF aquí ni se compila.
+if((PIKMIN_BUILD_LAUNCHER OR ANDROID) AND NOT TARGET pikmin_disc_image)
+    add_library(pikmin_disc_image STATIC
+        pc_port/launcher/gamecube_image.cpp
+        pc_port/launcher/sha256.cpp)
+    target_include_directories(pikmin_disc_image PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/pc_port/launcher)
+    target_compile_options(pikmin_disc_image PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    set_property(TARGET pikmin_disc_image PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()
 
-find_package(Threads REQUIRED)
-add_executable(pikmin_launcher
-    pc_port/launcher/launcher_main.cpp
-    pc_port/launcher/installer_ui.cpp
-    ${LAUNCHER_PLATFORM_SOURCE})
-target_include_directories(pikmin_launcher PRIVATE ${SDL2_INCLUDE_DIRS})
-target_link_libraries(pikmin_launcher PRIVATE pikmin_disc_image ${SDL2_LIBRARIES} Threads::Threads)
-if (WIN32)
-    # Diálogo de archivo clásico, selector de carpeta del shell y COM.
-    target_link_libraries(pikmin_launcher PRIVATE comdlg32 ole32 shell32 uuid)
+# Instalador Android: la misma biblioteca de extracción, con un puente JNI
+# fino, en una .so aparte para que la pantalla de instalación no cargue el
+# juego (y su arena de 256 MB) antes de tiempo.
+if(ANDROID AND NOT TARGET nectar_installer)
+    add_library(nectar_installer SHARED pc_port/android/pc_installer_jni.cpp)
+    target_compile_options(nectar_installer PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(nectar_installer PRIVATE pikmin_disc_image log)
+    target_link_options(nectar_installer PRIVATE "-Wl,-z,max-page-size=16384")
 endif()
-target_compile_options(pikmin_launcher PRIVATE ${NATIVE_COMPILE_OPTIONS})
-set_target_properties(pikmin_launcher PROPERTIES
-    OUTPUT_NAME "nectar-launcher"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-add_executable(gamecube_image_test
-    pc_port/launcher/gamecube_image_test.cpp)
-target_link_libraries(gamecube_image_test PRIVATE pikmin_disc_image)
-target_compile_options(gamecube_image_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-
-add_executable(sha256_test
-    pc_port/launcher/sha256_test.cpp)
-target_link_libraries(sha256_test PRIVATE pikmin_disc_image)
-target_compile_options(sha256_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-
-add_executable(installer_ui_test
-    pc_port/launcher/installer_ui_test.cpp
-    pc_port/launcher/installer_ui.cpp)
-target_include_directories(installer_ui_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/pc_port/launcher
-    ${SDL2_INCLUDE_DIRS})
-target_link_libraries(installer_ui_test PRIVATE ${SDL2_LIBRARIES})
-target_compile_options(installer_ui_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-
-
-enable_testing()
-add_test(NAME gamecube_image_test COMMAND gamecube_image_test)
-add_test(NAME sha256_test COMMAND sha256_test)
-add_test(NAME installer_ui_test COMMAND installer_ui_test)
-
-add_executable(asset_finalize_test pc_port/launcher/asset_finalize_test.cpp)
-target_link_libraries(asset_finalize_test PRIVATE Threads::Threads)
-target_compile_options(asset_finalize_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME asset_finalize_test COMMAND asset_finalize_test)
-
-add_executable(prepared_image_test pc_port/launcher/prepared_image_test.cpp ${LAUNCHER_PLATFORM_SOURCE})
-target_compile_options(prepared_image_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-if (WIN32)
-    target_link_libraries(prepared_image_test PRIVATE comdlg32 ole32 shell32 uuid)
-endif()
-add_test(NAME prepared_image_test COMMAND prepared_image_test)
-
-add_executable(pc_generator_cache_validation_test
-    pc_port/save/pc_generator_cache_validation_test.cpp)
-target_include_directories(pc_generator_cache_validation_test PRIVATE pc_port/save)
-target_compile_options(pc_generator_cache_validation_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_generator_cache_validation_test COMMAND pc_generator_cache_validation_test)
-
-# Both executables must remain side by side: the launcher resolves the game
-# binary relative to itself, so this also works in relocatable archives.
-install(TARGETS pikmin_pc pikmin_launcher
-    RUNTIME DESTINATION bin)
-
-# Envelope smoke test executable (not linked into main game)
-add_executable(pc_envelope_test pc_port/audio/pc_envelope_test.cpp pc_port/audio/pc_envelope.cpp)
-target_link_libraries(pc_envelope_test PRIVATE m)
-target_compile_options(pc_envelope_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_envelope_test COMMAND pc_envelope_test)
-
-# Host-backed ARAM test (not linked into main game)
-add_executable(pc_aram_test pc_port/audio/pc_aram_test.cpp pc_port/audio/pc_aram.cpp)
-target_compile_options(pc_aram_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_aram_test COMMAND pc_aram_test)
-
-# Pad axis conversion (no controller needed)
-add_executable(pc_pad_axis_test pc_port/pc_pad_axis_test.cpp pc_port/pc_pad_axis.cpp)
-target_include_directories(pc_pad_axis_test PRIVATE ${SDL2_INCLUDE_DIRS} pc_port)
-target_compile_options(pc_pad_axis_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_pad_axis_test COMMAND pc_pad_axis_test)
-
-# Permadeath save block (no game needed)
-add_executable(pc_permadeath_test pc_port/pc_permadeath_test.cpp pc_port/pc_permadeath.cpp src/sysCommon/stream.cpp src/sysCommon/string.cpp)
-target_include_directories(pc_permadeath_test PRIVATE pc_port include)
-target_compile_options(pc_permadeath_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_permadeath_test COMMAND pc_permadeath_test)
-
-# Photo mode camera convention (no stage needed)
-add_executable(pc_photo_mode_test pc_port/pc_photo_mode_test.cpp pc_port/pc_photo_mode.cpp)
-target_include_directories(pc_photo_mode_test PRIVATE ${SDL2_INCLUDE_DIRS} pc_port)
-target_link_libraries(pc_photo_mode_test PRIVATE ${SDL2_LIBRARIES})
-target_compile_options(pc_photo_mode_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_photo_mode_test COMMAND pc_photo_mode_test)
-
-# Which GPU to ask for on a switchable-graphics laptop (no GPU needed)
-add_executable(pc_gpu_preference_test pc_port/pc_gpu_preference_test.cpp pc_port/pc_gpu_preference.cpp)
-target_include_directories(pc_gpu_preference_test PRIVATE pc_port)
-target_compile_options(pc_gpu_preference_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_gpu_preference_test COMMAND pc_gpu_preference_test)
-
-# Menu input repeat (no controller needed)
-add_executable(pc_menu_repeat_test pc_port/pc_menu_repeat_test.cpp pc_port/pc_menu_repeat.cpp)
-target_include_directories(pc_menu_repeat_test PRIVATE pc_port)
-target_compile_options(pc_menu_repeat_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_menu_repeat_test COMMAND pc_menu_repeat_test)
-
+# P2 fork engine-free tests (host-run only, like the upstream suites below).
+if(PIKMIN_BUILD_TESTS)
 # P2 Challenge host-state unit test (#651), landed per #676. Guard include dir
 # is an explicit, validated cache PATH (per the pinned #651/#186 review): it
 # defaults to the root-relative scripts/ when present, and private builds pass
 # -DP2_CHALLENGE_GUARD_INCLUDE_DIR=<canonical scripts dir>. No vendored copy.
 set(P2_CHALLENGE_GUARD_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../scripts" CACHE PATH
     "Directory containing the canonical p2_fixture_captain_guard.h")
-if(NOT EXISTS "${P2_CHALLENGE_GUARD_INCLUDE_DIR}/p2_fixture_captain_guard.h")
+# A standalone native checkout (upstream CI, packaging) has no root scripts/;
+# the two guard-dependent fixtures are then skipped instead of failing the
+# whole configure. An explicitly passed directory must still hold the header.
+set(P2_CHALLENGE_GUARD_FOUND OFF)
+if(EXISTS "${P2_CHALLENGE_GUARD_INCLUDE_DIR}/p2_fixture_captain_guard.h")
+    set(P2_CHALLENGE_GUARD_FOUND ON)
+elseif(DEFINED CACHE{P2_CHALLENGE_GUARD_INCLUDE_DIR} AND NOT P2_CHALLENGE_GUARD_INCLUDE_DIR STREQUAL "${CMAKE_SOURCE_DIR}/../scripts")
     message(FATAL_ERROR
         "p2_fixture_captain_guard.h not found in ${P2_CHALLENGE_GUARD_INCLUDE_DIR}; "
         "pass -DP2_CHALLENGE_GUARD_INCLUDE_DIR=<canonical scripts dir>")
+else()
+    message(STATUS "p2_fixture_captain_guard.h not found (no root scripts/); "
+        "skipping p2_challenge_mode_fixture and p2_challenge_boot_fixture")
 endif()
+if(P2_CHALLENGE_GUARD_FOUND)
 add_executable(p2_challenge_mode_fixture
     tools/p2_challenge_mode_fixture.cpp
     pc_port/pc_p2_challenge_mode.cpp)
@@ -814,49 +886,7 @@ target_include_directories(p2_challenge_boot_fixture PRIVATE
     ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
 target_compile_options(p2_challenge_boot_fixture PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_challenge_boot_fixture COMMAND p2_challenge_boot_fixture)
-
-# Host software DSP test (not linked into main game)
-add_executable(pc_dsp_host_test
-    pc_port/audio/pc_dsp_host_test.cpp
-    pc_port/audio/pc_dsp_host.cpp
-    pc_port/audio/pc_aram.cpp)
-target_compile_options(pc_dsp_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_dsp_host_test COMMAND pc_dsp_host_test)
-
-add_executable(pc_jam_test
-    pc_port/audio/pc_jam_test.cpp
-    pc_port/audio/pc_jam.cpp
-    pc_port/audio/pc_instrument_bank.cpp
-    pc_port/audio/pc_sequence_archive.cpp
-    pc_port/audio/pc_wave_bank.cpp
-    src/jaudio/pikiseq.c)
-target_compile_options(pc_jam_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets/dataDir/SndData/Banks/pikibank.bx")
-    add_test(NAME pc_jam_test COMMAND pc_jam_test)
-    set_tests_properties(pc_jam_test PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-endif()
-
-add_executable(pc_audio_mixer_test
-    pc_port/audio/pc_audio_mixer_test.cpp
-    pc_port/audio/pc_audio.cpp
-    pc_port/audio/pc_envelope.cpp
-    pc_port/audio/pc_jam.cpp
-    pc_port/audio/pc_instrument_bank.cpp
-    pc_port/audio/pc_sequence_archive.cpp
-    pc_port/audio/pc_wave_bank.cpp
-    src/jaudio/pikiseq.c)
-target_link_libraries(pc_audio_mixer_test PRIVATE m ${SDL2_LIBRARIES})
-target_compile_options(pc_audio_mixer_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-if(EXISTS "${CMAKE_SOURCE_DIR}/assets/dataDir/SndData/Banks/pikibank.bx")
-    add_test(NAME pc_audio_mixer_test COMMAND pc_audio_mixer_test)
-    set_tests_properties(pc_audio_mixer_test PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-endif()
-
-add_executable(pc_frame_scheduler_test
-    pc_port/timing/pc_frame_scheduler_test.cpp
-    pc_port/timing/pc_frame_scheduler.cpp)
-target_compile_options(pc_frame_scheduler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_frame_scheduler_test COMMAND pc_frame_scheduler_test)
+endif() # P2_CHALLENGE_GUARD_FOUND
 
 add_executable(p2_dangomushi_hazard_test
     tools/p2_dangomushi_hazard_test.cpp
@@ -864,6 +894,11 @@ add_executable(p2_dangomushi_hazard_test
 target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
 target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
+add_executable(p2_navi_select_test
+    tools/p2_navi_select_test.cpp)
+target_include_directories(p2_navi_select_test PRIVATE pc_port)
+target_compile_options(p2_navi_select_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_navi_select_test COMMAND p2_navi_select_test)
 add_executable(p2_mar_receipt_registration_test
     tools/p2_mar_receipt_registration_test.cpp
     pc_port/pc_p2_mar_receipt.cpp)
@@ -881,6 +916,30 @@ target_include_directories(p2_otakara_fx_test PRIVATE pc_port)
 target_compile_definitions(p2_otakara_fx_test PRIVATE P2_OTAKARA_FX_NO_ENGINE)
 target_compile_options(p2_otakara_fx_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_otakara_fx_test COMMAND p2_otakara_fx_test)
+# #884: elemental Dweevil (59-62) creature escape + territory clamp; Bomb 93 chase.
+add_executable(p2_otakara_move_test
+    tools/p2_otakara_move_test.cpp)
+target_include_directories(p2_otakara_move_test PRIVATE pc_port)
+target_compile_options(p2_otakara_move_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_otakara_move_test COMMAND p2_otakara_move_test)
+# #884: registered Dweevils (59-62, 93) skip the P1 Chappy host squash (thrown-
+# landing smash and InteractPress) like source OtakaraBase (no pressCallBack);
+# policy is engine-free, the hook wiring is checked against the source text.
+add_executable(p2_otakara_press_test
+    tools/p2_otakara_press_test.cpp)
+target_include_directories(p2_otakara_press_test PRIVATE pc_port)
+target_compile_options(p2_otakara_press_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+target_compile_definitions(p2_otakara_press_test PRIVATE
+    P2_OTAKARA_PRESS_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+add_test(NAME p2_otakara_press_test COMMAND p2_otakara_press_test)
+
+# wf7 dweevil-impl (#871): dead-Dweevil clip choice is engine-free and covers
+# all four species 59-62 (dead forces dead, never attack1).
+add_executable(p2_dweevil_death_clip_test
+    tools/p2_dweevil_death_clip_test.cpp)
+target_include_directories(p2_dweevil_death_clip_test PRIVATE pc_port)
+target_compile_options(p2_dweevil_death_clip_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_dweevil_death_clip_test COMMAND p2_dweevil_death_clip_test)
 
 # Lane 35 cave unit-pool partition + phased trunk growth (#474). Header-only
 # engine-free policy; no shared generator source is claimed or ported here.
@@ -945,6 +1004,13 @@ add_executable(p2_long_legs_fsm_test
 target_include_directories(p2_long_legs_fsm_test PRIVATE pc_port)
 target_compile_options(p2_long_legs_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_long_legs_fsm_test COMMAND p2_long_legs_fsm_test)
+
+add_executable(p2_inst_legs_policy_test
+    tools/p2_inst_legs_policy_test.cpp
+    pc_port/pc_p2_long_legs_fsm.cpp)
+target_include_directories(p2_inst_legs_policy_test PRIVATE pc_port)
+target_compile_options(p2_inst_legs_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_inst_legs_policy_test COMMAND p2_inst_legs_policy_test)
 
 add_executable(p2_snagret_fsm_test
     tools/p2_snagret_fsm_test.cpp
@@ -1191,6 +1257,60 @@ target_include_directories(p2_batch2_tint_test PRIVATE pc_port)
 target_compile_options(p2_batch2_tint_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_batch2_tint_test COMMAND p2_batch2_tint_test)
 
+add_executable(p2_proxy_table_test
+    tools/test_p2_proxy_table.cpp)
+target_include_directories(p2_proxy_table_test PRIVATE pc_port)
+target_compile_options(p2_proxy_table_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_proxy_table_test COMMAND p2_proxy_table_test)
+
+# Campaign host policy (#871): engine-free hostType/hasStaticHost contract.
+add_executable(p2_campaign_policy_test
+    pc_port/pc_p2_campaign_policy_test.cpp)
+target_include_directories(p2_campaign_policy_test PRIVATE pc_port)
+target_compile_options(p2_campaign_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_campaign_policy_test COMMAND p2_campaign_policy_test)
+
+# Frog identity policy (inst-frogs #871): engine-free params/FSM/clip contract.
+add_executable(p2_frog_policy_test tools/p2_frog_policy_test.cpp)
+target_include_directories(p2_frog_policy_test PRIVATE pc_port)
+target_compile_options(p2_frog_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_frog_policy_test COMMAND p2_frog_policy_test)
+
+# Tank/Wtank identity policy (inst2-frogs #871).
+add_executable(p2_tank_policy_test tools/p2_tank_policy_test.cpp)
+target_include_directories(p2_tank_policy_test PRIVATE pc_port)
+target_compile_options(p2_tank_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_tank_policy_test COMMAND p2_tank_policy_test)
+
+# Tank/Wtank breath exposure: no receiver cap, source box, KEYEVENT_2, growth (#884).
+add_executable(p2_tank_breath_test tools/p2_tank_breath_test.cpp)
+target_include_directories(p2_tank_breath_test PRIVATE pc_port)
+target_compile_options(p2_tank_breath_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_tank_breath_test COMMAND p2_tank_breath_test)
+
+# Kabuto identity policy (inst2-frogs #871).
+add_executable(p2_kabuto_fsm_policy_test tools/p2_kabuto_fsm_policy_test.cpp)
+target_include_directories(p2_kabuto_fsm_policy_test PRIVATE pc_port)
+target_compile_options(p2_kabuto_fsm_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kabuto_fsm_policy_test COMMAND p2_kabuto_fsm_policy_test)
+# #884 Kabuto 75 travelling Stone: KEYEVENT_2 emission + fleet lifecycle (engine-free).
+add_executable(p2_kabuto_stone_fleet_test tools/p2_kabuto_stone_fleet_test.cpp pc_port/pc_p2_cannon_stone.cpp)
+target_include_directories(p2_kabuto_stone_fleet_test PRIVATE pc_port)
+target_compile_options(p2_kabuto_stone_fleet_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kabuto_stone_fleet_test COMMAND p2_kabuto_stone_fleet_test)
+# #884 wiring guard: the shipped Kabuto FSM / gameCoreSection / MapMgr glue must
+# call the seam p2_kabuto_stone_fleet_test drives (fails on a revert of the glue).
+add_executable(p2_kabuto_stone_wiring_test tools/p2_kabuto_stone_wiring_test.cpp)
+target_compile_definitions(p2_kabuto_stone_wiring_test PRIVATE P2_KABUTO_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(p2_kabuto_stone_wiring_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_kabuto_stone_wiring_test COMMAND p2_kabuto_stone_wiring_test)
+
+# Mamuta OWN FSM policy (own44 #871): engine-free params/state/config contract.
+add_executable(p2_mamuta_fsm_policy_test tools/p2_mamuta_fsm_policy_test.cpp)
+target_include_directories(p2_mamuta_fsm_policy_test PRIVATE pc_port)
+target_compile_options(p2_mamuta_fsm_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_mamuta_fsm_policy_test COMMAND p2_mamuta_fsm_policy_test)
+
 # Lane 30 (#242) standalone policy tests. The drop/host-clock and Sarai
 # captor/lifecycle/identity harnesses are dependency-free headers: a test source
 # and the pc_port include dir are all they need. (demon_captor/demon_escape and
@@ -1326,77 +1446,257 @@ target_include_directories(p2_demon_attachment_test PRIVATE pc_port)
 target_compile_options(p2_demon_attachment_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_demon_attachment_test COMMAND p2_demon_attachment_test)
 
-add_executable(pc_render_phase_test
-    pc_port/timing/pc_render_phase_test.cpp
-    pc_port/timing/pc_render_phase.cpp)
-target_compile_options(pc_render_phase_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_render_phase_test COMMAND pc_render_phase_test)
+endif()
 
-add_executable(pc_visual_snapshot_test
-    pc_port/timing/pc_visual_snapshot_test.cpp
-    pc_port/timing/pc_visual_snapshot.cpp)
-target_compile_options(pc_visual_snapshot_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_visual_snapshot_test COMMAND pc_visual_snapshot_test)
 
-add_executable(pc_camera_snapshot_test
-    pc_port/timing/pc_camera_snapshot_test.cpp
-    pc_port/timing/pc_camera_snapshot.cpp)
-target_compile_options(pc_camera_snapshot_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_camera_snapshot_test COMMAND pc_camera_snapshot_test)
+if(PIKMIN_BUILD_LAUNCHER)
 
-add_executable(pc_visual_runtime_test
-    pc_port/timing/pc_visual_runtime_test.cpp
-    pc_port/timing/pc_visual_runtime.cpp
-    pc_port/timing/pc_render_phase.cpp
-    pc_port/timing/pc_visual_snapshot.cpp)
-target_compile_options(pc_visual_runtime_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_visual_runtime_test COMMAND pc_visual_runtime_test)
+    # La capa de plataforma aísla lo único del launcher que depende del sistema:
+    # rutas del ejecutable, diálogos y arranque del juego.
+    if (WIN32)
+        set(LAUNCHER_PLATFORM_SOURCE pc_port/launcher/launcher_platform_win32.cpp)
+    else()
+        set(LAUNCHER_PLATFORM_SOURCE pc_port/launcher/launcher_platform_posix.cpp)
+    endif()
 
-add_executable(pc_tev_shader_test
-    pc_port/gl/pc_tev_shader_test.cpp
-    pc_port/gl/pc_tev_shader.cpp
-)
-target_include_directories(pc_tev_shader_test PRIVATE pc_port/gl)
-target_compile_options(pc_tev_shader_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_tev_shader_test COMMAND pc_tev_shader_test)
+    find_package(Threads REQUIRED)
+    add_executable(pikmin_launcher
+        pc_port/launcher/launcher_main.cpp
+        pc_port/launcher/installer_ui.cpp
+        pc_port/pc_icon.cpp
+        ${LAUNCHER_PLATFORM_SOURCE})
+    if (WIN32)
+        target_sources(pikmin_launcher PRIVATE packaging/windows/nectar.rc)
+    endif()
+    target_include_directories(pikmin_launcher PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(pikmin_launcher PRIVATE pikmin_disc_image ${SDL2_LIBRARIES} Threads::Threads)
+    if (WIN32)
+        # Diálogo de archivo clásico, selector de carpeta del shell y COM.
+        target_link_libraries(pikmin_launcher PRIVATE comdlg32 ole32 shell32 uuid)
+    endif()
+    target_compile_options(pikmin_launcher PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    set_target_properties(pikmin_launcher PROPERTIES
+        OUTPUT_NAME "nectar-launcher"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-# Post-process shader generation (no GL context needed)
-add_executable(pc_postprocess_test
-    pc_port/gl/pc_postprocess_test.cpp
-    pc_port/gl/pc_postprocess.cpp
-)
-target_include_directories(pc_postprocess_test PRIVATE pc_port/gl)
-target_compile_options(pc_postprocess_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_postprocess_test COMMAND pc_postprocess_test)
+    # Both executables must remain side by side: the launcher resolves the game
+    # binary relative to itself, so this also works in relocatable archives.
+    install(TARGETS pikmin_launcher RUNTIME DESTINATION bin)
+endif()
 
-add_executable(pc_render_packet_test
-    pc_port/timing/pc_render_packet_test.cpp
-    pc_port/timing/pc_render_packet.cpp)
-target_compile_options(pc_render_packet_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_render_packet_test COMMAND pc_render_packet_test)
+install(TARGETS ${NECTAR_GAME} RUNTIME DESTINATION bin)
 
-add_executable(pc_tick_profiler_test
-    pc_port/timing/pc_tick_profiler_test.cpp
-    pc_port/timing/pc_tick_profiler.cpp)
-target_include_directories(pc_tick_profiler_test PRIVATE pc_port/timing)
-target_compile_options(pc_tick_profiler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
-add_test(NAME pc_tick_profiler_test COMMAND pc_tick_profiler_test)
+# Tests del launcher: necesitan tanto los tests habilitados como el launcher.
+if(PIKMIN_BUILD_TESTS AND PIKMIN_BUILD_LAUNCHER)
+    add_executable(gamecube_image_test
+        pc_port/launcher/gamecube_image_test.cpp)
+    target_link_libraries(gamecube_image_test PRIVATE pikmin_disc_image)
+    target_compile_options(gamecube_image_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME gamecube_image_test COMMAND gamecube_image_test)
+
+    add_executable(sha256_test
+        pc_port/launcher/sha256_test.cpp)
+    target_link_libraries(sha256_test PRIVATE pikmin_disc_image)
+    target_compile_options(sha256_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME sha256_test COMMAND sha256_test)
+
+    add_executable(installer_ui_test
+        pc_port/launcher/installer_ui_test.cpp
+        pc_port/launcher/installer_ui.cpp
+        pc_port/pc_icon.cpp)
+    target_include_directories(installer_ui_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pc_port/launcher
+        ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(installer_ui_test PRIVATE ${SDL2_LIBRARIES})
+    target_compile_options(installer_ui_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME installer_ui_test COMMAND installer_ui_test)
+
+    add_executable(asset_finalize_test pc_port/launcher/asset_finalize_test.cpp)
+    target_link_libraries(asset_finalize_test PRIVATE Threads::Threads)
+    target_compile_options(asset_finalize_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME asset_finalize_test COMMAND asset_finalize_test)
+
+    add_executable(prepared_image_test pc_port/launcher/prepared_image_test.cpp ${LAUNCHER_PLATFORM_SOURCE})
+    target_compile_options(prepared_image_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    if (WIN32)
+        target_link_libraries(prepared_image_test PRIVATE comdlg32 ole32 shell32 uuid)
+    endif()
+    add_test(NAME prepared_image_test COMMAND prepared_image_test)
+endif()
+
+if(PIKMIN_BUILD_TESTS)
+    add_executable(pc_generator_cache_validation_test
+        pc_port/save/pc_generator_cache_validation_test.cpp)
+    target_include_directories(pc_generator_cache_validation_test PRIVATE pc_port/save)
+    target_compile_options(pc_generator_cache_validation_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_generator_cache_validation_test COMMAND pc_generator_cache_validation_test)
+
+    # Better Pathfinding planner checked against brute force (not linked into main game)
+    add_executable(pc_route_planner_test pc_port/pc_route_planner_test.cpp pc_port/pc_route_planner.cpp)
+    target_compile_options(pc_route_planner_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_route_planner_test COMMAND pc_route_planner_test)
+
+    # Envelope smoke test executable (not linked into main game)
+    add_executable(pc_envelope_test pc_port/audio/pc_envelope_test.cpp pc_port/audio/pc_envelope.cpp)
+    target_link_libraries(pc_envelope_test PRIVATE m)
+    target_compile_options(pc_envelope_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_envelope_test COMMAND pc_envelope_test)
+
+    # Host-backed ARAM test (not linked into main game)
+    add_executable(pc_aram_test pc_port/audio/pc_aram_test.cpp pc_port/audio/pc_aram.cpp)
+    target_compile_options(pc_aram_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_aram_test COMMAND pc_aram_test)
+
+    # Pad axis conversion (no controller needed)
+    add_executable(pc_pad_axis_test pc_port/pc_pad_axis_test.cpp pc_port/pc_pad_axis.cpp)
+    target_include_directories(pc_pad_axis_test PRIVATE ${SDL2_INCLUDE_DIRS} pc_port)
+    target_compile_options(pc_pad_axis_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_pad_axis_test COMMAND pc_pad_axis_test)
+
+    # Permadeath save block (no game needed)
+    add_executable(pc_permadeath_test pc_port/pc_permadeath_test.cpp pc_port/pc_permadeath.cpp src/sysCommon/stream.cpp src/sysCommon/string.cpp)
+    target_include_directories(pc_permadeath_test PRIVATE pc_port include)
+    target_compile_options(pc_permadeath_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_permadeath_test COMMAND pc_permadeath_test)
+
+    # Photo mode camera convention (no stage needed)
+    add_executable(pc_photo_mode_test pc_port/pc_photo_mode_test.cpp pc_port/pc_photo_mode.cpp)
+    target_include_directories(pc_photo_mode_test PRIVATE ${SDL2_INCLUDE_DIRS} pc_port)
+    target_link_libraries(pc_photo_mode_test PRIVATE ${SDL2_LIBRARIES})
+    target_compile_options(pc_photo_mode_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_photo_mode_test COMMAND pc_photo_mode_test)
+
+    # Which GPU to ask for on a switchable-graphics laptop (no GPU needed)
+    add_executable(pc_gpu_preference_test pc_port/pc_gpu_preference_test.cpp pc_port/pc_gpu_preference.cpp)
+    target_include_directories(pc_gpu_preference_test PRIVATE pc_port)
+    target_compile_options(pc_gpu_preference_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_gpu_preference_test COMMAND pc_gpu_preference_test)
+
+    # Menu input repeat (no controller needed)
+    add_executable(pc_menu_repeat_test pc_port/pc_menu_repeat_test.cpp pc_port/pc_menu_repeat.cpp)
+    target_include_directories(pc_menu_repeat_test PRIVATE pc_port)
+    target_compile_options(pc_menu_repeat_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_menu_repeat_test COMMAND pc_menu_repeat_test)
+
+    # Host software DSP test (not linked into main game)
+    add_executable(pc_dsp_host_test
+        pc_port/audio/pc_dsp_host_test.cpp
+        pc_port/audio/pc_dsp_host.cpp
+        pc_port/audio/pc_aram.cpp)
+    target_compile_options(pc_dsp_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_dsp_host_test COMMAND pc_dsp_host_test)
+
+    add_executable(pc_jam_test
+        pc_port/audio/pc_jam_test.cpp
+        pc_port/audio/pc_jam.cpp
+        pc_port/audio/pc_instrument_bank.cpp
+        pc_port/audio/pc_sequence_archive.cpp
+        pc_port/audio/pc_wave_bank.cpp
+        src/jaudio/pikiseq.c)
+    target_compile_options(pc_jam_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/dataDir/SndData/Banks/pikibank.bx")
+        add_test(NAME pc_jam_test COMMAND pc_jam_test)
+        set_tests_properties(pc_jam_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
+    add_executable(pc_audio_mixer_test
+        pc_port/audio/pc_audio_mixer_test.cpp
+        pc_port/audio/pc_audio.cpp
+        pc_port/audio/pc_envelope.cpp
+        pc_port/audio/pc_jam.cpp
+        pc_port/audio/pc_instrument_bank.cpp
+        pc_port/audio/pc_sequence_archive.cpp
+        pc_port/audio/pc_wave_bank.cpp
+        src/jaudio/pikiseq.c)
+    target_link_libraries(pc_audio_mixer_test PRIVATE m ${SDL2_LIBRARIES})
+    target_compile_options(pc_audio_mixer_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/dataDir/SndData/Banks/pikibank.bx")
+        add_test(NAME pc_audio_mixer_test COMMAND pc_audio_mixer_test)
+        set_tests_properties(pc_audio_mixer_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+
+    add_executable(pc_frame_scheduler_test
+        pc_port/timing/pc_frame_scheduler_test.cpp
+        pc_port/timing/pc_frame_scheduler.cpp)
+    target_compile_options(pc_frame_scheduler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_frame_scheduler_test COMMAND pc_frame_scheduler_test)
+
+    add_executable(pc_render_phase_test
+        pc_port/timing/pc_render_phase_test.cpp
+        pc_port/timing/pc_render_phase.cpp)
+    target_compile_options(pc_render_phase_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_render_phase_test COMMAND pc_render_phase_test)
+
+    add_executable(pc_visual_snapshot_test
+        pc_port/timing/pc_visual_snapshot_test.cpp
+        pc_port/timing/pc_visual_snapshot.cpp)
+    target_compile_options(pc_visual_snapshot_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_visual_snapshot_test COMMAND pc_visual_snapshot_test)
+
+    add_executable(pc_camera_snapshot_test
+        pc_port/timing/pc_camera_snapshot_test.cpp
+        pc_port/timing/pc_camera_snapshot.cpp)
+    target_compile_options(pc_camera_snapshot_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_camera_snapshot_test COMMAND pc_camera_snapshot_test)
+
+    add_executable(pc_visual_runtime_test
+        pc_port/timing/pc_visual_runtime_test.cpp
+        pc_port/timing/pc_visual_runtime.cpp
+        pc_port/timing/pc_render_phase.cpp
+        pc_port/timing/pc_visual_snapshot.cpp)
+    target_compile_options(pc_visual_runtime_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_visual_runtime_test COMMAND pc_visual_runtime_test)
+
+    add_executable(pc_tev_shader_test
+        pc_port/gl/pc_tev_shader_test.cpp
+        pc_port/gl/pc_tev_shader.cpp
+    )
+    target_include_directories(pc_tev_shader_test PRIVATE pc_port/gl)
+    target_compile_options(pc_tev_shader_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_tev_shader_test COMMAND pc_tev_shader_test)
+
+    # Post-process shader generation (no GL context needed)
+    add_executable(pc_postprocess_test
+        pc_port/gl/pc_postprocess_test.cpp
+        pc_port/gl/pc_postprocess.cpp
+    )
+    target_include_directories(pc_postprocess_test PRIVATE pc_port/gl)
+    target_compile_options(pc_postprocess_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_postprocess_test COMMAND pc_postprocess_test)
+
+    add_executable(pc_render_packet_test
+        pc_port/timing/pc_render_packet_test.cpp
+        pc_port/timing/pc_render_packet.cpp)
+    target_compile_options(pc_render_packet_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_render_packet_test COMMAND pc_render_packet_test)
+
+    add_executable(pc_tick_profiler_test
+        pc_port/timing/pc_tick_profiler_test.cpp
+        pc_port/timing/pc_tick_profiler.cpp)
+    target_include_directories(pc_tick_profiler_test PRIVATE pc_port/timing)
+    target_compile_options(pc_tick_profiler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_tick_profiler_test COMMAND pc_tick_profiler_test)
+endif()
 
 message(STATUS "")
 message(STATUS "╔══════════════════════════════════════════╗")
 message(STATUS "║   Pikmin PC Port - Build Configuration   ║")
 message(STATUS "╠══════════════════════════════════════════╣")
 message(STATUS "║   Version:  USA Rev 1 (GPIE01_01)       ║")
-message(STATUS "║   Graphics: Native GX → OpenGL          ║")
+if(PIKMIN_GLES)
+    message(STATUS "║   Graphics: Native GX → OpenGL ES 3.0   ║")
+else()
+    message(STATUS "║   Graphics: Native GX → OpenGL          ║")
+endif()
 message(STATUS "║   Audio:    SDL mixer/STX; JAudio WIP   ║")
 message(STATUS "║   Input:    Native SDL keyboard/gamepad ║")
 message(STATUS "╚══════════════════════════════════════════╝")
 message(STATUS "")
 
-if(PIKMIN_NATIVE_JAUDIO)
-    add_test(NAME pc_jaudio_integration_test COMMAND pikmin_pc --audio-self-test)
+if(PIKMIN_NATIVE_JAUDIO AND PIKMIN_BUILD_TESTS)
+    add_test(NAME pc_jaudio_integration_test COMMAND ${NECTAR_GAME} --audio-self-test)
     set_tests_properties(pc_jaudio_integration_test PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" TIMEOUT 30
         SKIP_RETURN_CODE 77 LABELS "game-assets")
 endif()
 
@@ -1476,6 +1776,12 @@ add_executable(p2_kurage_natural_test tools/p2_kurage_natural_test.cpp pc_port/p
 target_include_directories(p2_kurage_natural_test PRIVATE pc_port)
 target_compile_options(p2_kurage_natural_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_kurage_natural_test COMMAND p2_kurage_natural_test)
+# Kurage57 campaign fixes (#871): engine-free gate/hover/probe contract for the
+# bridge-mode concessions skip, visual hover height and once-per-frame tail.
+add_executable(p2_kurage_campaign_test tools/test_p2_kurage_campaign.cpp)
+target_include_directories(p2_kurage_campaign_test PRIVATE pc_port)
+target_compile_options(p2_kurage_campaign_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_kurage_campaign_test COMMAND p2_kurage_campaign_test)
 # rd-p2-kurage-natural (#832): guarded replacement-main natural-engagement
 # observation fixture. Compile-only here; the replacement-main executable is
 # produced by scripts/build_pikmin2_fixture.py against a completed pikmin_pc build.
@@ -1506,6 +1812,37 @@ add_executable(p2_sokkuri_receipt_test tools/p2_sokkuri_receipt_test.cpp pc_port
 target_include_directories(p2_sokkuri_receipt_test PRIVATE pc_port)
 target_compile_options(p2_sokkuri_receipt_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_sokkuri_receipt_test COMMAND p2_sokkuri_receipt_test)
+# inst-chappy (#871): engine-free Chappy-family policy/FSM unit tests
+# (header-only retail parms, sidecar parse, per-actor health registry and
+# the adult/kuma/kumako/king transition tables).
+add_executable(p2_chappy_policy_test tools/p2_chappy_policy_test.cpp)
+target_include_directories(p2_chappy_policy_test PRIVATE pc_port)
+target_compile_options(p2_chappy_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_chappy_policy_test COMMAND p2_chappy_policy_test)
+add_executable(p2_chappy_fsm_test tools/p2_chappy_fsm_test.cpp)
+target_include_directories(p2_chappy_fsm_test PRIVATE pc_port)
+target_compile_options(p2_chappy_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_chappy_fsm_test COMMAND p2_chappy_fsm_test)
+# p2-884-chappy (#884): engine-free source mouth-slot eating (EnemyFunc::eatPikmin
+# geometry, capacity, eligibility, host-part mapping, King sweep, legacy oracle).
+add_executable(p2_chappy_mouth_test tools/p2_chappy_mouth_test.cpp)
+target_include_directories(p2_chappy_mouth_test PRIVATE pc_port)
+target_compile_options(p2_chappy_mouth_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_chappy_mouth_test COMMAND p2_chappy_mouth_test)
+# p2-886 (#886): engine-free captor mouth slots (Jigumo/Snagret/UmiMushi/
+# Armor/Uji eatPikmin geometry, Jigumo height check, Snagret facing boxes,
+# held registry + swallow, legacy XZ-nearest/raw-pointer oracle).
+add_executable(p2_captor_mouth_test tools/p2_captor_mouth_test.cpp)
+target_include_directories(p2_captor_mouth_test PRIVATE pc_port)
+target_compile_options(p2_captor_mouth_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_captor_mouth_test COMMAND p2_captor_mouth_test)
+# bot-impl (#871): TEST-ONLY headless autoplay bot policy. Engine-free:
+# the header-only Brain (states, timeouts, giveup/result markers, Kogane
+# damage-and-move-on) plus the inert-when-unset gate (registration only).
+add_executable(p2_autoplay_test tools/p2_autoplay_test.cpp)
+target_include_directories(p2_autoplay_test PRIVATE pc_port)
+target_compile_options(p2_autoplay_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_autoplay_test COMMAND p2_autoplay_test)
 # rd-p2-sarai-combat-repair (#828): Sarai23 corpse -> carried -> exactly one
 # Onion receipt over the real delivery-host bridge plus the weigh-down policy
 # the repaired host now feeds with live anchor facts (registration only).
@@ -1557,7 +1894,7 @@ target_include_directories(test_p2_cargo PRIVATE pc_port)
 target_compile_options(test_p2_cargo PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME test_p2_cargo COMMAND test_p2_cargo)
 
-foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy sarai_capture fuefuki_follow fuefuki_follow_binding)
+foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy sarai_capture fuefuki_follow fuefuki_follow_binding uji)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -1621,6 +1958,23 @@ add_executable(p2_groink_volley_test tools/p2_groink_volley_test.cpp pc_port/pc_
 target_include_directories(p2_groink_volley_test PRIVATE pc_port)
 target_compile_options(p2_groink_volley_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_groink_volley_test COMMAND p2_groink_volley_test)
+# #888 WP5: engine-free NormMiniHoudai/FixMiniHoudai source FSM (states,
+# animation key events, gun aim, 3-shell volleys, shake-off, death).
+add_executable(p2_groink_fsm_test tools/p2_groink_fsm_test.cpp pc_port/pc_p2_groink_fsm.cpp
+    pc_port/pc_p2_groink.cpp pc_port/pc_p2_groink_attack.cpp pc_port/pc_p2_groink_volley.cpp
+    pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_groink_target.cpp)
+target_include_directories(p2_groink_fsm_test PRIVATE pc_port)
+target_compile_options(p2_groink_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_fsm_test COMMAND p2_groink_fsm_test)
+# #892: Groink shell visuals (TChibiShoot/TChibiShell/TChibiHit timing ->
+# P1 one-shot effects), policy-only under P2_GROINK_FX_NO_ENGINE.
+add_executable(p2_groink_fx_test tools/p2_groink_fx_test.cpp pc_port/pc_p2_groink_fx.cpp pc_port/pc_p2_groink_fsm.cpp
+    pc_port/pc_p2_groink.cpp pc_port/pc_p2_groink_attack.cpp pc_port/pc_p2_groink_volley.cpp
+    pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_groink_target.cpp)
+target_include_directories(p2_groink_fx_test PRIVATE pc_port)
+target_compile_definitions(p2_groink_fx_test PRIVATE P2_GROINK_FX_NO_ENGINE)
+target_compile_options(p2_groink_fx_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_fx_test COMMAND p2_groink_fx_test)
 add_executable(p2_groink_hit_test tools/p2_groink_hit_test.cpp pc_port/pc_p2_groink_hit.cpp)
 target_include_directories(p2_groink_hit_test PRIVATE pc_port)
 target_compile_options(p2_groink_hit_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)

@@ -4,6 +4,13 @@
 #include "Dolphin/pad.h"
 #include "pc_p2_input_script.h"
 
+// TEST-ONLY headless autoplay bot (bot-impl): strong-defined in
+// pc_port/pc_p2_autoplay.cpp, which only ships in engine targets that list
+// PC_PORT_SOURCES. Weak here so every other target keeps linking without it;
+// the bot itself is additionally env-gated (PIKMIN_RANDOMIZER_AUTOPLAY) and
+// returns immediately when the gate is unset.
+void pc_p2_autoplay_tick(void) __attribute__((weak));
+
 /**
  * @todo: Documentation
  * @note UNUSED Size: 00009C
@@ -35,6 +42,14 @@ void ControllerMgr::update()
 	if (padMask) {
 		PADReset(padMask);
 	}
+#if defined(__GNUC__)
+	// TEST-ONLY autoplay bot: synthesises pad state through the normal
+	// script-override path consumed below. Null when unlinked; inert when
+	// the PIKMIN_RANDOMIZER_AUTOPLAY env gate is unset.
+	if (pc_p2_autoplay_tick) {
+		pc_p2_autoplay_tick();
+	}
+#endif
 }
 
 /**
@@ -165,6 +180,15 @@ void ControllerMgr::updateController(Controller* controller)
 	controller->mTriggerL = sControllerPad[controller->mPlayerNum - 1].triggerLeft;
 	controller->mTriggerR = sControllerPad[controller->mPlayerNum - 1].triggerRight;
 
+#if defined(PIKI_PC_PORT)
+	// Congelado (p. ej. su menú de mapa abierto en cooperativo): ni botones
+	// ni sticks llegan al juego. updateCont ya anula los botones.
+	if (controller->mIsControllerFrozen) {
+		controller->mMainStickX = controller->mMainStickY = 0;
+		controller->mSubStickX = controller->mSubStickY = 0;
+		controller->mTriggerL = controller->mTriggerR = 0;
+	}
+#endif
 	// process pressed buttons
 	controller->updateCont(keyStatus);
 }

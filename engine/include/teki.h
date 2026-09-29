@@ -1,4 +1,6 @@
 #include "pc_p2_frog.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_queen_teki.h"
 #include "pc_p2_umimushi.h"
@@ -40,9 +42,15 @@
 #include "pc_p2_shijimi.h"
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
+#include "pc_p2_uji.h"
 #include "pc_p2_imomushi.h"
 #include "pc_p2_otakara.h"
 #include "pc_p2_groink_teki.h"
+#include "pc_p2_chappy.h"
+#include "pc_p2_long_legs.h"
+#endif
+#if defined(PIKI_PC_PORT)
+#include "mods/pc_hd_models.h"
 #endif
 
 #if defined(PIKI_PC_PORT)
@@ -248,6 +256,10 @@ public:
 	virtual void viewDoAnimation();                            // _150
 	virtual void viewFinishMotion();                           // _154
 	virtual void viewDraw(Graphics&, immut Matrix4f&);         // _158
+#if defined(PIKI_PC_PORT)
+	PcHdModelId hdModel() const;
+	GXColor hdTint() const;
+#endif
 	virtual void viewKill();                                   // _15C
 	virtual Vector3f viewGetScale();                           // _160
 	virtual f32 viewGetBottomRadius();                         // _164
@@ -438,9 +450,10 @@ public:
 	void setPersonalityI(int idx, int val) { mPersonality->setI(idx, val); }
 
 	f32 getParameterF(int idx) {
-		const f32 value=pc_p2_frog_param_f(this,idx,pc_p2_king_teki_param_f(this,idx,pc_p2_queen_teki_param_f(this,idx,mTekiParams->getF(idx))));
+		const f32 value=pc_p2_kabuto_fsm_param_f(this,idx,pc_p2_tank_param_f(this,idx,pc_p2_frog_param_f(this,idx,pc_p2_king_teki_param_f(this,idx,pc_p2_queen_teki_param_f(this,idx,mTekiParams->getF(idx))))));
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		const f32 kogane=pc_p2_armor_param_f(this,idx,pc_p2_sokkuri_param_f(this,idx,pc_p2_kogane_param_f(this,idx,pc_p2_shijimi_param_f(this,idx,value))));
+		const f32 ujiBlind=pc_p2_uji_param_f(this,idx,value);
+		const f32 kogane=pc_p2_armor_param_f(this,idx,pc_p2_sokkuri_param_f(this,idx,pc_p2_kogane_param_f(this,idx,pc_p2_shijimi_param_f(this,idx,ujiBlind))));
 		const f32 beforeTamago=pc_p2_elecbug_param_f(this,idx,pc_p2_qurione_param_f(this,idx,kogane));
 		const f32 before_imomushi=pc_p2_tamago_param_f(this,idx,beforeTamago);
 		const f32 before_hana=pc_p2_imomushi_param_f(this,idx,before_imomushi);
@@ -453,8 +466,9 @@ public:
 		const f32 before_jigumo=pc_p2_snakejoint_param_f(this,idx,before_snakejoint);
 		const f32 before_umimushi=pc_p2_jigumo_param_f(this,idx,before_jigumo);
 		const f32 qurione=pc_p2_otakara_param_f(this,idx,pc_p2_umimushi_param_f(this,idx,before_umimushi));
-		if(idx==TPF_Life)return pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,qurione))));
-		return qurione;
+		const f32 legs=pc_p2_long_legs_param_f(this,idx,qurione);
+		if(idx==TPF_Life)return pc_p2_chappy_max_health(this,pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,legs)))));
+		return pc_p2_chappy_param_f(this, idx, legs);
 #endif
 		return value;
 	} // see TekiFloatParams enum
@@ -514,7 +528,26 @@ public:
 	ID32& getCorpsePartID(int paraID) { return mTekiParams->mParaIDs[paraID]; }
 
 	void setCreaturePointer(int idx, Creature* target) { mTargetCreatures[idx].set(target); }
+#if defined(PIKI_PC_PORT)
+	/// Cooperativo: si el objetivo es un Olimar caído, pasa al otro si está
+	/// dentro del rango de visión; si no, se queda el cuerpo y la IA se
+	/// desengancha sola (el reconocimiento exige isAlive).
+	Creature* pcRetargetDeadNavi(Creature* target);
+	Creature* getCreaturePointer(int idx)
+	{
+		Creature* c = mTargetCreatures[idx].getPtr();
+		if (c && c->mObjType == OBJTYPE_Navi && !c->isAlive()) {
+			Creature* other = pcRetargetDeadNavi(c);
+			if (other) {
+				mTargetCreatures[idx].set(other);
+				c = other;
+			}
+		}
+		return c;
+	}
+#else
 	Creature* getCreaturePointer(int idx) { return mTargetCreatures[idx].getPtr(); }
+#endif
 	void clearCreaturePointer(int idx) { mTargetCreatures[idx].clear(); }
 
 	f32 getScaleRate() { return getParameterF(TPF_Scale) * getPersonalityF(TekiPersonality::FLT_Size); }

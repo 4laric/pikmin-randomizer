@@ -329,7 +329,7 @@ Piki* pc_p2_bulbmin_birth_dependent(Creature* leader, const struct Vector3f& mot
                                     float faceDir, int index);
 // Whistle/recruit entry: converts the body in place and reassigns captain
 // ownership at the engine level. Returns false when inert or not a dependent.
-bool pc_p2_bulbmin_whistle(Piki* bulbmin);
+bool pc_p2_bulbmin_whistle(Piki* bulbmin, Navi* whistler = nullptr);
 // Drop a destroyed dependent.
 void pc_p2_bulbmin_forget(Piki* piki);
 // Cave save filter (source PikiMgr::caveSaveAllPikmins, pikiMgr.cpp:723),

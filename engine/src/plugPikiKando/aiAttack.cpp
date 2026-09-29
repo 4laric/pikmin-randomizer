@@ -12,6 +12,22 @@
 #include "teki.h"
 #include "zen/Math.h"
 
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
+
+// Un Pikmin es objetivo de ataque si es un Pikmin-seta; en VS, también si es
+// del rival (sin esto, la acción de ataque termina al instante contra él).
+static bool pcFightablePiki(Piki* attacker, Piki* target)
+{
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) {
+		return target->isTeki(attacker);
+	}
+#endif
+	return target->isKinoko();
+}
+
 /**
  * @todo: Documentation
  * @note UNUSED Size: 00009C
@@ -288,7 +304,7 @@ int ActAttack::exec()
 
 	if (mOther.getPtr()->isPiki()) {
 		Piki* targetPiki = static_cast<Piki*>(mOther.getPtr());
-		if (!targetPiki->isKinoko() || (targetPiki->isKinoko() && targetPiki->getState() == PIKISTATE_KinokoChange)) {
+		if (!pcFightablePiki(mPiki, targetPiki) || (targetPiki->isKinoko() && targetPiki->getState() == PIKISTATE_KinokoChange)) {
 			mPiki->mEmotion = PikiEmotion::Searching;
 			return ACTOUT_Success;
 		}
@@ -458,7 +474,7 @@ void ActJumpAttack::procCollideMsg(Piki* piki, MsgCollide* msg)
 		return;
 	}
 
-	if (mTarget.getPtr()->mObjType == OBJTYPE_Piki && !static_cast<Piki*>(mTarget.getPtr())->isKinoko()) {
+	if (mTarget.getPtr()->mObjType == OBJTYPE_Piki && !pcFightablePiki(piki, static_cast<Piki*>(mTarget.getPtr()))) {
 		_2C = true;
 		return;
 	}
@@ -542,7 +558,7 @@ int ActJumpAttack::exec()
 
 	if (target->mObjType == OBJTYPE_Piki) {
 		Piki* targPiki = static_cast<Piki*>(target);
-		if (!targPiki->isKinoko()) {
+		if (!pcFightablePiki(mPiki, targPiki)) {
 			return ACTOUT_Success;
 		}
 	}

@@ -5,6 +5,7 @@
 #undef NDEBUG
 #include <cassert>
 #include <cstdio>
+#include <initializer_list>
 
 // Standalone lifecycle fixture for the lane-owned Long Legs source policy.
 // Engine-free: every IK, animation, projectile and creature effect is scripted
@@ -284,6 +285,49 @@ int main()
             if (fsm.state() == S::Wait) waited = true;
         }
         assert(waited && !fsm.enraged());
+    }
+
+    // Round-2 host-synthesis contract (pc_p2_long_legs.cpp OWN tick): while in
+    // Walk the host feeds footDescendingOrPlanting=true with a 1.5 stride
+    // ratio, so the source crush gate OPENS for press species. Outside Walk it
+    // feeds the measured (<=1) ratio with planting=false, so crush stays
+    // closed. Pins the review's "Walk crush stays closed" fix at policy level.
+    for (Species species : {Species::Damagumo, Species::BigFoot}) {
+        P2LongLegsFsm fsm;
+        fsm.reset(p2LongLegsParmsFor(species));
+        P2LongLegsFsmInput in = baseInput();
+        P2LongLegsFsmOutput out;
+        in.wakeTargetNearby = true; fsm.update(in, out);
+        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
+        assert(fsm.state() == S::Wait);
+        in.animEnd = false; in.pikminAccumulating = false;
+        bool walked = false;
+        for (int i = 0; i < 400 && !walked; ++i) {
+            fsm.update(in, out);
+            if (fsm.state() == S::Walk) walked = true;
+        }
+        assert(walked);
+        in.footDescendingOrPlanting = true; in.ikMoveRatio = 1.5f; // host Walk synthesis
+        fsm.update(in, out);
+        assert(out.footCrush); // gate open: the signature Walk crush fires
+        in.footDescendingOrPlanting = false; in.ikMoveRatio = 1.0f; // host non-Walk feed
+        fsm.update(in, out);
+        assert(!out.footCrush);
+    }
+    // Round-2 Flick shake contract: flickKey2 emits shake so the host tick can
+    // resolve the source shake-off of accumulated/stuck Pikmin.
+    {
+        P2LongLegsFsm fsm;
+        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
+        P2LongLegsFsmInput in = baseInput();
+        P2LongLegsFsmOutput out;
+        in.wakeTargetNearby = true; fsm.update(in, out);
+        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
+        in.animEnd = false; in.pikminAccumulating = true; fsm.update(in, out); // Flick
+        assert(fsm.state() == S::Flick);
+        in.pikminAccumulating = false; in.flickKey2 = true;
+        fsm.update(in, out);
+        assert(out.shake);
     }
 
     std::puts("PASS LONG_LEGS_FSM");

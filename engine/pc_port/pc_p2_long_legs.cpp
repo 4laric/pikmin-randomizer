@@ -23,6 +23,9 @@
 #include "pc_p2_long_legs_fsm.h"
 #include "pc_p2_cannon_stone.h"
 #include "pc_p2_animation.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
+#include "pc_randomizer.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Pellet.h"
@@ -37,6 +40,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -84,6 +88,8 @@ struct ActorState {
     bool hasWalkTarget = false;
     float lastMoveRatio = 1.0f;     // measured translation ratio fed to crushGate
     bool homeRecorded = false;
+    bool deadEscapeDone = false;  // OWN death: pcEscapeNow fired once after Dead
+    float deadSeconds = 0.0f;     // time in Dead before the escape finalizes
 };
 
 std::map<BTeki*, ActorState> actors;      // actor -> species + policy state
@@ -171,8 +177,8 @@ Creature* nearestTarget(const Vector3f& pos, float radius) {
     Creature* best = nullptr;
     float bestSq = radius * radius;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive()) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
             const Vector3f p = n->getPosition();
             const float dx = p.x - pos.x, dz = p.z - pos.z;
             const float d = dx * dx + dz * dz;
@@ -364,6 +370,39 @@ void applyFootCrush(BTeki* actor, const Vector3f& pos, const std::string& specie
     }
 }
 
+// OWN movement ownership: every non-Walk tick zeroes the host drive so no
+// stale Chappy TAI velocity survives the suppression (mirrors frog stop()).
+void stopActor(BTeki* actor) {
+    actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+    actor->mVelocity.x = 0.0f;
+    actor->mVelocity.z = 0.0f;
+}
+
+// Source StateFlick shake-off (round-2 fidelity): flick stuck Pikmin plus
+// grounded Pikmin accumulated under the body. Knockback-only, like the Jigumo
+// port shake; damage itself is dealt by the Walk/landing crush.
+void applyFlickShake(BTeki* actor, const Vector3f& pos, const std::string& species,
+                     unsigned generator) {
+    if (!pikiMgr) return;
+    int hit = 0;
+    for (Creature* s = actor->mStickListHead; s; s = s->mNextSticker) {
+        if (!s || !s->isPiki() || !s->isAlive()) continue;
+        if (s->stimulate(InteractFlick(actor, 100.0f, 0.0f, FLICK_BACKWARDS_ANGLE))) ++hit;
+    }
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p || !p->isAlive()) continue;
+        const Vector3f q = p->getPosition();
+        const float dx = q.x - pos.x, dz = q.z - pos.z;
+        if (dx * dx + dz * dz >= AccumulateRadius * AccumulateRadius) continue;
+        if (p->stimulate(InteractFlick(actor, 100.0f, 0.0f, actor->getDirection()))) ++hit;
+    }
+    std::printf("P2_LONG_LEGS_FLICK species=%s generator=%u hit=%d\n",
+                species.c_str(), generator, hit);
+    std::fflush(stdout);
+}
+
 bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) {
     std::ifstream in(path);
     if (!in) return false;  // absent config -> P1 fallback
@@ -422,17 +461,43 @@ void pc_p2_long_legs_reset() {
 
 void pc_p2_long_legs_forget(BTeki* actor) {
     killShellsOf(actor);
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit it (mirrors Sokkuri/ElecBug).
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     actors.erase(actor);
     // The actor's corpse registration is keyed on its Pellet*, so a plain
     // actors.erase leaves it behind; clear it with the actor (review fix 3b).
     if (actor && actor->mPellet) corpses.erase(actor->mPellet);
 }
 
+static unsigned sourceForSpecies(const std::string& species) {
+    if (species == "Damagumo") return 56;
+    if (species == "BigFoot") return 69;
+    return 66; // Houdai
+}
+
 void pc_p2_long_legs_setup() {
     pc_p2_long_legs_reset();
-    if (!pc_pikipelago_room_preview() || !tekiMgr) return;
+    if (!tekiMgr) return;
+    const bool bridge = pc_randomizer_p2_bridge() && !pc_pikipelago_room_preview();
+    const bool preview = pc_pikipelago_room_preview();
+    if (!preview && !bridge) return;
     std::map<unsigned, std::string> wanted;
-    if (!parseActors("p2-long-legs-actors.txt", wanted)) return;
+    if (!parseActors("p2-long-legs-actors.txt", wanted)) {
+        if (bridge) {
+            // No sidecar: fall through to the seed-bridge identity below.
+        } else return;
+    }
+    if (bridge) {
+        // Generated campaign sessions bind by the seed's source id per actor
+        // (like Sokkuri/Kurage), not by the arena sidecar's generator ids.
+        // The sidecar's filed generators are placeholders there.
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(56)) wanted[id] = "Damagumo";
+        for (unsigned id : pc_p2_campaign_ids(69)) wanted[id] = "BigFoot";
+        for (unsigned id : pc_p2_campaign_ids(66)) wanted[id] = "Houdai";
+        if (wanted.empty()) return;
+    }
 
     std::set<unsigned> found;
     std::set<std::string> speciesUsed;
@@ -440,11 +505,29 @@ void pc_p2_long_legs_setup() {
     CI_LOOP(it) {
         Teki* teki = static_cast<Teki*>(*it);
         if (!teki || !teki->mGenerator) continue;
-        const unsigned generator = teki->mGenerator->_70;
+        const unsigned generator = bridge ? pc_p2_campaign_token(teki) : teki->mGenerator->_70;
         auto match = wanted.find(generator);
         if (match == wanted.end()) continue;
-        if (teki->mTekiType != TEKI_Chappy) fail("native type mismatch");
-        if (!found.insert(generator).second) fail("duplicate generator in scene");
+        if (bridge) {
+            // Campaign vehicle for 66 is TEKI_Swallow (policy hostType 66->4);
+            // the preview fixture uses TEKI_Chappy. Accept either in bridge
+            // so the vehicle check cannot strand the boss as a host-driven
+            // PROXY; fail closed only on a non-legged vehicle.
+            if (teki->mTekiType != TEKI_Chappy && teki->mTekiType != TEKI_Swallow) {
+                std::printf("P2_LONG_LEGS_ERROR native_type generator=%u\n", generator);
+                std::fflush(stdout);
+                if (pc_p2_setup_skip(true, "LongLegs", "actor_type_mismatch")) return;
+                fail("native type mismatch");
+            }
+        } else if (teki->mTekiType != TEKI_Chappy) {
+            fail("native type mismatch");
+        }
+        if (!found.insert(generator).second) {
+            if (bridge) {
+                if (pc_p2_setup_skip(true, "LongLegs", "duplicate_generator")) return;
+            }
+            fail("duplicate generator in scene");
+        }
         ActorState& state = actors[teki];
         state.species = match->second;
         state.generator = generator;
@@ -452,15 +535,51 @@ void pc_p2_long_legs_setup() {
         state.fsm.reset(state.parms);
         state.homePos = teki->getPosition(); // source mHomePosition: spawn point
         state.homeRecorded = true;
+        // Source health per identity (audit: Damagumo 1300 disc; BigFoot/Houdai
+        // from the FSM parms retail). The host vehicle spawns with P1 health,
+        // so take the source value here like Jigumo/Sokkuri do.
+        teki->mHealth = state.parms.maxHealth > 0.0f ? state.parms.maxHealth : teki->mHealth;
         state.lastHealth = teki->mHealth;
         state.lastPositiveHealth = teki->mHealth;
         speciesUsed.insert(match->second);
+        // Ordinary-delivery bridge (lane 06 contract): bind the source so
+        // GoalItem::suckMe grants onion:p2:<id> exactly once through
+        // pc_randomizer_p2_corpse_delivered. Single-use: consumed on delivery.
+        if (bridge) {
+            const unsigned source = sourceForSpecies(match->second);
+            pc_randomizer_p2_bind_source(static_cast<PelletView*>(teki), source, generator);
+            std::printf("P2_LONG_LEGS_DELIVERY_BIND generator=%u source_id=%u\n",
+                        generator, source);
+            std::fflush(stdout);
+        }
     }
-    if (found.size() != wanted.size()) fail("arena actor not present in scene");
+    if (found.size() != wanted.size()) {
+        std::printf("P2_LONG_LEGS_ERROR missing_actor wanted=%zu found=%zu\n",
+                    wanted.size(), found.size());
+        if (pc_p2_setup_skip(bridge, "LongLegs", "actor_roster_incomplete")) return;
+        fail("arena actor not present in scene");
+    }
     for (const std::string& species : speciesUsed) {
         if (shapes.count(species)) continue;
         const SpeciesDef* def = findSpecies(species);
-        if (!def) fail("unknown species in actor config");
+        if (!def) {
+            if (pc_p2_setup_skip(bridge, "LongLegs", "unknown_species")) return;
+            fail("unknown species in actor config");
+        }
+        if (bridge) {
+            std::ifstream probe(std::string("assets/dataDir/courses/pikmin2room/") + def->mod,
+                                std::ios::binary);
+            if (!probe) {
+                std::printf("P2_SETUP_SKIP LongLegs clip_file_missing species=%s\n",
+                            species.c_str());
+                std::fflush(stdout);
+                for (auto ait = actors.begin(); ait != actors.end();) {
+                    if (ait->second.species == species) ait = actors.erase(ait);
+                    else ++ait;
+                }
+                continue;
+            }
+        }
         shapes[species] = loadBind(*def);
     }
     for (const auto& entry : actors)
@@ -479,7 +598,12 @@ void pc_p2_long_legs_update(BTeki* actor) {
     auto entry = actors.find(actor);
     if (entry == actors.end()) return;
     ActorState& state = entry->second;
-    // Once the proxy dies, capture the corpse Pellet* the engine created
+    // OWN damage path (mirrors frog): the P1 TAI damaging reaction is
+    // suppressed with doAI, so the source FSM applies pending attack damage
+    // itself. Bitter-immune Stay/Land attacks never reach storage: the shared
+    // tekiinteraction hook rejects them before interactDefault stores damage.
+    if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
+    // Once the host teardown runs, capture the corpse Pellet* the engine created
     // (PelletView::mPellet) so the ordinary Pod receipt can resolve a view-less
     // stand-in corpse (mirrors lane 31). Runs each tick until the corpse is
     // delivered (the receipt consumes it one-shot) or swept as dead, and is also
@@ -490,20 +614,37 @@ void pc_p2_long_legs_update(BTeki* actor) {
                     state.generator, state.species.c_str());
         std::fflush(stdout);
     }
-    if (state.fsm.state() == P2LongLegsState::Dead) return;
-
     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
     if (!(dt > 0.0f && dt < 0.5f)) return;
+
+    // OWN death (mirrors frog/kochappy): doAI is suppressed, so dieSoon() never
+    // runs there. The P2 Dead state finalizes the host teardown itself via
+    // pcEscapeNow() (= die() + dieSoon(), teki.h) after a 1 s dead beat, which
+    // births the real carriable Chappy-pellet corpse the receipt then resolves.
+    // The bind-pose family ships no dead clip, so the beat is wall-clock.
+    if (state.fsm.state() == P2LongLegsState::Dead) {
+        stopActor(actor);
+        state.deadSeconds += dt;
+        if (!state.deadEscapeDone && state.deadSeconds >= 1.0f) {
+            state.deadEscapeDone = true;
+            std::printf("P2_LONG_LEGS_ESCAPE species=%s generator=%u native=host_escape_now\n",
+                        state.species.c_str(), state.generator);
+            std::fflush(stdout);
+            actor->pcEscapeNow();
+        }
+        return;
+    }
 
     const Vector3f pos = actor->getPosition();
     const P2LongLegsSpecies species = speciesEnum(state.species);
 
-    // Engine death of the placement vehicle is the host kill signal. One
+    // P2 kill signal is the drained health itself: with doAI suppressed the
+    // host never sets mDeadState, so isAlive() stays true at 0 HP. One
     // terminal tick lets the policy emit its source death output: the held
     // treasure drop, or the no-treasure child burst. The dropped treasure and
     // children are lane 06/14/15/20 objects, so the intents are logged, not
-    // spawned here. No further ticks run once the policy is Dead.
-    if (!actor->isAlive()) {
+    // spawned here. The escape above finalizes on the following ticks.
+    if (actor->mHealth <= 0.0f || !actor->isAlive()) {
         killShellsOf(actor);  // free the actor's in-flight shells on death
         P2LongLegsFsmInput kill;
         kill.health = actor->mHealth;
@@ -526,6 +667,10 @@ void pc_p2_long_legs_update(BTeki* actor) {
                     state.species.c_str(), state.generator,
                     P2LongLegsFsm::stateName(state.fsm.state()));
         std::fflush(stdout);
+        state.deadSeconds = 0.0f;
+        state.damageable = false;
+        state.bitterImmune = false;
+        stopActor(actor);
         return;
     }
 
@@ -536,12 +681,15 @@ void pc_p2_long_legs_update(BTeki* actor) {
 
     P2LongLegsFsmInput in;
     in.health = actor->mHealth;
-    // Measured body-translation ratio from the previous tick drives the source
-    // crush gate (IKSystemMgr::isCollisionCheck: a foot presses only while
-    // descending/planting with a move ratio above 1). Without leg state the
-    // planting edge is never synthesized, so Walk crush stays closed; the ratio
-    // is still observed for the movement evidence.
-    in.ikMoveRatio = state.lastMoveRatio;
+    // Round-2 crush gate (review: "Walk crush stays closed"): the source foot
+    // presses while descending/planting with a move ratio above 1
+    // (IKSystemMgr::isCollisionCheck). The port has no leg joints, but it DOES
+    // own body translation in Walk, so a Walk tick with a live target implies
+    // the planting stride: synthesize footDescendingOrPlanting=true and a 1.5
+    // stride ratio while in Walk. Landing key 2 still fires all four feet via
+    // the FSM Land path. Houdai never presses (pressDamage 0 gates in policy).
+    in.footDescendingOrPlanting = (before == P2LongLegsState::Walk);
+    in.ikMoveRatio = (before == P2LongLegsState::Walk) ? 1.5f : state.lastMoveRatio;
     // A health decrease this tick is the source damage edge; it postpones the
     // Houdai gun by resetting the shot cooldown (Houdai.cpp).
     if (actor->mHealth > 0.0f && actor->mHealth < state.lastHealth) {
@@ -612,9 +760,26 @@ void pc_p2_long_legs_update(BTeki* actor) {
             // otherwise), so the Teki facing control is available.
             static_cast<Teki*>(actor)->setDirection(std::atan2(dx, dz));
             state.walkDistance += step;
+            // Last-word drive (inst3-misc OWN): P2 FSM decides movement each
+            // tick; host Swallow/Chappy TAI is suppressed (doAI) and blinded
+            // (param_f), and this overwrite is the movement verdict.
+            const float heading = std::atan2(dx, dz);
+            const Vector3f drive(std::sin(heading) * state.parms.speed, 0.0f,
+                                 std::cos(heading) * state.parms.speed);
+            actor->inputDrive(drive);
+            actor->mVelocity.set(drive);
+        } else {
+            actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+            actor->mVelocity.x = 0.0f;
+            actor->mVelocity.z = 0.0f;
         }
     } else {
+        // Non-Walk states: P2 holds the actor (last-word zero drive).
+        actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+        actor->mVelocity.x = 0.0f;
+        actor->mVelocity.z = 0.0f;
         state.lastMoveRatio = 1.0f;
+        stopActor(actor);
         if (before == P2LongLegsState::Walk && state.hasWalkTarget) {
             std::printf("P2_LONG_LEGS_WALK_END species=%s generator=%u distance=%.1f seconds=%.2f start=%.1f,%.1f end=%.1f,%.1f\n",
                         state.species.c_str(), state.generator,
@@ -639,6 +804,12 @@ void pc_p2_long_legs_update(BTeki* actor) {
         std::fflush(stdout);
         applyFootCrush(actor, pos, state.species, state.generator,
                        state.parms.pressDamage, 60.0f);
+    }
+    // Round-2 Flick shake (review: Flick key-2 shake never applied): the FSM
+    // emits shake on the flick key-2 edge; resolve it here as the source
+    // shake-off of accumulated/stuck Pikmin.
+    if (out.shake) {
+        applyFlickShake(actor, pos, state.species, state.generator);
     }
     if (out.fireShell) {
         std::printf("P2_LONG_LEGS_SHELL species=%s generator=%u\n", state.species.c_str(),
@@ -665,8 +836,12 @@ bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, b
     Shape* shape = shapeIt->second;
 
     if (!logged[corpse ? 1 : 0]) {
-        std::printf("P2_LONG_LEGS_DRAW corpse=%d species=%s pose=bind\n",
-                    int(corpse), state.species.c_str());
+        std::printf("P2_LONG_LEGS_DRAW corpse=%d species=%s pose=bind generator=%u\n",
+                    int(corpse), state.species.c_str(), state.generator);
+        std::printf("P2_%s_DRAW corpse=%d species=%s generator=%u\n",
+                    state.species == "Damagumo" ? "DAMAGUMO"
+                    : state.species == "BigFoot" ? "BIGFOOT" : "HOUDAI",
+                    int(corpse), state.species.c_str(), state.generator);
         logged[corpse ? 1 : 0] = true;
     }
     shape->updateAnim(gfx, matrix, nullptr, actor);
@@ -682,6 +857,33 @@ unsigned long pc_p2_long_legs_count() {
 
 bool pc_p2_long_legs_registered(BTeki* actor) {
     return actors.count(actor) != 0;
+}
+
+bool pc_p2_long_legs_suppress_ai(const BTeki* actor) {
+    if (!actor) return false;
+    return actors.count(const_cast<BTeki*>(actor)) != 0;
+}
+
+float pc_p2_long_legs_param_f(const BTeki* actor, int idx, float fallback) {
+    if (!actor || !actors.count(const_cast<BTeki*>(actor))) return fallback;
+    // Catfish pattern: blind the P1 host strategy so it cannot acquire or
+    // attack while the P2 FSM drives. Life stays host-owned (damage funnel).
+    switch (idx) {
+    case TPF_VisibleRange:
+    case TPF_VisibleAngle:
+    case TPF_AttackableRange:
+    case TPF_AttackableAngle:
+    case TPF_AttackRange:
+    case TPF_AttackHitRange:
+    case TPF_AttackPower:
+    case TPF_DangerTerritoryRange:
+    case TPF_SafetyTerritoryRange:
+        return 0.0f;
+    case TPF_LifeRecoverRate:
+        return 0.0f;
+    default:
+        return fallback;
+    }
 }
 
 bool pc_p2_long_legs_damageable(const BTeki* actor) {
