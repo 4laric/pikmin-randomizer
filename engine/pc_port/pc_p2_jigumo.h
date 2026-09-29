@@ -20,6 +20,14 @@ class Creature;
 void pc_p2_jigumo_setup();
 void pc_p2_jigumo_reset();
 void pc_p2_jigumo_forget(BTeki*);
+// Death-/birth-time Piki forget hook (#886): drop a held-mouth registration
+// for a Pikmin that died or whose pool slot is being reused.
+void pc_p2_jigumo_forget_piki(class Piki*);
 void pc_p2_jigumo_update(BTeki*);
+// OWN-identity host suppression (round 2): the 14-state P2 FSM drives
+// targeting/lunge/capture/kill/flick/return, so the P1 Chappy TAI must not run
+// movement/targeting/attacks for a registered actor. Wired into BTeki::doAI
+// (tekibteki.cpp), mirroring pc_p2_frog_suppress_ai.
+bool pc_p2_jigumo_suppress_ai(const BTeki*);
 float pc_p2_jigumo_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_jigumo_clip(const BTeki*, const char*& name, float& phase);

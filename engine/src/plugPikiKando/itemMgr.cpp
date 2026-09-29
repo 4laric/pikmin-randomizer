@@ -1,5 +1,8 @@
 #include "ItemMgr.h"
 #if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
+#if defined(PIKI_PC_PORT)
 #include "settings/pc_settings.h"
 #endif
 #include "AIConstant.h"
@@ -88,6 +91,43 @@ GoalItem* ItemMgr::getContainer(int color)
 
 	return nullptr;
 }
+
+#if defined(PIKI_PC_PORT)
+GoalItem* ItemMgr::pcGetContainer(int color, int owner)
+{
+	if (!pc_vs_active() || owner < 0 || !mMeltingPotMgr) {
+		return getContainer(color);
+	}
+	Iterator iter(mMeltingPotMgr);
+	CI_LOOP(iter)
+	{
+		Creature* creature = *iter;
+		if (creature->mObjType == OBJTYPE_Goal) {
+			GoalItem* goal = static_cast<GoalItem*>(creature);
+			if (goal->mOnionColour == color && goal->mPcOwner == owner) {
+				return goal;
+			}
+		}
+	}
+	return nullptr;
+}
+
+UfoItem* ItemMgr::pcGetUfo(int owner)
+{
+	if (!pc_vs_active() || owner < 0) {
+		return getUfo();
+	}
+	Iterator iter(getMeltingPotMgr());
+	CI_LOOP(iter)
+	{
+		Creature* creature = *iter;
+		if (creature->mObjType == OBJTYPE_Ufo && static_cast<UfoItem*>(creature)->mPcOwner == owner) {
+			return static_cast<UfoItem*>(creature);
+		}
+	}
+	return nullptr;
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -1384,6 +1424,17 @@ Creature* PikiHeadMgr::createObject()
 int ItemMgr::getContainerExitCount()
 {
 	int count = 0;
+#if defined(PIKI_PC_PORT)
+	// VS: seis cebollas; getContainer solo ve las del primer jugador.
+	if (pc_vs_active() && mMeltingPotMgr) {
+		Iterator iter(mMeltingPotMgr);
+		CI_LOOP(iter)
+		{
+			if ((*iter)->mObjType == OBJTYPE_Goal) count += static_cast<GoalItem*>(*iter)->mPikisToExit;
+		}
+		return count;
+	}
+#endif
 	for (int i = PikiMinColor; i < PikiColorCount; i++) {
 		GoalItem* onyon = getContainer(i);
 		if (onyon) {

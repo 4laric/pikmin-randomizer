@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // Sarai23 combat-repair observation fixture (rd-p2-sarai-combat-repair, #828).
 //
 // Self-contained replacement-main TU (tools/preview_p2_room.cpp is never

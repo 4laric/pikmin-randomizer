@@ -29,6 +29,8 @@
 //   * View angle is a full hemisphere.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_elecbug.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
 #include "pc_randomizer.h"
 #include "pc_p2_species.h"
 #include "pc_p2_hazard_emitter.h"
@@ -39,6 +41,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "GlobalGameOptions.h"
 #include "Generator.h"
 #include "gameflow.h"
@@ -118,6 +121,7 @@ struct ElecBug {
     bool immuneLogged = false;
     bool flipped = false;
     bool deadLogged = false;
+    bool escaped = false;
     float lastHealth = LIFE;
     std::string clip = "wait";
     float phase = 0.0f;
@@ -145,15 +149,22 @@ bool clipLoops(const std::string& name) {
     auto it = clips.find(name);
     return it != clips.end() && it->second.loop;
 }
-unsigned genOf(const BTeki* actor) { return actor && actor->mGenerator ? actor->mGenerator->_70 : 0u; }
+unsigned genOf(const BTeki* actor) {
+    // Bridge pack members may carry a placeholder _70; the seed token is the
+    // stable own-token for evidence (setup binds by it). Fall back to _70
+    // off-bridge. Fixes the generator=0 HIT/DEAD/PRESS attribution.
+    if (!actor) return 0u;
+    const unsigned token = pc_p2_campaign_token(const_cast<BTeki*>(actor));
+    if (token) return token;
+    return actor->mGenerator ? actor->mGenerator->_70 : 0u;
+}
 ElecBug* lookup(BTeki* actor) {
     auto it = actors.find(static_cast<PelletView*>(actor));
     return it == actors.end() ? nullptr : &it->second;
 }
 bool targetInSight(const Vector3f& pos) {
-    if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive() && distXZ(n->getPosition(), pos) < SIGHT) return true;
+    for (Navi* n : pc_p2_navis()) {
+        if (n->isAlive() && distXZ(n->getPosition(), pos) < SIGHT) return true;
     }
     if (pikiMgr) {
         Iterator it(pikiMgr);
@@ -325,6 +336,9 @@ void pc_p2_elecbug_reset() {
 // count/membership so the lifecycle fixture can prove forget clears stale state.
 unsigned long pc_p2_elecbug_count() { return (unsigned long)actors.size(); }
 bool pc_p2_elecbug_registered(BTeki* actor) { return actors.count(static_cast<PelletView*>(actor)) != 0; }
+bool pc_p2_elecbug_suppress_ai(const BTeki* actor) {
+    return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
+}
 void pc_p2_elecbug_forget(BTeki* actor) {
     // Lane 06 single-use binding: drop the ordinary-delivery source so a
     // recycled actor address can never inherit source 28. The central
@@ -437,6 +451,16 @@ const char* pc_p2_elecbug_state_name(const BTeki* actor) {
 // ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to the source-equivalent press receiver.
 // Constant press radius 30 is a documented P1-derived adaptation (source uses the
 // collision searchDistance/height), not a retail-faithful proximity.
+// Natural press adaptation (#165, inst-bugs #871): the source
+// ElecBug::pressCallBack fires when a thrown Pikmin lands on the beetle
+// (PikiFlyingState/PikiHipDropState collision, velocity.y<0), for ANY Pikmin
+// color - the P1 host routes no Pikmin->enemy InteractPress, so this
+// family-local probe detects a descending Pikmin overlapping a registered
+// ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to
+// pc_p2_elecbug_pressed. Purple hipdrops satisfy the same probe; the color is
+// logged for evidence. Without this, a red-only squad (Forest of Hope day 2)
+// can never flip the beetle out of its retail invulnerability and the
+// campaign kill->carry->Onion loop stalls with zero damage.
 void pc_p2_elecbug_check_landing_press(BTeki* actor) {
     if (!ready || !pikiMgr) return;
     ElecBug* s = lookup(actor);
@@ -446,11 +470,10 @@ void pc_p2_elecbug_check_landing_press(BTeki* actor) {
     CI_LOOP(it) {
         Piki* p = static_cast<Piki*>(*it);
         if (!p || !p->isAlive()) continue;
-        if (pc_p2_species(p) != P2SpeciesPurple) continue;
         if (p->mVelocity.y >= -0.01f) continue;  // ascending / grounded
         if (distXZ(p->getPosition(), pos) > 30.0f) continue;
-        std::printf("P2_ELECBUG_NATURAL_PRESS generator=%u purple=1 source_id=28 state=%s\n",
-                    genOf(actor), stateName(s->state));
+        std::printf("P2_ELECBUG_NATURAL_PRESS generator=%u species=%d source_id=28 state=%s\n",
+                    genOf(actor), pc_p2_species(p), stateName(s->state));
         std::fflush(stdout);
         pc_p2_elecbug_pressed(actor, p);
         break;
@@ -500,17 +523,31 @@ void pc_p2_elecbug_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "ElecBug") wanted[unsigned(generator)] = species;
     }
+    // inst-bugs lane (#871): in bridge campaigns the seed owns the binding,
+    // so the filed ids are placeholders replaced from pc_p2_campaign_ids(28)
+    // (mirrors pc_p2_sokkuri_setup). Actors match by campaign token: scene
+    // members may carry no mGenerator, exactly like the batch-2 bind.
+    const bool bridge = pc_randomizer_p2_bridge();
+    if (bridge) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(28)) wanted[id] = "ElecBug";
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
     Iterator it(tekiMgr);
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
-        if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        if (!actor) continue;
+        const unsigned token = pc_p2_campaign_token(actor);
+        const unsigned key =
+            bridge ? token : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+        if (!bridge && key == 0u) continue;
+        auto match = wanted.find(key);
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Chappy) {
-            std::printf("P2_ELECBUG_ERROR native_type generator=%u\n", actor->mGenerator->_70);
+            std::printf("P2_ELECBUG_ERROR native_type generator=%u\n", key);
+            if (pc_p2_setup_skip(bridge, "ElecBug", "actor_type_mismatch")) return;
             std::abort();
         }
         ElecBug& s = actors[static_cast<PelletView*>(actor)];
@@ -524,21 +561,19 @@ void pc_p2_elecbug_setup() {
         // through pc_randomizer_p2_corpse_delivered. Rejected (unbindable id)
         // is logged by the callee, never fatal. Single-use: consumed on
         // delivery and cleared on forget/recycle.
-        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 28,
-                                     actor->mGenerator->_70);
-        std::printf("P2_ELECBUG_DELIVERY_BIND generator=%u source_id=28\n",
-                    actor->mGenerator->_70);
-        std::printf("P2_ELECBUG_BIND generator=%u source_id=28 visual_only=0\n",
-                    actor->mGenerator->_70);
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 28, key);
+        std::printf("P2_ELECBUG_DELIVERY_BIND generator=%u source_id=28\n", key);
+        std::printf("P2_ELECBUG_BIND generator=%u source_id=28 visual_only=0\n", key);
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=ElecBug native_family=Chappy generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
                     "source_FSM=implemented attack=discharge_receiver\n",
-                    actor->mGenerator->_70, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
-        found.insert(actor->mGenerator->_70);
+                    key, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        found.insert(key);
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_ELECBUG_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
+        if (pc_p2_setup_skip(bridge, "ElecBug", "actor_roster_incomplete")) return;
         std::abort();
     }
     ready = true;
@@ -553,6 +588,12 @@ void pc_p2_elecbug_update(BTeki* actor) {
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
     const unsigned generator = genOf(actor);
+
+    // The P1 TAI damage reaction lives in the suppressed host strategy, so
+    // the P2 FSM drains queued Pikmin damage itself (frog pattern). The
+    // pre-flip invulnerability gate (pc_p2_elecbug_attacked) still swallows
+    // attack interactions; this only applies admitted damage.
+    if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
 
     // Natural press (Purple landing) -> source StateReverse, before the health
     // bookkeeping so a same-frame flip still reports the pre-flip health.
@@ -735,7 +776,12 @@ void pc_p2_elecbug_update(BTeki* actor) {
         break;
     case ELEC_DEAD:
         stop(actor);
-        if (s.stateTime >= clipDuration("dead")) actor->die();
+        // dieSoon() only runs inside the suppressed host doAI; finalize the
+        // corpse outside doAI once the dead clip completes (frog pattern).
+        if (!s.escaped && s.stateTime >= clipDuration("dead")) {
+            s.escaped = true;
+            actor->pcEscapeNow();
+        }
         break;
     default:
         break;

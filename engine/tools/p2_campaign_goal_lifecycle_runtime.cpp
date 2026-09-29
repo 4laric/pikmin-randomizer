@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // Campaign Onion GoalItem lifecycle observer (rd-p2-campaign-goal-lifecycle, #836).
 //
 // Self-contained replacement-main TU (no shared file touched): main() mirrors

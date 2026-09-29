@@ -34,6 +34,7 @@
 #include "MapMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "Pellet.h"
@@ -400,9 +401,8 @@ void stepCarrier(BTeki* t, Binding& b, float delta)
             const float d2 = dx * dx + dz * dz;
             if (d2 < best) { best = d2; bestDx = dx; bestDz = dz; }
         };
-        if (naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->isAlive()) {
-            const Vector3f& p = naviMgr->getNavi()->mSRT.t;
-            probe(p.x, p.z);
+        for (Navi* navi : pc_p2_navis()) {
+            if (navi->isAlive()) probe(navi->mSRT.t.x, navi->mSRT.t.z);
         }
         if (pikiMgr) {
             Iterator it(pikiMgr);
@@ -523,8 +523,8 @@ void applyBlast(BTeki* t, Binding& b, const P2BombSaraiBlastEvent& event)
     // Pikmin from pikiMgr, which would invalidate a live CI_LOOP iterator and
     // crash the game right after a big blast (hits>=20).
     std::vector<std::pair<Creature*, bool>> targets;
-    if (naviMgr && naviMgr->getNavi()) {
-        targets.emplace_back(static_cast<Creature*>(naviMgr->getNavi()), false);
+    for (Navi* navi : pc_p2_navis()) {
+        targets.emplace_back(static_cast<Creature*>(navi), false);
     }
     if (pikiMgr) {
         Iterator it(pikiMgr);

@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // rd-p2-kogane-engagement (#835): guarded natural-engagement runtime fixture.
 //
 // Kogane is a finite flip/drop/escape species, not a kill/corpse enemy.

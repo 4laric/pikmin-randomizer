@@ -21,6 +21,8 @@
 #include "PlayerState.h"
 #include "SoundMgr.h"
 #include "Stickers.h"
+#include "settings/pc_settings.h"
+#include "pc_coop.h"
 #include "UfoItem.h"
 #include "UtilityKando.h"
 #include "bugprint.h"
@@ -609,6 +611,13 @@ void ActTransport::doLift()
 				nearestWP = routeMgr->findNearestWayPoint('test', mPiki->mSRT.t, landOnly);
 			}
 
+#if defined(PIKI_PC_PORT)
+			// Better Pathfinding: start from whichever end of the edge makes the
+			// whole carry shortest, not simply the nearer one.
+			if (wpA && wpB && pc_settings_get_better_pathfinding()) {
+				nearestWP = routeMgr->pickRouteStart(mPiki->mSRT.t, wpA, wpB, mGoal->getRouteIndex(), landOnly);
+			}
+#endif
 			int idx       = nearestWP->mIndex;
 			int goalWPIdx = mGoal->getRouteIndex();
 			int maxNumWP  = routeMgr->getNumWayPoints('test') - 1;
@@ -835,6 +844,7 @@ int ActTransport::exec()
 			f32 speed = ((carriers + 1.0f - f32(minCarry)) / f32(maxCarry)) * (maxSpeed - minSpeed) + minSpeed;
             speed=pc_p2_transport_speed(pel,speed);
 			goalDir.y = 0.0f;
+			speed *= pc_settings_get_carry_speed_scale(); // cheat "Carry Speed"
 			goalDir.multiply(speed);
 			pel->doCarry(mPiki, goalDir, numStickers);
 			break;
@@ -982,6 +992,7 @@ int ActTransport::moveGuruGuru()
 		f32 speed    = factor * (maxSpeed - minSpeed);
 		speed        = (minSpeed + speed);
         speed=pc_p2_transport_speed(pel,speed);
+		speed *= pc_settings_get_carry_speed_scale(); // cheat "Carry Speed"
 		speed *= 0.5f;
 		vel.multiply(speed);
 		pel->doCarry(mPiki, vel, numStickers);
@@ -1006,7 +1017,12 @@ void ActTransport::decideGoal(Creature* cargo)
     if(Suckable* pod=pc_p2_preview_goal()) {mGoal=pod;pel->mTargetGoal=pod;return;}
 	PRINT("pellet type is %d\n", pel->mConfig->mPelletType());
 	if (pel->mConfig->mPelletType() == PELTYPE_UfoPart) {
+#if defined(PIKI_PC_PORT)
+		// VS: al cohete del dueño de quien carga.
+		mGoal = itemMgr->pcGetUfo(mPiki->mPlayerId);
+#else
 		mGoal = itemMgr->getUfo();
+#endif
 		if (!mGoal) {
 			ERROR("no ufo!");
 		}
@@ -1020,6 +1036,11 @@ void ActTransport::decideGoal(Creature* cargo)
 	int numOptions = 0;
 	int onyonColor = Blue;
 	bool isVsMode  = flowCont.mIsVersusMode == TRUE;
+#if defined(PIKI_PC_PORT)
+	// El reparto de Nintendo (amarillos a la cebolla del capitán) no aplica al
+	// VS del port: cada jugador tiene sus tres cebollas (fase 2).
+	if (pc_vs_active()) isVsMode = false;
+#endif
 
 	PRINT_KANDO("###### decide goal\n");
 	int i;
@@ -1067,7 +1088,12 @@ void ActTransport::decideGoal(Creature* cargo)
 
 	onyonColor = optionColors[randColor];
 	PRINT_KANDO(" ## color %d is selected\n", onyonColor);
-	mGoal                     = itemMgr->getContainer(onyonColor);
+#if defined(PIKI_PC_PORT)
+	// VS: a la cebolla de ese color del dueño de quien carga.
+	mGoal = itemMgr->pcGetContainer(onyonColor, mPiki->mPlayerId);
+#else
+	mGoal = itemMgr->getContainer(onyonColor);
+#endif
 	mPellet.mPtr->mTargetGoal = mGoal; // hmm.
 
 	if (!mGoal) {
@@ -1571,6 +1597,39 @@ int ActTransport::moveToWayPoint()
 		return ACTOUT_Continue;
 	}
 
+#if defined(PIKI_PC_PORT)
+	// Mod "Better Pathfinding". A carry party wedged against geometry keeps
+	// pushing at the same waypoint forever, because the route is only rebuilt
+	// when a waypoint closes, never when the party simply stops moving. Watch
+	// the pellet: if it has not covered any ground for a few seconds, rebuild
+	// the route from where it actually is.
+	if (pc_settings_get_better_pathfinding() && isStickLeader()) {
+		const f32 kStallSeconds = 3.0f;
+		const f32 kStallDistSq  = 100.0f; // 10 units of travel is "moving"
+		Vector3f here           = pel->mSRT.t;
+		if (!mPcStallArmed) {
+			mPcStallCheckPos = here;
+			mPcStallTimer    = 0.0f;
+			mPcStallArmed    = true;
+		} else {
+			mPcStallTimer += gsys->getFrameTime();
+			Vector3f delta = here - mPcStallCheckPos;
+			delta.y        = 0.0f;
+			if (delta.x * delta.x + delta.z * delta.z > kStallDistSq) {
+				mPcStallCheckPos = here;
+				mPcStallTimer    = 0.0f;
+			} else if (mPcStallTimer > kStallSeconds) {
+				mPcStallTimer    = 0.0f;
+				mPcStallCheckPos = here;
+				doLift();
+				return ACTOUT_Continue;
+			}
+		}
+	} else {
+		mPcStallArmed = false;
+	}
+#endif
+
 	if (isStickLeader() && mPathIndex != -1) {
 		if (!mCanCarry) {
 			PRINT("おれにはムリデス\n"); // 'i can't do it'
@@ -1618,6 +1677,7 @@ int ActTransport::moveToWayPoint()
 		f32 speed    = factor * (maxSpeed - minSpeed);
 		speed        = (minSpeed + speed);
         speed=pc_p2_transport_speed(pel,speed);
+		speed *= pc_settings_get_carry_speed_scale(); // cheat "Carry Speed"
 		// speed *= 0.5f;
 		mMoveDir.y = 0.0f;
 		mMoveDir.normalise();

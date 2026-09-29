@@ -1,4 +1,5 @@
 #include "system.h"
+#include <cstdint>
 #if PIKI_PC_PORT
 #include "pc_window.h"
 #include "pc_bbft.h"
@@ -11,6 +12,7 @@
 #include "pc_gfx.h"
 #include "settings/pc_settings.h"
 #include "timing/pc_render_packet.h"
+#include "mods/pc_vs_arena.h"
 #endif
 
 #include "bigFont.h"
@@ -173,6 +175,15 @@ void DVDStream::init()
  */
 RandomAccessStream* System::openFile(immut char* path, bool isRelativePath, bool)
 {
+#if defined(PIKI_PC_PORT)
+	// Arena del modo VS: rutas virtuales montadas en memoria desde los datos
+	// del juego (sin archivos nuevos en disco).
+	if (isRelativePath) {
+		if (RandomAccessStream* arena = pc_vs_arena_open(path)) {
+			return arena;
+		}
+	}
+#endif
 	char strPath[PATH_MAX];
 	sprintf(strPath, "%s", isRelativePath ? mActiveDir : "");
 	sprintf(strPath, "%s%s%s", strPath, isRelativePath ? mDataRoot : "", path);
@@ -429,6 +440,11 @@ void System::run(BaseApp* app)
             if (pc_tick_profiler_enabled()) {
                 fputs(pc_tick_profiler_report(1000.0 / 60.0).c_str(), stdout);
             }
+            // Fase 7: where the native heap is, every ~10 s, when measuring.
+            if (getenv("PIKMIN_PERF_STATS")) {
+                static int allocReportGate = 0;
+                if (++allocReportGate % 5 == 0) piki_pc_dump_alloc_stats();
+            }
             fflush(stdout);
             lastFpsPrint = nowChrono;
         }
@@ -520,7 +536,7 @@ void System::parseArchiveDirectory(immut char* arcPath, immut char* dirPath)
 			size = stream.mSize;
 		}
 		((DVDStream*)&stream)->read(DVDStream::readBuffer, size);
-		gsys->copyRamToCache((u32)DVDStream::readBuffer, size, a + pos);
+		gsys->copyRamToCache((u32)(uintptr_t)DVDStream::readBuffer, size, a + pos);
 		gsys->copyWaitUntilDone();
 		pos += size;
 		pend -= size;
@@ -1268,7 +1284,7 @@ void* loadFunc(void* idler)
 	while (true) {
 		OSMessage msg;
 		OSReceiveMessage(&loadMesgQueue, &msg, OS_MESSAGE_BLOCK);
-		if ((u32)msg == 'QUIT') {
+		if ((u32)(uintptr_t)msg == 'QUIT') {
 			OSSendMessage(&sysMesgQueue, (OSMessage)'CONT', OS_MESSAGE_NOBLOCK);
 			break;
 		}
@@ -1445,7 +1461,7 @@ u32 System::copyRamToCache(u32 mainMemAddr, u32 size, u32 aramCacheAddr)
 	DCStoreRange((void*)mainMemAddr, size);
 
 	// send request to the aram queue (high priority)
-	ARQPostRequest(cache, (u32)cache, ARQ_TYPE_MRAM_TO_ARAM, ARQ_PRIORITY_HIGH, mainMemAddr, adjustedCacheAddr, size, doneDMA);
+	ARQPostRequest(cache, (u32)(uintptr_t)cache, ARQ_TYPE_MRAM_TO_ARAM, ARQ_PRIORITY_HIGH, mainMemAddr, adjustedCacheAddr, size, doneDMA);
 
 	return adjustedCacheAddr;
 
@@ -1482,7 +1498,7 @@ void System::copyCacheToRam(u32 mainMemAddr, u32 aramCacheAddr, u32 size)
 	DCInvalidateRange((void*)mainMemAddr, size);
 
 	// send request to the aram queue (high priority)
-	ARQPostRequest(cache, (u32)cache, ARQ_TYPE_ARAM_TO_MRAM, ARQ_PRIORITY_HIGH, aramCacheAddr, mainMemAddr, size, doneDMA);
+	ARQPostRequest(cache, (u32)(uintptr_t)cache, ARQ_TYPE_ARAM_TO_MRAM, ARQ_PRIORITY_HIGH, aramCacheAddr, mainMemAddr, size, doneDMA);
 }
 
 /**
@@ -1535,7 +1551,7 @@ void System::copyCacheToTexture(CacheTexture* tex)
 
 	tex->mSystemCache = cache;
 
-	u32 mainMemAddr = (u32)tex->mTexImage->mTextureData;
+	u32 mainMemAddr = (u32)(uintptr_t)tex->mTexImage->mTextureData;
 	u32 aramAddr    = tex->mAramAddress;
 	u32 size        = tex->mTexImage->mDataSize;
 
