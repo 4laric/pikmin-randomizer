@@ -71,10 +71,12 @@ never P2 identities and never enter this table.
   eye-checked the facing and the shell effects. Carcass revival and the
   body charge/smoke effects are not ported yet.
 - **38 PanModoki (Breadbug): admitted (#898).** The source FSM runs it in the
-  campaign: ordinary attacks do nothing, thrown Pikmin landing on it press it,
-  it steals carcasses and tugs them against the carriers, and a Breadbug sucked
-  off its cargo at the Onion takes container damage. It dies, is carried and
-  delivers `onion:p2:38:3`. The go-home/Hide cycle is unit-tested only.
+  campaign. Pikmin and the captain never target it (in retail it is only a
+  living thing while bittered), and thrown Pikmin landing on it press it. It
+  steals carcasses, tugs them against the carriers and hauls them home to hide.
+  A carcass it takes home is spared at the nest, so its check is never lost.
+  It dies to six presses (or container damage when it is sucked off its cargo
+  at the Onion), is carried and delivers `onion:p2:38:3`.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
