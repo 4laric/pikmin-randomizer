@@ -4,6 +4,7 @@
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_captor_forget.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "BombItem.h"
@@ -511,7 +512,7 @@ void Creature::kill(bool)
         pc_p2_kurage_receiver_piki_invalidated(piki);
         pc_p2_queen_forget_piki(piki);
         pc_p2_king_forget_piki(piki);
-        pc_p2_armor_forget_piki(piki);
+        pc_p2_captor_forget_piki(piki);
     }
 	pc_p2_kurage_receiver_owner_invalidated(this);
 	finishWaterEffect();

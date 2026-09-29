@@ -40,6 +40,7 @@ A species must clear **three** gates, in this order:
 | 79 | Sokkuri | **no extractor** | `TEKI_Chappy` 3 ✓ | batch2 `ground\|Sokkuri` | blocked on content |
 | 57 | Kurage | **no extractor** | `TEKI_Frog` 0 ✓ | own module, bridge-aware | blocked on content; AI also gated |
 | 78 | MiniHoudai / Groink | **no extractor** | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
+| 66 | Houdai / Man-at-Legs | ✓ `extract_houdai` | `TEKI_Swallow` 4 ✓ | own brain `P2HoudaiFsm` in `pc_p2_long_legs` (native `claude/p2-port-66-houdai` 49e634d17) | natural bot kill/carry/receipt proven (#173 run f4-66); **not admitted**: legs never animate (bind pose), death model (source: no carcass) pending owner ruling, and pool growth past 35 needs #893 |
 | 1 | Kochappy | **no extractor** | needs 3, **absent** | own module, `_70`-keyed | no |
 | 45 | Snow / YellowKochappy | **no extractor** | needs 3, **absent** | own module, source-blind | no |
 | 58 | BombSarai | **no extractor** | needs `TEKI_Napkid` 11, **absent** | **none in campaign** | no |

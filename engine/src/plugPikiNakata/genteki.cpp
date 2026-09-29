@@ -144,7 +144,11 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
                         source, uid, int(mTekiType), info.mPosition.x, info.mPosition.z);
             // Generated placement (lane 03/04): claim the spawned actor for its
             // seeded P2 identity module instead of leaving it as a P1 stand-in.
-            pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, pc_p2_campaign_token(static_cast<BTeki*>(teki)));
+            // wf7 dweevil-impl (#871): pass the seed uid as the generator id.
+            // The newborn BTeki has no mGenerator yet, so its campaign token
+            // reads 0 here; passing the token created a bogus generator=0
+            // Otakara registration (one actor claimed under two identities).
+            pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, uid);
             // Cannon Beetle family generated-session host (lane 20, #424): no-op
             // for every source outside 75/95/96.
             pc_p2_kabuto_bind_dynamic(teki, uid, source);

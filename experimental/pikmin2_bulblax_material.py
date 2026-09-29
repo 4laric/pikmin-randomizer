@@ -31,8 +31,8 @@ Source-cited per-species diagnosis for the #235 sampled display (#239):
   lighting control of 0x1800 (vertex-color flag only, diffuse/specular bits
   clear), so the host renders the raw bright vertex color unlit -- the flat
   bright look. The profile restores lit diffuse/specular control bits
-  (frog-profile 0x93 precedent) while preserving the 0x1800 vertex-color
-  flag. Source material color is plain white, matching the bake.
+  (0xd1, the retail P1 single-stage lit word; #895) with the source channel
+  vertex material/alpha bits. Source material color is plain white, matching the bake.
 - KingChappy (53): two single-stage diffuse materials already baked with the
   correct textures (TEX1[1] 128x128 CMPR body via mat 0, TEX1[0] 32x32 via
   mat 1); the converter picked the right slots. Source material 1 carries
@@ -59,7 +59,10 @@ import json
 import struct
 from pathlib import Path
 
-from experimental.pikmin2_convert import blocks, diffuse_slot, u16, u32
+from experimental.pikmin2_convert import (LEGACY_VERTEX_CONTROL, MAT_SRC_ALPHA0_VERTEX,
+                                          MAT_SRC_COLOR0_VERTEX, P1_LIT_CONTROL, P1_UNLIT_CONTROL, blocks,
+                                          diffuse_slot, lighting_control, source_lighting,
+                                          u16, u32)
 from experimental.pikmin2_bulblax_assets import SPECIES
 from experimental.pikmin2_bulblax_bank import HEADER as BANK_HEADER
 from experimental.pikmin2_bulblax_bank import parse_bank, validate_files
@@ -71,12 +74,16 @@ SOURCES = {'Queen': 'e4904b223fa388e53092dc67c80a3668782a314b6e7683bd2284f7413cf
            'Baby': '4813630c8681b4e15c5f66d449515fe71d964ef00e7ea03bfd64bd05b0a4c5e0',
            'KingChappy': '44934adcd74e4b352d7de29a63a642d278290f4d991ea0f2b42861fdde4ba6e4'}
 
-# Lit control follows the Frog profile precedent (0x93 lit / 0 unlit); the
-# 0x1800 vertex-color flag emitted by the converter writer
-# (pikmin2_convert.py:274) is preserved when a pose carries vertex colors.
-LIT = 0x93
-VERTEX_COLOR_FLAG = 0x1800
-CONTROLS = (0, LIT, VERTEX_COLOR_FLAG, LIT | VERTEX_COLOR_FLAG)
+# Lit control is the canonical retail P1 single-stage word shared with the
+# converter (pikmin2_convert.P1_LIT_CONTROL = 0xd1, #895). The profile writes
+# one diffuse stage, so the COLOR1 specular bit (formerly 0x93) is never
+# needed. Vertex material/alpha bits follow the source COLOR0/ALPHA0 channel
+# via pikmin2_convert.lighting_control.
+LIT = P1_LIT_CONTROL
+VERTEX_COLOR_FLAG = LEGACY_VERTEX_CONTROL
+CONTROLS = tuple(sorted({base | vtx for base in (0, P1_UNLIT_CONTROL, LIT)
+                         for vtx in (0, MAT_SRC_COLOR0_VERTEX, MAT_SRC_ALPHA0_VERTEX,
+                                     MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX)}))
 
 CONVERTER_REFS = {'diffuse_slot': 'experimental/pikmin2_convert.py:57-74',
                   'slot_fallback': 'experimental/pikmin2_convert.py:195-196',
@@ -102,7 +109,7 @@ UNSUPPORTED = {
     ],
 }
 
-LIMITS = ['PVW lighting control follows the Frog profile precedent (0x93 lit / 0 unlit); host PVW control-bit semantics are approximate, not source-verified.',
+LIMITS = ['PVW lighting control is the retail P1 single-stage word (0xd1 lit / 0xd0 unlit, verified on retail P1 teki MODs, #895); source light masks and the P2 light rig are not reproduced.',
           'Queen diffuse base texture is retargeted but sampled with UV0 instead of the source TEX1 UV set (approximation; UV arrays differ).',
           'Queen (both materials) and KingChappy material 0 source diffuse stages use TEV scale 1 (x2; MAT3 stage 0 scale byte); the baked single stage uses scale 0, so the profiled base is half source intensity under equal lighting.',
           'Ambient/light environment remains P1; no source lighting parity claimed.',
@@ -200,8 +207,7 @@ def profile(model, species, has_vertex_colors):
         rgba = info['material_rgba'][0]
         if rgba is None or len(rgba) != 4:
             raise ValueError('Source material color missing')
-        lit = bool(info['channels'][0] and info['channels'][0]['enabled'])
-        control = (LIT if lit else 0) | (VERTEX_COLOR_FLAG if has_vertex_colors else 0)
+        control = lighting_control(source_lighting(m, r), has_vertex_colors)
         materials.append(dict(material=i, texture=texture, replace_texture=converter_texture,
                               rgba=list(rgba), control=control, uv_source=uv,
                               tev_scale=scale,
@@ -448,9 +454,9 @@ def prepare(imported, bank, output):
         source_import_sha256=hashlib.sha256((imported / 'bulblax.json').read_bytes()).hexdigest(),
         applied=True,
         fixes={
-            'Queen': 'Body shape rebound from the envmap texture TEX1[1] (converter slot-0 fallback, pikmin2_convert.py:195-196) to the diffuse base TEX1[2]; unlit control 0 -> 0x93 on lit channels.',
-            'Baby': 'Lighting control 0x1800 -> 0x1893: diffuse/specular bits restored (frog-profile precedent) with the vertex-color flag preserved; source vertex colors and white material color unchanged.',
-            'KingChappy': 'Material color restored to source (204,204,204,255) on material 1 (converter default white, pikmin2_convert.py:238); lit control 0 -> 0x93 on material 0.',
+            'Queen': 'Body shape rebound from the envmap texture TEX1[1] (converter slot-0 fallback, pikmin2_convert.py:195-196) to the diffuse base TEX1[2]; unlit control 0 -> 0xd1 on lit channels.',
+            'Baby': 'Lighting control 0x1800 -> 0xd1 plus the source COLOR0/ALPHA0 vertex material bits (retail P1 lit word, #895); source vertex colors and white material color unchanged.',
+            'KingChappy': 'Material color restored to source (204,204,204,255) on material 1 (converter default white, pikmin2_convert.py:238); lit control 0 -> 0xd1 on material 0.',
         },
         unsupported={s: list(u) for s, u in UNSUPPORTED.items()},
         converter_refs=dict(CONVERTER_REFS),

@@ -45,7 +45,7 @@ import json
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, sample_frames, decode_pose
 from experimental.pikmin2_breadbug_assets import collision_nodes, parameter_blocks, sha
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_groink_assets import muzzle, profile
@@ -98,7 +98,7 @@ def emission_frame(events):
 
 
 def extract(iso, output, pose_limit=None):
-    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX):
         raise ValueError(f'Pose limit must be 2..8 or None: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
     if not iso.is_file():
@@ -189,10 +189,8 @@ def extract(iso, output, pose_limit=None):
                                  **muzzle(joint_matrices(model_blocks, pose)[muzzle_index]))
         for frame in sample_frames(duration, clip_pose_limit(stem, pose_limit)):
             try:
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                decoded, pose = decode_pose(decode, model, model_blocks, raw, frame, len(names))
                 transform = muzzle(joint_matrices(model_blocks, pose)[muzzle_index])
-                matrices = draw_matrices(model_blocks, pose)
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
                 name = pose_name(stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name,

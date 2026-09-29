@@ -9,7 +9,7 @@ import subprocess
 import uuid
 
 from randomizer.session import SessionLock, atomic_write
-from scripts.preview_pikmin2_emergence import prepare
+from scripts.preview_pikmin2_emergence import prepare, _purple_motion_files
 
 SPECIES = ('blue', 'red', 'yellow', 'purple', 'white', 'bulbmin')
 # Wire schema that first carries each species (native pc_p2_species_schema.h):
@@ -194,7 +194,7 @@ def transition(state, token, text, receipts, allowed, floors=2):
     return validate(next_state, floors)
 
 
-def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None, visuals=None):
+def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None, visuals=None, purple_motion=None):
     files = []
     for floor, unit in enumerate(('room_north_tutorial_1_snow', 'room_purple14x14_snow'), 1):
         for name in ('render.mod', 'collision.json'):
@@ -205,6 +205,12 @@ def content_identity(imported, pods, purple, transitions=None, snow=None, roster
             files.append((f'pod{i}/{name}', pod/name))
     files.extend((f'purple/{p.name}', p) for p in sorted(purple.glob('*.mod')))
     files.append(('purple/config', purple/'p2-purple.txt'))
+    if purple_motion:
+        # Use the same validation/file selection as staging before creating a
+        # checkpoint. A partial bank must not leave an unusable saved session.
+        _, motion_files = _purple_motion_files(purple_motion)
+        files.append(('purple-motion/config', purple_motion/'p2-purple-motion.txt'))
+        files.extend((f'purple-motion/{name}', purple_motion/name) for name in motion_files)
     if snow:
         files.extend((f'snow/{p.name}', p) for p in sorted(snow.glob('snow_*.mod')))
         files.extend((f'snow/{name}', snow/name) for name in ('snow.json', 'p2-snow.txt'))
@@ -213,6 +219,8 @@ def content_identity(imported, pods, purple, transitions=None, snow=None, roster
         files.extend((f'roster/{p.parent.name}/treasure.mod', p)
                      for p in sorted((roster/'treasures').glob('*/treasure.mod')))
     digest = hashlib.sha256(b'P2_CAVE_LAYOUT_1:two-standalone-rooms:all-survivors:boundary-checkpoint')
+    if purple_motion:
+        digest.update(b':P2_PURPLE_FLIGHT_1:impact red_earthquake_v1')
     if roster:
         from experimental.pikmin2_roster import POLICY
         digest.update((POLICY+':separate-cargo-instances:4+7-snow').encode('ascii'))
@@ -241,7 +249,7 @@ def allowed_receipts(run, floor):
     return allowed
 
 
-def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None, roster=None, transition_assets=None):
+def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None, roster=None, transition_assets=None, purple_motion=None):
     from experimental.pikmin2_transitions import read_transitions, read_visuals, install_visuals
     anchors = read_transitions(transitions)
     visuals = read_visuals(transition_assets)
@@ -249,7 +257,7 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
         raise ValueError('Transition visuals require transition anchors')
     if roster and not snow:
         raise ValueError('Complete enemy roster requires Snow assets')
-    content = content_identity(imported, pods, purple, anchors, snow, roster, visuals)
+    content = content_identity(imported, pods, purple, anchors, snow, roster, visuals, purple_motion)
     with SessionLock(session):
         checkpoint = session/'checkpoint.json'
         if checkpoint.exists(): state = load(checkpoint, content)
@@ -261,7 +269,7 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
         while state['status'] == 'active':
             floor = state['floor']
             run = prepare(assets, imported, treasure, session/'runs', floor=floor, pod=pods[floor-1],
-                          purple=purple, violet=floor == 2, squad=state['squad'])
+                          purple=purple, violet=floor == 2, squad=state['squad'], purple_motion=purple_motion)
             if roster:
                 from experimental.pikmin2_roster import install
                 install(roster, run, floor, assets, imported)
@@ -311,10 +319,12 @@ if __name__ == '__main__':
     parser.add_argument('--snow', type=Path, help='Opt-in source Snow Bulborb visuals on existing scaffold enemies')
     parser.add_argument('--roster', type=Path, help='All source treasures/enemy counts with deterministic engineering placements')
     parser.add_argument('--transition-assets', type=Path, help='Optional imported hole/geyser model bundle')
+    parser.add_argument('--purple-motion', type=Path, help='Optional source Purple throw/fall bank; enables heavy flight and binds the bank to this saved session')
     args = parser.parse_args()
     run_campaign(args.assets.resolve(), args.imported.resolve(), [args.pod1.resolve(), args.pod2.resolve()],
                  args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve(),
                  args.transitions.resolve() if args.transitions else None,
                  args.snow.resolve() if args.snow else None,
                  args.roster.resolve() if args.roster else None,
-                 args.transition_assets.resolve() if args.transition_assets else None)
+                 args.transition_assets.resolve() if args.transition_assets else None,
+                 args.purple_motion.resolve() if args.purple_motion else None)

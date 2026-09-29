@@ -135,6 +135,12 @@ def merge_actors(existing, species, generators):
     return render_actors(rows)
 
 
+def _frames_token_ok(token):
+    """``f0,f1,...`` digits/commas only, at most 64 entries (native grammar)."""
+    parts = token.split(',')
+    return 1 <= len(parts) <= 64 and all(part.isdigit() and len(part) <= 6 for part in parts)
+
+
 def parse_bank(data):
     """Parse staged bank bytes to ``[(species, id, [(name, frames, events, poses, status)])``].
 
@@ -180,6 +186,12 @@ def parse_bank(data):
                 raise StagingError('ground bank clip row names no clip')
             current.append((name, frames, events, poses, status))
             pos += 8
+            if pos < len(tokens) and tokens[pos] == 'frames':
+                # P2_BANK_FRAMES_1 trailer (#895): carried through verbatim.
+                if pos + 1 >= len(tokens) or not _frames_token_ok(tokens[pos + 1]):
+                    raise StagingError(f'ground bank clip row frames trailer malformed: {name!r}')
+                current[-1] = current[-1] + (tokens[pos + 1],)
+                pos += 2
         else:
             raise StagingError(f'ground bank token rejected by the native grammar: {word!r}')
     return blocks
@@ -190,8 +202,10 @@ def render_bank(blocks):
     lines = [BANK_HEADER]
     for species, enemy_id, clips in blocks:
         lines.append(f'species {species} {enemy_id}')
-        for name, frames, events, poses, status in clips:
-            lines.append(f'clip {species} {name} {frames} {events} poses {poses} {status}')
+        for row in clips:
+            name, frames, events, poses, status = row[:5]
+            trailer = f' frames {row[5]}' if len(row) > 5 else ''
+            lines.append(f'clip {species} {name} {frames} {events} poses {poses} {status}{trailer}')
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
@@ -205,7 +219,10 @@ def merge_bank(existing, species, source_id, clip_rows):
     """
     if species not in GROUND_SPECIES_IDS or source_id != GROUND_SPECIES_IDS[species]:
         raise StagingError(f'ground bank species identity mismatch: {species} {source_id}')
-    for _name, frames, events, poses, status in clip_rows:
+    for row in clip_rows:
+        _name, frames, events, poses, status = row[:5]
+        if len(row) > 6 or (len(row) == 6 and not _frames_token_ok(row[5])):
+            raise StagingError(f'ground bank clip frames trailer malformed: {_name!r}')
         if type(frames) is not int or frames < 0:
             raise StagingError(f'ground bank clip frames outside the native range: {_name!r}')
         if type(poses) is not int or poses < 0 or poses > MAX_BANK_POSES:

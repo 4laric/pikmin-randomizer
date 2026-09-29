@@ -9,6 +9,9 @@
 #include "pc_randomizer_campaign_catalog.h"
 #undef NDEBUG
 #include <cassert>
+// The engine-free probe links pc_randomizer.cpp without the P2 proxy module
+// (which needs engine headers); no proxy tier is staged here.
+int pc_p2_proxy_host(unsigned) { return -1; }
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (!pc_randomizer_init(argc, argv)) {
@@ -220,6 +223,9 @@ int main(int argc, char** argv) {
                 while (pc_randomizer_consume_benefit(PC_BENEFIT_PRERELEASE)) ++used;
                 assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
                 std::printf("CAPTAIN_MOVE %.2f\n", pc_randomizer_captain_movement_multiplier());
+                std::printf("MATURITY_PROBE blue=%d red=%d yellow=%d day=%.2f\n", pc_randomizer_maturity(0),
+                    pc_randomizer_maturity(1), pc_randomizer_maturity(2), pc_randomizer_day_length_multiplier());
+                std::printf("WHISTLE_PLUCK_PROBE %d\n", pc_randomizer_whistle_pluck());
                 std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,
                     pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE), pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK));
                 for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--save-probe")) {

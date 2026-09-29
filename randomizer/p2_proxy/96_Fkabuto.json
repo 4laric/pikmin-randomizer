@@ -4,7 +4,7 @@
   "host_teki": 17,
   "notes": "Armored Cannon Beetle Larva (burrowed); proxy over TEKI_Beatle; shares Kabuto model/anim with parent (identical look)",
   "param_dir": "kabuto",
-  "pose_limit": 4,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 96,
   "evidence": {

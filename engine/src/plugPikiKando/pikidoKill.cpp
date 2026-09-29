@@ -77,6 +77,9 @@ void Piki::doKill()
 					item->init(pos);
 
 					item->setColor(mColor);
+#if defined(PIKI_PC_PORT)
+					item->mPcOwner = mPlayerId;
+#endif
 					BaseInf* binf = inf->mBPikiInfMgr.getFreeInf();
 					if (binf) {
 						PRINT("花ピキを残しました！\n"); // I left Hanapiki!

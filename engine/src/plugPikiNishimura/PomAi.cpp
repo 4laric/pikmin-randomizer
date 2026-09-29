@@ -346,7 +346,7 @@ void PomAi::createPikiHead()
     int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
     if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
 	int seedCount = killStickPiki();
-	Navi* player  = naviMgr->getNavi();
+	Navi* player  = naviMgr->getNearestNavi(mPom->mSRT.t);
 	f32 baseAngle = atan2f(mPom->mSRT.t.x - player->mSRT.t.x, mPom->mSRT.t.z - player->mSRT.t.z);
 
 	f32 spreadAngle = PI * (C_POM_PARM(mPom, mDischargeAngle) / 360.0f);

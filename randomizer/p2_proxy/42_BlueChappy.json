@@ -4,7 +4,7 @@
   "host_teki": 4,
   "notes": "Orange Bulborb; proxy over TEKI_Swallow; shares Chappy model/anim with parent (identical look)",
   "param_dir": "chappy",
-  "pose_limit": 4,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 42,
   "evidence": {

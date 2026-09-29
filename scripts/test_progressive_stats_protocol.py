@@ -52,7 +52,7 @@ for rolled, invalid, counts in ((False, False, None), (False, True, None), (True
                     wait(expected('blue', 0))
                     wait(expected('yellow', 2))
                     session.receive(len(session.data['received']), [ITEM_IDS[REPAIR]] * 25)
-                    wait('GOAL: Ship repaired!')
+                    wait('GOAL: Seed complete.')
                     assert process.wait(timeout=5) == 0, log.read_text()
             finally:
                 if process.poll() is None: process.terminate(); process.wait(timeout=5)

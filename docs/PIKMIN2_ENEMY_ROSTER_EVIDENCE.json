@@ -684,22 +684,28 @@
     "32": {
       "native_module": "pc_p2_demon_host",
       "owner_lane": "30",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Demon (Bumbling Snitchbug, source 32): OWN campaign port on #215; the Demon profile of the Sarai FSM with its retail parms drives the campaign Demon, which grabs and drops the captain, is knocked down by Pikmin weight, dies naturally, is carried as its type5 carcass and delivers Onion receipt onion:p2:32:3 on its own generator token.",
       "source": [
-        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md"
+        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Demon (Bumbling Snitchbug): host + capture/drop/escape modules; ordinary captor + moving attachment + teardown remain (#215-#242)."
-      ]
+        "Demon (Bumbling Snitchbug): #215 OWN port. Native 4laric/Open-Nectar claude/p2-port-32-demon-v2 6e88fad0d (fork main a6cee5e85 + 3 #215 commits): Demon profile of the Sarai FSM (retail demon parms, 12-clip bank, captain grab/CatchFly/FallMeck drop, 3 s re-grab gate), P1 Chappy anchor AI suppressed with a stored-damage drain, type5 carcass draw, onion:p2:32 delivery bind.",
+        "Campaign evidence, bot-driven power-mode run v2b (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 32, all on the species' own generator: output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a) L1574 P2_DEMON_PARMS retail=1 life=1500, L1575 BANK clips=12 carcass=type5, L1578 OWN_BIND anchor_ai=suppressed; states wait/attack/fail/move, fall/damage/takeoff/flick (L2770 P2_DEMON_FLICK flicked=9), then four captain grabs L2812/L2933/L3109/L3345 P2_DEMON_CAPTURE captain=1 each followed by P2_DEMON_DROP damage=10.0 (L2876/L2995/L3172/L3418; the navi_health on each DROP line is the pre-drop value 90/80/70/60) and the applied drop DEMON_STATE_DAMAGE generation=1..4 accepted=1 (L2883 90->80, L3009 80->70, L3187 70->60, L3431 60->50). The captain's other losses are not Demon damage: 100->90 before the first capture (AUTOPLAY_NAVI navi_hp L886 100 to L2593 90, while Umimushi 101 generator 3921089765 was cycling attack states nearby, L2528-L2600) and 50->30 during the carry (L3765 to L3852, the carry route passes the attacking Umimushi 101, likely cause). re-grab gaps 4.4 to 15.7 s after each gate reset; 82 monotone P2_DEMON_DAMAGE lines 1485 to 0; L3632 P2_DEMON_DEAD, L3664 CARCASS_BECOME, L3665 DRAW corpse=1 pose=type5, carried by 3, L3926 receipt onion:p2:32:3 new=1, L3928 AUTOPLAY_RESULT 1/1/1/1 in 129 s.",
+        "Pins: root claude/p2-port-32-demon-v2 (origin/main ec593341 + #215 staging), content output/wt-p2port-32-content-full (prepared.json sha256 4bc6641d5166818b...), exe nectar.exe sha256 c329ed2d0a0e5209d74d3cabffce58f05ac24648ab4782858e1faad64e3e8f99 (private build output/wt-p2port-32-build, ninja -n no work for pikmin_pc). Earlier runs p2/p3/n3 on the pre-rebase branch are on #215.",
+        "cleanup_reentry (test-backed, restated after the #215 review): the Demon keeps its own teardown state that Sarai 23 never exercises (escaped binding retained after demonAnchorFinalize, carcass drawn from it, private-room receipt refused), so Sarai 23's runtime re-entry PASS is NOT inherited. Native claude/p2-port-32-demon-v2 a99f9d19b adds p2_sarai_lifecycle_test case 10, which drives the production pc_p2_sarai_manager.cpp (real buildDemonHost, p2demon::loadParms, real delivery ledger) through bind, Dead KEYEVENT_END finalise, retained-binding carcass draw, onion delivery Granted, stage reset (pc_p2_reset_all_teki: day end and area exit) clearing the live and corpse entries and the central source-32 binding, a same-token re-entry anchor rebinding fresh with the old anchor absent, the second delivery a durable Duplicate, forget after delivery, a stale-revalidation Demon corpse refused as corpse:sarai, and a missing-staging refusal (76 checks, 40 Demon; ctest p2_(sarai|demon|generated|campaign|navi) 25/25). No runtime day-end or area re-entry has been observed for the Demon: run v3a (output/claude-orch/p2-demon-own/runs/v3a-32, exe ef01fbf2..., log sha256 2393aef994a681a6...) stayed 29 min on the stage after its receipt without the day ending; it shows one onion:p2:32:3 receipt only (L3167), the P2_SARAI_FORGET at delivery (L3168) and no second DEMON_READY.",
+        "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the Chappy anchor's collision stands in for the Demon body, gravity 1000 is assumed (retail constants not staged), carcass carry weight and pokos come from the P1 Chappy carcass config, and a captain flick is a plain release without knockback. In normal-squad runs the bot does not kill the Demon."
+      ],
+      "delivery_receipt": "onion:p2:32:3 (P2_DEMON_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log:L3926 receipt (sha256 eb38e61bcca84a8223b8745c2f84c98630b9973fd62a55fd5fd6b8cbf2668e1a)"
     },
     "34": {
       "native_module": "pc_p2_snakejoint",
@@ -725,24 +731,32 @@
       ]
     },
     "38": {
-      "native_module": "pc_p2_breadbug_actor",
+      "native_module": "pc_p2_breadbug_teki",
       "owner_lane": "18",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Breadbug (PanModoki, source 38): OWN campaign runs (#898, re-evidenced on the rebased -v2 exe after the second review). The engine-free source FSM pc_p2_breadbug_fsm (panModokiState.cpp) drives the campaign Breadbug: it is never a Pikmin or captain target (retail isLivingThing is bitter-only), wanders, grabs a carcass and hauls it home through Back -> CarryEnd -> Hide (health refill, carcass spared at the nest) -> Appear, dies to six thrown-Pikmin presses, is carried and delivers Onion receipt onion:p2:38:3 on its own generator token in three independent runs on the pinned exe.",
       "source": [
         "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
-        "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:38:3 on generator 1945764764 in three runs on native claude/p2-port-38-breadbug-v2 91fe15a50 (exe sha256 0248be824d662aea989703fdcce60aa84cda6e36343ed07d68c4ec95114a09c2): z2 output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log:L4898 (sha256 f89d2a6eb8691c51cdb449a991c4b03afc43b1f2ca941c1bacf1b1ac0c049c2f); z3 output/claude-orch/p2-breadbug-own/runs/z3-38/session/runs/09ee9f676ab28dbb3cd7ec03dd5f6683f01be8adace3201c56101bddce72890d/native.log:L5526 (sha256 c92a22070639aa65dbd798681880089e6ee8f972cfc55b5195f317be4fed506a); z6 output/claude-orch/p2-breadbug-own/runs/z6-38/session/runs/773fec4596b94d46f7857c61fa5a4beba26b956677522af84da5410a67fe7299/native.log:L6902 (sha256 b22c608f9bc8aeece5dc7846d45502fc0f5d3fdcde42da6be2315983646282a0)",
       "notes": [
-        "PanModoki (Breadbug): actor/proxy + contested cargo; natural contested cargo/nest ownership/reward remain (#168/#220)."
+        "PanModoki (Breadbug): #898 source FSM pc_p2_breadbug_fsm in the campaign; the P1 Collec TAI is suppressed and all of its events consumed. Retail isLivingThing() is bitter-only and the port has no bitter spray, so every P1 target-selection site (piki graspSituation, formation contact, bullet, thrown stick, captain punch entry and punch, lock-on/charge) skips a live bound Breadbug and ActAttack/ActJumpAttack refuse it as a backstop; the InteractAttack refusal remains and must log zero. Press (proper fp06 200) and container (fp04 1000) damage; PelletCarry tug at (min+max)/2 with the pellet following the source tug decision; P2 pose draw keyed on the FSM clip; onion:p2:38 delivery bind.",
+        "Campaign evidence, bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator. Pins: root 4laric/pikmin-randomizer claude/p2-port-38-breadbug-v2 (content staged with p2_prepare_content --species <pool>,38, prepared.json sha256 5df87ef5b98f68ab...), native 4laric/Open-Nectar claude/p2-port-38-breadbug-v2 91fe15a50 (rebased on fork/main a6cee5e85: captors #5, Groink shells #6), exe nectar.exe sha256 0248be824d662aea989703fdcce60aa84cda6e36343ed07d68c4ec95114a09c2, ninja -n: no work to do. z2 (output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log): L1259 OWN_BIND, L4732 OWN_DEAD, L4825 ESCAPE attacks_ignored=0 tai_changes=0, L4829 OWN_CORPSE carry 3..6, up to 6 carriers, L4898 receipt onion:p2:38:3 new=1, L4900 RESULT 1/1/1/1 (95 s). z3 (output/claude-orch/p2-breadbug-own/runs/z3-38/session/runs/09ee9f676ab28dbb3cd7ec03dd5f6683f01be8adace3201c56101bddce72890d/native.log): L1257 OWN_BIND, L3234 OWN_CONSUME on the Tank 24 carcass destroyed=0 spared=carcass_check_bound pikmin_killed=1, L5415 OWN_DEAD, L5452 ESCAPE attacks_ignored=0, L5454 OWN_CORPSE, up to 4 carriers, L5526 receipt new=1, L5528 RESULT 1/1/1/1 (122 s). z6 (output/claude-orch/p2-breadbug-own/runs/z6-38/session/runs/773fec4596b94d46f7857c61fa5a4beba26b956677522af84da5410a67fe7299/native.log): L1257 OWN_BIND, L3090 OWN_CONSUME destroyed=0 spared=carcass_check_bound pikmin_killed=0, L6789 OWN_DEAD, L6833 ESCAPE attacks_ignored=0, L6835 OWN_CORPSE, up to 6 carriers, L6902 receipt new=1, L6904 RESULT 1/1/1/1 (576 s). All three: zero OWN_ATTACK_IGNORED and zero OWN_TAI_TRANSITION lines, no fatal lines; each kill is six accepted 200-point presses (1100 -> -100).",
+        "Corpse-carry reliability (second review). Before the fix, 5 of 9 kills ended in a carry (b3, h1, k1, m2, n3 carried; h2, m1, v2c, v2d did not). Cause, from P2_BREADBUG_OWN_MOTION (read-only, added in ee870691f): the Damage/Dead body and the corpse pellet were moved by the captain, not by the FSM. The P1 teki drive and velocity x/z read 0 while the body moved, and its displacement followed the captain's velocity with the captain 16-25 u away (diagnostic run x2, damage phase). The generic bot aftermath walked the captain onto the corpse (it stopped ~20 u off, pushing the pellet) while the walking cursor sat ~78 u ahead, so thrown Pikmin flew over the small corpse and no carrier latched (v2c: 0 carriers for 60 s, cursor 78 u past the corpse). Bot fix (pad input only, source 38 only): stand 40-70 u off, slide the cursor onto the corpse with the P1 look band, throw only with the cursor within 12 u (ee870691f), and whistle once to regroup when the squad is scattered while the crew is short (91fe15a50; y1 on ee870691f held 2 carriers for 100 s with fewer than 5 Pikmin at the captain). Result on 91fe15a50: every kill whose corpse formed was carried and received (z2, z3, z6: 3 of 3); in those runs the dead body moved 0.3-14 u (z2: a ~5 u/s downhill creep on a ny=0.991 slope with nobody within 27 u) instead of 100-200 u. A player can still push a Breadbug body or its corpse by walking into it: that is P1 engine creature/pellet collision and applies to every P1 and P2 corpse; it does not change which check the corpse carries (the receipt is keyed on the generator token).",
+        "Carcass policy (#898 fix, retail divergence): a Breadbug never destroys a teki carcass. At Hide END it is released at the nest, stays carriable and is never re-picked by that Breadbug, so a carcass's delivery check can never be forfeited (v2e: the spared Tank 24 carcass was then delivered for onion:p2:24:3). Plain-pellet eating (retail endCarry kill) is UNTESTED at runtime: probe v2p placed the Breadbug about 280 u from the only plain pellet on stage 3 and it never targeted it. Owner eye-check: Pikmin still hanging on the cargo at Hide END are killed, as in retail endCarry (n3: 5 killed; z3: 1; z6: 0). Retail-faithful, but harsh for P1.",
+        "Port navigation: the P1 carry graph gave no path home on this stage (pathfinding=0), so Back hauls straight at the nest; a Back watchdog skips route nodes and, after 16 s wedged, releases the cargo (P2_BREADBUG_OWN_BACK_STUCK). Run c5 hit that release once at the Wtank carcass site.",
+        "Known gaps: no treasure hoarding (P1 ship parts are never targeted); the nest model is not spawned (home point only); corpse carry min/max come from the P1 Collec pellet config, not retail PanModoki carcass values; pose-bank draw, not skeletal playback; no bitter spray; the suck-finish is inferred from the held cargo leaving the Onion goal state; only stage 3 (spring_init_7002) is exercised end-to-end (stage 1 binding only, stage 0 never); the dead body can creep a few u/s down a slope (P1 ground contact).",
+        "Other stages: forest run f1 (diagnostic exe sha256 84c39c15e4032370..., output/claude-orch/p2-breadbug-own/runs/f1-38, log sha256 58d7890bc344c616...) rebound Forest of Hope slot hope_0-29_1831 (3138990329, stage 1, first day 2) to the Breadbug: P2_SEED_RESOLVE original_type=4, P2_PLACEMENT_SLOT actor=8, collec.mod and collec.anm loaded, OWN_BIND host_type=8 retail_parms=1 draw=p2_model, appear -> walk. The day-2 Forest generators load no native Collec (k-forest opened no tekis/collec), so this is the non-native Collec path (GenObjectTeki::updateUseList reserves the replacement type). The earlier k-forest (407876267, hope_4-29_1624) and k-impact (5465461, impact_9_1764) runs never spawned the target because those slots open on day 5 and day 10 and every run starts on day 2; they are not binding failures. Every Impact Site slot opens on day 8 or later, so no day-2 run can exercise one (true for every admitted species sharing these 35 slots); Impact binding rests on the same generic updateUseList path as Forest, not on an Impact run.",
+        "Superseded: n3 (native claude/p2-port-38-breadbug ab9f3513b, exe abcd1751...) was the first full chain but ran on the pre-rebase exe; its corpse was carried by 1-5 (L6177-6216 carriers=5), not 1-4 as first written. v2c/v2d (826cd5953, exe 0b550004...) killed the Breadbug and failed the carry; v2e on that exe delivered only Tank 24."
       ]
     },
     "40": {
@@ -1201,20 +1215,25 @@
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
       "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility_reason": "Man-at-Legs (Houdai, 66): own source brain P2HoudaiFsm (native fork claude/p2-port-66-houdai 49e634d17) completes a natural bot-driven power-mode kill, carry and Onion receipt, but it is NOT admitted: the legs never animate (bind pose, no IKSystemMgr, no clip sampling), the death model (source: no carcass, explode) is an open owner decision, and pool growth past 35 breaks placement until #893 lands (#173).",
       "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md"
+        "PIKMIN2_LONG_LEGS_POLICY.md",
+        "PIKMIN2_P2_CAMPAIGN_READINESS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "movement_animation": "FAIL",
         "attacks_receivers": "PASS",
-        "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Houdai (Man-at-Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+        "Lane campaign evidence (not admission): bot-driven power-mode run f4-66 (damage_mult 3), native 49e634d17, exe sha256 797745676ea6cba0816b092441f9e226df188c55fbc9470fd0b6bbbda1355cd1, root 41521921. Log output/claude-orch/p2-port-66/runs/f4-66/session/runs/9f94b37a43ce9b219025d4a6284d4d0fef80f9d1efcaa8e91304aab6d06124e9/native.log (sha256 70ee80b375241435eb95380c1cb9116a1c4532f7d37eb3656fff059de0ba71c7): L1723 P2_HOUDAI_INTANGIBLE on=1 (dormant body has no collision), L1724 own bind health=2800 parms=disc (logged once), L1725 delivery bind source_id=66 (once), L1895 Stay->Land, L1896 intangible off, L2088-2092 shell hits with the source sideways blast direction, 58 damage lines 2755->10, L2389 P2_LONG_LEGS_DEAD prior_health 10 (shells=44 hits 17 piki/2 navi), L2427 corpse register, L2745 receipt onion:p2:66:3 new=1, L2746 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1.",
+        "movement_animation FAIL: no animation playback at all. The bind-pose mesh slides during Walk (WALK_END 1.3/6.6/23.1 units in f4-66), holds the standing pose through Dead, and the carried corpse is the standing boss with legs. Owner decision pending on #173.",
+        "death_corpse BLOCKED: the source Houdai leaves no carcass (EB_LeaveCarcass off; StateDead throws up items and explodes). The port follows the 56/69 carriable-corpse precedent with the host pellet weight (one carrier moves it). Owner decision pending on #173.",
+        "Same-exe 56/69 runs f4-56 (L2370 receipt onion:p2:56:3) and f4-69 (L3670 receipt onion:p2:69:3), and the earlier f2-56 (L2417) and f3-69 (L5284; f2-69 has no receipt, its carry failed) only show bind/dead/receipt plumbing. They are NOT behaviour regression controls: the host max-life clamp drops Damagumo 1300->130 and BigFoot 10000->130 on the first damage line (f4-56 L1959, f4-69 L1952). Clamp fix tracked separately on #173.",
+        "Stay damage: stuck-Pikmin hits count at 1x in Stay per the US damageCallBack (unit test only; at runtime nothing can stick while dormant, like the source's out-of-reach body). Shells live about 0.1 s (fired almost straight down from the bind-pose gun height 112), so only muzzle and impact bursts are visible."
       ]
     },
     "68": {
@@ -1331,23 +1350,31 @@
     "73": {
       "native_module": "pc_p2_bigtreasure",
       "owner_lane": "32",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Titan Dweevil (BigTreasure, source 73): OWN campaign actor running the source BigTreasure FSM in the impact_goolix boss arena (owner ruling 2026-09-29 #3); fights with all four elements, loses its weapons to Pikmin hits on their own retail collision parts, dies naturally, and its carryable corpse (owner ruling 2026-09-29 #1) is carried to the Onion for receipt onion:p2:73:0 on its own generator token.",
       "source": [
         "PIKMIN2_BIGTREASURE_CONTRACT.md",
-        "PIKMIN2_BIGTREASURE_AUDIT.md"
+        "PIKMIN2_BIGTREASURE_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "BigTreasure (Titan Dweevil): ordinary FSM host + weapon/attack/element modules; real weapon damage + phase transition/drop remain (#246)."
-      ]
+        "BigTreasure (Titan Dweevil): #246 source-order core pc_p2_bigtreasure_own (12 BigTreasureState.cpp states, IK gait, key events, damageCallBack, flick, weapon pick/drop) driven by the campaign actor pc_p2_bigtreasure_teki on a TEKI_Swallow placement slot; P1 AI suppressed; retail enemycoll.txt tree (27 parts) replaces the Swallow collision while bound.",
+        "Campaign evidence, bot-driven power-mode run e7 (owner ruling 2026-09-25: power mode admits; x30 damage, 100 red Pikmin), natural playable seed bt-own-73-red-impact-0 (no rebind; 73 in impact_goolix), TEST-ONLY PIKMIN_P2_TEST_START_DAY=11 because the Goolix arena is live from day 9: output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log (sha256 f9ceec6c30bee188fbf53fceee73b761cbd0c6dc439a7c2d8e3767d1270c1658) L697 P2_BOSS_ARENA_BIRTH source_id=73 target=4019261003, L1366 COLL_BIND parts=27, L1367 BIND, 23 FSM lines with the strict Stay>Land>ItemWalk>PreAttack>Attack>PutItem order, 6 ATTACK_EMIT, 40 accepted receiver hits, L1787/L1820/L1934/L2031 WEAPON_DROP fire/water/elec/gas from Pikmin stuck to that weapon's part, L2032 COLL_UNARMED, body damage only after the last drop, L2060 DEAD, L2084 Louie release, L2089 CORPSE, L2139 receipt onion:p2:73:0 new=1, L2140 TEKI_FORGET remaining=0. Pins: root claude/p2-port-73-titan-v2 on origin/claude/p2-boss-arenas 6dd1b113, native claude/p2-port-73-titan-v2 ad5124e12 (on fork claude/p2-boss-arenas ac521a68b), exe nectar.exe sha256 2010385d86baaea759cadec364764d4b1e69f6cf5e6d721393959202f48f490a, content prepared.json sha256 4bc6641d5166818b...",
+        "Repeats on the same exe: e3, e4, e5, e6 and e8 kill, carry and deliver onion:p2:73:0 (their FSM took the source-legal ItemWalk>ItemWait branch, so only e7 meets the strict in-order scorer check). Earlier exes: a12 (304d984a, PASS_MARKERS), e2 (f65d1809, PASS_MARKERS); e1 (f65d1809) killed but the TEST-ONLY bot stalled at 2 of 10 carriers.",
+        "movement_animation (#246 review: 'the Titan snaps back to its spawn point'): not a teleport. Diagnostic runs d1-d3 (per-stage jump probes and pin/anchor logs) showed the old anchor pin never fired; the actor was tracking the IK foot-average centre, which is the source mPosition (BigTreasure::doUpdate: mPosition = IKSystemMgr::mCentrePosition). Turning in place moves one foot at a time, so the centre swings up to ~50 units mid-cycle and returns exactly to the cycle start (p2_bigtreasure_own_test gait/turn_cycles_return_to_start, gait/centre_moves_continuously). The pin is gone (native ad5124e12); P2_BIGTREASURE_POS now logs centre= and trace=, and across e2-e6 the actor stays within 4.9 units of the centre in every IK sample. The living body is drawn at the source trace centre (damped), as doAnimationIKSystem does; while the IK is off (Stay/Land) the actor is held at its bind point.",
+        "cleanup_reentry: TEST-ONLY day-cycle run rc2 (PIKMIN_P2_TEST_DAY_CYCLE=hurt:30,time:45,receipt:15,time:45; its sunsets use the pause menu's forceDayEnd, the world map re-enters the same stage, results/campaign save/teardown/next-day load are the real path; saves stay in the run's session dir) output/claude-orch/p2-bigtreasure-own/runs/rc2-73/session/runs/02fcef0cb9d24f3028dc99e7cd9aaa4d1dc02511508a220fc4203467acdb1b52/native.log (sha256 85c9f374c486dbe4f6982a0afebe60f395568b1f2285489bb9ce7aaa62c249b7): day 11 Titan hurt and alive at sunset (L1773), TEKI_FORGET remaining=0 at sunset (L1775), CAMPAIGN_SAVED; day 12 loads 11.gen, which has no arena generator (the Goolix arena is aliased from the even day files 10..28, so it is live on odd days), no Titan; day 13 (12.gen alias 2299547974 -> 4019261003) re-births the Titan fresh (L3743 ARENA_BIRTH, L4283 COLL_BIND parts=27, L4284 BIND health=5000 weapons=4), killed (L4717), carried, receipt onion:p2:73:0 new=1 (L4798), TEKI_FORGET (L4799); day 14 none; day 15 (14.gen alias) the Titan is re-born again after the day-13 receipt (L6646/L7189) and the run ends cleanly (L7356 DONE). No crash, no stale binding.",
+        "Owner rulings 2026-09-29: #1 the carryable corpse (the Swallow carcass pellet drawn as the Titan dead pose) is the accepted reward although the source Titan leaves none; #2 Titan gas stays lethal to every P1 colour; #3 the Titan is placed only in P1 boss arenas (it fits impact_goolix, clear 275 vs footprint 250).",
+        "Known gaps: the knocked-off weapons and Louie are not carryable P1 pellets; the carried corpse is not drawn in most carry frames (#908); no leg IK solve; element projectiles are not drawn; a Titan killed and delivered is re-born on the next odd day through the aliased arena generators (rc2 day 15) and a second delivery's receipt (expected new=0) is untested - whether a killed boss should return is an arena-policy question for #899."
+      ],
+      "delivery_receipt": "onion:p2:73:0 (P2_BIGTREASURE_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log:L2139 receipt (sha256 f9ceec6c30bee188fbf53fceee73b761cbd0c6dc439a7c2d8e3767d1270c1658)"
     },
     "75": {
       "native_module": "pc_p2_kabuto_cannon",
@@ -1571,7 +1598,7 @@
       "native_module": "pc_p2_dangomushi",
       "owner_lane": "25",
       "eligibility": "admitted",
-      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:94:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility_reason": "Segmented Crawbster (DangoMushi, source 94): #897 OWN-fidelity build placed in the impact_goolix boss arena (#899); natural power-mode kill in the Turn window, corpse carried, Onion receipt onion:p2:94:0 on the species' own generator token (v2f, repeat v2h). The arena goes live on day 9: a normal campaign meets 94 there on day 9 or later.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1580,13 +1607,15 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:94:3 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log:L2456 receipt (sha256 4a5a138eaa228226...)",
+      "delivery_receipt": "onion:p2:94:0 (DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a...",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3 Bind/dead/receipt on the own generator token (L1722 bind, L2338 dead, L2456 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 94 -> dangomushi (experimental/pikmin2_dangomushi_content). Log C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt.",
-        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+        "Arena campaign evidence: Bot-driven power-mode campaign v2f in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY PIKMIN_P2_TEST_START_DAY=11, since the arena goes live on day 9, so a normal campaign meets 94 there on day 9 or later): P2_BOSS_ARENA_BIRTH on the arena primary, bind, rain drawn (ROCK_DRAW), Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse drawn on the carried pellet (CORPSE_DRAW) and carried by 22, Onion receipt onion:p2:94:0. Log output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a....",
+        "Arena availability: the impact_goolix arena is live from day 9. The evidence runs start on day 11 through the TEST-ONLY PIKMIN_P2_TEST_START_DAY hook (logged TEST_ONLY); a normal campaign reaches the arena, and 94, on day 9 or later.",
+        "Full behaviour cycle on the same arena line (power 1, v2c, build e988a0306 = the admitted build minus the corpse cull radius and bot RESULT-latch fixes; log sha256 05094252febf0c1e...): two rolls into WALL_CRASH, two Turn windows, rain drawn each Turn (ROCK_DRAW L1465, L1744), claw FLICK L1668/L1673/L1865, lethal roll crush CRUSH_TALLY pressed_pikmin=25 dead=25 (L1727) and 9/9 (L1994). No kill in that run (health 1845/3000 at the 2400 s cap).",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); owner ruling 2026-09-29 keeps 94 in the pool."
       ]
     },
     "95": {

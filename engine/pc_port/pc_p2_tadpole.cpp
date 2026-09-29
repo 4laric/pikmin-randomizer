@@ -24,11 +24,14 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_tadpole.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
 #include "teki.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Generator.h"
 #include "gameflow.h"
 #include <cmath>
@@ -146,8 +149,8 @@ bool nearestTargetPos(const Vector3f& pos, Vector3f& out) {
     bool found = false;
     float bestSq = SIGHT * SIGHT;
     if (naviMgr) {
-        Navi* n = naviMgr->getNavi();
-        if (n && n->isAlive()) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
             const Vector3f p = n->getPosition();
             const float d = distXZsq(p, pos);
             if (d < bestSq) { bestSq = d; out = p; found = true; }
@@ -240,7 +243,7 @@ void setPhase(Tadpole& s) {
 void fireEvents(BTeki* a, Tadpole& s) {
     auto it = clips.find(s.clip);
     if (it == clips.end()) return;
-    const unsigned generator = a->mGenerator ? a->mGenerator->_70 : 0u;
+    const unsigned generator = a->mGenerator ? pc_p2_campaign_token(a) : 0u;
     for (const auto& event : it->second.events) {
         if (s.firedEvents.count(event.first)) continue;
         if (s.stateTime < event.first / 30.0f) continue;
@@ -286,6 +289,10 @@ float pc_p2_tadpole_param_f(const BTeki* actor, int idx, float fallback) {
     default:
         return fallback;
     }
+}
+
+bool pc_p2_tadpole_suppress_ai(const BTeki* actor) {
+    return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
 }
 
 bool pc_p2_tadpole_clip(const BTeki* actor, const char*& name, float& phase) {
@@ -354,6 +361,10 @@ void pc_p2_tadpole_setup() {
         if (!(in >> generator >> species)) return;
         if (species == "Tadpole") wanted[unsigned(generator)] = species;
     }
+    if (pc_randomizer_p2_bridge()) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(27)) wanted[id] = "Tadpole";
+    }
     if (wanted.empty()) return;
 
     std::set<unsigned> found;
@@ -361,34 +372,44 @@ void pc_p2_tadpole_setup() {
     CI_LOOP(it) {
         Teki* actor = static_cast<Teki*>(*it);
         if (!actor || !actor->mGenerator) continue;
-        auto match = wanted.find(actor->mGenerator->_70);
+        auto match = wanted.find(pc_p2_campaign_token(actor));
         if (match == wanted.end()) continue;
         if (actor->mTekiType != TEKI_Otama) {
-            std::printf("P2_TADPOLE_ERROR native_type generator=%u\n", actor->mGenerator->_70);
+            std::printf("P2_TADPOLE_ERROR native_type generator=%u\n", pc_p2_campaign_token(actor));
             std::fflush(stdout);
+            if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Tadpole", "actor_type_mismatch")) return;
             std::abort();
         }
         Tadpole& s = actors[static_cast<PelletView*>(actor)];
-        s.rng = (actor->mGenerator->_70 * 2654435761u) | 1u;
+        s.rng = (pc_p2_campaign_token(actor) * 2654435761u) | 1u;
         s.home = actor->getPosition();
         s.heading = actor->getDirection();
         s.hopGroundY = s.home.y;
         s.targetPosition = s.home;
         actor->mHealth = LIFE;
         enter(s, TADPOLE_WAIT, "wait1");
+        // Ordinary-delivery bridge (lane 06 contract, mirrors Catfish 26):
+        // bind source 27 to this live actor so GoalItem::suckMe can grant
+        // onion:p2:27 exactly once. Single-use: consumed on delivery and
+        // cleared on forget/recycle.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 27,
+                                     pc_p2_campaign_token(actor));
+        std::printf("P2_TADPOLE_DELIVERY_BIND generator=%u source_id=27\n",
+                    pc_p2_campaign_token(actor));
         std::printf("P2_TADPOLE_BIND generator=%u source_id=27 visual_only=0\n",
-                    actor->mGenerator->_70);
+                    pc_p2_campaign_token(actor));
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=Tadpole native_family=Otama generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
                     "source_FSM=implemented water=absent attack=none\n",
-                    actor->mGenerator->_70, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+                    pc_p2_campaign_token(actor), pos.x, pos.y, pos.z, actor->mHealth, LIFE);
         std::fflush(stdout);
-        found.insert(actor->mGenerator->_70);
+        found.insert(pc_p2_campaign_token(actor));
     }
     if (found.size() != wanted.size()) {
         std::printf("P2_TADPOLE_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
         std::fflush(stdout);
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Tadpole", "actor_roster_incomplete")) return;
         std::abort();
     }
     ready = true;
@@ -402,7 +423,20 @@ void pc_p2_tadpole_update(BTeki* actor) {
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+
+    // Host-AI suppression drain (rev6-misc5 Finding 1): the P1 TAI reaction
+    // path (TaiDamagingAction) normally applies stored damage through
+    // makeDamaged(), but BTeki::doAI is suppressed for registered actors, so
+    // the source FSM applies pending damage itself. Mirrors
+    // pc_p2_frog_suppress_ai (pc_p2_frog.cpp).
+    if (actor->mStoredDamage > 0.0f) {
+        actor->makeDamaged();
+        if (actor->mHealth > 0.0f) {
+            std::printf("P2_TADPOLE_DAMAGE generator=%u source_id=27 health=%.1f\n", generator, actor->mHealth);
+            std::fflush(stdout);
+        }
+    }
 
     if (actor->mHealth <= 0.0f && s.state != TADPOLE_DEAD) {
         if (!s.deadLogged) {

@@ -28,6 +28,7 @@ bool pc_randomizer_group_slots();
 // P2 enemy bridge: versioned roster bindings parsed from ENEMY_P2. The target
 // token comes from lane 04 placement; 0 means the target is not bound.
 bool pc_randomizer_p2_bridge();
+bool pc_randomizer_p2_proxy_tier();
 unsigned pc_randomizer_p2_source(const char* target);
 unsigned pc_randomizer_p2_binding_count();
 bool pc_randomizer_p2_bound(unsigned source_id);
@@ -68,6 +69,10 @@ void pc_randomizer_p2_delivery_reset();
 // Returns true when a bound P2 delivery was handled; callers use the return value
 // so a bound P2 corpse is never ALSO credited to the P1-proxy bestiary check.
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay);
+// Read-only receipt query for the TEST-ONLY autoplay bot (bot-v2 gap 1):
+// true once this process granted (or saw a durable duplicate of) the Onion
+// corpse receipt for `generatorUid`. Never mutates the ledger.
+bool pc_randomizer_p2_receipt_seen(unsigned generatorUid);
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator);
 void pc_randomizer_bad_spawn_cache();
 int pc_randomizer_field_capacity();
@@ -80,6 +85,13 @@ bool pc_randomizer_prerelease_traps();
 bool pc_randomizer_consume_benefit(PcBenefit kind);
 float pc_randomizer_benefit_multiplier(PcBenefit kind);
 float pc_randomizer_captain_movement_multiplier();
+// Received maturity tier (0 leaf, 1 bud, 2 flower) for a native color: blue 0, red 1, yellow 2.
+int pc_randomizer_maturity(int color);
+// Playable day length scale from Progressive Day Length items; 1.0 when disabled.
+float pc_randomizer_day_length_multiplier();
+// Whistle Pluck item: -1 when the seed does not carry it (the Mods setting
+// decides), otherwise 1 once received and 0 before.
+int pc_randomizer_whistle_pluck();
 void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gameplay);
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay);
 void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay);

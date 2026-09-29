@@ -18,6 +18,7 @@
 #include "SoundMgr.h"
 #include "Stickers.h"
 #include "bugprint.h"
+#include "settings/pc_settings.h"
 
 /**
  * @todo: Documentation
@@ -36,6 +37,10 @@ DEFINE_PRINT("interactBattle");
  */
 bool InteractBomb::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (!piki->isAlive()) {
 		return false;
 	}
@@ -175,6 +180,10 @@ bool InteractSpore::actPiki(Piki* piki) immut
  */
 bool InteractBubble::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (!piki->isAlive()) {
 		return false;
 	}
@@ -199,6 +208,10 @@ bool InteractBubble::actPiki(Piki* piki) immut
  */
 bool InteractFire::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (!piki->isAlive()) {
 		return false;
 	}
@@ -447,6 +460,10 @@ bool InteractAttack::actCommon(Creature* creature) immut
  */
 bool InteractAttack::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (!piki->isAlive()) {
 		return false;
 	}
@@ -495,6 +512,10 @@ bool InteractSwallow::actCommon(Creature*) immut
  */
 bool InteractSwallow::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (!piki->isAlive()) {
 		ERROR("try to swallow dead piki!\n");
 	}
@@ -613,6 +634,10 @@ bool InteractKill::actNavi(Navi* navi) immut
  */
 bool InteractPress::actPiki(Piki* piki) immut
 {
+	// Cheat "Invincible Pikmin".
+	if (pc_settings_get_piki_invincible()) {
+		return false;
+	}
 	if (piki->getState() == PIKISTATE_Pressed) {
 		return false;
 	}

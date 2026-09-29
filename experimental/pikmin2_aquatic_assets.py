@@ -25,7 +25,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, u16, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Concrete generator IDs. UmiMushi, UmiMushiBase and UmiMushiBlind share the
 # generic data/resources below; opaque import name is the shared UmiMushi key.
@@ -36,7 +36,7 @@ METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemyst
 # material palette animation. Both are hashed and byte-preserved only.
 EXTRA_DISC_FILES = {'Jigumo': 'enemy/data/Jigumo/kochappy_body_s3tc.1.bti',
                     'UmiMushi': 'enemy/data/UmiMushi/umimusi_model1.btk'}
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # enemyanimmgr.txt registration order (with duplicate names where the disc has
 # them): (file stem, events). Catfish repeats wait1.bca three times; only the
@@ -322,10 +322,8 @@ def extract(iso, source, output, pose_limit=6):
                     frames = sample_frames(duration, pose_limit)
                     for number, frame in enumerate(frames):
                         try:
-                            _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                            matrices = draw_matrices(model_blocks, pose)
                             tolerances = TOLERANCES.get(species, {})
-                            decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices, **tolerances)
+                            decoded, pose = decode_pose(decode, model, model_blocks, raw, frame, len(names), **tolerances)
                             name = f'aquatic_{species}_{stem}_{number:02}.mod'
                             conversion = write_model(decoded, root / name, 'enemy.bmd')
                             conversion.update(source='enemy.bmd', output=name,
