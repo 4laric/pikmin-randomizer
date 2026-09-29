@@ -3807,6 +3807,7 @@
       "first_day": 9,
       "respawn_days": 0,
       "protected_drop": null,
+      "held_part_transfer": false,
       "measured": {
         "uid": 4019261003,
         "clear": 275,
@@ -3845,6 +3846,7 @@
       "first_day": 2,
       "respawn_days": 5,
       "protected_drop": null,
+      "held_part_transfer": false,
       "measured": {
         "uid": 295337326,
         "clear": 200,
@@ -3887,6 +3889,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part (pellet config 29)",
+      "held_part_transfer": false,
       "measured": {
         "uid": 4260179239,
         "clear": 200,
@@ -3923,6 +3926,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part (pellet config 26)",
+      "held_part_transfer": false,
       "measured": {
         "uid": 304372265,
         "clear": 250,
@@ -3959,6 +3963,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part uf09",
+      "held_part_transfer": false,
       "measured": {
         "uid": 2974383966,
         "clear": 350,
@@ -3995,6 +4000,7 @@
       "first_day": 2,
       "respawn_days": 30,
       "protected_drop": "ship part ust1",
+      "held_part_transfer": false,
       "measured": {
         "uid": 2903640892,
         "clear": 250,
@@ -4030,7 +4036,8 @@
       ],
       "first_day": 2,
       "respawn_days": 30,
-      "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal"
+      "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal",
+      "held_part_transfer": false
     }
   ]
 }
