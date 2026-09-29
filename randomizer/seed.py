@@ -573,6 +573,25 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
         },
     },
+    {
+        "source_id": 30,
+        "enum_name": "Queen",
+        "family": "queen",
+        "evidence": {
+            "run": "Bot-driven campaign rv0 (#256 review fix, AUTOPLAY_POWER squad=80, damage_mult=1): seed "
+                   "queen-admit-0 with no rebind, queen_arena placed the Empress Bulblax on her one proven boss "
+                   "slot 3921089765; source Queen FSM Wait->Damage->Flick->Rolling (crashes, return to Wait), "
+                   "Born with larvae, rolling presses and flicks on Pikmin, engine health 5000->0 from real "
+                   "Pikmin hits, P2_QUEEN_DEAD, carcass carried 20-30, Onion receipt onion:p2:30:3 on its own "
+                   "token. Supporting: adm0 (natural placement) and q4 (rebound seed) on the pre-fix exe",
+            "log": "output/wt-p2port-30-orch/runs/rv0-30/session/runs/838dd559fa357dfd4ecfcaa3767aacd2356c2951f41de04bbb5b6dd092725e4c/native.log "
+                   "(sha256 58442ed0dbec2dd4...) L1492 bind, L3985 dead, L4212 receipt; native ed6ed9edd, "
+                   "exe sha256 9c428232...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 30 -> queen "
+                         "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage)",
+        },
+    },
 )
 
 

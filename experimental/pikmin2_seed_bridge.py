@@ -57,7 +57,7 @@ PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78)
+                25, 15, 78, 30)
 
 
 class SeedBridgeError(ValueError):
@@ -167,6 +167,27 @@ def _accepted_placement_targets(document, roster: list[RosterEntry]) -> dict[int
     return accepted
 
 
+def _single_arena_sources(document, roster: list[RosterEntry]) -> set[int]:
+    """Source ids of boss profiles whose encounter descriptor allows one arena.
+
+    A boss such as the Empress Bulblax (#256, ``queen_arena`` with
+    ``arena_slots.max == 1``) is bound to at most one target per seed: a
+    left-over boss slot stays vanilla instead of repeating the boss.
+    """
+    encounters = {e.get("id"): e for e in (document or {}).get("encounters", []) or []}
+    by_enum = {entry.enum_name: entry.source_id for entry in roster}
+    result = set()
+    for profile in (document or {}).get("profiles", []) or []:
+        if not profile.get("is_boss"):
+            continue
+        descriptor = encounters.get(profile.get("encounter_descriptor"))
+        if descriptor and (descriptor.get("arena_slots") or {}).get("max") == 1:
+            source_id = by_enum.get(profile.get("identity"))
+            if source_id is not None:
+                result.add(source_id)
+    return result
+
+
 def binding_targets_from_placement(document, roster: list[RosterEntry] | None = None) -> list[str]:
     """Ordered lane 04 constraint-compatible targets for the admitted cohort.
 
@@ -217,6 +238,8 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
         union.update(tokens)
     validated = validate_document(document)
     terrain_by_uid = {str(item["uid"]): item["terrain"] for item in validated["slots"]}
+    # A boss slot (#256) hosts only its boss's encounter; never a proxy.
+    union -= {str(item["uid"]) for item in validated["slots"] if item.get("boss_slot")}
     reserved: set[str] = set()
     pack_uids: set[str] = set()
     pack_hosts: set[int] | None = None
@@ -360,15 +383,19 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
             remaining.remove(target)
             if not remaining:
                 break
+        single_arena = _single_arena_sources(document, roster)
         for target in list(remaining):
             # Never waste a slot on a repeat while an eligible unplaced species
             # exists: prefer pool ids not yet covered on this target; only when
             # every eligible id is already placed (e.g. a pack target whose
             # small-host pool is exhausted) fall back to any eligible id.
+            # A single-arena boss is never repeated (#256): its target stays vanilla.
             covered_so_far = set(assigned.values())
             fresh = [source_id for source_id in eligible[target]
                      if source_id not in covered_so_far]
-            assigned[target] = rng.shuffle(fresh or eligible[target])[0]
+            repeat = [source_id for source_id in eligible[target] if source_id not in single_arena]
+            if fresh or repeat:
+                assigned[target] = rng.shuffle(fresh or repeat)[0]
         if len(assigned) > 64:
             raise SeedBridgeError(
                 "P2 layout exceeds the native 64-binding cap "
@@ -437,15 +464,24 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         target = rng.shuffle(choices)[0]
         assigned[target] = source_id
         remaining.remove(target)
+    # A single-arena boss (#256 Queen, arena_slots.max == 1) is bound once;
+    # its other boss targets stay vanilla rather than repeating it.
+    single_arena = _single_arena_sources(document, roster)
+
+    def _repeat_choices(target):
+        return [source_id for source_id in eligible[target] if source_id not in single_arena]
+
     if policy == DENSITY_LEGACY:
         for target in remaining:
-            assigned[target] = rng.shuffle(eligible[target])[0]
+            if _repeat_choices(target):
+                assigned[target] = rng.shuffle(_repeat_choices(target))[0]
     if sampled:
         # A target is left over only when every species it accepts already
         # holds another target (the loop above gives each species with a free
         # choice one), so it repeats an eligible species as the legacy fill does.
         for target in remaining:
-            assigned[target] = rng.shuffle(eligible[target])[0]
+            if _repeat_choices(target):
+                assigned[target] = rng.shuffle(_repeat_choices(target))[0]
         bindings = [{"target": target, "source_id": source_id,
                      "enum_name": by_source[source_id].enum_name}
                     for target, source_id in sorted(assigned.items(), key=lambda item: (len(item[0]), item[0]))]

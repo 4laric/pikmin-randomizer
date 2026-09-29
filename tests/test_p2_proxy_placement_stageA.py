@@ -375,9 +375,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     # Twelve more pool identities (admitted, non-proxy) bring the pool to the
     # exact 35-slot fit: 8 playable + 10 pool + 17 proxies = 35.
-    # Queen 30 left the proxy tier for its OWN boss installer (#256); Armor
-    # 15 (admitted, non-proxy) keeps the exact 35-slot fit.
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 15]
+    # Queen 30 left the proxy tier for its OWN boss installer and her one
+    # proven boss slot hosts only her (#256): the exact fit is now 34
+    # non-boss species on the 34 ordinary slots plus the Queen on her slot.
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 30]
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):

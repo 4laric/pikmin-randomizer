@@ -706,16 +706,16 @@
       "label": "spring_0-14_231",
       "stage": 3,
       "terrain": "ground",
-      "radius": 100.0,
+      "radius": 250.0,
       "water_depth": 0,
       "flight_space": false,
       "burrow_ground": true,
       "home": false,
-      "helper_capacity": 0,
+      "helper_capacity": 10,
       "projectile_corridor": false,
       "corpse_route": true,
       "protected": false,
-      "boss_slot": false,
+      "boss_slot": true,
       "first_day": 2,
       "respawn_days": 30,
       "source_identity": "campaign:ground:32",
@@ -3532,8 +3532,65 @@
       "min_first_day": 0,
       "notes": "P2 source_id 45; lane-04 constraint seed; p1_equivalent none; placement cohort None; requires_home False; native placement gate pending family lane 13.",
       "cohort": null
+    },
+    {
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 24,
+      "footprint_radius": 250.0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 10,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": true,
+      "encounter_descriptor": "queen_arena",
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn",
+        "placement.boss_clearance"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "P2 source_id 30 (#256): boss profile on the queen_arena descriptor; accepted only on boss slot 3921089765 (spring_0-14_231), the one measured boss slot with a natural bot-driven kill, carcass carry and onion:p2:30 receipt. Must match native pc_p2_campaign_placements.h case 30. Forest 2506165730 and navel 2700289662 passed the static clearance probe but are NOT accepted: forest run admf5 bound her (bound=1) and then ended AUTOPLAY_GIVEUP target_unreachable with damaged=0, and navel was never run with the Queen.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        3921089765
+      ]
     }
   ],
-  "encounters": [],
+  "encounters": [
+    {
+      "id": "queen_arena",
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 250.0,
+      "helper_budget": 10,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "roll",
+        "flick",
+        "larva_birth",
+        "death",
+        "reward"
+      ],
+      "notes": "Empress Bulblax arena (#256): territory 200 plus a 50 roll margin needs a flat, dry, wall-free disc of radius >= 250 (P2_BOSS_SLOT_PROBE, native pc_p2_placement_probe.cpp: 16 rays, 25-unit steps, no >20 height step, within 60 of the slot height, no water). Probe runs output/wt-p2port-30-orch/runs/probe1-* (native 7baec391e): spring 3921089765 clear 250 (wall_rays 2, at the limit), forest 2049888785 clear 275, forest 2506165730 clear 300, navel 2700289662 clear 275; every other probed slot < 250; impact slots (first_day 10) unprobed. Static clearance is necessary, not sufficient: a slot is a boss slot only after a natural kill + 20-30 carcass carry + onion:p2:30 receipt on it. Only spring 3921089765 has that (runs adm0, q4, and the review-fix rerun); forest 2506165730 (admf5: target_unreachable, no damage) and navel 2700289662 (never run) stay ordinary slots, and 2049888785 is the proxy-shared singleton. helper_budget = the native larva cap (10)."
+    }
+  ],
   "notes": "Lane-04 admitted-cohort placement: the admitted identities (23 Sarai, 44 BlueKochappy, 54 Miulin, 57 Kurage, 59-62 elemental Otakara Dweevils, 78 MiniHoudai) share one accepted constraint-compatible target set from the generated-placement bridge."
 }
