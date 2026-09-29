@@ -42,6 +42,20 @@ class Creature;
 void pc_p2_umimushi_setup();
 void pc_p2_umimushi_reset();
 void pc_p2_umimushi_forget(BTeki*);
+// Death-/birth-time Piki forget hook (#886): drop a held-mouth registration
+// for a Pikmin that died or whose pool slot is being reused.
+void pc_p2_umimushi_forget_piki(class Piki*);
 void pc_p2_umimushi_update(BTeki*);
+bool pc_p2_umimushi_suppress_ai(const BTeki*);
+// Engine-free suppression predicate shared by pc_p2_umimushi_suppress_ai
+// and the focused gate test. The P2 FSM drives movement/targeting/attacks
+// every tick for a registered bloyster (ordinary 71 or Blind 101), so the
+// P1 Chappy host strategy (BTeki::doAI) must not run for it; unregistered
+// actors are unaffected. Mirrors pc_p2_frog_suppress_ai.
+inline bool pc_p2_umimushi_suppressed(bool registered) {
+    return registered;
+}
 float pc_p2_umimushi_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_umimushi_clip(const BTeki*, const char*& name, float& phase);
+bool pc_p2_umimushi_receipt(class PelletView*, unsigned&);
+int pc_p2_umimushi_bound_count();

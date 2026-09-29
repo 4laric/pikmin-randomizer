@@ -13,6 +13,7 @@ The package is refused when it would contain *.pdb, *session.json, native.log, a
 C:\\Users\\, or an executable built with test hooks (the string PIKMIN_RANDOMIZER_TEST_SCRIPT; the
 production build does not contain it).
 """
+import re
 import argparse
 import hashlib
 import json
@@ -254,6 +255,19 @@ def audit(stage):
         raise PackageError("package contains prohibited content:\n  " + "\n  ".join(problems))
 
 
+def engine_source_commit(repo):
+    """The native commit engine/ was exported from, as ENGINE_SOURCE.md records it.
+
+    A clean release checkout has no native/ checkout beside it; the exe is then
+    built from engine/, whose provenance is this record.
+    """
+    record = repo / "ENGINE_SOURCE.md"
+    if not record.is_file():
+        return None
+    found = re.search(r"native commit `([0-9a-f]{40})`", record.read_text(encoding="utf-8"))
+    return found.group(1) if found else None
+
+
 def write_manifest(stage, repo, version, exe, runtime_version):
     files = [{"path": p.relative_to(stage).as_posix(), "size": p.stat().st_size}
              for p in sorted(stage.rglob("*")) if p.is_file()]
@@ -261,7 +275,7 @@ def write_manifest(stage, repo, version, exe, runtime_version):
         "name": "pikmin-randomizer",
         "version": version,
         "git_commit": git(["rev-parse", "HEAD"], repo),
-        "native_commit": git(["rev-parse", "HEAD"], repo / "native"),
+        "native_commit": git(["rev-parse", "HEAD"], repo / "native") or engine_source_commit(repo),
         "exe_sha256": sha256(exe),
         "python_runtime": runtime_version,
         "files": files,

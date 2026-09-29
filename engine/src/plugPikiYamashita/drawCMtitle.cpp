@@ -2,6 +2,9 @@
 #include "nlib/Math.h"
 #include "sysNew.h"
 #include "zen/DrawCM.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_gfx.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -90,7 +93,12 @@ bool zen::DrawCMtitleObj::modeAppear()
 		tComp = 1.0f - t;
 	}
 
+#if defined(PIKI_PC_PORT)
+	const f32 m = f32(pc_gfx_menu_shift_center()); // pikminws: -2648 / 3392 en 16:9
+	mTitlePane->move(RoundOff(-(1920.0f + 7.0f * m) * t + (2560.0f + 8.0f * m) * tComp), 240);
+#else
 	mTitlePane->move(RoundOff(-1920.0f * t + 2560.0f * tComp), 240);
+#endif
 	return res;
 }
 

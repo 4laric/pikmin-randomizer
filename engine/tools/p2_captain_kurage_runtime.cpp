@@ -1,3 +1,4 @@
+#include "p2_putenv_compat.h"
 // #130: real engine provider/consumer lifecycle diagnostic, ported from
 // codex/p2-lane12-review (7 commits ba9d7f3a0..6f67ca7a5) onto the
 // claude/p2-deepseek-wave-native captain API (reduced lane rd-captain-kurage).

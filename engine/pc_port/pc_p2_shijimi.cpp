@@ -40,6 +40,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "ItemMgr.h"
 #include "ObjType.h"
 #include <map>
@@ -218,7 +219,7 @@ void fly(BTeki* a, Shijimi& s, float dt) {
 // Source Obj::leaveInit: the leader departs 500 units behind the captain.
 void leaveInit(BTeki* a, Shijimi& s, float dt) {
 	if (s.isLeader && naviMgr) {
-		Navi* n = naviMgr->getNavi();
+		Navi* n = pc_p2_source_active_navi(a->getPosition()); // shijimiChou.cpp:1595
 		if (n) {
 			const Vector3f navi = n->getPosition();
 			const float angle = n->mFaceDirection;

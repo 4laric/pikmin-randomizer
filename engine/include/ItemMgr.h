@@ -101,6 +101,12 @@ public:
 	virtual void refresh2d(Graphics&); // _80
 
 	GoalItem* getContainer(int color);
+#if defined(PIKI_PC_PORT)
+	/// VS: la cebolla de ese color que pertenece al jugador (fuera de VS, getContainer).
+	GoalItem* pcGetContainer(int color, int owner);
+	/// VS: el cohete del jugador (fuera de VS, getUfo).
+	UfoItem* pcGetUfo(int owner);
+#endif
 	GoalItem* getNearestContainer(immut Vector3f&, f32);
 	UfoItem* getUfo();
 	void addUseList(int);

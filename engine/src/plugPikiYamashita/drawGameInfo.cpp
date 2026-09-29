@@ -12,6 +12,12 @@
 #if defined(PIKI_PC_PORT)
 #include "Geometry.h"
 #include "pc_gfx.h"
+#include "pc_art.h"
+#include "pc_coop.h"
+#include "PikiMgr.h"
+#endif
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
 #endif
 #include "zen/Math.h"
 #include "zen/Number.h"
@@ -89,6 +95,24 @@ struct PikiIconCallBack : public P2DPaneCallBack {
 		mNextThrowType = zen::pGameInfo->mEncodedNextThrowType;
 		return true;
 	}
+
+#if PIKI_PC_TOUCH
+	virtual bool draw(P2DPane* pane) // _0C
+	{
+		// Se llama justo después de drawSelf, con la matriz del pane aún
+		// cargada: el cuadrado (0,0)-(w,h) es exactamente lo que se ha
+		// pintado, escala incluida. Proyectado a ventana, la capa táctil lo
+		// usa como zona de toque para cambiar de color.
+		if (zen::pGameInfo->mEncodedNextThrowType != 0) {
+			float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+			if (pc_gfx_project_current(0.0f, 0.0f, 0.0f, &x0, &y0)
+			    && pc_gfx_project_current(f32(pane->getWidth()), f32(pane->getHeight()), 0.0f, &x1, &y1)) {
+				pc_touch_mark_color_icon(x0, y0, x1, y1);
+			}
+		}
+		return true;
+	}
+#endif
 
 	static const f32 frameMax;
 
@@ -192,7 +216,7 @@ struct LifePinchCallBack : public P2DPaneCallBack {
 		Navi* navi      = nullptr;
 		f32 healthRatio = 0.0f;
 		if (naviMgr) {
-			navi        = naviMgr->getNavi(0);
+			navi        = naviMgr->getNavi(zen::gHudNaviIndex);
 			healthRatio = navi->mHealth / C_NAVI_PARM(navi, mHealth);
 		}
 
@@ -279,7 +303,25 @@ struct NaviTexCallBack : public P2DPaneCallBack {
 	{
 		P2DPicture* pic = static_cast<P2DPicture*>(pane);
 		if (naviMgr) {
-			Navi* navi = naviMgr->getNavi(0);
+			Navi* navi = naviMgr->getNavi(zen::gHudNaviIndex);
+#if defined(PIKI_PC_PORT)
+			// Retrato del capitán: Louie (Pikmin 2) o, para un capitán Pikmin, el
+			// icono de burbuja del propio juego con hoja (el del contador).
+			if (!mOriginalTex) mOriginalTex = pic->getTexture(0);
+			static Texture* sPikiPortrait[PikiColorCount] = {};
+			static const char* kPikiPortrait[PikiColorCount] = { "screen/tex/bp_l64.bti", "screen/tex/rp_l64.bti", "screen/tex/yp_l64.bti" };
+			const int captain  = navi->pcCaptain();
+			const int pikColor = pc_captain_piki_color(captain);
+			Texture* custom    = nullptr;
+			if (pikColor >= 0) {
+				if (!sPikiPortrait[pikColor]) sPikiPortrait[pikColor] = zen::loadTexExp(kPikiPortrait[pikColor], true, true);
+				custom = sPikiPortrait[pikColor];
+			} else if (captain == PC_CAPTAIN_LOUIE) {
+				custom = pc_art_texture("coop_portrait_louie");
+			}
+			Texture* want = custom ? custom : mOriginalTex;
+			if (want && pic->getTexture(0) != want) pic->setTexture(want, 0);
+#endif
 			if (navi->mHealth == 0.0f) {
 				u8 alpha = pic->getAlpha();
 				if (alpha > 3) {
@@ -296,6 +338,9 @@ struct NaviTexCallBack : public P2DPaneCallBack {
 
 	// _00     = VTBL
 	// _00-_04 = P2DPaneCallBack
+#if defined(PIKI_PC_PORT)
+	Texture* mOriginalTex = nullptr;
+#endif
 };
 
 /**
@@ -314,7 +359,7 @@ struct NaviIconCallBack : public P2DPaneCallBack {
 	{
 		Navi* navi = nullptr;
 		if (naviMgr) {
-			navi = naviMgr->getNavi(0);
+			navi = naviMgr->getNavi(zen::gHudNaviIndex);
 		}
 		if (mIsDamaged) {
 			f32 a = mDamageAnimPhase += (PI / 3.0f);
@@ -578,7 +623,12 @@ struct MapPikminWindowCallBack : public P2DPaneCallBack {
 			mPulseTimer -= 2.0f;
 		}
 
+#if defined(PIKI_PC_PORT)
+		// VS: lleno al llegar al tope del jugador (la mitad del límite).
+		if (zen::pGameInfo->mMapPikiNum == (pc_vs_active() ? pcVsFieldLimit() : MAX_PIKI_ON_FIELD)) {
+#else
 		if (zen::pGameInfo->mMapPikiNum == MAX_PIKI_ON_FIELD) {
+#endif
 			mPulseStrength += gsys->getFrameTime();
 			if (mPulseStrength > 1.0f) {
 				mPulseStrength = 1.0f;
@@ -605,10 +655,21 @@ struct MapPikminWindowCallBack : public P2DPaneCallBack {
 } // namespace
 
 zen::GameInfo* zen::pGameInfo;
+#if defined(PIKI_PC_PORT)
+int zen::gHudNaviIndex = 0;
+#endif
 
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+zen::DrawGameInfo::DrawGameInfo(zen::DrawGameInfo::playModeFlag playMode, int naviIndex)
+    : DrawGameInfo(playMode)
+{
+	mNaviIndex = naviIndex;
+}
+#endif
+
 zen::DrawGameInfo::DrawGameInfo(zen::DrawGameInfo::playModeFlag playMode)
 {
 	mUpperScreenMgr = new DGIScreenMgr("screen/blo/play09.blo");
@@ -766,6 +827,10 @@ zen::DrawGameInfo::DrawGameInfo(zen::DrawGameInfo::playModeFlag playMode)
  */
 void zen::DrawGameInfo::update()
 {
+#if defined(PIKI_PC_PORT)
+	gHudNaviIndex = mNaviIndex;
+	pGameInfo     = &mInfo;
+#endif
 	mUpperScreenMgr->update();
 	mLowerScreenMgr->update();
 	mModeScreenMgr->update();
@@ -777,9 +842,107 @@ void zen::DrawGameInfo::update()
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+// play_day.blo es plano: el día (y≈63) y los contadores (y≥390) son hijos
+// directos de ROOT sin agrupar. Se separan por posición vertical, que
+// también coge los adornos sin nombre (barras "/", marco).
+static void hidePanesByRow(zen::DGIScreenMgr* mgr, bool hideTop, bool on)
+{
+	// Los panes cuelgan del pane 'ROOT' del BLO, no de la P2DScreen.
+	P2DPane* root = mgr->search('ROOT');
+	if (!root) {
+		root = mgr->root();
+	}
+	PSUTreeIterator<P2DPane> iter(root->getPaneTree()->getFirstChild());
+	while (iter != root->getPaneTree()->getEndChild()) {
+		P2DPane* pane   = iter.getObject();
+		const bool top  = pane->getPosV() < 300;
+		if (top == hideTop) {
+			if (on) pane->hide(); else pane->show();
+		}
+		++iter;
+	}
+}
+
+void zen::DrawGameInfo::setDatePanesVisible(bool on)
+{
+	hidePanesByRow(mModeScreenMgr, true, !on);
+}
+
+void zen::DrawGameInfo::drawShared(Graphics& gfx)
+{
+	gHudNaviIndex = mNaviIndex;
+	pGameInfo     = &mInfo;
+	if (!mDateScreenMgr) {
+		mDateScreenMgr = new DGIScreenMgr("screen/blo/play_day.blo");
+		hidePanesByRow(mDateScreenMgr, false, true);
+		P2DPane* pane   = mDateScreenMgr->search('dc_c');
+		P2DPane* lPane  = mDateScreenMgr->search('dc_l');
+		P2DPane* rPane  = mDateScreenMgr->search('dc_r');
+		P2DPane* scPane = mDateScreenMgr->search('dcsc');
+		P2DPane* slPane = mDateScreenMgr->search('dcsl');
+		P2DPane* srPane = mDateScreenMgr->search('dcsr');
+		if (pane && lPane && rPane && scPane && slPane && srPane) {
+			pane->setCallBack(new DateCallBack(pane, lPane, rPane, scPane, slPane, srPane));
+		}
+		mDateScreenMgr->makeResident();
+		mDateScreenMgr->displayOn();
+	}
+	pc_gfx_set_hud_wide(1);
+	const int virtW = pc_gfx_get_hud_virtual_width();
+	const int dx    = virtW - 640;
+	Matrix4f ortho;
+	gfx.setOrthogonal(ortho.mMtx, RectArea(0, 0, virtW, gfx.mScreenHeight));
+	gfx.setFog(false);
+	GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+	if (!pc_vs_active()) // VS: sin indicador del sol (el día no avanza)
+		mUpperScreenMgr->draw(&perspGraph, dx / 2);
+	mDateScreenMgr->update();
+	if (!pc_vs_active()) mDateScreenMgr->draw(&perspGraph, dx);
+	pc_gfx_set_hud_wide(0);
+}
+
+void zen::DrawGameInfo::drawPlayer(Graphics& gfx)
+{
+	gHudNaviIndex = mNaviIndex;
+	pGameInfo     = &mInfo;
+	// Ancho virtual según el aspecto de la mitad. Si es menor que 640, el
+	// espacio virtual pasa a ser 640 x (640/aspecto): el HUD queda reducido
+	// y se ancla abajo con un desplazamiento vertical.
+	const f32 viewAspect = pc_gfx_get_current_aspect_ratio();
+	int virtW = int(lroundf(480.0f * viewAspect));
+	int virtH = 480;
+	if (virtW < 640) {
+		virtW = 640;
+		virtH = int(lroundf(640.0f / viewAspect));
+	}
+	pc_gfx_set_hud_virtual_size(virtW, virtH);
+	pc_gfx_set_hud_wide(1);
+	const int dx = virtW - 640;
+	const int dy = virtH - 480;
+	Matrix4f ortho;
+	gfx.setOrthogonal(ortho.mMtx, RectArea(0, 0, virtW, virtH));
+	mDamageEffect.draw(gfx);
+	gfx.setFog(false);
+	GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+	P2DPerspGraph perspGraph(0, 0, virtW, virtH, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+	mLowerScreenMgr->drawAt(&perspGraph, 0, dy, 1.0f);
+	setDatePanesVisible(false);
+	mModeScreenMgr->drawAt(&perspGraph, dx, dy, 1.0f);
+	setDatePanesVisible(true);
+	pc_gfx_set_hud_wide(0);
+	pc_gfx_set_hud_virtual_size(0, 0);
+}
+#endif
+
 void zen::DrawGameInfo::draw(Graphics& gfx)
 {
 #if defined(PIKI_PC_PORT)
+	gHudNaviIndex = mNaviIndex;
+	pGameInfo     = &mInfo;
 	pc_gfx_set_hud_wide(1);
 	const int virtW = pc_gfx_get_hud_virtual_width();
 	const int dx    = virtW - 640;
@@ -793,14 +956,16 @@ void zen::DrawGameInfo::draw(Graphics& gfx)
 #if defined(PIKI_PC_PORT)
 	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
 	perspGraph.setPort();
-	mUpperScreenMgr->draw(&perspGraph, dx / 2);
+	if (!pc_vs_active()) // VS: sin indicador del sol (el día no avanza)
+		mUpperScreenMgr->draw(&perspGraph, dx / 2);
 	mLowerScreenMgr->draw(&perspGraph, 0);
 	mModeScreenMgr->draw(&perspGraph, dx);
 	pc_gfx_set_hud_wide(0);
 #else
 	P2DPerspGraph perspGraph(0, 0, 640, 480, 30.0f, 1.0f, 5000.0f);
 	perspGraph.setPort();
-	mUpperScreenMgr->draw(&perspGraph);
+	if (!pc_vs_active()) // VS: sin indicador del sol (el día no avanza)
+		mUpperScreenMgr->draw(&perspGraph);
 	mLowerScreenMgr->draw(&perspGraph);
 	mModeScreenMgr->draw(&perspGraph);
 #endif

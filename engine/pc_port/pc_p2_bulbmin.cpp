@@ -130,7 +130,7 @@ Piki* pc_p2_bulbmin_birth_dependent(Creature* leader, const Vector3f& motherPos,
     return bulbmin;
 }
 
-bool pc_p2_bulbmin_whistle(Piki* bulbmin) {
+bool pc_p2_bulbmin_whistle(Piki* bulbmin, Navi* whistler) {
     if (!active || !bulbmin) return false;
     const auto found = idOfPiki.find(bulbmin);
     if (found == idOfPiki.end()) return false;
@@ -139,7 +139,8 @@ bool pc_p2_bulbmin_whistle(Piki* bulbmin) {
     if (!command.accepted) return false;
     bulbmin->mLeaderCreature = nullptr;
     if (naviMgr) {
-        if (Navi* navi = naviMgr->getNavi()) bulbmin->mNavi = navi;
+        // The whistling captain owns the recruit (co-op); captain 1 otherwise.
+        if (Navi* navi = whistler ? whistler : naviMgr->getNavi()) bulbmin->mNavi = navi;
     }
     return true;
 }
@@ -301,7 +302,7 @@ int pc_p2_bulbmin_call_pikis(Navi* navi, float radius, const char* via) {
         if (bridge.phaseOf(found->second) != P2BulbminWild) continue;
         const Vector3f delta = p->mSRT.t - navi->mCursorWorldPos;
         if (delta.x * delta.x + delta.z * delta.z >= radius2) continue;
-        if (pc_p2_bulbmin_whistle(p)) ++recruited;
+        if (pc_p2_bulbmin_whistle(p, navi)) ++recruited;
     }
     if (recruited) {
         std::printf("P2_BULBMIN_WHISTLE recruited=%d wild=%zu recruited_total=%zu via=%s\n",

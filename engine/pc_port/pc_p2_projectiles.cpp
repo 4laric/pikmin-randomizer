@@ -39,6 +39,7 @@
 #include "Pellet.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "MoviePlayer.h"
@@ -672,8 +673,12 @@ P2CannonStoneTarget selectHostTarget(const P2CannonStoneVec3& from, float sightR
         candidate.alive = creature->isAlive();
     };
 
-    // Source order: the active Navi first, then the nearest Pikmin/Navi.
-    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
+    // Source order: the active Navi first, then the nearest Pikmin/Navi. In
+    // two-player mode the source skips the active Navi (Rock.cpp:372-377).
+    const P2NaviRoster navis = pc_p2_navis();
+    Navi* navi = navis.size() > 1 && pc_coop_active()
+        ? nullptr
+        : pc_p2_source_active_navi(Vector3f(from.x, from.y, from.z));
     if (navi && navi->isAlive()) {
         snapshot.hasActiveNavi = true;
         snapshot.activeNaviPosition = { navi->mSRT.t.x, navi->mSRT.t.y, navi->mSRT.t.z };
@@ -681,7 +686,7 @@ P2CannonStoneTarget selectHostTarget(const P2CannonStoneVec3& from, float sightR
     }
     // getNearestPikminOrNavi enumerates the Navi+Pikmin population; the adapter
     // applies the 2D x/z sight filter and tie order.
-    consider(navi);
+    for (Navi* n : navis) consider(n);
     if (pikiMgr) {
         Iterator it(pikiMgr);
         CI_LOOP(it) { consider(static_cast<Piki*>(*it)); }
@@ -877,7 +882,7 @@ void detectStoneContacts()
                         static_cast<unsigned long long>(token), int(kind));
         }
     };
-    consider(naviMgr ? naviMgr->getNavi() : nullptr, P2CannonStoneContactKind::NaviPiki);
+    for (Navi* navi : pc_p2_navis()) consider(navi, P2CannonStoneContactKind::NaviPiki);
     if (pikiMgr) {
         Iterator pikiIt(pikiMgr);
         CI_LOOP(pikiIt) { consider(static_cast<Piki*>(*pikiIt), P2CannonStoneContactKind::NaviPiki); }
@@ -1252,9 +1257,11 @@ void tickEgg()
 
     if (gHost.eggDropGroup && egg.health() > 0.0f) {
         bool touched = false;
-        Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
-        if (navi && navi->isAlive() && withinEggRange(navi->mSRT.t)) {
-            touched = true;
+        for (Navi* navi : pc_p2_navis()) {
+            if (navi->isAlive() && withinEggRange(navi->mSRT.t)) {
+                touched = true;
+                break;
+            }
         }
         if (!touched) {
             Iterator it(pikiMgr);
@@ -1361,7 +1368,7 @@ void detectRockContacts()
                         static_cast<unsigned long long>(token));
         }
     };
-    consider(naviMgr ? naviMgr->getNavi() : nullptr, P2RockHazardContactKind::NaviPiki);
+    for (Navi* navi : pc_p2_navis()) consider(navi, P2RockHazardContactKind::NaviPiki);
     if (pikiMgr) {
         Iterator pikiIt(pikiMgr);
         CI_LOOP(pikiIt) { consider(static_cast<Piki*>(*pikiIt), P2RockHazardContactKind::NaviPiki); }

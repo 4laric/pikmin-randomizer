@@ -24,9 +24,9 @@ struct Params {
 	float homeRadius     = 80.0f;  // general fp10
 	float territory      = 500.0f; // general fp09
 	float privateRadius  = 70.0f;  // general fp11
-	float eatRange       = 35.0f;  // bite reach: source mouth slot radius is 15 on the "kamu" joint; the
-	                               // P1 Chappy vehicle exposes no reliable mouth-joint world position, so the
-	                               // actor centre at fp22 attack-hit range 35 is used (recorded adaptation)
+	float eatRange       = 35.0f;  // parsed for config compatibility only (#884): the bite reach is now the
+	                               // source mouth slot (r=15 on the "kamu" joint at attack frame 8) from
+	                               // pc_p2_chappy_mouth.h, so this value no longer decides what is eaten
 	float poisonDamage   = 300.0f; // proper fp02 (white-pikmin poison, eatWhitePikminCallBack)
 };
 
