@@ -5,7 +5,8 @@ over an observed cave layout and emits one node per room/unit. This module turns
 those nodes into the *carry-blocking* plan the native engine consumes: an
 electric gate (``hazard == "elec"``) blocks carrying until a yellow Pikmin opens
 it, and a water pool (``hazard == "water"``) blocks non-blue carrying. Every
-other hazard or node blocks nothing.
+other hazard blocks nothing. Candypop bud nodes never block carrying: their
+hazard identifies the ability they grant, not a barrier.
 
 Node order, ids and kinds are preserved verbatim. When the lane-45 geometry plan
 (:mod:`experimental.pikmin2_cave_geometry`) is available next to the rooms input
@@ -74,7 +75,9 @@ def _int_text(value, field: str) -> str:
     return str(value)
 
 
-def _carry_for(hazard):
+def _carry_for(kind, hazard):
+    if kind == "bud":
+        return "none", "-"
     return CARRY.get(hazard, ("none", "-"))
 
 
@@ -125,7 +128,7 @@ def build_gates(rooms, geometry=None) -> dict:
         _require(kind in NODE_KINDS, f"unknown kind {kind!r} for {unit_id}")
         hazard = _hazard(unit.get("hazard"))
         _require(hazard is None or hazard in HAZARDS, f"unknown hazard {hazard!r} for {unit_id}")
-        carry_block, key = _carry_for(hazard)
+        carry_block, key = _carry_for(kind, hazard)
         doors.append({
             "id": unit_id,
             "kind": kind,
@@ -189,7 +192,7 @@ def gates_text(plan) -> str:
         _require(kind in NODE_KINDS, f"unknown kind {kind!r} for {door_id}")
         hazard = _hazard(door.get("hazard"))
         _require(hazard is None or hazard in HAZARDS, f"unknown hazard {hazard!r} for {door_id}")
-        expected_carry, expected_key = _carry_for(hazard)
+        expected_carry, expected_key = _carry_for(kind, hazard)
         _require(door.get("carry_block") == expected_carry,
                  f"door {door_id} carry_block must be {expected_carry!r}")
         _require(door.get("key") == expected_key, f"door {door_id} key must be {expected_key!r}")
@@ -301,7 +304,7 @@ def validate_gates(plan) -> None:
         _require(kind in NODE_KINDS, f"unknown kind {kind!r} for {door_id}")
         hazard = _hazard(door.get("hazard"))
         _require(hazard is None or hazard in HAZARDS, f"unknown hazard {hazard!r} for {door_id}")
-        carry_block, key = _carry_for(hazard)
+        carry_block, key = _carry_for(kind, hazard)
         _require(door.get("carry_block") == carry_block,
                  f"door {door_id} carry_block must be {carry_block!r}")
         _require(door.get("key") == key, f"door {door_id} key must be {key!r}")
