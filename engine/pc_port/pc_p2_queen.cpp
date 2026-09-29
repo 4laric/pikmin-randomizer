@@ -19,6 +19,7 @@
 #include "PikiMgr.h"
 #include "PikiState.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Navi.h"
 #include "Interactions.h"
 #include <SDL.h>
@@ -294,9 +295,8 @@ void tickLarva(Queen& q, Larva& l) {
 				}
 			}
 		}
-		if (naviMgr) { // Baby also targets the captain (BabyState.cpp:153-186)
-			Navi* n = naviMgr->getNavi();
-			if (n && n->mHealth > 0) {
+		for (Navi* n : pc_p2_navis()) { // Baby also targets the captains (BabyState.cpp:153-186)
+			if (n->mHealth > 0) {
 				const Vector3f& pos = n->getPosition();
 				const float dx = pos.x - l.x, dz = pos.z - l.z;
 				const float dist = std::sqrt(dx * dx + dz * dz);
@@ -353,9 +353,11 @@ void tickLarva(Queen& q, Larva& l) {
 		// InteractAttack path (actNavi), so the ordinary P1 damage cooldown,
 		// rumble and damage animation still apply. Pikmin ingestion/swallow
 		// and White-Pikmin poison remain deferred (labeled).
-		if (naviMgr && !l.attackHit && l.frame >= 10.0f) {
-			Navi* n = naviMgr->getNavi();
-			if (n && n->mHealth > 0) {
+		// Source EnemyFunc::attackNavi (BabyState.cpp:522) hits every captain in
+		// range on the key; the latch closes after that frame.
+		const bool biteOpen = !l.attackHit && l.frame >= 10.0f;
+		for (Navi* n : pc_p2_navis()) {
+			if (biteOpen && n->mHealth > 0) {
 				const Vector3f& pos = n->getPosition();
 				const float dx = pos.x - l.x, dz = pos.z - l.z;
 				const float dist = std::sqrt(dx * dx + dz * dz);
@@ -483,8 +485,9 @@ void tickQueen(Queen& q) {
 			next = end.first;
 			if (next == p2queen::Rolling) {
 				bool left = end.second;
-				if (q.info.easyFirstRoll && q.firstRoll && naviMgr && naviMgr->getNavi()) {
-					const Vector3f& np = naviMgr->getNavi()->getPosition();
+				Navi* active = naviMgr ? pc_p2_source_active_navi(Vector3f(q.x, q.y, q.z)) : nullptr; // Queen.cpp:360
+				if (q.info.easyFirstRoll && q.firstRoll && active) {
+					const Vector3f& np = active->getPosition();
 					left = p2queen::easyRollLeft(q.yaw, np.x - q.x, np.z - q.z);
 					std::printf("P2_QUEEN_EASY_ROLL id=%u f_01=1 away_from_captain=1 left=%d\n", q.cfg.id, int(left));
 				}

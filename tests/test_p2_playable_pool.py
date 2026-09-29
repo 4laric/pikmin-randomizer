@@ -10,7 +10,7 @@ def test_pool_table_derives_playable_tuple():
                                    17, 18, 24, 75,
                                    56, 63, 69,
                                    34, 70, 65, 71, 101,
-                                   25, 15, 78, 38)
+                                   25, 15, 78, 73, 32, 38)
     assert PLAYABLE_P2_SPECIES == tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
@@ -32,9 +32,10 @@ def test_pool_table_rows_carry_evidence():
 def test_playable_pool_binds_only_playable_species():
     m = generate('12345', p2_enemies=True, p2_species='playable')
     ids = {b['source_id'] for b in m['p2_layout']['bindings']}
-    # #893: the 36-species pool outgrew the 35 slots and is sampled per seed.
+    # #893: a pool that outgrows its slots is sampled per seed. #899: the
+    # Crawbster 94 moved to a boss arena, so the other 35 now fit exactly.
     assert ids <= set(PLAYABLE_P2_SPECIES)
-    assert ids | set(m['p2_layout']['unplaced']) == set(PLAYABLE_P2_SPECIES)
+    assert ids | set(m['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES)
     validate(m)
     assert m == generate('12345', p2_enemies=True, p2_species='playable')
 
@@ -45,7 +46,7 @@ def test_explicit_subset_and_default_all():
     # admitted identity) draws from exactly the playable pool; #893 samples it.
     bare = generate('7', p2_enemies=True)
     bound = {b['source_id'] for b in bare['p2_layout']['bindings']}
-    assert bound | set(bare['p2_layout']['unplaced']) == set(PLAYABLE_P2_SPECIES)
+    assert bound | set(bare['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES)
 
 
 @pytest.mark.parametrize('species', [[], [44, 3], ['44'], 'most'])

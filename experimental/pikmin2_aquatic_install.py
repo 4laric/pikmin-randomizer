@@ -13,6 +13,7 @@ Catfish/KochappyBase FSM, Jigumo PanHouse nest, shared ``UmiMushi::Mgr``) belong
 to the integration lead (#186) and is flagged on #374; no shared/native edits
 here.
 """
+from experimental.pikmin2_animation import frames_trailer
 import argparse
 import hashlib
 import json
@@ -77,7 +78,9 @@ def bank_text(manifest):
             events = ','.join(f'{frame}:{event}' for frame, event in clip.get('events', []))
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f'clip {species} {clip["name"]} {clip.get("source_frames", 0)} '
-                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}')
+                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}'
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return ('\n'.join(rows) + '\n').encode('ascii')
 
 

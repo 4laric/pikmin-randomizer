@@ -5,6 +5,7 @@
 #include "Collision.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "Shape.h"
@@ -487,7 +488,10 @@ void P2SaraiHost::updateNatural()
     float frames = dt * 30.0f;
     if (frames > 1.0f) frames = 1.0f;
 
-    Navi* target = naviMgr ? naviMgr->getNavi() : nullptr;
+    // Every captain is a candidate (Demon.cpp:30-88 shape); a held one stays the target.
+    Navi* target = naviMgr ? pc_p2_captor_navi(mSRT.t, mFacingRadians, mNatViewAngle, mNatSightRadius,
+                                               [this](Navi* n) { return pc_demon_owned_by(n, this); })
+                           : nullptr;
     const bool haveCaptain = target && target->isAlive();
     if (mLifecycle.occupied() && (!target || !pc_demon_owned_by(target, this))) mLifecycle.observeDetached();
     // Validate the chased Pikmin every tick (Attack mTargetCreature analogue):

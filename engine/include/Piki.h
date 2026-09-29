@@ -120,6 +120,12 @@ public:
 	virtual void wallCallback(immut Plane&, DynCollObject*);   // _B4
 	virtual void offwallCallback(DynCollObject*);              // _B8
 	virtual void stickToCallback(Creature*);                   // _C4
+#if defined(PIKI_PC_PORT)
+	bool pcStepOutOfWater();
+	void pcChargeAt(Creature* target);
+	Vector3f mPcLastDryPos;
+	bool mPcHasDryPos = false;
+#endif
 	virtual void dump();                                       // _C8
 	virtual bool isRopable();                                  // _D4
 	virtual bool mayIstick();                                  // _D8
@@ -286,6 +292,9 @@ public:
 	FreeLightEffect* mFreeLightEffect;    // _434
 	SlimeEffect* mSlimeEffect;            // _438
 	int mPlayerId;                        // _43C
+#if defined(PIKI_PC_PORT)
+	bool mPcSieging = false; ///< VS: golpeando el cohete rival (acción suspendida)
+#endif
 	Vector3f mLastAnimPosition;           // _440
 	Vector3f mShadowPos;                  // _44C
 	Vector3f mCatchPos;                   // _458

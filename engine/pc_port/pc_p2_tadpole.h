@@ -30,5 +30,6 @@ void pc_p2_tadpole_setup();
 void pc_p2_tadpole_reset();
 void pc_p2_tadpole_forget(BTeki*);
 void pc_p2_tadpole_update(BTeki*);
+bool pc_p2_tadpole_suppress_ai(const BTeki*);
 float pc_p2_tadpole_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_tadpole_clip(const BTeki*, const char*& name, float& phase);

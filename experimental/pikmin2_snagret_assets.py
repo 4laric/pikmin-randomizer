@@ -30,7 +30,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Concrete spawnable boss family. IDs from include/Game/enemyInfo.h:
 # EnemyID_SnakeCrow=34 (enemyInfo.h:93), EnemyID_SnakeWhole=70
@@ -41,7 +41,7 @@ SPECIES = {'SnakeCrow': 34, 'SnakeWhole': 70, 'DangoMushi': 94}
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # Clip order equals each species' AnimID enum (the order registered in
 # enemyanimmgr.txt) and the .bca member names in anim.szs. The attack stems are
@@ -494,12 +494,8 @@ def extract(iso, source, output, pose_limit=6):
                 for number, frame in enumerate(frames):
                     try:
                         tolerances = TOLERANCES.get(species, {})
-                        _, pose = bca_pose(raw, frame, len(names),
-                                           allow_scale=True)
-                        matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(model, True, bake_rigid=True,
-                                         draw_matrices=matrices,
-                                         **tolerances)
+                        decoded, pose = decode_pose(decode, model, model_blocks, raw, frame,
+                                                    len(names), **tolerances)
                         name = f'snake_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name,
                                                  'enemy.bmd')

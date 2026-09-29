@@ -279,4 +279,11 @@ public:
 
 extern PikiMgr* pikiMgr;
 
+#if defined(PIKI_PC_PORT)
+/// VS: Pikmin de un jugador en el campo (vivos, brotes suyos y los que están
+/// saliendo de sus cebollas) y el tope por jugador (la mitad del límite).
+int pcVsFieldPikis(int player);
+int pcVsFieldLimit();
+#endif
+
 #endif

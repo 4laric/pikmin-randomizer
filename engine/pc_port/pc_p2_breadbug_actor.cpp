@@ -5,7 +5,7 @@
 #include "pc_p2_breadbug_cargo_phase.h"
 #include "pc_bbft.h"
 #include "teki.h"
-#include "Teki.h"
+#include "teki.h"
 #include "Pellet.h"
 #include "Piki.h"
 #include "Stickers.h"

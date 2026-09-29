@@ -171,7 +171,7 @@ class GoalMode(Choice):
 
 
 class BombRockWeight(Range):
-    """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery / Flower Shower weights are 2 / 1. Zero disables. Queued until a safe gameplay landing; not required by logic."""
+    """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery weight is 2. Zero disables. Queued until a safe gameplay landing; not required by logic."""
     display_name = 'Bomb Rock Delivery Weight'
     range_start = 0
     range_end = 10
@@ -202,6 +202,28 @@ class PrereleaseTrapWeight(Range):
     default = 0
 
 
+class ProgressiveDayLength(Range):
+    """Number of Progressive Day Length items in the pool. Each copy lengthens every following stretch of the day by Day Length Increment percent of a normal day; zero disables. Receiving one mid-day slows the clock without moving it, so it never jumps toward sunset. Useful, not required by logic. Copies take filler slots: the smallest check set (collection checks only) fits 8, larger ones fit all 10."""
+    display_name = "Progressive Day Length"
+    range_start = 0
+    range_end = 10
+    default = 0
+
+
+class WhistlePluckItem(Toggle):
+    """Place one Whistle Pluck item. Once received, holding the whistle over buried sprouts plucks them one after another, keeping their colour and maturity. Useful, not required by logic. Takes one filler slot."""
+    display_name = "Whistle Pluck Item"
+    default = 1
+
+
+class DayLengthIncrement(Range):
+    """Percent of a normal day added by each Progressive Day Length item. Rounded down to a multiple of 5."""
+    display_name = "Day Length Increment"
+    range_start = 10
+    range_end = 100
+    default = 25
+
+
 class DeathLinkPikmin(Range):
     """DeathLink unit. Every N ordinary Pikmin deaths (remainder kept across days) sends one link; each received link kills up to N living field Pikmin through their normal death, never Olimar or Onion stock. Links received while the game is closed are dropped."""
     display_name = 'DeathLink Pikmin'
@@ -214,6 +236,9 @@ class DeathLinkPikmin(Range):
 class PikminOptions(PerGameCommonOptions):
     death_link: DeathLink
     death_link_pikmin: DeathLinkPikmin
+    progressive_day_length: ProgressiveDayLength
+    day_length_increment: DayLengthIncrement
+    whistle_pluck_item: WhistlePluckItem
     goal: GoalMode
     bomb_rock_weight: BombRockWeight
     bomb_trap_weight: BombTrapWeight

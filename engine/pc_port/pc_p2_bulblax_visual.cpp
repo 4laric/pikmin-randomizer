@@ -7,7 +7,7 @@
 #include "pc_bbft.h"
 #include "Shape.h"
 #include "Joint.h"
-#include "System.h"
+#include "system.h"
 #include "pc_p2_pose_bank.h"
 #include "Texture.h"
 #include "Graphics.h"

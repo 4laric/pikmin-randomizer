@@ -6,6 +6,7 @@
 #include "pc_p2_white_poison.h"
 
 #include "pc_p2_armor.h"
+#include "pc_p2_uji.h"
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
 #include "pc_p2_umimushi.h"
@@ -38,6 +39,7 @@
 #include "pc_p2_kochappy.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_bluechappy.h"
+#include "pc_p2_chappy.h"
 #include "pc_p2_bulbmin.h"
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_kogane.h"
@@ -46,6 +48,7 @@
 #include "pc_p2_groink_teki.h"
 #include "pc_p2_long_legs.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_fsm.h"
 #include "pc_p2_onikurage_teki.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_queen_teki.h"
@@ -58,6 +61,7 @@
 #include "pc_p2_sarai_manager.h"
 #include "pc_p2_otakara.h"
 #include "pc_p2_tank.h"
+#include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_waterwraith_register.h"
 #include "pc_p2_hardlanes.h"
 
@@ -77,6 +81,7 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_kochappy_forget(actor);
 	pc_p2_dwarf_orange_forget(actor);
 	pc_p2_bluechappy_forget(actor);
+	pc_p2_chappy_forget(actor);
 	// Lane-11 Bulbmin: release the flock when its mother stand-in (Kochappy or a
 	// bare Chappy-family host) is forgotten, independent of the Kochappy module.
 	pc_p2_bulbmin_proxy_forget(actor);
@@ -88,7 +93,9 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_pom_forget(actor);
 	pc_p2_kogane_forget(actor);
 	pc_p2_mamuta_forget(actor);
+	pc_p2_mamuta_fsm_forget(actor);
 	pc_p2_tank_forget(actor);
+	pc_p2_kabuto_fsm_forget(actor);
 	pc_p2_qurione_forget(actor);
 	pc_p2_shijimi_forget(actor);
 	pc_p2_kurage_teki_forget(actor);
@@ -101,6 +108,7 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_projectiles_forget(actor);
 	pc_p2_sokkuri_forget(actor);
 	pc_p2_armor_forget(actor);
+	pc_p2_uji_forget(actor);
 	pc_p2_elecbug_forget(actor);
 	pc_p2_otakara_forget(actor);
     pc_p2_tamago_forget(actor);
@@ -138,6 +146,7 @@ pc_p2_sarai_manager_reset();
 	pc_p2_kochappy_reset();
 	pc_p2_dwarf_orange_reset();
 	pc_p2_bluechappy_reset();
+	pc_p2_chappy_reset();
     pc_p2_kochappy_fsm_reset();
 	pc_p2_breadbug_visual_reset();
 	pc_p2_giant_breadbug_visual_reset();
@@ -156,7 +165,9 @@ pc_p2_sarai_manager_reset();
     pc_p2_dweevil_reset();
 	pc_p2_kogane_reset();
 	pc_p2_mamuta_reset();
+	pc_p2_mamuta_fsm_reset();
 	pc_p2_tank_reset();
+	pc_p2_kabuto_fsm_reset();
 	pc_p2_qurione_reset();
 	pc_p2_shijimi_reset();
 	pc_p2_kurage_teki_reset();
@@ -169,6 +180,7 @@ pc_p2_sarai_manager_reset();
 	pc_p2_projectiles_reset();
 	pc_p2_sokkuri_reset();
 	pc_p2_armor_reset();
+    pc_p2_uji_reset();
     pc_p2_elecbug_reset();
     pc_p2_tamago_reset();
     pc_p2_otakara_reset();

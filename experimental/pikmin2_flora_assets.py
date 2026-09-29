@@ -26,7 +26,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, u16, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Identity map. enemyInfo.h:59 (Pelplant = 0), :62-67 (BluePom..RandPom = 3-8),
 # :105-111 (Tanpopo..Wakame_l = 46-52). EnemyID_Pom (82, enemyInfo.h:141) is the
@@ -83,7 +83,7 @@ PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 # are recorded per species rather than required.
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
 REQUIRED_METADATA = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 # Registration filenames include a capital 'L' for the large Figwort/Shoot
 # (ooinu_L.bca, wakame_L.bca) while anim.szs stores the members lowercased; the
 # shared sheargrub parser rejects the capitals, so this lane parses the same
@@ -533,13 +533,9 @@ def extract(iso, source, output, pose_limit=6):
                     for number, frame in enumerate(frames):
                         try:
                             tolerances = TOLERANCES.get(species, {})
-                            _, pose = bca_pose(raw, frame, len(names),
-                                               allow_scale=True,
-                                               **pose_tolerances)
-                            matrices = draw_matrices(model_blocks, pose)
-                            decoded = decode(model, True, bake_rigid=True,
-                                             draw_matrices=matrices,
-                                             **tolerances)
+                            decoded, pose = decode_pose(decode, model, model_blocks, raw, frame,
+                                                        len(names), pose_kwargs=pose_tolerances,
+                                                        **tolerances)
                             name = (f'flora_{species}_{clip["name"]}'
                                     f'_{number:02}.mod')
                             conversion = write_model(decoded, root / name,

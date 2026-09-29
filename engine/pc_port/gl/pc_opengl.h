@@ -30,9 +30,29 @@
 #  endif
 #endif
 
+// Fuera de la build de Android PIKI_USE_GLES no está definido; darle valor
+// evita que las expresiones `PIKI_USE_GLES == 0` fallen.
+#ifndef PIKI_USE_GLES
+#  define PIKI_USE_GLES 0
+#endif
+#if PIKI_USE_GLES
+#  include <GLES3/gl3.h>
+#  include <GLES3/gl3ext.h>
+// Timer queries: en GLES viven en EXT_disjoint_timer_query (gl2ext.h) con
+// sufijo EXT; el mismo nombre que en escritorio deja el resto del código
+// igual. Si el driver no las expone, los punteros quedan nulos y se ignoran.
+#  include <GLES2/gl2ext.h>
+#  ifndef GL_TIME_ELAPSED
+#    define GL_TIME_ELAPSED GL_TIME_ELAPSED_EXT
+#  endif
+#  ifndef APIENTRYP
+#    define APIENTRYP GL_APIENTRYP
+#  endif
+#else
 // SDL's headers avoid the legacy gl/gl.h stubs shadowing system GL on
 // case-insensitive Windows filesystems.
-#include <SDL_opengl.h>
+#  include <SDL_opengl.h>
+#endif
 
 // Red de seguridad: si alguna cabecera del sistema acabara arrastrando
 // windows.h de todos modos, estas macros suyas chocan con identificadores del

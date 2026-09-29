@@ -82,6 +82,11 @@ IDENTITY_FAMILY = {
     # installer (p2-dweevil-actors.txt) rather than forking it; Sarai gets the
     # new actor-sidecar installer below. Anything else still fails closed.
     23: 'sarai', 'sarai': 'sarai',
+    # #215: Demon (Bumbling Snitchbug, 32) is a Sarai::Obj subclass; it stages
+    # its own retail model/anims/parms for the Sarai host's Demon profile. The
+    # retired randomizer/p2_proxy/32_Demon.json (P2 model over TEKI_Napkid)
+    # must never coexist with this row.
+    32: 'demon', 'demon': 'demon',
     59: 'dweevil', 'fireotakara': 'dweevil',
     60: 'dweevil', 'waterotakara': 'dweevil',
     61: 'dweevil', 'gasotakara': 'dweevil',
@@ -105,6 +110,12 @@ IDENTITY_FAMILY = {
     # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
     # Still a candidate until the owner's Windows OWN run lands.
     78: 'minihoudai', 'minihoudai': 'minihoudai',
+    # #246 OWN: BigTreasure (Titan Dweevil, 73) stages the native source-order
+    # core inputs (retail parms, key-event table, pose/joint bank, poses and
+    # weapon pellets) through experimental.pikmin2_bigtreasure_campaign. The
+    # campaign actor is pc_p2_bigtreasure_teki (hostType 73 -> TEKI_Swallow).
+    # Candidate until the owner-reviewed OWN run lands; the proxy row is gone.
+    73: 'bigtreasure', 'bigtreasure': 'bigtreasure',
     # #898 OWN: Breadbug (PanModoki 38) stages the native source-FSM inputs
     # (retail parms, clip/key-event/pose bank, poses) through
     # experimental.pikmin2_breadbug_stage; the campaign actor is driven by
@@ -359,6 +370,43 @@ def _adapt_sarai(source, run, actors):
     text = f'{SARAI_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
     path.write_text(text, encoding='ascii')
     return dict(species='Sarai', source_id=23, generators=merged,
+                actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
+
+
+DEMON_ACTORS_TXT = 'p2-demon-actors.txt'
+DEMON_ACTORS_HEADER = 'P2_DEMON_ACTORS_1'
+
+
+def _validate_demon(source):
+    """Pre-flight check for the Demon (Bumbling Snitchbug, source 32) content."""
+    from experimental.pikmin2_demon_install import MANIFEST as _DEMON_MANIFEST
+    source = Path(source)
+    if not (source / _DEMON_MANIFEST).is_file():
+        raise StagingError(f'Demon manifest missing for identity content: {source / _DEMON_MANIFEST}')
+
+
+def _adapt_demon(source, run, actors):
+    """Adapter for the Demon (source 32) install: stage the native host files
+    through ``experimental.pikmin2_demon_install`` and accumulate the audit
+    sidecar ``p2-demon-actors.txt`` (same shape as the Sarai sidecar; the
+    native binder selects by the seed source directly)."""
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    if not generators:
+        raise StagingError('Demon install requires at least one generator')
+    from experimental.pikmin2_demon_install import stage_demon_host
+    stage_demon_host(source, run)
+    path = run / DEMON_ACTORS_TXT
+    existing = []
+    if path.is_file():
+        tokens = path.read_text(encoding='ascii').split()
+        if len(tokens) < 2 or tokens[0] != DEMON_ACTORS_HEADER or int(tokens[1]) != len(tokens) - 2:
+            raise StagingError(f'existing {DEMON_ACTORS_TXT} is malformed')
+        existing = [int(token) for token in tokens[2:]]
+    merged = list(dict.fromkeys(existing + generators))
+    text = f'{DEMON_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
+    path.write_text(text, encoding='ascii')
+    return dict(species='Demon', source_id=32, generators=merged,
                 actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
 
 
@@ -988,6 +1036,38 @@ def _adapt_minihoudai(source, run, actors):
                 groink=groink)
 
 
+def _validate_bigtreasure(source):
+    """Pre-flight check for BigTreasure (Titan Dweevil, source 73) content."""
+    _read_identity_source(source, 73, 'BigTreasure')
+    from experimental.pikmin2_bigtreasure_campaign import BigTreasureStageError, plan
+    try:
+        plan(source)
+    except (BigTreasureStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'BigTreasure content invalid: {error}') from error
+
+
+def _adapt_bigtreasure(source, run, actors):
+    """Adapter for BigTreasure (source 73): the native campaign core inputs.
+
+    Stages ``p2-bigtreasure-parms.txt`` (verbatim retail enemyparm.txt),
+    ``p2_bigtreasure_events.txt`` (29-clip key-event table), the
+    ``p2-bigtreasure-bank.txt`` pose/joint/leg bank and the pose + weapon
+    pellet meshes into the private model room. The native bridge setup binds
+    every seed actor whose source is 73; no generator sidecar is needed.
+    """
+    from experimental.pikmin2_bigtreasure_campaign import BigTreasureStageError, stage_from
+    _read_identity_source(source, 73, 'BigTreasure')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'BigTreasure':
+            raise StagingError(f'BigTreasure adapter got non-BigTreasure species: {species!r}')
+    if not generators:
+        raise StagingError('BigTreasure install requires at least one generator')
+    try:
+        receipt = stage_from(Path(source), Path(run))
+    except (BigTreasureStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'BigTreasure staging failed: {error}') from error
+    return dict(species='BigTreasure', source_id=73, generators=sorted(set(generators)), bigtreasure=receipt)
 def _validate_breadbug(source):
     """Pre-flight check for Breadbug (PanModoki, source 38) OWN content."""
     _read_identity_source(source, 38, 'PanModoki')
@@ -1402,6 +1482,7 @@ ADAPTERS = {
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
     'kochappy': {'install': _adapt_kochappy, 'validate': _validate_kochappy},
     'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
+    'demon': {'install': _adapt_demon, 'validate': _validate_demon},
     'kogane': {'install': _adapt_kogane, 'validate': _validate_kogane},
     'sokkuri': {'install': _adapt_sokkuri, 'validate': _validate_sokkuri},
     'elecbug': {'install': _adapt_elecbug, 'validate': _validate_elecbug},
@@ -1411,6 +1492,7 @@ ADAPTERS = {
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
+    'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},

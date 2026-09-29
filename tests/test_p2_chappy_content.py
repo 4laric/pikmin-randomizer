@@ -112,7 +112,8 @@ def test_plan_payloads_match_native_grammar(tmp_path):
     assert bank_text.splitlines()[0] == "P2_CHAPPY_BANK_1"
     assert "species Chappy 2" in bank_text.splitlines()
     for stem in ("wait1", "move1", "attack", "dead"):
-        assert any(line.startswith(f"clip Chappy {stem} ") and line.endswith(" converted")
+        assert any(line.startswith(f"clip Chappy {stem} ")
+                   and (line.endswith(" converted") or " converted frames " in line)
                    for line in bank_text.splitlines())
     assert set(mesh_files) == {
         f"ch_Chappy_{stem}_{index:02}.mod"

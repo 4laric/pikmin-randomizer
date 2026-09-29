@@ -33,6 +33,7 @@ void zen::MessageMgr::setFieldLimit(int limit)
 		boxes[i]->setString(mFieldLimitText[i]);
 	}
 }
+#include "settings/pc_settings.h"
 #endif
 
 /**
@@ -57,6 +58,15 @@ const f32 zen::WindowPaneMgr::weightPosGravity = 9.8f;
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+zen::DrawContainer::DrawContainer(int playerNum)
+    : DrawContainer()
+{
+	// El menú lee su propio Controller; P2 lee el pad 1.
+	mController->reset(playerNum);
+}
+#endif
+
 zen::DrawContainer::DrawContainer()
     : mZenController(nullptr)
 {
@@ -277,6 +287,20 @@ bool zen::DrawContainer::operationStatus()
 	mWindowPaneMgr->update(WindowPaneMgr::MODE_Hold, 0.0f, 0.0f);
 	mMarkerPicture->move(RoundOff(NMathF::sin(mFrameTimer) * 50.0f + mMarkerBasePosition.x),
 	                     RoundOff(NMathF::sin(2.0f * mFrameTimer) * 30.0f + mMarkerBasePosition.y));
+#if defined(PIKI_PC_PORT)
+	// Mod "Onion: Y for Steps of 10": con Y sujeto, cada pulsación o
+	// repetición de arriba/abajo mueve 10 de golpe. Los topes de abajo recortan
+	// al máximo posible y avisan igual que con pasos de 1.
+	const bool pcStep10 = pc_settings_get_onion_step10() && mController->keyDown(KBBTN_Y);
+	if (pcStep10) {
+		mTransferSpeed = 0.0f;
+		if (mZenController.keyRepeat(KBBTN_MSTICK_UP) || mController->keyClick(KBBTN_MSTICK_UP)) {
+			mTransferDelta += 10;
+		} else if (mZenController.keyRepeat(KBBTN_MSTICK_DOWN) || mController->keyClick(KBBTN_MSTICK_DOWN)) {
+			mTransferDelta -= 10;
+		}
+	} else
+#endif
 	if (mZenController.keyRepeat(KBBTN_MSTICK_UP) || mController->keyClick(KBBTN_MSTICK_UP)) {
 		if (mController->keyClick(KBBTN_MSTICK_UP)) {
 			mTransferSpeed = 1.0f;
@@ -427,10 +451,13 @@ void zen::DrawContainer::draw(Graphics& gfx)
 	if (mIsActive) {
 #if defined(PIKI_PC_PORT)
 		pc_gfx_set_hud_wide(1);
+		// En pantalla partida el tamaño virtual puede ser 640 x (>480):
+		// el menú se centra también en vertical.
 		const int virtW = pc_gfx_get_hud_virtual_width();
-		P2DPerspGraph graph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
+		const int virtH = pc_gfx_get_hud_virtual_height();
+		P2DPerspGraph graph(0, 0, virtW, virtH, 30.0f, 1.0f, 5000.0f);
 		graph.setPort();
-		mScreen.draw((virtW - 640) / 2, 0, &graph);
+		mScreen.draw((virtW - 640) / 2, (virtH - 480) / 2, &graph);
 		pc_gfx_set_hud_wide(0);
 #else
 		mPerspGraph->setPort();

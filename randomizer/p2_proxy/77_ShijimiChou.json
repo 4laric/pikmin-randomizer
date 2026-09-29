@@ -5,7 +5,7 @@
   "enum_name": "ShijimiChou",
   "host_teki": 6,
   "notes": "Unmarked Spectralids; proxy over TEKI_Qurione; wait1 poses sampled from move (no idle clip on disc)",
-  "pose_limit": 4,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 77,
   "evidence": {

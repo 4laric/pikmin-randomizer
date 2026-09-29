@@ -9,6 +9,7 @@
 // selector so adoption is selection-preserving.
 #include "pc_p2_sampled_clock.h"
 
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -20,12 +21,75 @@ namespace p2batch2clock {
 // authored "frame:key,..." events. The bank only records a pose count, so the
 // converted clock clip keeps uniform sampling (empty pose frames) and
 // Clock::poseIndex() reproduces the legacy Clip::index(phase) selection.
+// P2_BANK_FRAMES_1 extension: an optional `frames f0,f1,...` trailer carries
+// explicit per-pose source frames. With a valid trailer the clip uses true
+// bracketing; without it synthesis stays uniform (empty frames) with
+// uniform-bracketing degradation when interpolation is on. A malformed trailer
+// disables interpolation for that clip (nearest-pose fallback), never fail().
 struct Row {
     std::string name;
     int sourceFrames = 0;
     int poseCount = 0;
     std::vector<p2sampled::Event> events;
+    std::vector<int> poseFrames;
+    bool framesMalformed = false;
 };
+
+// Parse one `f0,f1,...` trailer token (no spaces). Returns false on any
+// non-numeric/empty/oversized input; range/endpoint ordering is validated by
+// the caller against the clip duration.
+inline bool parseFramesList(const std::string& token, std::vector<int>& out) {
+    out.clear();
+    if (token.empty() || token.size() > 512) return false;
+    size_t at = 0;
+    while (true) {
+        const size_t comma = token.find(',', at);
+        const std::string part =
+            comma == std::string::npos ? token.substr(at) : token.substr(at, comma - at);
+        if (part.empty() || part.size() > 6) return false;
+        for (char c : part) {
+            if (c < '0' || c > '9') return false;
+        }
+        long value = 0;
+        try {
+            value = std::stol(part);
+        } catch (...) {
+            return false;
+        }
+        if (value < 0 || value > 10000) return false;
+        out.push_back(int(value));
+        if (out.size() > 64) return false;
+        if (comma == std::string::npos) break;
+        at = comma + 1;
+    }
+    if (out.empty()) return false;
+    return true;
+}
+
+// Uniform synthesis matching experimental/pikmin2_animation.py sample_frames:
+// round(i*(duration-1)/(count-1)), clamped to [0, duration-1].
+inline std::vector<int> uniformFrames(int count, int duration) {
+    std::vector<int> out;
+    if (count <= 0 || duration <= 0) return out;
+    if (count == 1) {
+        out.push_back(0);
+        return out;
+    }
+    for (int i = 0; i < count; ++i) {
+        const double v = double(i) * double(duration - 1) / double(count - 1);
+        int frame = int(std::floor(v + 0.5));
+        if (frame < 0) frame = 0;
+        if (frame >= duration) frame = duration - 1;
+        out.push_back(frame);
+    }
+    return out;
+}
+
+// Frames to bracket for one clip: explicit when present, else uniform.
+inline std::vector<int> bracketFramesFor(const p2sampled::Clip& clip) {
+    if (!clip.poses.frames.empty()) return clip.poses.frames;
+    return uniformFrames(clip.poses.count, clip.poses.duration);
+}
 
 // The bank's uniform sampling is encoded as a full-duration loop. A clip with a
 // missing/one-frame source length falls back to its pose count so selection
@@ -39,6 +103,27 @@ inline p2sampled::Clip makeClip(const Row& row) {
         duration = row.poseCount >= 2 ? row.poseCount : 2;
     }
     clip.poses.duration = duration;
+    if (!row.framesMalformed && !row.poseFrames.empty()
+            && int(row.poseFrames.size()) == clip.poses.count) {
+        bool ok = true;
+        for (size_t i = 0; i < row.poseFrames.size(); ++i) {
+            const int frame = row.poseFrames[i];
+            if (frame < 0 || frame >= duration) {
+                ok = false;
+                break;
+            }
+            if (i == 0 && frame != 0) {
+                ok = false;
+                break;
+            }
+            if (i > 0 && frame <= row.poseFrames[i - 1]) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok && row.poseFrames.back() != duration - 1) ok = false;
+        if (ok) clip.poses.frames = row.poseFrames;
+    }
     clip.events = row.events;
     clip.loopBegin = 0.0;
     clip.loopEnd = double(duration);

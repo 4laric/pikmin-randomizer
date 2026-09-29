@@ -34,11 +34,24 @@ public:
     // previous tick's terminal receipts, even when its slots are reused.
     std::size_t terminalCount() const { return mTerminalCount; }
     const std::array<Terminal, kCapacity>& terminals() const { return mTerminals; }
+    // Every shell that advanced in the last update, in source list order, with
+    // its source y-10 receiver sweep (MiniHoudaiShotGun.cpp:151-248 runs the
+    // sweep on EVERY update, not only on the terminal one). `terminal` marks
+    // the recycled step, which alone also carries the splash test.
+    struct Segment {
+        std::size_t slot = 0;
+        bool primary = false;
+        bool terminal = false;
+        P2GroinkVec3 start, end;
+    };
+    std::size_t segmentCount() const { return mSegmentCount; }
+    const std::array<Segment, kCapacity>& segments() const { return mSegments; }
 
 private:
     std::array<P2GroinkPolicy, kCapacity> mNodes{};
     std::array<bool, kCapacity> mPrimary{};
     std::array<std::size_t, kCapacity> mActive{}, mInactive{};
     std::array<Terminal, kCapacity> mTerminals{};
-    std::size_t mActiveCount = 0, mInactiveCount = 0, mTerminalCount = 0;
+    std::array<Segment, kCapacity> mSegments{};
+    std::size_t mActiveCount = 0, mInactiveCount = 0, mTerminalCount = 0, mSegmentCount = 0;
 };

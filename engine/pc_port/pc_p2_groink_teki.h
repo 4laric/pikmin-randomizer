@@ -2,6 +2,8 @@
 class BTeki;
 class PelletView;
 class Generator;
+class Graphics;
+class Matrix4f;
 // Family sidecar binding the parked P2GroinkCarcass policy to a live generated
 // Groink host actor (MiniHoudai 78 / FminiHoudai 97).  Binding is read from
 // p2-groink-teki.txt at finalSetup; the carcass lifecycle is then driven once
@@ -41,5 +43,13 @@ bool pc_p2_groink_receipt(PelletView* view, unsigned& generator);
 // host). In the isolated room preview a natural free-mode squad cannot reliably
 // out-damage the P1 Frog host, so the bound host's TPF_Life is capped. This is a
 // parameter override, never a health write; returns `fallback` for any other
-// parameter or unbound actor.
+// parameter or unbound actor. For 97 live (inst3 OWN) it also blinds sight/
+// attack ranges so the P2 pedestal FSM has last word.
 float pc_p2_groink_teki_param_f(const BTeki* teki, int idx, float fallback);
+// Host suppression (#888 OWN): true for a campaign-bound 78/97 while alive
+// or dying, disabling the P1 Frog TAI so the source FSM decides each tick.
+bool pc_p2_groink_teki_suppress_ai(const BTeki* teki);
+// Draw hook (#888 WP5): a campaign-bound 78/97 draws the staged P2
+// MiniHoudai pose bank driven by the source FSM animation (corpse: carcass
+// clip). False (host model draws) when no bank is staged or unbound.
+bool pc_p2_groink_teki_draw(BTeki* teki, Graphics& gfx, const Matrix4f& view, bool corpse = false);

@@ -374,8 +374,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "DangoMushi",
         "family": "dangomushi",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
-            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "run": "Bot-driven power-mode campaign v2f in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY PIKMIN_P2_TEST_START_DAY=11, since the arena goes live on day 9, so a normal campaign meets 94 there on day 9 or later): P2_BOSS_ARENA_BIRTH on the arena primary, bind, rain drawn (ROCK_DRAW), Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse drawn on the carried pellet (CORPSE_DRAW) and carried by 22, Onion receipt onion:p2:94:0",
+            "log": "output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a...",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",
@@ -574,6 +574,30 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
+        "source_id": 73,
+        "enum_name": "BigTreasure",
+        "family": "bigtreasure",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign e7 (owner ruling 2026-09-25: power mode admits; #246, boss arena #899): natural playable seed bt-own-73-red-impact-0 places 73 in the impact_goolix boss arena; red squad, source BigTreasure FSM with retail collision parts, all four weapons knocked off by Pikmin on their own parts, body damage only after the last drop, P2_BIGTREASURE_DEAD on its own generator, carryable corpse (owner ruling 2026-09-29 #1) carried, Onion receipt onion:p2:73:0; repeated in e3-e6/e8, re-entry across days 11-15 in rc2",
+            "log": "output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log (sha256 f9ceec6c30bee188...) L1367 bind, L2060 dead, L2139 receipt; native claude/p2-port-73-titan-v2 ad5124e12, exe sha256 2010385d86baaea7...; #246",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 73 -> bigtreasure "
+                         "(stages the retail enemyparm/enemycoll, event table, pose bank and weapon meshes)",
+        },
+    },
+    {
+        "source_id": 32,
+        "enum_name": "Demon",
+        "family": "demon",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign v2b (owner ruling 2026-09-25: power mode admits; #215): red squad, campaign OWN bind of the Demon profile of the Sarai FSM with retail parms, 4 captain grabs each dropped for 10 damage, flick, fall under Pikmin weight, 82 DAMAGE lines, P2_DEMON_DEAD on its own generator, type5 carcass carried, Onion receipt onion:p2:32:3",
+            "log": "output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a82...) L1578 bind, L2812 capture, L2876 drop, L3632 dead, L3926 receipt; native claude/p2-port-32-demon-v2 6e88fad0d, exe sha256 c329ed2d0a0e5209...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 32 -> demon "
+                         "(stages the demon-* parms/bank and the demon pose meshes)",
+        },
+    },
+    {
         "source_id": 38,
         "enum_name": "PanModoki",
         "family": "breadbug",
@@ -594,7 +618,15 @@ P2_PLAYABLE_POOL = (
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False):
+    from .benefits import DAY_LENGTH_LIMIT
+    if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
+    if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
+    if type(progressive_day_length) is not int or not 0 <= progressive_day_length <= DAY_LENGTH_LIMIT: raise ValueError(f"progressive_day_length must be 0..{DAY_LENGTH_LIMIT}")
+    if type(day_length_step) is not int or not 10 <= day_length_step <= 100 or day_length_step % 5: raise ValueError("day_length_step must be 10..100 in steps of 5")
+    if progressive_day_length:
+        if legacy_checks: raise ValueError("progressive day length requires modern checks")
+        collection_checks = True
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -748,6 +780,16 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if prerelease_trap_weight:
             result['prerelease_trap_weight'] = prerelease_trap_weight
             result['capabilities'].append('prerelease-trap-v1')
+        if progressive_maturity:
+            result['progressive_maturity'] = True
+            result['capabilities'].append('progressive-maturity-v1')
+        if progressive_day_length:
+            result['progressive_day_length'] = progressive_day_length
+            result['day_length_step'] = day_length_step
+            result['capabilities'].append('progressive-day-length-v1')
+        if whistle_pluck_item:
+            result['whistle_pluck_item'] = True
+            result['capabilities'].append('whistle-pluck-item-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -910,6 +952,18 @@ def validate(m):
         expected.add('prerelease_trap_weight')
         if type(m['prerelease_trap_weight']) is not int or not 1 <= m['prerelease_trap_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid prerelease_trap_weight')
+    if type(m) is dict and 'progressive_maturity' in m:
+        expected.add('progressive_maturity')
+        if m['progressive_maturity'] is not True or not m.get('benefit_items'): raise ValueError('invalid progressive_maturity')
+    if type(m) is dict and 'whistle_pluck_item' in m:
+        expected.add('whistle_pluck_item')
+        if m['whistle_pluck_item'] is not True or not m.get('benefit_items'): raise ValueError('invalid whistle_pluck_item')
+    if type(m) is dict and ('progressive_day_length' in m or 'day_length_step' in m):
+        from .benefits import DAY_LENGTH_LIMIT
+        expected.update(('progressive_day_length', 'day_length_step'))
+        count, step = m.get('progressive_day_length'), m.get('day_length_step')
+        if type(count) is not int or not 1 <= count <= DAY_LENGTH_LIMIT or type(step) is not int or not 10 <= step <= 100 or step % 5 or not m.get('benefit_items'):
+            raise ValueError('invalid progressive day length')
     if type(m) is dict and 'combined_captain' in m:
         expected.add('combined_captain')
         if m['combined_captain'] is not True or not m.get('benefit_items'): raise ValueError('invalid combined_captain')
@@ -1034,6 +1088,9 @@ def validate(m):
         if m.get('bomb_trap_weight'): fixed['capabilities'] += ['bomb-ambush-v1']
         if m.get('progg_trap_weight'): fixed['capabilities'] += ['progg-ambush-v1']
         if m.get('prerelease_trap_weight'): fixed['capabilities'] += ['prerelease-trap-v1']
+        if m.get('progressive_maturity'): fixed['capabilities'] += ['progressive-maturity-v1']
+        if m.get('progressive_day_length'): fixed['capabilities'] += ['progressive-day-length-v1']
+        if m.get('whistle_pluck_item'): fixed['capabilities'] += ['whistle-pluck-item-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:

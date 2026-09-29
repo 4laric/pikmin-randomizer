@@ -4,6 +4,7 @@
 #include "Collision.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
 #include "Shape.h"
 #include "Graphics.h"
 #include "Texture.h"
@@ -417,7 +418,10 @@ void P2DemonHost::updateNatural()
     // per update so the continuous capture window cannot be skipped.
     float frames = dt * 30.0f;
     if (frames > 1.0f) frames = 1.0f;
-    Navi* target = naviMgr ? naviMgr->getNavi() : nullptr;
+    // Source getAttackableTarget/catchTarget walk every captain (Demon.cpp:30-88).
+    Navi* target = naviMgr ? pc_p2_captor_navi(mSRT.t, mFacingRadians, mNaturalViewAngle, mNaturalSightRadius,
+                                               [this](Navi* n) { return pc_demon_owned_by(n, this); })
+                           : nullptr;
     if (mOccupied && (!target || !pc_demon_owned_by(target, this))) mOccupied = 0;
 
     if (mOccupied) {
