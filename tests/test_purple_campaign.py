@@ -36,6 +36,22 @@ def banks(root):
 
 
 class PurpleCampaignTests(unittest.TestCase):
+    def test_recover_native_journal_from_purple_session(self):
+        from tests.test_p2_campaign_fixture import real_manifest
+        from randomizer.session import Session
+        from randomizer.runner import NativeRun
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = real_manifest()
+            session = Session(manifest, Path(tmp))
+            run = NativeRun(session, purple_campaign=True)
+            (run.directory / 'checks.txt').write_text('0\n')
+            recovered = Session(manifest, Path(tmp))
+            self.assertIn(recovered.names[0], recovered.data['checked'])
+            # A malformed species extension must not be admitted by length alone.
+            run.bootstrap.write_text(run.bootstrap.read_text().replace('PURPLE 1', 'PURPLE 2'))
+            with self.assertRaisesRegex(ValueError, 'incompatible manifest'):
+                Session(manifest, Path(tmp))
+
     def test_real_p2_bootstrap_optin_and_legacy_unchanged(self):
         # Seed admission is explicitly injected by the existing fixture helper;
         # this verifies protocol construction, not receiver gameplay admission.
