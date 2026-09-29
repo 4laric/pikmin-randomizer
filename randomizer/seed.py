@@ -606,8 +606,13 @@ P2_PLAYABLE_POOL = (
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_cave_floor=False):
     from .benefits import DAY_LENGTH_LIMIT
+    if type(p2_cave_floor) is not bool: raise ValueError("invalid p2_cave_floor")
+    if p2_cave_floor:
+        if mode != "solo": raise ValueError("bounded cave AP delivery is not implemented")
+        if legacy_checks: raise ValueError("bounded cave requires modern checks")
+        collection_checks = True
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
     if type(progressive_day_length) is not int or not 0 <= progressive_day_length <= DAY_LENGTH_LIMIT: raise ValueError(f"progressive_day_length must be 0..{DAY_LENGTH_LIMIT}")
@@ -849,6 +854,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
             result['capabilities'].append('p2-proxy-tier-v1')
+    if p2_cave_floor:
+        from .cave_floor import resolve, requirements, LOCATION_IDS as CAVE_IDS
+        result['p2_cave_floor'] = resolve(result['seed'], slot)
+        result['cave_requirements'] = requirements(result['p2_cave_floor'])
+        result['locations'].update(CAVE_IDS)
     validate(result)
     return result
 
@@ -1026,6 +1036,10 @@ def validate(m):
             validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
         except SeedBridgeError as exc:
             raise ValueError(f'invalid p2_layout: {exc}')
+    if type(m) is dict and ('p2_cave_floor' in m or 'cave_requirements' in m):
+        from .cave_floor import validate as validate_cave
+        expected.update(('p2_cave_floor', 'cave_requirements'))
+        validate_cave(m)
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
@@ -1100,6 +1114,9 @@ def validate(m):
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
     for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False), m.get("compact_population", False), m.get("no_sticks", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+        if key == "locations" and 'p2_cave_floor' in m:
+            from .cave_floor import LOCATION_IDS as CAVE_IDS
+            value = {**value, **CAVE_IDS}
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 

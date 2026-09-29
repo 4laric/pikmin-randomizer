@@ -14,14 +14,14 @@ def build(output):
         for name in ("__init__.py", "options.py", "archipelago.json"):
             archive.write(ROOT / "apworld/pikmin_randomizer" / name, "pikmin_randomizer/" + name)
         archive.writestr("pikmin_randomizer/core/__init__.py", "")
-        for name in ("catalog.py", "seed.py", "stats.py", "obstacles.py", "enemies.py", "benefits.py", "enemy_slots.py", "spawn_data.py", "campaign_data.py", "campaign_enemies.py", "p2_placement.py", "p2_placement_catalog.py"):
+        for name in ("catalog.py", "seed.py", "cave_floor.py", "cave_logic.py", "stats.py", "obstacles.py", "enemies.py", "benefits.py", "enemy_slots.py", "spawn_data.py", "campaign_data.py", "campaign_enemies.py", "p2_placement.py", "p2_placement_catalog.py"):
             source = (ROOT / "randomizer" / name).read_text(encoding="utf-8")
             source = source.replace("from experimental.", "from ..experimental.")
             archive.writestr("pikmin_randomizer/core/" + name, source)
         # Keep experimental imports private to the world. No checkout or globally
         # installed `randomizer`/`experimental` package is needed by the AP server.
         archive.writestr("pikmin_randomizer/experimental/__init__.py", "")
-        for name in ("pikmin2_enemy_roster.py", "pikmin2_seed_bridge.py"):
+        for name in ("pikmin2_enemy_roster.py", "pikmin2_seed_bridge.py", "pikmin2_cave_schema.py"):
             source = (ROOT / "experimental" / name).read_text(encoding="utf-8")
             source = source.replace("from experimental.", "from .")
             source = source.replace("from randomizer.", "from ..core.")
