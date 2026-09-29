@@ -48,7 +48,7 @@ def playable_manifest(mode="solo"):
 
 
 def test_playable_pool_binds_all_playable_species():
-    # #893: 36 playable species on 35 slots; the seed samples the pool, so
+    # #893: 37 playable species on 35 slots; the seed samples the pool, so
     # every species is either bound once or listed as unplaced.
     layout = playable_manifest()["p2_layout"]
     held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}

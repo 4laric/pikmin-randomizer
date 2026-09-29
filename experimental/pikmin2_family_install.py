@@ -1106,6 +1106,39 @@ def _adapt_breadbug(source, run, actors):
     except (BreadbugStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'Breadbug staging failed: {error}') from error
     return dict(species='PanModoki', source_id=38, generators=sorted(set(generators)), breadbug=staged)
+def _validate_bombsarai(source):
+    """Pre-flight check for BombSarai (Careening Dirigibug, source 58) content."""
+    _read_identity_source(source, 58, 'BombSarai')
+
+
+def _adapt_bombsarai(source, run, actors):
+    """Adapter for BombSarai (source 58): shared install + native OWN inputs (#244).
+
+    Runs the shared-contract ``pikmin2_bombsarai_install`` unchanged (profile,
+    bank listing, actor roster and the ``bombsarai_BombSarai_*`` pose meshes
+    in the private model room), then stages what the native OWN campaign port
+    actually opens through ``experimental.pikmin2_bombsarai_stage``: the
+    verbatim retail ``p2-bombsarai-parms.txt`` / ``p2-bombsarai-bomb-parms.txt``,
+    ``p2-bombsarai-own-bank.txt`` (clip frames, key events, pose frames with the
+    kamu_jnt1 joint), the ``bombsarai_Bomb_*`` payload meshes and the campaign
+    ``p2-bombsarai-teki.txt`` row (TEKI_Napkid host 11; the generator is a
+    placeholder because the bridge setup binds actors from the seed).
+    """
+    from experimental import pikmin2_bombsarai_install as bombsarai
+    from experimental.pikmin2_bombsarai_stage import BombSaraiStageError, stage
+    _read_identity_source(source, 58, 'BombSarai')
+    actors = list(actors)
+    if not actors:
+        raise StagingError('BombSarai install requires at least one generator')
+    for _generator, species in actors:
+        if species != 'BombSarai':
+            raise StagingError(f'BombSarai adapter got non-BombSarai species: {species!r}')
+    receipt = bombsarai.install(Path(source), Path(run), actors)
+    try:
+        own = stage(Path(source), Path(run), [int(g) for g, _s in actors])
+    except (BombSaraiStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'BombSarai OWN staging failed: {error}') from error
+    return dict(receipt, own=own)
 
 
 def _adapt_cannon_projectile(source, run, actors):
@@ -1529,6 +1562,7 @@ ADAPTERS = {
     'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
     'fuefuki': {'install': _adapt_fuefuki, 'validate': _validate_fuefuki},
+    'bombsarai': {'install': _adapt_bombsarai, 'validate': _validate_bombsarai},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},

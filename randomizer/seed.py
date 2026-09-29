@@ -621,6 +621,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-fuefuki-parms/motion/bank and the fuefuki pose meshes)",
         },
     },
+    {
+        "source_id": 58,
+        "enum_name": "BombSarai",
+        "family": "bombsarai",
+        "evidence": {
+            "run": "Bot-driven campaign runs v1 (normal 20 squad) and v2p (power mode; owner ruling 2026-09-25: power mode admits) (#244): red squad, campaign OWN bind of the source BombSarai FSM with retail parms, hover, bomb Supply/BombMove/Release, lethal blast (v2p pikmin_lethal=81, field 100->19; v1 lethal 2, field 20->18), latch/Fall/Damage/TakeOff/Flick, natural death on its own generator, corpse carried, Onion receipt onion:p2:58:3",
+            "log": "output/claude-orch/p2-bombsarai-own/runs/v2p-58/session/runs/a6264c6ad0f250aa0444a8922ddf8b866f1f573eb7fc0b40e0c045f615ca30f9/native.log (sha256 30384556062612033...) L1251 bind, L2144 blast, L2226 dead, L2538 receipt; v1 native.log sha256 fd7367f8612d6b9a... L2851 receipt; native claude/p2-port-58-bombsarai-v2 e54d87ff5, exe sha256 b15b6c0044c39d67...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 58 -> bombsarai "
+                         "(stages p2-bombsarai-parms/bomb-parms/own-bank and the Bomb meshes)",
+        },
+    },
 )
 
 
