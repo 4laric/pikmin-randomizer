@@ -42,7 +42,11 @@ Legacy benefits and P2 bridge protocol regressions remain covered.
 `tools/preview_p2_purple_campaign.cpp` is an isolated engine fixture with a
 960×540 centered window and a captain guard before observation. It injects one
 Purple identity/maturity to check real deposit/withdraw accounting and buried
-sprout serialization. Its negative guard mode is
+sprout serialization. A fresh engine run passed six deposit/withdraw cycles,
+population conservation, unchanged Red Onion stock, and Purple Bud sprout
+serialization. Natural mode (`P2_PURPLE_NATURAL=1`) uses a scripted captain throw
+and native collision/conversion/pluck; it does not inject Purple identity.
+Its negative guard mode is
 `P2_FIXTURE_FORCE_CAPTAIN_DOWN=1` (exit 86). Build it with the provenance builder
 against a completed private build, and run through the bounded fixture runner in
 a freshly staged ordinary P2 session. Injection is not natural acquisition proof.
