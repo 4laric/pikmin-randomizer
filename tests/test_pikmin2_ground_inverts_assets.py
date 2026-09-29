@@ -142,7 +142,7 @@ class GroundInvertAssetsTests(unittest.TestCase):
     def test_pose_limit_bounds(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for bad in (0, 1, 13, True, '6'):
+            for bad in (0, 1, 65, True, '6'):  # cap = native row cap 64 (#895)
                 with self.assertRaises(ValueError):
                     extract(root / 'x.iso', root, root / f'out-{bad}', bad)
 

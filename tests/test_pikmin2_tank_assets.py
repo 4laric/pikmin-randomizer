@@ -10,7 +10,7 @@ def test_event_boundaries_order_and_budgets():
         with pytest.raises(ValueError):loop_bounds(events)
     assert {0,55,94}.issubset(event_frames(95,[[55,2]],3))
     assert {15,44}.issubset(event_frames(55,[[15,0],[44,1]],3))
-    for duration,events,limit in [(1,[],3),(95,[[95,2]],3),(95,[[55,2],[40,0]],3),(95,[[True,2]],3),(95,[[55,256]],3),(95,[],9),(95,[[1,0]]*33,3)]:
+    for duration,events,limit in [(1,[],3),(95,[[95,2]],3),(95,[[55,2],[40,0]],3),(95,[[True,2]],3),(95,[[55,256]],3),(95,[],65),(95,[[1,0]]*33,3)]:
         with pytest.raises(ValueError):event_frames(duration,events,limit)
 
 def test_emitter_is_finite_normalized_and_offset_is_explicit():

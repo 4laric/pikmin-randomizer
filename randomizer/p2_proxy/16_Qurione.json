@@ -6,7 +6,7 @@
   "enum_name": "Qurione",
   "host_teki": 6,
   "notes": "Honeywisp; proxy over TEKI_Qurione; enemystoneinfo.txt absent on disc (optional metadata); wait1 sampled from waitl and dead from damage (no native dead clip)",
-  "pose_limit": 4,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 16,
   "evidence": {

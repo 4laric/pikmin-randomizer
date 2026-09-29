@@ -14,6 +14,7 @@ as helper/reward metadata instead (enemy ID, group count, runtime owner), so no
 runtime ownership is claimed. Native actor registration belongs to the
 integration lead (#186) and is flagged on #375; no shared/native edits here.
 """
+from experimental.pikmin2_animation import frames_trailer
 import argparse
 import hashlib
 import json
@@ -67,7 +68,9 @@ def bank_text(metadata):
                               for frame, kind in clip.get('events', [])) or '-'
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f"clip {name} {clip['name']} {clip.get('source_frames', 0)} "
-                        f"{events} poses {poses} status {clip.get('status', '')}")
+                        f"{events} poses {poses} status {clip.get('status', '')}"
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return '\n'.join(rows) + '\n'
 
 

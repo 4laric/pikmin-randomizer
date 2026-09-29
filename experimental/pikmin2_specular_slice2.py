@@ -8,18 +8,23 @@ material lighting control carries ``LightingControlFlags::EnableSpecular``
 direction field holds the half-vector written by ``pc_gfx_init_specular_dir``
 via ``p2specular::halfVector`` (pc_port/pc_p2_specular_dir.h).
 
-The Frog / Bulblax material audits restore that specular channel with control
-0x93 (diffuse CLAMP + specular SIGN, register sources): ``0x93 & 0x2`` is set,
-so apart from the Queen's prepared two-stage path a second, independently
-profiled family material flows through the same corrected uniform path. This
-module locks that criterion and the runtime RENDER marker that proves it.
+The native specular layer (pc_port/pc_p2_specular_layer.cpp) draws its second
+pass with the runtime control word 0x93 (COLOR0 lit, EnableSpecular, diffuse
+CLAMP + specular SIGN, register sources): ``0x93 & 0x2`` is set, so that pass
+flows through the corrected uniform path. This module locks that criterion and
+the runtime RENDER marker (``control=0x93``) that proves it.
+
+0x93 is only that runtime marker/draw word. Since #895 the Frog and Bulblax
+material profiles no longer write 0x93: they use the retail P1 words from
+experimental/pikmin2_convert.py (0xd1 single stage, 0xd3 only where a stage
+reads the COLOR1 specular channel, 0xd0 unlit), verified on retail P1 teki MODs.
 """
 import json
 import re
 
-# The audited "lit" control used by the Frog material profile and the Bulblax
-# KingChappy/Baby material profiles (experimental/pikmin2_frog_material_profile.py,
-# experimental/pikmin2_bulblax_material.py). Its bit 1 is EnableSpecular.
+# The runtime draw word of the native specular layer pass
+# (pc_port/pc_p2_specular_layer.cpp), reported by FROG_SPECULAR_RENDER. Its bit
+# 1 is EnableSpecular. Not a profile word: see the module docstring.
 LIT_CONTROL = 0x93
 VERTEX_COLOR_FLAG = 0x1800
 ENABLE_SPECULAR_BIT = 1 << 1  # LightingControlFlags::EnableSpecular (include/PVW.h)

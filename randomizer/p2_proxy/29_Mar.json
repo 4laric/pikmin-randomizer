@@ -2,7 +2,7 @@
   "enum_name": "Mar",
   "host_teki": 16,
   "notes": "Puffy Blowhog; proxy over TEKI_Mar",
-  "pose_limit": 4,
+  "pose_limit": 16,
   "schema": 1,
   "source_id": 29,
   "evidence": {

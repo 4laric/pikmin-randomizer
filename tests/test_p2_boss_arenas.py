@@ -100,7 +100,7 @@ class DocumentTests(unittest.TestCase):
 
     def test_protected_arenas_are_denied(self):
         report = audit(self.document)
-        protected = {a["primary_uid"] for a in self.document["arenas"] if a["protected_drop"]}
+        protected = {a["primary_uid"] for a in self.document["arenas"] if arenas.arena_protected(a)}
         self.assertTrue(protected)
         for identity, uids in report["admitted"].items():
             self.assertFalse(protected & set(uids), identity)
@@ -129,17 +129,82 @@ class DocumentTests(unittest.TestCase):
         self.assertGreaterEqual(len(report["admitted"].get("DangoMushi", [])), 2)
 
     def test_arena_bosses(self):
-        # The pool's arena boss has a profile; the other lane bosses (30, 73,
-        # 66) carry descriptors and get their profile with pool admission.
+        # The pool's arena bosses (94, and 73 since #246) have a profile; the
+        # other lane bosses (30, 66) carry descriptors and get their profile
+        # with pool admission.
         roster = load_and_validate()
-        self.assertEqual(arena_boss_ids(self.document, roster), {94})
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73})
         descriptors = {e["identity"] for e in self.document["encounters"]}
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
     def test_rebuild_is_idempotent(self):
-        rebuilt = arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS)
+        from randomizer.p2_held_parts import apply_to_document as apply_held_parts
+        rebuilt = apply_held_parts(arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS))
         self.assertEqual(rebuilt, _document())
 
+
+
+class HeldPartTransferTests(unittest.TestCase):
+    """#901: held_part_transfer lifts a ship-part arena's protection only."""
+
+    def _catalogue(self, **flags):
+        catalogue = copy.deepcopy(arenas.P1_BOSS_ARENAS)
+        for arena in catalogue:
+            if arena["id"] in flags:
+                arena["held_part_transfer"] = flags[arena["id"]]
+        return catalogue
+
+    def _apply(self, catalogue):
+        original = arenas.P1_BOSS_ARENAS
+        arenas.P1_BOSS_ARENAS = tuple(catalogue)
+        try:
+            return validate_document(arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS))
+        finally:
+            arenas.P1_BOSS_ARENAS = original
+
+    def test_goal_and_bestiary_arenas_stay_protected(self):
+        by_id = arenas.arenas_by_id()
+        self.assertTrue(arenas.arena_protected(by_id["last_emperor"]))
+        self.assertTrue(arenas.arena_protected(by_id["navel_puffstool"]))
+
+    def test_every_transfer_arena_holds_a_ship_part(self):
+        for arena in arenas.P1_BOSS_ARENAS:
+            if arena.get("held_part_transfer"):
+                self.assertIn("ship part", arena["protected_drop"], arena["id"])
+                self.assertNotIn("goal", arena["protected_drop"], arena["id"])
+
+    def test_transfer_unprotects_the_slot_and_admits_the_boss(self):
+        document = self._apply(self._catalogue(hope_snagret_part=True))
+        slot = next(s for s in document["slots"] if s["uid"] == 4260179239)
+        self.assertFalse(slot["protected"])
+        record = next(a for a in document["arenas"] if a["id"] == "hope_snagret_part")
+        self.assertTrue(record["held_part_transfer"])
+        self.assertIn(4260179239, audit(document)["admitted"].get("DangoMushi", []))
+
+    def test_without_transfer_the_part_arena_is_denied(self):
+        document = self._apply(self._catalogue(hope_snagret_part=False))
+        self.assertNotIn(4260179239, audit(document)["admitted"].get("DangoMushi", []))
+
+    def test_validation_rejects_bad_transfer_records(self):
+        document = _document()
+        for arena_id, drop, flag, slot_protected in (
+                ("last_emperor", None, True, False),       # transfer needs a part
+                ("impact_goolix", None, "yes", False),      # boolean only
+                ("hope_snagret_part", "ship part (pellet config 29)", True, True)):  # slot disagrees
+            bad = copy.deepcopy(document)
+            record = next(a for a in bad["arenas"] if a["id"] == arena_id)
+            record["protected_drop"] = drop
+            record["held_part_transfer"] = flag
+            slot = next(s for s in bad["slots"] if s["uid"] == record["primary_uid"])
+            slot["protected"] = slot_protected
+            with self.assertRaises(Exception, msg=arena_id):
+                validate_document(bad)
+        goal = copy.deepcopy(document)
+        record = next(a for a in goal["arenas"] if a["id"] == "last_emperor")
+        record["held_part_transfer"] = True
+        next(s for s in goal["slots"] if s["uid"] == record["primary_uid"])["protected"] = False
+        with self.assertRaises(Exception):
+            validate_document(goal)
 
 class SeedTests(unittest.TestCase):
     @classmethod
@@ -156,7 +221,7 @@ class SeedTests(unittest.TestCase):
     def test_crawbster_only_in_boss_arenas(self):
         used = set()
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s != 73])
             block = layout[BOSS_ARENA_KEY]
             for binding in layout["bindings"]:
                 if binding["source_id"] == 94:
@@ -172,6 +237,23 @@ class SeedTests(unittest.TestCase):
         # Sampled per seed: both eligible arenas are used across seeds.
         self.assertGreaterEqual(len(used), 2)
 
+    def test_both_pool_bosses_get_an_arena(self):
+        # #246: the Titan (footprint 250) fits only impact_goolix (clear 275);
+        # the Crawbster (150) also fits hope_snagret_pit (200). Placing the
+        # most-constrained boss first seats both on every seed.
+        for i in range(40):
+            layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            block = layout[BOSS_ARENA_KEY]
+            placed = {row["source_id"]: row["arena"] for row in block["placed"]}
+            self.assertEqual(placed, {73: "impact_goolix", 94: "hope_snagret_pit"})
+            self.assertNotIn("unplaced", block)
+            for binding in layout["bindings"]:
+                if binding["source_id"] in (73, 94):
+                    self.assertIn(binding["target"], self.all_arena)
+                else:
+                    self.assertNotIn(binding["target"], self.all_arena)
+            validate_layout(layout, self.roster)
+
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
         pool = sorted(PLAYABLE_P2_SPECIES)
         without = [s for s in pool if s not in (30, 73, 94, 66)]
@@ -179,11 +261,11 @@ class SeedTests(unittest.TestCase):
             with_boss = self.layout(f"eq-{i}", species=pool)
             ordinary = dict(with_boss)
             ordinary.pop(BOSS_ARENA_KEY)
-            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] != 94]
+            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (73, 94)]
             self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
 
     def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
-        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s != 94]
+        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (73, 94)]
         stripped = _strip_arenas(self.document)
         for i in range(10):
             new = self.layout(f"id-{i}", species=without)
@@ -209,7 +291,7 @@ class SeedTests(unittest.TestCase):
                             p2_enemies=True, p2_species="playable")
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual([row["source_id"] for row in placed], [94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [73, 94])
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), 64)
 
 

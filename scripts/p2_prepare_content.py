@@ -25,6 +25,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   validator-required ``sarai-attack-mouths.txt`` mouth bank is derived from that
   extraction result (mouth joints + sampled pose files + sha256); the Sarai
   adapter stages the eight native host files through ``pikmin2_sarai_install``.
+* 32 Demon: ``pikmin2_sarai_assets.extract_species`` over ``enemy/data/Demon``
+  (Demon::Obj is a Sarai::Obj subclass) -> ``<out>/Demon/`` (``demon.json``,
+  all twelve clips as ``demon_<clip>_<frame>.mod``, the retail parm files); the
+  Demon adapter stages the native host files through ``pikmin2_demon_install``.
 * 9 Kogane: ``pikmin2_kogane_assets.extract`` -> ``<out>/Kogane/``
   (``beetles.json`` plus the pose meshes flattened beside it); the Kogane
   adapter stages the room meshes through ``pikmin2_kogane_content``.
@@ -134,6 +138,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
 * 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
   ``<out>/FminiHoudai/``.
+* 73 BigTreasure (#246 OWN): ``pikmin2_bigtreasure_assets.extract`` ->
+  ``<out>/BigTreasure/`` (the full import tree plus ``identity.json``); the
+  BigTreasure adapter stages the native campaign core inputs through
+  ``experimental.pikmin2_bigtreasure_campaign``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -183,10 +191,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from experimental.pikmin2_animation import (  # noqa: E402  pose-density policy (#895)
+    DEFAULT_POSE_LIMIT,
+    LEGACY_POSE_LIMIT,
+    POSE_LIMIT_MAX,
+)
+
 PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
+    73: "BigTreasure",
     2: "Chappy",
     33: "FireChappy",
     35: "KumaChappy",
@@ -202,6 +217,7 @@ ENUM_FOR_SOURCE = {
     17: "Frog",
     18: "MaroFrog",
     23: "Sarai",
+    32: "Demon",
     24: "Tank",
     25: "Wtank",
     26: "Catfish",
@@ -466,6 +482,66 @@ def extract_sarai(iso, dest):
     return target
 
 
+def extract_demon(iso, dest):
+    """Build <dest>/Demon/ (Bumbling Snitchbug, source 32) from the retail disc.
+
+    Demon::Obj is a Sarai::Obj subclass (pikmin2 Demon.h) with its own model,
+    animations and parms (``enemy/data/Demon``, ``enemyParms.szs`` ``demon/``).
+    ``pikmin2_sarai_assets.extract_species`` is parameterised over that data
+    directory: it writes ``demon.json`` (every clip of ``demon/enemyanimmgr.txt``
+    with its key events, the ``rkamujnt``/``lkamujnt`` mouth matrices per sampled
+    pose and the parsed ``demon/enemyparm.txt`` blocks) plus the sampled pose
+    meshes, named ``demon_<clip>_<frame>.mod`` so they never collide with
+    Sarai's ``<clip>_<frame>.mod`` in the shared model room. Clips are sampled
+    every third frame (up to the 32-pose budget) so the looping flight clips
+    read as motion, and attack1 is sampled on every frame of the Attack
+    hunt/catch window (10..30) so the jaw sweep the retail catchTarget() tests
+    is frame-exact. ``demon-provenance.json`` records the derivation. The
+    native banks (poses, mouths, retail events, parms) are derived at install
+    time by ``experimental.pikmin2_demon_install``.
+    """
+    from experimental import pikmin2_sarai_assets as sarai
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "Demon"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-demon"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        result = sarai.extract_species(iso, tmp, data_dir="Demon", parm_key="demon",
+                                       species="Demon", enemy_id=32, file_prefix="demon_",
+                                       stride=3, windows={"attack1.bca": (10, 30)})
+        target.mkdir(parents=True)
+        (target / "demon.json").write_text(json.dumps(result, indent=2) + "\n",
+                                           encoding="utf-8")
+        pose_files = []
+        for clip in result.get("clips", []):
+            for pose in clip.get("poses", []):
+                name = pose.get("file")
+                if name and (tmp / name).is_file():
+                    shutil.copyfile(tmp / name, target / name)
+                    pose_files.append(name)
+        for name in ("enemyparm.txt", "enemycoll.txt", "enemyanimmgr.txt"):
+            if (tmp / name).is_file():
+                shutil.copyfile(tmp / name, target / name)
+        (target / "demon-provenance.json").write_text(json.dumps(
+            {"derived_from": "experimental.pikmin2_sarai_assets.extract_species",
+             "disc": {"model": "enemy/data/Demon/model.szs", "anim": "enemy/data/Demon/anim.szs",
+                      "parms": "enemy/parm/enemyParms.szs:demon/enemyparm.txt"},
+             "source_sha256": result.get("source_sha256", {}),
+             "mouth_joints": ["rkamujnt", "lkamujnt"],
+             "clips": [dict(file=c.get("file"), status=c.get("status"), poses=len(c.get("poses", [])))
+                       for c in result.get("clips", [])],
+             "pose_files": sorted(pose_files)}, indent=2) + "\n", encoding="utf-8")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_kogane(iso, dest):
     """Build <dest>/Kogane/ via the existing kogane extractor plus a flat bank.
 
@@ -538,8 +614,8 @@ def extract_minihoudai(iso, dest, pose_limit=None):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
-        raise ValueError(f"pose limit must be 2..8 or None: {pose_limit!r}")
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX):
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX} or None: {pose_limit!r}")
     target = dest / "MiniHoudai"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -567,8 +643,8 @@ def extract_sokkuri(iso, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "Sokkuri"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -602,8 +678,8 @@ def extract_catfish(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "Catfish"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -628,8 +704,8 @@ def extract_tadpole(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "Tadpole"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -654,8 +730,8 @@ def extract_hana(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "Hana"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -677,8 +753,8 @@ def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "BombOtakara"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -714,6 +790,40 @@ def extract_houdai(iso, dest):
     return target
 
 
+def extract_bigtreasure(iso, research, dest, pose_limit=8):
+    """Build <dest>/BigTreasure/ via the BigTreasure import (#246 OWN).
+
+    ``pikmin2_bigtreasure_assets.extract`` produces the disc import tree
+    (``bigtreasure.json``, ``BigTreasure/`` model/clips/metadata/poses and
+    ``pellets/``); an ``identity.json`` marks it as the source-73 identity.
+    """
+    from experimental import pikmin2_bigtreasure_assets as bigtreasure
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
+        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    target = dest / "BigTreasure"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bigtreasure"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        bigtreasure.extract(iso, research, tmp, pose_limit=pose_limit)
+        (tmp / "identity.json").write_text(
+            json.dumps({"schema": 1, "source_id": 73, "enum_name": "BigTreasure"}, indent=2) + "\n",
+            encoding="utf-8")
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_fminihoudai(iso, research, dest, pose_limit=6):
     """Build <dest>/FminiHoudai/ via the cannon extractor (full family import)."""
     from experimental import pikmin2_cannon_projectile_assets as cannon
@@ -724,8 +834,8 @@ def extract_fminihoudai(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "FminiHoudai"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -886,8 +996,8 @@ def extract_snagret(iso, source_repo, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     enums = ["SnakeCrow", "SnakeWhole"]
     for enum_name in enums:
         if (dest / enum_name).exists():
@@ -917,8 +1027,8 @@ def extract_ground(iso, source_repo, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "Imomushi"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -948,8 +1058,8 @@ def extract_aquatic(iso, source_repo, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     enums = ["UmiMushi", "UmiMushiBlind"]
     for enum_name in enums:
         if (dest / enum_name).exists():
@@ -982,8 +1092,8 @@ def extract_uji(iso, dest, pose_limit=4):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     enums = ["UjiA", "UjiB", "Tobi"]
     for enum_name in enums:
         if (dest / enum_name).exists():
@@ -1013,8 +1123,8 @@ def extract_elecbug(iso, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "ElecBug"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1046,8 +1156,8 @@ def extract_frog(iso, research, dest, pose_limit=6):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
-        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     for enum_name in ("Frog", "MaroFrog"):
         if (dest / enum_name).exists():
             raise ValueError(f"content dir already exists: {dest / enum_name}")
@@ -1078,8 +1188,8 @@ def extract_tank(iso, research, dest, pose_limit=3):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     for enum_name in ("Tank", "Wtank"):
         if (dest / enum_name).exists():
             raise ValueError(f"content dir already exists: {dest / enum_name}")
@@ -1132,8 +1242,8 @@ def extract_tamago(iso, dest, pose_limit=6):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     target = dest / "TamagoMushi"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1148,21 +1258,24 @@ def extract_tamago(iso, dest, pose_limit=6):
     return target
 
 
-def extract_dangomushi(iso, dest, pose_limit=6):
+def extract_dangomushi(iso, dest, pose_limit=None):
     """Build <dest>/DangoMushi/ via the DangoMushi extractor.
 
     ``pikmin2_dangomushi_assets.extract`` produces the source poses
     (``dangomushi.json`` + ``snake_DangoMushi_<clip>_<ii>.mod``); the
     DangoMushi adapter stages its rows of the shared snagret files from that
     tree via ``experimental.pikmin2_dangomushi_content.stage_dangomushi``.
+    ``pose_limit=None`` (what ``prepare_content_root`` uses) samples adaptive
+    key poses up to ``ADAPTIVE_MAX_POSES`` per clip (#897); an int keeps the
+    historical uniform sampling (2..8).
     """
     from experimental import pikmin2_dangomushi_assets as dangomushi
 
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX):
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX} or None: {pose_limit!r}")
     target = dest / "DangoMushi"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1170,7 +1283,11 @@ def extract_dangomushi(iso, dest, pose_limit=6):
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
-        dangomushi.extract(iso, tmp, pose_limit=pose_limit)
+        if pose_limit is None:
+            dangomushi.extract(iso, tmp, pose_limit=dangomushi.ADAPTIVE_MAX_POSES,
+                               sampling="adaptive")
+        else:
+            dangomushi.extract(iso, tmp, pose_limit=pose_limit)
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1224,8 +1341,8 @@ def extract_proxy(iso, dest, source_id, pose_limit=None):
         if source_id not in declared:
             raise ValueError(f"source id {source_id!r} is not a declared proxy species")
         pose_limit = declared[source_id]["pose_limit"]
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     enum_name = ENUM_FOR_SOURCE.get(source_id)
     if enum_name is None:
         raise ValueError(f"unknown enum name for source id {source_id!r}")
@@ -1287,6 +1404,7 @@ def extract_chappy(iso, dest, source_id, pose_limit=None):
 
 EXTRACTORS = {
     2: "extract_chappy",
+    73: "extract_bigtreasure",
     33: "extract_chappy",
     35: "extract_chappy",
     43: "extract_chappy",
@@ -1300,6 +1418,7 @@ EXTRACTORS = {
     61: "extract_dweevil",
     62: "extract_dweevil",
     23: "extract_sarai",
+    32: "extract_demon",
     9: "extract_kogane",
     17: "extract_frog",
     18: "extract_frog",
@@ -1340,11 +1459,17 @@ for _row in _PROXY_ROWS:
 del _row
 
 
-def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
-                         proxy_pose_limit=None):
+def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT, wanted=None,
+                         proxy_pose_limit=None, legacy_pose_limit=None):
     """Extract the identity-keyed content root for the wanted source ids.
 
-    ``pose_limit`` applies to the non-proxy family banks. Proxy species use
+    ``pose_limit`` applies to every non-proxy family bank (#895: default
+    DEFAULT_POSE_LIMIT poses per clip, cap POSE_LIMIT_MAX). Every native
+    pose-bank loader, including the dedicated Blue Kochappy, Miulin, Frog,
+    Tank and Kabuto loaders, now goes through pc_p2_pose_loader.h (a few full
+    Shapes per clip plus decoded vectors), so there is no sparser legacy
+    tier. ``legacy_pose_limit`` is kept only as an explicit override for those
+    five families (``None`` = ``pose_limit``). Proxy species use
     ``proxy_pose_limit`` when given, otherwise each row's own ``pose_limit``
     (``extract_proxy`` with ``pose_limit=None`` takes the declaration), so a
     product run without an explicit ``--pose-limit`` stages what the rows
@@ -1354,11 +1479,15 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     out = Path(out)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f"pose limit must be 2..8: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
     if proxy_pose_limit is not None and (
-            type(proxy_pose_limit) is not int or not 2 <= proxy_pose_limit <= 8):
-        raise ValueError(f"proxy pose limit must be 2..8: {proxy_pose_limit!r}")
+            type(proxy_pose_limit) is not int or not 2 <= proxy_pose_limit <= POSE_LIMIT_MAX):
+        raise ValueError(f"proxy pose limit must be 2..{POSE_LIMIT_MAX}: {proxy_pose_limit!r}")
+    if legacy_pose_limit is None:
+        legacy_pose_limit = pose_limit
+    if type(legacy_pose_limit) is not int or not 2 <= legacy_pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"legacy pose limit must be 2..{POSE_LIMIT_MAX}: {legacy_pose_limit!r}")
     if wanted is None:
         wanted = admitted_source_ids()
     wanted = order_source_ids(wanted)
@@ -1377,10 +1506,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
     aquatic_done = False
     for source_id in supported:
         if source_id == 44:
-            extract_bluekochappy(iso, research, out, pose_limit=pose_limit)
+            extract_bluekochappy(iso, research, out, pose_limit=legacy_pose_limit)
             extracted.append(source_id)
         elif source_id == 54:
-            extract_miulin(iso, out, pose_limit=pose_limit)
+            extract_miulin(iso, out, pose_limit=legacy_pose_limit)
             extracted.append(source_id)
         elif source_id in (59, 60, 61, 62):
             if not dweevil_done:
@@ -1389,6 +1518,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 23:
             extract_sarai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 32:
+            extract_demon(iso, out)
             extracted.append(source_id)
         elif source_id == 57:
             extract_kurage(iso, out)
@@ -1420,6 +1552,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 97:
             extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 73:
+            extract_bigtreasure(iso, research, out)
             extracted.append(source_id)
         elif source_id in (34, 70):
             if not snagret_done:
@@ -1471,7 +1606,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extract_tamago(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 94:
-            extract_dangomushi(iso, out, pose_limit=pose_limit)
+            # #897: the boss draws from adaptive key poses (its own cap), not
+            # the global uniform pose limit (like 78's POSE_LIMITS).
+            extract_dangomushi(iso, out, pose_limit=None)
             extracted.append(source_id)
         elif source_id == 12:
             if not uji_done:
@@ -1490,29 +1627,29 @@ def prepare_content_root(iso, out, research=None, pose_limit=3, wanted=None,
             extracted.append(source_id)
         elif source_id == 17:
             if not frog_done:
-                extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
+                extract_frog(iso, research, out, pose_limit=max(legacy_pose_limit, 6))
                 frog_done = True
             extracted.append(source_id)
         elif source_id == 18:
             if not frog_done:
-                extract_frog(iso, research, out, pose_limit=max(pose_limit, 6))
+                extract_frog(iso, research, out, pose_limit=max(legacy_pose_limit, 6))
                 frog_done = True
             extracted.append(source_id)
         elif source_id == 24:
             if not tank_done:
-                extract_tank(iso, research, out, pose_limit=pose_limit)
+                extract_tank(iso, research, out, pose_limit=legacy_pose_limit)
                 tank_done = True
             extracted.append(source_id)
         elif source_id == 25:
             if not tank_done:
-                extract_tank(iso, research, out, pose_limit=pose_limit)
+                extract_tank(iso, research, out, pose_limit=legacy_pose_limit)
                 tank_done = True
             extracted.append(source_id)
         elif source_id == 15:
             extract_armor(iso, research, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 75:
-            extract_kabuto(iso, research, out, pose_limit=pose_limit)
+            extract_kabuto(iso, research, out, pose_limit=legacy_pose_limit)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
@@ -1606,9 +1743,13 @@ def main(argv=None):
     parser.add_argument("--research", type=Path, default=None,
                         help="native/pikmin2-research checkout (default: %(default)s)")
     parser.add_argument("--pose-limit", type=int, default=None,
-                        help="sampled poses per clip for mamuta/dweevil/dwarf banks "
-                             "(default 3; proxy species use their row pose_limit "
-                             "unless this flag is given explicitly)")
+                        help="sampled poses per clip for the compact-loader family banks "
+                             f"(default {DEFAULT_POSE_LIMIT}, max {POSE_LIMIT_MAX}; proxy and Chappy "
+                             "species use their row pose_limit unless this flag is given explicitly)")
+    parser.add_argument("--legacy-pose-limit", type=int, default=None,
+                        help="optional override of the poses per clip for Blue Kochappy, Miulin, Frog, "
+                             "Tank and Kabuto (default: the --pose-limit value; their native loaders "
+                             "are on the compact loader since #895)")
     parser.add_argument("--species", default=None,
                         help="'playable', 'admitted', or comma-separated source ids "
                              "(default: admitted)")
@@ -1616,8 +1757,10 @@ def main(argv=None):
 
     if (args.seed_manifest is None) != (args.actors_out is None):
         parser.error("--seed-manifest and --actors-out must be given together")
-    if args.pose_limit is not None and not 2 <= args.pose_limit <= 8:
-        parser.error("--pose-limit must be 2..8")
+    if args.pose_limit is not None and not 2 <= args.pose_limit <= POSE_LIMIT_MAX:
+        parser.error(f"--pose-limit must be 2..{POSE_LIMIT_MAX}")
+    if args.legacy_pose_limit is not None and not 2 <= args.legacy_pose_limit <= POSE_LIMIT_MAX:
+        parser.error(f"--legacy-pose-limit must be 2..{POSE_LIMIT_MAX}")
 
     if args.species is None or args.species == "admitted":
         wanted = admitted_source_ids()
@@ -1643,7 +1786,8 @@ def main(argv=None):
 
     summary = prepare_content_root(args.iso, args.out,
                                    research=args.research,
-                                   pose_limit=3 if args.pose_limit is None else args.pose_limit,
+                                   pose_limit=DEFAULT_POSE_LIMIT if args.pose_limit is None else args.pose_limit,
+                                   legacy_pose_limit=args.legacy_pose_limit,
                                    proxy_pose_limit=args.pose_limit,
                                    wanted=wanted)
     print(json.dumps(summary, indent=2))

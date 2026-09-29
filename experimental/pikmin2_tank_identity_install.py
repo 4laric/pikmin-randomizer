@@ -3,12 +3,15 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-from experimental.pikmin2_animation import resource_chunks
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resident_clip_bytes, resource_chunks
 
 SPECIES = {'Tank': 24, 'Wtank': 25}
 CLIPS = ('dead', 'move1', 'flick', 'attack', 'waitact1', 'waitact2', 'type5')
-MAX_POSES = 12
-CLIP_BYTES = 512 * 1024
+# #895: native Tank loads through pc_p2_pose_loader.h (a few Shapes per clip
+# plus decoded vectors): the shared native row cap, and budgets on the native
+# resident measure (512 KiB per clip, 10 MiB per bank).
+MAX_POSES = POSE_LIMIT_MAX
+CLIP_BYTES = 1024 * 1024
 TOTAL_BYTES = 10 * 1024 * 1024
 
 
@@ -48,16 +51,15 @@ def plan(bank, actors):
             if any(a >= b for a, b in zip(frames, frames[1:])):
                 raise ValueError('Invalid Tank frame order')
             lines.append(f"{Path(clip['file']).stem} {len(poses)} {duration} " + ' '.join(map(str, frames)))
-            size = 0
+            clip_data = []
             for index, pose in enumerate(poses):
                 src_name = pose.get('file')
                 expected = f"{Path(clip['file']).stem}_{index:02}.mod"
                 if src_name != expected:
                     raise ValueError('Unexpected Tank pose filename')
                 data = (bank / species / src_name).read_bytes()
-                size += len(data)
-                total += len(data)
-                if not data or size > CLIP_BYTES or total > TOTAL_BYTES:
+                clip_data.append(data)
+                if not data:
                     raise ValueError('Tank pose budget exceeded')
                 if len(data) != pose.get('bytes') or hashlib.sha256(data).hexdigest() != pose.get('sha256'):
                     raise ValueError('Tank pose size/hash mismatch')
@@ -67,6 +69,10 @@ def plan(bank, actors):
                 reference = resources
                 dst = f"tank_{species}_{Path(clip['file']).stem}_{index:02}.mod"
                 files.append((dst, data))
+            resident = resident_clip_bytes(clip_data)
+            total += resident
+            if resident > CLIP_BYTES or total > TOTAL_BYTES:
+                raise ValueError('Tank pose budget exceeded')
     return ('\n'.join(lines) + '\n').encode(), files, hashlib.sha256(raw).hexdigest()
 
 
