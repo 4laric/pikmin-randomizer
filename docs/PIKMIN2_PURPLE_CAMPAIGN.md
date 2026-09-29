@@ -57,8 +57,14 @@ injecting Purple identity. It stages the captain adjacent to the existing sprout
 before plucking, so this does not establish approach/pathfinding or player controls.
 The launcher recovery regression also covers native journals containing `PURPLE 1`.
 
+An ordinary day-end run advanced day 2 to day 3, deposited a Flower Purple,
+confirmed the native results/save UI and emitted `CAMPAIGN_SAVED`. A fresh process
+restored day 3 with exactly one Flower Purple, then withdrew and redeposited it.
+This is one tested native day boundary, not a full campaign playthrough. The
+fixture injects maturity and uses scripted confirmation buttons for this check.
+
 Actual ten-strength transport, Violet terrain clearance and navigation,
-physical storage controls, full native day-end UI/relaunch,
+physical storage controls, a full campaign playthrough,
 and enemy receiver breadth require fresh runtime acceptance. Parser tests and a
 successful compile do not establish those gates. This is a draft implementation,
 not gameplay sign-off. Builds, banks, receipts and private player progress stay
