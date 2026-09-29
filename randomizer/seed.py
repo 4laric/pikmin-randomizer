@@ -582,9 +582,10 @@ P2_PLAYABLE_POOL = (
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
+    if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
     if type(progressive_day_length) is not int or not 0 <= progressive_day_length <= DAY_LENGTH_LIMIT: raise ValueError(f"progressive_day_length must be 0..{DAY_LENGTH_LIMIT}")
     if type(day_length_step) is not int or not 10 <= day_length_step <= 100 or day_length_step % 5: raise ValueError("day_length_step must be 10..100 in steps of 5")
     if progressive_day_length:
@@ -750,6 +751,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             result['progressive_day_length'] = progressive_day_length
             result['day_length_step'] = day_length_step
             result['capabilities'].append('progressive-day-length-v1')
+        if whistle_pluck_item:
+            result['whistle_pluck_item'] = True
+            result['capabilities'].append('whistle-pluck-item-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -915,6 +919,9 @@ def validate(m):
     if type(m) is dict and 'progressive_maturity' in m:
         expected.add('progressive_maturity')
         if m['progressive_maturity'] is not True or not m.get('benefit_items'): raise ValueError('invalid progressive_maturity')
+    if type(m) is dict and 'whistle_pluck_item' in m:
+        expected.add('whistle_pluck_item')
+        if m['whistle_pluck_item'] is not True or not m.get('benefit_items'): raise ValueError('invalid whistle_pluck_item')
     if type(m) is dict and ('progressive_day_length' in m or 'day_length_step' in m):
         from .benefits import DAY_LENGTH_LIMIT
         expected.update(('progressive_day_length', 'day_length_step'))
@@ -1047,6 +1054,7 @@ def validate(m):
         if m.get('prerelease_trap_weight'): fixed['capabilities'] += ['prerelease-trap-v1']
         if m.get('progressive_maturity'): fixed['capabilities'] += ['progressive-maturity-v1']
         if m.get('progressive_day_length'): fixed['capabilities'] += ['progressive-day-length-v1']
+        if m.get('whistle_pluck_item'): fixed['capabilities'] += ['whistle-pluck-item-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:
