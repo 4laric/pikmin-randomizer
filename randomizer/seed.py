@@ -578,8 +578,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "PanModoki",
         "family": "breadbug",
         "evidence": {
-            "run": "Bot-driven power-mode campaign b3 (owner ruling 2026-09-25: power mode admits; #898): red squad, campaign OWN bind of the source PanModoki FSM, thrown-Pikmin press 1100->900, grab of a carcass and tug against 1-5 carriers (back, pulled), sucked off at the Onion for container damage 900->-100, OWN_DEAD on its own generator, corpse carried, Onion receipt onion:p2:38:3; run b2 refused 3250 ordinary attacks with health unchanged",
-            "log": "output/claude-orch/p2-breadbug-own/runs/b3-38/session/runs/1e49bffa4b589388e65f29f27b132952181220f22de64fcbea0e63b7895333f8/native.log (sha256 41831a5543590988...) L1161 bind, L2506 press, L2874 stick, L3489 dead, L3536 receipt; native claude/p2-port-38-breadbug e780dc0fe, exe sha256 e61c5aa3f6509bf3...; #898",
+            "run": "Bot-driven power-mode campaign n3 (owner ruling 2026-09-25: power mode admits; #898 fix stage): red squad, campaign OWN bind of the source PanModoki FSM, never a Pikmin or captain target (0 attacks), grabs a carcass and hauls it home through Back, CarryEnd, Hide (refill, carcass spared) and Appear, dies to six thrown-Pikmin presses 1100->-100, OWN_DEAD on its own generator, corpse carried, Onion receipt onion:p2:38:3",
+            "log": "output/claude-orch/p2-breadbug-own/runs/n3-38/session/runs/1c6429493441c9a5601e806591ecccf4bce9895720a74fc17b8cb279919328c4/native.log (sha256 ade4a5c84f020d3d...) L1257 bind, L2633 stick, L2950 consume, L3055-L6064 presses, L6081 dead, L6243 receipt; native claude/p2-port-38-breadbug ab9f3513b, exe sha256 abcd1751b6888e3e...; #898",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 38 -> breadbug "
                          "(stages p2-breadbug-parms/bank and the breadbug pose meshes)",
