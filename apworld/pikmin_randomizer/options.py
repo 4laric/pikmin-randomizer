@@ -210,6 +210,12 @@ class ProgressiveDayLength(Range):
     default = 0
 
 
+class WhistlePluckItem(Toggle):
+    """Place one Whistle Pluck item. Once received, holding the whistle over buried sprouts plucks them one after another, keeping their colour and maturity. Useful, not required by logic. Takes one filler slot."""
+    display_name = "Whistle Pluck Item"
+    default = 1
+
+
 class DayLengthIncrement(Range):
     """Percent of a normal day added by each Progressive Day Length item. Rounded down to a multiple of 5."""
     display_name = "Day Length Increment"
@@ -232,6 +238,7 @@ class PikminOptions(PerGameCommonOptions):
     death_link_pikmin: DeathLinkPikmin
     progressive_day_length: ProgressiveDayLength
     day_length_increment: DayLengthIncrement
+    whistle_pluck_item: WhistlePluckItem
     goal: GoalMode
     bomb_rock_weight: BombRockWeight
     bomb_trap_weight: BombTrapWeight
