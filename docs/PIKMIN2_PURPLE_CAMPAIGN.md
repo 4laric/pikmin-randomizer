@@ -12,7 +12,7 @@ The launcher adds one Violet Candypop 100 units along X from the starting
 stage's landing origin. Its stage and generator ID are bound explicitly; other
 flowers keep their conversion rules and materials. The supply converts at most
 five non-Purple inputs using the existing native Candypop/Purple implementation.
-Landing-relative placement is an engineering choice pending in-game verification.
+Landing-relative placement is an engineering choice pending player navigation verification.
 
 Near the ship (within 180 units), press **F10** to withdraw one Purple, taking
 Flower before Bud before Leaf. **Shift+F10** deposits nearby Purple members of the
@@ -51,8 +51,14 @@ Its negative guard mode is
 against a completed private build, and run through the bounded fixture runner in
 a freshly staged ordinary P2 session. Injection is not natural acquisition proof.
 
-Natural conversion/pluck/selection/throw, actual ten-strength transport, Violet
-terrain clearance, physical storage controls, full native day-end UI/relaunch,
+The ordinary-campaign fixture has passed scripted native throw/collision conversion,
+captain pluck, selection class 4 and strength 10, followed by storage checks without
+injecting Purple identity. It stages the captain adjacent to the existing sprout
+before plucking, so this does not establish approach/pathfinding or player controls.
+The launcher recovery regression also covers native journals containing `PURPLE 1`.
+
+Actual ten-strength transport, Violet terrain clearance and navigation,
+physical storage controls, full native day-end UI/relaunch,
 and enemy receiver breadth require fresh runtime acceptance. Parser tests and a
 successful compile do not establish those gates. This is a draft implementation,
 not gameplay sign-off. Builds, banks, receipts and private player progress stay
