@@ -58,7 +58,7 @@ PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78, 32)
+                25, 15, 78, 73, 32)
 
 
 class SeedBridgeError(ValueError):
@@ -179,7 +179,15 @@ def _assign_boss_arenas(seed, slot, document, roster: list[RosterEntry], boss_po
     rng = SeedRandom(f"{seed}/{BOSS_ARENA_VERSION}/{slot}")
     free = sorted(arenas, key=int)
     chosen: dict[str, int] = {}
-    for source_id in rng.shuffle(sorted(boss_pool)):
+    # Most-constrained boss first (#246): the Titan Dweevil fits only the
+    # Impact Goolix arena while the Crawbster fits two, so a Crawbster drawn
+    # first must not take the Titan's only arena. The shuffle still breaks
+    # ties (and a one-boss pool draws exactly as before, so its layouts are
+    # unchanged).
+    order = rng.shuffle(sorted(boss_pool))
+    eligible = {source_id: sum(1 for token in free if token in accepted.get(source_id, set()))
+                for source_id in order}
+    for source_id in sorted(order, key=lambda sid: eligible[sid]):
         choices = [token for token in free if token in accepted.get(source_id, set())]
         if not choices:
             continue

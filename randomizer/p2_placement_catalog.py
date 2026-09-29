@@ -152,6 +152,10 @@ CANDIDATE_SPECS = (
     (56, 'Damagumo', 26, ['ground'], None, False),
     (69, 'BigFoot', 26, ['ground'], None, False),
     (75, 'Kabuto', 20, ['ground'], None, False),
+    # Titan Dweevil (73, lane 32, #246): pool boss placed only in the P1 boss
+    # arenas (#899; randomizer.p2_boss_arenas.apply_to_document writes its
+    # arena profile), like the Crawbster above.
+    (73, 'BigTreasure', 32, ['ground'], None, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,

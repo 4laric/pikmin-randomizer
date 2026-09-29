@@ -44,6 +44,7 @@ every existing caller keeps working. Today the pool is:
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
 | 78 | MiniHoudai | minihoudai |
+| 73 | BigTreasure | bigtreasure |
 | 32 | Demon | demon |
 
 The installer table (`experimental/pikmin2_family_install.py`
@@ -73,8 +74,10 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 37 species on 35 slots, a given seed may leave out any
-  two pool species. A pool that fits keeps the legacy fill unchanged.
+  (`sampled-v1`). With 38 species on 35 slots, a given seed may leave out any
+  one ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  boss arenas outside the ordinary slots, so 36 ordinary species share 35
+  ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him
   (10 damage), is knocked down by Pikmin weight, dies naturally, is carried as
@@ -87,10 +90,26 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Eight P2 bosses are already here (34, 53, 56,
-  69, 70, 71, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
-  66 Houdai, 73 Titan Dweevil and 99 Waterwraith are in scope under the same
-  admission bar. Per-boss arena feasibility is the work, not a policy question.
+- **Bosses belong in the pool.** Nine P2 bosses are already here (34, 53, 56,
+  69, 70, 71, 73, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
+  66 Houdai and 99 Waterwraith are in scope under the same admission bar.
+  Per-boss arena feasibility is the work, not a policy question.
+
+## Owner rulings, 2026-09-29 (#246, #899)
+
+- **Boss arenas.** P2 bosses are placed only in designated P1 boss arenas,
+  replacing the P1 boss there (`randomizer/p2_boss_arenas.py`). The pool's
+  arena bosses are 94 Crawbster and 73 Titan Dweevil; the most-constrained
+  boss is seated first, so the Titan (footprint 250) takes the Impact Goolix
+  arena (clear 275) and the Crawbster the Hope snagret pit.
+- **73 BigTreasure (Titan Dweevil): admitted.** The source BigTreasure FSM runs
+  as its own campaign actor with the retail collision tree: Pikmin knock the
+  four weapons off by hitting each weapon's own part, the body takes damage
+  only after the last drop, and it dies naturally. A carryable corpse is the
+  reward (ruling #1; the source Titan leaves none) and delivers
+  `onion:p2:73:0` on its own generator token (bot power-mode run e7 and
+  repeats, plus a day 11-15 re-entry run rc2, #246). Its gas stays lethal to every P1 colour (ruling #2). The
+  knocked-off weapons and Louie are not carryable pellets yet.
 
 ## Admission bar
 

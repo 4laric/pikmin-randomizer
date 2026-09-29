@@ -1329,23 +1329,31 @@
     "73": {
       "native_module": "pc_p2_bigtreasure",
       "owner_lane": "32",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Titan Dweevil (BigTreasure, source 73): OWN campaign actor running the source BigTreasure FSM in the impact_goolix boss arena (owner ruling 2026-09-29 #3); fights with all four elements, loses its weapons to Pikmin hits on their own retail collision parts, dies naturally, and its carryable corpse (owner ruling 2026-09-29 #1) is carried to the Onion for receipt onion:p2:73:0 on its own generator token.",
       "source": [
         "PIKMIN2_BIGTREASURE_CONTRACT.md",
-        "PIKMIN2_BIGTREASURE_AUDIT.md"
+        "PIKMIN2_BIGTREASURE_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "BigTreasure (Titan Dweevil): ordinary FSM host + weapon/attack/element modules; real weapon damage + phase transition/drop remain (#246)."
-      ]
+        "BigTreasure (Titan Dweevil): #246 source-order core pc_p2_bigtreasure_own (12 BigTreasureState.cpp states, IK gait, key events, damageCallBack, flick, weapon pick/drop) driven by the campaign actor pc_p2_bigtreasure_teki on a TEKI_Swallow placement slot; P1 AI suppressed; retail enemycoll.txt tree (27 parts) replaces the Swallow collision while bound.",
+        "Campaign evidence, bot-driven power-mode run e7 (owner ruling 2026-09-25: power mode admits; x30 damage, 100 red Pikmin), natural playable seed bt-own-73-red-impact-0 (no rebind; 73 in impact_goolix), TEST-ONLY PIKMIN_P2_TEST_START_DAY=11 because the Goolix arena is live from day 9: output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log (sha256 f9ceec6c30bee188fbf53fceee73b761cbd0c6dc439a7c2d8e3767d1270c1658) L697 P2_BOSS_ARENA_BIRTH source_id=73 target=4019261003, L1366 COLL_BIND parts=27, L1367 BIND, 23 FSM lines with the strict Stay>Land>ItemWalk>PreAttack>Attack>PutItem order, 6 ATTACK_EMIT, 40 accepted receiver hits, L1787/L1820/L1934/L2031 WEAPON_DROP fire/water/elec/gas from Pikmin stuck to that weapon's part, L2032 COLL_UNARMED, body damage only after the last drop, L2060 DEAD, L2084 Louie release, L2089 CORPSE, L2139 receipt onion:p2:73:0 new=1, L2140 TEKI_FORGET remaining=0. Pins: root claude/p2-port-73-titan-v2 on origin/claude/p2-boss-arenas 6dd1b113, native claude/p2-port-73-titan-v2 ad5124e12 (on fork claude/p2-boss-arenas ac521a68b), exe nectar.exe sha256 2010385d86baaea759cadec364764d4b1e69f6cf5e6d721393959202f48f490a, content prepared.json sha256 4bc6641d5166818b...",
+        "Repeats on the same exe: e3, e4, e5, e6 and e8 kill, carry and deliver onion:p2:73:0 (their FSM took the source-legal ItemWalk>ItemWait branch, so only e7 meets the strict in-order scorer check). Earlier exes: a12 (304d984a, PASS_MARKERS), e2 (f65d1809, PASS_MARKERS); e1 (f65d1809) killed but the TEST-ONLY bot stalled at 2 of 10 carriers.",
+        "movement_animation (#246 review: 'the Titan snaps back to its spawn point'): not a teleport. Diagnostic runs d1-d3 (per-stage jump probes and pin/anchor logs) showed the old anchor pin never fired; the actor was tracking the IK foot-average centre, which is the source mPosition (BigTreasure::doUpdate: mPosition = IKSystemMgr::mCentrePosition). Turning in place moves one foot at a time, so the centre swings up to ~50 units mid-cycle and returns exactly to the cycle start (p2_bigtreasure_own_test gait/turn_cycles_return_to_start, gait/centre_moves_continuously). The pin is gone (native ad5124e12); P2_BIGTREASURE_POS now logs centre= and trace=, and across e2-e6 the actor stays within 4.9 units of the centre in every IK sample. The living body is drawn at the source trace centre (damped), as doAnimationIKSystem does; while the IK is off (Stay/Land) the actor is held at its bind point.",
+        "cleanup_reentry: TEST-ONLY day-cycle run rc2 (PIKMIN_P2_TEST_DAY_CYCLE=hurt:30,time:45,receipt:15,time:45; its sunsets use the pause menu's forceDayEnd, the world map re-enters the same stage, results/campaign save/teardown/next-day load are the real path; saves stay in the run's session dir) output/claude-orch/p2-bigtreasure-own/runs/rc2-73/session/runs/02fcef0cb9d24f3028dc99e7cd9aaa4d1dc02511508a220fc4203467acdb1b52/native.log (sha256 85c9f374c486dbe4f6982a0afebe60f395568b1f2285489bb9ce7aaa62c249b7): day 11 Titan hurt and alive at sunset (L1773), TEKI_FORGET remaining=0 at sunset (L1775), CAMPAIGN_SAVED; day 12 loads 11.gen, which has no arena generator (the Goolix arena is aliased from the even day files 10..28, so it is live on odd days), no Titan; day 13 (12.gen alias 2299547974 -> 4019261003) re-births the Titan fresh (L3743 ARENA_BIRTH, L4283 COLL_BIND parts=27, L4284 BIND health=5000 weapons=4), killed (L4717), carried, receipt onion:p2:73:0 new=1 (L4798), TEKI_FORGET (L4799); day 14 none; day 15 (14.gen alias) the Titan is re-born again after the day-13 receipt (L6646/L7189) and the run ends cleanly (L7356 DONE). No crash, no stale binding.",
+        "Owner rulings 2026-09-29: #1 the carryable corpse (the Swallow carcass pellet drawn as the Titan dead pose) is the accepted reward although the source Titan leaves none; #2 Titan gas stays lethal to every P1 colour; #3 the Titan is placed only in P1 boss arenas (it fits impact_goolix, clear 275 vs footprint 250).",
+        "Known gaps: the knocked-off weapons and Louie are not carryable P1 pellets; the carried corpse is not drawn in most carry frames (#908); no leg IK solve; element projectiles are not drawn; a Titan killed and delivered is re-born on the next odd day through the aliased arena generators (rc2 day 15) and a second delivery's receipt (expected new=0) is untested - whether a killed boss should return is an arena-policy question for #899."
+      ],
+      "delivery_receipt": "onion:p2:73:0 (P2_BIGTREASURE_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log:L2139 receipt (sha256 f9ceec6c30bee188fbf53fceee73b761cbd0c6dc439a7c2d8e3767d1270c1658)"
     },
     "75": {
       "native_module": "pc_p2_kabuto_cannon",

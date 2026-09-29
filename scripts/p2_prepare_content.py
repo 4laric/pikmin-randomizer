@@ -138,6 +138,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
 * 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
   ``<out>/FminiHoudai/``.
+* 73 BigTreasure (#246 OWN): ``pikmin2_bigtreasure_assets.extract`` ->
+  ``<out>/BigTreasure/`` (the full import tree plus ``identity.json``); the
+  BigTreasure adapter stages the native campaign core inputs through
+  ``experimental.pikmin2_bigtreasure_campaign``.
 Proxy species declared under ``randomizer/p2_proxy`` (one JSON file per
 species, e.g. Chappy and Frog today) extract through the generic
 ``pikmin2_proxy_assets.extract`` into ``<out>/<Enum>/`` (``proxy.json`` plus
@@ -197,6 +201,7 @@ PLAYABLE_SOURCE_IDS = (44, 54, 59, 60, 61, 62)
 
 ENUM_FOR_SOURCE = {
     1: "Kochappy",
+    73: "BigTreasure",
     2: "Chappy",
     33: "FireChappy",
     35: "KumaChappy",
@@ -785,6 +790,40 @@ def extract_houdai(iso, dest):
     return target
 
 
+def extract_bigtreasure(iso, research, dest, pose_limit=8):
+    """Build <dest>/BigTreasure/ via the BigTreasure import (#246 OWN).
+
+    ``pikmin2_bigtreasure_assets.extract`` produces the disc import tree
+    (``bigtreasure.json``, ``BigTreasure/`` model/clips/metadata/poses and
+    ``pellets/``); an ``identity.json`` marks it as the source-73 identity.
+    """
+    from experimental import pikmin2_bigtreasure_assets as bigtreasure
+
+    iso, dest = Path(iso), Path(dest)
+    research = Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
+        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    target = dest / "BigTreasure"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bigtreasure"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        bigtreasure.extract(iso, research, tmp, pose_limit=pose_limit)
+        (tmp / "identity.json").write_text(
+            json.dumps({"schema": 1, "source_id": 73, "enum_name": "BigTreasure"}, indent=2) + "\n",
+            encoding="utf-8")
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_fminihoudai(iso, research, dest, pose_limit=6):
     """Build <dest>/FminiHoudai/ via the cannon extractor (full family import)."""
     from experimental import pikmin2_cannon_projectile_assets as cannon
@@ -1365,6 +1404,7 @@ def extract_chappy(iso, dest, source_id, pose_limit=None):
 
 EXTRACTORS = {
     2: "extract_chappy",
+    73: "extract_bigtreasure",
     33: "extract_chappy",
     35: "extract_chappy",
     43: "extract_chappy",
@@ -1512,6 +1552,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 97:
             extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 73:
+            extract_bigtreasure(iso, research, out)
             extracted.append(source_id)
         elif source_id in (34, 70):
             if not snagret_done:
