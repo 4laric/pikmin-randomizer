@@ -118,3 +118,31 @@ def test_carcass_row_reads_the_dangomushi_block_and_stages_the_sidecar():
         carcass_text({'carcass': dict(row, max=10)})
     with pytest.raises(ValueError):
         carcass_row(CARCASS.replace('DangoMushi', 'Other'))
+
+
+def _fake_pose(vectors, pad):
+    """A minimal .mod chunk stream: positions (16), normals (17), padding, end."""
+    import struct
+    half = vectors // 2
+    out = b''
+    for tag, count in ((16, half), (17, vectors - half)):
+        body = struct.pack('>I', count) + b'\0' * (12 * count)
+        out += struct.pack('>II', tag, len(body)) + body
+    body = b'\0' * pad
+    out += struct.pack('>II', 99, len(body)) + body
+    return out + struct.pack('>II', 65535, 4) + b'\0' * 4
+
+
+def test_resident_estimate_mirrors_the_native_compact_loader():
+    from experimental.pikmin2_dangomushi_assets import (
+        RESIDENT_CLIP_BYTES, _slot_indices, pose_vector_count, resident_clip_bytes)
+    assert RESIDENT_CLIP_BYTES == 1024 * 1024       # #895 owner-approved budget
+    assert _slot_indices(40) == {0, 13, 26, 39}      # p2motion::shapeSlots(40, 4)
+    assert _slot_indices(3) == {0, 1, 2}
+    pose = _fake_pose(1766, 50000)                    # ~ the Crawbster: 73 KB, 1766 vectors
+    assert pose_vector_count(pose) == 1766
+    # 40 poses: 4 whole-file Shape slots + 36 x 12-byte vectors.
+    assert resident_clip_bytes([pose] * 40) == 4 * len(pose) + 36 * 1766 * 12
+    assert resident_clip_bytes([pose] * 40) <= RESIDENT_CLIP_BYTES
+    # The old on-disk sum (the 4 MiB budget request) would have been far over.
+    assert 40 * len(pose) > RESIDENT_CLIP_BYTES

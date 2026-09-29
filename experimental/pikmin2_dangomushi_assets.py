@@ -32,6 +32,7 @@ reason, never replaced with a placeholder pose.
 import argparse
 import hashlib
 import json
+import math
 import re
 import struct
 from pathlib import Path
@@ -88,6 +89,13 @@ def pose_name(clip, number):
 # ends and every key-event frame (loop seams, roll start, windows).
 ADAPTIVE_MAX_POSES = 40
 ADAPTIVE_FLOOR = 3.0          # stop once every in-between frame is within 3 units
+# Native resident budget per clip (#895 pose-fidelity loader,
+# pc_p2_pose_loader.h p2poseload::ClipBytes, owner-approved 1 MiB): the first
+# RESIDENT_SLOT_SHAPES spread poses cost their whole file as Shapes, every
+# other pose its decoded position+normal vectors (12 bytes each). An adaptive
+# clip that would exceed it is re-sampled with a lower cap, never shipped over.
+RESIDENT_CLIP_BYTES = 1024 * 1024
+RESIDENT_SLOT_SHAPES = 4
 CARCASS_PATH = 'user/Abe/Pellet/us/carcass_config.txt'
 # The 'body' material's TEV stage 0 is RASC + lerp(C0, C1, env-mapped
 # IP2_glow1_i); dangomushi.brk animates C0. The approximate converter would
@@ -171,6 +179,38 @@ def tev_color_overrides(model_blocks, shape_count):
         colors[shape] = tuple(max(0, min(255, v)) for v in rgba[:3]) + (255,)
         textures[shape] = -1
     return textures, colors
+
+
+def _slot_indices(count, shapes=RESIDENT_SLOT_SHAPES):
+    """p2motion::shapeSlots: `shapes` evenly spread Shape slots."""
+    if count <= shapes:
+        return set(range(count))
+    out = []
+    for i in range(shapes):
+        slot = int(math.floor(i * (count - 1) / (shapes - 1) + 0.5))
+        if not out or slot != out[-1]:
+            out.append(slot)
+    return set(out)
+
+
+def pose_vector_count(data):
+    """Position + normal vector count of one pose .mod (chunk tags 16/17)."""
+    at, vectors = 0, 0
+    while at + 12 <= len(data):
+        tag, size, count = struct.unpack_from('>III', data, at)
+        if tag in (16, 17):
+            vectors += count
+        if tag == 65535:
+            break
+        at += 8 + size
+    return vectors
+
+
+def resident_clip_bytes(pose_datas):
+    """Mirror of the native p2poseload::estimateStem resident estimate."""
+    slots = _slot_indices(len(pose_datas))
+    return sum(len(data) if i in slots else 12 * pose_vector_count(data)
+               for i, data in enumerate(pose_datas))
 
 
 def carcass_row(config_text):
@@ -294,55 +334,76 @@ def extract(iso, output, pose_limit=6, sampling='uniform'):
         # zero: the native loader opens indices 0..N-1 and aborts on a gap, so
         # an unconvertible sampled frame is recorded under unsupported_frames
         # (never replaced with a placeholder) and never occupies a slot.
+        baked = None
         if adaptive:
             baked = []
             for frame in range(duration):
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 baked.append(decode(model, True, bake_rigid=True,
                                     draw_matrices=draw_matrices(model_blocks, pose))[1][9])
-            frames = adaptive_frames(baked, pose_limit,
-                                     anchors=[event[0] for event in row['events']])
-            clip['sampling'] = dict(policy='adaptive_rdp', cap=pose_limit,
-                                    floor=ADAPTIVE_FLOOR,
-                                    anchors=sorted({event[0] for event in row['events']
-                                                    if 0 <= event[0] < duration}))
-        else:
-            frames = sample_frames(duration, pose_limit)
-        for frame in frames:
-            try:
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                matrices = draw_matrices(model_blocks, pose)
-                decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
-                name = pose_name(stem, len(clip['poses']))
-                colors = None
-                if adaptive:
-                    textures, tints = tev_color_overrides(model_blocks, len(decoded[3]))
-                    mats = list(decoded[3])
-                    for shape, texture in textures.items():
-                        mats[shape] = texture
-                    decoded = (decoded[0], decoded[1], decoded[2], mats)
-                    colors = [tints.get(i, (255, 255, 255, 255)) for i in range(len(mats))]
-                conversion = write_model(decoded, output / name, 'enemy.bmd',
-                                         material_colors=colors)
-                if colors is not None:
-                    conversion['tev_color_shapes'] = {
-                        str(shape): list(tints[shape]) for shape in sorted(tints)}
-                conversion.update(source='enemy.bmd', output=name,
-                                  weighted_pose_baked=envelopes > 0,
-                                  source_frame=frame)
-                data = (output / name).read_bytes()
-                resources = resource_chunks(data)
-                if reference is not None and resources != reference:
-                    raise ValueError('DangoMushi pose changes immutable render resources')
-                reference = resources
-                total_pose_bytes += len(data)
-                clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
-                                          sha256=sha(data)))
-                (output / Path(name).with_suffix('.json')).write_text(
-                    json.dumps(conversion, sort_keys=True, indent=2) + '\n',
-                    encoding='utf-8')
-            except (ValueError, KeyError, ArithmeticError) as error:
-                clip['unsupported_frames'].append(frame)
+        cap = pose_limit
+        while True:
+            if adaptive:
+                frames = adaptive_frames(baked, cap,
+                                         anchors=[event[0] for event in row['events']])
+                clip['sampling'] = dict(policy='adaptive_rdp', cap=cap,
+                                        floor=ADAPTIVE_FLOOR,
+                                        resident_budget=RESIDENT_CLIP_BYTES,
+                                        anchors=sorted({event[0] for event in row['events']
+                                                        if 0 <= event[0] < duration}))
+            else:
+                frames = sample_frames(duration, pose_limit)
+            clip['poses'], clip['unsupported_frames'] = [], []
+            pose_datas = []
+            for frame in frames:
+                try:
+                    _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                    matrices = draw_matrices(model_blocks, pose)
+                    decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
+                    name = pose_name(stem, len(clip['poses']))
+                    colors = None
+                    if adaptive:
+                        textures, tints = tev_color_overrides(model_blocks, len(decoded[3]))
+                        mats = list(decoded[3])
+                        for shape, texture in textures.items():
+                            mats[shape] = texture
+                        decoded = (decoded[0], decoded[1], decoded[2], mats)
+                        colors = [tints.get(i, (255, 255, 255, 255)) for i in range(len(mats))]
+                    conversion = write_model(decoded, output / name, 'enemy.bmd',
+                                             material_colors=colors)
+                    if colors is not None:
+                        conversion['tev_color_shapes'] = {
+                            str(shape): list(tints[shape]) for shape in sorted(tints)}
+                    conversion.update(source='enemy.bmd', output=name,
+                                      weighted_pose_baked=envelopes > 0,
+                                      source_frame=frame)
+                    data = (output / name).read_bytes()
+                    resources = resource_chunks(data)
+                    if reference is not None and resources != reference:
+                        raise ValueError('DangoMushi pose changes immutable render resources')
+                    reference = resources
+                    pose_datas.append(data)
+                    clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
+                                              sha256=sha(data)))
+                    (output / Path(name).with_suffix('.json')).write_text(
+                        json.dumps(conversion, sort_keys=True, indent=2) + '\n',
+                        encoding='utf-8')
+                except (ValueError, KeyError, ArithmeticError) as error:
+                    clip['unsupported_frames'].append(frame)
+            resident = resident_clip_bytes(pose_datas)
+            if not adaptive or resident <= RESIDENT_CLIP_BYTES:
+                break
+            # Over the native resident budget: drop this sampling and retry
+            # with one fewer key pose (deterministic, same RDP order).
+            for pose in clip['poses']:
+                (output / pose['file']).unlink()
+                (output / Path(pose['file']).with_suffix('.json')).unlink()
+            if cap <= 2:
+                raise ValueError(f'DangoMushi clip {stem} exceeds the resident clip budget')
+            cap = min(cap, len(frames)) - 1
+        if adaptive:
+            clip['resident_bytes'] = resident
+        total_pose_bytes += sum(len(data) for data in pose_datas)
         if clip['poses']:
             clip['status'] = 'converted'
         else:
