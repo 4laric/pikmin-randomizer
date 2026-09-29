@@ -573,6 +573,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
         },
     },
+    {
+        "source_id": 73,
+        "enum_name": "BigTreasure",
+        "family": "bigtreasure",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign a12 (owner ruling 2026-09-25: power mode admits; #246, boss arena #899): natural playable seed bt-own-73-red-impact-0 places 73 in the impact_goolix boss arena; red squad, source BigTreasure FSM with retail collision parts, all four weapons knocked off by Pikmin on their own parts, body damage only after the last drop, P2_BIGTREASURE_DEAD on its own generator, carryable corpse (owner ruling 2026-09-29 #1) carried, Onion receipt onion:p2:73:0; repeated in a13/a14 (and a7 on the previous bot build)",
+            "log": "output/claude-orch/p2-bigtreasure-own/runs/a12-73/session/runs/d07dc3fb5e5a036e3ce50d47025bbbd4f0a556bb2737427d96c2048badf408b3/native.log (sha256 3f461efb6449a009...) L1369 bind, L2024 dead, L2103 receipt; native claude/p2-port-73-titan-v2 b08cf0393, exe sha256 304d984a71b44dfc...; #246",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 73 -> bigtreasure "
+                         "(stages the retail enemyparm/enemycoll, event table, pose bank and weapon meshes)",
+        },
+    },
 )
 
 

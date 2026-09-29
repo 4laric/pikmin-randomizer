@@ -1323,23 +1323,29 @@
     "73": {
       "native_module": "pc_p2_bigtreasure",
       "owner_lane": "32",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Titan Dweevil (BigTreasure, source 73): OWN campaign actor running the source BigTreasure FSM in the impact_goolix boss arena (owner ruling 2026-09-29 #3); fights with all four elements, loses its weapons to Pikmin hits on their own retail collision parts, dies naturally, and its carryable corpse (owner ruling 2026-09-29 #1) is carried to the Onion for receipt onion:p2:73:0 on its own generator token.",
       "source": [
         "PIKMIN2_BIGTREASURE_CONTRACT.md",
-        "PIKMIN2_BIGTREASURE_AUDIT.md"
+        "PIKMIN2_BIGTREASURE_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "BigTreasure (Titan Dweevil): ordinary FSM host + weapon/attack/element modules; real weapon damage + phase transition/drop remain (#246)."
-      ]
+        "BigTreasure (Titan Dweevil): #246 source-order core pc_p2_bigtreasure_own (12 BigTreasureState.cpp states, IK gait, key events, damageCallBack, flick, weapon pick/drop) driven by the campaign actor pc_p2_bigtreasure_teki on a TEKI_Swallow placement slot; P1 AI suppressed; retail enemycoll.txt tree (27 parts) replaces the Swallow collision while bound.",
+        "Campaign evidence, bot-driven power-mode run a12 (owner ruling 2026-09-25: power mode admits; x30 damage, 100 red Pikmin), natural playable seed bt-own-73-red-impact-0 (no rebind; per-seed arena sampling puts 73 in impact_goolix and 94 in hope_snagret_pit), TEST-ONLY PIKMIN_P2_TEST_START_DAY=11 because the Goolix arena is live from day 9: output/claude-orch/p2-bigtreasure-own/runs/a12-73/session/runs/d07dc3fb5e5a036e3ce50d47025bbbd4f0a556bb2737427d96c2048badf408b3/native.log (sha256 3f461efb6449a00953a05877c52ed52374d77a0e6fbe033a4a30431792eb7f22) L697 P2_BOSS_ARENA_BIRTH source_id=73 target=4019261003, L1021 retail parms, L1368 COLL_BIND parts=27, L1369 BIND, 22 FSM lines including Stay>Land>ItemWalk>PreAttack>Attack>PutItem in order, 6 ATTACK_EMIT, 43 accepted receiver hits, L1738/L1806/L1950/L1994 WEAPON_DROP fire/elec/gas/water from Pikmin stuck to that weapon's part, L1995 COLL_UNARMED, body damage only after the last drop, DropItem>Walk, L2024 DEAD, L2050 Louie release, L2053 CORPSE, L2103 receipt onion:p2:73:0 new=1, L2104 TEKI_FORGET remaining=0. Pins: root claude/p2-port-73-titan-v2 on origin/claude/p2-boss-arenas 6dd1b113, native claude/p2-port-73-titan-v2 b08cf0393 (on fork claude/p2-boss-arenas ac521a68b), exe nectar.exe sha256 304d984a71b44dfcf335032e0b1e3fac943c01856fc9fcb6d1ffe15c1d803c1c, content prepared.json sha256 4bc6641d5166818b...",
+        "Repeats on the same exe: a13 and a14 kill, carry and deliver onion:p2:73:0 (their FSM took the source-legal ItemWalk>ItemWait branch, so the strict in-order scorer check is only met by a12); a7 on the previous bot build (exe 084e70ec) delivered as well. Earlier builds a8-a11 killed but the TEST-ONLY bot stalled at 1-2 of 10 carriers; the bot corpse-seeding fix is in native b08cf0393.",
+        "Owner rulings 2026-09-29: #1 the carryable corpse (the Swallow carcass pellet drawn as the Titan dead pose) is the accepted reward although the source Titan leaves none; #2 Titan gas stays lethal to every P1 colour; #3 the Titan is placed only in P1 boss arenas (it fits impact_goolix, clear 275 vs footprint 250).",
+        "Known gaps: the knocked-off weapons and Louie are not carryable P1 pellets; the carried corpse is not drawn in every frame (a12 frames 5850-6225 show 10/18 carriers without the model); no leg IK solve; element projectiles are not drawn; cleanup_reentry rests on TEKI_FORGET remaining=0 after delivery, no next-day re-entry was run."
+      ],
+      "delivery_receipt": "onion:p2:73:0 (P2_BIGTREASURE_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-bigtreasure-own/runs/a12-73/session/runs/d07dc3fb5e5a036e3ce50d47025bbbd4f0a556bb2737427d96c2048badf408b3/native.log:L2103 receipt (sha256 3f461efb6449a00953a05877c52ed52374d77a0e6fbe033a4a30431792eb7f22)"
     },
     "75": {
       "native_module": "pc_p2_kabuto_cannon",
