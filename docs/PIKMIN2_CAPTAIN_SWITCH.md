@@ -35,3 +35,11 @@ passed **4 tests**. A first test attempt incorrectly expected a raw zero-health
 refresh to mark the adapter slot Down; the existing adapter preserves its phase.
 The live input guard checks health independently, and the corrected regression
 verifies that distinction plus actual Down/captured rejection.
+
+Review correction: the first production build failed because the live glue
+needed `Kontroller.h`; it did not produce accepted build evidence. Camera
+rebinding now changes both target and controller, including automatic survivor
+selection. Mouse aim, wheel and global lock-on/swarm queues follow the active
+captain in this mode. The expanded focused regression passes **5 tests**,
+including camera input rebinding and preserved co-op device ownership. Guarded
+rendered gameplay remains untested.
