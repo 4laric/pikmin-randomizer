@@ -110,12 +110,7 @@ def _assert_playable_first(layout):
     when the playable pool itself outgrows the slots)."""
     from randomizer.seed import _default_admitted_placement
 
-    # Boss slots (#256) accept only their boss, so they are not "every
-    # playable species" slots; they carry the boss or stay vanilla.
-    slots = _default_admitted_placement()["slots"]
-    base = {str(slot["uid"]) for slot in slots if not slot.get("boss_slot")}
-    boss = {str(slot["uid"]) for slot in slots if slot.get("boss_slot")}
-    assert all(b["source_id"] == 30 for b in layout["bindings"] if b["target"] in boss)
+    base = {str(slot["uid"]) for slot in _default_admitted_placement()["slots"]}
     playable = set(PLAYABLE_P2_SPECIES)
     unplaced_playable = playable & set(layout.get("unplaced", []))
     on_base = [b["source_id"] for b in layout["bindings"] if b["target"] in base]
@@ -240,8 +235,7 @@ def test_sampled_layout_pool_larger_than_targets_reports_unplaced():
     pool = [44, 54, 59, 60, 61, 62, 42, 23, 79, 2, 12, 13, 14]
     tiny = {"schema": document["schema"],
             "slots": document["slots"][:3],
-            "profiles": document["profiles"],
-            "encounters": document["encounters"]}
+            "profiles": document["profiles"]}
     proxy_rows = _proxy_rows_for([42])
     layout = resolve_placement_layout("seed-unplaced", "Player1", tiny, roster,
                                       species=pool, proxy_rows=proxy_rows)

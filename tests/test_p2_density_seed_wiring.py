@@ -32,8 +32,7 @@ OTAKARA = [59, 60, 61, 62]
 # Fingerprints captured on the pre-wiring tree (48a2a693). Adding the explicit
 # parameter must not perturb any existing seed, P2 or not.
 LEGACY_FINGERPRINT = "7b99245bc9f541e0ff13d35429c0f244ae787c1716c013d6f2020235a6c71a79"
-# #256: the 3 Queen boss slots no longer take the one-species legacy fill.
-P2_LEGACY_FINGERPRINT = "514884599b9ddfcd8bdbb4eddab59a19c3f147dc80df670713fd9531f3f3ddae"
+P2_LEGACY_FINGERPRINT = "9f478fef39090c35d196480f6ed949ac6b3e1d6a26e9e2fd5dc2f24ac7b6d503"
 
 
 def p2_manifest(seed="seed-a", species=None, density=None):
@@ -56,7 +55,7 @@ def run_cli(*arguments):
 def test_legacy_default_is_the_all_target_fill():
     manifest = p2_manifest(species=[SARAI])
     assert manifest["p2_layout"]["density"] == DENSITY_LEGACY
-    assert len(manifest["p2_layout"]["bindings"]) == 32  # the 3 boss slots (#256) host only the Queen
+    assert len(manifest["p2_layout"]["bindings"]) == 35
     assert set(sources(manifest)) == {SARAI}
 
 
@@ -150,7 +149,7 @@ def test_cli_default_is_legacy(tmp_path):
     assert result.returncode == 0, result.stderr
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert manifest["p2_layout"]["density"] == DENSITY_LEGACY
-    assert len(manifest["p2_layout"]["bindings"]) == 32  # the 3 boss slots (#256) host only the Queen
+    assert len(manifest["p2_layout"]["bindings"]) == 35
 
 
 def test_cli_rejects_unknown_density(tmp_path):

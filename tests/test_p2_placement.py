@@ -504,17 +504,11 @@ class BindingTargetTests(unittest.TestCase):
         # a real roster boss with no placement candidacy is still rejected.
         self.assertEqual(catalog.binding_targets_for_sources([71]),
                          catalog.binding_targets(['UmiMushi']))
-        # Queen (Empress Bulblax) 30 now maps through its committed boss
-        # profile (#256): only its measured boss slots. Titan Dweevil 73 is a
-        # roster boss with no placement candidacy, so it probes the is_boss
-        # rejection path, not just an unknown id.
-        from randomizer.seed import _default_admitted_placement
-        document = _default_admitted_placement()
-        boss_slots = sorted(str(s['uid']) for s in document['slots'] if s['boss_slot'])
-        self.assertEqual(catalog.binding_targets_for_sources([30], document=document), boss_slots)
-        self.assertEqual(by_id(load_roster())[73].classification, 'boss')
+        # Queen (Empress Bulblax) 30 is roster-classified as a boss, so this
+        # probes the is_boss rejection path, not just an unknown id.
+        self.assertEqual(by_id(load_roster())[30].classification, 'boss')
         with self.assertRaisesRegex(ValueError, 'non-boss'):
-            catalog.binding_targets_for_sources([73])
+            catalog.binding_targets_for_sources([30])
 
     def test_targets_compose_with_lane03_seed_bridge(self):
         from experimental.pikmin2_seed_bridge import (

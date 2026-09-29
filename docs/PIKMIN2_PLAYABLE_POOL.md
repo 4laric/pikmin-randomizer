@@ -44,7 +44,6 @@ every existing caller keeps working. Today the pool is:
 | 25 | Wtank | tank |
 | 15 | Armor | armor |
 | 78 | MiniHoudai | minihoudai |
-| 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -80,13 +79,6 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Empress Bulblax 30 (2026-09-28, #256)** is the first boss placed through an
-  encounter descriptor: profile `Queen` (`is_boss`, `queen_arena`,
-  footprint 250, helper budget 10 = the native larva cap) is accepted only on
-  three measured boss slots (`P2_BOSS_SLOT_PROBE` clear >= 250, dry, no wall:
-  spring 3921089765, forest 2506165730, navel 2700289662). A boss slot hosts
-  only its boss; the arena allows one Queen per seed, so the two other boss
-  slots stay vanilla and the rest of the pool samples the 32 ordinary slots.
 - **Bosses belong in the pool.** Eight P2 bosses are already here (34, 53, 56,
   69, 70, 71, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
   66 Houdai, 73 Titan Dweevil and 99 Waterwraith are in scope under the same
