@@ -1199,20 +1199,25 @@
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
       "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility_reason": "Man-at-Legs (Houdai, 66): own source brain P2HoudaiFsm (native fork claude/p2-port-66-houdai 49e634d17) completes a natural bot-driven power-mode kill, carry and Onion receipt, but it is NOT admitted: the legs never animate (bind pose, no IKSystemMgr, no clip sampling), the death model (source: no carcass, explode) is an open owner decision, and pool growth past 35 breaks placement until #893 lands (#173).",
       "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md"
+        "PIKMIN2_LONG_LEGS_POLICY.md",
+        "PIKMIN2_P2_CAMPAIGN_READINESS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "movement_animation": "FAIL",
         "attacks_receivers": "PASS",
-        "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Houdai (Man-at-Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+        "Lane campaign evidence (not admission): bot-driven power-mode run f4-66 (damage_mult 3), native 49e634d17, exe sha256 797745676ea6cba0816b092441f9e226df188c55fbc9470fd0b6bbbda1355cd1, root 41521921. Log output/claude-orch/p2-port-66/runs/f4-66/session/runs/9f94b37a43ce9b219025d4a6284d4d0fef80f9d1efcaa8e91304aab6d06124e9/native.log (sha256 70ee80b375241435eb95380c1cb9116a1c4532f7d37eb3656fff059de0ba71c7): L1723 P2_HOUDAI_INTANGIBLE on=1 (dormant body has no collision), L1724 own bind health=2800 parms=disc (logged once), L1725 delivery bind source_id=66 (once), L1895 Stay->Land, L1896 intangible off, L2088-2092 shell hits with the source sideways blast direction, 58 damage lines 2755->10, L2389 P2_LONG_LEGS_DEAD prior_health 10 (shells=44 hits 17 piki/2 navi), L2427 corpse register, L2745 receipt onion:p2:66:3 new=1, L2746 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1.",
+        "movement_animation FAIL: no animation playback at all. The bind-pose mesh slides during Walk (WALK_END 1.3/6.6/23.1 units in f4-66), holds the standing pose through Dead, and the carried corpse is the standing boss with legs. Owner decision pending on #173.",
+        "death_corpse BLOCKED: the source Houdai leaves no carcass (EB_LeaveCarcass off; StateDead throws up items and explodes). The port follows the 56/69 carriable-corpse precedent with the host pellet weight (one carrier moves it). Owner decision pending on #173.",
+        "Same-exe 56/69 runs f4-56 (L2370 receipt onion:p2:56:3) and f4-69 (L3670 receipt onion:p2:69:3), and the earlier f2-56 (L2417) and f3-69 (L5284; f2-69 has no receipt, its carry failed) only show bind/dead/receipt plumbing. They are NOT behaviour regression controls: the host max-life clamp drops Damagumo 1300->130 and BigFoot 10000->130 on the first damage line (f4-56 L1959, f4-69 L1952). Clamp fix tracked separately on #173.",
+        "Stay damage: stuck-Pikmin hits count at 1x in Stay per the US damageCallBack (unit test only; at runtime nothing can stick while dormant, like the source's out-of-reach body). Shells live about 0.1 s (fired almost straight down from the bind-pose gun height 112), so only muzzle and impact bursts are visible."
       ]
     },
     "68": {
