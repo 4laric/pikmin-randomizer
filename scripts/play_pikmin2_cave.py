@@ -9,6 +9,7 @@ import math
 import os
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -67,14 +68,7 @@ def recover_pending(session_dir,manifest,placement,receipt_text,live_paths=()):
         atomic_write(session_dir/'checkpoint.json',json.dumps(state,indent=2)+'\n')
 
 
-def main(package):
-    package=Path(package).resolve()
-    meta=json.loads((package/'package.json').read_text())
-    for name,digest in meta['files'].items():
-        if Path(name).name!=name or hashlib.sha256((package/name).read_bytes()).hexdigest()!=digest:
-            raise ValueError('package input changed: '+name)
-    manifest=json.loads((package/'seed.json').read_text()); validate(manifest)
-    if fingerprint(manifest)!=meta['fingerprint']: raise ValueError('foreign package seed')
+def runtime_capacity():
     # Preserve other owners' runtimes. Read-only Windows process count; no kill.
     running=subprocess.run(['powershell','-NoProfile','-Command',
         "$caveOs=Get-CimInstance Win32_OperatingSystem; ConvertTo-Json @{paths=@(Get-Process nectar -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path); freeKiB=$caveOs.FreePhysicalMemory; totalKiB=$caveOs.TotalVisibleMemorySize}"],
@@ -85,6 +79,18 @@ def main(package):
     # Conservative operating guard, not a demonstrated machine safety threshold.
     if capacity['freeKiB'] < max(4*1024*1024,capacity['totalKiB']*.15):
         raise RuntimeError('Insufficient free memory for another private runtime.')
+    return live_paths
+
+
+def main(package):
+    package=Path(package).resolve()
+    meta=json.loads((package/'package.json').read_text())
+    for name,digest in meta['files'].items():
+        if Path(name).name!=name or hashlib.sha256((package/name).read_bytes()).hexdigest()!=digest:
+            raise ValueError('package input changed: '+name)
+    manifest=json.loads((package/'seed.json').read_text()); validate(manifest)
+    if fingerprint(manifest)!=meta['fingerprint']: raise ValueError('foreign package seed')
+    live_paths=runtime_capacity()
     session_dir=package/'session'; session_dir.mkdir(exist_ok=True)
     # OS lock is automatically released after a supervisor crash; no stale lock deletion.
     import msvcrt
@@ -115,15 +121,23 @@ def main(package):
         env['PIKMIN_P2_ITEM_RECEIPT_PATH']=str(receipt_path)
         env['PATH']='C:\\msys64\\mingw64\\bin;'+env.get('PATH','')
         with (run/'native.log').open('w') as log:
-            result=subprocess.run([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT)
+            # Shared across packages/checkouts, held only through process creation.
+            # Other runtime families must still coordinate admission with this lane.
+            admission=Path(tempfile.gettempdir())/'pikmin-randomizer-runtime-admission.lock'
+            with admission.open('a+b') as gate:
+                gate.seek(0); gate.write(b'0'); gate.flush(); gate.seek(0)
+                msvcrt.locking(gate.fileno(),msvcrt.LK_NBLCK,1)
+                runtime_capacity()
+                child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT)
+            returncode=child.wait()
         # Receipts survive even an unsaved crash; a repeated process cannot regrant.
         current=receipt_path.read_text()
         for name in receipts(current,placement): session.collect(name)
-        if result.returncode==42:
+        if returncode==42:
             state=checkpoint((run/'p2-cave-transfer.txt').read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),current,manifest,placement)
             atomic_write(saved,json.dumps(state,indent=2)+'\n')
             print('Checkpoint saved. Relaunch to re-enter this bounded floor with the saved squad and collected treasure removed.')
-        elif result.returncode: raise RuntimeError('native exited '+str(result.returncode)+'; see '+str(run/'native.log'))
+        elif returncode: raise RuntimeError('native exited '+str(returncode)+'; see '+str(run/'native.log'))
         else: print('Unsaved exit: next launch uses the last floor-boundary squad; durable treasure checks remain collected.')
 
 
