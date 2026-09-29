@@ -204,7 +204,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
-    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False), manifest.get("no_sticks", False))
+    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False), manifest.get("no_sticks", False)) + (tuple(manifest["cave_requirements"]) if "p2_cave_floor" in manifest else ())
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES
@@ -263,7 +263,10 @@ def can_reach_manifest(name, inventory, manifest):
     cave_requirements = manifest.get('cave_requirements')
     if cave_requirements and name in cave_requirements:
         from .cave_logic import requirement_satisfied
-        return requirement_satisfied(cave_requirements[name], inventory, manifest)
+        owned = color_inventory(inventory, manifest)
+        if 'p2_cave_floor' in manifest:
+            if manifest['profile'] != 'foh-day2' and not inventory.get(FOREST_ACCESS, 0): return False
+        return requirement_satisfied(cave_requirements[name], owned, manifest)
     if name == "Pikmin: Secret Safe" and manifest.get("goal_mode") == "emperor_bulblax" and inventory.get(REPAIR, 0) < 25: return False
     if 'enemy_layout' in manifest and name in BESTIARY_TARGETS:
         if name not in active_names(manifest): return False
@@ -368,6 +371,8 @@ def item_pool(manifest):
 
 
 def check_area(name):
+    from .cave_floor import NAMES as CAVE_NAMES
+    if name in CAVE_NAMES: return "The Forest of Hope"
     if name in NEW_BESTIARY: return NEW_BESTIARY[name][1]
     if name in FINE_POPULATION or name in COLOR_POPULATION or name in COMPACT_POPULATION: return 'The Forest of Hope'
     if name in OBSTACLES:
