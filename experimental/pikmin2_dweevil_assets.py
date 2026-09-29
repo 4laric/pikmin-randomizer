@@ -34,7 +34,7 @@ from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Concrete, spawnable dweevil family. IDs from include/Game/enemyInfo.h:
 # FireOtakara/WaterOtakara/GasOtakara/ElecOtakara at 118-121, BombOtakara at
@@ -52,7 +52,7 @@ HAZARDS = {'Hiba': 20, 'GasHiba': 21, 'ElecHiba': 22}
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # enemyInfo.cpp:96-99,110 alias every dweevil onto the FireOtakara model/anim
 # bank; OtakaraBaseMgr.cpp:24-69 shares the first loaded model/anim across the
@@ -409,12 +409,8 @@ def extract(iso, source, output, pose_limit=6):
                 for number, frame in enumerate(frames):
                     try:
                         tolerances = TOLERANCES.get(species, {})
-                        _, pose = bca_pose(raw, frame, len(names),
-                                           allow_scale=True)
-                        matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(baked_model, True, bake_rigid=True,
-                                         draw_matrices=matrices,
-                                         **tolerances)
+                        decoded, pose = decode_pose(decode, baked_model, model_blocks, raw, frame,
+                                                    len(names), **tolerances)
                         name = f'ota_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name,
                                                  'enemy.bmd')

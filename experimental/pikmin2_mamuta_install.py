@@ -8,6 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from experimental.pikmin2_animation import POSE_LIMIT_MAX
+
 SPECIES = 'Miulin'
 # Install every sampled pose of the live/dead/attack clips as a time-sampled
 # bank (`miulin_<clip>_<i>.mod`). The native observer plays the bank by the P1
@@ -15,7 +17,9 @@ SPECIES = 'Miulin'
 # the bury/plant) is animated instead of a single frozen pose.
 BANK_CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4',
               'flick', 'dead', 'type5')
-MAX_POSES = 8
+# #895: the native Mamuta loader is on pc_p2_pose_loader.h (a few Shapes per
+# clip plus decoded vectors), so dense banks share the native row cap.
+MAX_POSES = POSE_LIMIT_MAX
 # The approved native baseline (static anchors, pc_p2_mamuta_policy.h) loads
 # three single `miulin_<clip>.mod` files: wait pose 0, the last dead pose, and
 # the attack1 bury-event pose (frame 0). Stage these alongside the bank so the
@@ -23,6 +27,35 @@ MAX_POSES = 8
 STATIC_CLIPS = {'wait': 0, 'dead': -1, 'attack1': 0}
 CONFIG_NAME = 'p2-mamuta-actors.txt'
 CONFIG_HEADER = 'P2_MAMUTA_ACTORS_1'
+# Optional native bank manifest (pc_p2_mamuta.cpp loadManifest): per clip the
+# source length, each pose's true source frame and the event frames, so the
+# native draw brackets/lerps on the real source timeline (#895).
+BANK_NAME = 'p2-mamuta-bank.txt'
+BANK_HEADER = 'P2_MAMUTA_BANK_1'
+
+
+def bank_manifest(metadata):
+    """The native bank manifest text, or None for an import whose poses do not
+    record their source frame (older schema-1 imports); native then samples the
+    staged files uniformly, as before."""
+    by_file = {c['file']: c for c in metadata['clips']}
+    if any('source_frames' not in by_file.get(clip + '.bca', {})
+           or any('frame' not in pose for pose in by_file.get(clip + '.bca', {}).get('poses', []))
+           for clip in BANK_CLIPS):
+        return None
+    rows = [f'{BANK_HEADER} {len(BANK_CLIPS)}']
+    for clip in BANK_CLIPS:
+        entry = by_file[clip + '.bca']
+        source = entry.get('source_frames')
+        frames = [pose['frame'] for pose in entry['poses']]
+        events = [event['frame'] for event in entry.get('events', [])]
+        if (type(source) is not int or source < 1 or not frames
+                or any(type(f) is not int or not 0 <= f < source for f in frames + events)
+                or any(a >= b for a, b in zip(frames, frames[1:]))):
+            raise ValueError(f'Invalid Mamuta bank timeline: {clip}')
+        rows.append(f'clip {clip} {source} {len(frames)} {len(events)} frames '
+                    + ' '.join(map(str, frames)) + ' events' + ''.join(f' {e}' for e in events))
+    return '\n'.join(rows) + '\n'
 
 
 def plan(imported, actors):
@@ -84,12 +117,18 @@ def install(imported, run, actors):
             raise ValueError('Refusing existing visual target')
     if (run / CONFIG_NAME).exists():
         raise ValueError('Refusing existing actor config')
+    if (run / BANK_NAME).exists():
+        raise ValueError('Refusing existing bank manifest')
+    bank = bank_manifest(json.loads((imported / 'mamuta.json').read_text()))
     for name, data in files.items():
         (room / name).write_bytes(data)
     (run / CONFIG_NAME).write_text(config)
+    if bank is not None:
+        (run / BANK_NAME).write_text(bank)
     return {'species': [SPECIES], 'actors': len(actors),
             'proxy_behavior': 'P1 Miurin (TEKI_Miurin 24); not source P2 FSM',
-            'files': sorted(files), 'config': CONFIG_NAME}
+            'files': sorted(files), 'config': CONFIG_NAME,
+            'bank_manifest': BANK_NAME if bank is not None else None}
 
 
 def verify_install(imported, run, actors):
@@ -98,6 +137,9 @@ def verify_install(imported, run, actors):
     room = run / 'assets/dataDir/courses/pikmin2room'
     if (run / CONFIG_NAME).read_text() != config:
         raise ValueError('Installed actor config mismatch')
+    bank = bank_manifest(json.loads((imported / 'mamuta.json').read_text()))
+    if bank is not None and (not (run / BANK_NAME).is_file() or (run / BANK_NAME).read_text() != bank):
+        raise ValueError('Installed bank manifest mismatch')
     for name, data in files.items():
         target = room / name
         if not target.is_file() or target.read_bytes() != data:

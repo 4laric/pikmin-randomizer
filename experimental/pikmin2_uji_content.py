@@ -54,6 +54,7 @@ import json
 import re
 from pathlib import Path
 
+from experimental.pikmin2_animation import frames_trailer
 from experimental.pikmin2_staging import StagingError
 
 UJI_SPECIES = {'UjiA': 12, 'UjiB': 13, 'Tobi': 14}
@@ -284,7 +285,8 @@ def plan(content_root, actors):
             poses = clip['poses']
             token = _events_token(clip['file'], clip.get('events', []))
             bank_lines.append(f'clip {species} {name} {clip["source_frames"]} '
-                              f'{token} poses {len(poses)} converted')
+                              f'{token} poses {len(poses)} converted'
+                              + frames_trailer(poses, clip['source_frames']))
             for pose in poses:
                 data = _mesh_bytes(species_dir, species, pose)
                 if pose['file'] in mesh_files and mesh_files[pose['file']] != data:

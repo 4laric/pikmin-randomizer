@@ -37,7 +37,8 @@ from pathlib import Path
 
 from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import (POSE_LIMIT_MAX, resident_clip_bytes, resource_chunks, sample_frames,
+                                            decode_pose)
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
@@ -68,7 +69,13 @@ PARAM_DIR_RE = re.compile(r'[a-z][a-z0-9_]{0,31}')
 # Only "compute" is allowed; anything else fails closed in _row_overrides.
 MISSING_NORMALS_ALLOW = frozenset({'compute'})
 
-CLIP_BYTES = 512 * 1024
+# The proxy budgets (1 MiB per clip, owner-approved; 8 MiB per species), measured
+# the way native pays for them (#895): resident bytes as pc_p2_pose_loader.h
+# accounts them (a few full Shapes per clip plus decoded vectors), via
+# pikmin2_animation.resident_clip_bytes. On-disk bytes are still reported
+# (total_pose_bytes) but no longer gate the bake: every pose file carries its
+# full MOD, so a dense clip is larger on disk than in memory.
+CLIP_BYTES = 1024 * 1024  # owner-approved per-clip resident budget (#895)
 TOTAL_BYTES = 8 * 1024 * 1024
 
 LIMITATIONS = [
@@ -198,8 +205,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         raise ValueError(f'Proxy enum name invalid: {enum_name!r}')
     if type(source_id) is not int or isinstance(source_id, bool):
         raise ValueError(f'Proxy source id must be an int: {source_id!r}')
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 8:
-        raise ValueError(f'Pose limit must be 2..8: {pose_limit!r}')
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f'Pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}')
     roster_enum, roster_assets = _roster_entry(source_id)
     if roster_enum != enum_name:
         raise ValueError(
@@ -312,6 +319,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
     case_resolved = []
     reference = None
     total_pose_bytes = 0
+    clip_data = {}  # clip file -> pose MOD bytes, for the resident budget
     # Opt-in converter normal policy, exactly like the admitted bulblax
     # extractor's POLICIES (docs/PIKMIN2_NORMAL_POLICY.md): strict by
     # default; a row carrying missing_normals="compute" derives
@@ -351,10 +359,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
         # occupies a slot.
         for frame in sample_frames(duration, pose_limit):
             try:
-                _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                matrices = draw_matrices(model_blocks, pose)
-                decoded = decode(baked_model, True, bake_rigid=True,
-                                 draw_matrices=matrices, **policies)
+                decoded, pose = decode_pose(decode, baked_model, model_blocks, raw, frame, len(names),
+                                            **policies)
                 name = pose_name(enum_name, out_stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name,
@@ -367,6 +373,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
                         f'{enum_name} pose changes immutable render resources')
                 reference = resources
                 total_pose_bytes += len(data)
+                clip_data.setdefault(clip['file'], []).append(data)
                 clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
                                           sha256=sha(data)))
                 (output / Path(name).with_suffix('.json')).write_text(
@@ -388,16 +395,19 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
     if not converted_stems & set(DEAD_CLIPS):
         raise ValueError(
             f'{enum_name} bank has none of the dead clips {list(DEAD_CLIPS)}')
+    total_resident_bytes = 0
     for clip in clips:
-        clip_bytes = sum(pose['bytes'] for pose in clip['poses'])
+        clip_bytes = resident_clip_bytes(clip_data.get(clip['file'], []))
+        clip['resident_bytes'] = clip_bytes
+        total_resident_bytes += clip_bytes
         if clip_bytes > CLIP_BYTES:
             raise ValueError(
-                f'{enum_name} clip {clip["file"]} exceeds 512 KiB of pose bytes '
-                f'({clip_bytes} bytes); lower pose_limit (now {pose_limit})')
-    if total_pose_bytes > TOTAL_BYTES:
+                f'{enum_name} clip {clip["file"]} exceeds 1 MiB of resident pose bytes '
+                f'({clip_bytes} bytes) at pose_limit {pose_limit}')
+    if total_resident_bytes > TOTAL_BYTES:
         raise ValueError(
-            f'{enum_name} bank exceeds 8 MiB of pose bytes '
-            f'({total_pose_bytes} bytes); lower pose_limit (now {pose_limit})')
+            f'{enum_name} bank exceeds 8 MiB of resident pose bytes '
+            f'({total_resident_bytes} bytes) at pose_limit {pose_limit}')
 
     if case_resolved:
         registry_notes.append(
@@ -419,6 +429,7 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
                       self_contained_resources=draws > 0),
         clips=clips, unsupported_clips=unsupported_clips,
         total_pose_bytes=total_pose_bytes,
+        total_resident_bytes=total_resident_bytes,
         limitations=list(LIMITATIONS))
     if change_textures:
         result['change_textures'] = change_textures
