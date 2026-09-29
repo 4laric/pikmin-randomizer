@@ -14,6 +14,9 @@ name: Root tests
 #   test_pikmin2_muse_placement.py                 - species subset outside current admitted ids
 #   test_pikmin2_placement_bridge.py               - species subset outside current admitted ids
 #   test_p2_proxy_placement_stageA.py              - pack-host seed binds no pack targets on main
+# Deselected single test:
+#   test_pikmin2_cave_arena_overlay.py::GuardAndPackageTest::test_guard_hash_pinned
+#     - reads the guard header from absolute C:/Users/alari/pikmin-randomizer
 # Re-add a file here once it is green on main. The wider root suite (about 178
 # known p2/pool failures from local paths, missing native/ and fixtures) is not
 # run in CI.
@@ -50,6 +53,7 @@ jobs:
       - name: P2 pool / placement / roster / arena / seed-bridge tests
         run: >-
           python -m pytest -q -p no:cacheprovider
+          --deselect tests/test_pikmin2_cave_arena_overlay.py::GuardAndPackageTest::test_guard_hash_pinned
           tests/test_miniboss_pool.py
           tests/test_p2_boss_arenas.py
           tests/test_p2_ground_placement_facts.py
