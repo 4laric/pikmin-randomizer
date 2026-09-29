@@ -35,3 +35,6 @@ def test_live_switch_reconciles_camera_after_roster_update():
     assert 'const bool keyboardOwner = pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner())' in navi
     lock = navi.split('void Navi::pcUpdateLockOn()', 1)[1]
     assert lock.index('!pcCaptainOwnsInput(this, 0)') < lock.index('pc_window_take_lockon_press()')
+    camera = (port.parent / 'src/plugPikiNakata/pcamcamera.cpp').read_text(encoding='utf-8')
+    assert 'p2_captain_camera_drag_player(pc_p2_captain::single_player_switch_enabled(), targetCaptain)' in camera
+    assert 'pc_window_take_camera_drag_player(dragPlayer)' in camera

@@ -43,3 +43,11 @@ selection. Mouse aim, wheel and global lock-on/swarm queues follow the active
 captain in this mode. The expanded focused regression passes **5 tests**,
 including camera input rebinding and preserved co-op device ownership. Guarded
 rendered gameplay remains untested.
+
+Second production build passed at native `f4bafacfc`, executable SHA-256
+`076149874106d0f830a498c058c5a1c9e607e4122821f639f0477beab2fc25ba`, with
+no-work dry run recorded under `output/p2-wip-landing/captain-build-02` in the
+canonical workspace. Independent review then found the free-camera drag path
+still selected a physical input stream by target captain ID. The follow-up maps
+this shared local mode to player 0's mouse/touch/right-stick stream, preserving
+co-op/VS routing. A further production build is required for that correction.
