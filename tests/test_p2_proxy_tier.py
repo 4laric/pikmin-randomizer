@@ -162,7 +162,7 @@ def test_full_plus_proven_equals_playable_six(monkeypatch):
     assert "p2-proxy-tier-v1" in manifest["capabilities"]
     layout = manifest["p2_layout"]
     bound = {b["source_id"] for b in layout["bindings"]}
-    # #893: 36 playable species on 35 slots; with no proven proxies the
+    # #893: 37 playable species on 35 slots; with no proven proxies the
     # layout is the sampled playable pool.
     assert bound <= set(PLAYABLE_P2_SPECIES)
     assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)

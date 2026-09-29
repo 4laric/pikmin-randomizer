@@ -1112,7 +1112,12 @@
       "requires_corpse_route": true,
       "is_boss": false,
       "encounter_descriptor": null,
-      "accepted_gates": [],
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn"
+      ],
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,

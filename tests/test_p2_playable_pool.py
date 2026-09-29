@@ -10,7 +10,7 @@ def test_pool_table_derives_playable_tuple():
                                    17, 18, 24, 75,
                                    56, 63, 69,
                                    34, 70, 65, 71, 101,
-                                   25, 15, 78)
+                                   25, 15, 78, 58)
     assert PLAYABLE_P2_SPECIES == tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
@@ -32,7 +32,7 @@ def test_pool_table_rows_carry_evidence():
 def test_playable_pool_binds_only_playable_species():
     m = generate('12345', p2_enemies=True, p2_species='playable')
     ids = {b['source_id'] for b in m['p2_layout']['bindings']}
-    # #893: the 36-species pool outgrew the 35 slots and is sampled per seed.
+    # #893: the 37-species pool outgrew the 35 slots and is sampled per seed.
     assert ids <= set(PLAYABLE_P2_SPECIES)
     assert ids | set(m['p2_layout']['unplaced']) == set(PLAYABLE_P2_SPECIES)
     validate(m)
