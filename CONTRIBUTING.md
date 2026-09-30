@@ -17,3 +17,17 @@ Minimise the owner's total effort: setup, travel, searching, combat, waiting, re
 6. **Say where and what.** The handoff states, per item: where it is (landmark or direction from the ship), how many there are, and what to check (for example: kill, carry to Onion, latch, sound). Keep it to a few lines.
 7. **Don't make the owner wait.** Reuse prepared P2 content and extract only species that aren't cached. A swap of a few species should take minutes, not a full re-extraction.
 8. **Owner commands are PowerShell.** Give one copy-pasteable PowerShell command that launches the seed, and put all of its files under ignored `output/`.
+
+## Placement: don't hard-code where a species may go (binding)
+
+Placement rules decide which seeds are *valid*. They must never decide what the game *can* spawn. We walked into this footgun on 2026-09-29:
+- The Dirigibug could only spawn on one Distant Spring slot, because its first evidence run happened to use that slot and the slot was compiled into native as its only accepted target.
+- The Crawbster and Titan Dweevil could only spawn in boss arenas, one of them locked until day 9.
+- Owner smoke tests of three species needed a native rebuild just to put them next to the start.
+
+1. **One source of truth, in root.** Seed generation (`randomizer/`, `docs/PIKMIN2_ADMITTED_PLACEMENT.json`) decides where a species may be placed. Native spawns what the seed binds. Native may refuse a binding only for a concrete runtime incompatibility, such as terrain, water, a missing host type or unstaged content. It then logs `reason=<specific cause>`. It never refuses because a slot id isn't on a compiled list.
+2. **No compiled slot whitelists or per-species slot constants in native.** Evidence slot ids belong in evidence documents and tests, never in spawn gating. When you touch code that gates on one (`p2campaign::accepted`, `*_slot()` evidence constants, `slot-rejected`), move the decision to root data or remove it.
+3. **Constraints describe the species, not a history.** Accepted placements come from the species' real needs: terrain, footprint radius, flight space, water, helpers, arena. "The slot where the evidence run happened" is evidence for that slot, not a restriction on others. A species must not end up with a single legal slot unless its needs genuinely allow only one; flag it in review if it does.
+4. **Bosses are placed by constraint, not by cast list.** Arena placement is a data rule (footprint, clearance, protected drops). The same species must also be placeable on any slot that meets its footprint when a smoke seed or the dev console asks for it.
+5. **Dev and smoke overrides are always available.** Every placement restriction must be bypassable by the smoke-seed switch or the dev console without a rebuild. A restriction that can only be lifted by recompiling is a defect.
+6. **Review check.** A PR that adds or narrows a placement restriction must say which runtime constraint it encodes, and confirm the smoke bypass still reaches it.
