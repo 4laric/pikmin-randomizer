@@ -62,14 +62,16 @@ Lessons (2026-09-15/16, DeepSeek integrator v2 + paid Muse wave): a single openc
 
 ## Build isolation (required)
 
-`native/build-randomizer` is a single shared resource. Do **not** run your regular builds in it — agents queuing on the one maintained build dir is the pipeline's main bottleneck. Build in your own environment so lanes can compile in parallel.
+**Prefer CI builds.** Local parallel builds and headless sessions have crashed the owner's PC. Push your native branch to the `fork` remote (a `claude/**` branch or an open PR triggers the `Windows build` workflow), then fetch the verified exe with `py -3.12 scripts/ci_native_build.py <branch|sha>` (see `docs/CI_BUILDS.md`); record the printed commit, artifact and exe SHA-256 as build evidence. Build locally only while iterating on compile errors, with `-j 4`, and only one local build at a time on this machine. Do not run headless game sessions in parallel.
+
+`native/build-randomizer` is a single shared resource. Do **not** run your regular builds in it — agents queuing on the one maintained build dir is the pipeline's main bottleneck. When you do build locally, use your own private build directory, never the shared one.
 
 - Work in your own `native/` git worktree/branch (e.g. `output/native-<lane>` switched to a `opencode/*` branch). Keep uncommitted build work out of the shared `native/` checkout, which the integration lead also uses.
 - Configure a private build directory under ignored `output/`, matching the maintained generator and toolchain, then build there:
   ```powershell
   $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
   cmake -S output/native-<lane> -B output/native-<lane>-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-  cmake --build output/native-<lane>-build --target pikmin_pc -j 6
+  cmake --build output/native-<lane>-build --target pikmin_pc -j 4
   cmake --build output/native-<lane>-build --target pikmin_pc -- -n   # expect: ninja: no work to do.
   ```
   Generator is Ninja (the Python-bundled `ninja.exe`); compiler is `C:/msys64/mingw64/bin/g++.exe`. See `docs/PIKMIN2_BATCH_RESOURCES.md` §2.
