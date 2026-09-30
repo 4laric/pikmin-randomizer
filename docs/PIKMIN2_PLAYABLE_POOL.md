@@ -137,8 +137,11 @@ never P2 identities and never enter this table.
   Chrysanthemum), 93 BombOtakara (Volatile Dweevil): admitted (#964).** Each
   runs its transcribed source FSM in the campaign, dies naturally, is carried as
   its dead corpse and delivers `onion:p2:<id>:3` on its own generator token
-  (bot power mode, then a day-cycle run: alive at two sunsets, rebound each new
-  day, killed and delivered on day 4). The kill runs used a land slot: the
+  (bot power mode, then a day-cycle run: bound each stage, alive at two sunsets,
+  killed and delivered on day 4; a Volatile Dweevil that has chased dies with its
+  detonated Bomb, so it is alive at a sunset only if it has not chased yet).
+  Wogpole 27 is harmless in source: its attacks_receivers gate is receiver-side
+  only. Hana's flick is the stuck-count simplification of `isStartFlick`. The kill runs used a land slot: the
   aquatics have no water plane, and the bot could not reach the water-slot
   packs, so a fight on the real water slots is unobserved. The Catfish and
   Wogpole take water-cohort slots only (their lane-04 profile); Hana takes

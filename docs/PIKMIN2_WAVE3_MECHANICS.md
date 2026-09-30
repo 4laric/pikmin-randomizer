@@ -2,8 +2,8 @@
 
 Lane "Mechanics species: water, Chrysanthemum, Volatile Dweevil, Waterwraith" of
 the wave 3 enemy import. Tracking issue: 4laric/pikmin-randomizer#964. Branches:
-root `claude/p2-wave3-mechanics` (origin/main `3fc77bf6`), native fork
-`claude/p2-wave3-mechanics` (fork main `bbb9821f7`).
+root `claude/p2-wave3-mechanics` (origin/main `d3d4d06b`), native fork
+`claude/p2-wave3-mechanics` (fork main `3dd1e905a`).
 
 Owner bar applied to every species: its own P2 behaviour (the transcribed source
 FSM, not the P1 AI underneath) proven by a natural kill, carry and Onion receipt
@@ -32,13 +32,19 @@ Four defects kept them out, each reproduced before it was fixed:
    under an 80-Pikmin squad it flicked back to back, chased again after every
    flick and wandered about 1200 units from home. The corpse then lay on an
    unroutable spot (`carriers=0 want=3`). Source `isStartFlick` (enemyAction.cpp:1209-1240) tests the stuck Pikmin count against the
-   `ShakeOffSticking` tiers and `mFlickTimer` against `ShakeOffBlowA-D`; Hana
-   now triggers on stuck count >= 3 only (the same simplification as
-   `pc_p2_chappy.cpp`; the `mFlickTimer` gate is omitted, a port simplification).
+   `ShakeOffSticking1-3` tiers and, per tier, `mFlickTimer` (rounded) against
+   `ShakeOffBlowA-D`, and resets the timer when it fires. Hana now triggers on
+   stuck count >= 3 only (the same simplification as `pc_p2_chappy.cpp`). The
+   `mFlickTimer` versus `ShakeOffBlow` gate and the higher stuck tiers are NOT
+   implemented, so this is a simplification, not the source test.
    The Flick end returns to the state Flick was entered from (Walk or GoHome),
-   as source `StateFlick::exec` `transit(enemy, mPreviousID)` (chappyState.cpp:2206-2207);
-   an earlier "flick outside the territory goes to GoHome" rule was unsourced and
-   is removed.
+   as source `StateFlick::exec` `transit(enemy, mPreviousID)` (chappyState.cpp:2206-2207).
+   The state is recorded in `enter()` before Flick starts (`Hana::prevState`,
+   `p2hanapolicy::FlickReturn`); the first version read `prevState` without ever
+   assigning it, so a flick from GoHome wrongly returned to Walk. Unit test
+   `p2_hana_residual_policy_test` covers Walk and GoHome; no recorded run flicked
+   from GoHome. An earlier "flick outside the territory goes to GoHome" rule was
+   unsourced and is removed.
 3. **Dweevils abort on pack slots.** `pc_p2_batch2` allowed pack generators only
    for the uji and ground families. Placement accepts every Dweevil (59-62, 93)
    on grub-cohort slots (terrain and footprint only), and a grub generator holds
@@ -58,22 +64,30 @@ document could hold it. `randomizer/p2_placement_catalog.py` gets the profile
 Also added: P1-approximation SFX for 26, 27, 84 and 93 through
 `pc_p2_sfx_policy.h` (pattern of #35, output only, unit test extended).
 
-## Evidence (final exe `7c121533...`, native `b37a3ddea`)
+## Evidence (final exe `fe21fd5e99634438ca03fbc204bc86c45fbe58b4619e60825ba04f4960c6a03a`, native `535a4da10`)
 
-Private build `output/native-w3-mechanics-build`, `ninja -n pikmin_pc`: "no work
-to do". Content `output/w3-mech-content`. Runs are bot power mode, red squad,
-Distant Spring, the species rebound onto `spring_init_7002` (1945764764), driver
-`output/claude-orch/p2-w3-mech/botrun.py`. The "re-entry" run uses
-`PIKMIN_P2_TEST_DAY_CYCLE=time:8,time:8,time:100` (`time:300` for Hana): the
-species is alive at sunset on day 2 and day 3, is forgotten and rebound on each
-new day, then is killed and delivered on day 4.
+The exe was built from native `1959f6b5d`; `535a4da10` only registers a CTest
+target. Private build `output/native-w3-mechanics-build`, `ninja -n pikmin_pc`:
+"no work to do". Content `output/p2-content-dense` (the seed now carries the
+whole 48-species pool, so the old `w3-mech-content` no longer stages; prepared
+sha256 `442bd8b650e1294d...`). Runs are bot power mode, red squad (93 also
+yellow and blue), Distant Spring, the species rebound onto `spring_init_7002`
+(1945764764), driver `output/claude-orch/p2-w3-mech/botrun.py`. The day-cycle
+run uses `PIKMIN_P2_TEST_DAY_CYCLE=time:8,time:8,time:100` (`time:300` for
+Hana): the species is bound at the start of each stage, alive at the day-2 and
+day-3 sunsets, and killed and delivered in the third stage (`STAGE step=2
+day=4`). Every log hash below was recomputed from the file after the rebuild.
 
-| id | power run | receipt | re-entry run |
+| id | kill run | receipt | day-cycle run |
 |---:|---|---|---|
-| 26 | `c26-26`, 73 s | `onion:p2:26:3` | `e26-26` (sunsets alive, day 4 kill and receipt) |
-| 27 | `c27-27`, 57 s | `onion:p2:27:3` | `e27-27` |
-| 84 | `c84-84`, 95 s | `onion:p2:84:3` | `e84-84` (day 4, 132 s) |
-| 93 | `h93-93`, 39 s (rebuilt exe `6421207b...`) | `onion:p2:93:3` | `i93-93` (day 4, 44 s); `f93-93` covers the pack fix |
+| 26 | `j26-26`, 49 s | `onion:p2:26:3` L5930 | `l26-26` (sunsets L4608/L8941, dead L14106, receipt L15073) |
+| 27 | `j27-27`, 47 s | `onion:p2:27:3` L6959 | `l27-27` (sunsets L5597/L10884, dead L17079, receipt L17894) |
+| 84 | (in `k84-84`) | `onion:p2:84:3` L18679 | `k84-84`, 141 s (sunsets L4812/L9355) |
+| 93 | `r93-93` blue, 42 s; `j93-93` red, 41 s | `onion:p2:93:3` L6249 / L5692 | `k93-93` (day-3 sunset L8616, dead L13040, receipt L14160) |
+
+Earlier-exe runs (`c26`/`e26`, `c27`/`e27`, `c84`/`e84` on `7c121533...`, `h93`,
+`i93`, `i84` on `6421207b...`) are kept as history; the roster no longer cites
+them for admission except `h93`/`i93`, which show 93 blasts that hit Pikmin.
 
 Log paths, hashes and line numbers are in the roster evidence entries
 (`docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json`) and the `P2_PLAYABLE_POOL` rows.
@@ -89,9 +103,9 @@ Pikmin in P1).
 detonates the carried Bomb, and any damage detonates it too (source
 `BombOtakara::damageCallBack`). The blast goes through the shared blast
 primitive. Open: the Bomb has no separate model or actor, so the carried Bomb is
-not drawn; the blast in the observed runs hit no Pikmin (`pikmin_hits=0`, the
-squad was outside the 90-unit radius), so Pikmin casualties from it are
-unobserved in a campaign run.
+not drawn. On the final exe most runs blast with `pikmin_hits=0` (the squad is
+outside the 90-unit radius); one blue-squad run (`r93` L5132) hit one Pikmin, and
+the earlier-exe runs `h93` (1) and `i93` (32) also did.
 
 **26 Catfish, 27 Tadpole.** Both take water-cohort slots only (their lane-04
 profile, source: they are aquatic; 2 slots on the Forest of Hope, 8 on Distant
@@ -149,18 +163,27 @@ Next steps, in order (a multi-session build, not started here):
 See the issue comment and hand-over notes for the saturated Forest of Hope smoke
 seed (`scripts/p2_smoke_seed.py --area foh --near-start`).
 
-## Review fixes (exe `6421207b1b482ba2d87ddd85d92e99eb60305117d293b4dcce65eec3e7653258`, native `601298766`)
+## Review fixes (final exe `fe21fd5e...`, native `535a4da10`)
 
 - **93 dies with its Bomb.** Source `Obj::doUpdateCommon` (OtakaraBase.cpp:93-108):
   when the carried Bomb is no longer alive the BombOtakara sets
   `mTargetCreature = nullptr` and `mHealth = 0`. The port has no Bomb creature, so
   a detonated Bomb (fuse, damage, flick or death) zeroes the Dweevil's health on
-  its own tick (`P2_BOMBOTAKARA_PAYLOAD_DEAD`). Runs `h93`/`i93` show FUSE, BLAST
-  and PAYLOAD_DEAD in the same tick with no squad hits in between. The old
+  its own tick (`P2_BOMBOTAKARA_PAYLOAD_DEAD`). Runs `r93`, `j93`, `k93` show FUSE,
+  BLAST and PAYLOAD_DEAD in the same tick with no squad hits in between. The old
   `c93`/`e93` runs (Dweevil survived the blast, six squad hits) are superseded.
-  Consequence: a Dweevil no longer survives a sunset alive once it has chased.
-- **93 blast receivers.** `h93` L3730 `pikmin_hits=1`; `i93` L10927 `pikmin_hits=32`.
-  The Bomb still has no separate model.
-- **27 attacks_receivers**: Wogpole is harmless in source. The admission contract only accepts PASS, so the gate records the receiver side alone (squad damage applied, escape and death); no Wogpole attack is claimed.
-- **84 evidence text** corrected (see item 2 above); re-check run `i84`: two flicks
-  return to Walk, kill and receipt `onion:p2:84:3` in 68 s.
+  Consequence: a Dweevil that has chased no longer survives a sunset alive.
+- **93 blast receivers.** Final exe `r93` L5132 `pikmin_hits=1`; earlier exe `h93`
+  (log sha256 `1778de329be329be...`, corrected from a wrong `27ac66ff...`) L3730
+  `pikmin_hits=1` and `i93` L10927 `pikmin_hits=32`. The `i93` blast and receipt
+  L12274 are both in the third stage (`STAGE step=2 day=4` at L10350); the
+  sunset lines are L7194 (day 3) and L13927 (day 4). The Bomb still has no model.
+- **27 attacks_receivers**: Wogpole is harmless in source. The admission contract
+  only accepts PASS, so the gate records the receiver side alone (squad damage
+  applied, escape and death); no Wogpole attack is claimed or observed.
+- **84 flick return**: `Hana::prevState` is now assigned when Flick is entered (see
+  item 2 above); no run flicked from GoHome, the unit test covers it. `k84` flicks
+  came from Walk and returned to walk. The flick trigger is the stuck-count
+  simplification of `isStartFlick`, not the source `mFlickTimer` gate.
+- **Pool, roster and evidence** were updated together: the `randomizer/seed.py`
+  `P2_PLAYABLE_POOL` rows for 26, 27, 84 and 93 cite the runs above.
