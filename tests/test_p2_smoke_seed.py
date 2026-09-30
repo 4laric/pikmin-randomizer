@@ -234,6 +234,19 @@ def test_ordinary_slots_can_drop_slots_gated_behind_a_later_day(document):
     assert smoke.ordinary_slots(document, 'foh', max_first_day=99) == every
 
 
+def test_pick_uids_names_exact_ordinary_slots(document):
+    slots = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    want = [int(slots[3]['uid']), int(slots[1]['uid'])]
+    picked = smoke.pick_uids(slots, want)
+    assert [int(s['uid']) for s in picked] == want
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.pick_uids(slots, [12345])
+    assert smoke.parse_uids('1, 2') == [1, 2]
+    for bad in ('', 'x', '1,1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_uids(bad)
+
+
 def test_landing_is_the_measured_captain_start_not_the_origin():
     assert smoke.LANDING['foh'] != smoke.LANDING_XZ
     assert smoke.parse_landing('-464, 1967') == (-464.0, 1967.0)

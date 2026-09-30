@@ -62,6 +62,21 @@ Long Legs 250, Puffstool 350, Cannon Beetle 250). The P1 Emperor arena `last_emp
 protected (finale, owner ruling #901). Smoke seeds and the dev console place the Emperor on
 any ordinary slot; there is no compiled slot list in native.
 
+## Evidence (private runs, native `claude/p2-wave3-53-emperor` 03e8fd23f, exe sha256 `da96b5ff...`)
+
+Runs live under `output/claude-orch/p2-w3-53/runs/` (ignored); `king_score.py` summarises each log.
+
+| Run | What | Result |
+|---|---|---|
+| `s12` (power-mode bot, spring_init_7002 smoke-override slot) | natural fight | bind L1300, wake L1486, Appear L1509, 61 tongue attacks (36 complete, 25 ended by the tongue trace), 113 eaten, 35 swallows, 27 checkFlick shake-offs, 7 WarCry, 1 dive + re-Appear, all nine sound events, dead L5275, corpse carried, `onion:p2:53:3 generator=1945764764 new=1` L5399, `AUTOPLAY_RESULT killed=1 carried=1 received=1` |
+| `s9` (same seed, previous exe) | natural fight | kill, carry, `onion:p2:53:3` |
+| `s14` (FoH 9-slot smoke seed, labelled `TEST_BOMBS=2`) | bomb gate, test-only | 26 `P2_CHAPPY_BOMB_EAT`, 11 `KING_BOMB_DAMAGE` (200 per bomb), 11 stun start/end pairs |
+| `s13` (the owner smoke seed) | binding check | 14 Emperors READY/BIND at the intended coordinates, no abort |
+| `k2`/`k4` (Goolix arena, day 11) | arena natural run | `P2_BOSS_ARENA_BIRTH ok=1`; the bot gave up (the Emperor re-buries when the bot stands off at 107 units, outside the 60 wake radius) |
+
+The Emperor is a hard boss: the bot lost 100+ Pikmin per fight and some runs ended without a kill (s10, s11
+killed but could not carry with 31 Pikmin left). Admission uses the runs that completed kill, carry and receipt.
+
 ## Known gaps (recorded, not hidden)
 
 - The Big variant (`f_03` / force-big: scale 1.5, life 1800) is not selectable in a seed.
@@ -71,4 +86,7 @@ any ordinary slot; there is no compiled slot list in native.
 - The tongue-tip trace is a static-map trace with the retail tip table; P1 terrain is bumpier than
   the P2 cave floors, so a lick can end earlier than on P2 ground.
 - Water ripples, dive/appear effects and camera vibration are not ported.
+- The cross-Emperor WarCry request is pinned by `tools/p2_king_life_test.cpp` but was not observed at runtime.
+- The bot cannot finish the fight in the Goolix arena: a buried Emperor wakes only for a captain or Pikmin within 60
+  (source fp02), and the bot's standoff stays at about 107.
 - Sound is a P1 approximation (P1 Emperor bank), not the P2 sound ids.

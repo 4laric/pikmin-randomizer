@@ -175,6 +175,27 @@ def parse_bosses(text):
     return bosses
 
 
+def pick_uids(slots, uids):
+    """The named ordinary slots, in the order given (a run that needs one known-reachable slot)."""
+    by_uid = {int(slot['uid']): slot for slot in slots}
+    chosen = []
+    for uid in uids:
+        if uid not in by_uid:
+            raise SmokeSeedError(f'slot {uid} is not an ordinary slot of this area (or is gated behind a later day)')
+        chosen.append(by_uid[uid])
+    return chosen
+
+
+def parse_uids(text):
+    try:
+        uids = [int(x) for x in text.split(',') if x.strip()]
+    except ValueError:
+        raise SmokeSeedError(f'--slot-uids must be comma-separated ints, got {text!r}') from None
+    if not uids or len(set(uids)) != len(uids):
+        raise SmokeSeedError('--slot-uids needs one or more distinct slot uids')
+    return uids
+
+
 def parse_landing(text):
     """'X,Z' -> (x, z)."""
     try:
@@ -427,8 +448,11 @@ def build(args):
     positions = slot_positions(probe_text)
     landing = parse_landing(args.landing) if args.landing else LANDING.get(args.area, LANDING_XZ)
     max_day = None if args.max_first_day < 0 else args.max_first_day
-    slots = pick_slots(ordinary_slots(document, args.area, max_day), args.slots, args.near_start, positions,
-                       origin=landing)
+    if args.slot_uids:
+        slots = pick_uids(ordinary_slots(document, args.area, max_day), parse_uids(args.slot_uids))
+    else:
+        slots = pick_slots(ordinary_slots(document, args.area, max_day), args.slots, args.near_start, positions,
+                           origin=landing)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -495,6 +519,8 @@ def main(argv=None):
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')
     parser.add_argument('--probe-log', type=Path, default=None, help='native log whose P2_PLACEMENT_SLOT lines supply extra slot coordinates')
     parser.add_argument('--no-content', action='store_true', help='skip content staging (seed + override + launcher only)')
+    parser.add_argument('--slot-uids', default=None, metavar='UID,...',
+                        help='use exactly these ordinary slots instead of --slots/--near-start (a known-reachable slot)')
     parser.add_argument('--landing', default=None, metavar='X,Z',
                         help='captain start used by --near-start (default: the measured start of the area, else 0,0)')
     parser.add_argument('--max-first-day', type=int, default=START_DAY,
