@@ -32,6 +32,19 @@ if str(ROOT) not in sys.path:
 from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT  # noqa: E402
 
 MARKER = "density.json"
+
+# Converter revisions a cache entry must carry (#960). Pose density alone does not
+# say which converter wrote the bake: the dense cache built before #973 still held
+# Jellyfloat meshes whose alpha-blended bell wrote depth and drew in the opaque
+# pass, so the Onion beam and the carry numbers were hidden behind them. A species
+# listed here is reused only when its marker records every listed revision;
+# otherwise it is re-extracted like a sparse entry.
+TRANSLUCENT_REVISION = "translucent-973"
+REQUIRED_REVISIONS = {
+    "Kurage": (TRANSLUCENT_REVISION,),
+    "OniKurage": (TRANSLUCENT_REVISION,),
+    "MiniHoudai": (TRANSLUCENT_REVISION,),
+}
 POSE_RE = re.compile(r"^(?P<stem>.+)_(?P<idx>\d+)\.mod$")
 
 
@@ -53,9 +66,13 @@ def root_pose_limit(root):
     return limit if type(limit) is int else None
 
 
-def write_entry_marker(entry_dir, pose_limit, source=None):
-    """Record the extraction pose limit inside a cache entry."""
-    payload = {"pose_limit": int(pose_limit), "source": source}
+def write_entry_marker(entry_dir, pose_limit, source=None, revisions=None):
+    """Record the extraction pose limit (and converter revisions) inside a cache entry.
+    ``revisions`` defaults to every revision the species requires: the entry was
+    just extracted with the current converter."""
+    if revisions is None:
+        revisions = REQUIRED_REVISIONS.get(Path(entry_dir).name, ())
+    payload = {"pose_limit": int(pose_limit), "source": source, "revisions": sorted(revisions)}
     (Path(entry_dir) / MARKER).write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
 
@@ -82,6 +99,22 @@ def entry_pose_limit(cache_dir, enum):
 def entry_is_dense(cache_dir, enum, required=DEFAULT_POSE_LIMIT):
     limit = entry_pose_limit(cache_dir, enum)
     return limit is not None and limit >= required
+
+
+def entry_revisions(cache_dir, enum):
+    marker = Path(cache_dir) / enum / MARKER
+    try:
+        revs = json.loads(marker.read_text(encoding="utf-8")).get("revisions")
+    except (OSError, ValueError, AttributeError):
+        return ()
+    return tuple(revs) if isinstance(revs, list) else ()
+
+
+def entry_is_current(cache_dir, enum):
+    """True when the entry carries every converter revision its species requires."""
+    required = REQUIRED_REVISIONS.get(enum, ())
+    have = set(entry_revisions(cache_dir, enum))
+    return all(r in have for r in required)
 
 
 def species_density(species_dir):

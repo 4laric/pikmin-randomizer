@@ -56,7 +56,13 @@ def trimmed_document(keep):
     """The committed document with only its first ``keep`` ordinary slots
     (the boss arenas, #899, are kept)."""
     document = copy.deepcopy(committed_document())
-    document["slots"] = ordinary_slots(document)[:keep] + [
+    # #964: the water species (26, 27) accept water-cohort slots only, so a
+    # trimmed document keeps two of them (the first ``keep - 2`` other slots
+    # fill the rest) or the resolver reports admitted species with no target.
+    ordinary = ordinary_slots(document)
+    water = [slot for slot in ordinary if slot.get("terrain") == "water"][:2]
+    others = [slot for slot in ordinary if slot not in water][:keep - len(water)]
+    document["slots"] = others + water + [
         slot for slot in document["slots"] if slot.get("boss_slot")]
     kept = {slot["uid"] for slot in document["slots"]}
     for profile in document["profiles"]:
@@ -80,7 +86,7 @@ def test_fitting_pool_keeps_the_legacy_fill():
 
 
 def test_committed_pool_fits_the_constraint_derived_targets():
-    # 45 admitted species (Empress Bulblax 30 #256, OniKurage 72 and Kurage 57 #960, Groink 78 #888, Demon 32 #215, Titan Dweevil 73
+    # 46 admitted (45 before Beady 56 and Tank 24 were withdrawn, 2026-09-30; + Water Dumple 26, Wogpole 27, Hana 84, Volatile Dweevil 93 #964) species (Empress Bulblax 30 #256, OniKurage 72 and Kurage 57 #960, Groink 78 #888, Demon 32 #215, Titan Dweevil 73
     # #246, Breadbug 38 #898, Antenna Beetle 41 #245, Dirigibug 58 #244, Giant Breadbug 40 #958). The
     # Crawbster 94, the Titan 73, the Emperor 53 (#289), and the Empress 30 live in boss arenas for real seeds
     # (#899). Since #948 the ordinary target set is every campaign generator
@@ -90,7 +96,7 @@ def test_committed_pool_fits_the_constraint_derived_targets():
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == 45
+    assert len(pool) == 46
     assert len(ordinary_slots(document)) == 72
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)

@@ -37,9 +37,16 @@ from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
 
 HEADER = 'P2_BULBLAX_BANK_1'
-CLIP_BYTES = 1024 * 1024        # per-clip pose budget (Queen poses are ~60 KB each)
-TOTAL_BYTES = 16 * 1024 * 1024  # whole-bank budget across all three species
-MAX_POSES = 12
+# Byte budgets (#972). Measured at 24 poses/clip: Queen 59,264 B/pose (1,422,336 B
+# per clip), Baby <= 8,224 B/pose, KingChappy 55,456 B/pose (1,330,944 B per clip);
+# the whole three-species bank is 32,486,912 B. The previous 1 MiB clip / 16 MiB
+# total fit only 12 poses. The ceilings mirror what native accepts: 24 poses x 64 KiB
+# per clip, and 40 MiB total = experimental.pikmin2_queen_stage.TOTAL_BYTES and the
+# pc_p2_queen_teki.cpp load cap. Native residency stays small: the shared pose
+# loader keeps 4 Shapes + decoded vectors per clip (~0.5 MiB/Queen clip).
+CLIP_BYTES = 24 * 64 * 1024
+TOTAL_BYTES = 40 * 1024 * 1024
+MAX_POSES = 24  # = pikmin2_animation.DEFAULT_POSE_LIMIT (#943/#950, #972); native bank bound
 
 LIMITATIONS = ['Sampled weighted/rigid poses with approximate materials; no skeletal playback or event execution.',
                "Queen dead/carry frames with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' policy (transpose-adjugate/cofactor normal matrix, #233); the policy is recorded in each pose report.",
