@@ -55,7 +55,7 @@ def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
     assert [row["target"] for row in held] == ["613834665"]
     assert len(manifest["p2_layout"]["bindings"]) == 72 + 4 + len(held)
     assert sorted(row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 73, 94]
-    # #958: the Giant Breadbug only takes Purple presses, so it needs --p2-purple-campaign.
+    # #958: the Giant Breadbug needs no Purple; --p2-purple-campaign stays a generic opt-in.
     purple_file = tmp_path / "purple.json"
     code, _ = run_main(
         monkeypatch, capsys,

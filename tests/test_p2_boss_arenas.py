@@ -19,8 +19,7 @@ from randomizer import p2_boss_arenas as arenas
 from randomizer.p2_placement import audit, validate_document
 from randomizer.seed import P2_REQUIRES_PURPLE, PLAYABLE_P2_SPECIES, generate, validate
 
-# #958: the Giant Breadbug (40) only takes Purple presses, so a default seed leaves it out
-# (randomizer.seed.P2_REQUIRES_PURPLE); the bridge-level tests below use the default pool
+# #958: P2_REQUIRES_PURPLE is generic and empty today (the Giant Breadbug 40 needs no Purple); the bridge-level tests below use the default pool
 # unless they say otherwise.
 DEFAULT_POOL = sorted(s for s in PLAYABLE_P2_SPECIES if s not in P2_REQUIRES_PURPLE)
 from randomizer.spawn_data import GENERATOR_SLOTS
@@ -340,7 +339,7 @@ class SeedTests(unittest.TestCase):
 
     def test_giant_breadbug_is_not_an_arena_boss(self):
         # #958: r9/r11 killed the Giant in an arena but never delivered the corpse, so it has no
-        # arena descriptor and is not seated in any arena, even on a Purple-campaign seed.
+        # arena descriptor and is not seated in any arena, on any seed.
         self.assertNotIn(40, arenas.ARENA_BOSS_SOURCES)
         self.assertNotIn("OoPanModoki", arenas.BOSS_ENCOUNTERS)
         for i in range(10):

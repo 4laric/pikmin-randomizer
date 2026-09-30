@@ -84,16 +84,32 @@ The root engine snapshot applies only the reviewed Purple source changes, preser
 
 ## Purple-only species and `--p2-purple-campaign` (#958)
 
-`OoPanModoki::Obj::pressCallBack` (`panModoki.cpp:1738-1744`) rejects the press of
-every Pikmin whose kind is not Purple, and the base `damageCallBack`
-(`panModoki.cpp:450-457`) only forwards damage while the body is bittered, which
-Pikmin 1 has no item for. Without Purple presses the Giant Breadbug (source 40)
-can only lose the one-off container suck (2000 to 1000) and never dies, so a
-default seed must not place it at all (a Giant that cannot die would permanently
-replace what it displaced).
+The mechanism is generic and currently **empty**: `randomizer.seed.P2_REQUIRES_PURPLE`
+(source id to citation) lists no species. The Giant Breadbug (source 40) was listed
+on the claim that only Purple presses hurt it, that the Onion suck is one-off and
+that it could never die. The owner killed it with Reds only (2026-09-30), and the
+source agrees. P2's damage paths for `OoPanModoki`:
 
-The constraint lives in `randomizer.seed.P2_REQUIRES_PURPLE` (source id to
-citation), not in a slot list:
+- Latched attacks do nothing (`PanModokiBase::Obj::damageCallBack`,
+  `panModoki.cpp:450-456`, bitter-gated).
+- Non-Purple presses and hipdrops are refused (`OoPanModoki::pressCallBack`,
+  `panModoki.cpp:1738-1744`; `hipdropCallBack` `521-524`).
+- Bombs hurt it (`EnemyBase::bombCallBack`, `enemyBase.cpp:2908-2912`).
+- An Onion suck of the pellet it grabbed, carried by any colour, does `suckDamage`
+  1000 of 2000 health, every time, not once
+  (`pelletState.cpp:541-549` -> `panModoki.cpp:1381-1392` ->
+  `panModokiState.cpp:453-481`).
+
+Owner evidence: `output/smoke-w3-giant-breadbug/foh-2/session-0930-1214/runs/c623ce37f36785fce852781911d73cc7ab0fb88d92d808e52b88b179e24cee0e/native.log`
+(sha256 `6f30f239cc50bb94b0304c8b2c5001ff517b0e0aa5d50f1a1e92dd177e3d0b4d`). Lines 2748
+and 2983 are `P2_BREADBUG_OWN_SUCK_DAMAGE` for generator 4222852521, 2000 -> 1000 and
+1000 -> 0, a red-only kill by two Onion sucks (line 2822 is a second Giant,
+generator 1849273021, 2000 -> 1000).
+
+So 40 is back in the default, `playable` and `full` pools with no campaign flag.
+
+The constraint mechanism stays in `randomizer.seed.P2_REQUIRES_PURPLE`, not in a slot
+list, for any species later shown to need Purple:
 
 - `generate(..., p2_purple_campaign=True)` / `randomizer generate --p2-enemies
   --p2-purple-campaign` binds Purple-only species; the manifest records
@@ -103,14 +119,10 @@ citation), not in a slot list:
 - `validate()` rejects a layout that binds a Purple-only species without the opt-in.
 - `randomizer run` refuses such a seed unless `--purple-bank` and
   `--purple-motion` are given, so the Violet supply always exists.
-- Placement: a `--p2-purple-campaign` seed binds it on ordinary slots only. It is not
-  seated in a boss arena, because arena runs r9/r11 killed it but never carried the
-  corpse, so there is no arena receipt (#958). A smoke seed (`scripts/p2_smoke_seed.py`, with `--purple-bank` and
-  `--purple-motion`) can put the Giant on any ordinary slot. Purple stock is ship
-  stock, so Purples made at the start-area Violet are available in every area.
-  The dev console (`scripts/p2_dev_console.py`) may spawn the Giant on demand
-  without the banks: its manifest carries the flag and `randomizer run` skips the
-  bank requirement under `PIKMIN_DEV_CONSOLE`.
+- Placement for 40: ordinary slots only. It is not seated in a boss arena, because
+  arena runs r9/r11 killed it but never carried the corpse, so there is no arena
+  receipt (#958). The y7 Forest of Hope plateau corpse jam at (-192,2052) stays an
+  open risk. The Purple banks are no longer needed for it.
 
 Violet staging works on all five start stages, including the Forest of Hope. Some
 local asset sets carry a harness copy of the Forest of Hope `default.gen` whose

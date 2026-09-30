@@ -128,13 +128,17 @@ never P2 identities and never enter this table.
   module as the source `OoPanModoki` variant: its own retail parms (2000 health,
   press 100, container 1000, carry speed 45), its own model and animation bank,
   `canTarget` at-or-above the weight limit, a 40-unit stick reach and a 150-unit
-  waypoint slack. Only a Purple Pikmin press hurts it (a non-Purple press is
-  refused and logged as `P2_BREADBUG_OWN_PRESS_REJECTED`); a cargo sucked into
-  the Onion still costs it 1000. So a seed without the Purple campaign banks
-  cannot press it, and a real player needs Purple (or two Onion sucks). Generation
-  binds it only on `--p2-purple-campaign` seeds (constraint `P2_REQUIRES_PURPLE`,
-  source `OoPanModoki::pressCallBack`, `panModoki.cpp:1738-1744`), and
-  `randomizer run` refuses such a seed without the Purple banks. **Admission scope:
+  waypoint slack. Damage paths (source `OoPanModoki`): latched attacks do nothing
+  (`panModoki.cpp:450-456`, bitter-gated); non-Purple presses and hipdrops are refused
+  (`pressCallBack` `panModoki.cpp:1738-1744`, `hipdropCallBack` `521-524`, logged as
+  `P2_BREADBUG_OWN_PRESS_REJECTED`); bombs hurt it (`enemyBase.cpp:2908-2912`); an Onion
+  suck of the pellet it grabbed, carried by any colour, does 1000 of 2000 health every
+  time (`pelletState.cpp:541-549` -> `panModoki.cpp:1381-1392` ->
+  `panModokiState.cpp:453-481`). The owner killed it with Reds only (2026-09-30; log
+  `output/smoke-w3-giant-breadbug/foh-2/session-0930-1214/runs/c623ce37.../native.log`,
+  sha256 `6f30f239...0b4d`, `SUCK_DAMAGE` lines 2748 and 2983). So it needs no Purple
+  and is in the default, playable and full pools; `P2_REQUIRES_PURPLE` is now empty but
+  the mechanism stays. **Admission scope:
   ordinary slots only. Boss-arena placement is not admitted.** Arena runs r9 and
   r11 (pre-merge exe dc6a9f30) killed the Giant but nobody carried the corpse, so
   there is no arena receipt; the stall was not diagnosed from the log. It has no
