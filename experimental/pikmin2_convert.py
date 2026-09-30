@@ -47,6 +47,8 @@ LEGACY_VERTEX_CONTROL = MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX
 # rather than changing it. P2 base stages are mostly x2, balanced by P2's own
 # light rig, so the source scale is deliberately not carried over.
 TEV_BASE_SCALE = 0
+# ShapeFlags::AllowCaching (native include/Shape.h): defer translucent materials to the sorted flush.
+SHAPE_ALLOW_CACHING = 1 << 1
 
 def source_lighting(m, r):
     """Source J3D COLOR0/ALPHA0 channel control and material colour 0.
@@ -125,6 +127,42 @@ def pixel_state(m, r):
     return ((category<<8)|1, 1,
             comp0|(ref0<<4)|(op<<16)|(comp1<<20)|(ref1<<24),
             test|(write<<1)|(func<<8), mode|(src<<4)|(dst<<8)|(logic<<12))
+
+DEFAULT_ALPHA_STAGE=[7,4,5,7,0,0,0,1,0]  # exporter default: texture alpha x rasterised alpha
+# GX alpha inputs the single exported stage can honour: A0-A2 registers, TEXA, RASA, ZERO.
+# APREV (no earlier stage exists) and KONST (no per-stage selector is carried) are refused.
+ALPHA_STAGE_INPUTS=frozenset((1,2,3,4,5,7))
+
+def blend_alpha_stage(m, r, slot, has_texture):
+    """Source alpha combiner of an alpha-blended material's first TEV stage.
+
+    #960: P2 translucent materials (blend mode BLEND) often derive their alpha
+    from a TEV register plus the diffuse alpha (Jellyfloat bells:
+    A0 + TEXA*RASA), not from texture alpha times vertex alpha alone. The
+    exported stage multiplied texture alpha by vertex alpha, which yields
+    fully transparent or fully opaque texels instead of the source's constant
+    base opacity. Returns None (keep the default stage) when the material is
+    not alpha blended, already uses the default combiner, or the combiner uses
+    an input the exported stage cannot express; otherwise the nine alpha
+    combiner bytes plus the three TEV colour registers the combiner reads.
+    """
+    mode=u32(m,112)+u16(m,r+0x148)*4
+    if not all(u32(m,o) for o in (76,80,88,92)) or mode+4>len(m): return None
+    if m[mode]!=1: return None  # GX_BM_BLEND only; opaque/alpha-tested stay unchanged
+    if m[u32(m,88)+m[r+4]]<1: return None
+    stage=u32(m,92)+u16(m,r+0xe4)*20
+    alpha=list(m[stage+10:stage+19])
+    if alpha==DEFAULT_ALPHA_STAGE: return None
+    if any(v not in ALPHA_STAGE_INPUTS for v in alpha[:4]): return None
+    if alpha[8]!=0: return None  # only PREV feeds the rasterised colour of the exported single stage
+    order=u32(m,76)+u16(m,r+0xbc)*4
+    if 4 in alpha[:4]:
+        if not has_texture or m[order+1]!=slot or m[order]>=8: return None
+    regs=[]
+    for k in range(3):
+        at=u32(m,80)+u16(m,r+220+2*k)*8
+        regs.append(list(struct.unpack('>4h',m[at:at+8])))
+    return dict(alpha=alpha,regs=regs)
 
 def diffuse_slot(m, r):
     """Prefer an explicit untransformed UV0 diffuse stage over a noise input.
@@ -280,7 +318,7 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
             mapping[idx]=mat;order.append(idx)
     if sorted(order)!=list(range(len(shapes))): raise ValueError('Expected each shape once in draw hierarchy')
     b['_draw_order']=order
-    m=b['MAT3']; materials=[]; states=[]; lighting=[]
+    m=b['MAT3']; materials=[]; states=[]; lighting=[]; alpha_stages=[]
     for i in range(u16(m,8)):
         r=u32(m,12)+u16(m,u32(m,16)+2*i)*332
         if not approximate_materials and m[u32(m,88)+m[r+4]]!=1: raise ValueError('Only single-stage materials supported')
@@ -293,8 +331,10 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         materials.append(tex)
         states.append(pixel_state(m,r))
         lighting.append(source_lighting(m,r))
+        alpha_stages.append(blend_alpha_stage(m,r,slot,tex>=0) if approximate_materials else None)
     b['_render_states']=[states[mapping[i]] for i in range(len(shapes))]
     b['_source_lighting']=[lighting[mapping[i]] for i in range(len(shapes))]
+    b['_alpha_stages']=[alpha_stages[mapping[i]] for i in range(len(shapes))]
     if billboard_shapes:
         b['_billboard_policy']=billboard
         b['_billboard_shapes']=list(billboard_shapes)
@@ -352,6 +392,15 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     b,a,shapes,mats=decoded; w=Writer()
     states=b['_render_states']
     if len(states)!=len(shapes): raise ValueError('Expected pixel state for every shape')
+    # #960: draw category 4 (alpha blend) materials through P1's translucent path:
+    # the shape opts in to Graphics::cacheShape (deferred, distance sorted,
+    # flushed after every opaque creature) and its blended materials stop writing
+    # depth, as P1's own MATFLAG_AlphaBlend state does, so what sits inside a
+    # translucent body (a swallowed Pikmin) stays visible. Opaque and alpha-test
+    # materials are untouched, and a model with none keeps shape flags 0.
+    blended=[bool(st[0]>>8&4) for st in states]
+    if any(blended):
+        states=[(st[0],st[1],st[2],st[3]&~2,st[4]) if bl else st for st,bl in zip(states,blended)]
     # decode() records the source lighting; hand-assembled scenes (cave
     # floors, merged rooms) carry none and keep the legacy unlit material.
     lighting=b.get('_source_lighting')
@@ -365,7 +414,7 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
     billboard_pivot=b.get('_billboard_native_pivot')
     billboard_scale=b.get('_billboard_native_scale')
-    w.begin(0);w.pad();w.put('II',0,0);w.end()
+    w.begin(0);w.pad();w.put('II',0,SHAPE_ALLOW_CACHING if any(blended) else 0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):
         if attr not in a: continue
         w.begin(tag,len(a[attr]));w.pad()
@@ -388,12 +437,14 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.end()
     # Each shape gets a deliberately simple static PVW material.
     w.begin(48,len(shapes),len(shapes));w.pad()
-    for tex in mats:
-        for _ in range(3):w.put('4hIfII',255,255,255,255,0,0.,0,0)
+    alpha_stages=b.get('_alpha_stages') or [None]*len(mats)
+    if len(alpha_stages)!=len(mats): raise ValueError('Expected alpha stage entry for every shape')
+    for tex,alpha_stage in zip(mats,alpha_stages):
+        for k in range(3):w.put('4hIfII',*(alpha_stage['regs'][k] if alpha_stage else (255,255,255,255)),0,0.,0,0)
         w.data+=bytes([255])*16;w.put('I',1)
         w.data+=bytes([0,0 if tex>=0 else 255,0 if tex>=0 else 255,4,0,0,0,0])
         w.data+=bytes([15,8,10,15,0,0,TEV_BASE_SCALE,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,TEV_BASE_SCALE,1,0,0,0,0])
-        w.data+=bytes([7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
+        w.data+=bytes(alpha_stage['alpha']+[0,0,0] if alpha_stage else [7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
     controls=[]
     for i,tris in enumerate(shapes):
         if lighting is None or lighting[i] is None: controls.append(LEGACY_VERTEX_CONTROL if 11 in a else 0)
@@ -441,6 +492,10 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     if lighting is not None:
         report['lighting_controls']=controls
         report['material_colors']=[list(c) for c in colors]
+    if any(blended):
+        report['translucent_path']={'shape_flags':SHAPE_ALLOW_CACHING,'blended_shapes':[i for i,x in enumerate(blended) if x],'depth_write':'off for blended materials'}
+    if any(alpha_stages):
+        report['alpha_stages']=[x and x['alpha'] for x in alpha_stages]
     if '_discarded_matrix_attributes' in b:
         report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
     if '_normal_policy' in b:report['normal_policy']=b['_normal_policy']
