@@ -610,6 +610,18 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
+        "source_id": 40,
+        "enum_name": "OoPanModoki",
+        "family": "giantbreadbug",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs z5 and z6 (owner ruling 2026-09-25: power mode admits; #958): red squad made Purple by the test-only power switch, campaign OWN bind of the OoPanModoki variant of the source PanModoki FSM with retail parms (health 2000, press 100, container 1000), never a Pikmin or captain target (0 attacks), only Purple presses hurt it (non-Purple presses refused, run k3), z5 dies to 20 presses 2000->0, z6 to a container suck 2000->1000 then 10 presses, OWN_DEAD on its own generator, corpse carried, Onion receipt onion:p2:40:3 in both runs",
+            "log": "output/claude-orch/p2-w3-variants-breadbug/runs/z5-40/session/runs/eab6aa1c29f6ee315722acd95c57b682fd3b27c2a37dcf230633774f794afcf2/native.log (sha256 2434a1d42a4a4ca4...) L1928 bind, L60865 dead, L62381 receipt; z6 L26616 receipt (sha256 d354fa1427fa6cdc...); native claude/p2-wave3-variants-breadbug 35d2e64c4, exe sha256 c198bd9508944cee...; #958",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 40 -> giantbreadbug "
+                         "(stages p2-giantbreadbug-parms/bank and the giantbreadbug pose meshes)",
+        },
+    },
+    {
         "source_id": 41,
         "enum_name": "Fuefuki",
         "family": "fuefuki",

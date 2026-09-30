@@ -5506,6 +5506,43 @@
         2974383966,
         2903640892
       ]
+    },
+    {
+      "identity": "OoPanModoki",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 18,
+      "footprint_radius": 200.0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 0,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": true,
+      "encounter_descriptor": "oopanmodoki_arena",
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn",
+        "placement.boss_arena"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "P2 source_id 40; boss arena placement (#899, owner ruling 2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; accepted on every measured, unprotected arena whose clearance fits the oopanmodoki_arena footprint. Pool admission is still the family lane's natural kill -> carry -> Onion receipt.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        4019261003,
+        295337326,
+        4260179239,
+        304372265,
+        2974383966,
+        2903640892
+      ]
     }
   ],
   "encounters": [
@@ -5581,6 +5618,30 @@
         "reward"
       ],
       "notes": "Titan Dweevil arena (#899, #246): 4-leg IK gait spans about 207 units."
+    },
+    {
+      "id": "oopanmodoki_arena",
+      "identity": "OoPanModoki",
+      "terrains": [
+        "ground"
+      ],
+      "footprint_radius": 200.0,
+      "helper_budget": 0,
+      "arena_slots": {
+        "min": 1,
+        "max": 1
+      },
+      "phases": 1,
+      "protected_drops": [],
+      "required_gates": [
+        "arena",
+        "wander",
+        "haul",
+        "press",
+        "death",
+        "reward"
+      ],
+      "notes": "Giant Breadbug arena (#958): the encounter disc is the source territory, fp09 200 (oopanmodoki/enemyparm.txt); the haul runs the carry-route graph out of the arena, so no larger floor is needed."
     },
     {
       "id": "houdai_arena",

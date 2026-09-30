@@ -65,10 +65,11 @@ def load_default_document():
     return json.loads((ROOT / 'docs' / 'PIKMIN2_ADMITTED_PLACEMENT.json').read_text(encoding='utf-8'))
 
 
-def ordinary_slots(document, area):
+def ordinary_slots(document, area, max_first_day=None):
     """Ordinary enemy slots of ``area``: unprotected, non-boss, not a held-part
     anchor; document order. Native probe evidence is not required (#948: an
-    unprobed slot is a to-do, not a restriction)."""
+    unprobed slot is a to-do, not a restriction). ``max_first_day`` drops slots
+    that only open on a later day (CONTRIBUTING playtest rule 3, "no gates")."""
     if area not in AREAS:
         raise SmokeSeedError(f"unknown area {area!r}; expected one of {sorted(AREAS)}")
     _, stage, _ = AREAS[area]
@@ -78,6 +79,8 @@ def ordinary_slots(document, area):
         if slot['stage'] != stage or slot.get('protected') or slot.get('boss_slot'):
             continue
         if slot['uid'] in held:
+            continue
+        if max_first_day is not None and int(slot.get('first_day', 0)) > max_first_day:
             continue
         out.append(slot)
     return out
@@ -347,9 +350,16 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
 
 # --- launcher --------------------------------------------------------------
 
-def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT):
+def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT,
+                  purple_bank=None, purple_motion=None):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
+    # #958: opt in to the ordinary Purple campaign (the Giant Breadbug only
+    # takes Purple presses); F10 near the ship withdraws Purple.
+    purple_args = ''
+    if purple_bank and purple_motion:
+        purple_args = (f" `\n        --purple-bank {ps(purple_bank)} `"
+                       f"\n        --purple-motion {ps(purple_motion)}")
     return f"""# #944/#948 smoke seed launcher: any playable P2 species on any ordinary slot.
 # The placement override document is the whole mechanism (#948: native has no
 # compiled slot lists). {SMOKE_ENV}=1 is set as the documented smoke marker.
@@ -367,7 +377,7 @@ try {{
         --p2-actors {ps(actors_path)} `
         --session-dir $session `
         --exe $Exe `
-        --assets $Assets
+        --assets $Assets{purple_args}
 }} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue }}
 """
 
@@ -387,7 +397,7 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    slots = pick_slots(ordinary_slots(document, args.area), args.slots, args.near_start, positions)
+    slots = pick_slots(ordinary_slots(document, args.area, args.max_first_day), args.slots, args.near_start, positions)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -413,7 +423,10 @@ def build(args):
     exe = str(Path(args.exe).resolve()) if args.exe else ''
     play_path = out / 'play.ps1'
     play_path.write_text(launcher_text(seed_path.resolve(), content_dir.resolve(), actors_path.resolve(),
-                                       out.resolve(), exe, args.assets), encoding='utf-8')
+                                       out.resolve(), exe, args.assets,
+                                       purple_bank=(Path(args.purple_bank).resolve() if args.purple_bank else None),
+                                       purple_motion=(Path(args.purple_motion).resolve() if args.purple_motion else None)),
+                         encoding='utf-8')
 
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
@@ -452,6 +465,11 @@ def main(argv=None):
     parser.add_argument('--assets', default=DEFAULT_ASSETS, help='retail asset root for randomizer run --assets')
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')
     parser.add_argument('--probe-log', type=Path, default=None, help='native log whose P2_PLACEMENT_SLOT lines supply extra slot coordinates')
+    parser.add_argument('--purple-bank', type=Path, default=None,
+                        help='#958: Purple campaign pose bank (opt in; needed to press the Giant Breadbug)')
+    parser.add_argument('--purple-motion', type=Path, default=None, help='#958: Purple throw/fall motion bank (with --purple-bank)')
+    parser.add_argument('--max-first-day', type=int, default=None,
+                        help='skip slots that only open after this day (2 = the start day; playtest rule 3, no gates)')
     parser.add_argument('--no-content', action='store_true', help='skip content staging (seed + override + launcher only)')
     args = parser.parse_args(argv)
     if args.slots != 'all':

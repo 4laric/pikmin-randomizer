@@ -61,7 +61,7 @@ from __future__ import annotations
 ARENA_SCHEMA = "p2-boss-arena-v1"
 
 # P2 bosses confined to boss arenas: source_id -> roster enum name.
-ARENA_BOSS_SOURCES = {30: "Queen", 73: "BigTreasure", 94: "DangoMushi", 66: "Houdai"}
+ARENA_BOSS_SOURCES = {30: "Queen", 73: "BigTreasure", 94: "DangoMushi", 66: "Houdai", 40: "OoPanModoki"}
 
 # GenObjectBoss ids (include/Boss.h GenBossID) and the teki boss hosts.
 GENBOSS = {0: "Spider", 1: "Snake", 2: "Slime", 3: "King", 7: "BoxSnake"}
@@ -230,6 +230,14 @@ BOSS_ENCOUNTERS = {
         "footprint_radius": 250.0, "helper_budget": 0,
         "required_gates": ["arena", "weapons", "element_attacks", "flick", "death", "reward"],
         "notes": "Titan Dweevil arena (#899, #246): 4-leg IK gait spans about 207 units.",
+    },
+    "OoPanModoki": {
+        "id": "oopanmodoki_arena", "source_id": 40, "family_lane": 18,
+        "footprint_radius": 200.0, "helper_budget": 0,
+        "required_gates": ["arena", "wander", "haul", "press", "death", "reward"],
+        "notes": ("Giant Breadbug arena (#958): the encounter disc is the source territory, fp09 200 "
+                  "(oopanmodoki/enemyparm.txt); the haul runs the carry-route graph out of the arena, so "
+                  "no larger floor is needed."),
     },
     "Houdai": {
         "id": "houdai_arena", "source_id": 66, "family_lane": 26,

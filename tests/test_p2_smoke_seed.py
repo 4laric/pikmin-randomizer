@@ -225,6 +225,27 @@ def test_launcher_sets_env_and_runs_randomizer(tmp_path):
     assert "Push-Location '" + str(smoke.ROOT) + "'" in text
 
 
+def test_launcher_purple_opt_in_adds_both_banks(tmp_path):
+    # #958: the Giant Breadbug only takes Purple presses; the smoke launcher can opt in.
+    plain = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS)
+    assert '--purple-bank' not in plain
+    text = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                               tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS,
+                               purple_bank=tmp_path / 'purple', purple_motion=tmp_path / 'motion')
+    assert "--purple-bank '" in text and "--purple-motion '" in text
+    assert '--assets $Assets `' in text
+
+
 def test_cli_rejects_bad_slots(tmp_path):
     with pytest.raises(SystemExit):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
+
+
+def test_max_first_day_drops_later_day_slots():
+    document = smoke.load_default_document()
+    everything = smoke.ordinary_slots(document, 'spring')
+    day2 = smoke.ordinary_slots(document, 'spring', max_first_day=2)
+    assert day2 and len(day2) < len(everything)
+    assert all(int(s.get('first_day', 0)) <= 2 for s in day2)
+    assert smoke.ordinary_slots(document, 'spring', max_first_day=99) == everything

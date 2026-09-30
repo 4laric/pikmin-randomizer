@@ -760,24 +760,33 @@
       ]
     },
     "40": {
-      "native_module": "pc_p2_giant_breadbug_actor",
+      "native_module": "pc_p2_breadbug_teki",
       "owner_lane": "18",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Giant Breadbug (OoPanModoki, source 40): OWN campaign runs (#958) on the admitted Breadbug 38 module as its OoPanModoki variant. The engine-free source FSM pc_p2_breadbug_fsm (panModokiState.cpp, OoPanModoki.h, panModoki.cpp) drives the campaign Giant with its own retail parms (health 2000, press 100, container 1000, carry speed 45), canTarget at-or-above the weight limit, mCarrySizeDiff 40 and waypoint slack 150. It is never a Pikmin or captain target, wanders, steals a carcass and hauls it, is pressed by Purple Pikmin only, dies, is carried and delivers Onion receipt onion:p2:40:3 on its own generator token in two runs on the pinned exe.",
       "source": [
-        "PIKMIN2_GIANT_BREADBUG_NATIVE_BINDING.md"
+        "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "OoPanModoki (Giant Breadbug): giant binding/visual; contested cargo + scoring remain (#168/#220)."
-      ]
+        "Giant Breadbug (OoPanModoki): the #898 Breadbug 38 module with the OoPanModoki differences from the decomp. Variant params (applyVariant): mCarrySizeDiff 40 (panModoki.cpp:1709), walkFunc slack 150 (panModoki.cpp:927-929), canTarget weightLimit <= pelMinWeight (OoPanModoki.h:16; proper ip01 1 so it takes any cargo the P1 carry filter allows). Own retail oopanmodoki/enemyparm.txt, model and animation bank staged as p2-giantbreadbug-parms/bank and giantbreadbug_<clip>_<ii>.mod; the pose bank is drawn keyed on the FSM clip (Dead has KEYEVENT_2 at frame 70, the retail boundEffect key).",
+        "Purple-only press: OoPanModoki::pressCallBack (panModoki.cpp:1738-1744) returns false for any non-Purple Pikmin before the base press runs. Native refuses those presses and logs P2_BREADBUG_OWN_PRESS_REJECTED reason=non_purple. Negative run k3 (no Purple squad, exe 7b664d829 sha256 fdf6847e..., differs from the pin only by a log throttle): one PRESS_REJECTED non_purple press logged (rate-limited), 12 rising contacts (no press by rule), zero accepted presses, health stayed 2000, no Damage transition. Retail damage sources otherwise as the Breadbug: container suck (fp04 1000) and bombs.",
+        "Campaign evidence, bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits), red squad on Distant Spring (natural seed with 40 rebound to spring_init_7002, 1945764764), all on the species' own generator. The bot squad is made Purple with the test-only PIKMIN_RANDOMIZER_AUTOPLAY_PURPLE switch through pc_p2_make_purple (like the power-mode flowering) with the opt-in Purple campaign banks. Pins: root claude/p2-wave3-variants-breadbug, native 4laric/Open-Nectar claude/p2-wave3-variants-breadbug 35d2e64c4 (rebased on fork/main c67b22ffd, includes the enemy SFX and the placement constraints), exe nectar.exe sha256 c198bd9508944cee90ffaf520cb6090fcac1dd9d2774e1b982b38749370a2e33, ninja -n: no work to do, content output/w3-variants-breadbug-content (prepared.json sha256 15f0ec2ac8ac165b2fe3e58fffe351080690167d24b219e62b5631b2b59f8cd8).",
+        "z5 (seed giantbb-b): P2_BREADBUG_OWN_BIND L1928, 20 accepted 100-point presses 2000 -> 0 with no refill (Damage/Wait cycles, no Pikmin or captain attack, attacks_ignored=0, tai_changes=0), OWN_DEAD L60865, ESCAPE L61184, OWN_CORPSE L61188 carried by 30-40 carriers, receipt L62381 onion:p2:40:3 new=1, AUTOPLAY_RESULT killed=1 carried=1 received=1 (77 s). Log output/claude-orch/p2-w3-variants-breadbug/runs/z5-40/session/runs/eab6aa1c29f6ee315722acd95c57b682fd3b27c2a37dcf230633774f794afcf2/native.log sha256 2434a1d4...",
+        "z6 (seed giantbb-e): OWN_BIND L2088, Stick onto a carcass L5255, contest against the Pikmin crew (Back/Pulled x4), the cargo sucked into the Onion while held: Sucked -> Damage with fp04 (P2_BREADBUG_OWN_SUCK_DAMAGE L6730, 2000 -> 1000), then ten 100-point presses to 0, OWN_DEAD L26260, corpse L26379 carried, receipt L26616 onion:p2:40:3 (658 s). Log output/claude-orch/p2-w3-variants-breadbug/runs/z6-40/session/runs/6f9481cbb178f3a52f98378b378ac7a0b134b91bbc1b3299a500ded30bd4bd8c/native.log sha256 d354fa14... Earlier exe 7b664d829 runs: k2 (seed giantbb-b, log output/claude-orch/p2-w3-variants-breadbug/runs/k2-40/session/runs/7b52ebb8f2d312f6c2f24ed814ca7781db45257a1970c9e9829d31c8ff79ec58/native.log sha256 7ce9dc5b...) the same chain with a 1300 -> 300 container suck and receipt L16080; a1 (output/claude-orch/p2-w3-variants-breadbug/runs/a1-40/session/runs/7bae2e90984c7b3b73adce01e8949da4ed4fcee85751223dbb41c2dd71c86f51/native.log) the full Back -> CarryEnd -> Hide (refill to 2000, carcass spared at the nest) -> Appear -> Walk cycle with own retail values.",
+        "Zero P2_SETUP_SKIP for 40, zero P1 Collec TAI transitions, zero OWN_ATTACK_IGNORED, no fatal lines. Two other runs on the pin did not finish inside their wall limit (z1 2400 s and z2 1500 s: the bot squad thinned to 36-39 and the Giant sat at 300-400 health; z3 killed it 800 u from the captain and the bot stopped before the carry): bot stalls, not behaviour findings, recorded here for honesty.",
+        "Placement: an arena boss (IS_ENEMY_BOSS) with footprint 200 = source territory fp09; it binds the six measured unprotected arenas, and the natural seed bound it at spring_cannon_beetle (P2_BREADBUG_OWN_BIND generator 2903640892, run a1). A smoke seed places it on any ordinary slot (six Distant Spring slots verified at their coordinates).",
+        "Known gaps: no nest model (home point only), no treasure hoarding, no retail rumble/effects, the P1 Collec collision size stands in for the body (the model is larger), the corpse carry min/max come from the P1 Collec pellet config (3..6), pose-bank draw not skeletal playback. Without the Purple campaign banks nothing can press it: only a container suck (two needed) or bombs hurt it."
+      ],
+      "delivery_receipt": "onion:p2:40:3 on generator 1945764764 in two runs on native claude/p2-wave3-variants-breadbug 35d2e64c4 (exe sha256 c198bd9508944cee90ffaf520cb6090fcac1dd9d2774e1b982b38749370a2e33): z5 output/claude-orch/p2-w3-variants-breadbug/runs/z5-40/session/runs/eab6aa1c29f6ee315722acd95c57b682fd3b27c2a37dcf230633774f794afcf2/native.log:L62381 (sha256 2434a1d42a4a4ca495a77c1f0864a5639b13be507ea0178cc3dd7267a1503a9a); z6 output/claude-orch/p2-w3-variants-breadbug/runs/z6-40/session/runs/6f9481cbb178f3a52f98378b378ac7a0b134b91bbc1b3299a500ded30bd4bd8c/native.log:L26616 (sha256 d354fa1427fa6cdcd6441cab8f0e264c6700570382433a17e1a4822ceb9ff01a)"
     },
     "41": {
       "native_module": "pc_p2_fuefuki_teki",
