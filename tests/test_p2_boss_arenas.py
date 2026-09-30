@@ -167,6 +167,11 @@ class HeldPartTransferTests(unittest.TestCase):
         self.assertTrue(arenas.arena_protected(by_id["last_emperor"]))
         self.assertTrue(arenas.arena_protected(by_id["navel_puffstool"]))
 
+    def test_only_proven_arenas_transfer(self):
+        # #924: a flag is set only after a campaign run reached the vanilla check.
+        proven = {a["id"] for a in arenas.P1_BOSS_ARENAS if a.get("held_part_transfer")}
+        self.assertEqual(proven, {"hope_snagret_part"})
+
     def test_every_transfer_arena_holds_a_ship_part(self):
         for arena in arenas.P1_BOSS_ARENAS:
             if arena.get("held_part_transfer"):
@@ -245,7 +250,11 @@ class SeedTests(unittest.TestCase):
             layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(placed, {73: "impact_goolix", 94: "hope_snagret_pit"})
+            # #924: hope_snagret_part is no longer protected, so the Crawbster may take
+            # either Hope Snagret arena; the Titan still has only impact_goolix.
+            self.assertEqual(placed.pop(73), "impact_goolix")
+            self.assertIn(placed.pop(94), ("hope_snagret_pit", "hope_snagret_part"))
+            self.assertEqual(placed, {})
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
                 if binding["source_id"] in (73, 94):

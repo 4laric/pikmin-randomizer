@@ -98,7 +98,10 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 29)",
-        "held_part_transfer": False,
+        # #924 evidence: a seed-placed P2 own-FSM occupant in this arena dropped uf06 and the
+        # carried part fired CHECK 9 Pikmin: Geiger Counter (vanilla index), run g8, native
+        # log sha256 c2389cd96d82daeea68df75de74463bb8c76b989c5e67e35e47625b39bdcfa1a.
+        "held_part_transfer": True,
     },
     {
         "id": "navel_beady_long_legs",
