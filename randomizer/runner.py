@@ -176,6 +176,34 @@ async def ap_connect(session, server, password, ready):
                     goal_sent = True
 
 
+def describe_native_exit(log_path, tail_bytes=65536):
+    """Say why the native process ended, from what it left in native.log.
+
+    The native exe writes a "[PC Port Fatal] ..." line for every death it can
+    observe (unhandled exception, abort, terminate, console close) and an
+    "orderly process exit" line when the CRT exit chain runs. A log that ends
+    with neither was terminated from outside: taskkill /F, Stop-Process and
+    Popen.terminate() all report exit code 1, and no process can log its own
+    TerminateProcess. (Exes built before the markers existed also look like
+    this.)
+    """
+    try:
+        with open(log_path, 'rb') as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - tail_bytes))
+            lines = handle.read().decode('utf-8', 'replace').splitlines()
+    except OSError:
+        return 'native.log unreadable'
+    fatal = [line for line in lines if line.startswith('[PC Port Fatal]')]
+    if fatal:
+        return 'native reported: ' + fatal[-1]
+    if any('orderly process exit' in line for line in lines):
+        return 'the game exited on its own through its normal exit path'
+    return ('no fatal message and no orderly-exit marker: the process was most likely terminated '
+            'from outside (taskkill /F, Stop-Process or another tool report exit code 1), '
+            'or this exe predates the exit markers')
+
+
 async def serve(session, run, process=None, server=None, password=None, updates=None):
     ready = [session.manifest["mode"] == "solo"]
     task = None
@@ -382,4 +410,5 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
                 overlay.wait(timeout=5)
             log.close()
     if process and process.returncode:
-        raise RuntimeError(f"native process exited {process.returncode}; see {run.directory / 'native.log'}")
+        log_path = run.directory / 'native.log'
+        raise RuntimeError(f"native process exited {process.returncode} ({describe_native_exit(log_path)}); see {log_path}")
