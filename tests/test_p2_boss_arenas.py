@@ -250,7 +250,11 @@ class SeedTests(unittest.TestCase):
             layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(placed, {73: "impact_goolix", 94: "hope_snagret_pit"})
+            # #924: hope_snagret_part is no longer protected, so the Crawbster may take
+            # either Hope Snagret arena; the Titan still has only impact_goolix.
+            self.assertEqual(placed.pop(73), "impact_goolix")
+            self.assertIn(placed.pop(94), ("hope_snagret_pit", "hope_snagret_part"))
+            self.assertEqual(placed, {})
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
                 if binding["source_id"] in (73, 94):
