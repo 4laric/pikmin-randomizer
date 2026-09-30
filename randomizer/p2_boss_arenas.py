@@ -31,17 +31,30 @@ An arena is a set of P1 generator uids at one encounter site:
   generator personality) and drops it on a real death through the generic
   BTeki death funnel (native ``pc_port/pc_held_part.cpp``). The part keeps its
   vanilla stage, so logic, checks and the Archipelago location are unchanged.
-  The goal boss (Emperor) and the Puffstool bestiary check stay protected.
+  Owner ruling (#901, 2026-09-29): P2 bosses may take every ship-part arena,
+  and the Puffstool arena too ("the Omega Stabilizer (uf09) goes to the
+  occupant"); the Puffstool *bestiary check* is not re-keyed (#905 decides
+  bestiary). Only the goal boss (Emperor, Final Trial) stays protected
+  ("leave alone for now (finale)", same ruling). #948 flipped the three
+  part arenas and the Puffstool arena accordingly; the transfer mechanism is
+  the same one the seed-generated holder run proved on #901.
 
 The Hope Cannon Beetle (``hope_0-29_3073``, uid 2506165730) is deliberately
 **not** an arena. It is already an ordinary admitted P2 slot, and turning it
 into an arena would change every non-boss layout.
 
-``ARENA_BOSS_SOURCES`` lists the P2 bosses that are confined to arenas: the
-four the lane names (30 Queen, 73 BigTreasure, 94 DangoMushi, later 66
-Houdai). The other IS_ENEMY_BOSS species already proven on ordinary slots
-(34/70 snagrets, 53 KingChappy, 56/69 Long Legs, 71/101 Bloysters) keep
-their ordinary placement until the owner moves them.
+``ARENA_BOSS_SOURCES`` lists the P2 bosses whose *real-seed* placement is an
+arena: the four the lane names (30 Queen, 73 BigTreasure, 94 DangoMushi,
+later 66 Houdai). The other IS_ENEMY_BOSS species already proven on ordinary
+slots (34/70 snagrets, 53 KingChappy, 56/69 Long Legs, 71/101 Bloysters)
+keep their ordinary placement until the owner moves them.
+
+Arena placement is a data rule, not a cast list (#948, CONTRIBUTING rule 4):
+the boss profile is accepted on any slot whose measured clearance
+(``radius``) covers the encounter ``footprint_radius``. Ordinary slots carry
+the unmeasured default radius (100), so in a real seed only the measured
+arenas qualify; a smoke seed (``scripts/p2_smoke_seed.py``) or a measured
+ordinary slot places the same boss anywhere its footprint fits.
 """
 from __future__ import annotations
 
@@ -98,7 +111,12 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 29)",
-        "held_part_transfer": False,
+        # #948: owner permits P2 bosses on every ship-part arena (#901); the
+        # boss-arena birth path carries the pellet-config part in mID.
+        # #924 evidence: a seed-placed P2 own-FSM occupant in this arena dropped uf06 and the
+        # carried part fired CHECK 9 Pikmin: Geiger Counter (vanilla index), run g8, native
+        # log sha256 c2389cd96d82daeea68df75de74463bb8c76b989c5e67e35e47625b39bdcfa1a.
+        "held_part_transfer": True,
     },
     {
         "id": "navel_beady_long_legs",
@@ -111,7 +129,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 26)",
-        "held_part_transfer": False,
+        "held_part_transfer": True,  # #948 / #901 owner ruling, as above
     },
     {
         "id": "navel_puffstool",
@@ -124,7 +142,10 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part uf09",
-        "held_part_transfer": False,
+        # #948: owner ruling #901 (2026-09-29): "The arena may take a P2
+        # occupant, and the Omega Stabilizer (uf09) goes to the occupant."
+        # The Puffstool bestiary check is decided separately (#905).
+        "held_part_transfer": True,
     },
     {
         "id": "spring_cannon_beetle",
@@ -137,7 +158,7 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part ust1",
-        "held_part_transfer": False,
+        "held_part_transfer": True,  # #948 / #901 owner ruling, as above
     },
     {
         "id": "last_emperor",
@@ -150,6 +171,8 @@ P1_BOSS_ARENAS = (
         "first_day": 2,
         "respawn_days": 30,
         "protected_drop": "ship part (pellet config 48) and the emperor_bulblax goal",
+        # Owner: "Emperor arena: leave alone for now (finale). Stays
+        # protected." (#901 comment 5892787827). Also unmeasured.
         "held_part_transfer": False,
     },
 )

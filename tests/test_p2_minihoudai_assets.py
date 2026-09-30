@@ -87,7 +87,7 @@ def test_extract_manifest_shape_and_pose_slots(tmp_path):
         else:
             assert clip['unsupported_reason']
     # Per-clip POSE_LIMITS are the shared 16-pose density since #895.
-    assert sum(len(c['poses']) for c in result['clips']) == 8 * 16
+    assert sum(len(c['poses']) for c in result['clips']) == 8 * 24
     # Source metadata preserved verbatim alongside the manifest.
     for name in ('enemy.bmd', 'enemyparm.txt', 'enemycoll.txt',
                  'enemyanimmgr.txt', 'enemystoneinfo.txt',

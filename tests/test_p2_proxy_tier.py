@@ -284,7 +284,10 @@ def test_proxy_row_accepted_only_on_matching_terrain():
     water_row = dict(_proxy_rows_for([42])[0])
     water_row["terrains"] = ["water"]
     accepted = _proxy_accepted_targets(document, [water_row], roster)
-    assert accepted[42] == set()
+    # #948: the committed document carries the 10 aquatic campaign slots, so
+    # a water-only row sees exactly water slots and no ground one.
+    water = {str(s["uid"]) for s in document["slots"] if s["terrain"] == "water"}
+    assert accepted[42] and accepted[42] <= water
 
 
 def test_validate_layout_accepts_sampled_and_unplaced():

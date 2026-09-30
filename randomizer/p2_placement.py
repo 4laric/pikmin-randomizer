@@ -6,11 +6,18 @@ AI. It answers one question for a candidate `(slot, identity)` pair:
 
     is this P2 identity allowed to occupy this source spawn slot?
 
-The answer defaults to *denied*. A pair is only legal when the slot carries
-accepted native placement evidence, the identity has a placement profile with at
-least one accepted placement gate, and every terrain/space/route/helper
-constraint holds. Bosses additionally require an encounter descriptor; a
-universal replacement permission is never granted.
+The answer defaults to *denied*. A pair is legal when the identity has a
+placement profile with at least one accepted placement gate (its admission
+evidence), the slot is in the profile's constraint-derived ``accepted_slot_uids``
+when that list is present, and every terrain/space/route/helper constraint
+holds. Bosses additionally require an encounter descriptor; a universal
+replacement permission is never granted.
+
+Constraints describe the species, not a history (#948; CONTRIBUTING
+"Placement: don't hard-code where a species may go", rule 3). A slot's
+``evidence`` block records which native probes have run there; it is kept
+for evidence documents and is not a placement gate. The physical slot facts
+(``terrain``, ``corpse_route``, ``radius``, ...) are.
 
 Identity ownership stays with lane 02 (roster) and seed serialization with lane
 03. This module consumes their identity keys and defines the constraint record
@@ -610,8 +617,11 @@ def _constraint_reasons(slot, profile, descriptor=None):
     reasons = []
     if slot['protected'] and not profile['allow_protected']:
         reasons.append('slot drop is protected')
-    if profile['cohort'] and slot['cohort'] and profile['cohort'] != slot['cohort']:
-        reasons.append(f"cohort {profile['cohort']} not allowed in slot cohort {slot['cohort']}")
+    # A profile/slot ``cohort`` is descriptive only (the P1 campaign cohort the
+    # slot or the P1 equivalent came from). It used to deny cross-cohort pairs
+    # ("a Sheargrub identity may not fill an aquatic slot"); the terrain and
+    # water fields already express that physical need, and the cohort itself
+    # is history, not a constraint (#948, #951 U15).
     if slot['terrain'] not in profile['terrains']:
         reasons.append(f"terrain {slot['terrain']} not in {profile['terrains']}")
     if slot['water_depth'] < profile['min_water_depth']:
@@ -666,9 +676,11 @@ def evaluate(slot, profile, encounters=None):
     if not profile['accepted_gates']:
         reasons.append('no accepted placement evidence')
     if 'accepted_slot_uids' in profile and slot['uid'] not in profile['accepted_slot_uids']:
-        reasons.append('slot has no accepted placement evidence for this identity')
-    if not all(slot['evidence'].get(key, False) for key in EVIDENCE_KEYS):
-        reasons.append('slot lacks accepted native placement evidence')
+        reasons.append('slot is not in the accepted slot list for this identity')
+    # Native probe evidence (``slot['evidence']``) is no longer required here:
+    # an unprobed slot is a to-do, not a restriction (#948, #951 R3; CONTRIBUTING
+    # "Don't invent restrictions" rule 3). The slot's physical fields carry the
+    # constraint; ``evidence`` records probe history for the evidence documents.
     if profile['is_boss'] and not profile['encounter_descriptor']:
         reasons.append('boss requires an encounter descriptor')
     if slot['boss_slot'] and not profile['encounter_descriptor']:
