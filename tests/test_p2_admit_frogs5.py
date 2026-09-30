@@ -49,7 +49,7 @@ def test_pool_contains_wtank_and_armor_with_evidence():
         assert sid in tuple(PLAYABLE_P2_SPECIES), sid
         evidence = by_source[sid]["evidence"]
         assert evidence["run"] and evidence["log"] and evidence["installer"]
-    assert len(P2_PLAYABLE_POOL) == 41  # + Groink 78 (#888), Titan Dweevil 73 (#246), Demon 32 (#215), Breadbug 38 (#898), Antenna Beetle 41 (#245), Dirigibug 58 (#244)
+    assert len(P2_PLAYABLE_POOL) == 44  # + Empress Bulblax 30 (#256), OniKurage 72 and Kurage 57 (#960), Groink 78 (#888), Titan Dweevil 73 (#246), Demon 32 (#215), Breadbug 38 (#898), Antenna Beetle 41 (#245), Dirigibug 58 (#244)
 
 
 def test_roster_admits_both_with_natural_gates_and_receipts():

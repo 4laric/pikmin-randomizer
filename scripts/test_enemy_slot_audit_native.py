@@ -29,7 +29,7 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
     if a.respawn:
         assert a.groups
         env['PIKMIN_RANDOMIZER_TEST_GROUP_RESPAWN']='1'
-    startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
+    startup=subprocess.STARTUPINFO();startup.dwFlags|=__import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     log=r.directory/'native.log'
     error_log=r.directory/'native-stderr.log'
     with log.open('w',encoding='utf-8') as stream, error_log.open('w',encoding='utf-8') as errors:
