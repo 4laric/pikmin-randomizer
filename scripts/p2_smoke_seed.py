@@ -24,7 +24,11 @@ Example (PowerShell)::
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
-The landing site is the stage ``navi_start`` (0, 0) in every P1 area.
+The landing site is where the captain starts. It is NOT (0, 0): the Forest of Hope start was measured
+at about (-464, 1967) from a native log (wave-3 lane 53), so ``LANDING`` records measured starts and
+``--landing X,Z`` overrides any area whose start has not been measured. Every start profile begins on
+day 2 (``randomizer.catalog.START_AREAS``), so ``--near-start`` slots default to ``first_day <= 2``:
+CONTRIBUTING "Playtest seeds" rule 3 (nothing under test behind a later day).
 """
 
 from __future__ import annotations
@@ -49,7 +53,10 @@ AREAS = {
     'navel': ('navel', 2, 'navel'),
     'spring': ('spring', 3, 'spring'),
 }
-LANDING_XZ = (0.0, 0.0)
+LANDING_XZ = (0.0, 0.0)  # legacy default for areas whose start is not measured
+# Measured captain start (x, z), from native logs. Only measured areas are listed.
+LANDING = {'foh': (-464.0, 1967.0), 'forest': (-464.0, 1967.0)}
+START_DAY = 2  # every START_AREAS profile is '<area>-day2'
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
 SMOKE_ENV = 'PIKMIN_P2_SMOKE_ANY_SLOT'
@@ -65,7 +72,7 @@ def load_default_document():
     return json.loads((ROOT / 'docs' / 'PIKMIN2_ADMITTED_PLACEMENT.json').read_text(encoding='utf-8'))
 
 
-def ordinary_slots(document, area):
+def ordinary_slots(document, area, max_first_day=None):
     """Ordinary enemy slots of ``area``: unprotected, non-boss, not a held-part
     anchor; document order. Native probe evidence is not required (#948: an
     unprobed slot is a to-do, not a restriction)."""
@@ -78,6 +85,8 @@ def ordinary_slots(document, area):
         if slot['stage'] != stage or slot.get('protected') or slot.get('boss_slot'):
             continue
         if slot['uid'] in held:
+            continue
+        if max_first_day is not None and int(slot.get('first_day', 0)) > max_first_day:
             continue
         out.append(slot)
     return out
@@ -164,6 +173,15 @@ def parse_bosses(text):
             raise SmokeSeedError(f'boss {sid} listed twice in --bosses')
         bosses[sid] = arena.strip()
     return bosses
+
+
+def parse_landing(text):
+    """'X,Z' -> (x, z)."""
+    try:
+        x, z = (float(v) for v in text.split(','))
+    except ValueError:
+        raise SmokeSeedError(f'--landing must be X,Z numbers, got {text!r}') from None
+    return (x, z)
 
 
 def parse_species(text):
@@ -347,9 +365,29 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
 
 # --- launcher --------------------------------------------------------------
 
-def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT):
+def parse_env(items):
+    """['NAME=VALUE', ...] -> {NAME: VALUE}; names are identifiers, values single-line."""
+    env = {}
+    for item in items or ():
+        if '=' not in item:
+            raise SmokeSeedError(f'--env entries are NAME=VALUE, got {item!r}')
+        name, value = item.split('=', 1)
+        if not name or not (name[0].isalpha() or name[0] == '_') or not all(c.isalnum() or c == '_' for c in name):
+            raise SmokeSeedError(f'--env name must be an identifier, got {name!r}')
+        if name == SMOKE_ENV:
+            raise SmokeSeedError(f'{SMOKE_ENV} is always set by the launcher')
+        if '\n' in value or '\r' in value:
+            raise SmokeSeedError(f'--env {name} value must be a single line')
+        env[name] = value
+    return env
+
+
+def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
+    extra_env = dict(extra_env or {})
+    set_extra = ''.join(f"$env:{name} = {ps(value)}\n" for name, value in sorted(extra_env.items()))
+    clear_extra = ''.join(f" Remove-Item Env:{name} -ErrorAction SilentlyContinue;" for name in sorted(extra_env))
     return f"""# #944/#948 smoke seed launcher: any playable P2 species on any ordinary slot.
 # The placement override document is the whole mechanism (#948: native has no
 # compiled slot lists). {SMOKE_ENV}=1 is set as the documented smoke marker.
@@ -360,7 +398,7 @@ $session = Join-Path {ps(session_root)} ('session-' + (Get-Date -Format 'MMdd-HH
 New-Item -ItemType Directory -Force $session | Out-Null
 $env:PYTHONUTF8 = '1'
 $env:{SMOKE_ENV} = '1'
-Push-Location {ps(root)}
+{set_extra}Push-Location {ps(root)}
 try {{
     py -3.12 -m randomizer run {ps(seed_path)} `
         --p2-content {ps(content_dir)} `
@@ -368,7 +406,7 @@ try {{
         --session-dir $session `
         --exe $Exe `
         --assets $Assets
-}} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue }}
+}} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue;{clear_extra} }}
 """
 
 
@@ -387,7 +425,10 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    slots = pick_slots(ordinary_slots(document, args.area), args.slots, args.near_start, positions)
+    landing = parse_landing(args.landing) if args.landing else LANDING.get(args.area, LANDING_XZ)
+    max_day = None if args.max_first_day < 0 else args.max_first_day
+    slots = pick_slots(ordinary_slots(document, args.area, max_day), args.slots, args.near_start, positions,
+                       origin=landing)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -412,20 +453,21 @@ def build(args):
 
     exe = str(Path(args.exe).resolve()) if args.exe else ''
     play_path = out / 'play.ps1'
+    extra_env = parse_env(args.env)
     play_path.write_text(launcher_text(seed_path.resolve(), content_dir.resolve(), actors_path.resolve(),
-                                       out.resolve(), exe, args.assets), encoding='utf-8')
+                                       out.resolve(), exe, args.assets, extra_env=extra_env), encoding='utf-8')
 
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
         'issue': 944, 'seed': args.seed, 'area': args.area, 'starting_area': starting_area,
-        'near_start': bool(args.near_start), 'env': {SMOKE_ENV: '1'},
+        'near_start': bool(args.near_start), 'landing': list(landing), 'max_first_day': max_day, 'env': {SMOKE_ENV: '1', **extra_env},
         'assignments': [
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
              'enum_name': next(b['enum_name'] for b in manifest['p2_layout']['bindings'] if int(b['target']) == uid),
              'position': positions.get(uid),
-             'distance_from_landing': round(distance_xz(positions[uid]), 1) if uid in positions else None}
+             'distance_from_landing': round(distance_xz(positions[uid], landing), 1) if uid in positions else None}
             for uid, sid in sorted(assignments.items(), key=lambda kv: (positions.get(kv[0]) is None,
-                                                                         distance_xz(positions[kv[0]]) if kv[0] in positions else 0))],
+                                                                         distance_xz(positions[kv[0]], landing) if kv[0] in positions else 0))],
         'bosses': [{'source_id': sid, 'arena': arena} for sid, arena in sorted(bosses.items())],
         'bindings': {str(k): v for k, v in sorted(bound.items())},
         'files': {'seed': str(seed_path), 'placement_override': str(override_path),
@@ -453,6 +495,12 @@ def main(argv=None):
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')
     parser.add_argument('--probe-log', type=Path, default=None, help='native log whose P2_PLACEMENT_SLOT lines supply extra slot coordinates')
     parser.add_argument('--no-content', action='store_true', help='skip content staging (seed + override + launcher only)')
+    parser.add_argument('--landing', default=None, metavar='X,Z',
+                        help='captain start used by --near-start (default: the measured start of the area, else 0,0)')
+    parser.add_argument('--max-first-day', type=int, default=START_DAY,
+                        help='skip slots whose first_day is later than this (default 2, the start day; -1 keeps every slot)')
+    parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE',
+                        help='extra environment variable set by play.ps1 (repeatable), e.g. a species dev override')
     args = parser.parse_args(argv)
     if args.slots != 'all':
         try:
