@@ -44,3 +44,28 @@ def test_bake_rejects_unweighted_model(tmp_path, monkeypatch):
     monkeypatch.setattr(bank, 'joints', lambda model: ['a'])
     with pytest.raises(ValueError):
         bank.bake(b'm', {}, tmp_path / 'o')
+
+
+def test_skin_text_rows(monkeypatch):
+    import struct
+    drw = bytearray(28)
+    struct.pack_into('>H', drw, 8, 2)
+    struct.pack_into('>II', drw, 12, 20, 24)
+    drw[20] = 0  # rigid -> joint 1
+    drw[21] = 1  # envelope 0
+    struct.pack_into('>HH', drw, 24, 1, 0)
+    ident = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]
+    monkeypatch.setattr(bank, 'blocks', lambda model: {'EVP1': b'', 'DRW1': bytes(drw)})
+    monkeypatch.setattr(bank, 'joints', lambda model: ['kosi', 'leg'])
+    monkeypatch.setattr(bank, '_envelopes', lambda block, count: ([[(0, 0.25), (1, 0.75)]], [ident, ident]))
+    monkeypatch.setattr(bank, 'draw_matrices', lambda blk: None)
+
+    def fake_decode(model, *a, **k):
+        k['bindings'].update({9: [(0, (1.0, 2.0, 3.0)), (1, (4.0, 5.0, 6.0))], 10: [(1, (0.0, 1.0, 0.0))]})
+    monkeypatch.setattr(bank, 'decode', fake_decode)
+    lines = bank.skin_text(b'model').decode('ascii').splitlines()
+    assert lines[0] == bank.SKIN_HEADER and lines[1] == 'joints 2'
+    assert lines[2].startswith('i 0 1 0 0 0') and lines[3].startswith('i 1 ')
+    assert lines[4:7] == ['draws 2', 'd 0 r 1', 'd 1 e 2 0 0.25 1 0.75']
+    assert lines[7:10] == ['positions 2', '0 1 2 3', '1 4 5 6']
+    assert lines[10:12] == ['normals 1', '1 0 1 0'] and lines[-1] == 'end'

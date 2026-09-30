@@ -1548,7 +1548,10 @@ def _adapt_long_legs(source, run, actors):
         # extracted with pikmin2_long_legs_bank; absent keeps the bind draw.
         bank = Path(source) / 'bank'
         if (bank / 'p2-long-legs-animation.txt').is_file():
-            for item in sorted(bank.glob('longlegs_BigFoot_*.mod')) + [bank / 'p2-long-legs-animation.txt']:
+            # #1018: the optional J3D skin sidecar lets the native draw pose the
+            # legs from the source IK; absent keeps the pose-bank draw.
+            skin = [bank / 'longlegs_BigFoot_skin_00.txt'] if (bank / 'longlegs_BigFoot_skin_00.txt').is_file() else []
+            for item in sorted(bank.glob('longlegs_BigFoot_*.mod')) + [bank / 'p2-long-legs-animation.txt'] + skin:
                 target = room / item.name
                 if target.exists():
                     raise StagingError(f'Refusing existing/conflicting BigFoot pose bank file: {target}')

@@ -13,7 +13,12 @@ Files written to the output directory:
 * ``longlegs_BigFoot_<clip>_NN.mod`` for every clip pose;
 * ``p2-long-legs-animation.txt`` (``P2_LONG_LEGS_ANIMATION_1``): species line,
   then per clip ``name count duration frame...`` (frames strictly rising, 0
-  first, duration-1 last).
+  first, duration-1 last);
+* ``longlegs_BigFoot_skin_00.txt`` (``P2_BIGFOOT_SKIN_1``, #1018): the J3D
+  skinning of the same vertex order (every position/normal's DRW1 draw matrix
+  and raw value, the DRW1 table and the authored EVP1 inverse matrices), so the
+  native draw can pose the body from the clip and the legs from the source IK
+  exactly as J3DMtxBuffer::calcWeightEnvelopeMtx does.
 
 Behaviour is unchanged: this is presentation only. The bind mesh is still
 installed and remains the fallback.
@@ -30,12 +35,14 @@ from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_sheargrub_assets import joints
-from experimental.pikmin2_skinning import draw_matrices
+from experimental.pikmin2_skinning import _envelopes, draw_matrices
 
 SPECIES = 'BigFoot'
 HEADER = 'P2_LONG_LEGS_ANIMATION_1'
 CONFIG = 'p2-long-legs-animation.txt'
 REPORT = 'long-legs-bank.json'
+SKIN = 'longlegs_BigFoot_skin_00.txt'
+SKIN_HEADER = 'P2_BIGFOOT_SKIN_1'
 CLIPS = ('wait', 'landing', 'flick', 'dead')  # native clip names, in config order
 STEM = 'longlegs_{species}_{clip}'
 MAX_POSE_BYTES = 1024 * 1024  # native p2poseload::PoseFileBytes
@@ -106,6 +113,57 @@ def bake(model, motions, out, pose_limit=DEFAULT_POSE_LIMIT):
     return report
 
 
+def skin_text(model):
+    """``P2_BIGFOOT_SKIN_1``: the skinning of the baked vertex order (#1018).
+
+    Rows: joint count; the authored EVP1 inverse matrix of every joint; the DRW1
+    table (``d i r joint`` rigid, ``d i e n joint weight ...`` envelope); then
+    every baked position and normal in ``.mod`` order as its DRW1 index and raw
+    value. Native evaluates draw matrix D (rigid: animated joint; envelope:
+    sum weight * animated joint * inverse), position D*p and normal
+    cofactor(D)*n normalised, the same maths the bake uses, so any joint pose
+    (clip body + IK legs) reproduces the baked mesh for that pose.
+    """
+    model_blocks = blocks(model)
+    names = joints(model)
+    envelopes, inverse = _envelopes(model_blocks['EVP1'], len(names))
+    drw = model_blocks['DRW1']
+    count = struct.unpack_from('>H', drw, 8)[0]
+    flags_at, refs_at = struct.unpack_from('>II', drw, 12)
+    bindings = {}
+    decode(model, True, bake_rigid=True, draw_matrices=draw_matrices(model_blocks), bindings=bindings)
+
+    def f(v):
+        return format(float(v), '.9g')
+
+    rows = [SKIN_HEADER, f'joints {len(names)}']
+    for index, matrix in enumerate(inverse):
+        rows.append(f'i {index} ' + ' '.join(f(v) for row in matrix for v in row))
+    rows.append(f'draws {count}')
+    for index in range(count):
+        kind = drw[flags_at + index]
+        ref = struct.unpack_from('>H', drw, refs_at + 2 * index)[0]
+        if kind == 0:
+            if ref >= len(names):
+                raise ValueError('DRW1 joint out of range')
+            rows.append(f'd {index} r {ref}')
+        elif kind == 1:
+            influences = envelopes[ref]
+            rows.append(f'd {index} e {len(influences)} '
+                        + ' '.join(f'{joint} {f(weight)}' for joint, weight in influences))
+        else:
+            raise ValueError('Unsupported DRW1 kind')
+    for label, attr in (('positions', 9), ('normals', 10)):
+        entries = bindings[attr]
+        rows.append(f'{label} {len(entries)}')
+        for draw, value in entries:
+            if not 0 <= draw < count:
+                raise ValueError('Skin draw index out of range')
+            rows.append(f'{draw} ' + ' '.join(f(v) for v in value))
+    rows.append('end')
+    return ('\n'.join(rows) + '\n').encode('ascii')
+
+
 def extract(iso, out, pose_limit=DEFAULT_POSE_LIMIT):
     iso = Path(iso)
     index = disc_files(iso)
@@ -122,7 +180,12 @@ def extract(iso, out, pose_limit=DEFAULT_POSE_LIMIT):
     missing = [c for c in CLIPS if c + '.bca' not in motions]
     if missing:
         raise ValueError(f'BigFoot anim archive lacks {missing}')
-    return bake(model, motions, out, pose_limit)
+    report = bake(model, motions, out, pose_limit)
+    skin = skin_text(model)
+    (Path(out) / SKIN).write_bytes(skin)
+    report.update(skin=SKIN, skin_bytes=len(skin), skin_sha256=sha(skin))
+    (Path(out) / REPORT).write_text(json.dumps(report, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    return report
 
 
 if __name__ == '__main__':
