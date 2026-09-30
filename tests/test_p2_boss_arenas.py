@@ -17,7 +17,12 @@ from experimental.pikmin2_seed_bridge import (BOSS_ARENA_KEY, SeedBridgeError, a
                                               resolve_placement_layout, validate_layout)
 from randomizer import p2_boss_arenas as arenas
 from randomizer.p2_placement import audit, validate_document
-from randomizer.seed import PLAYABLE_P2_SPECIES, generate, validate
+from randomizer.seed import P2_REQUIRES_PURPLE, PLAYABLE_P2_SPECIES, generate, validate
+
+# #958: the Giant Breadbug (40) only takes Purple presses, so a default seed leaves it out
+# (randomizer.seed.P2_REQUIRES_PURPLE); the bridge-level tests below use the default pool
+# unless they say otherwise.
+DEFAULT_POOL = sorted(s for s in PLAYABLE_P2_SPECIES if s not in P2_REQUIRES_PURPLE)
 from randomizer.spawn_data import GENERATOR_SLOTS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -235,7 +240,7 @@ class SeedTests(unittest.TestCase):
     def test_crawbster_only_in_boss_arenas(self):
         used = set()
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53)])
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53, 40)])
             block = layout[BOSS_ARENA_KEY]
             for binding in layout["bindings"]:
                 if binding["source_id"] == 94:
@@ -263,7 +268,7 @@ class SeedTests(unittest.TestCase):
         king_arenas = titan_arenas | {"hope_snagret_pit", "hope_snagret_part"}
         seen = {30: set(), 53: set(), 73: set(), 94: set()}
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            layout = self.layout(f"arena-{i}", species=DEFAULT_POOL)
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
             self.assertEqual(set(placed), {30, 53, 73, 94})
@@ -286,7 +291,7 @@ class SeedTests(unittest.TestCase):
         self.assertGreater(len(seen[53]), 1)
 
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
-        pool = sorted(PLAYABLE_P2_SPECIES)
+        pool = DEFAULT_POOL
         without = [s for s in pool if s not in (30, 73, 94, 66, 53)]
         for i in range(10):
             with_boss = self.layout(f"eq-{i}", species=pool)
@@ -296,7 +301,7 @@ class SeedTests(unittest.TestCase):
             self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
 
     def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
-        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 53, 73, 94)]
+        without = [s for s in DEFAULT_POOL if s not in (30, 53, 73, 94)]
         stripped = _strip_arenas(self.document)
         for i in range(10):
             new = self.layout(f"id-{i}", species=without)
@@ -311,7 +316,7 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(len(layout[BOSS_ARENA_KEY]["placed"]), 1)
 
     def test_tampered_arena_block_is_rejected(self):
-        layout = self.layout("tamper", species=sorted(PLAYABLE_P2_SPECIES))
+        layout = self.layout("tamper", species=DEFAULT_POOL)
         bad = copy.deepcopy(layout)
         bad[BOSS_ARENA_KEY]["placed"][0]["source_id"] = 2
         with self.assertRaises(SeedBridgeError):
@@ -325,6 +330,23 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+        # A --p2-purple-campaign seed does not add a fifth arena boss: the Giant Breadbug (40)
+        # has no arena receipt (#958), so it stays on ordinary slots.
+        purple = generate("arena-playable", "solo", "Player1", starting_area="forest",
+                          p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
+        validate(purple)
+        placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
+
+    def test_giant_breadbug_is_not_an_arena_boss(self):
+        # #958: r9/r11 killed the Giant in an arena but never delivered the corpse, so it has no
+        # arena descriptor and is not seated in any arena, even on a Purple-campaign seed.
+        self.assertNotIn(40, arenas.ARENA_BOSS_SOURCES)
+        self.assertNotIn("OoPanModoki", arenas.BOSS_ENCOUNTERS)
+        for i in range(10):
+            layout = self.layout(f"giant-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            placed = {row["source_id"] for row in layout[BOSS_ARENA_KEY]["placed"]}
+            self.assertNotIn(40, placed)
 
 
 if __name__ == "__main__":

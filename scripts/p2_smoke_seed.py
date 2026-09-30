@@ -491,9 +491,16 @@ def parse_env(items):
     return env
 
 
-def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None):
+def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None,
+                  purple_bank=None, purple_motion=None):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
+    # #958: opt in to the ordinary Purple campaign (the Giant Breadbug only takes Purple
+    # presses); F10 near the ship withdraws Purple.
+    purple_args = ''
+    if purple_bank and purple_motion:
+        purple_args = (f" `\n        --purple-bank {ps(purple_bank)} `"
+                       f"\n        --purple-motion {ps(purple_motion)}")
     extra_env = dict(extra_env or {})
     set_extra = ''.join(f"$env:{name} = {ps(value)}\n" for name, value in sorted(extra_env.items()))
     clear_extra = ''.join(f" Remove-Item Env:{name} -ErrorAction SilentlyContinue;" for name in sorted(extra_env))
@@ -514,7 +521,7 @@ try {{
         --p2-actors {ps(actors_path)} `
         --session-dir $session `
         --exe $Exe `
-        --assets $Assets
+        --assets $Assets{purple_args}
 }} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue;{clear_extra} }}
 """
 
@@ -555,11 +562,20 @@ def build(args):
     override_path.write_text(json.dumps(override, indent=1) + '\n', encoding='utf-8')
 
     starting_area = AREAS[args.area][0]
+    from randomizer.seed import P2_REQUIRES_PURPLE
+    pool = species_pool(assignments, bosses)
+    # A Purple-only species (seed.P2_REQUIRES_PURPLE, e.g. the Giant Breadbug) makes this a
+    # Purple-campaign seed; the launcher then needs the Purple banks.
+    needs_purple = sorted(set(pool) & set(P2_REQUIRES_PURPLE))
+    if needs_purple and not (args.purple_bank and args.purple_motion):
+        raise SmokeSeedError(f"species {needs_purple} only take Purple presses "
+                             f"({'; '.join(P2_REQUIRES_PURPLE[i] for i in needs_purple)}): "
+                             "pass --purple-bank and --purple-motion")
     manifest = generate(args.seed, 'solo', 'Player1', starting_area=starting_area,
                         collection_checks=True, starting_flarlic=1, bomb_rock_weight=1,
                         goal_mode='emperor_bulblax', combined_captain=True,
                         p2_enemies=True, p2_placement=override,
-                        p2_species=species_pool(assignments, bosses),
+                        p2_species=pool, p2_purple_campaign=bool(needs_purple),
                         progressive_maturity=True)
     validate(manifest)
     bound = check_layout(manifest, assignments, bosses, document)
@@ -576,7 +592,10 @@ def build(args):
     play_path = out / 'play.ps1'
     extra_env = parse_env(args.env)
     play_path.write_text(launcher_text(seed_path.resolve(), content_dir.resolve(), actors_path.resolve(),
-                                       out.resolve(), exe, args.assets, root=ROOT, extra_env=extra_env), encoding='utf-8')
+                                       out.resolve(), exe, args.assets, root=ROOT, extra_env=extra_env,
+                                       purple_bank=(Path(args.purple_bank).resolve() if args.purple_bank else None),
+                                       purple_motion=(Path(args.purple_motion).resolve() if args.purple_motion else None)),
+                         encoding='utf-8')
 
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
@@ -623,7 +642,9 @@ def run_verify(summary, assignments, seed_path, content_dir, actors_path, exe, a
     text = verify.launch_and_read(seed_path.resolve(), exe, args.assets, session.resolve(),
                                   content_dir=None if args.no_content else content_dir.resolve(),
                                   actors_path=actors_path.resolve(), extra_env={SMOKE_ENV: '1'}, cwd=ROOT,
-                                  want_targets=list(assignments), timeout=args.verify_timeout)
+                                  want_targets=list(assignments), timeout=args.verify_timeout,
+                                  purple_bank=args.purple_bank.resolve() if args.purple_bank else None,
+                                  purple_motion=args.purple_motion.resolve() if args.purple_motion else None)
     (out / 'verify-native.log').write_text(text, encoding='utf-8')
     result = verify.evaluate(verify.parse_log(text), assignments, max_distance=args.max_distance)
     result['log'] = str(out / 'verify-native.log')
@@ -672,6 +693,9 @@ def main(argv=None):
     parser.add_argument('--origin', dest='origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
     parser.add_argument('--p1-bulborb-slots', action='store_true', help="use only the area's P1 Dwarf Bulborb and adult Bulborb generator slots (owner ruling 2026-09-30, #980), nearest the captain start first; '--slots all' = those within --bulborb-radius, '--slots N' = the N nearest. The species replaces the P1 bulborb via the ordinary placement override.")
     parser.add_argument('--bulborb-radius', type=float, default=DEFAULT_BULBORB_RADIUS, help='with --p1-bulborb-slots and --slots all: keep bulborb slots within this x/z distance of the captain start (default 1100)')
+    parser.add_argument('--purple-bank', type=Path, default=None,
+                        help='#958: Purple campaign pose bank (opt in; needed to press the Giant Breadbug)')
+    parser.add_argument('--purple-motion', type=Path, default=None, help='#958: Purple throw/fall motion bank (with --purple-bank)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', default=None, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')

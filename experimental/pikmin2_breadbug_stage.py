@@ -1,4 +1,8 @@
-"""Stage the native Breadbug (PanModoki 38) OWN inputs (#898).
+"""Stage the native Breadbug (PanModoki 38) and Giant Breadbug (OoPanModoki 40) OWN inputs (#898, #958).
+
+Source 40 uses the same grammar with its own file names (``p2-giantbreadbug-parms.txt``,
+``p2-giantbreadbug-bank.txt``, ``giantbreadbug_<clip>_<ii>.mod``); ``plan`` picks the variant
+from the extractor manifest. Everything below describes source 38.
 
 The native sidecar (``pc_port/pc_p2_breadbug_teki.cpp``) drives every
 campaign-bound source 38 with the engine-free source FSM
@@ -31,6 +35,13 @@ BANK_HEADER = 'P2_BREADBUG_BANK_1'
 ROOM = 'assets/dataDir/courses/pikmin2room'
 MANIFEST = 'breadbug.json'
 
+# Per-variant staged names (native pc_p2_breadbug_teki.cpp kVariants).
+VARIANTS = {
+    38: dict(parms=PARMS, bank=BANK_TXT, manifest=MANIFEST, prefix='breadbug', enum_name='PanModoki'),
+    40: dict(parms='p2-giantbreadbug-parms.txt', bank='p2-giantbreadbug-bank.txt',
+             manifest='giantbreadbug.json', prefix='giantbreadbug', enum_name='OoPanModoki'),
+}
+
 # PanModokiBase AnimID order (PanModokiBase.h:242-253) == retail row order.
 CLIPS = ('dead', 'move1', 'move2', 'type1', 'type2', 'type3', 'type4', 'type5', 'wait1')
 
@@ -46,9 +57,9 @@ class BreadbugStageError(ValueError):
     pass
 
 
-def pose_name(clip, number):
+def pose_name(clip, number, source_id=38):
     """Native pose filename (pikmin2_breadbug_own_assets.pose_name)."""
-    return f'breadbug_{clip}_{number:02}.mod'
+    return f'{VARIANTS[source_id]["prefix"]}_{clip}_{number:02}.mod'
 
 
 # ------------------------------------------------------------------ parms
@@ -200,15 +211,29 @@ def parse_bank(data):
 
 
 # ------------------------------------------------------------------ plan
-def plan(source):
-    """Plan from a ``pikmin2_breadbug_own_assets`` tree (``breadbug.json``)."""
+def plan(source, source_id=None):
+    """Plan from a ``pikmin2_breadbug_own_assets`` tree.
+
+    ``source_id`` (38 or 40) selects the variant; ``None`` picks the one whose
+    manifest (``breadbug.json`` / ``giantbreadbug.json``) is in the tree.
+    """
     source = Path(source)
-    manifest_path = source / MANIFEST
+    if source_id is None:
+        found = [sid for sid, v in VARIANTS.items() if (source / v['manifest']).is_file()]
+        if not found:
+            return None
+        if len(found) > 1:
+            raise BreadbugStageError(f'ambiguous Breadbug extractor tree: {found!r}')
+        source_id = found[0]
+    if source_id not in VARIANTS:
+        raise BreadbugStageError(f'unknown Breadbug variant: {source_id!r}')
+    variant = VARIANTS[source_id]
+    manifest_path = source / variant['manifest']
     if not manifest_path.is_file():
         return None
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    if manifest.get('schema') != 1 or manifest.get('enemy_id') != 38:
-        raise BreadbugStageError('unexpected PanModoki manifest')
+    if manifest.get('schema') != 1 or manifest.get('enemy_id') != source_id:
+        raise BreadbugStageError(f'unexpected {variant["enum_name"]} manifest')
     clips = manifest.get('clips', [])
     names = [Path(c.get('file', '')).stem for c in clips]
     if names != list(CLIPS):
@@ -234,15 +259,16 @@ def plan(source):
             if total > TOTAL_BYTES:
                 raise BreadbugStageError('Breadbug pose budget exceeded')
             frames.append(int(pose['frame']))
-            room.append((pose_name(name, index), data))
+            room.append((pose_name(name, index, source_id), data))
         events = [(int(e[0]), int(e[1])) for e in clip.get('events', [])]
         rows.append(dict(anim_id=anim, name=name, frames=int(clip['source_frames']), events=events, poses=frames))
     parm = source / 'enemyparm.txt'
     if not parm.is_file():
-        raise BreadbugStageError('PanModoki enemyparm.txt missing from the extractor tree')
+        raise BreadbugStageError(f'{variant["enum_name"]} enemyparm.txt missing from the extractor tree')
     raw = parm.read_bytes()
     parse_enemyparm(raw)  # fail closed before staging
-    return dict(bank=bank_text(rows), room=room, parms=raw)
+    return dict(bank=bank_text(rows), room=room, parms=raw, source_id=source_id,
+                parms_name=variant['parms'], bank_name=variant['bank'])
 
 
 def _write_new_or_same(path, data):
@@ -261,17 +287,19 @@ def stage(run, plan_):
     private = room.is_dir() and room.resolve().is_relative_to(run.resolve())
     if not private:
         raise BreadbugStageError('Breadbug staging needs the private model room')
-    _write_new_or_same(run / PARMS, plan_['parms'])
+    parms_name = plan_.get('parms_name', PARMS)
+    bank_name = plan_.get('bank_name', BANK_TXT)
+    _write_new_or_same(run / parms_name, plan_['parms'])
     for name, data in plan_['room']:
         _write_new_or_same(room / name, data)
-    _write_new_or_same(run / BANK_TXT, plan_['bank'])
-    return dict(parms=PARMS, bank=hashlib.sha256(plan_['bank']).hexdigest(), poses=len(plan_['room']),
+    _write_new_or_same(run / bank_name, plan_['bank'])
+    return dict(parms=parms_name, bank=hashlib.sha256(plan_['bank']).hexdigest(), poses=len(plan_['room']),
                 pose_bytes=sum(len(d) for _, d in plan_['room']))
 
 
-def stage_from(source, run):
+def stage_from(source, run, source_id=None):
     """Plan from the extractor tree ``source`` then stage into ``run``."""
-    plan_ = plan(source)
+    plan_ = plan(source, source_id)
     if plan_ is None:
-        raise BreadbugStageError(f'no {MANIFEST} under {source}')
+        raise BreadbugStageError(f'no Breadbug manifest under {source}')
     return stage(run, plan_)

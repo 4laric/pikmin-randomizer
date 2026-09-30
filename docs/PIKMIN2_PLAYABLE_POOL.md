@@ -47,6 +47,7 @@ every existing caller keeps working. Today the pool is:
 | 73 | BigTreasure | bigtreasure |
 | 32 | Demon | demon |
 | 38 | PanModoki | breadbug |
+| 40 | OoPanModoki | giantbreadbug |
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
 | 57 | Kurage | kurage |
@@ -123,6 +124,28 @@ never P2 identities and never enter this table.
   at runtime. Pikmin still holding the cargo when it hides are killed, as in
   retail; this needs an owner eye-check. Binding is shown on Distant Spring and
   Forest of Hope; no Impact Site slot opens before day 8, so none was run.
+- **40 OoPanModoki (Giant Breadbug): admitted (#958).** It runs the Breadbug 38
+  module as the source `OoPanModoki` variant: its own retail parms (2000 health,
+  press 100, container 1000, carry speed 45), its own model and animation bank,
+  `canTarget` at-or-above the weight limit, a 40-unit stick reach and a 150-unit
+  waypoint slack. Only a Purple Pikmin press hurts it (a non-Purple press is
+  refused and logged as `P2_BREADBUG_OWN_PRESS_REJECTED`); a cargo sucked into
+  the Onion still costs it 1000. So a seed without the Purple campaign banks
+  cannot press it, and a real player needs Purple (or two Onion sucks). Generation
+  binds it only on `--p2-purple-campaign` seeds (constraint `P2_REQUIRES_PURPLE`,
+  source `OoPanModoki::pressCallBack`, `panModoki.cpp:1738-1744`), and
+  `randomizer run` refuses such a seed without the Purple banks. **Admission scope:
+  ordinary slots only. Boss-arena placement is not admitted.** Arena runs r9 and
+  r11 (pre-merge exe dc6a9f30) killed the Giant but nobody carried the corpse, so
+  there is no arena receipt; the stall was not diagnosed from the log. It has no
+  arena descriptor and is never seated in an arena; add it back to
+  `p2_boss_arenas.BOSS_ENCOUNTERS` once an arena run delivers a receipt. Its
+  ordinary-slot Bot evidence is a power-mode Purple squad
+  (`PIKMIN_RANDOMIZER_AUTOPLAY_PURPLE`, test only): Forest of Hope on the final exe
+  (y11, seed = the owner smoke seed, `onion:p2:40:1`) and on the earlier merged exe
+  (y9), plus Distant Spring on the pre-merge exe (y2, `onion:p2:40:3`): presses,
+  death, corpse carry and receipt.
+  Not ported: the nest model, treasure hoarding, the retail rumble/effects.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
@@ -142,8 +165,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 53, 56,
-  69, 70, 71, 73, 94, 101). The remaining bosses 40 Giant Breadbug,
+- **Bosses belong in the pool.** Eleven P2 bosses are already here (30, 34, 40, 53,
+  56, 69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots). The remaining bosses
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -151,8 +174,9 @@ never P2 identities and never enter this table.
 
 - **Boss arenas.** P2 bosses are placed only in designated P1 boss arenas,
   replacing the P1 boss there (`randomizer/p2_boss_arenas.py`). The pool's
-  arena bosses are 94 Crawbster, 73 Titan Dweevil and, since the wave-3
-  Emperor lane, 53 Emperor Bulblax; the most-constrained boss is seated first,
+  arena bosses are 94 Crawbster, 73 Titan Dweevil, since the wave-3 Emperor lane
+  53 Emperor Bulblax (40 Giant Breadbug is not an arena boss: no arena receipt, #958);
+  the most-constrained boss is seated first,
   so the Titan (footprint 250) takes the Impact Goolix arena (clear 275) and
   the Crawbster the Hope snagret pit.
 - **73 BigTreasure (Titan Dweevil): admitted.** The source BigTreasure FSM runs

@@ -362,15 +362,15 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 10 large-host
     # proxies remain (BigTreasure 73 left for its own campaign installer, #246,
     # #215 retired the Demon 32 proxy for its own Sarai-host profile, Breadbug 38
-    # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245).
-    assert len(small_ids) == 2 and len(large_ids) == 9  # 72 OniKurage (#960) and Queen 30 (#256) are OWN species now
+    # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245, Giant Breadbug 40 for its OWN port, #958).
+    assert len(small_ids) == 2 and len(large_ids) == 8  # 72 OniKurage (#960) and Queen 30 (#256) are OWN species now
     assert sorted(small_ids) == [10, 11]
     for finished in (2, 33, 35, 43, 53, 67, 76,
                      12, 13, 14, 28, 68, 94,
                      17, 18, 24, 25, 15, 75,
                      56, 63, 69,
                      34, 70, 65, 71, 101,
-                     26, 27, 66, 84, 93, 97, 73, 32, 38, 41, 30, 72):
+                     26, 27, 66, 84, 93, 97, 73, 32, 38, 41, 30, 72, 40):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     # Twelve more pool identities (admitted, non-proxy) bring the pool to the
@@ -379,9 +379,10 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     # more admitted identity, 28 ElecBug, takes the slot BigTreasure 73 held;
     # #898: 17 takes the slot the Breadbug 38 proxy held; #245: 18 takes the
     # slot the Antenna Beetle 41 proxy held.)
+    # #958: 24 takes the slot the Giant Breadbug 40 proxy held.
     # #960: Kurage 57 takes the slot the OniKurage 72 proxy held (72 is an OWN species now);
     # Queen 30 (#256) leaving the proxy tier is covered by 15.
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18, 15, 57]
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18, 24, 15, 57]
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
@@ -458,7 +459,7 @@ def test_sampled_layout_covers_the_full_pool():
                           p2_proxy_tier="declared")["p2_layout"]
         counts = Counter(binding["source_id"] for binding in layout["bindings"])
         assert not layout.get("unplaced"), layout.get("unplaced")
-        assert set(PLAYABLE_P2_SPECIES) <= set(counts)
+        assert set(PLAYABLE_P2_SPECIES) - {40} <= set(counts)   # 40: Purple-campaign seeds only (#958)
         held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
         for binding in layout["bindings"]:
             if binding["target"] in held:

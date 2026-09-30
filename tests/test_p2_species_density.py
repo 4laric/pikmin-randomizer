@@ -98,7 +98,7 @@ def test_legacy_default_is_unchanged_and_deterministic():
     # #893: the admitted pool (37) outgrew the 35 slots and a bare default
     # now samples it; a 35-species subset still fits, and there None and the
     # explicit legacy token agree.
-    fit = [source_id for source_id in admitted_ids(roster) if source_id not in (78, 32, 38, 41, 58, 30)]
+    fit = [source_id for source_id in admitted_ids(roster) if source_id not in (78, 32, 38, 41, 58, 30, 40)]
     first = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     second = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     assert first == second
@@ -111,12 +111,12 @@ def test_legacy_multi_species_fill_covers_the_pool():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 44; #899 moved the Crawbster 94, #246 the Titan Dweevil 73,
-    # #289 the Emperor Bulblax 53 and #256 the Empress 30 to the boss arenas. Since #948 the ordinary target set is
+    # #893: the pool is 45; #899 moved the Crawbster 94, #246 the Titan Dweevil 73,
+    # #289 the Emperor Bulblax 53 and #256 the Empress 30 and #958 the Giant Breadbug 40 to the boss arenas. Since #948 the ordinary target set is
     # every campaign generator a species can physically take, so all
     # ordinary species fit and every ordinary target is bound (legacy fill).
-    assert len(PLAYABLE_P2_SPECIES) == 44
-    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (30, 53, 73, 94)]
+    assert len(PLAYABLE_P2_SPECIES) == 45
+    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (30, 40, 53, 73, 94)]
     document = committed_document()
     held = {row["uid"] for row in document.get("held_parts", [])}
     ordinary = [s for s in document["slots"] if not s.get("boss_slot") and s["uid"] not in held

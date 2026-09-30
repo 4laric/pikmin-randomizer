@@ -124,6 +124,10 @@ IDENTITY_FAMILY = {
     # experimental.pikmin2_breadbug_stage; the campaign actor is driven by
     # pc_p2_breadbug_fsm on the TEKI_Collec vehicle and delivers onion:p2:38.
     38: 'breadbug', 'panmodoki': 'breadbug',
+    # #958: Giant Breadbug (OoPanModoki 40) runs the same OWN driver with its
+    # own retail parms/bank/poses; a separate family so a seed carrying both
+    # stages both content sets (a family installs from ONE source directory).
+    40: 'giantbreadbug', 'oopanmodoki': 'giantbreadbug',
     # #256: Empress Bulblax (Queen, 30) OWN. Stages the native source-FSM
     # inputs (disc parms + clip/key-event/pose bank, poses, BTK specular);
     # the seeded actor rides TEKI_Swallow and pc_p2_queen_teki drives it.
@@ -1119,19 +1123,24 @@ def _adapt_bigtreasure(source, run, actors):
     except (BigTreasureStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'BigTreasure staging failed: {error}') from error
     return dict(species='BigTreasure', source_id=73, generators=sorted(set(generators)), bigtreasure=receipt)
-def _validate_breadbug(source):
-    """Pre-flight check for Breadbug (PanModoki, source 38) OWN content."""
-    _read_identity_source(source, 38, 'PanModoki')
+def _validate_breadbug(source, source_id=38, enum_name='PanModoki'):
+    """Pre-flight check for Breadbug (PanModoki 38) / Giant Breadbug (OoPanModoki 40) OWN content."""
+    _read_identity_source(source, source_id, enum_name)
     from experimental.pikmin2_breadbug_stage import BreadbugStageError, plan
     try:
-        if plan(Path(source)) is None:
-            raise StagingError(f'PanModoki extractor manifest missing under {source}')
+        if plan(Path(source), source_id) is None:
+            raise StagingError(f'{enum_name} extractor manifest missing under {source}')
     except (BreadbugStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'Breadbug content invalid: {error}') from error
 
 
-def _adapt_breadbug(source, run, actors):
-    """Adapter for Breadbug (source 38): stage exactly what native opens.
+def _validate_giantbreadbug(source):
+    """Pre-flight check for Giant Breadbug (OoPanModoki, source 40) OWN content (#958)."""
+    _validate_breadbug(source, 40, 'OoPanModoki')
+
+
+def _adapt_breadbug(source, run, actors, source_id=38, enum_name='PanModoki'):
+    """Adapter for Breadbug (source 38) / Giant Breadbug (40): stage exactly what native opens.
 
     ``p2-breadbug-parms.txt`` (verbatim retail panmodoki/enemyparm.txt),
     ``p2-breadbug-bank.txt`` and the ``breadbug_<clip>_<ii>.mod`` poses in
@@ -1140,18 +1149,23 @@ def _adapt_breadbug(source, run, actors):
     == 38), so no actor sidecar is written. Idempotent across repeat calls.
     """
     from experimental.pikmin2_breadbug_stage import BreadbugStageError, stage_from
-    _read_identity_source(source, 38, 'PanModoki')
+    _read_identity_source(source, source_id, enum_name)
     generators = [int(generator) for generator, _species in actors]
     for _, species in actors:
-        if species != 'PanModoki':
-            raise StagingError(f'Breadbug adapter got non-PanModoki species: {species!r}')
+        if species != enum_name:
+            raise StagingError(f'Breadbug adapter got non-{enum_name} species: {species!r}')
     if not generators:
         raise StagingError('Breadbug install requires at least one generator')
     try:
-        staged = stage_from(Path(source), Path(run))
+        staged = stage_from(Path(source), Path(run), source_id)
     except (BreadbugStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'Breadbug staging failed: {error}') from error
-    return dict(species='PanModoki', source_id=38, generators=sorted(set(generators)), breadbug=staged)
+    return dict(species=enum_name, source_id=source_id, generators=sorted(set(generators)), breadbug=staged)
+
+
+def _adapt_giantbreadbug(source, run, actors):
+    """Adapter for Giant Breadbug (OoPanModoki, source 40; #958)."""
+    return _adapt_breadbug(source, run, actors, 40, 'OoPanModoki')
 def _validate_bombsarai(source):
     """Pre-flight check for BombSarai (Careening Dirigibug, source 58) content."""
     _read_identity_source(source, 58, 'BombSarai')
@@ -1637,6 +1651,7 @@ ADAPTERS = {
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
+    'giantbreadbug': {'install': _adapt_giantbreadbug, 'validate': _validate_giantbreadbug},
     'fuefuki': {'install': _adapt_fuefuki, 'validate': _validate_fuefuki},
     'bombsarai': {'install': _adapt_bombsarai, 'validate': _validate_bombsarai},
     'queen': {'install': _adapt_queen, 'validate': _validate_queen},

@@ -357,6 +357,18 @@ def test_cli_rejects_bad_slots(tmp_path):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
 
 
+def test_landing_origins_match_the_stage_generator_headers():
+    # #958: the captain start of every area is the x/z the stage default.gen header stores
+    # at bytes 4..16; the smoke seed's measured LANDING table must agree with the retail assets.
+    import struct
+    stages = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
+    if not stages.is_dir():
+        pytest.skip('local retail assets absent')
+    for area, folder in (('impact', 'practice'), ('foh', 'stage1'), ('navel', 'stage2'), ('spring', 'stage3')):
+        x, _, z = struct.unpack_from('>3f', (stages / folder / 'default.gen').read_bytes(), 4)
+        assert smoke.LANDING[area] == pytest.approx((x, z), abs=1.0), area
+
+
 # --- captain start + verification (owner-playtest landing defect, 2026-09-30) ---
 
 def test_captain_start_data_is_the_default_origin_not_map_origin():

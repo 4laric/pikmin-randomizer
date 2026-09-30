@@ -80,9 +80,9 @@ def test_fitting_pool_keeps_the_legacy_fill():
 
 
 def test_committed_pool_fits_the_constraint_derived_targets():
-    # 44 admitted species (Empress Bulblax 30 #256, OniKurage 72 and Kurage 57 #960, Groink 78 #888, Demon 32 #215, Titan Dweevil 73
-    # #246, Breadbug 38 #898, Antenna Beetle 41 #245, Dirigibug 58 #244). The
-    # Crawbster 94, the Titan 73, the Emperor 53 (#289) and the Empress 30 live in boss arenas for real seeds
+    # 45 admitted species (Empress Bulblax 30 #256, OniKurage 72 and Kurage 57 #960, Groink 78 #888, Demon 32 #215, Titan Dweevil 73
+    # #246, Breadbug 38 #898, Antenna Beetle 41 #245, Dirigibug 58 #244, Giant Breadbug 40 #958). The
+    # Crawbster 94, the Titan 73, the Emperor 53 (#289), and the Empress 30 live in boss arenas for real seeds
     # (#899). Since #948 the ordinary target set is every campaign generator
     # (72 slots), so the ordinary species all fit: nothing is sampled out,
     # the legacy fill binds every target and no species is dropped for lack
@@ -90,12 +90,12 @@ def test_committed_pool_fits_the_constraint_derived_targets():
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == 44
+    assert len(pool) == 45
     assert len(ordinary_slots(document)) == 72
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)
     assert layout["density"] == DENSITY_LEGACY
-    assert arena_bosses(layout) == {30, 53, 73, 94}
+    assert arena_bosses(layout) == {30, 53, 73, 94}  # 40 is ordinary-slot only (no arena receipt, #958)
     assert "unplaced" not in layout
     assert set(bound) == pool - arena_bosses(layout)
     assert len(bound) == len(ordinary_slots(document))

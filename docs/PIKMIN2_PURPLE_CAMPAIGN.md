@@ -81,3 +81,41 @@ under ignored `output/`; no assets, binaries or saves belong in either PR.
 The opt-in acquisition/storage slice includes native conversion and plucking, ten-strength carry, population/maturity conservation, and one native day-save/fresh-process resume. Fixture positioning and scripted inputs are disclosed above. Player navigation, full campaign/live AP and broad enemy combat remain follow-ups; ordinary staging does not yet supply the special direct-hit receiver bindings (tracked separately in #940).
 
 The root engine snapshot applies only the reviewed Purple source changes, preserving its existing baseline. The paired native branch merges current native main before CI, retaining newer enemy imports. Native build evidence applies to that native tree; root snapshot tests are separate and do not claim a full root-engine build.
+
+## Purple-only species and `--p2-purple-campaign` (#958)
+
+`OoPanModoki::Obj::pressCallBack` (`panModoki.cpp:1738-1744`) rejects the press of
+every Pikmin whose kind is not Purple, and the base `damageCallBack`
+(`panModoki.cpp:450-457`) only forwards damage while the body is bittered, which
+Pikmin 1 has no item for. Without Purple presses the Giant Breadbug (source 40)
+can only lose the one-off container suck (2000 to 1000) and never dies, so a
+default seed must not place it at all (a Giant that cannot die would permanently
+replace what it displaced).
+
+The constraint lives in `randomizer.seed.P2_REQUIRES_PURPLE` (source id to
+citation), not in a slot list:
+
+- `generate(..., p2_purple_campaign=True)` / `randomizer generate --p2-enemies
+  --p2-purple-campaign` binds Purple-only species; the manifest records
+  `p2_purple_campaign` (no native capability string, the native hello echoes the capability list). Without the
+  flag the default, `playable` and `full` selections leave them out, and a named
+  `--p2-species` list that asks for one is an error.
+- `validate()` rejects a layout that binds a Purple-only species without the opt-in.
+- `randomizer run` refuses such a seed unless `--purple-bank` and
+  `--purple-motion` are given, so the Violet supply always exists.
+- Placement: a `--p2-purple-campaign` seed binds it on ordinary slots only. It is not
+  seated in a boss arena, because arena runs r9/r11 killed it but never carried the
+  corpse, so there is no arena receipt (#958). A smoke seed (`scripts/p2_smoke_seed.py`, with `--purple-bank` and
+  `--purple-motion`) can put the Giant on any ordinary slot. Purple stock is ship
+  stock, so Purples made at the start-area Violet are available in every area.
+  The dev console (`scripts/p2_dev_console.py`) may spawn the Giant on demand
+  without the banks: its manifest carries the flag and `randomizer run` skips the
+  bank requirement under `PIKMIN_DEV_CONSOLE`.
+
+Violet staging works on all five start stages, including the Forest of Hope. Some
+local asset sets carry a harness copy of the Forest of Hope `default.gen` whose
+header counts only the `    ` records (one fewer than physically present, the
+inactive `next` record is a real record the game reads). `split_records` accepts
+both framings and `add_violet` writes the physical count, so the appended Violet
+is inside the range the game reads
+(`tests/test_purple_campaign.py::test_real_stage_generators_stage_violet`).
