@@ -23,7 +23,7 @@ for case in ('near', 'far'):
     env.pop('PIKMIN_RANDOMIZER_TEST_SCRIPT', None)
     env.pop('PIKMIN_GRAB_FAR', None)
     if case == 'far': env['PIKMIN_GRAB_FAR'] = '1'
-    startup = subprocess.STARTUPINFO(); startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup = subprocess.STARTUPINFO(); startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     log = run.directory/'native.log'
     with log.open('w', encoding='utf-8') as stream:
         p = subprocess.Popen([str(args.exe.resolve()), '--randomizer-seed', str(run.bootstrap)],

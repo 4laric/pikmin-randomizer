@@ -1,0 +1,10 @@
+{
+  "purpose": "Captain (Navi) position at the start of the day-2 direct-boot session, per starting area, in world x/z. scripts/p2_smoke_seed.py --near-start measures slot distance from here, not from the map origin. The stage .ini navi_start is 0,0 for every stage; the real start is NaviStartingState::init (ufo position + 50 units along the ufo facing), so it is measured, not read from the ini.",
+  "source": "Measured 2026-09-30 headless on nectar.exe (native-king-eat-build) with PIKMIN_RANDOMIZER_TEST_BACKGROUND=1 PIKMIN_RANDOMIZER_AUTOPLAY=1 on plain seeds m-<area> (generate --starting-area <area>); first AUTOPLAY_NAVI line of native.log (bot at rest, stick=(0,0)). Re-measure with scripts/p2_smoke_seed.py --measure-start AREA.",
+  "areas": {
+    "forest": {"x": -316.0, "z": 2022.0, "start": "forest-day2 / Forest of Hope (START_STAGE 1)", "log": "AUTOPLAY_NAVI navi=(-316,2022)"},
+    "impact": {"x": 48.0, "z": 1920.0, "start": "impact-day2 / Impact Site (START_STAGE 0)", "log": "AUTOPLAY_NAVI navi=(48,1920)"},
+    "navel": {"x": -77.0, "z": -139.0, "start": "navel-day2 / Hole of Beasts area (Navel)", "log": "AUTOPLAY_NAVI navi=(-77,-139)"},
+    "spring": {"x": -149.0, "z": -76.0, "start": "spring-day2 / Distant Spring", "log": "AUTOPLAY_NAVI navi=(-149,-76)"}
+  }
+}

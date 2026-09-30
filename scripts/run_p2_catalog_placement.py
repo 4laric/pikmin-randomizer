@@ -84,7 +84,7 @@ def main():
     env['PYTHONUTF8'] = '1'
     env['SDL_AUDIODRIVER'] = 'dummy'
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     startup.wShowWindow = 0
     log = stage / 'native.log'
     code = 'ok'

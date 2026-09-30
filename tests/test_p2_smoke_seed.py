@@ -30,6 +30,45 @@ def roster():
     return load_and_validate()
 
 
+def test_ordinary_slots_can_skip_slots_gated_behind_a_later_day(document):
+    all_slots = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', smoke.SEED_START_DAY)
+    assert len(day2) < len(all_slots)
+    assert all(s['first_day'] <= smoke.SEED_START_DAY for s in day2)
+    gated = {s['label'] for s in all_slots} - {s['label'] for s in day2}
+    assert 'hope_14-29_24' in gated and 'hope_4-29_2237' in gated
+
+
+def test_foh_landing_origin_is_the_measured_captain_start():
+    assert smoke.LANDING_BY_AREA['foh'] == (-316.0, 2022.0)
+    assert smoke.parse_origin('-316,2022') == (-316.0, 2022.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_origin('nope')
+
+
+def test_stage_content_extracts_before_copying_cached_species(tmp_path):
+    cache = tmp_path / 'cache'
+    (cache / 'Cached').mkdir(parents=True)
+    (cache / 'Cached' / 'a.txt').write_text('x')
+    from scripts import p2_content_density as density
+    density.write_entry_marker(cache / 'Cached', density.DEFAULT_POSE_LIMIT, source='test')
+    out = tmp_path / 'content'
+    manifest = {'p2_layout': {'bindings': [
+        {'source_id': 75, 'enum_name': 'Cached'}, {'source_id': 78, 'enum_name': 'Fresh'}]}}
+    seen = {}
+
+    def prepare(iso, dest, wanted):
+        seen['dest_empty_at_extract'] = not any(dest.iterdir())
+        (dest / 'Fresh').mkdir()
+        (dest / 'Fresh' / 'b.txt').write_text('y')
+        return {'extracted_enums': ['Fresh']}
+
+    summary = smoke.stage_content(manifest, out, cache, 'iso', prepare_fn=prepare)
+    assert seen['dest_empty_at_extract'] is True
+    assert (out / 'Cached' / 'a.txt').exists() and (out / 'Fresh' / 'b.txt').exists()
+    assert summary['from_cache'] == ['Cached'] and summary['extracted'] == ['Fresh']
+
+
 def test_ordinary_slots_exclude_protected_boss_and_held(document):
     slots = smoke.ordinary_slots(document, 'foh')
     labels = {s['label'] for s in slots}
@@ -264,6 +303,144 @@ def test_launcher_sets_env_and_runs_randomizer(tmp_path):
     assert "Push-Location '" + str(smoke.ROOT) + "'" in text
 
 
+def test_ordinary_slots_can_drop_slots_gated_behind_a_later_day(document):
+    every = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    assert day2 and len(day2) < len(every)
+    assert all(int(s.get('first_day', 0)) <= smoke.START_DAY for s in day2)
+    assert {s['uid'] for s in day2} <= {s['uid'] for s in every}
+    assert smoke.ordinary_slots(document, 'foh', max_first_day=99) == every
+
+
+def test_pick_uids_names_exact_ordinary_slots(document):
+    slots = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    want = [int(slots[3]['uid']), int(slots[1]['uid'])]
+    picked = smoke.pick_uids(slots, want)
+    assert [int(s['uid']) for s in picked] == want
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.pick_uids(slots, [12345])
+    assert smoke.parse_uids('1, 2') == [1, 2]
+    for bad in ('', 'x', '1,1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_uids(bad)
+
+
+def test_landing_is_the_measured_captain_start_not_the_origin():
+    assert smoke.LANDING['foh'] != smoke.LANDING_XZ
+    assert smoke.parse_landing('-464, 1967') == (-464.0, 1967.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_landing('nope')
+
+
+def test_launcher_sets_and_clears_extra_env(tmp_path):
+    text = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                               tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS,
+                               extra_env={'PIKMIN_P2_KING_WAKE_RANGE': '400'})
+    assert "$env:PIKMIN_P2_KING_WAKE_RANGE = '400'" in text
+    assert "Remove-Item Env:PIKMIN_P2_KING_WAKE_RANGE" in text
+    assert text.index("$env:PIKMIN_P2_KING_WAKE_RANGE") < text.index('Push-Location')
+    plain = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS)
+    assert 'PIKMIN_P2_KING_WAKE_RANGE' not in plain
+
+
+def test_parse_env_validates():
+    assert smoke.parse_env(['A_B=1', 'C=x=y']) == {'A_B': '1', 'C': 'x=y'}
+    assert smoke.parse_env(None) == {}
+    for bad in ('NOEQUALS', '=v', '1BAD=v', 'A-B=v', smoke.SMOKE_ENV + '=1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_env([bad])
+
+
 def test_cli_rejects_bad_slots(tmp_path):
     with pytest.raises(SystemExit):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
+
+
+# --- captain start + verification (owner-playtest landing defect, 2026-09-30) ---
+
+def test_captain_start_data_is_the_default_origin_not_map_origin():
+    starts = smoke.load_captain_starts()
+    assert starts['foh'] == (-316.0, 2022.0)
+    assert starts['impact'] == (48.0, 1920.0)
+    assert set(starts) == set(smoke.AREAS)
+    assert all(pos != (0.0, 0.0) for pos in starts.values())
+
+
+def test_near_start_orders_by_distance_from_the_captain_start(document):
+    positions = smoke.slot_positions()
+    slots = smoke.ordinary_slots(document, 'foh', smoke.SEED_START_DAY)
+    origin = smoke.LANDING_BY_AREA['foh']
+    picked = smoke.pick_slots(slots, 3, True, positions, origin)
+    dists = [smoke.distance_xz(positions[int(s['uid'])], origin) for s in picked]
+    assert dists == sorted(dists)
+    # the old map-origin ranking put slot 2506165730 (-72, 1.4) first; it is ~2000 from the real start
+    assert int(picked[0]['uid']) != 2506165730
+
+
+def _log(captain=True, resolves=((94, 111, -300, 2000), (94, 222, -100, 2100)), extra=''):
+    lines = []
+    if captain:
+        lines.append('AUTOPLAY_NAVI state=withdraw_seek navi=(-316,2022) tgt=(0,0)')
+    for sid, uid, x, z in resolves:
+        lines.append(f'P2_SEED_RESOLVE source_id={sid} target={uid} original_type=4 x={x}.0 z={z}.0')
+    for sid, uid, x, z in resolves:
+        lines.append(f'P2_ENEMY_READY species=X source_id={sid} generator={uid} x={x}.5 y=0 z={z}.5 health=1')
+    return '\n'.join(lines) + extra
+
+
+def test_verify_passes_when_nearest_instance_is_close():
+    from scripts import p2_smoke_verify as v
+    result = v.evaluate(v.parse_log(_log()), {111: 94, 222: 94})
+    assert result['ok'], result['problems']
+    assert result['species'][94]['nearest'] < 50
+
+
+def test_verify_fails_when_nearest_instance_is_far():
+    from scripts import p2_smoke_verify as v
+    log = _log(resolves=((94, 111, -72, 1), (94, 222, 900, 200)))
+    result = v.evaluate(v.parse_log(log), {111: 94, 222: 94})
+    assert not result['ok']
+    assert any('nearest instance' in p for p in result['problems'])
+
+
+def test_verify_fails_on_unbound_slot_failure_line_and_missing_captain():
+    from scripts import p2_smoke_verify as v
+    assert not v.evaluate(v.parse_log(_log(resolves=((94, 111, -300, 2000),))), {111: 94, 222: 94})['ok']
+    transient = v.evaluate(v.parse_log(_log(extra='\nP2_CHAPPY_UNBOUND generator=111 reason=unstaged_bank')), {111: 94, 222: 94})
+    assert transient['ok'], transient['problems']  # generator 111 later reached READY
+    bad = v.evaluate(v.parse_log(_log(extra='\nP2_CHAPPY_UNBOUND generator=333 reason=x\nslot-rejected reason=y')), {111: 94, 222: 94})
+    assert sum('failure line' in p for p in bad['problems']) == 2
+    noready = v.parse_log(_log().replace('P2_ENEMY_READY', 'P2_NOTHING'))
+    assert any('did not spawn' in p for p in v.evaluate(noready, {111: 94, 222: 94})['problems'])
+    assert not v.evaluate(v.parse_log(_log(captain=False)), {111: 94, 222: 94})['ok']
+
+
+def test_explicit_captain_start_marker_wins():
+    from scripts import p2_smoke_verify as v
+    parsed = v.parse_log('AUTOPLAY_NAVI navi=(1,2)\nCAPTAIN_START x=-5.0 z=7.0\n')
+    assert parsed['captain_start'][:2] == (-5.0, 7.0)
+
+
+def test_p1_bulborb_slots_are_the_foh_dwarf_and_adult_bulborbs_nearest_the_start(document):
+    positions = smoke.slot_positions()
+    origin = smoke.LANDING_BY_AREA['foh']
+    pool = smoke.p1_bulborb_slots(document, 'foh', smoke.SEED_START_DAY)
+    assert all(s['source_identity'].rsplit(':', 1)[-1] in ('3', '4') for s in pool)
+    assert len(pool) == 9  # 7 adult + 2 dwarf on day 2; the day-5 adults are gated out
+    near = smoke.pick_slots(smoke.within_radius(pool, positions, origin, smoke.DEFAULT_BULBORB_RADIUS), 'all', True, positions, origin)
+    assert [s['label'] for s in near] == ['hope_0-29_2659', 'hope_0-29_3592', 'hope_0-29_4189',
+                                          'hope_0-29_1831', 'hope_0-29_2452']
+    assert round(smoke.distance_xz(positions[int(near[0]['uid'])], origin)) == 720
+
+
+def test_p1_bulborb_flag_defaults_and_verify_threshold(monkeypatch, tmp_path):
+    seen = {}
+    def fake_build(args):
+        seen.update(near=args.near_start, maxd=args.max_distance, p1=args.p1_bulborb_slots)
+        return {'files': {'launcher': 'x'}, 'verify': None}
+    monkeypatch.setattr(smoke, 'build', fake_build)
+    assert smoke.main(['--area', 'foh', '--species', '53', '--seed', 's', '--out', str(tmp_path), '--p1-bulborb-slots']) == 0
+    assert seen == {'near': True, 'maxd': smoke.DEFAULT_BULBORB_RADIUS, 'p1': True}
+    smoke.main(['--area', 'foh', '--species', '53', '--seed', 's', '--out', str(tmp_path)])
+    assert seen['maxd'] == 400.0 and seen['p1'] is False

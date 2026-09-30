@@ -157,6 +157,7 @@ def main(argv=None):
     if args.exe is None:
         raise SystemExit("--exe is required to launch (or pass --prepare-only)")
     os.environ.update(dev_console.native_environment(script))
+    os.environ["PIKMIN_RANDOMIZER_TEST_BACKGROUND"] = "1"  # agent-driven: never stall on focus (watch via output/workflow/WATCH_RUNS)
     from randomizer.runner import launch
     launch(manifest, session, args.exe.resolve(), args.assets.resolve(), None,
            p2_content=args.content.resolve(), p2_actors=actors)

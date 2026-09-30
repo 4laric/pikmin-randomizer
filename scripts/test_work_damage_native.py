@@ -22,7 +22,7 @@ run = NativeRun(session); run.write_state(True)
 _winapi.CreateJunction(str(a.assets.resolve()), str(run.directory / 'assets'))
 env = dict(os.environ, PIKMIN_RANDOMIZER_TEST_BACKGROUND='1', SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_SCRIPT='work-damage')
 env.pop('BBFT_PORT', None)
-startup = subprocess.STARTUPINFO(); startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+startup = subprocess.STARTUPINFO(); startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
 log = run.directory / 'native.log'
 with log.open('w', encoding='utf-8') as stream:
     process = subprocess.Popen([str(a.exe.resolve()), '--randomizer-seed', str(run.bootstrap)],

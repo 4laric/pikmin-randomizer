@@ -24,7 +24,7 @@ def main(exe, assets, output):
     log = run.directory / 'native.log'
     with log.open('w', encoding='utf-8') as stream:
         startup = subprocess.STARTUPINFO()
-        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
         process = subprocess.Popen([str(exe.resolve()), '--randomizer-seed', str(run.bootstrap.resolve())],
                                    cwd=run.directory, env=env, stdout=stream,
                                    stderr=subprocess.STDOUT, startupinfo=startup)

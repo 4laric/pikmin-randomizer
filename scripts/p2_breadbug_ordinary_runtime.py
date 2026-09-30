@@ -43,9 +43,8 @@ def run_once(session, exe, assets, label):
     threading.Thread(target=refresh, daemon=True).start()
     env = dict(os.environ, SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_BACKGROUND='1')
     env.pop('BBFT_PORT', None)
-    startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startup.wShowWindow = 0
+    from randomizer.test_run import hidden_startupinfo
+    startup = hidden_startupinfo(env)
     log = run / 'native.log'
     try:
         with log.open('w') as stream:

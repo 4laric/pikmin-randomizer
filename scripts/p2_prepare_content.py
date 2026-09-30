@@ -34,6 +34,13 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   adapter stages the room meshes through ``pikmin2_kogane_content``.
 * 57 Kurage: ``pikmin2_kurage_assets.extract`` -> ``<out>/Kurage/``; the Kurage
   adapter stages the visual files through ``pikmin2_kurage_content``.
+* 72 OniKurage (#960): ``pikmin2_onikurage_assets.extract`` -> ``<out>/OniKurage/``;
+  the OniKurage adapter stages ``pikmin2_onikurage_content``.
+* 30 Queen: ``extract_queen`` (``pikmin2_bulblax_assets.extract`` +
+  ``pikmin2_bulblax_bank.build`` + ``pikmin2_queen_specular.prepare``) ->
+  ``<out>/Queen/`` (``identity.json``, ``bulblax.json``, ``bank/``); the Queen
+  adapter stages the native OWN bank, poses and specular sidecar through
+  ``experimental.pikmin2_queen_stage`` (#256).
 * 78 MiniHoudai: ``pikmin2_minihoudai_assets.extract`` -> ``<out>/MiniHoudai/``
   (``minihoudai.json`` + ``identity.json`` + ``minihoudai_<clip>_<ii>.mod``);
   the MiniHoudai adapter stages the native Groink source-FSM inputs through
@@ -250,6 +257,7 @@ ENUM_FOR_SOURCE = {
     54: "Miulin",
     56: "Damagumo",
     57: "Kurage",
+    72: "OniKurage",
     58: "BombSarai",
     59: "FireOtakara",
     60: "WaterOtakara",
@@ -269,6 +277,7 @@ ENUM_FOR_SOURCE = {
     97: "FminiHoudai",
     101: "UmiMushiBlind",
     41: "Fuefuki",
+    30: "Queen",
 }
 
 
@@ -622,6 +631,25 @@ def extract_kurage(iso, dest):
     return target
 
 
+def extract_onikurage(iso, dest):
+    """Build <dest>/OniKurage/ via the onikurage extractor (identity + manifest + poses).
+
+    Wave 3 flyers (#960): same layout as :func:`extract_kurage` for the Greater
+    Spotted Jellyfloat (source 72); ``experimental.pikmin2_onikurage_content``
+    carries the poses into the run.
+    """
+    from experimental import pikmin2_onikurage_assets as onikurage
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "OniKurage"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    onikurage.extract(iso, target)
+    return target
+
+
 def extract_minihoudai(iso, dest, pose_limit=None):
     """Build <dest>/MiniHoudai/ via the MiniHoudai extractor.
 
@@ -840,6 +868,56 @@ def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
     try:
         dweevil.extract(iso, Path(source_repo), tmp, pose_limit=pose_limit)
         shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_queen(iso, research, dest, pose_limit=12):
+    """Build <dest>/Queen/ for the Empress Bulblax OWN binding (#256).
+
+    Runs the audited Bulblax import (``pikmin2_bulblax_assets.extract``, which
+    validates the disc parms, clip registry, key events and carcass config),
+    the pose bank (``pikmin2_bulblax_bank.build``) and the Queen material +
+    specular pass (``pikmin2_queen_specular.prepare``: source UV1 diffuse bake
+    and the BTK specular sidecar). The tree holds ``identity.json``,
+    ``bulblax.json`` and ``bank/``; ``experimental.pikmin2_queen_stage``
+    stages exactly what native ``pc_p2_queen_teki.cpp`` opens.
+    """
+    from experimental import pikmin2_bulblax_assets as bulblax
+    from experimental import pikmin2_bulblax_bank as bulblax_bank
+    from experimental import pikmin2_queen_specular as queen_specular
+
+    iso, dest, research = Path(iso), Path(dest), Path(research)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if not research.is_dir():
+        raise ValueError(f"research checkout not found: {research}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
+        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    target = dest / "Queen"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-queen"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    try:
+        imported = tmp / "import"
+        bulblax.extract(iso, research, imported, pose_limit=min(pose_limit, 8))
+        bulblax_bank.build(imported, tmp / "bank-raw", pose_limit=pose_limit)
+        queen_specular.prepare(imported, tmp / "bank-raw", tmp / "bank")
+        target.mkdir(parents=True)
+        shutil.copy2(imported / "bulblax.json", target / "bulblax.json")
+        shutil.copytree(tmp / "bank", target / "bank",
+                        ignore=shutil.ignore_patterns("KingChappy"))
+        (target / "identity.json").write_text(json.dumps(
+            {"schema": 1, "source_id": 30, "enum_name": "Queen",
+             "extractor": "extract_queen", "pose_limit": pose_limit}, indent=2) + "\n",
+            encoding="utf-8")
+    except BaseException:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return target
@@ -1539,6 +1617,7 @@ EXTRACTORS = {
     15: "extract_armor",
     75: "extract_kabuto",
     57: "extract_kurage",
+    72: "extract_onikurage",
     78: "extract_minihoudai",
     38: "extract_breadbug",
     79: "extract_sokkuri",
@@ -1549,6 +1628,7 @@ EXTRACTORS = {
     66: "extract_houdai",
     97: "extract_fminihoudai",
     58: "extract_bombsarai",
+    30: "extract_queen",
     12: "extract_uji",
     13: "extract_uji",
     14: "extract_uji",
@@ -1639,6 +1719,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 57:
             extract_kurage(iso, out)
+            extracted.append(source_id)
+        elif source_id == 72:
+            extract_onikurage(iso, out)
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out, pose_limit=pose_limit)
@@ -1777,6 +1860,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 75:
             extract_kabuto(iso, research, out, pose_limit=legacy_pose_limit)
+            extracted.append(source_id)
+        elif source_id == 30:
+            extract_queen(iso, research, out)
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
