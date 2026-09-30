@@ -67,7 +67,8 @@ def load_default_document():
 
 def ordinary_slots(document, area):
     """Ordinary enemy slots of ``area``: unprotected, non-boss, not a held-part
-    anchor, with full native evidence; document order."""
+    anchor; document order. Native probe evidence is not required (#948: an
+    unprobed slot is a to-do, not a restriction)."""
     if area not in AREAS:
         raise SmokeSeedError(f"unknown area {area!r}; expected one of {sorted(AREAS)}")
     _, stage, _ = AREAS[area]
@@ -77,8 +78,6 @@ def ordinary_slots(document, area):
         if slot['stage'] != stage or slot.get('protected') or slot.get('boss_slot'):
             continue
         if slot['uid'] in held:
-            continue
-        if not all(slot.get('evidence', {}).get(k, False) for k in ('xyz', 'terrain', 'route')):
             continue
         out.append(slot)
     return out
@@ -182,6 +181,12 @@ def build_override(document, roster, assignments, bosses=None):
     slots (constraints relaxed to the slot), each listed boss accepts exactly
     its arena's primary slot, every other identity accepts nothing.
 
+    An arena boss (73, 94, ...) listed in ``assignments`` is placed on those
+    ordinary slots like any other species (#948, CONTRIBUTING placement rule
+    4: the footprint/arena rule is relaxed to the slot for a smoke seed); its
+    profile drops ``is_boss`` so the bridge fills it in the ordinary pass.
+    A boss may not be both in ``assignments`` and ``bosses``.
+
     ``roster`` is the validated roster list; ``assignments`` {uid: source_id};
     ``bosses`` {source_id: arena_id}.
     """
@@ -197,9 +202,9 @@ def build_override(document, roster, assignments, bosses=None):
             raise SmokeSeedError(f'slot {uid} is not in the placement document')
         if sid not in by_source:
             raise SmokeSeedError(f'source id {sid} is not in the P2 roster')
-        if sid in boss_ids:
+        if sid in bosses:
             raise SmokeSeedError(
-                f'{sid} ({by_source[sid].enum_name}) is an arena boss; place it with --bosses {sid}:<arena_id>')
+                f'{sid} ({by_source[sid].enum_name}) is both in --species and --bosses; pick one')
     for sid, arena in bosses.items():
         if sid not in by_source:
             raise SmokeSeedError(f'boss source id {sid} is not in the P2 roster')
@@ -219,6 +224,12 @@ def build_override(document, roster, assignments, bosses=None):
         if identity in uids_by_identity:
             uids = sorted(uids_by_identity[identity])
             profile['accepted_slot_uids'] = uids
+            if profile.get('is_boss'):
+                # #948: ordinary-slot boss for a smoke seed; the arena rule
+                # is a real-seed data rule, not a cast list.
+                profile['is_boss'] = False
+                profile['encounter_descriptor'] = None
+                profile['notes'] = (profile.get('notes', '') + ' | #948 smoke override: boss on ordinary slot').strip(' |')
             terrains = list(profile.get('terrains') or [])
             for uid in uids:
                 terrain = slots_by_uid[uid]['terrain']
@@ -339,11 +350,12 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
 def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
-    return f"""# #944 smoke seed launcher: any playable P2 species on any ordinary slot.
-# Sets {SMOKE_ENV}=1 so the branch exe accepts the seed's bindings on
-# unapproved slots. Dev only; never use for a normal seed.
+    return f"""# #944/#948 smoke seed launcher: any playable P2 species on any ordinary slot.
+# The placement override document is the whole mechanism (#948: native has no
+# compiled slot lists). {SMOKE_ENV}=1 is set as the documented smoke marker.
+# Dev only; never use for a normal seed.
 param([string]$Exe = {ps(exe or '')}, [string]$Assets = {ps(assets)})
-if (-not $Exe) {{ throw 'pass -Exe <path to nectar.exe built from claude/p2-smoke-any-slot>' }}
+if (-not $Exe) {{ throw 'pass -Exe <path to nectar.exe built from claude/p2-placement-constraints or later>' }}
 $session = Join-Path {ps(session_root)} ('session-' + (Get-Date -Format 'MMdd-HHmm'))
 New-Item -ItemType Directory -Force $session | Out-Null
 $env:PYTHONUTF8 = '1'

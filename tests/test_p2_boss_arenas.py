@@ -138,9 +138,10 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
     def test_rebuild_is_idempotent(self):
-        from randomizer.p2_held_parts import apply_to_document as apply_held_parts
-        rebuilt = apply_held_parts(arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS))
-        self.assertEqual(rebuilt, _document())
+        # #948: the committed document is regenerated end to end (arenas,
+        # holders and constraint-derived accepted slots) by the generator.
+        from randomizer.p2_admitted_placement import build_admitted_document
+        self.assertEqual(build_admitted_document(), _document())
 
 
 
@@ -162,10 +163,15 @@ class HeldPartTransferTests(unittest.TestCase):
         finally:
             arenas.P1_BOSS_ARENAS = original
 
-    def test_goal_and_bestiary_arenas_stay_protected(self):
+    def test_only_the_goal_arena_stays_protected(self):
+        # Owner (#901 comment 5892787827): Emperor arena stays protected
+        # (finale); the Puffstool arena may take a P2 occupant and the part
+        # goes to it; every ship-part arena is open to P2 bosses (#948).
         by_id = arenas.arenas_by_id()
         self.assertTrue(arenas.arena_protected(by_id["last_emperor"]))
-        self.assertTrue(arenas.arena_protected(by_id["navel_puffstool"]))
+        for name in ("navel_puffstool", "hope_snagret_part", "navel_beady_long_legs",
+                     "spring_cannon_beetle"):
+            self.assertFalse(arenas.arena_protected(by_id[name]), name)
 
     def test_every_transfer_arena_holds_a_ship_part(self):
         for arena in arenas.P1_BOSS_ARENAS:
@@ -238,14 +244,22 @@ class SeedTests(unittest.TestCase):
         self.assertGreaterEqual(len(used), 2)
 
     def test_both_pool_bosses_get_an_arena(self):
-        # #246: the Titan (footprint 250) fits only impact_goolix (clear 275);
-        # the Crawbster (150) also fits hope_snagret_pit (200). Placing the
-        # most-constrained boss first seats both on every seed.
+        # Footprint vs measured clearance decides (#948): the Titan (250)
+        # fits Goolix 275 / Beady 250 / Puffstool 350 / Cannon Beetle 250, the
+        # Crawbster (150) every measured arena. Both are seated on every seed
+        # and the arena varies per seed.
+        titan_arenas = {"impact_goolix", "navel_beady_long_legs", "navel_puffstool",
+                        "spring_cannon_beetle"}
+        seen = {73: set(), 94: set()}
         for i in range(40):
             layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(placed, {73: "impact_goolix", 94: "hope_snagret_pit"})
+            self.assertEqual(set(placed), {73, 94})
+            self.assertIn(placed[73], titan_arenas)
+            self.assertNotEqual(placed[73], placed[94])
+            for source_id, arena in placed.items():
+                seen[source_id].add(arena)
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
                 if binding["source_id"] in (73, 94):
@@ -253,6 +267,8 @@ class SeedTests(unittest.TestCase):
                 else:
                     self.assertNotIn(binding["target"], self.all_arena)
             validate_layout(layout, self.roster)
+        self.assertGreater(len(seen[73]), 1)
+        self.assertGreater(len(seen[94]), 1)
 
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
         pool = sorted(PLAYABLE_P2_SPECIES)
@@ -292,7 +308,8 @@ class SeedTests(unittest.TestCase):
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
         self.assertEqual(sorted(row["source_id"] for row in placed), [73, 94])
-        self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), 64)
+        from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
+        self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
 
 
 if __name__ == "__main__":

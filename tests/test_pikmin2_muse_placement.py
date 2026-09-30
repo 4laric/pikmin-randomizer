@@ -45,13 +45,16 @@ def slots_by_uid(document):
 
 
 class MuseProfileTests(unittest.TestCase):
-    def test_one_profile_per_identity_with_single_accepted_slot(self):
+    def test_one_profile_per_identity_with_evidence_slot_in_notes(self):
+        # #948: the evidence slot is recorded, never written as the only
+        # accepted slot (CONTRIBUTING "Don't invent restrictions" rule 3).
         profiles = catalog.muse_candidate_profiles()
         self.assertEqual(len(profiles), 4)
         by_identity = {p['identity']: p for p in profiles}
         for source_id, (identity, slot_uid) in MUSE.items():
             profile = by_identity[identity]
-            self.assertEqual(profile['accepted_slot_uids'], [slot_uid])
+            self.assertNotIn('accepted_slot_uids', profile)
+            self.assertIn(str(slot_uid), profile['notes'])
             self.assertEqual(profile['accepted_gates'], [])
             self.assertTrue(profile['requires_corpse_route'])
             self.assertIn(f'source_id {source_id}', profile['notes'])
@@ -82,11 +85,15 @@ class MuseProfileTests(unittest.TestCase):
         profiles = profiles_by_identity(document)
         water = next(s for s in document['slots'] if s['terrain'] == 'water')
         air = next(s for s in document['slots'] if s['terrain'] == 'air')
-        for identity in ('Fuefuki', 'BombSarai', 'MiniHoudai'):
+        for identity in ('Fuefuki', 'MiniHoudai'):
             profile = profiles[identity]
             for slot in (water, air):
                 reasons = p2_placement.compatibility(slot, profile)
                 self.assertTrue(reasons, identity)
+        # #948: the Dirigibug hovers on the P1 flying vehicle, so air slots
+        # are in its terrain set; water still is not.
+        self.assertTrue(p2_placement.compatibility(water, profiles['BombSarai']))
+        self.assertEqual(p2_placement.compatibility(air, profiles['BombSarai']), [])
         kurage = profiles['Kurage']
         self.assertTrue(p2_placement.compatibility(air, kurage))
         route_less = dict(water)
@@ -117,11 +124,14 @@ class MuseProfileTests(unittest.TestCase):
     def test_default_document_unchanged(self):
         document = catalog.build_document()
         identities = {p['identity'] for p in document['profiles']}
-        for _, (identity, _) in MUSE.items():
-            self.assertNotIn(identity, identities)
+        for source_id, (identity, _) in MUSE.items():
+            if source_id == 58:
+                # #948: the Dirigibug is an ordinary pool candidate now.
+                self.assertIn(identity, identities)
+            else:
+                self.assertNotIn(identity, identities)
         groups = catalog.binding_target_groups()
-        self.assertEqual(sorted(groups['groups']),
-                         ['aquatic', 'dwarf', 'frog', 'ground', 'grub', 'open'])
+        self.assertEqual(sorted(groups['groups']), ['open'])  # #948: no cohorts
 
     def test_no_admission_pollution(self):
         from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
@@ -135,29 +145,36 @@ class MuseProfileTests(unittest.TestCase):
 
 
 class NativeContractSyncTests(unittest.TestCase):
-    HEADER_SLOTS = {
-        'FUEFUKI41': 41,
-        'KURAGE57': 57,
-        'BOMBSARAI58': 58,
-        'MINIHOUDAI78': 78,
-    }
+    """The native dispatcher carries no per-species slot constants (#948).
 
-    def test_header_slot_constants_match_catalog(self):
-        text = NATIVE_HEADER.read_text(encoding='utf-8')
-        for suffix, source_id in self.HEADER_SLOTS.items():
-            match = re.search(
-                rf'MUSE_GENERATED_SLOT_{suffix}\s*=\s*(\d+)u', text)
-            self.assertIsNotNone(match, suffix)
-            self.assertEqual(int(match.group(1)),
-                             catalog.MUSE_GENERATED_SLOTS[source_id], suffix)
+    CONTRIBUTING "Placement: don't hard-code where a species may go" rule 2:
+    evidence slot ids live in evidence documents, never in native spawn
+    gating. Skipped when the native checkout is not beside this repo.
+    """
+
+    def setUp(self):
+        if not NATIVE_HEADER.exists():
+            self.skipTest(f'native header not present: {NATIVE_HEADER}')
+        self.text = NATIVE_HEADER.read_text(encoding='utf-8')
+
+    def test_header_has_no_slot_constants(self):
+        for token in ('MUSE_GENERATED_SLOT_', 'WATERWRAITH_GENERATED_SLOT_',
+                      '_muse_slot(', '_waterwraith_slot('):
+            self.assertNotIn(token, self.text, token)
+        for slot_uid in catalog.MUSE_GENERATED_SLOTS.values():
+            self.assertNotIn(str(slot_uid), self.text)
+        source = NATIVE_HEADER.with_suffix('.cpp')
+        if source.exists():
+            body = source.read_text(encoding='utf-8')
+            self.assertNotIn('slot-rejected', body)
+            self.assertNotIn('pc_p2_campaign_placements.h', body)
 
     def test_header_declares_registry_queries(self):
-        text = NATIVE_HEADER.read_text(encoding='utf-8')
         for symbol in ('pc_p2_generated_placement_is_bound',
                        'pc_p2_generated_placement_bound_count',
                        'pc_p2_generated_placement_forget',
                        'pc_p2_generated_placement_reset'):
-            self.assertIn(symbol, text)
+            self.assertIn(symbol, self.text)
 
 
 def synthetic_log(entries):

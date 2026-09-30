@@ -191,7 +191,12 @@ def test_proxy_accepted_targets_extends_only_ground_proxies():
     water_row["terrains"] = ["water"]
     accepted_water = _proxy_accepted_targets(document, [water_row], roster,
                                              proxy_document=sibling)
-    assert accepted_water[42] == set()
+    # #948: the admitted document now carries the 10 aquatic campaign slots,
+    # so a water-only row sees exactly those and nothing else.
+    water_uids = {str(s["uid"]) for s in document["slots"] if s["terrain"] == "water"}
+    assert water_uids
+    assert accepted_water[42] == water_uids & set().union(
+        *_accepted_placement_targets(document, roster).values())
 
     # The audit-derived union is extended only by the shared singletons:
     # without the sibling the exclusive singletons never appear (there are
@@ -213,18 +218,15 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     sibling = _sibling()
     report = placement.audit(document)
     assert set(report["admitted"]) >= {"BlueKochappy", "Miulin"}
-    # Six-gate accepted sets never contain any proxy-EXCLUSIVE slot (the 2
-    # shared singletons are legitimately admitted; see SHARED above).
-    for uids in report["admitted"].values():
-        assert not (PROXY_EXCLUSIVE & {str(uid) for uid in uids})
-
+    # #948 (#951 U12): the pack slots are ordinary campaign generators, so
+    # six-gate species may be accepted there too; the sibling adds no slot
+    # the admitted document does not already carry.
     first = resolve_placement_layout("stageA-invariance", "Player1", document,
                                      roster, species=list(PLAYABLE_P2_SPECIES))
     second = resolve_placement_layout("stageA-invariance", "Player1", document,
                                       roster, species=list(PLAYABLE_P2_SPECIES),
                                       proxy_document=sibling)
     assert first == second
-    assert all(b["target"] not in PROXY_EXCLUSIVE for b in first["bindings"])
 
     manifest = generate("stageA-parity", p2_enemies=True, p2_species="playable")
     manifest_none = generate("stageA-parity", p2_enemies=True,
@@ -232,15 +234,16 @@ def test_six_gate_invariance_and_no_tier_byte_identical():
     assert manifest == manifest_none
     assert "p2_proxy_tier" not in manifest
     # #893: a no-tier pool that outgrows the slots is sampled (sampled-v1);
-    # either way it never reaches the proxy-only slots (checked below).
+    # since #948 the pool fits the constraint-derived target set.
     assert manifest["p2_layout"].get("density", "all-targets-v1") in ("all-targets-v1", "sampled-v1")
-    assert all(b["target"] not in PROXY_EXCLUSIVE for b in manifest["p2_layout"]["bindings"])
     validate(manifest)
 
 
 def _synthetic_65_document():
+    """One slot more than the native binding cap (#948: P2_MAX_BINDINGS)."""
+    from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
     slots = []
-    for index in range(65):
+    for index in range(P2_MAX_BINDINGS + 1):
         uid = 1000 + index
         slots.append({
             "uid": uid,
@@ -279,8 +282,9 @@ def test_sampler_cap_and_reserved_and_sorted():
                                       roster, species=[44, 54, 10, 11],
                                       proxy_rows=proxy_rows,
                                       proxy_document=sibling)
+    from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
     assert layout["density"] == "sampled-v1"
-    assert len(layout["bindings"]) <= 64
+    assert len(layout["bindings"]) <= P2_MAX_BINDINGS
     targets = [b["target"] for b in layout["bindings"]]
     assert len(targets) == len(set(targets))
     assert targets == sorted(targets, key=lambda item: (len(item), item))
@@ -292,12 +296,6 @@ def test_sampler_cap_and_reserved_and_sorted():
     for reserved_target in RESERVED:
         if reserved_target in by_target:
             assert by_target[reserved_target] in set(PLAYABLE_P2_SPECIES)
-
-    # Six-gate identities are never placed on the proxy-EXCLUSIVE slots (the
-    # 2 shared singletons are legitimately admitted; see SHARED above).
-    for binding in layout["bindings"]:
-        if binding["target"] in PROXY_EXCLUSIVE:
-            assert binding["source_id"] not in set(PLAYABLE_P2_SPECIES)
 
     grown = _synthetic_65_document()
     with pytest.raises(SeedBridgeError):
@@ -408,12 +406,14 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
             assert binding["source_id"] in eligible[binding["target"]], (
                 seed, binding["target"], binding["source_id"])
             if binding["target"] in PACKS:
-                assert binding["source_id"] in small_ids, (
+                # #948: a pack target hosts a small-host proxy or any
+                # roster-admitted species (the pack slots are ordinary
+                # campaign generators; #951 U12/U13).
+                assert (binding["source_id"] in small_ids
+                        or binding["source_id"] in set(PLAYABLE_P2_SPECIES)), (
                     seed, binding["target"], binding["source_id"])
-        # The same pool fits the 35-slot base document exactly (8 playable
-        # + 10 pool + 17 proxies = 35): nothing is unplaced, every
-        # binding is distinct (no repeat steals a slot), and nothing in
-        # the pool is lost.
+        # The same pool fits the base document (#948: 72 ordinary targets):
+        # nothing is unplaced and nothing in the pool is lost.
         base = resolve_placement_layout(
             seed, "Player1", document, roster, species=pool,
             proxy_rows=proxy_rows)
@@ -424,7 +424,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
         held = {row["target"] for row in base.get("held_parts", {}).get("placed", [])}
         base_ordinary = [b for b in base["bindings"] if b["target"] not in held]
         base_counts = Counter(b["source_id"] for b in base_ordinary)
-        assert all(count == 1 for count in base_counts.values()), (
+        assert all(count >= 1 for count in base_counts.values()), (
             seed, base_counts)
         assert {b["source_id"] for b in base_ordinary} == set(pool), (
             seed, base_unplaced)
@@ -442,13 +442,10 @@ def test_generate_parity_with_declared_dwarf_hosts():
     validate(manifest)
 
 
-def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
-    """With more species than targets every target carries a distinct species,
-    except where the pack rule forces small-host repeats.
-
-    The 14 pack targets only accept the 2 small-host proxies (10/11), so
-    repeats there are required, not wasted. Non-pack targets must still be
-    pairwise distinct.
+def test_sampled_layout_covers_the_full_pool():
+    """The full declared pool fits the constraint-derived target set (#948):
+    every species is bound at least once, nothing is unplaced, and pack
+    targets carry a small-host proxy or a roster-admitted species only.
     """
     from collections import Counter
     from randomizer.p2_proxy import load_rows
@@ -458,20 +455,11 @@ def test_sampled_layout_never_wastes_a_slot_on_a_repeat():
         layout = generate(seed, "solo", "Player1", p2_enemies=True, p2_species="full",
                           p2_proxy_tier="declared")["p2_layout"]
         counts = Counter(binding["source_id"] for binding in layout["bindings"])
-        pool = len(counts) + len(layout.get("unplaced", []))
-        assert pool > len(layout["bindings"]), "test needs a pool larger than the target set"
-        pack_counts = Counter()
-        plain_counts = Counter()
-        # #901: a held-part holder slot draws from the roster-admitted pool
-        # only; the unplaced species here are proxies it cannot host, so a
-        # repeat there is not a wasted slot.
+        assert not layout.get("unplaced"), layout.get("unplaced")
+        assert set(PLAYABLE_P2_SPECIES) <= set(counts)
         held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
         for binding in layout["bindings"]:
             if binding["target"] in held:
                 continue
-            (pack_counts if binding["target"] in PACKS else plain_counts)[binding["source_id"]] += 1
-        assert len(plain_counts) == sum(plain_counts.values()), (
-            {k: v for k, v in plain_counts.items() if v > 1})
-        assert set(pack_counts) <= {10, 11}, dict(pack_counts)
-        for source_id in pack_counts:
-            assert host_by_id[source_id] in PACK_HOSTS, source_id
+            if binding["target"] in PACKS and binding["source_id"] not in set(PLAYABLE_P2_SPECIES):
+                assert host_by_id[binding["source_id"]] in PACK_HOSTS, binding

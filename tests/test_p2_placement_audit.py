@@ -97,8 +97,11 @@ def test_matched_stamping_admits_injected():
     report = auditplugin.run_audit(probe, catalog_doc=catalog_doc(), arena_stage=0)
     assert report['catalog_join'] is True
     assert report['matched_slot_uids'] == [111]
-    assert report['injected_legal_admitted']['YellowKochappy'] == [111]
-    assert report['injected_legal_admitted']['BlueKochappy'] == [111]
+    # #948: probe evidence no longer gates, so every constraint-compatible
+    # ground slot is admitted once the gates are injected; 111 among them.
+    assert 111 in report['injected_legal_admitted']['YellowKochappy']
+    assert 111 in report['injected_legal_admitted']['BlueKochappy']
+    assert 444 not in report['injected_legal_admitted']['BlueKochappy']
     assert report['slot_evidence']['111'] == {'xyz': True, 'terrain': True, 'route': True}
 
 

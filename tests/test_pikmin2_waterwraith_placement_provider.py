@@ -106,7 +106,9 @@ class WaterwraithProfileTests(unittest.TestCase):
         self.assertFalse(self.profile['is_boss'])
         self.assertEqual(self.profile['helper_budget'], 0)
         self.assertEqual(self.profile['accepted_gates'], [])
-        self.assertEqual(self.profile['accepted_slot_uids'], [WATERWRAITH_SLOT])
+        # #948: the evidence slot is in the notes, not an accepted-slot list.
+        self.assertNotIn('accepted_slot_uids', self.profile)
+        self.assertIn(str(WATERWRAITH_SLOT), self.profile['notes'])
 
     def test_source_id_and_slot_helpers(self):
         self.assertEqual(catalog.waterwraith_candidate_source_ids(),
@@ -128,14 +130,16 @@ class WaterwraithProfileTests(unittest.TestCase):
         self.assertEqual(result['status'], 'denied')
         self.assertIn('no accepted placement evidence', result['reasons'])
 
-    def test_mismatched_slot_is_denied(self):
+    def test_other_ground_slot_is_denied_only_for_missing_admission(self):
+        # #948: no slot-id gate. The candidate profile is still default-deny
+        # (no accepted gates), but another ground slot is constraint-compatible.
         document = catalog.build_waterwraith_document()
         other = next(s for s in document['slots']
                      if s['uid'] != WATERWRAITH_SLOT and s['terrain'] == 'ground')
         result = evaluate(other, self.profile)
         self.assertEqual(result['status'], 'denied')
-        self.assertIn('slot has no accepted placement evidence for this identity',
-                      result['reasons'])
+        self.assertEqual(result['reasons'], ['no accepted placement evidence'])
+        self.assertEqual(compatibility(other, self.profile), [])
 
     def test_unsupported_source_id_raises(self):
         with self.assertRaises(ValueError):

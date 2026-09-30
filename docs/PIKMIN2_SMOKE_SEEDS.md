@@ -1,20 +1,20 @@
-# P2 smoke seeds: any playable species on any ordinary slot (#944)
+# P2 smoke seeds: any playable species on any ordinary slot (#944, #948)
 
 Owner ruling (2026-09-29): hand-played smoke seeds ignore the committed
-placement approvals. Normal seeds keep full enforcement; nothing below changes
-the committed document, the bridge, or the native default.
+placement approvals. Since #948 the root placement document is the only
+placement rule there is: native carries no compiled slot lists, so a smoke
+seed only needs an override *document* (below); no native switch is required
+to bypass anything. Normal seeds keep the committed document.
 
 Two halves:
 
-* **Native** (`pc_port/pc_p2_smoke_any_slot.h`): `PIKMIN_P2_SMOKE_ANY_SLOT=1`
-  makes the generated-placement binder accept the seed's own binding on any
-  slot (`P2_GENERATED_PLACEMENT ... bound=1 bypass=1` instead of
-  `bound=0 reason=slot-rejected`). Unset = inert. Logged once as
-  `P2_SMOKE_ANY_SLOT enabled`. `pc_p2_smoke_any_slot_force_off("netplay")`
-  latches it off for a process; a netplay session start must call it. Host
-  substitution (`p2campaign::hostType`) and each family's own host/content
-  bind are unchanged, so a family that cannot run on its host still reports
-  its usual `*_UNBOUND ... reason=host_type*` line rather than a silent accept.
+* **Native**: spawns whatever the seed binds. A binding is refused only for a
+  runtime incompatibility and always with a `reason=` (`seed-target-mismatch`,
+  `protected-drop`, `no-campaign-module`, `registry-full`, or a family's
+  `*_UNBOUND ... reason=host_type_mismatch` / `unstaged_*`). The
+  `PIKMIN_P2_SMOKE_ANY_SLOT=1` switch (`pc_port/pc_p2_smoke_any_slot.h`) is
+  still set by the launcher as the documented smoke-seed marker and keeps the
+  netplay force-off latch, but no placement decision depends on it any more.
 * **Root** (`scripts/p2_smoke_seed.py`): builds an override placement document
   that pins the listed species round-robin onto an area's ordinary slots
   (optionally the N nearest the landing site, `navi_start` = 0,0), pins bosses
@@ -43,15 +43,19 @@ py -3.12 scripts/p2_smoke_seed.py --area foh --slots 4 --near-start `
   seed was generated from.
 * The cache is per enum dir (`<cache>/<Enum>/`); a species the cache lacks is
   extracted from `--iso` into the run's `content/` and copied back.
-* The exe must be built from a branch carrying `pc_p2_smoke_any_slot.h`
-  (native `claude/p2-smoke-any-slot` or later). An older exe simply logs
-  `slot-rejected` for the muse-observer species (41/57/58/78); their own
-  family modules still bind by host type.
+* The exe must be built from native `claude/p2-placement-constraints` (#948)
+  or later: no compiled slot list, every refusal logged with a `reason=`.
+  An exe older than #944 logs `slot-rejected` for the sidecar-recorded
+  species (57/58/78/99) on any slot outside its compiled constant.
+* Every ordinary campaign generator is a candidate slot now (ground, grub,
+  frog, aquatic, flying and dwarf cohorts); `--near-start` sorts them by
+  distance from the ship, so the first few are the ones the owner walks
+  into. Arena bosses (73/94) may also go in `--species` when the smoke
+  override should put them on an ordinary slot (the override relaxes the
+  footprint to the slot; real seeds keep the arena rule).
 
 ## Evidence to look for
 
-* `P2_SMOKE_ANY_SLOT enabled` once at first bind.
-* `P2_GENERATED_PLACEMENT source_id=58 target=<uid> generator=<uid> bound=1 bypass=1`.
+* `P2_GENERATED_PLACEMENT source_id=58 target=<uid> generator=<uid> bound=1`.
 * The family's own bind, e.g. `P2_BOMBSARAI_OWN_BIND source_id=58 token=<uid> host_type=11`.
-* Without the env var (a normal launch of the same seed) the same binding logs
-  `bound=0 reason=slot-rejected`: enforcement intact.
+* Any refusal carries a `reason=`; `slot-rejected` no longer exists.

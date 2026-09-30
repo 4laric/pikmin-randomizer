@@ -33,7 +33,9 @@ OTAKARA = [59, 60, 61, 62]
 # parameter must not perturb any existing seed, P2 or not.
 LEGACY_FINGERPRINT = "7b99245bc9f541e0ff13d35429c0f244ae787c1716c013d6f2020235a6c71a79"
 # #901: the held-part layer binds the Puffy Blowhog uf02 holder slot too.
-P2_LEGACY_FINGERPRINT = "d4eeea58fc781aa83d26cee5a4e170cc6e98c3a703ffd42d005c13d08da65577"
+# #948: the committed document is constraint-derived (72 ordinary slots),
+# so the P2 legacy fingerprint moved with it.
+P2_LEGACY_FINGERPRINT = "477718135ded5b4ed1fcda2d259a9d3c4026bb31f98c4188699322d74148df40"
 
 
 def ordinary_bindings(manifest):
@@ -51,6 +53,17 @@ def sources(manifest):
     return sorted(binding["source_id"] for binding in manifest["p2_layout"]["bindings"])
 
 
+def sarai_ordinary_target_count():
+    """Ordinary (non-holder) slots the committed document accepts for Sarai (#948)."""
+    import json
+    from pathlib import Path
+    doc = json.loads((Path(__file__).resolve().parents[1] / "docs" / "PIKMIN2_ADMITTED_PLACEMENT.json")
+                     .read_text(encoding="utf-8"))
+    held = {row["uid"] for row in doc.get("held_parts", [])}
+    sarai = next(p for p in doc["profiles"] if p["identity"] == "Sarai")
+    return len([uid for uid in sarai["accepted_slot_uids"] if uid not in held])
+
+
 def run_cli(*arguments):
     env = dict(os.environ, PYTHONPATH=str(ROOT))
     return subprocess.run([sys.executable, "-m", "randomizer", *arguments],
@@ -63,7 +76,7 @@ def run_cli(*arguments):
 def test_legacy_default_is_the_all_target_fill():
     manifest = p2_manifest(species=[SARAI])
     assert manifest["p2_layout"]["density"] == DENSITY_LEGACY
-    assert len(ordinary_bindings(manifest)) == 35
+    assert len(ordinary_bindings(manifest)) == sarai_ordinary_target_count()
     assert set(sources(manifest)) == {SARAI}
 
 
@@ -157,7 +170,7 @@ def test_cli_default_is_legacy(tmp_path):
     assert result.returncode == 0, result.stderr
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert manifest["p2_layout"]["density"] == DENSITY_LEGACY
-    assert len(ordinary_bindings(manifest)) == 35
+    assert len(ordinary_bindings(manifest)) == sarai_ordinary_target_count()
 
 
 def test_cli_rejects_unknown_density(tmp_path):

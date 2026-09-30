@@ -95,7 +95,7 @@ def test_accepted_slot_uids_restrict_a_profile():
     outside['uid'] = 999_999_999
     verdict = p2_placement.evaluate(outside, profile)
     assert verdict['status'] == 'denied'
-    assert any('accepted placement evidence for this identity' in r for r in verdict['reasons'])
+    assert any('not in the accepted slot list' in r for r in verdict['reasons'])
 
 
 def test_accepted_document_seeds_the_whole_admitted_cohort():

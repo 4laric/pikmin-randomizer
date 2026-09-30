@@ -20,9 +20,13 @@ Sources of truth:
 - ``docs/PIKMIN2_ENEMY_ROSTER.json`` (lane 02): the canonical P2 ``source_id``,
   enum name and drop type this module keys candidate profiles on.
 
-Terrain classes are derived from the campaign cohort, not from a native terrain
-probe, so slot ``evidence.terrain`` and ``evidence.route`` stay false and the
-top-level placement gate stays denied until a family lane or QA supplies them.
+Terrain classes are derived from the campaign cohort (the P1 species class the
+generator spawns in vanilla), not from a native terrain probe, so slot
+``evidence.terrain`` and ``evidence.route`` stay false until a probe runs.
+Since #948 that evidence is recorded, not required: a slot's physical fields
+are the constraint (CONTRIBUTING "Placement: don't hard-code where a species
+may go"), and :mod:`randomizer.p2_admitted_placement` derives every admitted
+profile's ``accepted_slot_uids`` from those constraints.
 """
 import argparse
 import json
@@ -50,18 +54,21 @@ COHORT_TERRAIN = {
 
 # terrain class -> slot capability defaults used by the lane-04 adapters.
 GROUND_TERRAINS = ('ground', 'mixed')
-# Blue Pikmin can carry a corpse back through water, so submerged slots also
-# expose a corpse return route; only airborne slots do not.
-CORPSE_TERRAINS = ('ground', 'mixed', 'water')
+# Every campaign generator hosts a carryable P1 enemy in vanilla (the flying
+# cohort's Snitchbugs and Puffy Blowhogs drop to the ground below the spawn
+# and are carried from there; Blue Pikmin carry through water), so every
+# cohort's slots expose a corpse return route. Air was excluded until #948
+# without a source (#951 U5).
+CORPSE_TERRAINS = ('ground', 'mixed', 'water', 'air')
 
 # Lane 02 source_id -> candidate placement profile for the initial cohort.
 # `p1_equivalent` is the P1 catalog id whose campaign pool already routes to
 # the same behavior; None means no equivalent pool exists yet.
 # Fields: source_id, identity, lane, terrains, p1_equivalent.
-# P1 catalog id -> production campaign cohort. A candidate that maps to a P1
-# equivalent inherits that cohort so it cannot occupy a foreign placement class
-# (e.g. a Sheargrub identity may not fill an aquatic slot) even when the terrain
-# class would otherwise match.
+# P1 catalog id -> production campaign cohort. Descriptive only since #948
+# (#951 U15): a candidate's P1 equivalent no longer confines it to that
+# cohort's slots; the terrain/water fields express the physical need and the
+# profile's ``cohort`` is written as ``None``.
 P1_COHORT = {
     3: 'dwarf', 31: 'dwarf',
     18: 'grub', 19: 'grub', 20: 'grub',
@@ -110,8 +117,11 @@ CANDIDATE_SPECS = (
     # the source nest fact stays on the roster. Bloysters (71/101) likewise
     # bind ordinary slots (rev2-worms); they stay listed in BOSS_COHORT for
     # the arena-descriptor path and are ground candidates here.
-    (17, 'Frog', 16, ['mixed', 'ground'], 0, False),
-    (18, 'MaroFrog', 16, ['mixed', 'ground'], 33, False),
+    # #948: the Wollywogs are amphibious in their source game (they sit in
+    # and leap out of water), so the submerged aquatic-cohort slots are in
+    # their terrain set too, next to the shore (mixed) and ground slots.
+    (17, 'Frog', 16, ['mixed', 'ground', 'water'], 0, False),
+    (18, 'MaroFrog', 16, ['mixed', 'ground', 'water'], 33, False),
     (26, 'Catfish', 16, ['water'], 30, False),
     (27, 'Tadpole', 16, ['water'], 25, False),
     (63, 'Jigumo', 16, ['ground'], None, False),
@@ -137,10 +147,12 @@ CANDIDATE_SPECS = (
     (62, 'ElecOtakara', 22, ['ground'], None, False),
     # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
     # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
-    (23, 'Sarai', 30, ['ground'], None, False),
+    # #948: the snitchbugs fly (Sarai::Obj hovers above its anchor), so the
+    # P1 flying-cohort slots (air) are in their terrain set as well as ground.
+    (23, 'Sarai', 30, ['ground', 'air'], None, False),
     # #215: Demon (Bumbling Snitchbug) is a Sarai::Obj subclass and binds the
-    # same generated ground slots on the Sarai manager (profile Demon).
-    (32, 'Demon', 30, ['ground'], None, False),
+    # same generated slots on the Sarai manager (profile Demon).
+    (32, 'Demon', 30, ['ground', 'air'], None, False),
     # Roster wave (#871): campaign-proven ground bindings for the remaining
     # pool identities. Segmented Crawbster (94) shares the snagret bank/family
     # with the snagret pair (34/70, lane 25); Beady/Raging Long Legs (56/69,
@@ -159,6 +171,13 @@ CANDIDATE_SPECS = (
     # #898: Breadbug (PanModoki 38) binds campaign ground slots; its OWN
     # campaign run bound spring_init_7002 (native TEKI_Collec placement type).
     (38, 'PanModoki', 18, ['ground'], 8, False),
+    # #948 (#951 U4): Careening Dirigibug (58) is an ordinary pool species
+    # (admitted #244). It hovers on the P1 flying vehicle TEKI_Napkid, so it
+    # takes ground slots (hover above the spot) and the flying-cohort air
+    # slots. Its first evidence run happened to use Distant Spring
+    # ``init.gen@7416`` (1787125272); that is evidence for that slot, not a
+    # restriction on the others.
+    (58, 'BombSarai', 27, ['ground', 'air'], None, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
@@ -186,7 +205,10 @@ GROUND_INVERT_FACTS = {
     'TamagoMushi': {
         'terrains': ['ground', 'underground'], 'footprint_radius': 18, 'min_water_depth': 0,
         'requires_burrow_ground': True, 'requires_home': False,
-        'helper_budget': 10, 'requires_corpse_route': True,
+        # The 10/30 group cap is a manager parameter, not a slot need: 68 was
+        # admitted on ordinary slots with helper_capacity 0 (#871 roster wave),
+        # so the budget is 0 here (#948).
+        'helper_budget': 0, 'requires_corpse_route': True,
     },
     'Sokkuri': {
         'terrains': ['ground', 'mixed', 'water'], 'footprint_radius': 25, 'min_water_depth': 0,
@@ -200,17 +222,18 @@ GROUND_INVERT_FACTS = {
     },
 }
 
-# Muse placement slice (#492): candidate-only legal-slot profiles for
-# Fuefuki41, Kurage57, BombSarai58 and MiniHoudai78.
+# Muse placement slice (#492): constraint profiles for Fuefuki41, Kurage57,
+# BombSarai58 and MiniHoudai78.
 #
-# Each entry carries exactly one defensible generated slot (`accepted_slot_uid`)
-# plus the P1 placement vehicle the family sidecar binds. Profiles ship with
-# empty `accepted_gates`, so `evaluate` still denies every pair until a family
-# lane or QA supplies accepted native terrain/route evidence; `compatibility`
-# (constraint-only) already resolves the accepted slot. Nothing here admits an
-# identity or touches ordinary random pools.
+# Each entry records the generated slot its first evidence run used
+# (`evidence_slot_uid`) plus the P1 placement vehicle the family sidecar
+# binds. Since #948 the evidence slot is NOT written into
+# ``accepted_slot_uids``: a profile accepts every constraint-compatible slot,
+# and the evidence slot stays in the notes and the evidence documents
+# (CONTRIBUTING "Don't invent restrictions" rule 3). Profiles ship with empty
+# `accepted_gates`, so `evaluate` still denies every pair until admission.
 # Fields: source_id, identity, legacy_lane, muse_lane, terrains,
-# accepted_slot_uid, vehicle.
+# evidence_slot_uid, vehicle.
 MUSE_CANDIDATE_SPECS = (
     # Antenna Beetle: ground follower on the Napkid11 vehicle (lane-28 pattern,
     # cf. Sarai ground profile). Hope ground slot, renewable, corpse route.
@@ -224,7 +247,7 @@ MUSE_CANDIDATE_SPECS = (
     # vehicle position with hover above a ground slot. Spring ground slot,
     # renewable, corpse route. The two Bomb payloads are family-internal and
     # are not slot helpers (helper_budget stays 0).
-    (58, 'BombSarai', 27, 59, ['ground'], 1787125272, 'Napkid11'),
+    (58, 'BombSarai', 27, 59, ['ground', 'air'], 1787125272, 'Napkid11'),
     # Gatling Groink: live generated host actor with carcass sidecar (lane-21
     # `p2-groink-teki.txt`); ground shooter, volley corridor is a family-run
     # gate, not a placement constraint. Navel ground slot, renewable, corpse
@@ -232,29 +255,29 @@ MUSE_CANDIDATE_SPECS = (
     (78, 'MiniHoudai', 21, 60, ['ground'], 328297937, 'GroinkHost'),
 )
 
-# Native generated-placement bind contract mirror. The dispatcher in
-# `native/pc_port/pc_p2_generated_placement.{h,cpp}` carries the same
-# (source_id -> accepted slot uid) table as `MUSE_GENERATED_SLOT_UID`
-# constants; `tests/test_pikmin2_muse_placement.py` fails if the two drift.
+# Evidence slots of the #492 muse runs (source_id -> slot uid). Historic
+# record for the evidence documents and log correlation tools; native carries
+# no mirror of it since #948 (the compiled `MUSE_GENERATED_SLOT_*` constants
+# and `slot-rejected` refusals are gone) and nothing gates placement on it.
 MUSE_GENERATED_SLOTS = {
     source_id: slot_uid for source_id, _, _, _, _, slot_uid, _ in MUSE_CANDIDATE_SPECS
 }
 
 MUSE_CANDIDATE_IDS = frozenset(MUSE_GENERATED_SLOTS)
 
-# Provider slice (#575): candidate-only generated-placement profile for
-# Waterwraith BlackMan99 so consumer #572 can attempt a real gate1. This table
-# is deliberately SEPARATE from the #492 muse table so `MUSE_CANDIDATE_IDS`
-# stays {41,57,58,78} and every existing muse/placement test keeps its meaning.
+# Provider slice (#575): constraint profile for Waterwraith BlackMan99 so
+# consumer #572 can attempt a real gate1. This table is deliberately SEPARATE
+# from the #492 muse table so `MUSE_CANDIDATE_IDS` stays {41,57,58,78}.
 #
-# Slot choice (one defensible real production slot; never a fixed-encounter
-# UID): 568677317 navel_0-29_645, stage-2 Navel water-cavern generator, ground
-# cohort, unprotected, renewable (respawn_days 5), corpse route, radius 100.
-# Rationale: Waterwraith is the water-cavern boss and this is the lowest-UID
-# unused ground slot in the water-themed Navel cohort that already satisfies
-# the ground + corpse-route contract.
-# Vehicle: the lane-31 Waterwraith register seam owns behavior; this native arm
-# only records placement acceptance (bound=1), exactly like #492.
+# Evidence slot: 568677317 navel_0-29_645, stage-2 Navel water-cavern
+# generator, ground cohort, unprotected, renewable (respawn_days 5), corpse
+# route, radius 100. That is where the provider run happened; since #948 the
+# profile accepts every constraint-compatible ground slot with a corpse route
+# (the native `WATERWRAITH_GENERATED_SLOT_BLACKMAN99` constant is gone; the
+# encounter consumer joins the seed's own `p2-waterwraith-generated.txt`
+# sidecar generator/slot pair instead).
+# Vehicle: the lane-31 Waterwraith register seam owns behavior; the native
+# bind arm only records placement acceptance (bound=1), exactly like #492.
 # Tyre98 is the BlackMan manager child (enemyInfo.cpp child_count 1); it is
 # never an independently seeded identity and helper_budget stays 0.
 # Fields: source_id, identity, family_lane, consumer_lane, terrains,
@@ -439,7 +462,8 @@ def candidate_profiles():
             'identity': identity,
             'terrains': list(facts.get('terrains', terrains)),
             'family_lane': lane,
-            'cohort': cohort,
+            # Descriptive in the notes only; never a constraint (#948).
+            'cohort': None,
             'requires_home': facts.get('requires_home', requires_home),
             'requires_corpse_route': facts.get('requires_corpse_route', True),
             'accepted_gates': [],
@@ -503,10 +527,11 @@ def candidate_source_ids():
 def muse_candidate_profiles():
     """Return default-deny placement profiles for the #492 muse cohort.
 
-    One profile per identity, each naming its single defensible generated
-    slot via `accepted_slot_uids`. `accepted_gates` stays empty so `evaluate`
-    denies every pair (fail closed) until accepted native evidence lands;
-    `compatibility` already accepts the named slot on constraints alone.
+    One constraint profile per identity. `accepted_gates` stays empty so
+    `evaluate` denies every pair (fail closed) until admission; the profile
+    carries no `accepted_slot_uids`, so once admitted it accepts every
+    constraint-compatible slot (#948). The evidence slot is recorded in the
+    notes only.
     """
     profiles = []
     for (source_id, identity, legacy_lane, muse_lane, terrains, slot_uid,
@@ -517,13 +542,22 @@ def muse_candidate_profiles():
             'family_lane': legacy_lane,
             'requires_corpse_route': True,
             'accepted_gates': [],
-            'accepted_slot_uids': [slot_uid],
             'notes': (f"P2 source_id {source_id}; muse placement slice #492; "
                       f"legacy lane {legacy_lane} / muse observer lane {muse_lane}; "
-                      f"vehicle {vehicle}; accepted generated slot {slot_uid}; "
-                      f"native placement gate pending family lane {legacy_lane}."),
+                      f"vehicle {vehicle}; evidence slot {slot_uid} (evidence, not a "
+                      f"restriction, #948)."),
         }))
     return profiles
+
+
+def _merge_profiles(primary, secondary):
+    """Concatenate profile lists; an identity already in ``primary`` wins.
+
+    BombSarai (58) is both an ordinary candidate (#948) and a muse #492
+    candidate; the candidate profile carries its full constraint set.
+    """
+    names = {profile['identity'] for profile in primary}
+    return list(primary) + [profile for profile in secondary if profile['identity'] not in names]
 
 
 def muse_candidate_source_ids():
@@ -541,7 +575,7 @@ def build_muse_document(slots=None, include_bosses=False):
     """
     if slots is None:
         slots = all_slots()
-    profiles = candidate_profiles() + muse_candidate_profiles()
+    profiles = _merge_profiles(candidate_profiles(), muse_candidate_profiles())
     document = {
         'schema': SCHEMA,
         'slots': list(slots),
@@ -590,14 +624,12 @@ def waterwraith_candidate_profile():
         "family_lane": family_lane,
         "requires_corpse_route": True,
         "accepted_gates": [],
-        "accepted_slot_uids": [slot_uid],
         "helper_budget": 0,
         "notes": ("P2 source_id %d; provider slice #575; family lane %d / "
-                  "consumer lane %d; vehicle %s; accepted generated slot %d; "
-                  "Tyre98 is a manager child, never a seeded identity; native "
-                  "placement gate pending consumer lane %d."
-                  % (source_id, family_lane, consumer_lane, vehicle, slot_uid,
-                     consumer_lane)),
+                  "consumer lane %d; vehicle %s; evidence slot %d (evidence, not a "
+                  "restriction, #948); Tyre98 is a manager child, never a seeded "
+                  "identity."
+                  % (source_id, family_lane, consumer_lane, vehicle, slot_uid)),
     })
 
 
@@ -619,7 +651,7 @@ def build_waterwraith_document(slots=None, include_bosses=False):
     """
     if slots is None:
         slots = all_slots()
-    profiles = candidate_profiles() + muse_candidate_profiles()
+    profiles = _merge_profiles(candidate_profiles(), muse_candidate_profiles())
     profiles = profiles + [waterwraith_candidate_profile()]
     document = {
         "schema": SCHEMA,
@@ -736,6 +768,54 @@ def binding_targets(identities, document=None, targets=None):
     return sorted(common, key=int)
 
 
+def identities_for_sources(source_ids, document=None):
+    """Map lane-02 source ids to the identity names in ``document``.
+
+    The hand tables above (``CANDIDATE_SPECS``, the muse and Waterwraith
+    specs) are consulted first; any other id resolves through the roster
+    (``docs/PIKMIN2_ENEMY_ROSTER.json`` enum names), so a newly admitted
+    species needs no Python tuple edit to be placeable (#948, #951 U10). An
+    id whose identity has no profile in ``document`` raises.
+    """
+    known = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    known.update({source_id: identity for identity, source_id in muse_candidate_source_ids().items()})
+    known.update({source_id: identity for identity, source_id in waterwraith_candidate_source_ids().items()})
+    profiles = None
+    if document is not None:
+        profiles = {profile.get('identity') for profile in document.get('profiles', [])}
+    identities = []
+    for source_id in source_ids:
+        identity = known.get(source_id)
+        if identity is None:
+            from experimental.pikmin2_enemy_roster import load_roster
+            for entry in load_roster():
+                if entry.source_id == source_id:
+                    identity = entry.enum_name
+                    break
+        if identity is None:
+            raise ValueError(f'source id {source_id} is not a roster identity')
+        if profiles is not None and identity not in profiles:
+            raise ValueError(f'source id {source_id} ({identity}) has no placement profile')
+        identities.append(identity)
+    return identities
+
+
+def binding_targets_union_for_sources(source_ids, document):
+    """Return the union of constraint-compatible targets over ``source_ids``.
+
+    This is the ordinary target set a seed may fill (#948): every slot at
+    least one of the listed identities can physically occupy, sorted by uid.
+    The bridge pairs each target with the identities the document *accepts*
+    there. (`binding_targets` below is the older flat-cohort intersection.)
+    """
+    identities = identities_for_sources(source_ids, document)
+    by_identity = targets_by_identity(document)
+    union = set()
+    for identity in identities:
+        union.update(by_identity.get(identity, ()))
+    return sorted(union, key=int)
+
+
 def binding_targets_for_sources(source_ids, document=None):
     """Return binding targets for a lane-02 source-id cohort (non-boss).
 
@@ -743,7 +823,8 @@ def binding_targets_for_sources(source_ids, document=None):
     (41/57/58/78). A cohort that contains any muse candidate is evaluated
     against the base+muse document, because the default lane-04 document does
     not carry the muse profiles; a lane-04-only cohort keeps the caller's
-    document (or the default lane-04 document) unchanged.
+    document (or the default lane-04 document) unchanged. Ids outside the
+    hand tables resolve through the roster (#948).
     """
     lane04 = {source_id: identity for identity, source_id in candidate_source_ids().items()}
     muse = {source_id: identity for identity, source_id in muse_candidate_source_ids().items()}
@@ -761,14 +842,7 @@ def binding_targets_for_sources(source_ids, document=None):
             document = build_muse_document()
     elif document is None:
         document = build_document()
-    identities = []
-    for source_id in source_ids:
-        identity = lane04.get(source_id) or muse.get(source_id)
-        if identity is None or (identity not in {name for _, name, *_ in CANDIDATE_SPECS}
-                                and source_id not in MUSE_CANDIDATE_IDS):
-            raise ValueError(
-                f'source id {source_id} is not a non-boss lane-04 or muse #492 candidate')
-        identities.append(identity)
+    identities = identities_for_sources(source_ids, document)
     return binding_targets(identities, document=document)
 
 

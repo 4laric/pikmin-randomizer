@@ -16,12 +16,22 @@ locations are unchanged.
 
 The binding itself is the contract between root and native: native transfers
 any bound holder slot, and the root binds a holder slot only when its flag is
-set here. A flag is flipped to ``True`` only with a real campaign run that
-shows ASSIGN -> HOLD -> DROP -> carry -> the vanilla ship CHECK for a
-seed-generated binding (``evidence``).
+set here. Owner ruling (#901, 2026-09-29): "P2 enemies may also replace the
+non-arena holders", so a holder is transferable by default; a ``False`` flag
+must cite the concrete constraint that keeps it (#948).
+
+Kept protected, with its source:
+
+* ``navel_breadbug_un09`` (3406893972): the Navel Breadbug is the only
+  Breadbug generator in the game, so replacing it makes the vanilla
+  "Bestiary: Deliver Breadbug" location unreachable until bestiary checks
+  follow the seed (#905, open). Runtime constraint (AP logic), not history.
 
 Not listed: the Pearly Clamclamp pearl holders. They carry the part through
-``Parameter0`` (TaiShellStrategy), which native never transfers.
+``Parameter0`` (TaiShellStrategy), which native never transfers (open native
+gap; the owner permits replacing them, #901). The ~318 other protected teki
+generators carry pellets or non-part personalities and are outside this
+table until their drops are catalogued (#951 U9).
 """
 from __future__ import annotations
 
@@ -51,9 +61,12 @@ P1_HELD_PART_SLOTS = (
         "location": "Pikmin: Space Float",
         "first_day": 2,
         "respawn_days": 0,
+        # Kept protected: only Breadbug generator, bestiary check would be lost
+        # (see module docstring; #905).
         "held_part_transfer": False,
         "evidence": ("u4/u5: DROP part=un09 via=die ok=1 (late un** shape); carry and CHECK not "
-                     "yet proven"),
+                     "yet proven; protection kept for the bestiary check (#905), not for "
+                     "lack of evidence"),
     },
 )
 

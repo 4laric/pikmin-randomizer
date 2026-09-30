@@ -120,10 +120,13 @@ class PlacementEvaluationTests(unittest.TestCase):
         self.assertEqual(result['status'], 'denied')
         self.assertIn('no accepted placement evidence', result['reasons'])
 
-    def test_default_deny_without_slot_evidence(self):
+    def test_slot_probe_evidence_is_recorded_not_required(self):
+        # #948 (#951 R3): an unprobed slot is a to-do, not a restriction. The
+        # slot's physical fields carry the constraint; evidence is history.
         result = evaluate(normalize_slot(slot(evidence={'xyz': True, 'terrain': True, 'route': False})),
                           normalize_profile(profile()))
-        self.assertIn('slot lacks accepted native placement evidence', result['reasons'])
+        self.assertNotIn('slot lacks accepted native placement evidence', result['reasons'])
+        self.assertEqual(result['status'], 'legal')
 
     def test_terrain_and_water_constraints(self):
         result = evaluate(normalize_slot(slot(terrain='ground')),
@@ -202,15 +205,17 @@ class PlacementAuditTests(unittest.TestCase):
         self.assertEqual(adapted['respawn_days'], ADULT_SLOTS[0]['respawn_days'])
         legal_profile = normalize_profile(profile(footprint_radius=0, requires_corpse_route=False))
         self.assertEqual(evaluate(adapted, legal_profile)['status'], 'legal')
+        # #948: missing probe evidence no longer denies; constraints decide.
         unproven = slot_from_spawn_row(ADULT_SLOTS[0], evidence={})
-        self.assertEqual(evaluate(unproven, legal_profile)['status'], 'denied')
+        self.assertEqual(evaluate(unproven, legal_profile)['status'], 'legal')
 
 
 class CompatibilityReportTests(unittest.TestCase):
-    def test_cohort_mismatch_is_a_hard_incompatibility(self):
+    def test_cohort_is_descriptive_not_a_constraint(self):
+        # #948 (#951 U15): the P1 cohort is history; terrain/water express the need.
         result = compatibility(normalize_slot(slot(cohort='aquatic')),
                                normalize_profile(profile(terrains=['ground'], cohort='grub')))
-        self.assertEqual(result, ['cohort grub not allowed in slot cohort aquatic'])
+        self.assertEqual(result, [])
 
     def test_missing_evidence_is_not_an_incompatibility(self):
         # No accepted gate and no slot evidence still counts as compatible.
@@ -276,8 +281,9 @@ class PlacementCatalogTests(unittest.TestCase):
             self.assertEqual(p['accepted_gates'], [])
             self.assertFalse(p['is_boss'])
         by_identity = {p['identity']: p for p in profiles}
-        self.assertEqual(by_identity['Chappy']['cohort'], 'ground')
-        self.assertEqual(by_identity['UjiA']['cohort'], 'grub')
+        # #948: cohorts are descriptive only; no profile carries one.
+        self.assertEqual(by_identity['Chappy']['cohort'], None)
+        self.assertEqual(by_identity['UjiA']['cohort'], None)
         self.assertEqual(by_identity['Sokkuri']['cohort'], None)
         # Campaign-proven ground binding (inst-legs-63g): Hermit Crawmad no
         # longer needs the source nest anchor for placement.
@@ -322,18 +328,21 @@ class PlacementCatalogTests(unittest.TestCase):
         report = compatibility_report(document)
         compatibility_by_id = report['identity_compatibility']
         self.assertEqual(report['slots_evaluated'], len(catalog.CAMPAIGN_SLOTS))
-        # TamagoMushi is a lane-14 group identity whose helper_budget (10)
-        # exceeds every slot's helper_capacity (default 0) until slots model
-        # it. Jigumo's campaign binding is proven on ordinary nest-free
-        # ground slots (inst-legs-63g), so it is placeable now.
-        self.assertEqual(report['unplaceable_identities'], ['TamagoMushi'])
-        tamago_reasons = [row['reason'] for row in compatibility_by_id['TamagoMushi']['top_incompatible_reasons']]
-        self.assertIn('helper budget 10 exceeds slot capacity 0', tamago_reasons)
-        # A grub identity cannot land in the ground or aquatic cohorts.
-        self.assertEqual(compatibility_by_id['UjiA']['compatible_slots'], 10)
-        self.assertEqual(compatibility_by_id['Chappy']['compatible_slots'], 33)
+        # #948: every candidate is placeable somewhere (TamagoMushi's group cap
+        # is a manager parameter, not a slot need; it was admitted on
+        # ordinary slots). Jigumo's campaign binding is proven on ordinary
+        # nest-free ground slots (inst-legs-63g).
+        self.assertEqual(report['unplaceable_identities'], [])
+        # Terrain is the constraint, not the P1 cohort: a ground identity takes
+        # every ground-class slot (33 ground + 10 grub + 6 dwarf), an aquatic
+        # one the 10 water slots, and the amphibious Wollywog all of shore,
+        # ground and water.
+        ground_class = sum(1 for s in document['slots'] if s['terrain'] == 'ground')
+        self.assertEqual(ground_class, 49)
+        self.assertEqual(compatibility_by_id['UjiA']['compatible_slots'], 49)
+        self.assertEqual(compatibility_by_id['Chappy']['compatible_slots'], 49)
         self.assertEqual(compatibility_by_id['Tadpole']['compatible_slots'], 10)
-        self.assertEqual(compatibility_by_id['Frog']['compatible_slots'], 7)
+        self.assertEqual(compatibility_by_id['Frog']['compatible_slots'], 49 + 7 + 10)
         # Every pair is still denied for missing gates/evidence.
         audit_report = audit(document)
         self.assertEqual(audit_report['admitted'], {})
@@ -477,9 +486,8 @@ class BindingTargetTests(unittest.TestCase):
         document = catalog.build_document()
         targets = catalog.targets_by_identity(document)
         self.assertEqual(len(targets['Catfish']), 10)
-        self.assertEqual(len(targets['Chappy']), 33)
-        # Roster wave (#871): campaign-proven ground binding for Jigumo
-        # (inst-legs-63g) across the fresh document's ground slots.
+        # #948: every ground-class slot, whatever P1 cohort it came from.
+        self.assertEqual(len(targets['Chappy']), 49)
         self.assertEqual(len(targets['Jigumo']), 49)
         campaign_uids = {str(s['uid']) for s in document['slots']}
         self.assertTrue(set(targets['Catfish']) <= campaign_uids)
@@ -504,10 +512,10 @@ class BindingTargetTests(unittest.TestCase):
         # a real roster boss with no placement candidacy is still rejected.
         self.assertEqual(catalog.binding_targets_for_sources([71]),
                          catalog.binding_targets(['UmiMushi']))
-        # Queen (Empress Bulblax) 30 is roster-classified as a boss, so this
-        # probes the is_boss rejection path, not just an unknown id.
+        # Queen (Empress Bulblax) 30 resolves through the roster (#948: no
+        # hand-table gate) but has no placement profile in the document.
         self.assertEqual(by_id(load_roster())[30].classification, 'boss')
-        with self.assertRaisesRegex(ValueError, 'non-boss'):
+        with self.assertRaisesRegex(ValueError, 'no placement profile'):
             catalog.binding_targets_for_sources([30])
 
     def test_targets_compose_with_lane03_seed_bridge(self):
@@ -524,11 +532,11 @@ class BindingTargetTests(unittest.TestCase):
 
     def test_target_groups_are_deterministic(self):
         groups = catalog.binding_target_groups()
-        self.assertEqual(sorted(groups['groups']),
-                         ['aquatic', 'dwarf', 'frog', 'ground', 'grub', 'open'])
+        # #948: no profile carries a cohort, so there is one open group.
+        self.assertEqual(sorted(groups['groups']), ['open'])
         self.assertEqual(groups['source_ids']['Catfish'], 26)
-        self.assertEqual(groups['groups']['aquatic']['targets'],
-                         catalog.binding_targets(['Catfish', 'Tadpole']))
+        self.assertEqual(catalog.binding_targets(['Catfish', 'Tadpole']),
+                         catalog.binding_targets_for_sources([26, 27]))
 
 
 if __name__ == '__main__':
