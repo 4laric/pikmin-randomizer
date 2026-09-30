@@ -29,6 +29,8 @@ registry under `output/workflow/` across participating worktrees. Private runtim
 launches are exempt from shared-runtime reservations; private build directories
 still require exclusive ownership and respect the aggregate heavy-build budget.
 
+Any seed, build or instructions handed to the owner for a playtest must follow [the playtest-seed rules in CONTRIBUTING.md](CONTRIBUTING.md#playtest-seeds-for-the-owner-binding). The thing under test must sit at the start, saturated and verified bound, and the handoff must say where to look.
+
 P2 implementation agents must read [the fan-out and mandatory fixture baseline guide](docs/PIKMIN2_IMPLEMENTATION_FANOUT.md) before claiming or resuming work. Before the next runtime acceptance run, adopt the current starting-Pikmin overlay and 960×540 centred-window native startup, regenerate stale arenas, and record per-lane adoption evidence as required there. Existing active lanes are included.
 
 Before starting any implementation, ensure its scope and acceptance criteria are written in a GitHub issue in 4laric/pikmin-randomizer and assign that issue to the authenticated account (currently 4laric). Record Codex as the implementation owner when using that shared account; do not imply a separate Codex GitHub identity. Update the issue with progress, commits, validation evidence and remaining work. Assignment indicates ownership, not that every backlog item is actively underway. This issue-first requirement also applies to work inside native/ and bbft/.
