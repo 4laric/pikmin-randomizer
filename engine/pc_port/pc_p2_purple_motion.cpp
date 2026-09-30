@@ -28,7 +28,7 @@ int clipIndex(const std::string& name){return name=="rolljmp"?0:name=="fall"?1:-
 
 void pc_p2_purple_motion_setup() {
     enabled=false;for(Clip& clip:clips)clip=Clip();
-    if(!pc_pikipelago_room_preview()||!pc_p2_purples_enabled())return;
+    if(!pc_p2_purples_enabled())return;
     std::ifstream in("p2-purple-motion.txt");if(!in)return;
     std::string word;if(!(in>>word)||word!="P2_PURPLE_MOTION_1")std::abort();
     int expectedFrames[]={14,20};int clipNumber=0;

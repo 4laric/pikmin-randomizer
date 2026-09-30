@@ -75,3 +75,9 @@ and enemy receiver breadth require fresh runtime acceptance. Parser tests and a
 successful compile do not establish those gates. This is a draft implementation,
 not gameplay sign-off. Builds, banks, receipts and private player progress stay
 under ignored `output/`; no assets, binaries or saves belong in either PR.
+
+## Source integration
+
+The opt-in acquisition/storage slice includes native conversion and plucking, ten-strength carry, population/maturity conservation, and one native day-save/fresh-process resume. Fixture positioning and scripted inputs are disclosed above. Player navigation, full campaign/live AP and broad enemy combat remain follow-ups; ordinary staging does not yet supply the special direct-hit receiver bindings (tracked separately in #940).
+
+The root engine snapshot applies only the reviewed Purple source changes, preserving its existing baseline. The paired native branch merges current native main before CI, retaining newer enemy imports. Native build evidence applies to that native tree; root snapshot tests are separate and do not claim a full root-engine build.

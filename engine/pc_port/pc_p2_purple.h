@@ -20,3 +20,4 @@ bool pc_p2_violet(const Pom*);
 // Returns non-Purple slots used, or -1 for the ordinary P1 path.
 int pc_p2_convert_violet(Pom*, int remaining);
 void pc_p2_purple_status();
+
