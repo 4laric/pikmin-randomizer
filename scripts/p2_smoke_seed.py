@@ -425,7 +425,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            if allow_sparse or density.entry_is_dense(cache_dir, enum):
+            if allow_sparse or (density.entry_is_dense(cache_dir, enum) and density.entry_is_current(cache_dir, enum)):
                 pending_copies.append((source, target))  # copied after any extraction: the
                 cached.append(enum)                      # extractor needs an empty output dir
                 continue
@@ -437,7 +437,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             if sparse:
                 raise SmokeSeedError(
                     f'content cache entries {sparse} are sparse (extracted below {density.DEFAULT_POSE_LIMIT} '
-                    'poses per clip, or of unknown density) and no --iso was given to re-extract them; '
+                    'poses per clip, or of unknown density) or stale (written by an older converter, '
+                    'see density.REQUIRED_REVISIONS) and no --iso was given to re-extract them; '
                     'rebuild the cache (scripts/p2_prepare_content.py) or pass --allow-sparse-cache')
             raise SmokeSeedError(
                 f'content cache lacks {[needed[s] for s in missing]} and no --iso was given to extract them')
