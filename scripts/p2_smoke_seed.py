@@ -24,7 +24,10 @@ Example (PowerShell)::
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
-The landing site is the stage ``navi_start`` (0, 0) in every P1 area.
+The landing site is each stage's captain start, the x/z the stage ``default.gen``
+header stores at bytes 4..16 (``LANDING_BY_STAGE``); it is NOT (0, 0): Forest of
+Hope starts near (-316, 2022) and the Impact Site near (48, 1920) (#958: a FoH
+smoke seed "near the start" put its Giants 2000 units from the player).
 """
 
 from __future__ import annotations
@@ -49,7 +52,18 @@ AREAS = {
     'navel': ('navel', 2, 'navel'),
     'spring': ('spring', 3, 'spring'),
 }
-LANDING_XZ = (0.0, 0.0)
+LANDING_XZ = (0.0, 0.0)  # legacy default of distance_xz(); real seeds pass landing_origin(area)
+# Captain start (x, z) per placement stage: dataDir/stages/<stage>/default.gen
+# bytes 4..16 as big-endian floats (the same origin randomizer.purple_campaign
+# places the Violet from), checked against the native AUTOPLAY_NAVI start
+# positions of the FoH and Distant Spring runs on 2026-09-30.
+LANDING_BY_STAGE = {
+    0: (47.6673, 1919.7586),     # practice = The Impact Site
+    1: (-315.7542, 2022.2387),   # stage1 = The Forest of Hope
+    2: (-76.5327, -139.4868),    # stage2 = The Forest Navel
+    3: (-149.3356, -76.1611),    # stage3 = The Distant Spring
+    4: (-33.0768, -20.5068),     # last = The Final Trial
+}
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
 SMOKE_ENV = 'PIKMIN_P2_SMOKE_ANY_SLOT'
@@ -104,6 +118,13 @@ def slot_positions(probe_log_text=None):
             if probe.get('slot') and probe.get('position'):
                 positions[int(probe['slot'])] = list(probe['position'])
     return positions
+
+
+def landing_origin(area):
+    """Captain start (x, z) of an area token (see LANDING_BY_STAGE)."""
+    if area not in AREAS:
+        raise SmokeSeedError(f"unknown area {area!r}; expected one of {sorted(AREAS)}")
+    return LANDING_BY_STAGE[AREAS[area][1]]
 
 
 def distance_xz(position, origin=LANDING_XZ):
@@ -397,7 +418,9 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    slots = pick_slots(ordinary_slots(document, args.area, args.max_first_day), args.slots, args.near_start, positions)
+    origin = landing_origin(args.area)
+    slots = pick_slots(ordinary_slots(document, args.area, args.max_first_day), args.slots, args.near_start, positions,
+                       origin=origin)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -445,9 +468,9 @@ def build(args):
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
              'enum_name': next(b['enum_name'] for b in manifest['p2_layout']['bindings'] if int(b['target']) == uid),
              'position': positions.get(uid),
-             'distance_from_landing': round(distance_xz(positions[uid]), 1) if uid in positions else None}
+             'distance_from_landing': round(distance_xz(positions[uid], origin), 1) if uid in positions else None}
             for uid, sid in sorted(assignments.items(), key=lambda kv: (positions.get(kv[0]) is None,
-                                                                         distance_xz(positions[kv[0]]) if kv[0] in positions else 0))],
+                                                                         distance_xz(positions[kv[0]], origin) if kv[0] in positions else 0))],
         'bosses': [{'source_id': sid, 'arena': arena} for sid, arena in sorted(bosses.items())],
         'bindings': {str(k): v for k, v in sorted(bound.items())},
         'files': {'seed': str(seed_path), 'placement_override': str(override_path),
@@ -463,7 +486,7 @@ def main(argv=None):
     parser.add_argument('--area', required=True, choices=sorted(AREAS), help='start area whose ordinary slots get the species')
     parser.add_argument('--slots', default='all', help="how many ordinary slots to fill: N or 'all' (default all)")
     parser.add_argument('--species', required=True, help='comma-separated P2 source ids, assigned round-robin in this order')
-    parser.add_argument('--near-start', action='store_true', help='fill the N slots nearest the landing site (x/z distance from navi_start 0,0)')
+    parser.add_argument('--near-start', action='store_true', help="fill the N slots nearest the area's landing site (x/z distance from the captain start, LANDING_BY_STAGE)")
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', required=True, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')

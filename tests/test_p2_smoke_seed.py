@@ -59,10 +59,15 @@ def test_slot_positions_cover_every_ordinary_slot(document):
 def test_pick_slots_near_start_orders_by_landing_distance(document):
     slots = smoke.ordinary_slots(document, 'foh')
     positions = smoke.slot_positions()
-    near = smoke.pick_slots(slots, 3, near_start=True, positions=positions)
-    distances = [smoke.distance_xz(positions[int(s['uid'])]) for s in near]
+    origin = smoke.landing_origin('foh')
+    near = smoke.pick_slots(slots, 3, near_start=True, positions=positions, origin=origin)
+    distances = [smoke.distance_xz(positions[int(s['uid'])], origin) for s in near]
     assert distances == sorted(distances)
-    assert near[0]['uid'] == 2506165730  # hope_0-29_3073, ~72 units from the ship
+    # The captain starts near (-316, 2022), not at (0, 0): hope_0-29_3073 (2506165730)
+    # is ~72 units from the map origin but ~2000 from the player (#958).
+    assert origin == pytest.approx((-315.7542, 2022.2387), abs=0.01)
+    assert near[0]['uid'] == 4222852521  # hope_0-29_2659, ~720 units from the FoH start
+    assert smoke.distance_xz(positions[2506165730], origin) > 1900
     assert smoke.pick_slots(slots, 'all') == slots
     assert smoke.pick_slots(slots, None) == slots
     assert smoke.pick_slots(slots, 2) == slots[:2]
@@ -70,6 +75,18 @@ def test_pick_slots_near_start_orders_by_landing_distance(document):
         smoke.pick_slots(slots, 99)
     with pytest.raises(smoke.SmokeSeedError):
         smoke.pick_slots(slots, 0)
+
+
+def test_landing_origins_match_the_stage_generator_headers():
+    import struct
+    stages = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
+    if not stages.is_dir():
+        pytest.skip('local retail assets absent')
+    for stage, folder in enumerate(('practice', 'stage1', 'stage2', 'stage3', 'last')):
+        x, _, z = struct.unpack_from('>3f', (stages / folder / 'default.gen').read_bytes(), 4)
+        assert smoke.LANDING_BY_STAGE[stage] == pytest.approx((x, z), abs=0.001), folder
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.landing_origin('nowhere')
 
 
 def test_pick_slots_unknown_position_sorts_last():
