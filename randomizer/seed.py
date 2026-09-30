@@ -639,7 +639,7 @@ P2_PLAYABLE_POOL = (
         "family": "queen",
         "evidence": {
             "run": "Bot-driven campaign runs a17 (power x30) and a16 (power x3), wave 3 (#256; owner ruling 2026-09-25: power mode admits): natural seed qa-impact-0, no rebind, queen_arena placed the Empress Bulblax in the impact_goolix boss arena (TEST-ONLY start day 11, the arena is live from day 9); a17: P2_BOSS_ARENA_BIRTH, source Queen FSM bind, natural kill, carcass carried by up to 32 Pikmin, Onion receipt onion:p2:30:0 on her own generator 4019261003; a16 (same exe): Born larvae, Wait->Damage->Flick->Rolling cycles, 21 rolling presses crushing Pikmin, 13 flicked off, health 5000->0",
-            "log": "output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log (sha256 3a9c875f8e31ca69...) L714 arena birth, L1671 bind, L1956 dead, L2035 receipt; a16 native.log sha256 4345ba04dde58e27...; native claude/p2-wave3-30-empress 6d0378bf8, exe sha256 fef86e9e6b672a66...",
+            "log": "output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log (sha256 479d0b20603cf3580ee577686a901512...) L714 arena birth, L1671 bind, L1956 dead, L2035 receipt; a16 native.log sha256 4345ba04dde58e27...; native claude/p2-wave3-30-empress 6d0378bf8, exe sha256 fef86e9e6b672a66...",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 30 -> queen "
                          "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage)",
