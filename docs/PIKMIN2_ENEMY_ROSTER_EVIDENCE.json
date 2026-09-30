@@ -731,24 +731,32 @@
       ]
     },
     "38": {
-      "native_module": "pc_p2_breadbug_actor",
+      "native_module": "pc_p2_breadbug_teki",
       "owner_lane": "18",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Breadbug (PanModoki, source 38): OWN campaign runs (#898, re-evidenced on the rebased -v2 exe after the second review). The engine-free source FSM pc_p2_breadbug_fsm (panModokiState.cpp) drives the campaign Breadbug: it is never a Pikmin or captain target (retail isLivingThing is bitter-only), wanders, grabs a carcass and hauls it home through Back -> CarryEnd -> Hide (health refill, carcass spared at the nest) -> Appear, dies to six thrown-Pikmin presses, is carried and delivers Onion receipt onion:p2:38:3 on its own generator token in three independent runs on the pinned exe.",
       "source": [
         "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
-        "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:38:3 on generator 1945764764 in three runs on native claude/p2-port-38-breadbug-v2 91fe15a50 (exe sha256 0248be824d662aea989703fdcce60aa84cda6e36343ed07d68c4ec95114a09c2): z2 output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log:L4898 (sha256 f89d2a6eb8691c51cdb449a991c4b03afc43b1f2ca941c1bacf1b1ac0c049c2f); z3 output/claude-orch/p2-breadbug-own/runs/z3-38/session/runs/09ee9f676ab28dbb3cd7ec03dd5f6683f01be8adace3201c56101bddce72890d/native.log:L5526 (sha256 c92a22070639aa65dbd798681880089e6ee8f972cfc55b5195f317be4fed506a); z6 output/claude-orch/p2-breadbug-own/runs/z6-38/session/runs/773fec4596b94d46f7857c61fa5a4beba26b956677522af84da5410a67fe7299/native.log:L6902 (sha256 b22c608f9bc8aeece5dc7846d45502fc0f5d3fdcde42da6be2315983646282a0)",
       "notes": [
-        "PanModoki (Breadbug): actor/proxy + contested cargo; natural contested cargo/nest ownership/reward remain (#168/#220)."
+        "PanModoki (Breadbug): #898 source FSM pc_p2_breadbug_fsm in the campaign; the P1 Collec TAI is suppressed and all of its events consumed. Retail isLivingThing() is bitter-only and the port has no bitter spray, so every P1 target-selection site (piki graspSituation, formation contact, bullet, thrown stick, captain punch entry and punch, lock-on/charge) skips a live bound Breadbug and ActAttack/ActJumpAttack refuse it as a backstop; the InteractAttack refusal remains and must log zero. Press (proper fp06 200) and container (fp04 1000) damage; PelletCarry tug at (min+max)/2 with the pellet following the source tug decision; P2 pose draw keyed on the FSM clip; onion:p2:38 delivery bind.",
+        "Campaign evidence, bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator. Pins: root 4laric/pikmin-randomizer claude/p2-port-38-breadbug-v2 (content staged with p2_prepare_content --species <pool>,38, prepared.json sha256 5df87ef5b98f68ab...), native 4laric/Open-Nectar claude/p2-port-38-breadbug-v2 91fe15a50 (rebased on fork/main a6cee5e85: captors #5, Groink shells #6), exe nectar.exe sha256 0248be824d662aea989703fdcce60aa84cda6e36343ed07d68c4ec95114a09c2, ninja -n: no work to do. z2 (output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log): L1259 OWN_BIND, L4732 OWN_DEAD, L4825 ESCAPE attacks_ignored=0 tai_changes=0, L4829 OWN_CORPSE carry 3..6, up to 6 carriers, L4898 receipt onion:p2:38:3 new=1, L4900 RESULT 1/1/1/1 (95 s). z3 (output/claude-orch/p2-breadbug-own/runs/z3-38/session/runs/09ee9f676ab28dbb3cd7ec03dd5f6683f01be8adace3201c56101bddce72890d/native.log): L1257 OWN_BIND, L3234 OWN_CONSUME on the Tank 24 carcass destroyed=0 spared=carcass_check_bound pikmin_killed=1, L5415 OWN_DEAD, L5452 ESCAPE attacks_ignored=0, L5454 OWN_CORPSE, up to 4 carriers, L5526 receipt new=1, L5528 RESULT 1/1/1/1 (122 s). z6 (output/claude-orch/p2-breadbug-own/runs/z6-38/session/runs/773fec4596b94d46f7857c61fa5a4beba26b956677522af84da5410a67fe7299/native.log): L1257 OWN_BIND, L3090 OWN_CONSUME destroyed=0 spared=carcass_check_bound pikmin_killed=0, L6789 OWN_DEAD, L6833 ESCAPE attacks_ignored=0, L6835 OWN_CORPSE, up to 6 carriers, L6902 receipt new=1, L6904 RESULT 1/1/1/1 (576 s). All three: zero OWN_ATTACK_IGNORED and zero OWN_TAI_TRANSITION lines, no fatal lines; each kill is six accepted 200-point presses (1100 -> -100).",
+        "Corpse-carry reliability (second review). Before the fix, 5 of 9 kills ended in a carry (b3, h1, k1, m2, n3 carried; h2, m1, v2c, v2d did not). Cause, from P2_BREADBUG_OWN_MOTION (read-only, added in ee870691f): the Damage/Dead body and the corpse pellet were moved by the captain, not by the FSM. The P1 teki drive and velocity x/z read 0 while the body moved, and its displacement followed the captain's velocity with the captain 16-25 u away (diagnostic run x2, damage phase). The generic bot aftermath walked the captain onto the corpse (it stopped ~20 u off, pushing the pellet) while the walking cursor sat ~78 u ahead, so thrown Pikmin flew over the small corpse and no carrier latched (v2c: 0 carriers for 60 s, cursor 78 u past the corpse). Bot fix (pad input only, source 38 only): stand 40-70 u off, slide the cursor onto the corpse with the P1 look band, throw only with the cursor within 12 u (ee870691f), and whistle once to regroup when the squad is scattered while the crew is short (91fe15a50; y1 on ee870691f held 2 carriers for 100 s with fewer than 5 Pikmin at the captain). Result on 91fe15a50: every kill whose corpse formed was carried and received (z2, z3, z6: 3 of 3); in those runs the dead body moved 0.3-14 u (z2: a ~5 u/s downhill creep on a ny=0.991 slope with nobody within 27 u) instead of 100-200 u. A player can still push a Breadbug body or its corpse by walking into it: that is P1 engine creature/pellet collision and applies to every P1 and P2 corpse; it does not change which check the corpse carries (the receipt is keyed on the generator token).",
+        "Carcass policy (#898 fix, retail divergence): a Breadbug never destroys a teki carcass. At Hide END it is released at the nest, stays carriable and is never re-picked by that Breadbug, so a carcass's delivery check can never be forfeited (v2e: the spared Tank 24 carcass was then delivered for onion:p2:24:3). Plain-pellet eating (retail endCarry kill) is UNTESTED at runtime: probe v2p placed the Breadbug about 280 u from the only plain pellet on stage 3 and it never targeted it. Owner eye-check: Pikmin still hanging on the cargo at Hide END are killed, as in retail endCarry (n3: 5 killed; z3: 1; z6: 0). Retail-faithful, but harsh for P1.",
+        "Port navigation: the P1 carry graph gave no path home on this stage (pathfinding=0), so Back hauls straight at the nest; a Back watchdog skips route nodes and, after 16 s wedged, releases the cargo (P2_BREADBUG_OWN_BACK_STUCK). Run c5 hit that release once at the Wtank carcass site.",
+        "Known gaps: no treasure hoarding (P1 ship parts are never targeted); the nest model is not spawned (home point only); corpse carry min/max come from the P1 Collec pellet config, not retail PanModoki carcass values; pose-bank draw, not skeletal playback; no bitter spray; the suck-finish is inferred from the held cargo leaving the Onion goal state; only stage 3 (spring_init_7002) is exercised end-to-end (stage 1 binding only, stage 0 never); the dead body can creep a few u/s down a slope (P1 ground contact).",
+        "Other stages: forest run f1 (diagnostic exe sha256 84c39c15e4032370..., output/claude-orch/p2-breadbug-own/runs/f1-38, log sha256 58d7890bc344c616...) rebound Forest of Hope slot hope_0-29_1831 (3138990329, stage 1, first day 2) to the Breadbug: P2_SEED_RESOLVE original_type=4, P2_PLACEMENT_SLOT actor=8, collec.mod and collec.anm loaded, OWN_BIND host_type=8 retail_parms=1 draw=p2_model, appear -> walk. The day-2 Forest generators load no native Collec (k-forest opened no tekis/collec), so this is the non-native Collec path (GenObjectTeki::updateUseList reserves the replacement type). The earlier k-forest (407876267, hope_4-29_1624) and k-impact (5465461, impact_9_1764) runs never spawned the target because those slots open on day 5 and day 10 and every run starts on day 2; they are not binding failures. Every Impact Site slot opens on day 8 or later, so no day-2 run can exercise one (true for every admitted species sharing these 35 slots); Impact binding rests on the same generic updateUseList path as Forest, not on an Impact run.",
+        "Superseded: n3 (native claude/p2-port-38-breadbug ab9f3513b, exe abcd1751...) was the first full chain but ran on the pre-rebase exe; its corpse was carried by 1-5 (L6177-6216 carriers=5), not 1-4 as first written. v2c/v2d (826cd5953, exe 0b550004...) killed the Breadbug and failed the carry; v2e on that exe delivered only Tank 24."
       ]
     },
     "40": {
@@ -772,23 +780,31 @@
       ]
     },
     "41": {
-      "native_module": "pc_p2_fuefuki_visual",
+      "native_module": "pc_p2_fuefuki_teki",
       "owner_lane": "28",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Antenna Beetle (Fuefuki, source 41): OWN campaign port (#245). The source Fuefuki FSM drives the campaign beetle on a P1 Chappy teki whose AI is suppressed; it whistles away and releases followers, is pressed into Struggle by a thrown Pikmin, dies naturally, is carried and delivers its Onion receipt on its own generator token on three maps (Distant Spring, Forest Navel on a natural no-rebind seed, Forest of Hope). A P1 safety guard keeps its Land/Walk targets on ground routed to home. The earlier arena-derived gates are replaced by this campaign evidence.",
       "source": [
-        "PIKMIN2_HARD_LANES_HANDOFF.md"
+        "PIKMIN2_HARD_LANES_HANDOFF.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:41:2 on natural seed fue-nat-navel-g6 slot 873045719 (P2_FUEFUKI_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-port-41/runs/v1-41/session/runs/05a0e945002c161aed4f14092f458853fa0d8d8778182efcf5d2682f67f43da4/native.log:L4678 (sha256 3e79931b1c859f47521a1ec2f6ab331603d8107b0cfaa5efffe7b3492fa8c864); also onion:p2:41:3 output/claude-orch/p2-port-41/runs/d7-41/session/runs/a5c8ec4ee2a89d146c65e986b54dc461c7651a61d62d2ff1e0f805bce5369b2a/native.log:L3451 (sha256 c918ca45765da57eb456c2ec1297a5ad6436455d9bf5c42b353c6772246c8661) and onion:p2:41:1 output/claude-orch/p2-port-41/runs/f3-41/session/runs/c17d3b3ca790114e1e488b12f48731849f68bafb97f992de55b0de1736e94a80/native.log:L5583 (sha256 8795a90bce819eadbb4890f03f12e39ab70a63185d46de268de4ffbc043d81c7)",
       "notes": [
-        "Fuefuki (Antenna Beetle): fuefuki motion/visual; natural claim/panic/death release + follow locomotion remain (#245)."
+        "Fuefuki (Antenna Beetle): source FSM pc_p2_fuefuki_fsm (FuefukiState.cpp) bound per campaign token via pc_p2_fuefuki_teki; P1 TEKI_Chappy teki with its AI suppressed and stored damage drained; retail parms, 10 staged clips (120 poses) and P2 model draw; whistle theft follows ActTeki (footmark trail, Formation blocked while the beetle lives, emote then Free on take-off, astonish Panic on death); press seam before the organic-Teki early return in PikiFlyingState::procCollideMsg; dead pin cancels P1 crowd separation push on the carcass; XZ held while hidden (Jump take-off through Stay) so the invisible teki cannot drift into a pit or water.",
+        "P1 safety guard (not in the source): Obj::setTargetPosition rolls any territory point, which P2 maps are authored for. On P1 each Land/Walk roll is re-rolled (up to 8, per-token RNG, then home) unless it is non-water ground within 50 u of home ground height whose nearest route waypoint (<= 200 u) connects to home's waypoint through open, pebble-free waypoints. Markers LAND_TELEPORT home_y/dy/tries/fallback and TARGET_GUARD rejection reasons.",
+        "Campaign evidence, bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits), red squad, native 4laric/Open-Nectar claude/p2-port-41-antenna-beetle-v2 f60b8a1e7 (fork main a6cee5e85 + #245), exe nectar.exe sha256 9cb65f685fb91b6c25c4ad40b3b2f1c36262f45f2cd4af0b96211269b431df23, all on the species' own generator: (1) v1, NATURAL seed fue-nat-navel-g6 with no rebind, Forest Navel slot navel_0-29_1680 (873045719): output/claude-orch/p2-port-41/runs/v1-41/session/runs/05a0e945002c161aed4f14092f458853fa0d8d8778182efcf5d2682f67f43da4/native.log (sha256 3e79931b1c859f47521a1ec2f6ab331603d8107b0cfaa5efffe7b3492fa8c864): 9 guarded Land teleports (dy -14.4..+47.8), Struggle via flying_contact, DEAD followers_panic=7, DEAD_PIN push_cancelled=22.0, CARCASS carry 3..6, L4678 receipt onion:p2:41:2 new=1, RESULT 1/1/1/1 in 188 s. (2) d7, Distant Spring spring_init_7002 (1945764764, harness rebind): output/claude-orch/p2-port-41/runs/d7-41/session/runs/a5c8ec4ee2a89d146c65e986b54dc461c7651a61d62d2ff1e0f805bce5369b2a/native.log (sha256 c918ca45765da57eb456c2ec1297a5ad6436455d9bf5c42b353c6772246c8661): 6 guarded Land teleports (dy 3.7..22.5; the guard rejected 65 rolls, mostly routes cut by closed waypoints), 45 whistle claims, 3 press->Struggle, 46 DAMAGE lines, L3451 receipt onion:p2:41:3 new=1, RESULT 1/1/1/1 in 94 s. (3) f3, Forest of Hope hope_0-29_3592 (2049888785, harness rebind): output/claude-orch/p2-port-41/runs/f3-41/session/runs/c17d3b3ca790114e1e488b12f48731849f68bafb97f992de55b0de1736e94a80/native.log (sha256 8795a90bce819eadbb4890f03f12e39ab70a63185d46de268de4ffbc043d81c7): press->Struggle, DEAD, L5583 receipt onion:p2:41:1 new=1, RESULT 1/1/1/1 in 68 s (no cast caught Pikmin in this run).",
+        "Correction to the earlier record: runs d3/d5/d6 (pre-guard exes) passed, but d4 (exe 97cf4d08, output/claude-orch/p2-port-41/runs/d4-41/session/runs/d94ac984b7bdd206cfa62256b60088cbae5cf53940607d211cdb470d6d12960e/native.log sha256 658796c36a4a5806ac73e734a1dfbfd04dc08c3b27037be3f3dfcbeacea2eb9d) did not. Its first Land roll (L1945, y=87.2 against home y 11.1) put the beetle on a ledge; it later walked back onto it and died there (carcass -1197,-833). Four carriers lifted the corpse (want 3; L3533/L3671/L3749) but carried it ~480 u away from the Onion and stalled for 100+ s on a closed waypoint (frame 03900 shows the P1 path-blocked message), so carried=0. It was not a bot policy limit. The target guard above is the fix; d7/v1/f3 are the post-guard evidence.",
+        "P1 stand-in: when the beetle absorbs a descending thrown Pikmin outside its mCanStruggle window, the Pikmin is sent to PIKISTATE_Normal. The source leaves it in Flying and falls through to InteractFlyCollision and the instick effect.",
+        "Frame eye-check (pre-guard d6): struggle roll with Pikmin latched (frames 01110-01170), walk facing head-first in both directions (01965, 02070-02100), whistle ring band, dead then carry pose, no P1 Chappy model drawn; hidden while in Stay.",
+        "Known gaps: whistle ring is a P1 ground-band stand-in, not the retail efx; P1 has no bitter spray, so the EB_Bittered branch is inert; a cast can take most of a squad and a death mid-cast panics them until the player whistles (source behaviour, attackRadius 130); pose bank is 2,307,840 bytes (120 poses), above the 1 MiB clip budget approved for #895, pending owner confirmation."
       ]
     },
     "45": {
@@ -1047,24 +1063,35 @@
     "58": {
       "native_module": "pc_p2_bombsarai_fsm",
       "owner_lane": "27",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Careening Dirigibug (BombSarai, source 58): OWN campaign runs on #244 with the lethal bomb blast. The source BombSarai FSM drives the campaign Dirigibug, which hovers, supplies and drops its bomb (the blast kills Pikmin as in P2 InteractBomb), is latched and grounded, dies naturally, is carried and delivers Onion receipt onion:p2:58:3 on its own generator token.",
       "source": [
         "PIKMIN2_BOMBSARAI_FSM.md",
-        "PIKMIN2_BOMBSARAI_AUDIT.md"
+        "PIKMIN2_BOMBSARAI_AUDIT.md",
+        "PIKMIN2_P2_CAMPAIGN_READINESS.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "BombSarai (Careening Dirigibug): bombsarai FSM/carrier modules; ordinary carrier + capture joint + bomb lifecycle + interruption remain (#244).",
+        "BombSarai (Careening Dirigibug): #244 the campaign carrier runs the OWN machine p2bsown::Fsm (native pc_port/pc_p2_bombsarai_own.cpp, bound by pc_p2_bombsarai_own_teki.cpp; ports BombSaraiState.cpp), the P1 Napkid AI suppressed, P2 pose draw, onion:p2:58 delivery bind; the bomb blast gives Pikmin the P1 bomb-rock damage (765) so they die on landing, captains take fp24 (10).",
+        "Campaign evidence, bot-driven power-mode run v2p (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764), all on the species' own generator: native.log sha256 30384556062612033db4e501ef8e54af0540ed94a0300c4e3be4e796c3eed399 L1011 P2_BOMBSARAI_OWN_PARMS retail=1 health=1500, L1250 BANK staged_clips=14 poses=103, L1251 OWN_BIND suppress_ai=1, transitions Move/Supply/BombMove/Release/Wait/Flick/Fall/Damage/TakeOff1/Fall/Damage/Dead, L2144 BLAST pikmin_hits=81 pikmin_lethal=81 (field 100 to 19, HUD 105 to 26), health 1455 to 0 monotone, L2226 DEAD, L2254 KILL corpse_type=1, L2256 CORPSE_CONFIG carry 3/6 p2_match=1, corpse carried 1254u, L2538 receipt onion:p2:58:3 new=1, L2540 RESULT 1/1/1/1 in 69 s.",
+        "Normal-squad run v1 (20 Pikmin, no power) on the same exe: blast pikmin_lethal=2 (field 20 to 18), 83 DAMAGE lines, TakeOff1 and TakeOff2, 3 flicks, receipt onion:p2:58:3 new=1 in 91 s (native.log sha256 fd7367f8612d6b9ad1b843ba4f47bd159dbcbf69351ea2929667eb3828eaccfa L2851).",
+        "Pins: root claude/p2-port-58-bombsarai-v2 on origin/main ec593341 (content staged with p2_prepare_content --species <pool>,58), native 4laric/Open-Nectar claude/p2-port-58-bombsarai-v2 e54d87ff5 (fork main a6cee5e85 + #244), exe nectar.exe sha256 b15b6c0044c39d677963f9322156d31360edc60a2246f7ebc1f55d8bdaf18d5a.",
+        "Known gaps: rigid nearest-of-8 poses per clip, static balloons, no P2 sound or balloon/supply/down effects, P1 gravity while grounded, bitter spray and purple paths unreachable in P1, onKill held-bomb drop not exercised (the FSM always throws through Fall first). cleanup_reentry keeps its earlier PASS; these runs did not end a day or re-enter the area.",
+        "native_module stays pc_p2_bombsarai_fsm because the root engine/pc_port snapshot (the roster audit's module inventory) does not carry the OWN files; the older engine-free pc_p2_bombsarai_fsm only took the flick-chance formula fix on #244 and is not the campaign machine.",
+        "Unmodelled: StateDamage KEY2/KEY3 EB_NoInterrupt toggling and the Supply/Release/Fall EB_NoInterrupt flags (BombSaraiState.cpp:127-130, 464, 511-533, 565-596); P1 has no receiver for that flag. Grounded-carrier crowd drift in v1: ~114u during Damage (-1190,-613 to -1304,-635) and ~120u between Fall->Damage and Dead, the kill/corpse origin ~150u from the DEAD position; the port zeroes its own velocity each tick, so this is P1 collision push on the Napkid actor, larger than P2 and not yet pinned.",
+        "Slot: both admission runs rebind spring_init_7002 (1945764764) through the driver manifest rebind (the sanctioned Groink template); real seeds place 58 on spring_init_7416 (1787125272, respawn_days 5). The blast scale in v2p (81/81 lethal) comes from an 80-Pikmin power squad packed under the carrier; v1 (2 of 20) is the normal-play scale.",
+        "Natural-slot runs (2026-09-29, --no-rebind, seed bombsarai-nr-58-red-spring-0, same exe, power mode): nr1 and nr2 (bot hold 0) bind 58 on spring_init_7416 (1787125272) with retail parms, bank 14 clips, suppress_ai=1; the carrier cycles Wait/Move/Supply/BombMove/Release and drops 35 bombs per run, but the bot captain stalls 11u short of standing under it and the thrown squad never latches (pikmin_hits=0, health stays 1500): AUTOPLAY_GIVEUP attack_timeout, killed=0 (native.log sha256 88dae1fe...c6f485 L4111, 8434ac59...bf45ca L4140). The natural slot kill, its 5-day respawn and re-entry remain unproven by bot; admission rests on the rebind runs above.",
         "Bomb=36 child is a lane-20 projectile primitive, not an independent identity."
-      ]
+      ],
+      "delivery_receipt": "onion:p2:58:3 (P2_BOMBSARAI_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-bombsarai-own/runs/v2p-58/session/runs/a6264c6ad0f250aa0444a8922ddf8b866f1f573eb7fc0b40e0c045f615ca30f9/native.log:L2538 receipt (sha256 30384556062612033db4e501ef8e54af0540ed94a0300c4e3be4e796c3eed399)"
     },
     "59": {
       "native_module": "pc_p2_dweevil",

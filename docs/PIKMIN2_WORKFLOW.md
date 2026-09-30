@@ -2,6 +2,11 @@
 
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
 
+CI builds (#937): native Windows builds and the p2_ ctest run in GitHub Actions.
+Prefer `py -3.12 scripts/ci_native_build.py <native branch|sha>` over a local
+build; it downloads and sha256-verifies the CI `nectar.exe` into
+`output/ci-bin/<sha>/`. See `docs/CI_BUILDS.md`.
+
 Build-capacity update (#580): the live controller enables lease-only heavy-build
 admission. Preparing lanes do not reserve build slots. Actual private and maintained
 builds still acquire exclusive directory/resource leases and share the current

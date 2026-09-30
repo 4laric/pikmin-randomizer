@@ -68,7 +68,10 @@ def trimmed_document(keep):
 def test_fitting_pool_keeps_the_legacy_fill():
     roster = load_and_validate()
     document = committed_document()
-    fit = sorted(admitted_ids(roster))[:len(ordinary_slots(document))]
+    # #244: Dirigibug 58 accepts a single ordinary slot (1787125272) that many
+    # species share, so a seed-shuffled legacy fill can leave it without a
+    # unique target; keep the fitting selection to species with room.
+    fit = [source_id for source_id in sorted(admitted_ids(roster)) if source_id != 58][:len(ordinary_slots(document))]
     layout = resolve_placement_layout("fit", "Player1", document, roster, species=fit)
     assert layout["density"] == DENSITY_LEGACY
     assert "unplaced" not in layout
@@ -76,21 +79,22 @@ def test_fitting_pool_keeps_the_legacy_fill():
     assert set(bound) == set(fit), "every selected species appears when the selection fits"
 
 
-def test_committed_pool_samples_one_ordinary_species_out():
-    # 38 admitted species (Groink 78 #888, Demon 32 #215, Titan Dweevil 73
-    # #246). The Crawbster 94 and the Titan 73 live only in boss arenas
-    # (#899), so 36 species compete for the 35 ordinary slots and one is
-    # sampled out per seed (#893).
+def test_committed_pool_samples_four_ordinary_species_out():
+    # 41 admitted species (Groink 78 #888, Demon 32 #215, Titan Dweevil 73
+    # #246, Breadbug 38 #898, Antenna Beetle 41 #245, Dirigibug 58 #244). The
+    # Crawbster 94 and the Titan 73 live only in boss arenas (#899), so 39
+    # species compete for the 35 ordinary slots and four are sampled out per
+    # seed (#893).
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == len(ordinary_slots(document)) + 3
+    assert len(pool) == len(ordinary_slots(document)) + 6
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)
     assert layout["density"] == DENSITY_SAMPLED
     assert arena_bosses(layout) == {73, 94}
     assert len(bound) == len(set(bound)) == len(ordinary_slots(document))
-    assert len(layout["unplaced"]) == 1
+    assert len(layout["unplaced"]) == 4
     assert set(layout["unplaced"]) == pool - set(bound) - arena_bosses(layout)
 
 
