@@ -36,6 +36,7 @@ SOURCE_ID = 57
 SPECIES = 'Kurage'
 MANIFEST = 'kurage.json'
 ROOM = Path('assets/dataDir/courses/pikmin2room')
+PROFILE = 'p2-kurage-animation.txt'
 FILE_PREFIX = 'kurage_'
 # The ten names the native loader opens; wait/attack must be present.
 REQUIRED_VISUALS = ('wait', 'attack')
@@ -119,6 +120,9 @@ def plan(source):
     payloads = _visual_payloads(source, document)
     files = {str(ROOM / f'{FILE_PREFIX}{name}.mod'): data
              for name, data in payloads.items()}
+    # #972: sampled pose bank + profile (absent from pre-bank manifests).
+    from experimental.pikmin2_kurage_bank import staged_bank
+    files.update(staged_bank(source, document, FILE_PREFIX, PROFILE))
     return files, _sha(raw)
 
 
