@@ -52,8 +52,7 @@ P1_HELD_PART_SLOTS = (
         "first_day": 2,
         "respawn_days": 0,
         "held_part_transfer": False,
-        "evidence": ("u4/u5: DROP part=un09 via=die ok=1 (late un** shape); carry and CHECK not "
-                     "yet proven"),
+        "evidence": ("Proven on a seed-generated binding (root flag temporarily set): run h2, ASSIGN via=slot, DROP part=un09 via=die, carried, CHECK 23 Space Float = vanilla index. Kept False because the Navel Breadbug is the only Breadbug spawn, so a takeover would strand the Breadbug bestiary check until #905 re-keys it"),
     },
 )
 

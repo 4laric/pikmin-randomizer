@@ -166,6 +166,11 @@ class HeldPartTransferTests(unittest.TestCase):
         self.assertTrue(arenas.arena_protected(by_id["last_emperor"]))
         self.assertTrue(arenas.arena_protected(by_id["navel_puffstool"]))
 
+    def test_only_proven_arenas_transfer(self):
+        # #924: a flag is set only after a campaign run reached the vanilla check.
+        proven = {a["id"] for a in arenas.P1_BOSS_ARENAS if a.get("held_part_transfer")}
+        self.assertEqual(proven, {"hope_snagret_part"})
+
     def test_every_transfer_arena_holds_a_ship_part(self):
         for arena in arenas.P1_BOSS_ARENAS:
             if arena.get("held_part_transfer"):
