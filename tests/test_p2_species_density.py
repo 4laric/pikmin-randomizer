@@ -35,7 +35,7 @@ from experimental.pikmin2_seed_bridge import (
 
 ROOT = Path(__file__).resolve().parents[1]
 ADMITTED_PLACEMENT_DOC = ROOT / "docs/PIKMIN2_ADMITTED_PLACEMENT.json"
-SARAI = 23
+SARAI = 2  # stand-in species; was 23 Sarai until it was withdrawn (2026-09-30), now 2 Chappy
 BLUE_KOCHAPPY = 44
 OTAKARA = [59, 60, 61, 62]
 
@@ -81,7 +81,7 @@ def test_legacy_default_fills_every_accepted_target_for_one_species():
     targets = {binding["target"] for binding in ordinary_bindings(layout)}
     # Every accepted, constraint-compatible target is bound, all to Sarai
     # (#948: the ordinary set is derived from the constraint profile).
-    sarai = next(p for p in document["profiles"] if p["identity"] == "Sarai")
+    sarai = next(p for p in document["profiles"] if p["identity"] == "Chappy")
     held = {row["uid"] for row in document.get("held_parts", [])}
     expected = [uid for uid in sarai["accepted_slot_uids"] if uid not in held]
     assert len(expected) > 35
@@ -115,7 +115,7 @@ def test_legacy_multi_species_fill_covers_the_pool():
     # #289 the Emperor Bulblax 53 and #256 the Empress 30 and #958 the Giant Breadbug 40 to the boss arenas. Since #948 the ordinary target set is
     # every campaign generator a species can physically take, so all
     # ordinary species fit and every ordinary target is bound (legacy fill).
-    assert len(PLAYABLE_P2_SPECIES) == 46
+    assert len(PLAYABLE_P2_SPECIES) == 40
     fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (30, 40, 53, 73, 94)]
     document = committed_document()
     held = {row["uid"] for row in document.get("held_parts", [])}
