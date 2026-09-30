@@ -95,7 +95,7 @@ def test_launcher_script_reuses_prepared_content_and_writes_seed(tmp_path, monke
     from scripts.p2_prepare_content import ENUM_FOR_SOURCE
     content = tmp_path / "content"
     content.mkdir()
-    (content / "prepared.json").write_text(json.dumps({"extracted": [41, 38]}), encoding="utf-8")
+    (content / "prepared.json").write_text(json.dumps({"extracted": [41, 38], "pose_limit": 24}), encoding="utf-8")
     (content / ENUM_FOR_SOURCE[41]).mkdir()
     (content / ENUM_FOR_SOURCE[38]).mkdir()
     calls = []
@@ -120,6 +120,23 @@ def test_launcher_script_reuses_prepared_content_and_writes_seed(tmp_path, monke
         launcher.parse_species("99")
 
 
+def test_dev_console_refuses_sparse_prepared_content(tmp_path):
+    from scripts import p2_dev_console as launcher
+    from scripts.p2_prepare_content import ENUM_FOR_SOURCE
+    for limit in (12, None):
+        content = tmp_path / f"c{limit}"
+        content.mkdir()
+        summary = {"extracted": [41]}
+        if limit is not None:
+            summary["pose_limit"] = limit
+        (content / "prepared.json").write_text(json.dumps(summary), encoding="utf-8")
+        (content / ENUM_FOR_SOURCE[41]).mkdir()
+        with pytest.raises(SystemExit, match="dense default"):
+            launcher.ensure_content(None, content, [41])
+        assert launcher.ensure_content(None, content, [41], allow_sparse=True) == [41]
+    assert launcher.DEFAULT_CONTENT.name == "p2-content-dense"
+
+
 def _native_parser():
     import os
     candidates = [ROOT / "engine" / "pc_port" / "pc_dev_console_parser.h",
@@ -137,3 +154,19 @@ def test_native_species_and_arena_tables_match_root():
     arenas = re.findall(r"\{\"(\w+)\", (\d), (-?[\d.]+)f, (-?[\d.]+)f, (-?[\d.]+)f\}", text)
     assert [(a[0], int(a[1]), [float(a[2]), float(a[3]), float(a[4])]) for a in arenas] == \
         [(row["id"], row["stage"], row["center"]) for row in P1_BOSS_ARENAS]
+
+
+def test_session_cache_reset_when_content_root_changes(tmp_path):
+    from scripts import p2_dev_console as launcher
+    content = tmp_path / "content"
+    content.mkdir()
+    (content / "prepared.json").write_text(json.dumps({"pose_limit": 12}), encoding="utf-8")
+    session = tmp_path / "session"
+    (session / "p2-content-cache" / "p2bind-x").mkdir(parents=True)
+    assert launcher.refresh_session_cache(session, content) is True   # no stamp yet: stale cache dropped
+    assert not (session / "p2-content-cache").exists()
+    assert (session / "p2-content-cache.stale" / "p2bind-x").is_dir()
+    (session / "p2-content-cache").mkdir()
+    assert launcher.refresh_session_cache(session, content) is False  # unchanged content keeps the cache
+    (content / "prepared.json").write_text(json.dumps({"pose_limit": 24}), encoding="utf-8")
+    assert launcher.refresh_session_cache(session, content) is True   # re-extracted content resets it
