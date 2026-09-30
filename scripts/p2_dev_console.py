@@ -31,9 +31,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from randomizer import dev_console  # noqa: E402
+from scripts import p2_content_density as content_density  # noqa: E402
 from randomizer.seed import PLAYABLE_P2_SPECIES  # noqa: E402
 
-DEFAULT_CONTENT = ROOT / "output" / "p2-dev-content"
+DEFAULT_CONTENT = ROOT / "output" / "p2-content-dense"
 DEFAULT_SESSION = ROOT / "output" / "p2-dev-session"
 DEFAULT_ASSETS = Path("C:/Users/alari/bbft/dist/cohesion/pikmin/assets")
 
@@ -53,10 +54,19 @@ def prepare_command(iso, content, species):
             "--out", str(content), "--species", ",".join(str(i) for i in species)]
 
 
-def ensure_content(iso, content: Path, species, *, run=subprocess.run):
-    """Prepare the content root once; later calls reuse it (no re-extraction)."""
+def ensure_content(iso, content: Path, species, *, run=subprocess.run, allow_sparse=False):
+    """Prepare the content root once; later calls reuse it (no re-extraction).
+
+    A root prepared below DEFAULT_POSE_LIMIT poses per clip (#943) is refused
+    unless ``allow_sparse``: it plays with choppy animation (#970).
+    """
     content = Path(content)
     if (content / "prepared.json").is_file():
+        limit = content_density.root_pose_limit(content)
+        if not allow_sparse and (limit is None or limit < content_density.DEFAULT_POSE_LIMIT):
+            raise SystemExit(f"{content} was prepared at pose limit {limit}, below the dense default "
+                             f"{content_density.DEFAULT_POSE_LIMIT}; re-extract into a fresh directory "
+                             "(scripts/p2_prepare_content.py) or pass --allow-sparse-content")
         staged = dev_console.staged_species(content, species)
         missing = sorted(set(species) - set(staged))
         print(f"P2_DEV_CONTENT reuse={content} staged={len(staged)} missing={missing}", flush=True)
@@ -83,6 +93,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--iso", type=Path, default=None, help="P2 ISO; only needed the first time (content extraction)")
     parser.add_argument("--content", type=Path, default=DEFAULT_CONTENT, help="identity-keyed content root (reused)")
+    parser.add_argument("--allow-sparse-content", action="store_true",
+                        help="accept a content root prepared below the dense pose default")
     parser.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION)
     parser.add_argument("--exe", type=Path, default=None, help="native nectar.exe built with the dev console")
     parser.add_argument("--assets", type=Path, default=DEFAULT_ASSETS)
@@ -94,7 +106,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     species = parse_species(args.species)
-    staged = ensure_content(args.iso, args.content, species)
+    staged = ensure_content(args.iso, args.content, species, allow_sparse=args.allow_sparse_content)
     if not staged:
         raise SystemExit("no staged species; nothing to launch")
     session = args.session_dir.resolve()

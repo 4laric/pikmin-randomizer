@@ -18,7 +18,7 @@ Example (PowerShell)::
     py -3.12 scripts/p2_smoke_seed.py --area foh --slots 4 --near-start `
         --species 58,32 --bosses 94:hope_snagret_pit --seed foh-any-1 `
         --out output/smoke-any/foh-any-1 --iso "C:\\...\\PIKMIN2 for GAMECUBE.iso" `
-        --content-cache output/p2-content-cache --exe output/smoke-foh/exe-anyslot/nectar.exe
+        --content-cache output/p2-content-dense --exe output/smoke-foh/exe-anyslot/nectar.exe
     & output/smoke-any/foh-any-1/play.ps1
 
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
@@ -297,11 +297,20 @@ def enum_for(source_id):
         raise SmokeSeedError(f'no content extractor enum for source id {source_id}') from None
 
 
-def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=shutil.copytree):
+def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=shutil.copytree,
+                  allow_sparse=False):
     """Populate ``content_dir/<Enum>`` for every bound species: from
     ``content_dir`` itself if present, else from ``cache_dir``, else by
     extracting the missing ids from the ISO (``prepare_fn(iso, out, wanted)``)
-    and copying the fresh dirs back into the cache. Returns a summary dict."""
+    and copying the fresh dirs back into the cache. Returns a summary dict.
+
+    Cache entries are pose-limit aware (#970): an entry is reused only when
+    its recorded extraction pose limit (``density.json`` marker or the cache
+    root's ``prepared.json``) is at least ``DEFAULT_POSE_LIMIT``. A sparse or
+    unrecorded entry counts as missing: it is re-extracted when ``iso`` is
+    given (the old dir is kept as ``<Enum>.sparse-bak``), otherwise staging
+    fails unless ``allow_sparse`` (``--allow-sparse-cache``) accepts it."""
+    from scripts import p2_content_density as density
     content_dir = Path(content_dir)
     cache_dir = Path(cache_dir) if cache_dir else None
     content_dir.mkdir(parents=True, exist_ok=True)
@@ -309,7 +318,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
-    reused, cached, missing = [], [], []
+    reused, cached, missing, sparse = [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
         if target.is_dir() and any(target.iterdir()):
@@ -317,13 +326,20 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            copy(source, target)
-            cached.append(enum)
-            continue
+            if allow_sparse or density.entry_is_dense(cache_dir, enum):
+                copy(source, target)
+                cached.append(enum)
+                continue
+            sparse.append(enum)
         missing.append(sid)
     extracted = []
     if missing:
         if iso is None:
+            if sparse:
+                raise SmokeSeedError(
+                    f'content cache entries {sparse} are sparse (extracted below {density.DEFAULT_POSE_LIMIT} '
+                    'poses per clip, or of unknown density) and no --iso was given to re-extract them; '
+                    'rebuild the cache (scripts/p2_prepare_content.py) or pass --allow-sparse-cache')
             raise SmokeSeedError(
                 f'content cache lacks {[needed[s] for s in missing]} and no --iso was given to extract them')
         if prepare_fn is None:
@@ -339,9 +355,19 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
                 raise SmokeSeedError(f'extraction did not produce {fresh} for source id {sid}')
             if cache_dir is not None:
                 cache_dir.mkdir(parents=True, exist_ok=True)
+                if enum in sparse:
+                    backup = cache_dir / f'{enum}.sparse-bak'
+                    n = 1
+                    while backup.exists():
+                        n += 1
+                        backup = cache_dir / f'{enum}.sparse-bak{n}'
+                    (cache_dir / enum).rename(backup)
                 if not (cache_dir / enum).exists():
                     copy(fresh, cache_dir / enum)
-    return {'reused': reused, 'from_cache': cached, 'extracted': extracted,
+                    limit = summary.get('pose_limit', density.DEFAULT_POSE_LIMIT) if isinstance(summary, dict) \
+                        else density.DEFAULT_POSE_LIMIT
+                    density.write_entry_marker(cache_dir / enum, limit, source='p2_smoke_seed')
+    return {'reused': reused, 'from_cache': cached, 'extracted': extracted, 'sparse_replaced': sparse,
             'missing_ids': missing, 'needed': {str(k): v for k, v in sorted(needed.items())}}
 
 
@@ -406,7 +432,8 @@ def build(args):
     seed_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
 
     content_dir = out / 'content'
-    content = stage_content(manifest, content_dir, args.content_cache, args.iso) if not args.no_content else None
+    content = stage_content(manifest, content_dir, args.content_cache, args.iso,
+                            allow_sparse=args.allow_sparse_cache) if not args.no_content else None
     actors_path = out / 'actors.json'
     prepare.actors_for_manifest_file(seed_path, actors_path)
 
@@ -446,8 +473,11 @@ def main(argv=None):
     parser.add_argument('--seed', required=True, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
     parser.add_argument('--iso', type=Path, default=None, help='P2 retail ISO; only read when the content cache lacks a species')
-    parser.add_argument('--content-cache', type=Path, default=ROOT / 'output' / 'p2-content-cache',
-                        help='reusable per-enum content cache (default output/p2-content-cache); missing species are extracted and added')
+    parser.add_argument('--content-cache', type=Path, default=ROOT / 'output' / 'p2-content-dense',
+                        help='reusable per-enum content cache (default output/p2-content-dense, the #943 dense pose bank); '
+                             'missing or sparse species are extracted and added')
+    parser.add_argument('--allow-sparse-cache', action='store_true',
+                        help='reuse cache entries even when their recorded pose limit is below the dense default (#970)')
     parser.add_argument('--exe', type=Path, default=None, help='nectar.exe built from claude/p2-smoke-any-slot (baked into play.ps1; overridable with -Exe)')
     parser.add_argument('--assets', default=DEFAULT_ASSETS, help='retail asset root for randomizer run --assets')
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')

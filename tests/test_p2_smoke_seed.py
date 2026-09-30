@@ -181,6 +181,7 @@ def test_stage_content_reuses_cache_and_extracts_only_missing(tmp_path):
     cache = tmp_path / 'cache'
     (cache / 'BombSarai').mkdir(parents=True)
     (cache / 'BombSarai' / 'identity.json').write_text('{}')
+    (cache / 'BombSarai' / 'density.json').write_text('{"pose_limit": 24}')
     content = tmp_path / 'content'
     (content / 'Demon').mkdir(parents=True)
     (content / 'Demon' / 'demon.json').write_text('{}')
@@ -213,6 +214,44 @@ def test_stage_content_reuses_cache_and_extracts_only_missing(tmp_path):
     with pytest.raises(smoke.SmokeSeedError, match='no --iso'):
         smoke.stage_content({'p2_layout': {'bindings': [{'target': '9', 'source_id': 41, 'enum_name': 'Fuefuki'}]}},
                             tmp_path / 'other', cache, None, prepare_fn=prepare_fn, copy=copy)
+
+
+def test_stage_content_refuses_or_replaces_sparse_cache_entries(tmp_path):
+    manifest = {'p2_layout': {'bindings': [{'target': '1', 'source_id': 58, 'enum_name': 'BombSarai'}]}}
+    cache = tmp_path / 'cache'
+    (cache / 'BombSarai').mkdir(parents=True)
+    (cache / 'BombSarai' / 'identity.json').write_text('{}')  # unrecorded density
+    (cache / 'BombSarai' / 'density.json').write_text('{"pose_limit": 12}')
+
+    def copy(src, dst):
+        Path(dst).mkdir(parents=True, exist_ok=True)
+        (Path(dst) / 'copied').write_text(str(src.name))
+
+    def prepare_fn(iso, out, wanted):
+        (Path(out) / 'BombSarai').mkdir(parents=True)
+        (Path(out) / 'BombSarai' / 'identity.json').write_text('{}')
+        return {'extracted_enums': ['BombSarai'], 'pose_limit': 24}
+
+    with pytest.raises(smoke.SmokeSeedError, match='sparse'):
+        smoke.stage_content(manifest, tmp_path / 'c1', cache, None, prepare_fn=prepare_fn, copy=copy)
+    allowed = smoke.stage_content(manifest, tmp_path / 'c2', cache, None, prepare_fn=prepare_fn, copy=copy,
+                                  allow_sparse=True)
+    assert allowed['from_cache'] == ['BombSarai']
+    summary = smoke.stage_content(manifest, tmp_path / 'c3', cache, 'fake.iso', prepare_fn=prepare_fn, copy=copy)
+    assert summary['sparse_replaced'] == ['BombSarai'] and summary['extracted'] == ['BombSarai']
+    assert (cache / 'BombSarai.sparse-bak' / 'density.json').is_file()
+    from scripts import p2_content_density as density
+    assert density.entry_is_dense(cache, 'BombSarai')
+    # A cache root prepared at the dense default also counts, per listed enum.
+    root = tmp_path / 'root'
+    (root / 'Demon').mkdir(parents=True)
+    (root / 'prepared.json').write_text('{"pose_limit": 24, "extracted_enums": ["Demon"]}')
+    assert density.entry_is_dense(root, 'Demon') and not density.entry_is_dense(root, 'Kabuto')
+
+
+def test_smoke_seed_default_cache_is_dense_cache():
+    text = (smoke.ROOT / 'scripts' / 'p2_smoke_seed.py').read_text(encoding='utf-8')
+    assert "default=ROOT / 'output' / 'p2-content-dense'" in text
 
 
 def test_launcher_sets_env_and_runs_randomizer(tmp_path):

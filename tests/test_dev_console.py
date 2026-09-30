@@ -95,7 +95,7 @@ def test_launcher_script_reuses_prepared_content_and_writes_seed(tmp_path, monke
     from scripts.p2_prepare_content import ENUM_FOR_SOURCE
     content = tmp_path / "content"
     content.mkdir()
-    (content / "prepared.json").write_text(json.dumps({"extracted": [41, 38]}), encoding="utf-8")
+    (content / "prepared.json").write_text(json.dumps({"extracted": [41, 38], "pose_limit": 24}), encoding="utf-8")
     (content / ENUM_FOR_SOURCE[41]).mkdir()
     (content / ENUM_FOR_SOURCE[38]).mkdir()
     calls = []
@@ -118,6 +118,23 @@ def test_launcher_script_reuses_prepared_content_and_writes_seed(tmp_path, monke
     assert len(calls) == 1 and "--species" in calls[0] and calls[0][calls[0].index("--species") + 1] == "41"
     with pytest.raises(SystemExit):
         launcher.parse_species("99")
+
+
+def test_dev_console_refuses_sparse_prepared_content(tmp_path):
+    from scripts import p2_dev_console as launcher
+    from scripts.p2_prepare_content import ENUM_FOR_SOURCE
+    for limit in (12, None):
+        content = tmp_path / f"c{limit}"
+        content.mkdir()
+        summary = {"extracted": [41]}
+        if limit is not None:
+            summary["pose_limit"] = limit
+        (content / "prepared.json").write_text(json.dumps(summary), encoding="utf-8")
+        (content / ENUM_FOR_SOURCE[41]).mkdir()
+        with pytest.raises(SystemExit, match="dense default"):
+            launcher.ensure_content(None, content, [41])
+        assert launcher.ensure_content(None, content, [41], allow_sparse=True) == [41]
+    assert launcher.DEFAULT_CONTENT.name == "p2-content-dense"
 
 
 def _native_parser():
