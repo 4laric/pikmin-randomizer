@@ -987,7 +987,10 @@ def extract_bigtreasure(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
         raise ValueError(f"research checkout not found: {research}")
     if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
         raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
-    pose_limit = min(pose_limit, bigtreasure.MAX_POSES)
+    # Species-specific density (owner 2026-09-30): the Titan keeps its own dense
+    # limit (``bigtreasure.POSE_LIMIT`` = 48) unless an explicit larger global
+    # limit is requested; the generic default of 24 never thins it.
+    pose_limit = max(pose_limit, bigtreasure.POSE_LIMIT) if pose_limit <= DEFAULT_POSE_LIMIT         else min(pose_limit, bigtreasure.MAX_POSES)
     target = dest / "BigTreasure"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
