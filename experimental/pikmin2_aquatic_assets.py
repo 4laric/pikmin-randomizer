@@ -317,13 +317,14 @@ def extract(iso, source, output, pose_limit=6):
                             event_loop_boundaries=[r for r in events if r[1] in (0, 1)],
                             poses=[], status='unsupported')
                 try:
-                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
+                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True, extra_tracks=True)
                     clip['source_frames'] = duration
                     frames = sample_frames(duration, pose_limit)
                     for number, frame in enumerate(frames):
                         try:
                             tolerances = TOLERANCES.get(species, {})
-                            decoded, pose = decode_pose(decode, model, model_blocks, raw, frame, len(names), **tolerances)
+                            decoded, pose = decode_pose(decode, model, model_blocks, raw, frame, len(names),
+                                                      pose_kwargs={'extra_tracks': True}, **tolerances)
                             name = f'aquatic_{species}_{stem}_{number:02}.mod'
                             conversion = write_model(decoded, root / name, 'enemy.bmd')
                             conversion.update(source='enemy.bmd', output=name,
