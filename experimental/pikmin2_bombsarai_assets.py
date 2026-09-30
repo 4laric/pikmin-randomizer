@@ -219,29 +219,46 @@ def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
         try:
             duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
             clip['source_frames'] = duration
-            for number, frame in enumerate(sample_frames(duration, pose_limit)):
-                try:
-                    _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
-                    matrices = draw_matrices(mb, pose)
-                    decoded = decode(model, True, bake_rigid=True,
-                                     draw_matrices=matrices, **TOLERANCES)
-                    name = f'{prefix}_{species}_{stem}_{number:02}.mod'
-                    conversion = write_model(decoded, root / name, 'enemy.bmd')
-                    conversion.update(source='enemy.bmd', output=name)
-                    data = (root / name).read_bytes()
-                    resources = resource_chunks(data)
-                    if reference is not None and resources != reference:
-                        raise ValueError(species + ' pose changes immutable render resources')
-                    reference = resources
-                    report['total_pose_bytes'] += len(data)
-                    report['total_poses'] += 1
-                    clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
-                                              sha256=sha(data)))
-                    (root / Path(name).with_suffix('.json')).write_bytes(
-                        (json.dumps(conversion, sort_keys=True, indent=2) + '\n').encode())
-                except (ValueError, KeyError, ArithmeticError) as error:
-                    clip['poses'].append(dict(frame=frame,
-                                              unsupported_reason=f'{type(error).__name__}: {error}'))
+            samples = sample_frames(duration, pose_limit)
+            for number, sampled in enumerate(samples):
+                # A source frame the converter refuses (e.g. the authored zero-scale
+                # frames of dead1) is replaced by the nearest convertible neighbour
+                # strictly between its sampled neighbours, so the clip keeps its
+                # pose count (#972). The first and last sample never move.
+                converted = [pose['frame'] for pose in clip['poses'] if 'file' in pose]
+                low = converted[-1] if converted else -1
+                high = samples[number + 1] if number + 1 < len(samples) else duration
+                edge = number in (0, len(samples) - 1)
+                candidates = [sampled] if edge else [sampled] + [
+                    sampled + delta for delta in (-1, 1, -2, 2) if low < sampled + delta < high]
+                first_error = None
+                for frame in candidates:
+                    try:
+                        _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                        matrices = draw_matrices(mb, pose)
+                        decoded = decode(model, True, bake_rigid=True,
+                                         draw_matrices=matrices, **TOLERANCES)
+                        name = f'{prefix}_{species}_{stem}_{number:02}.mod'
+                        conversion = write_model(decoded, root / name, 'enemy.bmd')
+                        conversion.update(source='enemy.bmd', output=name)
+                        data = (root / name).read_bytes()
+                        resources = resource_chunks(data)
+                        if reference is not None and resources != reference:
+                            raise ValueError(species + ' pose changes immutable render resources')
+                        reference = resources
+                        report['total_pose_bytes'] += len(data)
+                        report['total_poses'] += 1
+                        clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
+                                                  sha256=sha(data)))
+                        (root / Path(name).with_suffix('.json')).write_bytes(
+                            (json.dumps(conversion, sort_keys=True, indent=2) + '\n').encode())
+                        break
+                    except (ValueError, KeyError, ArithmeticError) as error:
+                        first_error = first_error or error
+                else:
+                    clip['poses'].append(dict(
+                        frame=sampled,
+                        unsupported_reason=f'{type(first_error).__name__}: {first_error}'))
         except (ValueError, KeyError, ArithmeticError) as error:
             clip['unsupported_reason'] = f'{type(error).__name__}: {error}'
         converted = [pose for pose in clip['poses'] if 'file' in pose]
