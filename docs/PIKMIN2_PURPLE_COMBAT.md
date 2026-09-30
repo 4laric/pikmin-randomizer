@@ -41,3 +41,29 @@ suppression, repeated throws/recovery, damage/death during stun and unsupported
 controls. Scripted actor/captain placement and throw commands must be disclosed;
 physical-controller acceptance remains separate. Every artifact stays private
 under output; CI compiles source only and receives no proprietary assets.
+
+## Current validation boundary
+
+Windows CI at native `52712fcdb115f712ed1f2e3f30c9af59e7c3715e`
+passed 164/164 policy tests and built the production executable and combat
+fixture. All five downloaded executable/DLL hashes were verified. A subsequent
+CI build at `40f0e8846fcdfc12da86d1371994de8f4587e520` also preserves
+`ninja: no work to do.` in its artifact. CI receives no game assets.
+
+Fresh local `guard01` returned raw exit 86, captain-down true, and no combat
+marker. `adult01` with fixture-only sources 1+2 failed before acquisition because
+source 1 retained an adult host while its adapter requires a dwarf host.
+The scoped repair selects Chappy type 3 only for source 1 with Purple enabled;
+protected spawns and the general/Purple-disabled host policy stay unchanged.
+Source 1 is not currently admitted to generated seeds; this fixture does not
+change admission. Source 2 is admitted.
+
+Fresh source-2-only `adult02` booted and passed native Violet conversion and
+plucking with the 20-Pikmin baseline. It then failed the untouched-health
+precondition before any combat throw. Investigation found the adult health
+registry binds PelletView pointers while its getter looks up BTeki pointers;
+this needs independent repair/verification. Neither run is combat acceptance.
+The Red quake fixture observes bounce, naturally selected Fit, a repeated quake
+with retained timer and timed recovery. Quake, crush, and death while stunned
+still require passing local runtime evidence. New Red paths must remain gated
+if those checks cannot be completed; adult evidence cannot qualify Red.
