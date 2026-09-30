@@ -87,7 +87,10 @@ def test_plan_derives_bank_legs_and_poses_from_the_import():
     assert all(len(j) == 4 + 12 for j in joints)
     names = [n for n, _ in plan['room']]
     assert sum(n.startswith('bigtreasure_pellet_') for n in names) == 4
-    assert not any('_wait2_2' in n for n in names)
+    # slot 29 (Walk's wait2) reuses wait2's poses: no second copy (a substring test would hit
+    # bigtreasure_wait2_20.mod once a clip has 20+ poses)
+    import re
+    assert not any(re.search(r'wait2_2_\d\d\.mod$', n) for n in names)
     assert plan['pose_bytes'] <= camp.MAX_BYTES
 
 
@@ -106,3 +109,75 @@ def test_stage_writes_run_files_idempotently_and_refuses_changes(tmp_path):
     (run / camp.BANK_TXT).write_bytes(b'tampered')
     with pytest.raises(camp.BigTreasureStageError):
         camp.stage_from(_import_dir(), run)
+
+
+# --- Titan Dweevil pose density (owner playtest 2026-09-30: "needs way more poses") ---
+
+def test_titan_pose_limit_is_dense_and_coherent():
+    from experimental import pikmin2_bigtreasure_assets as assets
+    from experimental import pikmin2_bigtreasure_campaign as camp
+    from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX
+
+    # More than the global default, within the native compact loader row cap, and the
+    # stage keeps everything the extractor bakes (nothing is thinned at staging).
+    assert assets.POSE_LIMIT > DEFAULT_POSE_LIMIT
+    assert assets.POSE_LIMIT <= POSE_LIMIT_MAX
+    assert assets.MAX_POSES == assets.POSE_LIMIT
+    assert camp.MAX_POSES >= assets.POSE_LIMIT
+    # The extractor byte budgets cover the measured ~97 KiB/pose dense tree
+    # (29 clips, 1181 poses, 103.7 MiB measured 2026-09-30).
+    assert assets.CLIP_BYTES >= assets.POSE_LIMIT * 100 * 1024
+    assert assets.TOTAL_BYTES >= 104 * 1024 * 1024
+    assert camp.MAX_BYTES >= assets.TOTAL_BYTES
+
+
+def test_prepare_content_keeps_the_titan_dense_under_the_generic_default(tmp_path, monkeypatch):
+    from experimental import pikmin2_bigtreasure_assets as assets
+    from scripts import p2_prepare_content as prep
+
+    seen = {}
+
+    def fake_extract(iso, research, tmp, pose_limit):
+        seen['pose_limit'] = pose_limit
+        (tmp).mkdir(parents=True)
+
+    monkeypatch.setattr(assets, 'extract', fake_extract)
+    iso = tmp_path / 'disc.iso'
+    iso.write_bytes(b'x')
+    research = tmp_path / 'research'
+    research.mkdir()
+    prep.extract_bigtreasure(iso, research, tmp_path / 'out', pose_limit=prep.DEFAULT_POSE_LIMIT)
+    assert seen['pose_limit'] == assets.POSE_LIMIT  # the global 24 never thins the Titan
+    prep.extract_bigtreasure(iso, research, tmp_path / 'out2', pose_limit=prep.POSE_LIMIT_MAX)
+    assert seen['pose_limit'] == assets.MAX_POSES  # an explicit larger request is capped at the species max
+
+
+def test_subset_keeps_every_pose_when_under_the_limit():
+    from experimental import pikmin2_bigtreasure_campaign as camp
+
+    poses = [{'frame': i} for i in range(48)]
+    assert camp._subset(poses, camp.MAX_POSES) == poses
+    # Over the limit it keeps first and last and spreads evenly.
+    many = [{'frame': i} for i in range(100)]
+    picked = camp._subset(many, 10)
+    assert len(picked) == 10 and picked[0]['frame'] == 0 and picked[-1]['frame'] == 99
+
+
+@pytest.mark.skipif(_import_dir() is None, reason='local BigTreasure disc import not present')
+def test_staged_bank_carries_every_baked_pose():
+    from experimental import pikmin2_bigtreasure_campaign as camp
+
+    plan = camp.plan(_import_dir())
+    rows = plan['parms'][camp.BANK_TXT].decode('ascii').splitlines()
+    counts = {r.split()[2]: int(r.split()[4]) for r in rows if r.startswith('clip ')}
+    # Attack and pre-attack clips are the ones the owner asked for: each gets min(source frames, POSE_LIMIT)
+    # poses, minus frames the converter cannot bake (dead's vanishing tail).
+    from experimental import pikmin2_bigtreasure_assets as assets
+    frames = {r.split()[2]: int(r.split()[3]) for r in rows if r.startswith('clip ')}
+    for name, poses in counts.items():
+        if name == 'dead':
+            assert poses >= 40
+            continue
+        assert poses == min(frames[name], assets.POSE_LIMIT), name
+    assert sum(counts.values()) > 1000
+    assert plan['pose_bytes'] <= camp.MAX_BYTES

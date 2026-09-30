@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from experimental.pikmin2_bulblax_bank import (HEADER, CLIP_BYTES, TOTAL_BYTES, LIMITATIONS, POLICIES,
+from experimental import pikmin2_animation as animation
+from experimental.pikmin2_bulblax_bank import (HEADER, CLIP_BYTES, TOTAL_BYTES, LIMITATIONS, POLICIES, MAX_POSES,
                                                parse_bank, validate_files, build)
 from experimental.pikmin2_bulblax_assets import CLIPS, TEXT
 
@@ -122,6 +123,33 @@ class ValidateFilesTests(unittest.TestCase):
                 validate_files(root, bank)
 
 
+class DensityTests(unittest.TestCase):
+    """#972: the Queen/larva bank is dense (24 poses/clip), not 12."""
+
+    QUEEN_POSE_BYTES = 59264  # measured, bulblax_Queen_*.mod
+
+    def test_pose_limit_is_the_dense_default(self):
+        self.assertEqual(MAX_POSES, animation.DEFAULT_POSE_LIMIT)
+        from experimental import pikmin2_bulblax_assets as assets
+        self.assertEqual(assets.MAX_POSES, animation.DEFAULT_POSE_LIMIT)
+
+    def test_budgets_fit_a_24_pose_queen_clip_and_bank(self):
+        self.assertGreaterEqual(CLIP_BYTES, 24 * self.QUEEN_POSE_BYTES)
+        # Queen 9 clips + Baby (5 clips of 24 + move 12 at 8,224 B) + KingChappy 14 clips.
+        queen_baby = 9 * 24 * self.QUEEN_POSE_BYTES + (5 * 24 + 12) * 8224
+        self.assertGreaterEqual(TOTAL_BYTES, queen_baby)
+        self.assertGreaterEqual(TOTAL_BYTES, 32486912)
+
+    def test_parse_bank_accepts_24_poses_per_clip(self):
+        frames = animation.sample_frames(140, 24)
+        self.assertEqual(len(frames), 24)
+        text = chr(10).join([HEADER, 'Queen 1', 'dead 24 140 ' + ' '.join(map(str, frames)), ''])
+        self.assertEqual(parse_bank(text)['Queen']['dead']['poses'], 24)
+        bad = chr(10).join([HEADER, 'Queen 1', 'dead 25 140 ' + ' '.join(map(str, range(25))), ''])
+        with self.assertRaises(ValueError):
+            parse_bank(bad)
+
+
 class BuildTests(unittest.TestCase):
     def fake_pose(self, clip, frame, joints, allow_scale=False):
         return 12, None
@@ -203,7 +231,7 @@ class BuildTests(unittest.TestCase):
     def test_pose_limit_bounds_and_no_overwrite(self):
         with tempfile.TemporaryDirectory() as d:
             root = imported_fixture(Path(d) / 'imported')
-            for bad in (0, 1, 13, True, '6'):
+            for bad in (0, 1, 25, True, '6'):
                 with self.assertRaises(ValueError):
                     build(root, Path(d) / f'bank-{bad}', bad)
             existing = Path(d) / 'bank'

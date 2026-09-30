@@ -57,10 +57,12 @@ LEG_FEET = ('rhand3jnt', 'lhand3jnt', 'rfoot3jnt', 'lfoot3jnt')
 WEAPONS = ('elec', 'fire', 'gas', 'water')
 # Pose sampling per clip for the native draw (bounded bytes); the extractor
 # samples up to its own pose limit and we keep an even subset.
-# #943: 12 per clip. The extractor bakes up to 24 but Titan poses are ~97 KiB
-# each over 29 clips, so 12 is what fits MAX_BYTES with the weapon pellets.
-MAX_POSES = 12
-MAX_BYTES = 40 * 1024 * 1024
+# #972 / owner 2026-09-30: stage every baked pose (up to 48 per clip). The
+# native draw loads them through the compact pose loader (a few full Shapes per
+# clip plus decoded vectors), so the staged file bytes are a disk budget, not a
+# resident one; MAX_BYTES covers the measured ~110 MiB dense tree plus pellets.
+MAX_POSES = 48
+MAX_BYTES = 192 * 1024 * 1024
 
 
 class BigTreasureStageError(ValueError):
