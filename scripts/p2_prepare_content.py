@@ -1132,6 +1132,12 @@ def extract_bigfoot(iso, dest):
         folder.mkdir(parents=True, exist_ok=True)
         (folder / damagumo_convert.MESH_NAME).write_bytes(mesh)
         shutil.copytree(tmp, target)
+        # Raging Long Legs sampled pose bank (smoothing pass): BigFoot has four
+        # real .bca clips; bake DEFAULT_POSE_LIMIT poses per clip so the native
+        # draw can interpolate. The installer copies ``bank/`` into the room;
+        # a content dir without it keeps the static bind draw.
+        from experimental import pikmin2_long_legs_bank as long_legs_bank
+        long_legs_bank.extract(iso, target / "bank")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return target
