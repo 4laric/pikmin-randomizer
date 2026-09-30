@@ -31,3 +31,18 @@ Placement rules decide which seeds are *valid*. They must never decide what the 
 4. **Bosses are placed by constraint, not by cast list.** Arena placement is a data rule (footprint, clearance, protected drops). The same species must also be placeable on any slot that meets its footprint when a smoke seed or the dev console asks for it.
 5. **Dev and smoke overrides are always available.** Every placement restriction must be bypassable by the smoke-seed switch or the dev console without a rebuild. A restriction that can only be lifted by recompiling is a defect.
 6. **Review check.** A PR that adds or narrows a placement restriction must say which runtime constraint it encodes, and confirm the smoke bypass still reaches it.
+
+## Don't invent restrictions (binding)
+
+A randomizer's job is to randomize. Agents tend to be conservative when they're unsure, and in practice that produces a pile of made-up rules: "only this slot", "bosses only in arenas", "not in this area", "exclude this species". Each one hardens into a constraint the next agent obeys. The owner has seen the same failure on the Bloodborne randomizer.
+
+1. **Default to permissive.** When nothing forbids a placement, pairing or option, allow it. Uncertainty is a reason to test, not to restrict.
+2. **Every restriction must cite its source:**
+   - an owner ruling (link the issue or comment);
+   - a concrete game or runtime constraint, meaning a crash, softlock, unreachable check, broken logic, or a physical requirement such as terrain, water or size, backed by a reproduction or code reference;
+   - or a failing test that shows the breakage.
+
+   Put the citation in a code comment or data note next to the restriction. An unsourced restriction is a defect, and any agent may remove it.
+3. **Evidence is not a whitelist.** "We proved it works here" never means "it only works here." Record where something was proven; don't restrict it to there.
+4. **Don't close gaps by excluding things.** If a species, item or option has a problem, fix it or log a specific open issue. Don't quietly drop it from the pool, narrow its placement, or gate it behind an option to make a test pass.
+5. **Say it when you add one.** Any new restriction goes in the PR description with its source, so the owner can overrule it.
