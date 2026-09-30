@@ -418,18 +418,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 24,
-        "enum_name": "Tank",
-        "family": "tank",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3",
-            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 24 -> tank "
-                         "(experimental/pikmin2_tank_identity_install)",
-        },
-    },
-    {
         "source_id": 75,
         "enum_name": "Kabuto",
         "family": "kabuto",
