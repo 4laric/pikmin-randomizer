@@ -105,6 +105,9 @@ IDENTITY_FAMILY = {
     9: 'kogane', 'kogane': 'kogane',
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
+    # #960: the Greater Spotted Jellyfloat (72) rides the Kurage OWN module with its
+    # own retail parms, collision tree and onikurage_* poses.
+    72: 'onikurage', 'onikurage': 'onikurage',
     # #888 WP5: 78 stages the native Groink source-FSM inputs (retail parms,
     # clip/key-event/pose/muzzle bank, poses) plus the carcass sidecar; the
     # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
@@ -125,6 +128,10 @@ IDENTITY_FAMILY = {
     # own retail parms/bank/poses; a separate family so a seed carrying both
     # stages both content sets (a family installs from ONE source directory).
     40: 'giantbreadbug', 'oopanmodoki': 'giantbreadbug',
+    # #256: Empress Bulblax (Queen, 30) OWN. Stages the native source-FSM
+    # inputs (disc parms + clip/key-event/pose bank, poses, BTK specular);
+    # the seeded actor rides TEKI_Swallow and pc_p2_queen_teki drives it.
+    30: 'queen', 'queen': 'queen',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
     # than forking it; the source dir holds the full aquatic import.
@@ -972,6 +979,45 @@ def _adapt_kurage(source, run, actors):
                 placeholder_generator=True)
 
 
+def _validate_onikurage(source):
+    """Pre-flight check for the OniKurage (Greater Spotted Jellyfloat, source 72) content."""
+    _read_identity_source(source, 72, 'OniKurage')
+    from experimental.pikmin2_onikurage_content import validate as validate_onikurage_host
+    validate_onikurage_host(source)
+
+
+def _adapt_onikurage(source, run, actors):
+    """Adapter for OniKurage (source 72): stage the onikurage poses and emit the
+    shared ``p2-kurage-teki.txt`` (the native Jellyfloat module binds source 57 and
+    72 from the seed, so the filed generator is a placeholder in bridge mode).
+    Idempotent like the Kurage adapter; a run that also holds a Kurage reuses the
+    sidecar it already staged.
+    """
+    _read_identity_source(source, 72, 'OniKurage')
+    run = Path(run)
+    from experimental.pikmin2_onikurage_content import stage_onikurage_host
+    stage_onikurage_host(source, run)
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'OniKurage':
+            raise StagingError(f'OniKurage adapter got non-OniKurage species: {species!r}')
+    if not generators:
+        raise StagingError('OniKurage install requires at least one generator')
+    path = run / KURAGE_TEKI_TXT
+    if path.is_file():
+        _parse_kurage_sidecar(path.read_text(encoding='ascii'))
+        existing = path.read_bytes()
+        return dict(species='OniKurage', source_id=72, generators=sorted(set(generators)),
+                    actors_config_sha256=hashlib.sha256(existing).hexdigest(),
+                    placeholder_generator=True)
+    placeholder = sorted(set(generators))[0]
+    payload = f'{KURAGE_TEKI_HEADER} 1 {placeholder} 0\n'.encode('ascii')
+    path.write_bytes(payload)
+    return dict(species='OniKurage', source_id=72, generators=sorted(set(generators)),
+                actors_config_sha256=hashlib.sha256(payload).hexdigest(),
+                placeholder_generator=True)
+
+
 def _validate_minihoudai(source):
     """Pre-flight check for MiniHoudai (Gatling Groink, source 78) content."""
     _read_identity_source(source, 78, 'MiniHoudai')
@@ -1153,6 +1199,35 @@ def _adapt_bombsarai(source, run, actors):
     except (BombSaraiStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'BombSarai OWN staging failed: {error}') from error
     return dict(receipt, own=own)
+def _validate_queen(source):
+    """Pre-flight check for Queen (Empress Bulblax, source 30) content."""
+    _read_identity_source(source, 30, 'Queen')
+    from experimental.pikmin2_queen_stage import QueenStageError, plan
+    try:
+        plan(source)
+    except (QueenStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Queen content invalid: {error}') from error
+
+
+def _adapt_queen(source, run, actors):
+    """Adapter for Queen (source 30): native OWN bank, poses and specular.
+
+    The campaign (bridge) setup binds every seeded 30 actor from the seed
+    itself, so no per-generator sidecar is written.
+    """
+    from experimental.pikmin2_queen_stage import QueenStageError, stage_from
+    _read_identity_source(source, 30, 'Queen')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'Queen':
+            raise StagingError(f'Queen adapter got non-Queen species: {species!r}')
+    if not generators:
+        raise StagingError('Queen install requires at least one generator')
+    try:
+        receipt = stage_from(Path(source), Path(run))
+    except (QueenStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Queen staging failed: {error}') from error
+    return dict(species='Queen', source_id=30, generators=sorted(set(generators)), queen=receipt)
 
 
 def _adapt_cannon_projectile(source, run, actors):
@@ -1572,12 +1647,14 @@ ADAPTERS = {
     'dangomushi': {'install': _adapt_dangomushi, 'validate': _validate_dangomushi},
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
+    'onikurage': {'install': _adapt_onikurage, 'validate': _validate_onikurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
     'giantbreadbug': {'install': _adapt_giantbreadbug, 'validate': _validate_giantbreadbug},
     'fuefuki': {'install': _adapt_fuefuki, 'validate': _validate_fuefuki},
     'bombsarai': {'install': _adapt_bombsarai, 'validate': _validate_bombsarai},
+    'queen': {'install': _adapt_queen, 'validate': _validate_queen},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},

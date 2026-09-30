@@ -24,10 +24,11 @@ Example (PowerShell)::
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
-The landing site is each stage's captain start, the x/z the stage ``default.gen``
-header stores at bytes 4..16 (``LANDING_BY_STAGE``); it is NOT (0, 0): Forest of
-Hope starts near (-316, 2022) and the Impact Site near (48, 1920) (#958: a FoH
-smoke seed "near the start" put its Giants 2000 units from the player).
+The landing site is where the captain starts. It is NOT (0, 0): the Forest of Hope start was measured
+at (-316, 2022) from a native log (AUTOPLAY_NAVI at rest at START; wave-3 polish 75/78), so ``LANDING`` records measured starts and
+``--landing X,Z`` (alias ``--origin``) overrides any area whose start has not been measured. Every start profile begins on
+day 2 (``randomizer.catalog.START_AREAS``), so ``--near-start`` slots default to ``first_day <= 2``:
+CONTRIBUTING "Playtest seeds" rule 3 (nothing under test behind a later day).
 """
 
 from __future__ import annotations
@@ -52,18 +53,16 @@ AREAS = {
     'navel': ('navel', 2, 'navel'),
     'spring': ('spring', 3, 'spring'),
 }
-LANDING_XZ = (0.0, 0.0)  # legacy default of distance_xz(); real seeds pass landing_origin(area)
-# Captain start (x, z) per placement stage: dataDir/stages/<stage>/default.gen
-# bytes 4..16 as big-endian floats (the same origin randomizer.purple_campaign
-# places the Violet from), checked against the native AUTOPLAY_NAVI start
-# positions of the FoH and Distant Spring runs on 2026-09-30.
-LANDING_BY_STAGE = {
-    0: (47.6673, 1919.7586),     # practice = The Impact Site
-    1: (-315.7542, 2022.2387),   # stage1 = The Forest of Hope
-    2: (-76.5327, -139.4868),    # stage2 = The Forest Navel
-    3: (-149.3356, -76.1611),    # stage3 = The Distant Spring
-    4: (-33.0768, -20.5068),     # last = The Final Trial
-}
+LANDING_XZ = (0.0, 0.0)  # legacy default for areas whose start is not measured
+# Measured captain start (x, z), from native logs. Only measured areas are listed.
+LANDING = {'foh': (-316.0, 2022.0), 'forest': (-316.0, 2022.0)}
+# The other starts are the x/z the stage default.gen header stores at bytes 4..16 (the origin
+# randomizer.purple_campaign places the Violet from); FoH (-315.8, 2022.2) and the Distant Spring
+# (-149.3, -76.2, native AUTOPLAY_WITHDRAW navi start) agree with the native logs (#958).
+LANDING.update({'impact': (47.667, 1919.759), 'navel': (-76.533, -139.487), 'spring': (-149.336, -76.161)})
+START_DAY = 2  # every START_AREAS profile is '<area>-day2'
+SEED_START_DAY = START_DAY  # alias kept for the polish 75/78 tests
+LANDING_BY_AREA = LANDING
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
 SMOKE_ENV = 'PIKMIN_P2_SMOKE_ANY_SLOT'
@@ -82,8 +81,7 @@ def load_default_document():
 def ordinary_slots(document, area, max_first_day=None):
     """Ordinary enemy slots of ``area``: unprotected, non-boss, not a held-part
     anchor; document order. Native probe evidence is not required (#948: an
-    unprobed slot is a to-do, not a restriction). ``max_first_day`` drops slots
-    that only open on a later day (CONTRIBUTING playtest rule 3, "no gates")."""
+    unprobed slot is a to-do, not a restriction)."""
     if area not in AREAS:
         raise SmokeSeedError(f"unknown area {area!r}; expected one of {sorted(AREAS)}")
     _, stage, _ = AREAS[area]
@@ -120,11 +118,12 @@ def slot_positions(probe_log_text=None):
     return positions
 
 
-def landing_origin(area):
-    """Captain start (x, z) of an area token (see LANDING_BY_STAGE)."""
-    if area not in AREAS:
-        raise SmokeSeedError(f"unknown area {area!r}; expected one of {sorted(AREAS)}")
-    return LANDING_BY_STAGE[AREAS[area][1]]
+def parse_origin(text):
+    try:
+        x, z = (float(v) for v in text.split(','))
+    except ValueError:
+        raise SmokeSeedError('--origin must be X,Z') from None
+    return (x, z)
 
 
 def distance_xz(position, origin=LANDING_XZ):
@@ -188,6 +187,36 @@ def parse_bosses(text):
             raise SmokeSeedError(f'boss {sid} listed twice in --bosses')
         bosses[sid] = arena.strip()
     return bosses
+
+
+def pick_uids(slots, uids):
+    """The named ordinary slots, in the order given (a run that needs one known-reachable slot)."""
+    by_uid = {int(slot['uid']): slot for slot in slots}
+    chosen = []
+    for uid in uids:
+        if uid not in by_uid:
+            raise SmokeSeedError(f'slot {uid} is not an ordinary slot of this area (or is gated behind a later day)')
+        chosen.append(by_uid[uid])
+    return chosen
+
+
+def parse_uids(text):
+    try:
+        uids = [int(x) for x in text.split(',') if x.strip()]
+    except ValueError:
+        raise SmokeSeedError(f'--slot-uids must be comma-separated ints, got {text!r}') from None
+    if not uids or len(set(uids)) != len(uids):
+        raise SmokeSeedError('--slot-uids needs one or more distinct slot uids')
+    return uids
+
+
+def parse_landing(text):
+    """'X,Z' -> (x, z)."""
+    try:
+        x, z = (float(v) for v in text.split(','))
+    except ValueError:
+        raise SmokeSeedError(f'--landing must be X,Z numbers, got {text!r}') from None
+    return (x, z)
 
 
 def parse_species(text):
@@ -333,7 +362,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
-    reused, cached, missing = [], [], []
+    reused, cached, missing, pending_copies = [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
         if target.is_dir() and any(target.iterdir()):
@@ -341,8 +370,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            copy(source, target)
-            cached.append(enum)
+            pending_copies.append((source, target))  # copied after any extraction: the
+            cached.append(enum)                      # extractor needs an empty output dir
             continue
         missing.append(sid)
     extracted = []
@@ -365,22 +394,44 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 if not (cache_dir / enum).exists():
                     copy(fresh, cache_dir / enum)
+    for source, target in pending_copies:
+        copy(source, target)
     return {'reused': reused, 'from_cache': cached, 'extracted': extracted,
             'missing_ids': missing, 'needed': {str(k): v for k, v in sorted(needed.items())}}
 
 
 # --- launcher --------------------------------------------------------------
 
-def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT,
+def parse_env(items):
+    """['NAME=VALUE', ...] -> {NAME: VALUE}; names are identifiers, values single-line."""
+    env = {}
+    for item in items or ():
+        if '=' not in item:
+            raise SmokeSeedError(f'--env entries are NAME=VALUE, got {item!r}')
+        name, value = item.split('=', 1)
+        if not name or not (name[0].isalpha() or name[0] == '_') or not all(c.isalnum() or c == '_' for c in name):
+            raise SmokeSeedError(f'--env name must be an identifier, got {name!r}')
+        if name == SMOKE_ENV:
+            raise SmokeSeedError(f'{SMOKE_ENV} is always set by the launcher')
+        if '\n' in value or '\r' in value:
+            raise SmokeSeedError(f'--env {name} value must be a single line')
+        env[name] = value
+    return env
+
+
+def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None,
                   purple_bank=None, purple_motion=None):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
-    # #958: opt in to the ordinary Purple campaign (the Giant Breadbug only
-    # takes Purple presses); F10 near the ship withdraws Purple.
+    # #958: opt in to the ordinary Purple campaign (the Giant Breadbug only takes Purple
+    # presses); F10 near the ship withdraws Purple.
     purple_args = ''
     if purple_bank and purple_motion:
         purple_args = (f" `\n        --purple-bank {ps(purple_bank)} `"
                        f"\n        --purple-motion {ps(purple_motion)}")
+    extra_env = dict(extra_env or {})
+    set_extra = ''.join(f"$env:{name} = {ps(value)}\n" for name, value in sorted(extra_env.items()))
+    clear_extra = ''.join(f" Remove-Item Env:{name} -ErrorAction SilentlyContinue;" for name in sorted(extra_env))
     return f"""# #944/#948 smoke seed launcher: any playable P2 species on any ordinary slot.
 # The placement override document is the whole mechanism (#948: native has no
 # compiled slot lists). {SMOKE_ENV}=1 is set as the documented smoke marker.
@@ -391,7 +442,7 @@ $session = Join-Path {ps(session_root)} ('session-' + (Get-Date -Format 'MMdd-HH
 New-Item -ItemType Directory -Force $session | Out-Null
 $env:PYTHONUTF8 = '1'
 $env:{SMOKE_ENV} = '1'
-Push-Location {ps(root)}
+{set_extra}Push-Location {ps(root)}
 try {{
     py -3.12 -m randomizer run {ps(seed_path)} `
         --p2-content {ps(content_dir)} `
@@ -399,7 +450,7 @@ try {{
         --session-dir $session `
         --exe $Exe `
         --assets $Assets{purple_args}
-}} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue }}
+}} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue;{clear_extra} }}
 """
 
 
@@ -418,9 +469,14 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    origin = landing_origin(args.area)
-    slots = pick_slots(ordinary_slots(document, args.area, args.max_first_day), args.slots, args.near_start, positions,
-                       origin=origin)
+    landing = (parse_landing(args.landing) if args.landing
+               else parse_origin(args.origin) if args.origin else LANDING.get(args.area, LANDING_XZ))
+    max_day = None if args.max_first_day < 0 else args.max_first_day
+    if args.slot_uids:
+        slots = pick_uids(ordinary_slots(document, args.area, max_day), parse_uids(args.slot_uids))
+    else:
+        slots = pick_slots(ordinary_slots(document, args.area, max_day), args.slots, args.near_start, positions,
+                           origin=landing)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -429,8 +485,8 @@ def build(args):
     starting_area = AREAS[args.area][0]
     from randomizer.seed import P2_REQUIRES_PURPLE
     pool = species_pool(assignments, bosses)
-    # A Purple-only species (seed.P2_REQUIRES_PURPLE, e.g. the Giant Breadbug) makes
-    # this a Purple-campaign seed; the launcher then needs the Purple banks.
+    # A Purple-only species (seed.P2_REQUIRES_PURPLE, e.g. the Giant Breadbug) makes this a
+    # Purple-campaign seed; the launcher then needs the Purple banks.
     needs_purple = sorted(set(pool) & set(P2_REQUIRES_PURPLE))
     if needs_purple and not (args.purple_bank and args.purple_motion):
         raise SmokeSeedError(f"species {needs_purple} only take Purple presses "
@@ -454,8 +510,9 @@ def build(args):
 
     exe = str(Path(args.exe).resolve()) if args.exe else ''
     play_path = out / 'play.ps1'
+    extra_env = parse_env(args.env)
     play_path.write_text(launcher_text(seed_path.resolve(), content_dir.resolve(), actors_path.resolve(),
-                                       out.resolve(), exe, args.assets,
+                                       out.resolve(), exe, args.assets, extra_env=extra_env,
                                        purple_bank=(Path(args.purple_bank).resolve() if args.purple_bank else None),
                                        purple_motion=(Path(args.purple_motion).resolve() if args.purple_motion else None)),
                          encoding='utf-8')
@@ -463,14 +520,14 @@ def build(args):
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
         'issue': 944, 'seed': args.seed, 'area': args.area, 'starting_area': starting_area,
-        'near_start': bool(args.near_start), 'env': {SMOKE_ENV: '1'},
+        'near_start': bool(args.near_start), 'landing': list(landing), 'max_first_day': max_day, 'env': {SMOKE_ENV: '1', **extra_env},
         'assignments': [
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
              'enum_name': next(b['enum_name'] for b in manifest['p2_layout']['bindings'] if int(b['target']) == uid),
              'position': positions.get(uid),
-             'distance_from_landing': round(distance_xz(positions[uid], origin), 1) if uid in positions else None}
+             'distance_from_landing': round(distance_xz(positions[uid], landing), 1) if uid in positions else None}
             for uid, sid in sorted(assignments.items(), key=lambda kv: (positions.get(kv[0]) is None,
-                                                                         distance_xz(positions[kv[0]], origin) if kv[0] in positions else 0))],
+                                                                         distance_xz(positions[kv[0]], landing) if kv[0] in positions else 0))],
         'bosses': [{'source_id': sid, 'arena': arena} for sid, arena in sorted(bosses.items())],
         'bindings': {str(k): v for k, v in sorted(bound.items())},
         'files': {'seed': str(seed_path), 'placement_override': str(override_path),
@@ -486,7 +543,11 @@ def main(argv=None):
     parser.add_argument('--area', required=True, choices=sorted(AREAS), help='start area whose ordinary slots get the species')
     parser.add_argument('--slots', default='all', help="how many ordinary slots to fill: N or 'all' (default all)")
     parser.add_argument('--species', required=True, help='comma-separated P2 source ids, assigned round-robin in this order')
-    parser.add_argument('--near-start', action='store_true', help="fill the N slots nearest the area's landing site (x/z distance from the captain start, LANDING_BY_STAGE)")
+    parser.add_argument('--near-start', action='store_true', help='fill the N slots nearest the landing site (x/z distance from navi_start 0,0)')
+    parser.add_argument('--purple-bank', type=Path, default=None,
+                        help='#958: Purple campaign pose bank (opt in; needed to press the Giant Breadbug)')
+    parser.add_argument('--purple-motion', type=Path, default=None, help='#958: Purple throw/fall motion bank (with --purple-bank)')
+    parser.add_argument('--origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', required=True, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
@@ -497,12 +558,15 @@ def main(argv=None):
     parser.add_argument('--assets', default=DEFAULT_ASSETS, help='retail asset root for randomizer run --assets')
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')
     parser.add_argument('--probe-log', type=Path, default=None, help='native log whose P2_PLACEMENT_SLOT lines supply extra slot coordinates')
-    parser.add_argument('--purple-bank', type=Path, default=None,
-                        help='#958: Purple campaign pose bank (opt in; needed to press the Giant Breadbug)')
-    parser.add_argument('--purple-motion', type=Path, default=None, help='#958: Purple throw/fall motion bank (with --purple-bank)')
-    parser.add_argument('--max-first-day', type=int, default=None,
-                        help='skip slots that only open after this day (2 = the start day; playtest rule 3, no gates)')
     parser.add_argument('--no-content', action='store_true', help='skip content staging (seed + override + launcher only)')
+    parser.add_argument('--slot-uids', default=None, metavar='UID,...',
+                        help='use exactly these ordinary slots instead of --slots/--near-start (a known-reachable slot)')
+    parser.add_argument('--landing', default=None, metavar='X,Z',
+                        help='captain start used by --near-start (default: the measured start of the area, else 0,0)')
+    parser.add_argument('--max-first-day', type=int, default=START_DAY,
+                        help='skip slots whose first_day is later than this (default 2, the start day; -1 keeps every slot)')
+    parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE',
+                        help='extra environment variable set by play.ps1 (repeatable), e.g. a species dev override')
     args = parser.parse_args(argv)
     if args.slots != 'all':
         try:

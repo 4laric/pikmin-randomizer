@@ -30,6 +30,43 @@ def roster():
     return load_and_validate()
 
 
+def test_ordinary_slots_can_skip_slots_gated_behind_a_later_day(document):
+    all_slots = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', smoke.SEED_START_DAY)
+    assert len(day2) < len(all_slots)
+    assert all(s['first_day'] <= smoke.SEED_START_DAY for s in day2)
+    gated = {s['label'] for s in all_slots} - {s['label'] for s in day2}
+    assert 'hope_14-29_24' in gated and 'hope_4-29_2237' in gated
+
+
+def test_foh_landing_origin_is_the_measured_captain_start():
+    assert smoke.LANDING_BY_AREA['foh'] == (-316.0, 2022.0)
+    assert smoke.parse_origin('-316,2022') == (-316.0, 2022.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_origin('nope')
+
+
+def test_stage_content_extracts_before_copying_cached_species(tmp_path):
+    cache = tmp_path / 'cache'
+    (cache / 'Cached').mkdir(parents=True)
+    (cache / 'Cached' / 'a.txt').write_text('x')
+    out = tmp_path / 'content'
+    manifest = {'p2_layout': {'bindings': [
+        {'source_id': 75, 'enum_name': 'Cached'}, {'source_id': 78, 'enum_name': 'Fresh'}]}}
+    seen = {}
+
+    def prepare(iso, dest, wanted):
+        seen['dest_empty_at_extract'] = not any(dest.iterdir())
+        (dest / 'Fresh').mkdir()
+        (dest / 'Fresh' / 'b.txt').write_text('y')
+        return {'extracted_enums': ['Fresh']}
+
+    summary = smoke.stage_content(manifest, out, cache, 'iso', prepare_fn=prepare)
+    assert seen['dest_empty_at_extract'] is True
+    assert (out / 'Cached' / 'a.txt').exists() and (out / 'Fresh' / 'b.txt').exists()
+    assert summary['from_cache'] == ['Cached'] and summary['extracted'] == ['Fresh']
+
+
 def test_ordinary_slots_exclude_protected_boss_and_held(document):
     slots = smoke.ordinary_slots(document, 'foh')
     labels = {s['label'] for s in slots}
@@ -59,15 +96,10 @@ def test_slot_positions_cover_every_ordinary_slot(document):
 def test_pick_slots_near_start_orders_by_landing_distance(document):
     slots = smoke.ordinary_slots(document, 'foh')
     positions = smoke.slot_positions()
-    origin = smoke.landing_origin('foh')
-    near = smoke.pick_slots(slots, 3, near_start=True, positions=positions, origin=origin)
-    distances = [smoke.distance_xz(positions[int(s['uid'])], origin) for s in near]
+    near = smoke.pick_slots(slots, 3, near_start=True, positions=positions)
+    distances = [smoke.distance_xz(positions[int(s['uid'])]) for s in near]
     assert distances == sorted(distances)
-    # The captain starts near (-316, 2022), not at (0, 0): hope_0-29_3073 (2506165730)
-    # is ~72 units from the map origin but ~2000 from the player (#958).
-    assert origin == pytest.approx((-315.7542, 2022.2387), abs=0.01)
-    assert near[0]['uid'] == 4222852521  # hope_0-29_2659, ~720 units from the FoH start
-    assert smoke.distance_xz(positions[2506165730], origin) > 1900
+    assert near[0]['uid'] == 2506165730  # hope_0-29_3073, ~72 units from the ship
     assert smoke.pick_slots(slots, 'all') == slots
     assert smoke.pick_slots(slots, None) == slots
     assert smoke.pick_slots(slots, 2) == slots[:2]
@@ -75,18 +107,6 @@ def test_pick_slots_near_start_orders_by_landing_distance(document):
         smoke.pick_slots(slots, 99)
     with pytest.raises(smoke.SmokeSeedError):
         smoke.pick_slots(slots, 0)
-
-
-def test_landing_origins_match_the_stage_generator_headers():
-    import struct
-    stages = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
-    if not stages.is_dir():
-        pytest.skip('local retail assets absent')
-    for stage, folder in enumerate(('practice', 'stage1', 'stage2', 'stage3', 'last')):
-        x, _, z = struct.unpack_from('>3f', (stages / folder / 'default.gen').read_bytes(), 4)
-        assert smoke.LANDING_BY_STAGE[stage] == pytest.approx((x, z), abs=0.001), folder
-    with pytest.raises(smoke.SmokeSeedError):
-        smoke.landing_origin('nowhere')
 
 
 def test_pick_slots_unknown_position_sorts_last():
@@ -242,16 +262,53 @@ def test_launcher_sets_env_and_runs_randomizer(tmp_path):
     assert "Push-Location '" + str(smoke.ROOT) + "'" in text
 
 
-def test_launcher_purple_opt_in_adds_both_banks(tmp_path):
-    # #958: the Giant Breadbug only takes Purple presses; the smoke launcher can opt in.
-    plain = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
-                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS)
-    assert '--purple-bank' not in plain
+def test_ordinary_slots_can_drop_slots_gated_behind_a_later_day(document):
+    every = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    assert day2 and len(day2) < len(every)
+    assert all(int(s.get('first_day', 0)) <= smoke.START_DAY for s in day2)
+    assert {s['uid'] for s in day2} <= {s['uid'] for s in every}
+    assert smoke.ordinary_slots(document, 'foh', max_first_day=99) == every
+
+
+def test_pick_uids_names_exact_ordinary_slots(document):
+    slots = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    want = [int(slots[3]['uid']), int(slots[1]['uid'])]
+    picked = smoke.pick_uids(slots, want)
+    assert [int(s['uid']) for s in picked] == want
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.pick_uids(slots, [12345])
+    assert smoke.parse_uids('1, 2') == [1, 2]
+    for bad in ('', 'x', '1,1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_uids(bad)
+
+
+def test_landing_is_the_measured_captain_start_not_the_origin():
+    assert smoke.LANDING['foh'] != smoke.LANDING_XZ
+    assert smoke.parse_landing('-464, 1967') == (-464.0, 1967.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_landing('nope')
+
+
+def test_launcher_sets_and_clears_extra_env(tmp_path):
     text = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS,
-                               purple_bank=tmp_path / 'purple', purple_motion=tmp_path / 'motion')
-    assert "--purple-bank '" in text and "--purple-motion '" in text
-    assert '--assets $Assets `' in text
+                               extra_env={'PIKMIN_P2_KING_WAKE_RANGE': '400'})
+    assert "$env:PIKMIN_P2_KING_WAKE_RANGE = '400'" in text
+    assert "Remove-Item Env:PIKMIN_P2_KING_WAKE_RANGE" in text
+    assert text.index("$env:PIKMIN_P2_KING_WAKE_RANGE") < text.index('Push-Location')
+    plain = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS)
+    assert 'PIKMIN_P2_KING_WAKE_RANGE' not in plain
+
+
+def test_parse_env_validates():
+    assert smoke.parse_env(['A_B=1', 'C=x=y']) == {'A_B': '1', 'C': 'x=y'}
+    assert smoke.parse_env(None) == {}
+    for bad in ('NOEQUALS', '=v', '1BAD=v', 'A-B=v', smoke.SMOKE_ENV + '=1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_env([bad])
 
 
 def test_cli_rejects_bad_slots(tmp_path):
@@ -259,10 +316,13 @@ def test_cli_rejects_bad_slots(tmp_path):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
 
 
-def test_max_first_day_drops_later_day_slots():
-    document = smoke.load_default_document()
-    everything = smoke.ordinary_slots(document, 'spring')
-    day2 = smoke.ordinary_slots(document, 'spring', max_first_day=2)
-    assert day2 and len(day2) < len(everything)
-    assert all(int(s.get('first_day', 0)) <= 2 for s in day2)
-    assert smoke.ordinary_slots(document, 'spring', max_first_day=99) == everything
+def test_landing_origins_match_the_stage_generator_headers():
+    # #958: the captain start of every area is the x/z the stage default.gen header stores
+    # at bytes 4..16; the smoke seed's measured LANDING table must agree with the retail assets.
+    import struct
+    stages = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
+    if not stages.is_dir():
+        pytest.skip('local retail assets absent')
+    for area, folder in (('impact', 'practice'), ('foh', 'stage1'), ('navel', 'stage2'), ('spring', 'stage3')):
+        x, _, z = struct.unpack_from('>3f', (stages / folder / 'default.gen').read_bytes(), 4)
+        assert smoke.LANDING[area] == pytest.approx((x, z), abs=1.0), area

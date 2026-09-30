@@ -38,9 +38,8 @@ def run_once(session, exe, assets, label):
     if MINGW_BIN.is_dir():
         env['PATH'] = str(MINGW_BIN) + ';' + env['PATH']
     env.pop('BBFT_PORT', None)
-    startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startup.wShowWindow = 1
+    from randomizer.test_run import hidden_startupinfo
+    startup = hidden_startupinfo(env)
     log = run / 'native.log'
     native_run.write_state(True)
     with log.open('w') as stream:

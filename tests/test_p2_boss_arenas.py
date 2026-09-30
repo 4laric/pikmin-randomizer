@@ -17,7 +17,12 @@ from experimental.pikmin2_seed_bridge import (BOSS_ARENA_KEY, SeedBridgeError, a
                                               resolve_placement_layout, validate_layout)
 from randomizer import p2_boss_arenas as arenas
 from randomizer.p2_placement import audit, validate_document
-from randomizer.seed import PLAYABLE_P2_SPECIES, generate, validate
+from randomizer.seed import P2_REQUIRES_PURPLE, PLAYABLE_P2_SPECIES, generate, validate
+
+# #958: the Giant Breadbug (40) only takes Purple presses, so a default seed leaves it out
+# (randomizer.seed.P2_REQUIRES_PURPLE); the bridge-level tests below use the default pool
+# unless they say otherwise.
+DEFAULT_POOL = sorted(s for s in PLAYABLE_P2_SPECIES if s not in P2_REQUIRES_PURPLE)
 from randomizer.spawn_data import GENERATOR_SLOTS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -129,11 +134,11 @@ class DocumentTests(unittest.TestCase):
         self.assertGreaterEqual(len(report["admitted"].get("DangoMushi", [])), 2)
 
     def test_arena_bosses(self):
-        # The pool's arena bosses (94, and 73 since #246) have a profile; the
-        # other lane bosses (30, 66) carry descriptors and get their profile
-        # with pool admission.
+        # The pool's arena bosses (94, 73 since #246, and 53 since the wave-3
+        # Emperor lane #289) have a profile; the other lane bosses (30, 66)
+        # carry descriptors and get their profile with pool admission.
         roster = load_and_validate()
-        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 40})
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30, 40})
         descriptors = {e["identity"] for e in self.document["encounters"]}
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
@@ -235,7 +240,7 @@ class SeedTests(unittest.TestCase):
     def test_crawbster_only_in_boss_arenas(self):
         used = set()
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (40, 73)])
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53, 40)])
             block = layout[BOSS_ARENA_KEY]
             for binding in layout["bindings"]:
                 if binding["source_id"] == 94:
@@ -258,39 +263,45 @@ class SeedTests(unittest.TestCase):
         # and the arena varies per seed.
         titan_arenas = {"impact_goolix", "navel_beady_long_legs", "navel_puffstool",
                         "spring_cannon_beetle"}
-        seen = {40: set(), 73: set(), 94: set()}
+        # The Emperor (53, #289) needs the tongue footprint (175): every measured,
+        # unprotected arena covers it, so it is not a cast list either.
+        king_arenas = titan_arenas | {"hope_snagret_pit", "hope_snagret_part"}
+        seen = {30: set(), 53: set(), 73: set(), 94: set()}
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            layout = self.layout(f"arena-{i}", species=DEFAULT_POOL)
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(set(placed), {40, 73, 94})
+            self.assertEqual(set(placed), {30, 53, 73, 94})
             self.assertIn(placed[73], titan_arenas)
-            self.assertEqual(len(set(placed.values())), 3)  # three bosses, three distinct arenas
+            self.assertIn(placed[30], titan_arenas)  # Empress footprint 250 (#256)
+            self.assertIn(placed[53], king_arenas)
+            self.assertEqual(len(set(placed.values())), 4)
             for source_id, arena in placed.items():
                 seen[source_id].add(arena)
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
-                if binding["source_id"] in (40, 73, 94):
+                if binding["source_id"] in (30, 53, 73, 94):
                     self.assertIn(binding["target"], self.all_arena)
                 else:
                     self.assertNotIn(binding["target"], self.all_arena)
             validate_layout(layout, self.roster)
-        self.assertGreater(len(seen[40]), 1)
         self.assertGreater(len(seen[73]), 1)
+        self.assertGreater(len(seen[30]), 1)
         self.assertGreater(len(seen[94]), 1)
+        self.assertGreater(len(seen[53]), 1)
 
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
-        pool = sorted(PLAYABLE_P2_SPECIES)
-        without = [s for s in pool if s not in (30, 40, 73, 94, 66)]
+        pool = DEFAULT_POOL
+        without = [s for s in pool if s not in (30, 73, 94, 66, 53)]
         for i in range(10):
             with_boss = self.layout(f"eq-{i}", species=pool)
             ordinary = dict(with_boss)
             ordinary.pop(BOSS_ARENA_KEY)
-            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (40, 73, 94)]
+            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (30, 53, 73, 94)]
             self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
 
     def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
-        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (40, 73, 94)]
+        without = [s for s in DEFAULT_POOL if s not in (30, 53, 73, 94)]
         stripped = _strip_arenas(self.document)
         for i in range(10):
             new = self.layout(f"id-{i}", species=without)
@@ -305,7 +316,7 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(len(layout[BOSS_ARENA_KEY]["placed"]), 1)
 
     def test_tampered_arena_block_is_rejected(self):
-        layout = self.layout("tamper", species=sorted(PLAYABLE_P2_SPECIES))
+        layout = self.layout("tamper", species=DEFAULT_POOL)
         bad = copy.deepcopy(layout)
         bad[BOSS_ARENA_KEY]["placed"][0]["source_id"] = 2
         with self.assertRaises(SeedBridgeError):
@@ -316,17 +327,30 @@ class SeedTests(unittest.TestCase):
                             p2_enemies=True, p2_species="playable")
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        # #958: the Giant Breadbug (40) only takes Purple presses, so it joins the
-        # arenas only on a --p2-purple-campaign seed.
-        self.assertEqual(sorted(row["source_id"] for row in placed), [73, 94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+        # A --p2-purple-campaign seed adds the Giant Breadbug as a fifth arena boss.
         purple = generate("arena-playable", "solo", "Player1", starting_area="forest",
                           p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
         validate(purple)
         placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [40, 73, 94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 40, 53, 73, 94])
+        self.assertEqual(len({row["arena"] for row in placed}), 5)
         self.assertLessEqual(len(purple["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+
+    def test_giant_breadbug_fits_every_measured_arena(self):
+        # OoPanModoki footprint 200 (fp09 territory): every measured, unprotected arena
+        # covers it, so it is not a cast list (#958); five bosses seat in six arenas.
+        seen = set()
+        for i in range(40):
+            layout = self.layout(f"giant-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            placed = {row["source_id"]: row["arena"] for row in layout[BOSS_ARENA_KEY]["placed"]}
+            self.assertEqual(set(placed), {30, 40, 53, 73, 94})
+            self.assertEqual(len(set(placed.values())), 5)
+            seen.add(placed[40])
+            validate_layout(layout, self.roster)
+        self.assertGreater(len(seen), 2)
 
 
 if __name__ == "__main__":

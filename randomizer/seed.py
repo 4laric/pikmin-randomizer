@@ -290,8 +290,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "KingChappy",
         "family": "chappy",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3",
-            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "run": "Bot-driven power-mode campaign (owner ruling 2026-09-25: power mode admits) of the OWN-behaviour Emperor Bulblax (wave-3 lane 53, #289): buried HideWait spawn and proximity wake with the Appear shake-off, tongue/eat/swallow fights with the tongue-tip terrain trace, checkFlick shake-offs, WarCry x7, dive (Hide) and re-Appear, retail collision tree with head/nose/mouth stickable parts, P1 Emperor sound bank; P2_CHAPPY_DEAD on its own generator 1945764764, corpse carried, Onion receipt onion:p2:53:3 (AUTOPLAY_RESULT killed=1 carried=1 received=1). Seed: spring_init_7002 smoke-override slot (PIKMIN_P2_SMOKE_ANY_SLOT, scripts/p2_smoke_seed.py --slot-uids); native claude/p2-wave3-53-emperor 03e8fd23f, exe sha256 da96b5ff... (private IPO build); a second run on the previous exe (s9) killed, carried and delivered the same way.",
+            "log": "output/claude-orch/p2-w3-53/runs/s12/session/runs/09ef65f20941a20d25701f95380624906f925eefdd80064fdfa28c8920ae0b5c/native.log (sha256 723bfe1743bbf31b...) L1300 bind, L1486 wake, L1509 appear, L5275 dead, L5399 receipt; scored by output/claude-orch/p2-w3-53/king_score.py; docs/PIKMIN2_KING_OWN.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 53 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -643,6 +643,42 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 58 -> bombsarai "
                          "(stages p2-bombsarai-parms/bomb-parms/own-bank and the Bomb meshes)",
+        },
+    },
+    {
+        "source_id": 57,
+        "enum_name": "Kurage",
+        "family": "kurage",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run k6 (owner ruling 2026-09-25: power mode admits; wave 3 flyers, #960): red squad, campaign OWN bind of the source Kurage FSM with retail parms (life 2500, flight height 70) on a P1 Frog host with its AI suppressed; the hovering body is EB_Untargetable (CF_IsFlying mirror) so ground Pikmin leave it alone while thrown Pikmin latch onto the retail collision spheres (60 airborne latches), 13 FlyFlick shake-offs, suction of Pikmin, 151 monotone DAMAGE lines 2485 to 10, P2_KURAGE_OWN_DEAD on its own generator, corpse drawn as dead1 and carried, Onion receipt onion:p2:57:3; normal-squad run k7 shows the six-latch Fall, Land, grounded squad attack, GroundFlick and TakeOff before the natural kill; final-exe run f3 (power mode, exe sha256 1620698f169f0b82..., native 272f3807d) repeats the chain to the receipt onion:p2:57:3 and day-cycle run r5 keeps the Lesser alive across three stage loads",
+            "log": "FINAL EXE (bin-b12, nectar.exe sha256 1620698f169f0b82cf5c9749424d5edea556fce30aa972f20afe97cf1aafc59a, native claude/p2-wave3-flyers 272f3807d): f3 output/claude-orch/p2-w3-flyers/runs/f3-57/session/runs/5a6ad2d410947cb8ad338bde02798df8dead912cedb39e5cdfb8460c22e5300e/native.log (sha256 117eb8ac47d65821...) L1320 bind, L11522 dead, L11739 corpse, L13487 receipt onion:p2:57:3 new=1; r5 day cycle output/claude-orch/p2-w3-flyers/runs/r5-72/session/runs/c0ea02ab04b2b16e4e2be1eca3351f2dba180409da1ec72115a9fd168ddb743a/native.log (sha256 3cb9842f89c2121a...) Lesser alive at both sunsets, rebound each day. FIRST-ADMISSION runs on an OLDER exe (k6 recorded only the gdbexe.cmd wrapper sha256 c3a7868b5c49..., so its exe is attributed to bin-b5, e929736321f3..., by timestamp; k7 is recorded on b5): output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log (sha256 a3ff30c09e624b62...) L1387 bind, L4276 first latch, L4417 FlyFlick, L8098 dead, L8209 escape, L9247 receipt; k7 (output/claude-orch/p2-w3-flyers/runs/k7-57/session/runs/a5c1d2bef108f347eb9a72a8dde49b9096a05be6e6e3cdf207b9963007697368/native.log sha256 2c8c498d9aad4...) L4760 Fall, L4868 Land, L4914 grounded latch, L7132 dead; native f599fe03a as first built",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 57 -> kurage "
+                         "(stages p2-kurage-teki.txt and the kurage pose meshes)",
+        },
+    },
+    {
+        "source_id": 72,
+        "enum_name": "OniKurage",
+        "family": "onikurage",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs e1 and e2 (owner ruling 2026-09-25: power mode admits; wave 3 flyers, #960): red squad, campaign OWN bind of the Greater Kurage FSM with retail parms (life 4500, flight 75, territory 500, suck 20) and the retail collision tree; the hovering body is untargetable (CF_IsFlying mirror) while thrown Pikmin latch; the captain is sucked into the mouth slot, the body drops (Drop), lands, the whole squad attacks the grounded body (56 stuck), GroundFlick vomits the captain out with the fp24 damage, TakeOff, 17 latched Pikmin bring it down again (Fall), natural death on its own generator 1945764764, dead1 corpse carried, Onion receipt onion:p2:72:3 (captain suction observed on the earlier exe in e1; the final-exe runs e4 and e5 show Drop, Land, the grounded squad attack, death and the receipt); the normal-squad day cycle r5 keeps the live 72 across three stage loads",
+            "log": "FINAL EXE (bin-b12, nectar.exe sha256 1620698f169f0b82cf5c9749424d5edea556fce30aa972f20afe97cf1aafc59a, native claude/p2-wave3-flyers 272f3807d): e4 output/claude-orch/p2-w3-flyers/runs/e4-72/session/runs/53c07bad63e6497e7c645e535c95c96ed998e6a1f15be153c369be2044de8f62/native.log (sha256 979cabe44367...) L4626 Drop, L4659 Land, L5072 dead, L5181 corpse, L6018 receipt onion:p2:72:3 new=1; e5 output/claude-orch/p2-w3-flyers/runs/e5-72/session/runs/5519bd34c0b87ca921c27c0aa99dd46c065c0b91e43d097257ed67e3d5f27669/native.log (sha256 fb34a858220a...) receipt L5909; r5 normal-squad day cycle output/claude-orch/p2-w3-flyers/runs/r5-72/session/runs/c0ea02ab04b2b16e4e2be1eca3351f2dba180409da1ec72115a9fd168ddb743a/native.log (sha256 3cb9842f89c2121a...) the 72 alive at L6634 and L13605 SUNSET, rebound at L1338, L7770, L14734. EARLIER exe b10 (3b5eef6ad9dd...): e1 output/claude-orch/p2-w3-flyers/runs/e1-72/session/runs/e2f2cb1bf7b8cc89a27386b517eeda002bb58620299f784149be3efcfb057967/native.log (sha256 8a49bb81feb1d7e8...) L4413 captain capture, L4495 Drop, L4709 captain release, L6020 receipt.",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 72 -> onikurage "
+                         "(stages p2-kurage-teki.txt and the onikurage pose meshes)",
+        },
+    },
+    {
+        "source_id": 30,
+        "enum_name": "Queen",
+        "family": "queen",
+        "evidence": {
+            "run": "Bot-driven campaign runs a17 (power x30) and a16 (power x3), wave 3 (#256; owner ruling 2026-09-25: power mode admits): natural seed qa-impact-0, no rebind, queen_arena placed the Empress Bulblax in the impact_goolix boss arena (TEST-ONLY start day 11, the arena is live from day 9); a17: P2_BOSS_ARENA_BIRTH, source Queen FSM bind, natural kill, carcass carried by up to 32 Pikmin, Onion receipt onion:p2:30:0 on her own generator 4019261003; a16 (same exe): Born larvae, Wait->Damage->Flick->Rolling cycles, 21 rolling presses crushing Pikmin, 13 flicked off, health 5000->0",
+            "log": "output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log (sha256 479d0b20603cf3580ee577686a901512...) L714 arena birth, L1671 bind, L1956 dead, L2035 receipt; a16 native.log sha256 4345ba04dde58e27...; native claude/p2-wave3-30-empress 6d0378bf8, exe sha256 fef86e9e6b672a66...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 30 -> queen "
+                         "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage)",
         },
     },
 )

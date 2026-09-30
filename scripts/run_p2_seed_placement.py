@@ -54,7 +54,7 @@ def _run_native(exe, stage, bootstrap, timeout):
     env['SDL_AUDIODRIVER'] = 'dummy'
     env['PIKMIN_RANDOMIZER_TEST_BACKGROUND'] = '1'
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     startup.wShowWindow = 0
     log = stage / 'native.log'
     code = 'ok'

@@ -44,10 +44,11 @@ The Hope Cannon Beetle (``hope_0-29_3073``, uid 2506165730) is deliberately
 into an arena would change every non-boss layout.
 
 ``ARENA_BOSS_SOURCES`` lists the P2 bosses whose *real-seed* placement is an
-arena: the four the lane names (30 Queen, 73 BigTreasure, 94 DangoMushi,
-later 66 Houdai). The other IS_ENEMY_BOSS species already proven on ordinary
-slots (34/70 snagrets, 53 KingChappy, 56/69 Long Legs, 71/101 Bloysters)
-keep their ordinary placement until the owner moves them.
+arena: the lane bosses (30 Queen, 73 BigTreasure, 94 DangoMushi, later
+66 Houdai) and, since the wave-3 Emperor lane (#289), 53 KingChappy. The other
+IS_ENEMY_BOSS species already proven on ordinary slots (34/70 snagrets,
+56/69 Long Legs, 71/101 Bloysters) keep their ordinary placement until the
+owner moves them.
 
 Arena placement is a data rule, not a cast list (#948, CONTRIBUTING rule 4):
 the boss profile is accepted on any slot whose measured clearance
@@ -61,7 +62,7 @@ from __future__ import annotations
 ARENA_SCHEMA = "p2-boss-arena-v1"
 
 # P2 bosses confined to boss arenas: source_id -> roster enum name.
-ARENA_BOSS_SOURCES = {30: "Queen", 73: "BigTreasure", 94: "DangoMushi", 66: "Houdai", 40: "OoPanModoki"}
+ARENA_BOSS_SOURCES = {30: "Queen", 73: "BigTreasure", 94: "DangoMushi", 66: "Houdai", 53: "KingChappy", 40: "OoPanModoki"}
 
 # GenObjectBoss ids (include/Boss.h GenBossID) and the teki boss hosts.
 GENBOSS = {0: "Spider", 1: "Snake", 2: "Slime", 3: "King", 7: "BoxSnake"}
@@ -238,6 +239,18 @@ BOSS_ENCOUNTERS = {
         "notes": ("Giant Breadbug arena (#958): the encounter disc is the source territory, fp09 200 "
                   "(oopanmodoki/enemyparm.txt); the haul runs the carry-route graph out of the arena, so "
                   "no larger floor is needed."),
+    },
+    "KingChappy": {
+        "id": "kingchappy_arena", "source_id": 53, "family_lane": 13,
+        "footprint_radius": 175.0, "helper_budget": 0,
+        "required_gates": ["arena", "hidewait", "appear", "tongue", "flick", "bomb", "death", "reward"],
+        "notes": ("Emperor Bulblax arena (#289, owner ruling 2026-09-29 #3: bosses in boss arenas). The "
+                  "footprint is the tongue geometry, not a cast list: the kamu1..9 mouth slots reach 166.7 "
+                  "from the root (native pc_p2_chappy_mouth.h maxReach over attack.bca frames 40..94), "
+                  "so the lick needs a flat, dry, wall-free disc of that radius; 175 is the next 25-unit "
+                  "clearance-probe step (P2_BOSS_ARENA_PROBE). Every measured, unprotected arena whose "
+                  "clearance covers it accepts the Emperor; the P1 Emperor arena (last_emperor) stays "
+                  "protected (finale, owner ruling #901)."),
     },
     "Houdai": {
         "id": "houdai_arena", "source_id": 66, "family_lane": 26,

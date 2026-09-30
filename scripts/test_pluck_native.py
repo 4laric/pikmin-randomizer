@@ -21,7 +21,7 @@ for case in ('pluck',):
     _winapi.CreateJunction(str(args.assets.resolve()), str(run.directory/'assets'))
     env = dict(os.environ, PIKMIN_RANDOMIZER_TEST_BACKGROUND='1', SDL_AUDIODRIVER='dummy')
     env.pop('PIKMIN_RANDOMIZER_TEST_SCRIPT', None)
-    startup = subprocess.STARTUPINFO(); startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup = subprocess.STARTUPINFO(); startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     log = run.directory/'native.log'
     with log.open('w', encoding='utf-8') as stream:
         p = subprocess.Popen([str(args.exe.resolve()), '--randomizer-seed', str(run.bootstrap)],
