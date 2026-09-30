@@ -50,6 +50,7 @@ every existing caller keeps working. Today the pool is:
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
 | 57 | Kurage | kurage |
+| 72 | OniKurage | onikurage |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -81,6 +82,14 @@ never P2 identities and never enter this table.
   generator. Known accommodations: the Frog host collision/pellet config stands in for the
   body, the body joint is the rest-mesh centroid, and the bot run kills it while airborne
   (Fall/Land is proven by `p2_flyer_test`, not observed in the run).
+- **72 OniKurage (Greater Spotted Jellyfloat): admitted (#960).** The same module as the
+  Kurage with the Greater retail entry (life 4500, flight 75, territory 500, up to 20
+  sucked Pikmin). It also sucks the captain into a mouth slot, drops to the ground with
+  him (the squad then attacks the grounded body), vomits him out with the fp24 damage,
+  dies naturally, is carried as its dead corpse and delivers `onion:p2:72:3` on its own
+  generator. Known accommodations: one captain at a time (the shared captain bridge), the
+  vomit is the FallMeck drop, the Frog actor collision/pellet config stands in for the
+  body, and only power mode kills it within a day.
 - **78 MiniHoudai (Gatling Groink): admitted.** Its Windows OWN campaign run
   (#888 §4A) and the shell visuals (#892) are in. The source FSM fights, the
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
@@ -114,9 +123,9 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 42 species on 35 slots, a given seed may leave out any
-  five ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
-  boss arenas outside the ordinary slots, so 40 ordinary species share 35
+  (`sampled-v1`). With 43 species on 35 slots, a given seed may leave out any
+  six ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  boss arenas outside the ordinary slots, so 41 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him

@@ -59,14 +59,14 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # #215 appends Demon 32.
 # #898 appends PanModoki (Breadbug) 38.
 # #244 appends BombSarai 58.
-# #960 appends Kurage 57.
+# #960 appends Kurage 57 and OniKurage 72.
 PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 2, 33, 35, 43, 53, 67, 76,
                 12, 13, 14, 28, 94, 68,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78, 73, 32, 38, 41, 58, 57)
+                25, 15, 78, 73, 32, 38, 41, 58, 57, 72)
 
 
 class SeedBridgeError(ValueError):

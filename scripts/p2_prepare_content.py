@@ -34,6 +34,8 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   adapter stages the room meshes through ``pikmin2_kogane_content``.
 * 57 Kurage: ``pikmin2_kurage_assets.extract`` -> ``<out>/Kurage/``; the Kurage
   adapter stages the visual files through ``pikmin2_kurage_content``.
+* 72 OniKurage (#960): ``pikmin2_onikurage_assets.extract`` -> ``<out>/OniKurage/``;
+  the OniKurage adapter stages ``pikmin2_onikurage_content``.
 * 78 MiniHoudai: ``pikmin2_minihoudai_assets.extract`` -> ``<out>/MiniHoudai/``
   (``minihoudai.json`` + ``identity.json`` + ``minihoudai_<clip>_<ii>.mod``);
   the MiniHoudai adapter stages the native Groink source-FSM inputs through
@@ -250,6 +252,7 @@ ENUM_FOR_SOURCE = {
     54: "Miulin",
     56: "Damagumo",
     57: "Kurage",
+    72: "OniKurage",
     58: "BombSarai",
     59: "FireOtakara",
     60: "WaterOtakara",
@@ -619,6 +622,25 @@ def extract_kurage(iso, dest):
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
     kurage.extract(iso, target)
+    return target
+
+
+def extract_onikurage(iso, dest):
+    """Build <dest>/OniKurage/ via the onikurage extractor (identity + manifest + poses).
+
+    Wave 3 flyers (#960): same layout as :func:`extract_kurage` for the Greater
+    Spotted Jellyfloat (source 72); ``experimental.pikmin2_onikurage_content``
+    carries the poses into the run.
+    """
+    from experimental import pikmin2_onikurage_assets as onikurage
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "OniKurage"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    onikurage.extract(iso, target)
     return target
 
 
@@ -1539,6 +1561,7 @@ EXTRACTORS = {
     15: "extract_armor",
     75: "extract_kabuto",
     57: "extract_kurage",
+    72: "extract_onikurage",
     78: "extract_minihoudai",
     38: "extract_breadbug",
     79: "extract_sokkuri",
@@ -1639,6 +1662,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 57:
             extract_kurage(iso, out)
+            extracted.append(source_id)
+        elif source_id == 72:
+            extract_onikurage(iso, out)
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out, pose_limit=pose_limit)

@@ -645,6 +645,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-kurage-teki.txt and the kurage pose meshes)",
         },
     },
+    {
+        "source_id": 72,
+        "enum_name": "OniKurage",
+        "family": "onikurage",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs e1 and e2 (owner ruling 2026-09-25: power mode admits; wave 3 flyers, #960): red squad, campaign OWN bind of the Greater Kurage FSM with retail parms (life 4500, flight 75, territory 500, suck 20) and the retail collision tree; the hovering body is untargetable (CF_IsFlying mirror) while thrown Pikmin latch; the captain is sucked into the mouth slot, the body drops (Drop), lands, the whole squad attacks the grounded body (56 stuck), GroundFlick vomits the captain out with the fp24 damage, TakeOff, 17 latched Pikmin bring it down again (Fall), natural death on its own generator 1945764764, dead1 corpse carried, Onion receipt onion:p2:72:3; day cycle r3 rebinds it across three stage loads",
+            "log": "output/claude-orch/p2-w3-flyers/runs/e1-72/session/runs/e2f2cb1bf7b8cc89a27386b517eeda002bb58620299f784149be3efcfb057967/native.log (sha256 8a49bb81feb1d7e8...) L4413 captain capture, L4495 Drop, L4523 Land, L4709 captain release, L5054 dead, L5139 escape, L6020 receipt; e2 (output/claude-orch/p2-w3-flyers/runs/e2-72/session/runs/725641f69fd80bcc908315e99d81cd4b12542a119cea31be2c49cc73542fc8a0/native.log sha256 b6445a0dcb59f918...) receipt L5853; r3 (output/claude-orch/p2-w3-flyers/runs/r3-72/session/runs/f89116bfaf3a66aa10e5604ae0bdb42d8519f208a17222939f9220fe1be3b3ef/native.log sha256 5479b256eab83df1...) day cycle; native claude/p2-wave3-flyers 4bf690473, exe sha256 3b5eef6ad9dd5313...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 72 -> onikurage "
+                         "(stages p2-kurage-teki.txt and the onikurage pose meshes)",
+        },
+    },
 )
 
 

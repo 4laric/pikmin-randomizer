@@ -105,6 +105,9 @@ IDENTITY_FAMILY = {
     9: 'kogane', 'kogane': 'kogane',
     79: 'sokkuri', 'sokkuri': 'sokkuri',
     57: 'kurage', 'kurage': 'kurage',
+    # #960: the Greater Spotted Jellyfloat (72) rides the Kurage OWN module with its
+    # own retail parms, collision tree and onikurage_* poses.
+    72: 'onikurage', 'onikurage': 'onikurage',
     # #888 WP5: 78 stages the native Groink source-FSM inputs (retail parms,
     # clip/key-event/pose/muzzle bank, poses) plus the carcass sidecar; the
     # campaign actor is driven by pc_p2_groink_fsm and delivers onion:p2:78.
@@ -968,6 +971,45 @@ def _adapt_kurage(source, run, actors):
                 placeholder_generator=True)
 
 
+def _validate_onikurage(source):
+    """Pre-flight check for the OniKurage (Greater Spotted Jellyfloat, source 72) content."""
+    _read_identity_source(source, 72, 'OniKurage')
+    from experimental.pikmin2_onikurage_content import validate as validate_onikurage_host
+    validate_onikurage_host(source)
+
+
+def _adapt_onikurage(source, run, actors):
+    """Adapter for OniKurage (source 72): stage the onikurage poses and emit the
+    shared ``p2-kurage-teki.txt`` (the native Jellyfloat module binds source 57 and
+    72 from the seed, so the filed generator is a placeholder in bridge mode).
+    Idempotent like the Kurage adapter; a run that also holds a Kurage reuses the
+    sidecar it already staged.
+    """
+    _read_identity_source(source, 72, 'OniKurage')
+    run = Path(run)
+    from experimental.pikmin2_onikurage_content import stage_onikurage_host
+    stage_onikurage_host(source, run)
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'OniKurage':
+            raise StagingError(f'OniKurage adapter got non-OniKurage species: {species!r}')
+    if not generators:
+        raise StagingError('OniKurage install requires at least one generator')
+    path = run / KURAGE_TEKI_TXT
+    if path.is_file():
+        _parse_kurage_sidecar(path.read_text(encoding='ascii'))
+        existing = path.read_bytes()
+        return dict(species='OniKurage', source_id=72, generators=sorted(set(generators)),
+                    actors_config_sha256=hashlib.sha256(existing).hexdigest(),
+                    placeholder_generator=True)
+    placeholder = sorted(set(generators))[0]
+    payload = f'{KURAGE_TEKI_HEADER} 1 {placeholder} 0\n'.encode('ascii')
+    path.write_bytes(payload)
+    return dict(species='OniKurage', source_id=72, generators=sorted(set(generators)),
+                actors_config_sha256=hashlib.sha256(payload).hexdigest(),
+                placeholder_generator=True)
+
+
 def _validate_minihoudai(source):
     """Pre-flight check for MiniHoudai (Gatling Groink, source 78) content."""
     _read_identity_source(source, 78, 'MiniHoudai')
@@ -1558,6 +1600,7 @@ ADAPTERS = {
     'dangomushi': {'install': _adapt_dangomushi, 'validate': _validate_dangomushi},
     'uji': {'install': _adapt_uji, 'validate': _validate_uji},
     'kurage': {'install': _adapt_kurage, 'validate': _validate_kurage},
+    'onikurage': {'install': _adapt_onikurage, 'validate': _validate_onikurage},
     'minihoudai': {'install': _adapt_minihoudai, 'validate': _validate_minihoudai},
     'bigtreasure': {'install': _adapt_bigtreasure, 'validate': _validate_bigtreasure},
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},

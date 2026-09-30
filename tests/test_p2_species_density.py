@@ -111,11 +111,11 @@ def test_legacy_multi_species_fill_covers_the_pool():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 42; #899 moved the Crawbster 94, and #246 the Titan
+    # #893: the pool is 43; #899 moved the Crawbster 94, and #246 the Titan
     # Dweevil 73, to the boss arenas. Since #948 the ordinary target set is
-    # every campaign generator a species can physically take, so all 40
+    # every campaign generator a species can physically take, so all 41
     # ordinary species fit and every ordinary target is bound (legacy fill).
-    assert len(PLAYABLE_P2_SPECIES) == 42
+    assert len(PLAYABLE_P2_SPECIES) == 43
     fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (73, 94)]
     document = committed_document()
     held = {row["uid"] for row in document.get("held_parts", [])}

@@ -363,7 +363,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     # proxies remain (BigTreasure 73 left for its own campaign installer, #246,
     # #215 retired the Demon 32 proxy for its own Sarai-host profile, Breadbug 38
     # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245).
-    assert len(small_ids) == 2 and len(large_ids) == 11
+    assert len(small_ids) == 2 and len(large_ids) == 10  # 72 OniKurage is an OWN species now (#960)
     assert sorted(small_ids) == [10, 11]
     for finished in (2, 33, 35, 43, 53, 67, 76,
                      12, 13, 14, 28, 68, 94,
@@ -379,7 +379,8 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     # more admitted identity, 28 ElecBug, takes the slot BigTreasure 73 held;
     # #898: 17 takes the slot the Breadbug 38 proxy held; #245: 18 takes the
     # slot the Antenna Beetle 41 proxy held.)
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18]
+    # #960: Kurage 57 takes the slot the OniKurage 72 proxy held (72 is an OWN species now).
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18, 57]
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):
