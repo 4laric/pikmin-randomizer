@@ -25,8 +25,8 @@ import math
 HAIR_SPECIES = ('YellowChappy',)
 HAIR_RGBA = (236, 232, 214, 255)
 STRAND_STRIDE = 2      # every second body vertex roots a strand
-STRAND_LENGTH = 7.0    # model units; the adult Bulborb body is ~70 wide, ~85 tall
-STRAND_WIDTH = 1.4
+STRAND_LENGTH = 11.0   # model units; the adult Bulborb body is ~70 wide, ~85 tall
+STRAND_WIDTH = 2.6
 MIN_NORMAL_Y = -0.35   # skip the underside
 
 
