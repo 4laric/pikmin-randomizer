@@ -88,7 +88,9 @@ def test_other_species_and_gates_are_preserved():
     assert entries["0"]["gates"]["identity_spawn"] == "UNTESTED"
     # #888: Kogane is excluded (unkillable, no Archipelago check).
     assert entries["9"]["eligibility"] == "excluded"
-    assert entries["84"]["gates"]["cleanup_reentry"] == "UNTESTED"
+    # 84 Hana was admitted by the wave 3 mechanics lane (#964).
+    assert entries["84"]["gates"]["cleanup_reentry"] == "PASS"
+    assert entries["66"]["eligibility"] != "admitted"
     assert entries["79"]["gates"]["identity_spawn"] == "PASS"
     assert entries["79"]["gates"]["death_corpse"] == "PASS"
 

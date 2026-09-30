@@ -50,14 +50,17 @@ every existing caller keeps working. Today the pool is:
 | 40 | OoPanModoki | giantbreadbug |
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
+| 26 | Catfish | aquatic |
+| 27 | Tadpole | aquatic |
+| 84 | Hana | ground_inverts |
+| 93 | BombOtakara | dweevil |
 | 57 | Kurage | kurage |
 | 72 | OniKurage | onikurage |
 | 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, plus 26 Catfish,
-27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
+9 Kogane, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
@@ -157,6 +160,20 @@ never P2 identities and never enter this table.
   six ordinary pool species: the arena bosses (94, 73, 53, 30; #899, #246, #289, #256) are placed in
   boss arenas outside the ordinary slots, so 39 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
+- **26 Catfish (Water Dumple), 27 Tadpole (Wogpole), 84 Hana (Creeping
+  Chrysanthemum), 93 BombOtakara (Volatile Dweevil): admitted (#964).** Each
+  runs its transcribed source FSM in the campaign, dies naturally, is carried as
+  its dead corpse and delivers `onion:p2:<id>:3` on its own generator token
+  (bot power mode, then a day-cycle run: bound each stage, alive at two sunsets,
+  killed and delivered on day 4; a Volatile Dweevil that has chased dies with its
+  detonated Bomb, so it is alive at a sunset only if it has not chased yet).
+  Wogpole 27 is harmless in source: its attacks_receivers gate is receiver-side
+  only. Hana's flick is the stuck-count simplification of `isStartFlick`. The kill runs used a land slot: the
+  aquatics have no water plane, and the bot could not reach the water-slot
+  packs, so a fight on the real water slots is unobserved. The Catfish and
+  Wogpole take water-cohort slots only (their lane-04 profile); Hana takes
+  ground slots; the Volatile Dweevil the same ground slots as 59-62. Details,
+  fixes and open items: `docs/PIKMIN2_WAVE3_MECHANICS.md`.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him
   (10 damage), is knocked down by Pikmin weight, dies naturally, is carried as
