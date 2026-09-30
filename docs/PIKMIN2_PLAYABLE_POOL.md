@@ -14,7 +14,6 @@ every existing caller keeps working. Today the pool is:
 | 60 | WaterOtakara | dweevil |
 | 61 | GasOtakara | dweevil |
 | 62 | ElecOtakara | dweevil |
-| 23 | Sarai | sarai |
 | 79 | Sokkuri | sokkuri |
 | 2 | Chappy | chappy |
 | 33 | FireChappy | chappy |
@@ -23,22 +22,14 @@ every existing caller keeps working. Today the pool is:
 | 53 | KingChappy | chappy |
 | 67 | LeafChappy | chappy |
 | 76 | KumaKochappy | chappy |
-| 12 | UjiA | uji |
-| 13 | UjiB | uji |
-| 14 | Tobi | uji |
 | 28 | ElecBug | elecbug |
 | 94 | DangoMushi | dangomushi |
 | 68 | TamagoMushi | tamago |
-| 17 | Frog | frog |
-| 18 | MaroFrog | frog |
-| 24 | Tank | tank |
 | 75 | Kabuto | kabuto |
-| 56 | Damagumo | long_legs |
 | 63 | Jigumo | aquatic |
 | 69 | BigFoot | long_legs |
 | 34 | SnakeCrow | snagret |
 | 70 | SnakeWhole | snagret |
-| 65 | Imomushi | ground_inverts |
 | 71 | UmiMushi | aquatic |
 | 101 | UmiMushiBlind | aquatic |
 | 25 | Wtank | tank |
@@ -307,3 +298,10 @@ value is data on `randomizer.seed.P2_PLAYABLE_POOL`; `randomizer/p2_units.py` st
 at the generator (`GenTypeAtOnce::init`). A group slot whose own count is already larger keeps it
 (the count is `max(slot count, unit)`). Smoke seeds go through the same launcher, and
 `p2_smoke_verify` fails a slot with fewer READY actors than the unit.
+
+- **12 UjiA (P2 Female Sheargrub): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Female Sheargrub is untouched).
+- **13 UjiB (P2 Male Sheargrub): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Male Sheargrub is untouched).
+- **14 Tobi (P2 Shearwig): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Shearwig is untouched).
+- **17 Frog (P2 Yellow Wollywog): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Wollywog is untouched).
+- **18 MaroFrog (P2 Wollywog): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Wollywog is untouched).
+- **23 Sarai (P2 Swooping Snitchbug): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Snitchbug is untouched).

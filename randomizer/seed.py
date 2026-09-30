@@ -216,17 +216,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 23,
-        "enum_name": "Sarai",
-        "family": "sarai",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, fight, P2_SARAI_DEAD health=0 on its own generator, corpse carried, Onion receipt onion:p2:23:3; movement/combat also seen in owner playtest",
-            "log": "C:/cop/botcamp-bc5-23-Sarai/session/runs/e4da72b1eb8f1d730171bd2cb671faa82557a579d3df53023988f02cb93f1f26/native.log (sha256 3231b0baf8077f23...) L1140 dead, L1239 receipt; output/claude-orch/evidence/botcamp-bc5.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 23 -> sarai",
-        },
-    },
-    {
         "source_id": 79,
         "enum_name": "Sokkuri",
         "family": "sokkuri",
@@ -322,42 +311,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 12,
-        "enum_name": "UjiA",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3",
-            "log": "C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt; output/claude-orch/evidence/botcamp-inst-bugs-7c.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 12 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
-        "source_id": 13,
-        "enum_name": "UjiB",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3",
-            "log": "C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt; output/claude-orch/evidence/botcamp-inst-bugs-8.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 13 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
-        "source_id": 14,
-        "enum_name": "Tobi",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3",
-            "log": "C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt; output/claude-orch/evidence/botcamp-inst-bugs-9b.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 14 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
         "source_id": 28,
         "enum_name": "ElecBug",
         "family": "elecbug",
@@ -395,30 +348,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 68 -> tamago "
                          "(experimental/pikmin2_tamago_content)",
-        },
-    },
-    {
-        "source_id": 17,
-        "enum_name": "Frog",
-        "family": "frog",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3",
-            "log": "C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 17 -> frog "
-                         "(experimental/pikmin2_frog_install)",
-        },
-    },
-    {
-        "source_id": 18,
-        "enum_name": "MaroFrog",
-        "family": "frog",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3",
-            "log": "C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 18 -> frog "
-                         "(experimental/pikmin2_frog_install)",
         },
     },
     {

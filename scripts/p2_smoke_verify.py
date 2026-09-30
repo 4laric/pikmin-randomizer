@@ -24,7 +24,7 @@ _AUTOPLAY_NAVI = re.compile(r'AUTOPLAY_(?:NAVI|WITHDRAW)\b.*?\bnavi=\((-?[\d.]+)
 _RESOLVE = re.compile(r'P2_SEED_RESOLVE source_id=(\d+) target=(\d+)\b.*?\bx=(-?[\d.]+) z=(-?[\d.]+)')
 _FAILURE = re.compile(r'slot-rejected|P2_\w*UNBOUND|P2_\w*_REJECT|P2_\w*BIND_FAIL')
 _READY = re.compile(r'P2_\w*READY\b[^\n]*?\bgenerator=(\d+)[^\n]*?\bx=(-?[\d.]+)[^\n]*?\bz=(-?[\d.]+)')
-_BIND = re.compile(r'P2_\w*_BIND\b[^\n]*?\bgenerator=(\d+)(?![^\n]*visual_only=1)')
+_BIND = re.compile(r'P2_\w*_BIND\b[^\n]*?\b(?:generator|token)=(\d+)(?![^\n]*visual_only=1)')
 _GENERATOR = re.compile(r'\bgenerator=(\d+)')
 
 
