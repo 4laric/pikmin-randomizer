@@ -271,7 +271,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
                          "covering the seed identities; unstaged P2 seeds cannot launch")
     if purple_bank is not None and (assets is None or not (Path(assets) / 'dataDir/stages').is_dir()):
         raise ValueError('Purple campaign requires --assets with dataDir/stages')
-    if manifest.get("p2_purple_campaign") and purple_bank is None:
+    if (manifest.get("p2_purple_campaign") and purple_bank is None
+            and not os.environ.get("PIKMIN_DEV_CONSOLE")):
         # A seed that binds Purple-only species (seed.P2_REQUIRES_PURPLE) is not
         # winnable without the Violet supply, so it never launches without it.
         raise ValueError("this seed was generated with --p2-purple-campaign; "

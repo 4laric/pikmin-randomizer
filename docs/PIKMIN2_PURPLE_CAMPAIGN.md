@@ -106,6 +106,9 @@ citation), not in a slot list:
   and a smoke seed (`scripts/p2_smoke_seed.py`, with `--purple-bank` and
   `--purple-motion`) can put the Giant on any ordinary slot. Purple stock is ship
   stock, so Purples made at the start-area Violet are available in every area.
+  The dev console (`scripts/p2_dev_console.py`) may spawn the Giant on demand
+  without the banks: its manifest carries the flag and `randomizer run` skips the
+  bank requirement under `PIKMIN_DEV_CONSOLE`.
 
 Violet staging works on all five start stages, including the Forest of Hope. Some
 local asset sets carry a harness copy of the Forest of Hope `default.gen` whose

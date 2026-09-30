@@ -87,6 +87,25 @@ class PurpleCampaignTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_violet(data, template, 27)
 
+    def test_purple_only_seed_refuses_to_launch_without_the_banks(self):
+        # #958: a seed that binds the Giant Breadbug (Purple presses only,
+        # panModoki.cpp:1738) needs the Violet supply; only the dev console,
+        # which spawns species on demand, is exempt.
+        import os
+        from randomizer.runner import launch
+        from randomizer.seed import generate
+        manifest = generate('purple-launch', p2_enemies=True, p2_species=[40], p2_purple_campaign=True)
+        self.assertTrue(manifest['p2_purple_campaign'])
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop('PIKMIN_DEV_CONSOLE', None)
+                with self.assertRaisesRegex(ValueError, '--purple-bank'):
+                    launch(manifest, Path(tmp) / 'session')
+            from randomizer import dev_console
+            dev = dev_console.build_dev_manifest([40])
+            self.assertTrue(dev['p2_purple_campaign'])
+            self.assertNotIn('p2_purple_campaign', dev_console.build_dev_manifest([41]))
+
     def test_harness_counted_forest_generator_stages_violet(self):
         # #958: the Forest of Hope harness copy counts only the "    " records
         # (2 of 3 physical here; the inactive txen record is skipped) although

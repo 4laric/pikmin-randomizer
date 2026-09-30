@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .seed import PLAYABLE_P2_SPECIES, generate, validate
+from .seed import P2_REQUIRES_PURPLE, PLAYABLE_P2_SPECIES, generate, validate
 
 DEV_TARGET_BASE = 0xDE000000
 DEV_TARGET_SPAN = 0x10000
@@ -108,6 +108,11 @@ def build_dev_manifest(species_ids, seed_name="dev-console", *, starting_color="
                         collection_checks=True)
     manifest["p2_layout"] = build_dev_layout(species_ids, roster)
     manifest["capabilities"].append("p2-enemy-bridge-v1")
+    if set(species_ids) & set(P2_REQUIRES_PURPLE):
+        # Purple-only species (seed.P2_REQUIRES_PURPLE) may always be spawned from the
+        # console; the runner skips its --purple-bank requirement under the console
+        # environment (CONTRIBUTING: dev overrides never need a rebuild).
+        manifest["p2_purple_campaign"] = True
     validate(manifest)
     return manifest
 
