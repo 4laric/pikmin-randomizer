@@ -138,7 +138,7 @@ class PurpleCampaignTests(unittest.TestCase):
                     path = dest / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(value)
             with patch('scripts.preview_pikmin2_room.overlay', side_effect=copy_overlay):
                 result = stage_campaign(run, assets, bank, motion,
-                                        {'p2_layout': True, 'profile': 'foh-day2', 'starting_color': 'blue'})
+                                        {'p2_layout': {'bindings': []}, 'profile': 'foh-day2', 'starting_color': 'blue'})
             self.assertEqual(staged.read_bytes()[24:len(existing)], existing[24:])
             self.assertEqual((assets / 'dataDir/stages/stage1/default.gen').read_bytes(), generator())
             self.assertEqual((run / 'purple-base-assets/dataDir/stages/stage1/default.gen').read_bytes(), existing)
