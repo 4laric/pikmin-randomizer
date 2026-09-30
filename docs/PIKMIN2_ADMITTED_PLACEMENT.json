@@ -5533,7 +5533,7 @@
       "allow_protected": false,
       "requires_renewable_slot": false,
       "min_first_day": 0,
-      "notes": "P2 source_id 40; boss arena placement (#899, owner ruling 2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; accepted on every measured, unprotected arena whose clearance fits the oopanmodoki_arena footprint. Pool admission is still the family lane's natural kill -> carry -> Onion receipt.",
+      "notes": "P2 source_id 40; boss arena placement (#899, owner ruling 2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; accepted on every measured, unprotected arena whose clearance fits the oopanmodoki_arena footprint. Pool admission is still the family lane's natural kill -> carry -> Onion receipt. Runtime constraint (OoPanModoki::pressCallBack panModoki.cpp:1738-1744: Purple presses only): only Purple presses hurt it, so generation binds it only on --p2-purple-campaign seeds, whose Violet supply exists at every start area (randomizer/purple_campaign.py) and whose Purple ship stock travels between areas; 'randomizer run' refuses such a seed without the Purple banks (#958).",
       "cohort": null,
       "accepted_slot_uids": [
         4019261003,

@@ -653,8 +653,26 @@ P2_PLAYABLE_POOL = (
 # Roster admission must equal this set (#888, tests/test_p2_pool_roster_sync.py).
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
+# Pool species whose seed is only winnable when the session carries the opt-in
+# Purple campaign (Violet supply, randomizer/purple_campaign.py). This is a
+# runtime constraint, not an owner whitelist: source id -> citation. Generation
+# binds such a species only for ``p2_purple_campaign=True`` (CLI
+# ``--p2-purple-campaign``), which records ``p2_purple_campaign`` and the
+# ``p2-purple-campaign-v1`` capability in the manifest; ``randomizer run`` then
+# refuses to launch that seed without ``--purple-bank``/``--purple-motion``.
+#   40 Giant Breadbug: OoPanModoki::Obj::pressCallBack (panModoki.cpp:1738-1744)
+#      returns false for any Pikmin whose kind is not Purple, and the base
+#      damageCallBack (panModoki.cpp:450-457) only forwards damage while the body
+#      is bittered, an item Pikmin 1 does not have. Without Purple presses the
+#      only damage left is the one-off container suck (2000 -> 1000), so the
+#      Giant could never die, never be carried and would permanently replace the
+#      P1 boss it took the arena from (#958).
+P2_REQUIRES_PURPLE = {
+    40: "OoPanModoki::pressCallBack panModoki.cpp:1738-1744: Purple presses only",
+}
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False):
+
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
@@ -696,6 +714,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
     if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
         raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
+    if type(p2_purple_campaign) is not bool: raise ValueError("invalid p2_purple_campaign")
+    if p2_purple_campaign and not p2_enemies: raise ValueError("p2_purple_campaign requires p2_enemies")
+    p2_species_explicit = p2_species is not None and p2_species not in ("playable", "full")
     if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
     if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
     if p2_proxy_tier is not None and not p2_enemies: raise ValueError("p2_proxy_tier requires p2_enemies")
@@ -725,6 +746,21 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                 if p2_density != DENSITY_SAMPLED:
                     raise ValueError(
                         f"p2_proxy_tier forces the {DENSITY_SAMPLED} policy, not {p2_density!r}")
+    if p2_enemies and not p2_purple_campaign:
+        # Purple-only species need the opt-in Purple campaign (P2_REQUIRES_PURPLE).
+        # A named list that asks for one is an error; the broader selections
+        # ("playable", "full", default) simply leave it out.
+        asked = sorted(set(P2_REQUIRES_PURPLE) & set(p2_species or ()))
+        if asked and p2_species_explicit:
+            raise ValueError(f"p2_species {asked} need the opt-in Purple campaign (--p2-purple-campaign): "
+                             + "; ".join(P2_REQUIRES_PURPLE[i] for i in asked))
+        if asked:
+            p2_species = tuple(i for i in p2_species if i not in P2_REQUIRES_PURPLE)
+        elif p2_species is None:
+            from experimental.pikmin2_enemy_roster import load_and_validate as _roster
+            from experimental.pikmin2_seed_bridge import admitted_ids as _admitted
+            _ids = [i for i in _admitted(_roster()) if i not in P2_REQUIRES_PURPLE]
+            if len(_ids) != len(_admitted(_roster())): p2_species = tuple(_ids)
     if p2_placement is not None and type(p2_placement) is not dict:
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
@@ -894,6 +930,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                                                        proxy_rows=proxy_rows,
                                                        proxy_document=proxy_document)
         result['capabilities'].append('p2-enemy-bridge-v1')
+        if p2_purple_campaign:
+            result['p2_purple_campaign'] = True
+            result['capabilities'].append('p2-purple-campaign-v1')
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
             result['capabilities'].append('p2-proxy-tier-v1')
@@ -1031,6 +1070,10 @@ def validate(m):
             raise ValueError('invalid p2_proxy_tier')
         if 'p2_layout' not in m:
             raise ValueError('p2_proxy_tier requires a p2_layout')
+    if type(m) is dict and 'p2_purple_campaign' in m:
+        expected.add('p2_purple_campaign')
+        if m['p2_purple_campaign'] is not True or 'p2_layout' not in m:
+            raise ValueError('invalid p2_purple_campaign')
     if type(m) is dict and 'p2_layout' in m:
         expected.add('p2_layout')
         from experimental.pikmin2_enemy_roster import load_and_validate
@@ -1072,6 +1115,11 @@ def validate(m):
             except Exception:
                 pass
             validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
+            needy = sorted({b.get('source_id') for b in m['p2_layout'].get('bindings', [])} & set(P2_REQUIRES_PURPLE))
+            if needy and not m.get('p2_purple_campaign'):
+                raise SeedBridgeError(f"source ids {needy} need the opt-in Purple campaign "
+                                      "(generate with --p2-purple-campaign): "
+                                      + "; ".join(P2_REQUIRES_PURPLE[i] for i in needy))
         except SeedBridgeError as exc:
             raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:
@@ -1138,6 +1186,7 @@ def validate(m):
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
+    if m.get('p2_purple_campaign'): fixed['capabilities'].append('p2-purple-campaign-v1')
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:

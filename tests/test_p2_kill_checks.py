@@ -54,7 +54,8 @@ def test_playable_pool_binds_all_playable_species():
     layout = playable_manifest()["p2_layout"]
     held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
     bound = [b["source_id"] for b in layout["bindings"] if b["target"] not in held]
-    assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
+    # #958: the Purple-only Giant Breadbug is bound by --p2-purple-campaign seeds only.
+    assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) - {40}
     assert not layout.get("unplaced")
     assert not set(bound) & set(layout.get("unplaced", []))
 

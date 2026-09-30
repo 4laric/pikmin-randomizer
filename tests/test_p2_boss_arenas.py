@@ -316,9 +316,17 @@ class SeedTests(unittest.TestCase):
                             p2_enemies=True, p2_species="playable")
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [40, 73, 94])
+        # #958: the Giant Breadbug (40) only takes Purple presses, so it joins the
+        # arenas only on a --p2-purple-campaign seed.
+        self.assertEqual(sorted(row["source_id"] for row in placed), [73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+        purple = generate("arena-playable", "solo", "Player1", starting_area="forest",
+                          p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
+        validate(purple)
+        placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
+        self.assertEqual(sorted(row["source_id"] for row in placed), [40, 73, 94])
+        self.assertLessEqual(len(purple["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
 
 
 if __name__ == "__main__":

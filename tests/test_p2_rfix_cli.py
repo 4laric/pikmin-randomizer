@@ -48,9 +48,20 @@ def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
     assert code == 0
     manifest = json.loads(out_file.read_text(encoding="utf-8"))
     # #948: every ordinary campaign generator (72) plus one boss-arena binding
-    # each for the Crawbster (#899), the Titan Dweevil (#246) and the Giant
-    # Breadbug (#958), plus the #901 held-part holder slot (Puffy Blowhog uf02).
+    # each for the Crawbster (#899) and the Titan Dweevil (#246), plus the #901
+    # held-part holder slot (Puffy Blowhog uf02). The Giant Breadbug (#958) only
+    # takes Purple presses, so it needs --p2-purple-campaign (asserted below).
     held = manifest["p2_layout"]["held_parts"]["placed"]
     assert [row["target"] for row in held] == ["613834665"]
-    assert len(manifest["p2_layout"]["bindings"]) == 72 + 3 + len(held)
-    assert sorted(row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]) == [40, 73, 94]
+    assert len(manifest["p2_layout"]["bindings"]) == 72 + 2 + len(held)
+    assert sorted(row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]) == [73, 94]
+    purple_file = tmp_path / "purple.json"
+    code, _ = run_main(
+        monkeypatch, capsys,
+        ["randomizer", "generate", "--seed", "rfix-check", "--p2-enemies", "--p2-purple-campaign",
+         "--p2-species", "playable", "--output", str(purple_file)])
+    assert code == 0
+    purple = json.loads(purple_file.read_text(encoding="utf-8"))
+    assert purple["p2_purple_campaign"] is True
+    assert len(purple["p2_layout"]["bindings"]) == 72 + 3 + len(held)
+    assert sorted(row["source_id"] for row in purple["p2_layout"]["boss_arenas"]["placed"]) == [40, 73, 94]

@@ -87,6 +87,42 @@ class PurpleCampaignTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_violet(data, template, 27)
 
+    def test_harness_counted_forest_generator_stages_violet(self):
+        # #958: the Forest of Hope harness copy counts only the "    " records
+        # (2 of 3 physical here; the inactive txen record is skipped) although
+        # the game reads inactive records too. Staging must accept it and write
+        # the physical count so the appended Violet is inside the range the game reads.
+        def row(name, ident):
+            r = bytearray(100); r[:8] = name + b'0.0v'
+            struct.pack_into('<I', r, 8, ident); r[72:80] = b'ssob\x02\x00\x00\x00'
+            return bytes(r)
+        rows = [row(b'    ', 1), row(b'txen', 2), row(b'    ', 3)]
+        header = b'1.0v' + struct.pack('>4fI', 5, 10, 15, 45, 2)   # 2 = "    " records only
+        data = header + b''.join(rows)
+        self.assertEqual(len(split_records(data)), 3)
+        result = add_violet(data, split_records(data)[0], 900)
+        self.assertEqual(struct.unpack_from('>I', result, 20)[0], 4)
+        self.assertEqual(len(split_records(result)), 4)
+        self.assertEqual(result[24:len(data)], data[24:])
+        bad = header[:20] + struct.pack('>I', 7) + data[24:]
+        with self.assertRaisesRegex(ValueError, 'framing'):
+            split_records(bad)
+
+    def test_real_stage_generators_stage_violet(self):
+        # All five start stages of the local retail assets, including the Forest
+        # of Hope copy that carries the harness squad.
+        assets = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
+        if not assets.is_dir():
+            self.skipTest('local retail assets absent')
+        template = next(r for r in split_records((assets / 'chal0/default.gen').read_bytes())
+                        if r[72:80] == b'ssob\x02\x00\x00\x00')
+        for stage in ('practice', 'stage1', 'stage2', 'stage3', 'last'):
+            data = (assets / stage / 'default.gen').read_bytes()
+            result = add_violet(data, template, 0x50555001)
+            rows = split_records(result)
+            self.assertEqual(struct.unpack_from('>I', result, 20)[0], len(rows), stage)
+            self.assertEqual(len(rows), len(split_records(data)) + 1, stage)
+
     def test_inactive_records_count_toward_identity_and_offsets(self):
         data = bytearray(generator()); data[24:28] = b'txen'
         result = add_violet(data, split_records(generator())[0], 800)

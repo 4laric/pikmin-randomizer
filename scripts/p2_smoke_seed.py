@@ -404,11 +404,20 @@ def build(args):
     override_path.write_text(json.dumps(override, indent=1) + '\n', encoding='utf-8')
 
     starting_area = AREAS[args.area][0]
+    from randomizer.seed import P2_REQUIRES_PURPLE
+    pool = species_pool(assignments, bosses)
+    # A Purple-only species (seed.P2_REQUIRES_PURPLE, e.g. the Giant Breadbug) makes
+    # this a Purple-campaign seed; the launcher then needs the Purple banks.
+    needs_purple = sorted(set(pool) & set(P2_REQUIRES_PURPLE))
+    if needs_purple and not (args.purple_bank and args.purple_motion):
+        raise SmokeSeedError(f"species {needs_purple} only take Purple presses "
+                             f"({'; '.join(P2_REQUIRES_PURPLE[i] for i in needs_purple)}): "
+                             "pass --purple-bank and --purple-motion")
     manifest = generate(args.seed, 'solo', 'Player1', starting_area=starting_area,
                         collection_checks=True, starting_flarlic=1, bomb_rock_weight=1,
                         goal_mode='emperor_bulblax', combined_captain=True,
                         p2_enemies=True, p2_placement=override,
-                        p2_species=species_pool(assignments, bosses),
+                        p2_species=pool, p2_purple_campaign=bool(needs_purple),
                         progressive_maturity=True)
     validate(manifest)
     bound = check_layout(manifest, assignments, bosses, document)
