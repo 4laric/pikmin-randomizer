@@ -18,7 +18,7 @@ SINGULAR_SCALE_MODES=('error','allow','clamp')
 # failing as a singular transform. Used only as a retry for frames that fail.
 COLLAPSED_SCALE_FLOOR=1e-4
 
-def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'):
+def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error',extra_tracks=False):
     if singular_scale not in SINGULAR_SCALE_MODES:
         raise ValueError(f'Unsupported singular scale mode {singular_scale!r}')
     # Retail archives omit the final alignment padding counted in some BCA headers.
@@ -27,11 +27,14 @@ def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'
     b=data[32:]
     if b[:4]!=b'ANF1':raise ValueError('Expected full transform animation')
     duration,count=struct.unpack_from('>HH',b,10)
-    if count!=expected_joints or duration<1:raise ValueError('Animation skeleton mismatch')
+    # J3D applies track i to joint i and ignores trailing tracks the skeleton lacks
+    # (UmiMushi sturn1.bca carries 26 tracks for the 25-joint model, #995/#972).
+    # Opt-in only: every other caller keeps the strict equality check.
+    if duration<1 or (count<expected_joints if extra_tracks else count!=expected_joints):raise ValueError('Animation skeleton mismatch')
     table,scales,rotations,translations=struct.unpack_from('>4I',b,20)
     if table<36 or table+count*36>len(b):raise ValueError('Truncated BCA joint table')
     pose=[]
-    for joint in range(count):
+    for joint in range(expected_joints):
         r=[];t=[];scale=[]
         for axis in range(3):
             values=[]
