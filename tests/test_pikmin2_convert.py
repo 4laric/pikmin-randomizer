@@ -42,6 +42,30 @@ class ConverterTests(unittest.TestCase):
         m[581]=1 # normal-generated texture is not an untransformed UV0 base
         self.assertEqual(diffuse_slot(m,r),0)
 
+    def test_x2_base_stage_selected_over_specular_fallback(self):
+        # Kabuto shell (#884): stage 0 = texmap 1 x RAS at x2, stage 1 = the
+        # texmap 0 gloss layer. The x1-only match fell back to texmap 0 (the
+        # gloss sphere, black shell); the x2 base stage must win.
+        m=bytearray(640);r=132
+        for off,start in ((88,464),(92,480),(76,560),(56,580)):
+            struct.pack_into('>I',m,off,start)
+        m[464]=2
+        struct.pack_into('>HH',m,r+0xe4,0,1)
+        m[481:490]=bytes([15,8,10,15,0,0,1,1,0])    # stage 0: TEXC*RASC, x2
+        m[501:510]=bytes([15,10,8,0,0,0,0,1,0])     # stage 1: prev + specular layer
+        struct.pack_into('>HH',m,r+0xbc,0,1)
+        m[560:564]=bytes([1,1,4,255])               # stage 0: coord 1, texmap 1
+        m[564:568]=bytes([0,0,5,255])               # stage 1: coord 0, texmap 0
+        struct.pack_into('>HH',m,r+0x28,0,1)
+        m[580:584]=bytes([1,4,60,255])
+        struct.pack_into('>H',m,r+0x2a,0)
+        self.assertEqual(diffuse_slot(m,r),1)
+        # an x1 base stage still wins over the x2 one
+        m[501:510]=bytes([15,8,10,15,0,0,0,1,0])
+        m[564:568]=bytes([0,2,4,255])
+        struct.pack_into('>H',m,r+0x28,0)
+        self.assertEqual(diffuse_slot(m,r),2)
+
     def test_layer_pixel_state_preserves_blend_depth_and_alpha(self):
         m=bytearray(500);r=132
         m[r]=4

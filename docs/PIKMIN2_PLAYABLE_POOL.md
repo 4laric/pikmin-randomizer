@@ -51,6 +51,7 @@ every existing caller keeps working. Today the pool is:
 | 58 | BombSarai | bombsarai |
 | 57 | Kurage | kurage |
 | 72 | OniKurage | onikurage |
+| 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -126,8 +127,8 @@ never P2 identities and never enter this table.
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
   (`sampled-v1`). With 43 species on 35 slots, a given seed may leave out any
-  six ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
-  boss arenas outside the ordinary slots, so 41 ordinary species share 35
+  six ordinary pool species: the arena bosses (94, 73, 53, 30; #899, #246, #289, #256) are placed in
+  boss arenas outside the ordinary slots, so 39 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him
@@ -141,8 +142,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Nine P2 bosses are already here (34, 53, 56,
-  69, 70, 71, 73, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
+- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 53, 56,
+  69, 70, 71, 73, 94, 101). The remaining bosses 40 Giant Breadbug,
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -150,9 +151,10 @@ never P2 identities and never enter this table.
 
 - **Boss arenas.** P2 bosses are placed only in designated P1 boss arenas,
   replacing the P1 boss there (`randomizer/p2_boss_arenas.py`). The pool's
-  arena bosses are 94 Crawbster and 73 Titan Dweevil; the most-constrained
-  boss is seated first, so the Titan (footprint 250) takes the Impact Goolix
-  arena (clear 275) and the Crawbster the Hope snagret pit.
+  arena bosses are 94 Crawbster, 73 Titan Dweevil and, since the wave-3
+  Emperor lane, 53 Emperor Bulblax; the most-constrained boss is seated first,
+  so the Titan (footprint 250) takes the Impact Goolix arena (clear 275) and
+  the Crawbster the Hope snagret pit.
 - **73 BigTreasure (Titan Dweevil): admitted.** The source BigTreasure FSM runs
   as its own campaign actor with the retail collision tree: Pikmin knock the
   four weapons off by hitting each weapon's own part, the body takes damage
@@ -161,6 +163,19 @@ never P2 identities and never enter this table.
   `onion:p2:73:0` on its own generator token (bot power-mode run e7 and
   repeats, plus a day 11-15 re-entry run rc2, #246). Its gas stays lethal to every P1 colour (ruling #2). The
   knocked-off weapons and Louie are not carryable pellets yet.
+
+- **53 KingChappy (Emperor Bulblax): re-admitted with its own behaviour (#289,
+  wave-3 lane 53).** The own-identity Chappy-family FSM now covers the whole
+  source cycle: buried HideWait spawn with a proximity wake and the Appear
+  shake-off, tongue sweeps with the tongue-tip terrain trace, bomb-rock
+  ingestion into the Eat/Damage stun, the checkFlick shake-offs, WarCry, the
+  dive and re-Appear, the retail collision tree and the P1 Emperor sound bank.
+  It dies naturally, is carried and delivers `onion:p2:53:3` on its own
+  generator (bot power-mode run s12, and s9 on the previous exe). It is an
+  arena boss in real seeds by footprint (175, the tongue reach); the P1
+  Emperor arena stays protected. Details, dev switches and known gaps are in
+  `docs/PIKMIN2_KING_OWN.md`. The Chappy `Health` registry also stopped
+  clamping the Emperor to the host's 1100 life (now the retail 1300).
 
 ## Admission bar
 

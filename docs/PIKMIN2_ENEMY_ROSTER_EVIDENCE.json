@@ -640,10 +640,10 @@
       ]
     },
     "30": {
-      "native_module": "pc_p2_queen",
+      "native_module": "pc_p2_queen_teki",
       "owner_lane": "24",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "OWN campaign run a17 (#256, wave 3): natural boss-arena placement in impact_goolix, source Queen FSM, bot-driven natural kill, carcass carry and onion:p2:30 receipt on her own seed token; a16 (same exe) shows the full fight mechanics",
       "source": [
         "PIKMIN2_BULBLAX_RUNTIME.md"
       ],
@@ -655,10 +655,16 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "corpse:queen:230010 (P2_POD_RECEIPT id=corpse:queen:230010 value=2 new=1 pokos=2 seeds=0) output/dsw/l24-out/queen-creature-runtime/queen/62b8ff57457c4edb90dd16958f665118/native.log:1386",
+      "delivery_receipt": "onion:p2:30:0 generator=4019261003 (P2_ORDINARY_P2_RECEIPT new=1) output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log:2035",
       "notes": [
-        "Queen (Empress Bulblax): queen vehicle + Baby child (boss_helper); natural combat/attachments/rewards remain (#172/#256).",
-        "Lane 24 gate5 (2026-09-17): natural generated-sidecar transport/reward receipt corpse:queen:230010 (P2_POD_RECEIPT value=2 new=1 pokos=2 seeds=0) in the queen-creature-runtime run (native.log:1386); free-mode carry and engine-driven death, no forced transport writes."
+        "Queen (Empress Bulblax): pc_p2_queen_teki drives the seeded actor with the source Queen FSM (pc_p2_queen_own.h); Baby 31 larvae run the source Baby FSM (boss_helper). Placement is constraint based (root docs/PIKMIN2_ADMITTED_PLACEMENT.json queen_arena, footprint 250 = territory 200 + 50 roll margin): accepted on every measured, unprotected arena whose clearance fits, i.e. impact_goolix (275), navel_beady_long_legs (250), navel_puffstool (350) and spring_cannon_beetle (250). Native carries no slot list (#948).",
+        "2026-09-28 (#256): the lane-24 room-preview gates and receipt corpse:queen:230010 were revoked (FixtureController, preview Pod, pokos=2); the gates below come from campaign runs only.",
+        "Wave-3 rebase on main cb658a59 / fork c67b22ffd, native claude/p2-wave3-30-empress 6d0378bf8, exe sha256 fef86e9e6b672a664cff0d1b45750a97767733fe966e8ddafcc7294f5937f66a (Ninja, MinGW, JAudio on, private build dir output/native-w3-30-empress-build, ninja -n: no work to do). Root f5cbf444 plus the admission diff in this change. Both runs below use this exe, natural playable seed qa-impact-0 (no rebind: queen_arena placed her on impact_goolix 4019261003), TEST-ONLY PIKMIN_P2_TEST_START_DAY=11 (the Goolix arena is live from day 9, as for the Titan 73 and Crawbster 94 arena runs), bot-driven autoplay in power mode (owner ruling 2026-09-25: power mode admits; mechanics evidence, not balance).",
+        "Primary run a17 (power x30, 80 red Pikmin stocked): output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log (sha256 479d0b20603cf3580ee577686a901512ca87939d72c0ee39de8e7e8024f751c8). L714 P2_BOSS_ARENA_BIRTH source_id=30 target=4019261003 ok=1 x=-815.7 z=654.3, L1671 P2_QUEEN_OWN_BIND retail_parms=1 draw=p2_model larva_cap=10, L1956 P2_QUEEN_DEAD health 5000 -> 0 in 21 Pikmin hits, L1969 P2_QUEEN_ESCAPE, L1970 P2_QUEEN_CARCASS pokos=15 carry_min=20 carry_max=30, up to 32 carriers hauled the carcass out of the arena, L2035 P2_ORDINARY_P2_RECEIPT id=onion:p2:30:0 generator=4019261003 new=1, L2039 AUTOPLAY_RESULT killed=1 carried=1 received=1, L2036 P2_QUEEN_TEKI_FORGET. No P2_SETUP_SKIP, no fixture or room-preview lines and no test overrides beyond the start day.",
+        "Mechanics run a16 (power x3, same exe, stopped by the operator after the kill while the bot was still regrouping): output/w3-30-run/runs/a16-30/session/runs/9203443a66c9b664b122a83735117401de4c97789783980940b0a8211e27da12/native.log (sha256 4345ba04dde58e27f598e77823f3033215b7e907f4d292b5ca8a63c70bcda66b). Source FSM Wait->Born (10 larvae born 224 units behind her centre), Wait->Damage L1927, Damage->Flick L2003, Flick->Rolling L2037, roll crashes at the +-250 arena edge, Rolling->Wait, second Damage->Flick->Rolling cycle, Rolling->Dead L2242; 21 rolling presses that crush Pikmin (first L2042, applied damage 30.0), key-2 flick shaking off 13 stuck Pikmin (L2031), engine health 5000 -> 0 monotone over 140 damage lines / 154 hits, max 10 latched, P2_QUEEN_DEAD L2242. P2_SFX lines show the P1 Emperor-bank approximation (roll, crash, flick, damage, dead).",
+        "Earlier arena runs (same natural seed, earlier exes, x3 power): a11, a12, a14, a15 each killed her with 144-166 hits, 18-23 roll presses, 13-18 Pikmin flicked and 10 larvae born; their carry stalled only because the bot lost its squad at the arena entrance ledge (see limits).",
+        "Rolling/flick/press reaction: her roll press crushes Pikmin (InteractPress) and the roll dodge is a pad-only bot tactic reading her state through pc_p2_queen_teki_probe.",
+        "Known approximations and limits: (1) latching uses the P1 Swallow collision tree at 3x, not the Queen 7-sphere tree, so every flick classifies the stuck Pikmin as middle (knockback 0): the nose/head/bod1/bod5 flick branches never fire; (2) larva eat/swallow (Baby key 3) is not ported and the larva cap is 10 (source 50); (3) the carcass draws the last usable dead pose and its carry radius is 50 (100 wedged in the Impact arena exit, a10), the source Queen leaves no carcass so the owner ruling 2026-09-29 (carryable corpses OK) applies; (4) at x1 to x3 damage the bot loses most of its squad at the Impact arena entrance ledge (Formation followers cut the corner and idle 400-600 units behind, a14/a15), so the natural carry is proven at x30 where she dies before her first roll; x1 alone was not proven; (5) the navel and spring arenas were not reachable for the bot inside its approach limits (spring_cannon_beetle: approach_timeout, navel_beady_long_legs: target_unreachable at a wall), so they are accepted by the footprint rule and not yet run."
       ]
     },
     "31": {
@@ -952,7 +958,7 @@
       "native_module": "pc_p2_chappy",
       "owner_lane": "13",
       "eligibility": "admitted",
-      "eligibility_reason": "Emperor Bulblax (KingChappy, source 53): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:53:3 on the species' own generator token per rev2-chappy.md.",
+      "eligibility_reason": "Emperor Bulblax (KingChappy, source 53): own-behaviour port (wave-3 lane 53, #289). All six gates natural PASS on the lane campaign line; Onion receipt onion:p2:53:3 on the species' own generator token.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -961,13 +967,16 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:53:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log:L2693 receipt (sha256 40b0759327273001...)",
+      "delivery_receipt": "onion:p2:53:3 (P2_CHAPPY_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-53/runs/s12/session/runs/09ef65f20941a20d25701f95380624906f925eefdd80064fdfa28c8920ae0b5c/native.log:L5399 receipt (sha256 723bfe1743bbf31b...)",
       "source": [
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_KING_OWN.md"
       ],
       "notes": [
-        "Lane campaign evidence: Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3 Bind/dead/receipt on the own generator token (L1571 bind, L2370 dead, L2693 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 53 -> chappy (experimental/pikmin2_chappy_content). Log C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt.",
-        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
+        "Lane campaign evidence: Bot-driven power-mode campaign (owner ruling 2026-09-25: power mode admits) of the OWN-behaviour Emperor Bulblax (wave-3 lane 53, #289): buried HideWait spawn and proximity wake with the Appear shake-off, tongue/eat/swallow fights with the tongue-tip terrain trace, checkFlick shake-offs, WarCry x7, dive (Hide) and re-Appear, retail collision tree with head/nose/mouth stickable parts, P1 Emperor sound bank; P2_CHAPPY_DEAD on its own generator 1945764764, corpse carried, Onion receipt onion:p2:53:3 (AUTOPLAY_RESULT killed=1 carried=1 received=1). Seed: spring_init_7002 smoke-override slot (PIKMIN_P2_SMOKE_ANY_SLOT, scripts/p2_smoke_seed.py --slot-uids); native claude/p2-wave3-53-emperor 03e8fd23f, exe sha256 da96b5ff... (private IPO build); a second run on the previous exe (s9) killed, carried and delivered the same way. output/claude-orch/p2-w3-53/runs/s12/session/runs/09ef65f20941a20d25701f95380624906f925eefdd80064fdfa28c8920ae0b5c/native.log (sha256 723bfe1743bbf31b...) L1300 bind, L1486 wake, L1509 appear, L5275 dead, L5399 receipt; scored by output/claude-orch/p2-w3-53/king_score.py; docs/PIKMIN2_KING_OWN.md",
+        "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs.",
+        "Test-only labelled bomb supply for the bomb-ingestion gate, never a natural gate: PIKMIN_P2_KING_TEST_BOMBS births dormant P1 bomb rocks ahead of the Emperor (P2_CHAPPY_KING_TEST_BOMB label=test_only); the natural runs never spawn that supply.",
+        "Not observed at runtime: the cross-Emperor WarCry request (rule pinned by tools/p2_king_life_test.cpp) and an arena kill (the bot gave up in the Goolix arena; arena birth P2_BOSS_ARENA_BIRTH ok=1 is proven)."
       ]
     },
     "54": {

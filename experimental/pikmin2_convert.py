@@ -134,15 +134,23 @@ def diffuse_slot(m, r):
     its actual texture-times-vertex-color base instead of displaying raw noise.
     """
     count=m[u32(m,88)+m[r+4]]
-    for i in range(count):
-        stage=u32(m,92)+u16(m,r+0xe4+2*i)*20
-        color=list(m[stage+1:stage+10])
-        if color not in ([15,10,8,15,0,0,0,1,0],[15,8,10,15,0,0,0,1,0]):continue
-        order=u32(m,76)+u16(m,r+0xbc+2*i)*4
-        coord,slot=m[order:order+2]
-        if coord>=8 or slot>=8:continue
-        gen=u32(m,56)+u16(m,r+0x28+2*coord)*4
-        if list(m[gen:gen+3])==[1,4,60]:return slot
+    # Pass 0 is the historical x1 base stage. Pass 1 additionally accepts the
+    # same texture-times-RAS stage written at x2 (TEV scale index 1), which is
+    # how P2 lights most base layers: without it a material whose specular/
+    # environment layer sits in texmap 0 falls back to that layer as the
+    # diffuse, e.g. Kabuto's shell rendered as the black gloss sphere instead
+    # of the green shell texture (#884). Only materials that matched nothing
+    # in pass 0 can change.
+    for scale in (0,1):
+        for i in range(count):
+            stage=u32(m,92)+u16(m,r+0xe4+2*i)*20
+            color=list(m[stage+1:stage+10])
+            if color not in ([15,10,8,15,0,0,scale,1,0],[15,8,10,15,0,0,scale,1,0]):continue
+            order=u32(m,76)+u16(m,r+0xbc+2*i)*4
+            coord,slot=m[order:order+2]
+            if coord>=8 or slot>=8:continue
+            gen=u32(m,56)+u16(m,r+0x28+2*coord)*4
+            if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
 def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error", bindings=None, billboard="error"):

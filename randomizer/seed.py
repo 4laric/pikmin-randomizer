@@ -290,8 +290,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "KingChappy",
         "family": "chappy",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3",
-            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "run": "Bot-driven power-mode campaign (owner ruling 2026-09-25: power mode admits) of the OWN-behaviour Emperor Bulblax (wave-3 lane 53, #289): buried HideWait spawn and proximity wake with the Appear shake-off, tongue/eat/swallow fights with the tongue-tip terrain trace, checkFlick shake-offs, WarCry x7, dive (Hide) and re-Appear, retail collision tree with head/nose/mouth stickable parts, P1 Emperor sound bank; P2_CHAPPY_DEAD on its own generator 1945764764, corpse carried, Onion receipt onion:p2:53:3 (AUTOPLAY_RESULT killed=1 carried=1 received=1). Seed: spring_init_7002 smoke-override slot (PIKMIN_P2_SMOKE_ANY_SLOT, scripts/p2_smoke_seed.py --slot-uids); native claude/p2-wave3-53-emperor 03e8fd23f, exe sha256 da96b5ff... (private IPO build); a second run on the previous exe (s9) killed, carried and delivered the same way.",
+            "log": "output/claude-orch/p2-w3-53/runs/s12/session/runs/09ef65f20941a20d25701f95380624906f925eefdd80064fdfa28c8920ae0b5c/native.log (sha256 723bfe1743bbf31b...) L1300 bind, L1486 wake, L1509 appear, L5275 dead, L5399 receipt; scored by output/claude-orch/p2-w3-53/king_score.py; docs/PIKMIN2_KING_OWN.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 53 -> chappy "
                          "(experimental/pikmin2_chappy_content)",
@@ -655,6 +655,18 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 72 -> onikurage "
                          "(stages p2-kurage-teki.txt and the onikurage pose meshes)",
+        },
+    },
+    {
+        "source_id": 30,
+        "enum_name": "Queen",
+        "family": "queen",
+        "evidence": {
+            "run": "Bot-driven campaign runs a17 (power x30) and a16 (power x3), wave 3 (#256; owner ruling 2026-09-25: power mode admits): natural seed qa-impact-0, no rebind, queen_arena placed the Empress Bulblax in the impact_goolix boss arena (TEST-ONLY start day 11, the arena is live from day 9); a17: P2_BOSS_ARENA_BIRTH, source Queen FSM bind, natural kill, carcass carried by up to 32 Pikmin, Onion receipt onion:p2:30:0 on her own generator 4019261003; a16 (same exe): Born larvae, Wait->Damage->Flick->Rolling cycles, 21 rolling presses crushing Pikmin, 13 flicked off, health 5000->0",
+            "log": "output/w3-30-run/runs/a17-30/session/runs/214baf1f7f068380494de690b4bceab1ede67dd7bb4566779acbca941f5fd83f/native.log (sha256 479d0b20603cf3580ee577686a901512...) L714 arena birth, L1671 bind, L1956 dead, L2035 receipt; a16 native.log sha256 4345ba04dde58e27...; native claude/p2-wave3-30-empress 6d0378bf8, exe sha256 fef86e9e6b672a66...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 30 -> queen "
+                         "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage)",
         },
     },
 )
