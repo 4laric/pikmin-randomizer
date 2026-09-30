@@ -31,10 +31,14 @@ Four defects kept them out, each reproduced before it was fixed:
 2. **Hana drifted.** Its flick fired whenever a Pikmin was within 25 units, so
    under an 80-Pikmin squad it flicked back to back, chased again after every
    flick and wandered about 1200 units from home. The corpse then lay on an
-   unroutable spot (`carriers=0 want=3`). Source `isStartFlick` keys on Pikmin
-   stuck to the body (`mStuckPikminCount`, first tier 3); Hana now uses the same
-   rule as `pc_p2_chappy.cpp`, and a flick that ends outside the territory goes
-   to GoHome.
+   unroutable spot (`carriers=0 want=3`). Source `isStartFlick` (enemyAction.cpp:1209-1240) tests the stuck Pikmin count against the
+   `ShakeOffSticking` tiers and `mFlickTimer` against `ShakeOffBlowA-D`; Hana
+   now triggers on stuck count >= 3 only (the same simplification as
+   `pc_p2_chappy.cpp`; the `mFlickTimer` gate is omitted, a port simplification).
+   The Flick end returns to the state Flick was entered from (Walk or GoHome),
+   as source `StateFlick::exec` `transit(enemy, mPreviousID)` (chappyState.cpp:2206-2207);
+   an earlier "flick outside the territory goes to GoHome" rule was unsourced and
+   is removed.
 3. **Dweevils abort on pack slots.** `pc_p2_batch2` allowed pack generators only
    for the uji and ground families. Placement accepts every Dweevil (59-62, 93)
    on grub-cohort slots (terrain and footprint only), and a grub generator holds
@@ -69,7 +73,7 @@ new day, then is killed and delivered on day 4.
 | 26 | `c26-26`, 73 s | `onion:p2:26:3` | `e26-26` (sunsets alive, day 4 kill and receipt) |
 | 27 | `c27-27`, 57 s | `onion:p2:27:3` | `e27-27` |
 | 84 | `c84-84`, 95 s | `onion:p2:84:3` | `e84-84` (day 4, 132 s) |
-| 93 | `c93-93`, 67 s | `onion:p2:93:3` | `e93-93` (day 4, 48 s); `f93-93` covers the pack fix |
+| 93 | `h93-93`, 39 s (rebuilt exe `6421207b...`) | `onion:p2:93:3` | `i93-93` (day 4, 44 s); `f93-93` covers the pack fix |
 
 Log paths, hashes and line numbers are in the roster evidence entries
 (`docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json`) and the `P2_PLAYABLE_POOL` rows.
@@ -144,3 +148,19 @@ Next steps, in order (a multi-session build, not started here):
 
 See the issue comment and hand-over notes for the saturated Forest of Hope smoke
 seed (`scripts/p2_smoke_seed.py --area foh --near-start`).
+
+## Review fixes (exe `6421207b1b482ba2d87ddd85d92e99eb60305117d293b4dcce65eec3e7653258`, native `601298766`)
+
+- **93 dies with its Bomb.** Source `Obj::doUpdateCommon` (OtakaraBase.cpp:93-108):
+  when the carried Bomb is no longer alive the BombOtakara sets
+  `mTargetCreature = nullptr` and `mHealth = 0`. The port has no Bomb creature, so
+  a detonated Bomb (fuse, damage, flick or death) zeroes the Dweevil's health on
+  its own tick (`P2_BOMBOTAKARA_PAYLOAD_DEAD`). Runs `h93`/`i93` show FUSE, BLAST
+  and PAYLOAD_DEAD in the same tick with no squad hits in between. The old
+  `c93`/`e93` runs (Dweevil survived the blast, six squad hits) are superseded.
+  Consequence: a Dweevil no longer survives a sunset alive once it has chased.
+- **93 blast receivers.** `h93` L3730 `pikmin_hits=1`; `i93` L10927 `pikmin_hits=32`.
+  The Bomb still has no separate model.
+- **27 attacks_receivers**: Wogpole is harmless in source. The admission contract only accepts PASS, so the gate records the receiver side alone (squad damage applied, escape and death); no Wogpole attack is claimed.
+- **84 evidence text** corrected (see item 2 above); re-check run `i84`: two flicks
+  return to Walk, kill and receipt `onion:p2:84:3` in 68 s.
