@@ -382,7 +382,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     # #958: 24 (withdrawn 2026-09-30, now 25 Wtank) takes the slot the Giant Breadbug 40 proxy held.
     # #960: Kurage 57 takes the slot the OniKurage 72 proxy held (72 is an OWN species now);
     # Queen 30 (#256) leaving the proxy tier is covered by 15.
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18, 25, 15, 57]
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 63, 68, 69, 75, 70, 71, 79, 34, 28, 25, 15, 57]  # 12, 13, 14, 17, 18, 23 withdrawn 2026-09-30, swapped for 63, 68, 69, 75, 70, 71
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):

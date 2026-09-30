@@ -232,7 +232,7 @@ def test_sampled_layout_pool_larger_than_targets_reports_unplaced():
 
     roster = load_and_validate()
     document = _default_admitted_placement()
-    pool = [44, 54, 59, 60, 61, 62, 42, 23, 79, 2, 12, 13, 14]
+    pool = [44, 54, 59, 60, 61, 62, 42, 79, 2, 33, 35, 43, 67]  # 12, 13, 14, 23 withdrawn 2026-09-30
     tiny = {"schema": document["schema"],
             "slots": document["slots"][:3],
             "profiles": document["profiles"],

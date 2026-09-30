@@ -26,7 +26,7 @@ from experimental.pikmin2_seed_bridge import DENSITY_BOUNDED, DENSITY_LEGACY
 from randomizer.seed import fingerprint, generate, validate
 
 ROOT = Path(__file__).resolve().parents[1]
-SARAI = 23
+SARAI = 2  # stand-in species; was 23 Sarai until it was withdrawn (2026-09-30), now 2 Chappy
 OTAKARA = [59, 60, 61, 62]
 
 # Fingerprints captured on the pre-wiring tree (48a2a693). Adding the explicit
@@ -35,7 +35,7 @@ LEGACY_FINGERPRINT = "7b99245bc9f541e0ff13d35429c0f244ae787c1716c013d6f2020235a6
 # #901: the held-part layer binds the Puffy Blowhog uf02 holder slot too.
 # #948: the committed document is constraint-derived (72 ordinary slots),
 # so the P2 legacy fingerprint moved with it.
-P2_LEGACY_FINGERPRINT = "477718135ded5b4ed1fcda2d259a9d3c4026bb31f98c4188699322d74148df40"
+P2_LEGACY_FINGERPRINT = "0f1178bde1b2a8bc6a149a629654ff0701b96f61625d9fc41af611665c0ef097"
 
 
 def ordinary_bindings(manifest):
@@ -60,7 +60,7 @@ def sarai_ordinary_target_count():
     doc = json.loads((Path(__file__).resolve().parents[1] / "docs" / "PIKMIN2_ADMITTED_PLACEMENT.json")
                      .read_text(encoding="utf-8"))
     held = {row["uid"] for row in doc.get("held_parts", [])}
-    sarai = next(p for p in doc["profiles"] if p["identity"] == "Sarai")
+    sarai = next(p for p in doc["profiles"] if p["identity"] == "Chappy")
     return len([uid for uid in sarai["accepted_slot_uids"] if uid not in held])
 
 

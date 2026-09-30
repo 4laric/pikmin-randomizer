@@ -14,7 +14,6 @@ every existing caller keeps working. Today the pool is:
 | 60 | WaterOtakara | dweevil |
 | 61 | GasOtakara | dweevil |
 | 62 | ElecOtakara | dweevil |
-| 23 | Sarai | sarai |
 | 79 | Sokkuri | sokkuri |
 | 2 | Chappy | chappy |
 | 33 | FireChappy | chappy |
@@ -23,22 +22,14 @@ every existing caller keeps working. Today the pool is:
 | 53 | KingChappy | chappy |
 | 67 | LeafChappy | chappy |
 | 76 | KumaKochappy | chappy |
-| 12 | UjiA | uji |
-| 13 | UjiB | uji |
-| 14 | Tobi | uji |
 | 28 | ElecBug | elecbug |
 | 94 | DangoMushi | dangomushi |
 | 68 | TamagoMushi | tamago |
-| 17 | Frog | frog |
-| 18 | MaroFrog | frog |
-| 24 | Tank | tank |
 | 75 | Kabuto | kabuto |
-| 56 | Damagumo | long_legs |
 | 63 | Jigumo | aquatic |
 | 69 | BigFoot | long_legs |
 | 34 | SnakeCrow | snagret |
 | 70 | SnakeWhole | snagret |
-| 65 | Imomushi | ground_inverts |
 | 71 | UmiMushi | aquatic |
 | 101 | UmiMushiBlind | aquatic |
 | 25 | Wtank | tank |
@@ -292,3 +283,9 @@ its running game, AP progress and saves were not patched or migrated.
 - **56 Damagumo (P2 Beady Long Legs): withdrawn by owner ruling 2026-09-30.** "beady long legs pretty broken i would just give up on that one, the P1 native version works great." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `denied` with its admission history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. The native module (`pc_p2_long_legs`), the installers and the P1 native Beady Long Legs stay as they are. 69 Raging Long Legs is a separate row and stays admitted. Re-admission needs a new owner decision and the usual six gates.
 - **24 Tank (P2 Fiery Blowhog): withdrawn by owner ruling 2026-09-30.** "remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (shared with 25 Wtank Watery Blowhog, which stays admitted); the P1 Fiery Blowhog is untouched.
 - **65 Imomushi (Ravenous Whiskerpillar): withdrawn by owner ruling 2026-09-30, pending berry plants.** "whiskerpillar keep out of pool for now, pending berries." The source behaviour eats from fruit plants (`Imomushi.cpp:803-826`). The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays. Re-admission follows berry plants.
+- **12 UjiA (P2 Female Sheargrub): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Female Sheargrub is untouched).
+- **13 UjiB (P2 Male Sheargrub): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Male Sheargrub is untouched).
+- **14 Tobi (P2 Shearwig): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Shearwig is untouched).
+- **17 Frog (P2 Yellow Wollywog): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Wollywog is untouched).
+- **18 MaroFrog (P2 Wollywog): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Wollywog is untouched).
+- **23 Sarai (P2 Swooping Snitchbug): withdrawn by owner ruling 2026-09-30.** "Remove P2 version from pool -- P1 version is good enough" (yellow Wollywog added by a follow-up instruction the same day). The row left `seed.P2_PLAYABLE_POOL` and `PLAYABLE_IDS`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (the P1 Snitchbug is untouched).
