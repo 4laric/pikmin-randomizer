@@ -293,9 +293,8 @@ def run_smoke(args):
     env["SDL_AUDIODRIVER"] = "dummy"
     env["PYTHONUTF8"] = "1"
     env["PATH"] = MINGW_BIN + os.pathsep + env.get("PATH", "")
-    startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startup.wShowWindow = 0
+    from randomizer.test_run import hidden_startupinfo
+    startup = hidden_startupinfo(env)
     log_path = run.directory / "native.log"
 
     stop = threading.Event()
