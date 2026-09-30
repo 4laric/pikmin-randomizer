@@ -64,9 +64,9 @@ Native log sha256 for each run. Executables are staged under
 
 | run | what | result |
 |---|---|---|
-| f1 | seed-generated binding of the Puffy Blowhog holder to BlueKochappy 44, no hand binding | ASSIGN via=slot, DROP via=die, CHECK 5 Interstellar Radio (vanilla index). `25bf4de1...2782` |
-| g8 | Hope Snagret part arena (`hope_snagret_part`), P2 own-FSM occupant, teleport | ASSIGN via=arena, DROP part=uf06, CHECK 9 Geiger Counter (vanilla index). `c2389cd9...a1c` |
-| h2 | Navel Breadbug holder bound to 44 (seed-generated), teleport | ASSIGN via=slot, DROP part=un09, carried, CHECK 23 Space Float (vanilla index). `db81a9ba...dae0` |
+| f1 | seed-generated binding of the Puffy Blowhog holder to BlueKochappy 44, no hand binding | ASSIGN via=slot, DROP via=die, CHECK 5 Interstellar Radio (vanilla index). `25bf4de17c568997a69cbf27dd0418e2874f6ce2efce6d6708921015d8ec2782` |
+| g8 | Hope Snagret part arena (`hope_snagret_part`), P2 own-FSM occupant, teleport | ASSIGN via=arena, DROP part=uf06, CHECK 9 Geiger Counter (vanilla index). `c2389cd96d82daeea68df75de74463bb8c76b989c5e67e35e47625b39bdcfa1a` |
+| h2 | Navel Breadbug holder bound to 44 (seed-generated), teleport | ASSIGN via=slot, DROP part=un09, carried, CHECK 23 Space Float (vanilla index). `db81a9ba019110618a09a9ec6be57fbbda8bfac9c4a35df120d2e7e4edb6dae0` |
 | b1, b2 | Beady Long Legs arena, occupant 44 | ASSIGN, DROP part=uf03, 26-31 carriers hauling; the day ended first (`UFO_PART_CACHE_SAVE part=uf03`). No CHECK. |
 | k3 | Cannon Beetle arena, occupant 44 | ASSIGN, DROP part=ust1, crew 29 of 30 short. No CHECK. |
 | p1 | Puffstool arena, occupant 44 | ASSIGN via=slot, DROP part=uf09, crew 8 of 30. No CHECK. |
