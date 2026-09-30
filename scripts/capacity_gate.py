@@ -11,7 +11,9 @@ Admission uses free RAM, CPU load averaged over a short sample, and the
 number of running game and compiler processes. Hard ceilings stay as a
 backstop: this laptop (Core Ultra 9 275HX, 24 cores, 31 GB) bugchecked twice on
 2026-09-29 (0x3B, 0x7E) with ~8 parallel builds plus several game sessions.
-A game session measured ~0.4 GB working set. Raise the limits in LIMITS only
+A game session measured ~0.4 GB working set. It bugchecked again (0x3B)
+on 2026-09-30 at 16 compilers / 6 games with about 9 agents active, so the
+limits were halved. Raise the limits in LIMITS only
 after sustained stable runs at the current ones, and record why.
 """
 from __future__ import annotations
@@ -28,14 +30,14 @@ COMPILER_NAMES = {"cc1plus.exe", "cc1.exe", "lto1.exe", "ld.exe", "cc1plus", "cc
 
 LIMITS = {
     # Free RAM that must remain after admitting the job (GB).
-    "game_min_free_gb": 4.0,
-    "build_min_free_gb": 6.0,
+    "game_min_free_gb": 6.0,
+    "build_min_free_gb": 8.0,
     # Averaged CPU load (%) at or above which nothing new is admitted.
     "game_max_cpu": 85.0,
     "build_max_cpu": 70.0,
     # Backstops regardless of measurements.
-    "max_games": 6,
-    "max_compilers": 16,  # sum of running compiler processes, roughly total -j
+    "max_games": 3,
+    "max_compilers": 8,  # sum of running compiler processes, roughly total -j
 }
 
 
