@@ -80,8 +80,9 @@ never P2 identities and never enter this table.
   the flag drops and the whole squad engages. It sucks Pikmin in, shakes latched Pikmin off,
   dies naturally, is carried as its dead corpse and delivers `onion:p2:57:3` on its own
   generator. Known accommodations: the Frog host collision/pellet config stands in for the
-  body, the body joint is the rest-mesh centroid, and the bot run kills it while airborne
-  (Fall/Land is proven by `p2_flyer_test`, not observed in the run).
+  body, the body joint is the rest-mesh centroid, and the power-mode run kills it before a grounded
+  phase (the six-latch Fall/Land/grounded squad attack is observed in the normal-squad
+  run k7 and proven by `p2_flyer_test`).
 - **72 OniKurage (Greater Spotted Jellyfloat): admitted (#960).** The same module as the
   Kurage with the Greater retail entry (life 4500, flight 75, territory 500, up to 20
   sucked Pikmin). It also sucks the captain into a mouth slot, drops to the ground with
@@ -89,7 +90,8 @@ never P2 identities and never enter this table.
   dies naturally, is carried as its dead corpse and delivers `onion:p2:72:3` on its own
   generator. Known accommodations: one captain at a time (the shared captain bridge), the
   vomit is the FallMeck drop, the Frog actor collision/pellet config stands in for the
-  body, and only power mode kills it within a day.
+  body. The receipt evidence is power mode (owner ruling 2026-09-25); no claim is made
+  that a normal squad cannot kill it within a day.
 - **78 MiniHoudai (Gatling Groink): admitted.** Its Windows OWN campaign run
   (#888 §4A) and the shell visuals (#892) are in. The source FSM fights, the
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
