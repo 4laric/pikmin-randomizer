@@ -28,6 +28,13 @@ The landing site defaults to the captain's measured day-2 start per area
 (``docs/PIKMIN2_CAPTAIN_START.json``; the stage .ini navi_start is 0,0 and is NOT
 the real start). ``--origin X,Z`` (alias ``--landing``) overrides it.
 
+``--p1-bulborb-slots`` (owner ruling 2026-09-30, #980) restricts the slots to the
+area's P1 Dwarf Bulborb / adult Bulborb generator slots, nearest the captain start
+first (Forest of Hope: five within 1100 units, nearest 720). The species replaces
+the P1 bulborb through the ordinary placement override; the native P2-on-P1-slot
+binding is unchanged. Its verify threshold defaults to ``--bulborb-radius``
+because no FoH bulborb slot is within 400.
+
 Verification is on by default when ``--exe`` is given: the tool launches the
 package headless (capacity-gated, background window, autoplay so the log carries
 the captain start), reads native.log and FAILS (exit 3) if a requested slot did
@@ -107,6 +114,32 @@ def ordinary_slots(document, area, start_day=None):
             continue
         out.append(slot)
     return out
+
+
+P1_BULBORB_ORIGINALS = (3, 4)  # P1 Dwarf Bulborb (Kochappy family), Spotty/adult Bulborb (Chappy family)
+DEFAULT_BULBORB_RADIUS = 1100.0  # Forest of Hope: five bulborb slots at 720-1044, the next is 1245
+
+
+def p1_bulborb_slots(document, area, start_day=None):
+    """Ordinary slots of ``area`` whose P1 original occupant is a Dwarf Bulborb
+    (3) or adult Bulborb (4), per the catalog ``source_identity``. These are
+    the same P1 generator slots the P1 enemy randomizer reads (spawn_data
+    ADULT_SLOTS/GROUP_SLOTS); the smoke seed binds the species under test on
+    them through the ordinary P2-on-P1-slot placement override (owner ruling
+    2026-09-30, #980)."""
+    out = []
+    for slot in ordinary_slots(document, area, start_day):
+        try:
+            original = int(str(slot.get('source_identity', '')).rsplit(':', 1)[-1])
+        except ValueError:
+            continue
+        if original in P1_BULBORB_ORIGINALS:
+            out.append(slot)
+    return out
+
+
+def within_radius(slots, positions, origin, radius):
+    return [s for s in slots if int(s['uid']) in positions and distance_xz(positions[int(s['uid'])], origin) <= radius]
 
 
 def slot_positions(probe_log_text=None):
@@ -424,7 +457,15 @@ def build(args):
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
     origin = parse_origin(args.origin) if args.origin else LANDING_BY_AREA.get(args.area, LANDING_XZ)
-    slots = pick_slots(ordinary_slots(document, args.area, SEED_START_DAY), args.slots, args.near_start, positions, origin)
+    if getattr(args, 'p1_bulborb_slots', False):
+        pool = p1_bulborb_slots(document, args.area, SEED_START_DAY)
+        if args.slots == 'all':
+            pool = within_radius(pool, positions, origin, args.bulborb_radius)
+        if not pool:
+            raise SmokeSeedError('no P1 bulborb slots found for this area/radius')
+        slots = pick_slots(pool, args.slots, True, positions, origin)
+    else:
+        slots = pick_slots(ordinary_slots(document, args.area, SEED_START_DAY), args.slots, args.near_start, positions, origin)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -455,7 +496,8 @@ def build(args):
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
         'issue': 944, 'seed': args.seed, 'area': args.area, 'starting_area': starting_area,
-        'near_start': bool(args.near_start), 'env': {SMOKE_ENV: '1'},
+        'near_start': bool(args.near_start), 'p1_bulborb_slots': bool(getattr(args, 'p1_bulborb_slots', False)),
+        'env': {SMOKE_ENV: '1'},
         'captain_start_assumed': list(origin),
         'assignments': [
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
@@ -544,6 +586,8 @@ def main(argv=None):
     parser.add_argument('--species', default=None, help='comma-separated P2 source ids, assigned round-robin in this order')
     parser.add_argument('--near-start', action='store_true', help="fill the N slots nearest the captain's measured start (docs/PIKMIN2_CAPTAIN_START.json; x/z straight distance, no route/gate data)")
     parser.add_argument('--origin', '--landing', dest='origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
+    parser.add_argument('--p1-bulborb-slots', action='store_true', help="use only the area's P1 Dwarf Bulborb and adult Bulborb generator slots (owner ruling 2026-09-30, #980), nearest the captain start first; '--slots all' = those within --bulborb-radius, '--slots N' = the N nearest. The species replaces the P1 bulborb via the ordinary placement override.")
+    parser.add_argument('--bulborb-radius', type=float, default=DEFAULT_BULBORB_RADIUS, help='with --p1-bulborb-slots and --slots all: keep bulborb slots within this x/z distance of the captain start (default 1100)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', default=None, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
@@ -556,7 +600,7 @@ def main(argv=None):
     parser.add_argument('--probe-log', type=Path, default=None, help='native log whose P2_PLACEMENT_SLOT lines supply extra slot coordinates')
     parser.add_argument('--verify', dest='verify', action='store_true', default=None, help='headless-verify the package (default ON when --exe is given)')
     parser.add_argument('--no-verify', dest='verify', action='store_false', help='skip headless verification')
-    parser.add_argument('--max-distance', type=float, default=400.0, help='verify fails if a species nearest instance is farther than this from the logged captain start (default 400)')
+    parser.add_argument('--max-distance', type=float, default=None, help='verify fails if a species nearest instance is farther than this from the logged captain start (default 400; with --p1-bulborb-slots the --bulborb-radius, because the nearest FoH bulborb slot is 720 away)')
     parser.add_argument('--verify-timeout', type=float, default=300.0, help='seconds to wait for the headless log')
     parser.add_argument('--measure-start', choices=sorted(AREAS), default=None, help='measure the captain start for an area headless (needs --exe, --out) and exit')
     parser.add_argument('--repo-root', type=Path, default=None, help='repo/worktree whose randomizer/, experimental/ and placement document to use and where play.ps1 runs (default: the repo holding this script)')
@@ -564,6 +608,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.verify is None:
         args.verify = args.exe is not None
+    if args.max_distance is None:
+        args.max_distance = args.bulborb_radius if args.p1_bulborb_slots else 400.0
+    if args.p1_bulborb_slots:
+        args.near_start = True
     if args.repo_root:
         ROOT = args.repo_root.resolve()
         sys.path.insert(0, str(ROOT))

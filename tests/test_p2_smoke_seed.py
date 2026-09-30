@@ -330,3 +330,27 @@ def test_explicit_captain_start_marker_wins():
     from scripts import p2_smoke_verify as v
     parsed = v.parse_log('AUTOPLAY_NAVI navi=(1,2)\nCAPTAIN_START x=-5.0 z=7.0\n')
     assert parsed['captain_start'][:2] == (-5.0, 7.0)
+
+
+def test_p1_bulborb_slots_are_the_foh_dwarf_and_adult_bulborbs_nearest_the_start(document):
+    positions = smoke.slot_positions()
+    origin = smoke.LANDING_BY_AREA['foh']
+    pool = smoke.p1_bulborb_slots(document, 'foh', smoke.SEED_START_DAY)
+    assert all(s['source_identity'].rsplit(':', 1)[-1] in ('3', '4') for s in pool)
+    assert len(pool) == 9  # 7 adult + 2 dwarf on day 2; the day-5 adults are gated out
+    near = smoke.pick_slots(smoke.within_radius(pool, positions, origin, smoke.DEFAULT_BULBORB_RADIUS), 'all', True, positions, origin)
+    assert [s['label'] for s in near] == ['hope_0-29_2659', 'hope_0-29_3592', 'hope_0-29_4189',
+                                          'hope_0-29_1831', 'hope_0-29_2452']
+    assert round(smoke.distance_xz(positions[int(near[0]['uid'])], origin)) == 720
+
+
+def test_p1_bulborb_flag_defaults_and_verify_threshold(monkeypatch, tmp_path):
+    seen = {}
+    def fake_build(args):
+        seen.update(near=args.near_start, maxd=args.max_distance, p1=args.p1_bulborb_slots)
+        return {'files': {'launcher': 'x'}, 'verify': None}
+    monkeypatch.setattr(smoke, 'build', fake_build)
+    assert smoke.main(['--area', 'foh', '--species', '53', '--seed', 's', '--out', str(tmp_path), '--p1-bulborb-slots']) == 0
+    assert seen == {'near': True, 'maxd': smoke.DEFAULT_BULBORB_RADIUS, 'p1': True}
+    smoke.main(['--area', 'foh', '--species', '53', '--seed', 's', '--out', str(tmp_path)])
+    assert seen['maxd'] == 400.0 and seen['p1'] is False
