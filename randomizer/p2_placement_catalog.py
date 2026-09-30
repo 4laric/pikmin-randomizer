@@ -145,6 +145,9 @@ CANDIDATE_SPECS = (
     (60, 'WaterOtakara', 22, ['ground'], None, False),
     (61, 'GasOtakara', 22, ['ground'], None, False),
     (62, 'ElecOtakara', 22, ['ground'], None, False),
+    # #964: Volatile Dweevil (93) is the same Otakara Dweevil chassis carrying a
+    # Bomb; it binds the same generated ground slots (native host TEKI_Chappy).
+    (93, 'BombOtakara', 22, ['ground'], None, False),
     # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
     # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
     # #948: the snitchbugs fly (Sarai::Obj hovers above its anchor), so the

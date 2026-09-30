@@ -32,3 +32,21 @@ def test_entry_density_from_marker_or_root(tmp_path):
     assert density.entry_is_dense(tmp_path, "A")
     (tmp_path / "prepared.json").write_text(json.dumps({"pose_limit": 24, "extracted_enums": ["B"]}))
     assert density.entry_is_dense(tmp_path, "B") and density.root_pose_limit(tmp_path) == 24
+
+
+def test_translucent_species_need_the_converter_revision(tmp_path):
+    """#960: the pre-#973 dense cache held opaque-depth Jellyfloat bells."""
+    for enum in ("Kurage", "OniKurage", "MiniHoudai", "Kabuto"):
+        (tmp_path / enum).mkdir()
+    # an old marker has pose_limit but no revisions
+    (tmp_path / "Kurage" / density.MARKER).write_text(json.dumps({"pose_limit": 24, "source": "main 3fc77bf6"}))
+    assert density.entry_is_dense(tmp_path, "Kurage")
+    assert not density.entry_is_current(tmp_path, "Kurage")
+    density.write_entry_marker(tmp_path / "Kurage", 24)
+    assert density.entry_is_current(tmp_path, "Kurage")
+    assert density.entry_revisions(tmp_path, "Kurage") == (density.TRANSLUCENT_REVISION,)
+    density.write_entry_marker(tmp_path / "OniKurage", 24, revisions=())
+    assert not density.entry_is_current(tmp_path, "OniKurage")
+    # a species with no requirement is always current, marker or not
+    assert density.entry_is_current(tmp_path, "Kabuto")
+    assert not density.entry_is_current(tmp_path, "MiniHoudai")

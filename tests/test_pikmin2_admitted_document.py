@@ -85,7 +85,11 @@ def test_every_playable_species_has_more_than_one_ordinary_slot(committed):
         else:
             assert len(accepted & ordinary) > 1, (source_id, profile["identity"])
             # Not a single-slot profile (the Dirigibug 58 case, #951 U4).
-            assert len(accepted & ordinary) >= 49, (source_id, profile["identity"])
+            # Water Dumple 26 and Wogpole 27 (#964) are aquatic: their profile
+            # accepts the water cohort only (2 Forest of Hope + 8 Distant
+            # Spring slots), which is their real need, not a single slot.
+            water_only = set(profile["terrains"]) == {"water"}
+            assert len(accepted & ordinary) >= (10 if water_only else 49), (source_id, profile["identity"])
 
 
 def test_accepted_slots_are_exactly_the_constraint_compatible_ones(committed):

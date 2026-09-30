@@ -50,14 +50,17 @@ every existing caller keeps working. Today the pool is:
 | 40 | OoPanModoki | giantbreadbug |
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
+| 26 | Catfish | aquatic |
+| 27 | Tadpole | aquatic |
+| 84 | Hana | ground_inverts |
+| 93 | BombOtakara | dweevil |
 | 57 | Kurage | kurage |
 | 72 | OniKurage | onikurage |
 | 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, plus 26 Catfish,
-27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
+9 Kogane, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
@@ -157,6 +160,20 @@ never P2 identities and never enter this table.
   six ordinary pool species: the arena bosses (94, 73, 53, 30; #899, #246, #289, #256) are placed in
   boss arenas outside the ordinary slots, so 39 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
+- **26 Catfish (Water Dumple), 27 Tadpole (Wogpole), 84 Hana (Creeping
+  Chrysanthemum), 93 BombOtakara (Volatile Dweevil): admitted (#964).** Each
+  runs its transcribed source FSM in the campaign, dies naturally, is carried as
+  its dead corpse and delivers `onion:p2:<id>:3` on its own generator token
+  (bot power mode, then a day-cycle run: bound each stage, alive at two sunsets,
+  killed and delivered on day 4; a Volatile Dweevil that has chased dies with its
+  detonated Bomb, so it is alive at a sunset only if it has not chased yet).
+  Wogpole 27 is harmless in source: its attacks_receivers gate is receiver-side
+  only. Hana's flick is the stuck-count simplification of `isStartFlick`. The kill runs used a land slot: the
+  aquatics have no water plane, and the bot could not reach the water-slot
+  packs, so a fight on the real water slots is unobserved. The Catfish and
+  Wogpole take water-cohort slots only (their lane-04 profile); Hana takes
+  ground slots; the Volatile Dweevil the same ground slots as 59-62. Details,
+  fixes and open items: `docs/PIKMIN2_WAVE3_MECHANICS.md`.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him
   (10 damage), is knocked down by Pikmin weight, dies naturally, is carried as
@@ -169,8 +186,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Eleven P2 bosses are already here (30, 34, 40, 53,
-  56, 69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots). The remaining bosses
+- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 40, 53,
+  69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots; 56 Beady Long Legs was withdrawn, see below). The remaining bosses
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -269,3 +286,9 @@ retains its intentional squad.
 
 This source fix is for future packages. The existing `output/p2play` delivery,
 its running game, AP progress and saves were not patched or migrated.
+
+## Withdrawn
+
+- **56 Damagumo (P2 Beady Long Legs): withdrawn by owner ruling 2026-09-30.** "beady long legs pretty broken i would just give up on that one, the P1 native version works great." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `denied` with its admission history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. The native module (`pc_p2_long_legs`), the installers and the P1 native Beady Long Legs stay as they are. 69 Raging Long Legs is a separate row and stays admitted. Re-admission needs a new owner decision and the usual six gates.
+- **24 Tank (P2 Fiery Blowhog): withdrawn by owner ruling 2026-09-30.** "remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (shared with 25 Wtank Watery Blowhog, which stays admitted); the P1 Fiery Blowhog is untouched.
+- **65 Imomushi (Ravenous Whiskerpillar): withdrawn by owner ruling 2026-09-30, pending berry plants.** "whiskerpillar keep out of pool for now, pending berries." The source behaviour eats from fruit plants (`Imomushi.cpp:803-826`). The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays. Re-admission follows berry plants.
