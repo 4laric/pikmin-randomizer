@@ -109,7 +109,7 @@ def build_dev_manifest(species_ids, seed_name="dev-console", *, starting_color="
     manifest["p2_layout"] = build_dev_layout(species_ids, roster)
     manifest["capabilities"].append("p2-enemy-bridge-v1")
     if set(species_ids) & set(P2_REQUIRES_PURPLE):
-        # Purple-only species (seed.P2_REQUIRES_PURPLE) may always be spawned from the
+        # Species listed in seed.P2_REQUIRES_PURPLE (currently none) may always be spawned from the
         # console; the runner skips its --purple-bank requirement under the console
         # environment (CONTRIBUTING: dev overrides never need a rebuild).
         manifest["p2_purple_campaign"] = True

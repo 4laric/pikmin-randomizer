@@ -308,11 +308,11 @@ def _arena_record(arena, measured):
 
 
 def _purple_note(source_id):
-    """Runtime-constraint sentence for species that only die to Purple presses."""
+    """Runtime-constraint sentence for species listed in seed.P2_REQUIRES_PURPLE (none today)."""
     from .seed import P2_REQUIRES_PURPLE
     if source_id not in P2_REQUIRES_PURPLE:
         return ""
-    return (f" Runtime constraint ({P2_REQUIRES_PURPLE[source_id]}): only Purple presses hurt it, so "
+    return (f" Runtime constraint ({P2_REQUIRES_PURPLE[source_id]}): it needs Purple presses to die, so "
             "generation binds it only on --p2-purple-campaign seeds, whose Violet supply exists at "
             "every start area (randomizer/purple_campaign.py) and whose Purple ship stock travels "
             "between areas; 'randomizer run' refuses such a seed without the Purple banks (#958).")
