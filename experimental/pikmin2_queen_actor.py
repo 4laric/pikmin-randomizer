@@ -54,7 +54,7 @@ def protocol(clips, placements):
         if reference is None or type(duration) is not int or duration != reference['frames']:
             raise ValueError('Clip %s/%s duration %r disagrees with the #227 reference'
                              % (species, name, duration))
-        if (not isinstance(frames, list) or not 1 <= len(frames) <= 12
+        if (not isinstance(frames, list) or not 1 <= len(frames) <= 24
                 or any(type(f) is not int or not 0 <= f < duration for f in frames)
                 or frames != sorted(set(frames))):
             raise ValueError('Invalid clip timing')

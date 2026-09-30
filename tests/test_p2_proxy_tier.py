@@ -111,7 +111,7 @@ def _assert_playable_first(layout):
     from randomizer.seed import _default_admitted_placement
 
     base = {str(slot["uid"]) for slot in _default_admitted_placement()["slots"]}
-    playable = set(PLAYABLE_P2_SPECIES)
+    playable = set(PLAYABLE_P2_SPECIES)   # 40 needs no Purple (owner ruling 2026-09-30, #958)
     unplaced_playable = playable & set(layout.get("unplaced", []))
     on_base = [b["source_id"] for b in layout["bindings"] if b["target"] in base]
     if unplaced_playable:

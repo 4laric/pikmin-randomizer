@@ -418,18 +418,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 24,
-        "enum_name": "Tank",
-        "family": "tank",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3",
-            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 24 -> tank "
-                         "(experimental/pikmin2_tank_identity_install)",
-        },
-    },
-    {
         "source_id": 75,
         "enum_name": "Kabuto",
         "family": "kabuto",
@@ -439,18 +427,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 75 -> kabuto "
                          "(experimental/pikmin2_kabuto_identity_install)",
-        },
-    },
-    {
-        "source_id": 56,
-        "enum_name": "Damagumo",
-        "family": "long_legs",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3",
-            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 56 -> long_legs "
-                         "(experimental/pikmin2_long_legs_install)",
         },
     },
     {
@@ -499,18 +475,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 70 -> snagret "
                          "(experimental/pikmin2_snagret_install)",
-        },
-    },
-    {
-        "source_id": 65,
-        "enum_name": "Imomushi",
-        "family": "ground_inverts",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3",
-            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 65 -> ground_inverts "
-                         "(experimental/pikmin2_ground_inverts_install)",
         },
     },
     {
@@ -607,6 +571,18 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 38 -> breadbug "
                          "(stages p2-breadbug-parms/bank and the breadbug pose meshes)",
+        },
+    },
+    {
+        "source_id": 40,
+        "enum_name": "OoPanModoki",
+        "family": "giantbreadbug",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs on the final exe (owner ruling 2026-09-25: power mode admits; #958), Purple opt-in staged through randomizer run --purple-bank/--purple-motion: y11 (final exe 971d2df5, the only run on it) = the owner FoH smoke seed itself (six Giants on the six FoH slots nearest the start, all P2_BREADBUG_OWN_BIND), bot kills the Giant on FoH slot hope_0-29_2659 (own generator 4222852521), staged FoH Violet handled a Purple (P2_VIOLET_WITNESS), 22 accepted 100-point presses, OWN_DEAD, corpse carried, onion:p2:40:1 receipt; y9 = real generated seed, Forest of Hope start, Giant on the FoH slot hope_0-29_2659 (own generator 4222852521, 720 units from the start), the staged FoH Violet handled a Purple (P2_VIOLET_WITNESS), 20 accepted 100-point presses 2000->0, OWN_DEAD, corpse carried, onion:p2:40:1 receipt; repeated pre-merge as y4 and at Distant Spring as y2 (generator 1945764764, onion:p2:40:3). Admitted on ordinary slots only; arena placement is NOT admitted. Arena runs r9 (navel_beady_long_legs) and r11 (spring_cannon_beetle), both on the pre-merge exe dc6a9f30 (not the final exe): the Giant binds in the arena, wanders and 20 presses kill it (killed=1), but nobody carried the corpse (carried=0, received=0), so there is no arena receipt; the carry stall was not diagnosed from the log (the bot's own planner logged no_path from the landing to those arenas in r5/r7, which is only a suspect). It has no boss-arena descriptor and is not seated in any arena. Negative y5 (banks staged, squad not Purple): non-Purple presses refused (PRESS_REJECTED x2), health stays 2000, 0 presses. Limits: the squad is made Purple by the test-only AUTOPLAY_PURPLE power switch, not through the Violet supply; the arena runs teleport the captain to the arena (#901); y7 killed the Giant by container suck plus 10 presses but the corpse jammed at (-192,2052) on the FoH plateau",
+            "log": "output/claude-orch/p2-w3-variants-breadbug/runs/y11-40/session/runs/9aed7600eb5ba9a70f6cbeee5063d27094806708eca00a9dacb444534f4fb90e/native.log (sha256 49905baf875d4bf4...) L1449 bind, L1713 purple squad, L2761 first press, L3360 Violet witness, L6806 dead, L7088 receipt; y9-40 native.log (sha256 a0d4d7ba6c91c8aa...) L1806 bind, L3574 purple squad, L5800 first press, L7682 Violet witness, L10510 dead, L11973 receipt; y4-40 native.log (sha256 1147bb281607a7ff...) L1806 bind, L12534 dead, L12923 receipt; y2-40 (sha256 7c6b5c28049d33e3...) L1928 bind, L47676 dead, L51492 receipt; r9-40 (sha256 e2daca825dba2ef5...) L1485 bind, L2401 dead; r11-40 (sha256 2bd302d6f6fedcb0...) L1486 bind, L3614 dead; y5-40 (sha256 21d1163185d64b36...); y7-40 (sha256 b017f3277919b2f6...); native claude/p2-wave3-variants-breadbug 0e6369a80, exe sha256 971d2df549624a3d... (y11), ef6077c9067a55fa... (y9, y7), dc6a9f30c048619392d5... (y4, y2, y5, r9, r11); #958",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 40 -> giantbreadbug "
+                         "(stages p2-giantbreadbug-parms/bank and the giantbreadbug pose meshes)",
         },
     },
     {
@@ -725,8 +701,29 @@ P2_PLAYABLE_POOL = (
 # Roster admission must equal this set (#888, tests/test_p2_pool_roster_sync.py).
 PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
+# Pool species whose seed is only winnable when the session carries the opt-in
+# Purple campaign (Violet supply, randomizer/purple_campaign.py). This is a
+# runtime constraint, not an owner whitelist: source id -> citation. Generation
+# binds such a species only for ``p2_purple_campaign=True`` (CLI
+# ``--p2-purple-campaign``), which records ``p2_purple_campaign`` in the
+# manifest (no native capability: the native hello echoes the capability list, and
+# the Purple banks are already an explicit run-time opt-in); ``randomizer run`` then
+# refuses to launch that seed without ``--purple-bank``/``--purple-motion``.
+# The mechanism is generic and currently EMPTY. 40 Giant Breadbug was listed here
+# (#958) on the claim that only Purple presses hurt it; the owner's red-only kill
+# (2026-09-30) and the source disproved that. P2's damage paths for OoPanModoki:
+#   - latched attacks do nothing (PanModokiBase::Obj::damageCallBack,
+#     panModoki.cpp:450-456, bitter-gated);
+#   - non-Purple presses/hipdrops are refused (OoPanModoki::pressCallBack
+#     panModoki.cpp:1738-1744; hipdropCallBack 521-524);
+#   - bombs hurt it (EnemyBase::bombCallBack, enemyBase.cpp:2908-2912);
+#   - an Onion suck of the pellet it grabbed, carried by ANY colour, does
+#     suckDamage 1000 of 2000 health, every time (pelletState.cpp:541-549 ->
+#     panModoki.cpp:1381-1392 -> panModokiState.cpp:453-481). It is not one-off.
+P2_REQUIRES_PURPLE = {}
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False):
+
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
@@ -768,6 +765,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
     if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
         raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
+    if type(p2_purple_campaign) is not bool: raise ValueError("invalid p2_purple_campaign")
+    if p2_purple_campaign and not p2_enemies: raise ValueError("p2_purple_campaign requires p2_enemies")
+    p2_species_explicit = p2_species is not None and p2_species not in ("playable", "full")
     if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
     if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
     if p2_proxy_tier is not None and not p2_enemies: raise ValueError("p2_proxy_tier requires p2_enemies")
@@ -797,6 +797,21 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                 if p2_density != DENSITY_SAMPLED:
                     raise ValueError(
                         f"p2_proxy_tier forces the {DENSITY_SAMPLED} policy, not {p2_density!r}")
+    if p2_enemies and not p2_purple_campaign:
+        # Purple-only species need the opt-in Purple campaign (P2_REQUIRES_PURPLE).
+        # A named list that asks for one is an error; the broader selections
+        # ("playable", "full", default) simply leave it out.
+        asked = sorted(set(P2_REQUIRES_PURPLE) & set(p2_species or ()))
+        if asked and p2_species_explicit:
+            raise ValueError(f"p2_species {asked} need the opt-in Purple campaign (--p2-purple-campaign): "
+                             + "; ".join(P2_REQUIRES_PURPLE[i] for i in asked))
+        if asked:
+            p2_species = tuple(i for i in p2_species if i not in P2_REQUIRES_PURPLE)
+        elif p2_species is None:
+            from experimental.pikmin2_enemy_roster import load_and_validate as _roster
+            from experimental.pikmin2_seed_bridge import admitted_ids as _admitted
+            _ids = [i for i in _admitted(_roster()) if i not in P2_REQUIRES_PURPLE]
+            if len(_ids) != len(_admitted(_roster())): p2_species = tuple(_ids)
     if p2_placement is not None and type(p2_placement) is not dict:
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
@@ -966,6 +981,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                                                        proxy_rows=proxy_rows,
                                                        proxy_document=proxy_document)
         result['capabilities'].append('p2-enemy-bridge-v1')
+        if p2_purple_campaign:
+            result['p2_purple_campaign'] = True
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
             result['capabilities'].append('p2-proxy-tier-v1')
@@ -1103,6 +1120,10 @@ def validate(m):
             raise ValueError('invalid p2_proxy_tier')
         if 'p2_layout' not in m:
             raise ValueError('p2_proxy_tier requires a p2_layout')
+    if type(m) is dict and 'p2_purple_campaign' in m:
+        expected.add('p2_purple_campaign')
+        if m['p2_purple_campaign'] is not True or 'p2_layout' not in m:
+            raise ValueError('invalid p2_purple_campaign')
     if type(m) is dict and 'p2_layout' in m:
         expected.add('p2_layout')
         from experimental.pikmin2_enemy_roster import load_and_validate
@@ -1144,6 +1165,11 @@ def validate(m):
             except Exception:
                 pass
             validate_p2_layout(m['p2_layout'], roster, admitted=admitted)
+            needy = sorted({b.get('source_id') for b in m['p2_layout'].get('bindings', [])} & set(P2_REQUIRES_PURPLE))
+            if needy and not m.get('p2_purple_campaign'):
+                raise SeedBridgeError(f"source ids {needy} need the opt-in Purple campaign "
+                                      "(generate with --p2-purple-campaign): "
+                                      + "; ".join(P2_REQUIRES_PURPLE[i] for i in needy))
         except SeedBridgeError as exc:
             raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:

@@ -36,6 +36,7 @@ import struct
 from pathlib import Path
 
 from experimental import pikmin2_change_texture as change_texture
+from experimental import pikmin2_chappy_hair as chappy_hair
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_animation import (POSE_LIMIT_MAX, resident_clip_bytes, resource_chunks, sample_frames,
                                             decode_pose)
@@ -361,6 +362,8 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             try:
                 decoded, pose = decode_pose(decode, baked_model, model_blocks, raw, frame, len(names),
                                             **policies)
+                if enum_name in chappy_hair.HAIR_SPECIES:
+                    decoded = chappy_hair.add_hair(decoded)
                 name = pose_name(enum_name, out_stem, len(clip['poses']))
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name,
@@ -409,6 +412,10 @@ def extract(iso, enum_name, source_id, output, pose_limit=4, row=None):
             f'{enum_name} bank exceeds 8 MiB of resident pose bytes '
             f'({total_resident_bytes} bytes) at pose_limit {pose_limit}')
 
+    if enum_name in chappy_hair.HAIR_SPECIES:
+        registry_notes.append(
+            'hair: static bristle shape added to every pose (retail hair is the '
+            'TKechappyTest JPA effect, approximated; see pikmin2_chappy_hair)')
     if case_resolved:
         registry_notes.append(
             f'case-insensitive motion lookup for {len(case_resolved)} clips '

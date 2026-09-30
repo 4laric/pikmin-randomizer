@@ -55,3 +55,14 @@ def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
     assert [row["target"] for row in held] == ["613834665"]
     assert len(manifest["p2_layout"]["bindings"]) == 72 + 4 + len(held)
     assert sorted(row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 73, 94]
+    # #958: the Giant Breadbug needs no Purple; --p2-purple-campaign stays a generic opt-in.
+    purple_file = tmp_path / "purple.json"
+    code, _ = run_main(
+        monkeypatch, capsys,
+        ["randomizer", "generate", "--seed", "rfix-check", "--p2-enemies", "--p2-purple-campaign",
+         "--p2-species", "playable", "--output", str(purple_file)])
+    assert code == 0
+    purple = json.loads(purple_file.read_text(encoding="utf-8"))
+    assert purple["p2_purple_campaign"] is True
+    assert len(purple["p2_layout"]["bindings"]) == 72 + 4 + len(held)
+    assert sorted(row["source_id"] for row in purple["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 73, 94]  # 40 has no arena receipt: ordinary slots only

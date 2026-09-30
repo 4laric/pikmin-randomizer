@@ -49,6 +49,10 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   the private model room) plus the ``p2-groink-teki.txt`` carcass sidecar
   (source timeline). Poses are sampled per clip
   (``pikmin2_groink_stage.POSE_LIMITS``), not by the global pose limit.
+* 40 OoPanModoki (Giant Breadbug, #958): the same extractor with the OoPanModoki
+  variant -> ``<out>/OoPanModoki/`` (``giantbreadbug.json`` + ``identity.json`` +
+  ``giantbreadbug_<clip>_<ii>.mod``); the ``giantbreadbug`` family adapter stages
+  ``p2-giantbreadbug-parms.txt``, ``p2-giantbreadbug-bank.txt`` and the poses.
 * 38 PanModoki: ``pikmin2_breadbug_own_assets.extract`` -> ``<out>/PanModoki/``
   (``breadbug.json`` + ``identity.json`` + ``breadbug_<clip>_<ii>.mod``);
   the Breadbug adapter stages exactly the native OWN inputs through
@@ -250,6 +254,7 @@ ENUM_FOR_SOURCE = {
     28: "ElecBug",
     34: "SnakeCrow",
     38: "PanModoki",
+    40: "OoPanModoki",
     68: "TamagoMushi",
     94: "DangoMushi",
     44: "BlueKochappy",
@@ -734,6 +739,27 @@ def extract_breadbug(iso, dest):
     return target
 
 
+def extract_giant_breadbug(iso, dest):
+    """Build <dest>/OoPanModoki/ via the Breadbug OWN extractor, Giant variant (#958)."""
+    from experimental import pikmin2_breadbug_own_assets as breadbug
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "OoPanModoki"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-giantbreadbug"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        breadbug.extract(iso, tmp, variant=breadbug.OO_VARIANT)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_sokkuri(iso, dest, pose_limit=6):
     """Build <dest>/Sokkuri/ via the Sokkuri extractor.
 
@@ -873,7 +899,7 @@ def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
     return target
 
 
-def extract_queen(iso, research, dest, pose_limit=12):
+def extract_queen(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/Queen/ for the Empress Bulblax OWN binding (#256).
 
     Runs the audited Bulblax import (``pikmin2_bulblax_assets.extract``, which
@@ -893,8 +919,8 @@ def extract_queen(iso, research, dest, pose_limit=12):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
-        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= bulblax_bank.MAX_POSES:
+        raise ValueError(f"pose limit must be 2..{bulblax_bank.MAX_POSES}: {pose_limit!r}")
     target = dest / "Queen"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1620,6 +1646,7 @@ EXTRACTORS = {
     72: "extract_onikurage",
     78: "extract_minihoudai",
     38: "extract_breadbug",
+    40: "extract_giant_breadbug",
     79: "extract_sokkuri",
     26: "extract_catfish",
     27: "extract_tadpole",
@@ -1733,6 +1760,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
         elif source_id == 38:
             # Per-clip pose limits (native Breadbug bank), not the global limit.
             extract_breadbug(iso, out)
+            extracted.append(source_id)
+        elif source_id == 40:
+            # Same per-clip pose limits, OoPanModoki model/bank (#958).
+            extract_giant_breadbug(iso, out)
             extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
@@ -1862,7 +1893,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extract_kabuto(iso, research, out, pose_limit=legacy_pose_limit)
             extracted.append(source_id)
         elif source_id == 30:
-            extract_queen(iso, research, out)
+            extract_queen(iso, research, out, pose_limit=max(12, min(pose_limit, DEFAULT_POSE_LIMIT)))
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)

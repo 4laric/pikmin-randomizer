@@ -512,8 +512,8 @@
     "24": {
       "native_module": "pc_p2_tank",
       "owner_lane": "22",
-      "eligibility": "admitted",
-      "eligibility_reason": "Fiery Blowhog (Tank, source 24): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:24:3 on the species' own generator token per rev2-frogs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 (redundant with the P1 Fiery Blowhog; native code kept, it is shared with the Watery Blowhog 25). History: Fiery Blowhog (Tank, source 24): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:24:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -527,6 +527,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog). Gate results and receipt are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3 Bind/dead/receipt on the own generator token (L1103 bind, L1844 dead, L2034 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 24 -> tank (experimental/pikmin2_tank_identity_install). Log C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -781,24 +782,34 @@
       ]
     },
     "40": {
-      "native_module": "pc_p2_giant_breadbug_actor",
+      "native_module": "pc_p2_breadbug_teki",
       "owner_lane": "18",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Giant Breadbug (OoPanModoki, source 40): admitted on ordinary slots only (#958); boss-arena placement is NOT admitted (no arena receipt). OWN campaign runs on the admitted Breadbug 38 module as its OoPanModoki variant. The engine-free source FSM pc_p2_breadbug_fsm (panModokiState.cpp, OoPanModoki.h, panModoki.cpp) drives the campaign Giant with its own retail parms (health 2000, press 100, container 1000, carry speed 45), canTarget at-or-above the weight limit, mCarrySizeDiff 40 and waypoint slack 150. It is never a Pikmin or captain target, wanders, steals a carcass and hauls it, is hurt by Purple presses, Onion sucks of its pellet and bombs, dies, is carried and delivers its Onion receipt on its own generator token: Forest of Hope onion:p2:40:1 on the final exe (y11) and Distant Spring onion:p2:40:3 (y2, pre-merge exe). It is in the default, playable and full pools with no Purple campaign (owner ruling 2026-09-30: killed with Reds only; seed.P2_REQUIRES_PURPLE is now empty). Source damage paths: latched attacks do nothing (PanModokiBase::Obj::damageCallBack panModoki.cpp:450-456, bitter-gated); non-Purple presses/hipdrops refused (OoPanModoki::pressCallBack panModoki.cpp:1738-1744, hipdropCallBack 521-524); bombs hurt it (EnemyBase::bombCallBack enemyBase.cpp:2908-2912); an Onion suck of the pellet it grabbed, carried by any colour, does suckDamage 1000 of 2000 health every time (pelletState.cpp:541-549 -> panModoki.cpp:1381-1392 -> panModokiState.cpp:453-481).",
       "source": [
-        "PIKMIN2_GIANT_BREADBUG_NATIVE_BINDING.md"
+        "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "OoPanModoki (Giant Breadbug): giant binding/visual; contested cargo + scoring remain (#168/#220)."
-      ]
+        "Giant Breadbug (OoPanModoki): the #898 Breadbug 38 module with the OoPanModoki differences from the decomp. Variant params (applyVariant): mCarrySizeDiff 40 (panModoki.cpp:1709), walkFunc slack 150 (panModoki.cpp:927-929), canTarget weightLimit <= pelMinWeight (OoPanModoki.h:16; proper ip01 1 so it takes any cargo the P1 carry filter allows). Own retail oopanmodoki/enemyparm.txt, model and animation bank staged as p2-giantbreadbug-parms/bank and giantbreadbug_<clip>_<ii>.mod; the pose bank is drawn keyed on the FSM clip (Dead has KEYEVENT_2 at frame 70, the retail boundEffect key).",
+        "Press damage is Purple-only: OoPanModoki::pressCallBack (panModoki.cpp:1738-1744) returns false for any non-Purple Pikmin before the base press runs. Native refuses those presses and logs P2_BREADBUG_OWN_PRESS_REJECTED reason=non_purple. Negative run k3 (no Purple squad, exe 7b664d829 sha256 fdf6847e..., an earlier build of this lane that differs from the later ones only by a log throttle): one PRESS_REJECTED non_purple press logged (rate-limited), 12 rising contacts (no press by rule), zero accepted presses, health stayed 2000, no Damage transition. Other damage sources, as the Breadbug: Onion suck of its pellet (1000 per suck, any carrier colour, repeatable) and bombs. The owner's red-only kill: output/smoke-w3-giant-breadbug/foh-2/session-0930-1214/runs/c623ce37f36785fce852781911d73cc7ab0fb88d92d808e52b88b179e24cee0e/native.log (sha256 6f30f239cc50bb94b0304c8b2c5001ff517b0e0aa5d50f1a1e92dd177e3d0b4d), P2_BREADBUG_OWN_SUCK_DAMAGE at lines 2748 (2000 -> 1000) and 2983 (1000 -> 0), generator 4222852521.",
+        "Known gaps: no nest model (home point only), no treasure hoarding, no retail rumble/effects, the P1 Collec collision size stands in for the body (the model is larger), the corpse carry min/max come from the P1 Collec pellet config (3..6), pose-bank draw not skeletal playback. Without Purple nothing can press it, but two Onion sucks of its pellet (any colour) or bombs kill it, as the owner's red-only run showed.",
+        "Campaign evidence, bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits). The bot squad is made Purple with the test-only PIKMIN_RANDOMIZER_AUTOPLAY_PURPLE switch through pc_p2_make_purple (like the power-mode flowering) with the opt-in Purple campaign banks (randomizer run --purple-bank/--purple-motion). Pins: root claude/p2-wave3-variants-breadbug; native fork claude/p2-wave3-variants-breadbug 0e6369a80 (fork/main 3dd1e905a merged), FINAL exe nectar.exe sha256 971d2df549624a3dd072a9d2f66e12bddb8b4233d365ba2fa5ae779d16da7315 (cmake --build ... -- -n: ninja: no work to do). Only y11 ran on the final exe; the other runs below are on the exes named per run and are earlier builds of the same branch (bin-merged ef6077c9067a55fa7ede66ca775636ff11b8a338c8600d05e58373591fa1ad1e, bin-final dc6a9f30c048619392d50fd77fcd113eb448a840280de4b6f7f625b98a6e692a, bin-35d2e64c4 c198bd9508944cee90ffaf520cb6090fcac1dd9d2774e1b982b38749370a2e33). All six pinned exe hashes and the log hashes below were recomputed from the files on 2026-09-30.",
+        "y11, FINAL exe 971d2df5 (Forest of Hope, the owner FoH smoke seed giantbb-foh-1: six Giants on the six FoH slots nearest the start, all P2_BREADBUG_OWN_BIND): kills the Giant on slot hope_0-29_2659 (generator 4222852521): P2_VIOLET_WITNESS, 22 accepted 100-point presses, OWN_DEAD L6806, corpse carried, receipt L7088 onion:p2:40:1 new=1, AUTOPLAY_RESULT killed=1 carried=1 received=1 (553 s). Log output/claude-orch/p2-w3-variants-breadbug/runs/y11-40/session/runs/9aed7600eb5ba9a70f6cbeee5063d27094806708eca00a9dacb444534f4fb90e/native.log sha256 49905baf875d4bf41ad6fb2d1b0421520c0c45c131ae52d91500751e44e5488c.",
+        "y9 (exe ef6077c9, merged but not final; real generated seed, Forest of Hope start, Giant on hope_0-29_2659, 720 units from the start): P2_VIOLET_WITNESS, OWN_DEAD L10510, receipt L11973 onion:p2:40:1, killed=1 carried=1 received=1 (320 s); y4 (exe dc6a9f30, same seed/slot): OWN_DEAD L12534, receipt L12923, killed=1 carried=1 received=1 (325 s). Logs output/claude-orch/p2-w3-variants-breadbug/runs/y9-40 (sha256 a0d4d7ba6c91c8aa...) and y4-40 (sha256 1147bb281607a7ff...).",
+        "y2 (exe dc6a9f30, Distant Spring, generator 1945764764): OWN_DEAD L47676, receipt L51492 onion:p2:40:3, killed=1 carried=1 received=1 (509 s); log output/claude-orch/p2-w3-variants-breadbug/runs/y2-40 sha256 7c6b5c28049d33e3.... The earlier c198bd95 runs z5 (seed giantbb-b, receipt onion:p2:40:3, L62381, killed/carried/received 1) and z6 (seed giantbb-e, container suck 2000->1000 then ten presses, receipt L26616) are superseded pins of the same behaviour, recorded for history only: logs output/claude-orch/p2-w3-variants-breadbug/runs/z5-40 (sha256 2434a1d42a4a4ca4...) and z6-40 (sha256 d354fa1427fa6cdc...). Zero P2_SETUP_SKIP for 40, zero P1 Collec TAI transitions, no fatal lines in the receipt runs. Runs that did not finish in their wall limit (z1, z2, z3) are bot stalls, not behaviour findings.",
+        "Negative y5 (exe dc6a9f30, banks staged, squad not Purple): non-Purple presses refused (P2_BREADBUG_OWN_PRESS_REJECTED x2), health stays 2000, 0 presses. y7 (exe ef6077c9) killed the Giant by container suck plus 10 presses but the corpse jammed at (-192,2052) on the FoH plateau (no receipt). Limits: the squad is Purple through the test-only AUTOPLAY_PURPLE power switch, not through the Violet supply.",
+        "Placement: ordinary slots only. The Giant is an IS_ENEMY_BOSS species but is NOT admitted as an arena boss. Arena runs r9 (navel_beady_long_legs, log output/claude-orch/p2-w3-variants-breadbug/runs/r9-40 sha256 e2daca825dba2ef5..., killed=1 carried=0) and r11 (spring_cannon_beetle, r11-40 sha256 2bd302d6f6fedcb0..., killed=1 carried=0) were on the pre-merge exe dc6a9f30, not the final exe: the Giant binds, wanders and 20 presses kill it, then the corpse is not carried (37-60 Pikmin nearby). The stall was not diagnosed from the log (the bot planner's no_path from the landing to those arenas in r5/r7 is only a suspect), so there is no arena receipt. The arena descriptor and arena profile were removed; add oopanmodoki_arena back to p2_boss_arenas.BOSS_ENCOUNTERS only after an arena run on a final exe delivers a receipt. The ordinary profile accepts every constraint-compatible ground slot (#948); the owner smoke package output/smoke-w3-giant-breadbug/foh-2 (--p1-bulborb-slots, five FoH bulborb slots) was verified headless on the final exe: captain start (-316,2022), nearest Giant 720.2 units, instances 720.2/743.7/998.7/1039.4/1044.1."
+      ],
+      "delivery_receipt": "onion:p2:40:1 on generator 4222852521 (Forest of Hope) on native claude/p2-wave3-variants-breadbug 0e6369a80, FINAL exe sha256 971d2df549624a3dd072a9d2f66e12bddb8b4233d365ba2fa5ae779d16da7315: y11 output/claude-orch/p2-w3-variants-breadbug/runs/y11-40/session/runs/9aed7600eb5ba9a70f6cbeee5063d27094806708eca00a9dacb444534f4fb90e/native.log:L7088 (sha256 49905baf875d4bf41ad6fb2d1b0421520c0c45c131ae52d91500751e44e5488c). Also onion:p2:40:1 in y9 (exe ef6077c9) and y4 (exe dc6a9f30), and onion:p2:40:3 on generator 1945764764 (Distant Spring) in y2 (exe dc6a9f30) L51492 (sha256 7c6b5c28049d33e3...)"
     },
     "41": {
       "native_module": "pc_p2_fuefuki_teki",
@@ -1040,8 +1051,8 @@
     "56": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "admitted",
-      "eligibility_reason": "Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 (P2 Beady Long Legs is pretty broken; the P1 native Beady stays; the P2 species is out of the playable pool, native code kept). History: Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1055,6 +1066,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: beady long legs pretty broken i would just give up on that one, the P1 native version works great). The gate results and receipt below are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -1233,8 +1245,8 @@
     "65": {
       "native_module": "pc_p2_imomushi",
       "owner_lane": "14",
-      "eligibility": "admitted",
-      "eligibility_reason": "Ravenous Whiskerpillar (Imomushi, source 65): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:65:3 on the species' own generator token per rev2-worms.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 pending berry plants (source behaviour eats from fruit plants, Imomushi.cpp:803-826); native code kept. History: Ravenous Whiskerpillar (Imomushi, source 65): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:65:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1248,6 +1260,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: whiskerpillar keep out of pool for now, pending berries), pending berry plants (source behaviour eats from fruit plants, Imomushi.cpp:803-826). Gate results and receipt are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3 Bind/dead/receipt on the own generator token (L1714 bind, L1858 dead, L1984 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 65 -> ground_inverts (experimental/pikmin2_ground_inverts_install). Log C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]

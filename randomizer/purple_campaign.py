@@ -38,9 +38,21 @@ def bind_campaign_mode(session, manifest, bank, motion):
 
 
 def split_records(data):
+    """Split a stage generator into its physical records.
+
+    The game reads ``count`` records by parsing them one after another, and an
+    inactive record (name ``next``, stored ``txen``) is a real record. The
+    retail Forest of Hope generator is framed that way, but the harness copy that
+    ships in some local asset sets (and ``without_test_squad`` output) counts
+    only the ``    `` records, one fewer than physically present (#958: this made
+    Purple staging fail on Forest of Hope with ``Unsupported campaign generator
+    framing``). Both counts are accepted here; ``add_violet`` always writes the
+    physical count so the appended record is inside the range the game reads.
+    """
     starts = [m.start() for m in re.finditer(rb'(?:    |txen)0\.0v', data)]
+    active = len(re.findall(rb'    0\.0v', data))
     if (len(data) < 24 or data[:4] != b'1.0v' or not starts or starts[0] != 24
-            or len(starts) != struct.unpack_from('>I', data, 20)[0]):
+            or struct.unpack_from('>I', data, 20)[0] not in (len(starts), active)):
         raise ValueError('Unsupported campaign generator framing')
     return [data[a:b] for a, b in zip(starts, starts[1:] + [len(data)])]
 

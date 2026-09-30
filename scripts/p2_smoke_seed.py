@@ -18,7 +18,7 @@ Example (PowerShell)::
     py -3.12 scripts/p2_smoke_seed.py --area foh --slots 4 --near-start `
         --species 58,32 --bosses 94:hope_snagret_pit --seed foh-any-1 `
         --out output/smoke-any/foh-any-1 --iso "C:\\...\\PIKMIN2 for GAMECUBE.iso" `
-        --content-cache output/p2-content-cache --exe output/smoke-foh/exe-anyslot/nectar.exe
+        --content-cache output/p2-content-dense --exe output/smoke-foh/exe-anyslot/nectar.exe
     & output/smoke-any/foh-any-1/play.ps1
 
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
@@ -396,11 +396,20 @@ def enum_for(source_id):
         raise SmokeSeedError(f'no content extractor enum for source id {source_id}') from None
 
 
-def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=shutil.copytree):
+def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=shutil.copytree,
+                  allow_sparse=False):
     """Populate ``content_dir/<Enum>`` for every bound species: from
     ``content_dir`` itself if present, else from ``cache_dir``, else by
     extracting the missing ids from the ISO (``prepare_fn(iso, out, wanted)``)
-    and copying the fresh dirs back into the cache. Returns a summary dict."""
+    and copying the fresh dirs back into the cache. Returns a summary dict.
+
+    Cache entries are pose-limit aware (#970): an entry is reused only when
+    its recorded extraction pose limit (``density.json`` marker or the cache
+    root's ``prepared.json``) is at least ``DEFAULT_POSE_LIMIT``. A sparse or
+    unrecorded entry counts as missing: it is re-extracted when ``iso`` is
+    given (the old dir is kept as ``<Enum>.sparse-bak``), otherwise staging
+    fails unless ``allow_sparse`` (``--allow-sparse-cache``) accepts it."""
+    from scripts import p2_content_density as density
     content_dir = Path(content_dir)
     cache_dir = Path(cache_dir) if cache_dir else None
     content_dir.mkdir(parents=True, exist_ok=True)
@@ -408,7 +417,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
-    reused, cached, missing, pending_copies = [], [], [], []
+    reused, cached, missing, sparse, pending_copies = [], [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
         if target.is_dir() and any(target.iterdir()):
@@ -416,13 +425,20 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            pending_copies.append((source, target))  # copied after any extraction: the
-            cached.append(enum)                      # extractor needs an empty output dir
-            continue
+            if allow_sparse or density.entry_is_dense(cache_dir, enum):
+                pending_copies.append((source, target))  # copied after any extraction: the
+                cached.append(enum)                      # extractor needs an empty output dir
+                continue
+            sparse.append(enum)
         missing.append(sid)
     extracted = []
     if missing:
         if iso is None:
+            if sparse:
+                raise SmokeSeedError(
+                    f'content cache entries {sparse} are sparse (extracted below {density.DEFAULT_POSE_LIMIT} '
+                    'poses per clip, or of unknown density) and no --iso was given to re-extract them; '
+                    'rebuild the cache (scripts/p2_prepare_content.py) or pass --allow-sparse-cache')
             raise SmokeSeedError(
                 f'content cache lacks {[needed[s] for s in missing]} and no --iso was given to extract them')
         if prepare_fn is None:
@@ -438,11 +454,21 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
                 raise SmokeSeedError(f'extraction did not produce {fresh} for source id {sid}')
             if cache_dir is not None:
                 cache_dir.mkdir(parents=True, exist_ok=True)
+                if enum in sparse:
+                    backup = cache_dir / f'{enum}.sparse-bak'
+                    n = 1
+                    while backup.exists():
+                        n += 1
+                        backup = cache_dir / f'{enum}.sparse-bak{n}'
+                    (cache_dir / enum).rename(backup)
                 if not (cache_dir / enum).exists():
                     copy(fresh, cache_dir / enum)
+                    limit = summary.get('pose_limit', density.DEFAULT_POSE_LIMIT) if isinstance(summary, dict) \
+                        else density.DEFAULT_POSE_LIMIT
+                    density.write_entry_marker(cache_dir / enum, limit, source='p2_smoke_seed')
     for source, target in pending_copies:
         copy(source, target)
-    return {'reused': reused, 'from_cache': cached, 'extracted': extracted,
+    return {'reused': reused, 'from_cache': cached, 'extracted': extracted, 'sparse_replaced': sparse,
             'missing_ids': missing, 'needed': {str(k): v for k, v in sorted(needed.items())}}
 
 
@@ -465,9 +491,16 @@ def parse_env(items):
     return env
 
 
-def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None):
+def launcher_text(seed_path, content_dir, actors_path, session_root, exe, assets, root=ROOT, extra_env=None,
+                  purple_bank=None, purple_motion=None):
     def ps(value):
         return "'" + str(value).replace("'", "''") + "'"
+    # #958: opt in to the ordinary Purple campaign (the Giant Breadbug only takes Purple
+    # presses); F10 near the ship withdraws Purple.
+    purple_args = ''
+    if purple_bank and purple_motion:
+        purple_args = (f" `\n        --purple-bank {ps(purple_bank)} `"
+                       f"\n        --purple-motion {ps(purple_motion)}")
     extra_env = dict(extra_env or {})
     set_extra = ''.join(f"$env:{name} = {ps(value)}\n" for name, value in sorted(extra_env.items()))
     clear_extra = ''.join(f" Remove-Item Env:{name} -ErrorAction SilentlyContinue;" for name in sorted(extra_env))
@@ -488,7 +521,7 @@ try {{
         --p2-actors {ps(actors_path)} `
         --session-dir $session `
         --exe $Exe `
-        --assets $Assets
+        --assets $Assets{purple_args}
 }} finally {{ Pop-Location; Remove-Item Env:{SMOKE_ENV} -ErrorAction SilentlyContinue;{clear_extra} }}
 """
 
@@ -529,11 +562,20 @@ def build(args):
     override_path.write_text(json.dumps(override, indent=1) + '\n', encoding='utf-8')
 
     starting_area = AREAS[args.area][0]
+    from randomizer.seed import P2_REQUIRES_PURPLE
+    pool = species_pool(assignments, bosses)
+    # A species listed in seed.P2_REQUIRES_PURPLE (currently none; the Giant Breadbug no longer is) makes this a
+    # Purple-campaign seed; the launcher then needs the Purple banks.
+    needs_purple = sorted(set(pool) & set(P2_REQUIRES_PURPLE))
+    if needs_purple and not (args.purple_bank and args.purple_motion):
+        raise SmokeSeedError(f"species {needs_purple} need Purple "
+                             f"({'; '.join(P2_REQUIRES_PURPLE[i] for i in needs_purple)}): "
+                             "pass --purple-bank and --purple-motion")
     manifest = generate(args.seed, 'solo', 'Player1', starting_area=starting_area,
                         collection_checks=True, starting_flarlic=1, bomb_rock_weight=1,
                         goal_mode='emperor_bulblax', combined_captain=True,
                         p2_enemies=True, p2_placement=override,
-                        p2_species=species_pool(assignments, bosses),
+                        p2_species=pool, p2_purple_campaign=bool(needs_purple),
                         progressive_maturity=True)
     validate(manifest)
     bound = check_layout(manifest, assignments, bosses, document)
@@ -541,7 +583,8 @@ def build(args):
     seed_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
 
     content_dir = out / 'content'
-    content = stage_content(manifest, content_dir, args.content_cache, args.iso) if not args.no_content else None
+    content = stage_content(manifest, content_dir, args.content_cache, args.iso,
+                            allow_sparse=args.allow_sparse_cache) if not args.no_content else None
     actors_path = out / 'actors.json'
     prepare.actors_for_manifest_file(seed_path, actors_path)
 
@@ -549,7 +592,10 @@ def build(args):
     play_path = out / 'play.ps1'
     extra_env = parse_env(args.env)
     play_path.write_text(launcher_text(seed_path.resolve(), content_dir.resolve(), actors_path.resolve(),
-                                       out.resolve(), exe, args.assets, root=ROOT, extra_env=extra_env), encoding='utf-8')
+                                       out.resolve(), exe, args.assets, root=ROOT, extra_env=extra_env,
+                                       purple_bank=(Path(args.purple_bank).resolve() if args.purple_bank else None),
+                                       purple_motion=(Path(args.purple_motion).resolve() if args.purple_motion else None)),
+                         encoding='utf-8')
 
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
@@ -596,7 +642,9 @@ def run_verify(summary, assignments, seed_path, content_dir, actors_path, exe, a
     text = verify.launch_and_read(seed_path.resolve(), exe, args.assets, session.resolve(),
                                   content_dir=None if args.no_content else content_dir.resolve(),
                                   actors_path=actors_path.resolve(), extra_env={SMOKE_ENV: '1'}, cwd=ROOT,
-                                  want_targets=list(assignments), timeout=args.verify_timeout)
+                                  want_targets=list(assignments), timeout=args.verify_timeout,
+                                  purple_bank=args.purple_bank.resolve() if args.purple_bank else None,
+                                  purple_motion=args.purple_motion.resolve() if args.purple_motion else None)
     (out / 'verify-native.log').write_text(text, encoding='utf-8')
     result = verify.evaluate(verify.parse_log(text), assignments, max_distance=args.max_distance)
     result['log'] = str(out / 'verify-native.log')
@@ -645,12 +693,18 @@ def main(argv=None):
     parser.add_argument('--origin', dest='origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
     parser.add_argument('--p1-bulborb-slots', action='store_true', help="use only the area's P1 Dwarf Bulborb and adult Bulborb generator slots (owner ruling 2026-09-30, #980), nearest the captain start first; '--slots all' = those within --bulborb-radius, '--slots N' = the N nearest. The species replaces the P1 bulborb via the ordinary placement override.")
     parser.add_argument('--bulborb-radius', type=float, default=DEFAULT_BULBORB_RADIUS, help='with --p1-bulborb-slots and --slots all: keep bulborb slots within this x/z distance of the captain start (default 1100)')
+    parser.add_argument('--purple-bank', type=Path, default=None,
+                        help='#958: Purple campaign pose bank (opt in; needed to press the Giant Breadbug)')
+    parser.add_argument('--purple-motion', type=Path, default=None, help='#958: Purple throw/fall motion bank (with --purple-bank)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', default=None, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
     parser.add_argument('--iso', type=Path, default=None, help='P2 retail ISO; only read when the content cache lacks a species')
-    parser.add_argument('--content-cache', type=Path, default=ROOT / 'output' / 'p2-content-cache',
-                        help='reusable per-enum content cache (default output/p2-content-cache); missing species are extracted and added')
+    parser.add_argument('--content-cache', type=Path, default=ROOT / 'output' / 'p2-content-dense',
+                        help='reusable per-enum content cache (default output/p2-content-dense, the #943 dense pose bank); '
+                             'missing or sparse species are extracted and added')
+    parser.add_argument('--allow-sparse-cache', action='store_true',
+                        help='reuse cache entries even when their recorded pose limit is below the dense default (#970)')
     parser.add_argument('--exe', type=Path, default=None, help='nectar.exe built from claude/p2-smoke-any-slot (baked into play.ps1; overridable with -Exe)')
     parser.add_argument('--assets', default=DEFAULT_ASSETS, help='retail asset root for randomizer run --assets')
     parser.add_argument('--placement', type=Path, default=None, help='base placement document (default docs/PIKMIN2_ADMITTED_PLACEMENT.json)')

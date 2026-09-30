@@ -29,8 +29,8 @@ class CapacityGateTest(unittest.TestCase):
         self.assertFalse(admit("game", snap(cpu_percent=90))[0])
 
     def test_build_counts_requested_jobs(self):
-        self.assertTrue(admit("build", snap(compilers=12), jobs=4)[0])
-        self.assertFalse(admit("build", snap(compilers=13), jobs=4)[0])
+        self.assertTrue(admit("build", snap(compilers=LIMITS["max_compilers"] - 4), jobs=4)[0])
+        self.assertFalse(admit("build", snap(compilers=LIMITS["max_compilers"] - 3), jobs=4)[0])
 
     def test_unknown_kind_raises(self):
         with self.assertRaises(ValueError):

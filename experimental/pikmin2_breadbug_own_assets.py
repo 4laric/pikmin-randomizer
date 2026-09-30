@@ -1,4 +1,10 @@
-"""Breadbug (PanModoki, enemy ID 38) OWN source assets; no native behaviour substitution.
+"""Breadbug (PanModoki 38) and Giant Breadbug (OoPanModoki 40) OWN source assets; no native behaviour substitution.
+
+The Giant Breadbug (#958) is the same source class (``PanModokiBase``) with its
+own model, animation bank and ``oopanmodoki/enemyparm.txt``. It is selected
+with ``extract(..., variant=OO_VARIANT)`` and lands in an identity-keyed
+``OoPanModoki`` directory (``giantbreadbug.json``, ``giantbreadbug_<clip>_<ii>.mod``);
+everything below describes the PanModoki (default) output, which is unchanged.
 
 Single-species ISO extractor for the campaign OWN port (#898), modelled on
 :mod:`experimental.pikmin2_minihoudai_assets` (hashed disc reads, GPVE01
@@ -43,15 +49,26 @@ from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
 from experimental.pikmin2_skinning import draw_matrices
 
-SPECIES = 'PanModoki'
-ENEMY_ID = 38
-ENUM_NAME = 'PanModoki'
-MANIFEST = 'breadbug.json'
+# Per-variant constants (#958). ``PANMODOKI`` is the original 38 output.
+PANMODOKI = dict(
+    species='PanModoki', enemy_id=38, enum_name='PanModoki', manifest='breadbug.json',
+    pose_prefix='breadbug', model_path='enemy/data/PanModoki/model.szs',
+    anim_path='enemy/data/PanModoki/anim.szs', parm_prefix='panmodoki/')
+OO_VARIANT = dict(
+    species='OoPanModoki', enemy_id=40, enum_name='OoPanModoki', manifest='giantbreadbug.json',
+    pose_prefix='giantbreadbug', model_path='enemy/data/OoPanModoki/model.szs',
+    anim_path='enemy/data/OoPanModoki/anim.szs', parm_prefix='oopanmodoki/')
+VARIANTS = {38: PANMODOKI, 40: OO_VARIANT}
+
+SPECIES = PANMODOKI['species']
+ENEMY_ID = PANMODOKI['enemy_id']
+ENUM_NAME = PANMODOKI['enum_name']
+MANIFEST = PANMODOKI['manifest']
 IDENTITY = 'identity.json'
-MODEL_PATH = 'enemy/data/PanModoki/model.szs'
-ANIM_PATH = 'enemy/data/PanModoki/anim.szs'
+MODEL_PATH = PANMODOKI['model_path']
+ANIM_PATH = PANMODOKI['anim_path']
 PARM_PATH = 'enemy/parm/enemyParms.szs'
-PARM_PREFIX = 'panmodoki/'
+PARM_PREFIX = PANMODOKI['parm_prefix']
 METADATA_FILES = ('enemyparm.txt', 'enemycoll.txt', 'enemyanimmgr.txt', 'enemystoneinfo.txt')
 
 # PanModokiBase AnimID order == retail enemyanimmgr.txt row order.
@@ -72,12 +89,12 @@ LIMITATIONS = [
 ]
 
 
-def pose_name(clip, number):
+def pose_name(clip, number, variant=PANMODOKI):
     """Deterministic pose mesh filename for one sampled pose."""
-    return f'breadbug_{clip}_{number:02}.mod'
+    return f'{variant["pose_prefix"]}_{clip}_{number:02}.mod'
 
 
-def extract(iso, output, pose_limit=None):
+def extract(iso, output, pose_limit=None, variant=PANMODOKI):
     if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 24):
         raise ValueError(f'Pose limit must be 2..24 or None: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
@@ -106,10 +123,10 @@ def extract(iso, output, pose_limit=None):
         if header[:6] != b'GPVE01':
             raise ValueError('Expected supplied US GPVE01 disc')
         try:
-            model = archive_files(read(disc, MODEL_PATH))['enemy.bmd']
+            model = archive_files(read(disc, variant['model_path']))['enemy.bmd']
         except KeyError:
-            raise ValueError('PanModoki model missing enemy.bmd') from None
-        motions = archive_files(read(disc, ANIM_PATH))
+            raise ValueError(f'{variant["species"]} model missing enemy.bmd') from None
+        motions = archive_files(read(disc, variant['anim_path']))
         params = archive_files(read(disc, PARM_PATH))
     names = joints(model)
     model_blocks = blocks(model)
@@ -117,17 +134,17 @@ def extract(iso, output, pose_limit=None):
     metadata = {}
     for filename in METADATA_FILES:
         try:
-            raw = params[PARM_PREFIX + filename]
+            raw = params[variant['parm_prefix'] + filename]
         except KeyError:
-            raise ValueError(f'PanModoki parameter entry missing: {PARM_PREFIX + filename}') from None
+            raise ValueError(f'{variant["species"]} parameter entry missing: {variant["parm_prefix"] + filename}') from None
         metadata[filename] = sha(raw)
         (output / filename).write_bytes(raw)
     (output / 'enemy.bmd').write_bytes(model)
-    parameter = parameter_blocks(params[PARM_PREFIX + 'enemyparm.txt'])
-    rows = animation_rows(params[PARM_PREFIX + 'enemyanimmgr.txt'].decode('shift_jis'))
+    parameter = parameter_blocks(params[variant['parm_prefix'] + 'enemyparm.txt'])
+    rows = animation_rows(params[variant['parm_prefix'] + 'enemyanimmgr.txt'].decode('shift_jis'))
     stems = [Path(row['file']).stem for row in rows]
     if stems != list(CLIPS):
-        raise ValueError(f'Unexpected PanModoki clip order: {stems!r}')
+        raise ValueError(f'Unexpected {variant["species"]} clip order: {stems!r}')
 
     clips = []
     for row in rows:
@@ -135,7 +152,7 @@ def extract(iso, output, pose_limit=None):
         try:
             raw = motions[row['file']]
         except KeyError:
-            raise ValueError(f'PanModoki motion missing: {row["file"]}') from None
+            raise ValueError(f'{variant["species"]} motion missing: {row["file"]}') from None
         (output / row['file']).write_bytes(raw)
         duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
         clip = dict(file=row['file'], events=[list(event) for event in row['events']],
@@ -156,7 +173,7 @@ def extract(iso, output, pose_limit=None):
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                 matrices = draw_matrices(model_blocks, pose)
                 decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
-                name = pose_name(stem, len(clip['poses']))
+                name = pose_name(stem, len(clip['poses']), variant)
                 conversion = write_model(decoded, output / name, 'enemy.bmd')
                 conversion.update(source='enemy.bmd', output=name, weighted_pose_baked=True, source_frame=frame)
                 data = (output / name).read_bytes()
@@ -173,17 +190,17 @@ def extract(iso, output, pose_limit=None):
         clips.append(clip)
 
     result = dict(
-        schema=1, species=SPECIES, enemy_id=ENEMY_ID, enum_name=ENUM_NAME,
+        schema=1, species=variant['species'], enemy_id=variant['enemy_id'], enum_name=variant['enum_name'],
         disc_id=header[:6].decode(), disc_revision=header[7],
         source_sha256=hashes, model_sha256=sha(model), joints=names,
         parameters=parameter, metadata_sha256=metadata, clips=clips,
         pose_limits={Path(c['file']).stem: (pose_limit if pose_limit is not None else POSE_LIMITS[Path(c['file']).stem])
                      for c in clips},
-        collision=collision_nodes(params[PARM_PREFIX + 'enemycoll.txt'], len(names)),
+        collision=collision_nodes(params[variant['parm_prefix'] + 'enemycoll.txt'], len(names)),
         limitations=list(LIMITATIONS))
-    (output / MANIFEST).write_text(json.dumps(result, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+    (output / variant['manifest']).write_text(json.dumps(result, sort_keys=True, indent=2) + '\n', encoding='utf-8')
     (output / IDENTITY).write_text(
-        json.dumps(dict(schema=1, source_id=ENEMY_ID, enum_name=ENUM_NAME), indent=2) + '\n', encoding='utf-8')
+        json.dumps(dict(schema=1, source_id=variant['enemy_id'], enum_name=variant['enum_name']), indent=2) + '\n', encoding='utf-8')
     return result
 
 
@@ -192,8 +209,10 @@ if __name__ == '__main__':
     parser.add_argument('--iso', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pose-limit', type=int, default=None)
+    parser.add_argument('--source-id', type=int, choices=sorted(VARIANTS), default=38,
+                        help='38 PanModoki (Breadbug, default) or 40 OoPanModoki (Giant Breadbug)')
     args = parser.parse_args()
-    summary = extract(args.iso, args.output, args.pose_limit)
+    summary = extract(args.iso, args.output, args.pose_limit, VARIANTS[args.source_id])
     print(json.dumps({
         'clips': len(summary['clips']),
         'converted': sum(c['status'] == 'converted' for c in summary['clips']),

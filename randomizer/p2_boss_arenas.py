@@ -63,6 +63,10 @@ ARENA_SCHEMA = "p2-boss-arena-v1"
 
 # P2 bosses confined to boss arenas: source_id -> roster enum name.
 ARENA_BOSS_SOURCES = {30: "Queen", 73: "BigTreasure", 94: "DangoMushi", 66: "Houdai", 53: "KingChappy"}
+# 40 OoPanModoki (Giant Breadbug, #958) is deliberately NOT here and has no BOSS_ENCOUNTERS
+# descriptor: its arena runs (r9, r11) killed it but never delivered the corpse, so there is
+# no arena receipt. It is admitted on ordinary slots only, like the other IS_ENEMY_BOSS
+# species proven there; add it here when an arena run on a final exe delivers a receipt.
 
 # GenObjectBoss ids (include/Boss.h GenBossID) and the teki boss hosts.
 GENBOSS = {0: "Spider", 1: "Snake", 2: "Slime", 3: "King", 7: "BoxSnake"}
@@ -303,6 +307,17 @@ def _arena_record(arena, measured):
     return record
 
 
+def _purple_note(source_id):
+    """Runtime-constraint sentence for species listed in seed.P2_REQUIRES_PURPLE (none today)."""
+    from .seed import P2_REQUIRES_PURPLE
+    if source_id not in P2_REQUIRES_PURPLE:
+        return ""
+    return (f" Runtime constraint ({P2_REQUIRES_PURPLE[source_id]}): it needs Purple presses to die, so "
+            "generation binds it only on --p2-purple-campaign seeds, whose Violet supply exists at "
+            "every start area (randomizer/purple_campaign.py) and whose Purple ship stock travels "
+            "between areas; 'randomizer run' refuses such a seed without the Purple banks (#958).")
+
+
 def apply_to_document(document, measurements, pool_ids=None):
     """Return ``document`` with the boss arenas, arena slots, descriptors and
     arena-boss profiles (re)written from this catalogue. Idempotent. Non-boss
@@ -341,7 +356,7 @@ def apply_to_document(document, measurements, pool_ids=None):
                       "2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; "
                       "accepted on every measured, unprotected arena whose clearance fits the "
                       f"{spec['id']} footprint. Pool admission is still the family lane's natural "
-                      "kill -> carry -> Onion receipt."),
+                      "kill -> carry -> Onion receipt." + _purple_note(spec["source_id"])),
             "cohort": None,
             "accepted_slot_uids": list(primaries),
         })

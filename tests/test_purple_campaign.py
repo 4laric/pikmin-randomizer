@@ -87,6 +87,69 @@ class PurpleCampaignTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_violet(data, template, 27)
 
+    def test_purple_only_seed_refuses_to_launch_without_the_banks(self):
+        # #958: the mechanism stays generic. A seed that binds a species listed in
+        # P2_REQUIRES_PURPLE needs the Violet supply; only the dev console, which
+        # spawns species on demand, is exempt. The Giant Breadbug (40) is no longer
+        # listed (owner red-only kill 2026-09-30), so a stand-in species is used.
+        import os
+        from randomizer.runner import launch
+        from randomizer.seed import P2_REQUIRES_PURPLE, generate
+        with patch.dict(P2_REQUIRES_PURPLE, {41: 'stand-in: Purple presses only'}):
+            manifest = generate('purple-launch', p2_enemies=True, p2_species=[41], p2_purple_campaign=True)
+            self.assertTrue(manifest['p2_purple_campaign'])
+            with tempfile.TemporaryDirectory() as tmp:
+                with patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop('PIKMIN_DEV_CONSOLE', None)
+                    with self.assertRaisesRegex(ValueError, '--purple-bank'):
+                        launch(manifest, Path(tmp) / 'session')
+                from randomizer import dev_console
+                dev = dev_console.build_dev_manifest([41])
+                self.assertTrue(dev['p2_purple_campaign'])
+                self.assertNotIn('p2_purple_campaign', dev_console.build_dev_manifest([40]))
+
+    def test_giant_breadbug_needs_no_purple_banks(self):
+        from randomizer.seed import P2_REQUIRES_PURPLE, generate
+        self.assertNotIn(40, P2_REQUIRES_PURPLE)
+        manifest = generate('purple-launch', p2_enemies=True, p2_species=[40])
+        self.assertNotIn('p2_purple_campaign', manifest)
+
+    def test_harness_counted_forest_generator_stages_violet(self):
+        # #958: the Forest of Hope harness copy counts only the "    " records
+        # (2 of 3 physical here; the inactive txen record is skipped) although
+        # the game reads inactive records too. Staging must accept it and write
+        # the physical count so the appended Violet is inside the range the game reads.
+        def row(name, ident):
+            r = bytearray(100); r[:8] = name + b'0.0v'
+            struct.pack_into('<I', r, 8, ident); r[72:80] = b'ssob\x02\x00\x00\x00'
+            return bytes(r)
+        rows = [row(b'    ', 1), row(b'txen', 2), row(b'    ', 3)]
+        header = b'1.0v' + struct.pack('>4fI', 5, 10, 15, 45, 2)   # 2 = "    " records only
+        data = header + b''.join(rows)
+        self.assertEqual(len(split_records(data)), 3)
+        result = add_violet(data, split_records(data)[0], 900)
+        self.assertEqual(struct.unpack_from('>I', result, 20)[0], 4)
+        self.assertEqual(len(split_records(result)), 4)
+        self.assertEqual(result[24:len(data)], data[24:])
+        bad = header[:20] + struct.pack('>I', 7) + data[24:]
+        with self.assertRaisesRegex(ValueError, 'framing'):
+            split_records(bad)
+
+    def test_real_stage_generators_stage_violet(self):
+        # All five start stages of the local retail assets, including the Forest
+        # of Hope copy that carries the harness squad.
+        assets = Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets/dataDir/stages')
+        if not assets.is_dir():
+            self.skipTest('local retail assets absent')
+        template = next(r for r in split_records((assets / 'chal0/default.gen').read_bytes())
+                        if r[72:80] == b'ssob\x02\x00\x00\x00')
+        for stage in ('practice', 'stage1', 'stage2', 'stage3', 'last'):
+            data = (assets / stage / 'default.gen').read_bytes()
+            result = add_violet(data, template, 0x50555001)
+            rows = split_records(result)
+            self.assertEqual(struct.unpack_from('>I', result, 20)[0], len(rows), stage)
+            self.assertEqual(len(rows), len(split_records(data)) + 1, stage)
+
     def test_inactive_records_count_toward_identity_and_offsets(self):
         data = bytearray(generator()); data[24:28] = b'txen'
         result = add_violet(data, split_records(generator())[0], 800)
