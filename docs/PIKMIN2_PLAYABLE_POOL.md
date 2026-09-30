@@ -53,10 +53,13 @@ every existing caller keeps working. Today the pool is:
 | 27 | Tadpole | aquatic |
 | 84 | Hana | ground_inverts |
 | 93 | BombOtakara | dweevil |
+| 57 | Kurage | kurage |
+| 72 | OniKurage | onikurage |
+| 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 57 Kurage, 66 Houdai, 97 FminiHoudai).
+9 Kogane, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
@@ -70,8 +73,29 @@ never P2 identities and never enter this table.
   placement document and this table name the same species. `tests/test_p2_pool_roster_sync.py`
   checks equality, not subset. A bare `--p2-enemies` seed (no `--p2-species`)
   must generate.
-- **Pulled for now:** 9 Kogane (see the no-check rule below) and 57 Kurage.
-  The campaign Kurage runs on the P1 Frog host AI, because its P2 FSM is env-gated.
+- **Pulled for now:** 9 Kogane (see the no-check rule below). 57 Kurage was pulled
+  while it ran on the P1 Frog host AI; it is admitted again below (#960).
+- **57 Kurage (Lesser Spotted Jellyfloat): admitted (#960).** The source Kurage FSM
+  with its retail parms (life 2500, flight height 70) drives the campaign body; the
+  P1 Frog host AI is suppressed. P2 `EnemyBase::isFlying()` is `EB_Untargetable`, and the
+  port mirrors it onto the host `CF_IsFlying` (`pc_p2_flyer.h`): while it hovers, ground
+  Pikmin leave it alone exactly as for any P1 flyer, thrown Pikmin latch onto its retail
+  collision spheres and keep biting, and once six latched Pikmin drag it into Fall/Land/Ground
+  the flag drops and the whole squad engages. It sucks Pikmin in, shakes latched Pikmin off,
+  dies naturally, is carried as its dead corpse and delivers `onion:p2:57:3` on its own
+  generator. Known accommodations: the Frog host collision/pellet config stands in for the
+  body, the body joint is the rest-mesh centroid, and the power-mode run kills it before a grounded
+  phase (the six-latch Fall/Land/grounded squad attack is observed in the normal-squad
+  run k7 and proven by `p2_flyer_test`).
+- **72 OniKurage (Greater Spotted Jellyfloat): admitted (#960).** The same module as the
+  Kurage with the Greater retail entry (life 4500, flight 75, territory 500, up to 20
+  sucked Pikmin). It also sucks the captain into a mouth slot, drops to the ground with
+  him (the squad then attacks the grounded body), vomits him out with the fp24 damage,
+  dies naturally, is carried as its dead corpse and delivers `onion:p2:72:3` on its own
+  generator. Known accommodations: one captain at a time (the shared captain bridge), the
+  vomit is the FallMeck drop, the Frog actor collision/pellet config stands in for the
+  body. The receipt evidence is power mode (owner ruling 2026-09-25); no claim is made
+  that a normal squad cannot kill it within a day.
 - **78 MiniHoudai (Gatling Groink): admitted.** Its Windows OWN campaign run
   (#888 §4A) and the shell visuals (#892) are in. The source FSM fights, the
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
@@ -105,8 +129,8 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 41 species on 35 slots, a given seed may leave out any
-  four ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  (`sampled-v1`). With 43 species on 35 slots, a given seed may leave out any
+  six ordinary pool species: the arena bosses (94, 73, 53, 30; #899, #246, #289, #256) are placed in
   boss arenas outside the ordinary slots, so 39 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **26 Catfish (Water Dumple), 27 Tadpole (Wogpole), 84 Hana (Creeping
@@ -132,8 +156,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Nine P2 bosses are already here (34, 53, 56,
-  69, 70, 71, 73, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
+- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 53, 56,
+  69, 70, 71, 73, 94, 101). The remaining bosses 40 Giant Breadbug,
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -141,9 +165,10 @@ never P2 identities and never enter this table.
 
 - **Boss arenas.** P2 bosses are placed only in designated P1 boss arenas,
   replacing the P1 boss there (`randomizer/p2_boss_arenas.py`). The pool's
-  arena bosses are 94 Crawbster and 73 Titan Dweevil; the most-constrained
-  boss is seated first, so the Titan (footprint 250) takes the Impact Goolix
-  arena (clear 275) and the Crawbster the Hope snagret pit.
+  arena bosses are 94 Crawbster, 73 Titan Dweevil and, since the wave-3
+  Emperor lane, 53 Emperor Bulblax; the most-constrained boss is seated first,
+  so the Titan (footprint 250) takes the Impact Goolix arena (clear 275) and
+  the Crawbster the Hope snagret pit.
 - **73 BigTreasure (Titan Dweevil): admitted.** The source BigTreasure FSM runs
   as its own campaign actor with the retail collision tree: Pikmin knock the
   four weapons off by hitting each weapon's own part, the body takes damage
@@ -152,6 +177,19 @@ never P2 identities and never enter this table.
   `onion:p2:73:0` on its own generator token (bot power-mode run e7 and
   repeats, plus a day 11-15 re-entry run rc2, #246). Its gas stays lethal to every P1 colour (ruling #2). The
   knocked-off weapons and Louie are not carryable pellets yet.
+
+- **53 KingChappy (Emperor Bulblax): re-admitted with its own behaviour (#289,
+  wave-3 lane 53).** The own-identity Chappy-family FSM now covers the whole
+  source cycle: buried HideWait spawn with a proximity wake and the Appear
+  shake-off, tongue sweeps with the tongue-tip terrain trace, bomb-rock
+  ingestion into the Eat/Damage stun, the checkFlick shake-offs, WarCry, the
+  dive and re-Appear, the retail collision tree and the P1 Emperor sound bank.
+  It dies naturally, is carried and delivers `onion:p2:53:3` on its own
+  generator (bot power-mode run s12, and s9 on the previous exe). It is an
+  arena boss in real seeds by footprint (175, the tongue reach); the P1
+  Emperor arena stays protected. Details, dev switches and known gaps are in
+  `docs/PIKMIN2_KING_OWN.md`. The Chappy `Health` registry also stopped
+  clamping the Emperor to the host's 1100 life (now the retail 1300).
 
 ## Admission bar
 

@@ -87,7 +87,7 @@ def main():
     env.pop("BBFT_PORT", None)
     log_path = run.directory / "native.log"
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     with log_path.open("w", encoding="utf-8") as stream:
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
                                    cwd=run.directory, env=env, stdout=stream,

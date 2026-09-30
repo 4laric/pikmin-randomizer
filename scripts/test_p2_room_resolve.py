@@ -54,7 +54,7 @@ def run_native(exe, stage, bootstrap, timeout, extra_env=None, log_name='native.
     if extra_env:
         env.update(extra_env)
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     startup.wShowWindow = 0
     log = stage / log_name
     returncode = None

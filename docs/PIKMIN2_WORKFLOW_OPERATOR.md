@@ -444,3 +444,16 @@ Claude Code already treats their plain forms as read-only).
   writer lock; BEGIN, COMMIT and reads retry `database is locked` three times within
   about 28 s, then raise `RegistryBusy`; `scripts/pikmin2_workflow.py` exits 75 with
   `"busy": true`, so rerun the same command.
+
+## Watching agent test runs (#975)
+
+Agent runs are always launched with `PIKMIN_RANDOMIZER_TEST_BACKGROUND=1`, so they never pause for focus (and stay hidden by default). To watch them without disturbing them:
+
+```powershell
+# watch: runs launched from now on show a window that never takes focus
+New-Item -ItemType File -Force output/workflow/WATCH_RUNS | Out-Null
+# stop watching (hidden again for new runs)
+Remove-Item output/workflow/WATCH_RUNS -ErrorAction SilentlyContinue
+```
+
+The switch is read at each launch, so no agent restart is needed. Native logs `TEST_RUN_MODE background=1 visible=1 focus_hold=0` at boot; a `FOCUS_HOLD stalled seconds=N` line means a run paused for focus and is broken.

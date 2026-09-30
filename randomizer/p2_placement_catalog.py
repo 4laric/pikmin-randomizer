@@ -156,6 +156,9 @@ CANDIDATE_SPECS = (
     # #215: Demon (Bumbling Snitchbug) is a Sarai::Obj subclass and binds the
     # same generated slots on the Sarai manager (profile Demon).
     (32, 'Demon', 30, ['ground', 'air'], None, False),
+    # #960: the Greater Spotted Jellyfloat (OniKurage) rides the Kurage OWN module on the
+    # same P1 Frog placement vehicle and binds the same slot set as the Lesser (57).
+    (72, 'OniKurage', 29, ['mixed', 'ground'], None, False),
     # Roster wave (#871): campaign-proven ground bindings for the remaining
     # pool identities. Segmented Crawbster (94) shares the snagret bank/family
     # with the snagret pair (34/70, lane 25); Beady/Raging Long Legs (56/69,

@@ -7,7 +7,7 @@ a=p.parse_args()
 for area in range(5):
     run=a.output.resolve()/str(area)/uuid.uuid4().hex;run.mkdir(parents=True)
     _winapi.CreateJunction(str(a.assets.resolve()),str(run/'assets'))
-    startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
+    startup=subprocess.STARTUPINFO();startup.dwFlags|=__import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     with (run/'native.log').open('w',encoding='utf-8') as log:
         proc=subprocess.Popen([str(a.exe.resolve()),'--experimental-challenge-level',str(area)],cwd=run,stdout=log,stderr=subprocess.STDOUT,startupinfo=startup,env=dict(os.environ,SDL_AUDIODRIVER='dummy'))
         try:

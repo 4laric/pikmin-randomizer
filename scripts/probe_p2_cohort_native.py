@@ -181,7 +181,7 @@ def run(stage_dir, exe, out, seconds=45):
     if mingw:
         env['PATH'] = mingw + os.pathsep + env.get('PATH', '')
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     startup.wShowWindow = 0
     kw = dict(cwd=stage_dir, env=env)
     if os.name == 'nt':

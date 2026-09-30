@@ -341,10 +341,16 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
+        startup_show = 1  # SW_SHOWNORMAL
+        if env.get("PIKMIN_RANDOMIZER_TEST_BACKGROUND") == "1":
+            # Agent/test launch inherited from a driver: never hold for focus; watch only if the owner opted in.
+            from .test_run import apply_test_run_env
+            apply_test_run_env(env)
+            startup_show = 4  # SW_SHOWNOACTIVATE: a watched window must not take focus
         log = (run.directory / "native.log").open("w", encoding="utf-8")
         startup = subprocess.STARTUPINFO()
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startup.wShowWindow = 1  # Win32 SW_SHOWNORMAL; not exported by subprocess.
+        startup.wShowWindow = startup_show  # Win32 SW_*; not exported by subprocess.
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
             cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
         overlay_manifest = run.directory / 'overlay-manifest.json'
