@@ -633,6 +633,18 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-bombsarai-parms/bomb-parms/own-bank and the Bomb meshes)",
         },
     },
+    {
+        "source_id": 57,
+        "enum_name": "Kurage",
+        "family": "kurage",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run k6 (owner ruling 2026-09-25: power mode admits; wave 3 flyers, #960): red squad, campaign OWN bind of the source Kurage FSM with retail parms (life 2500, flight height 70) on a P1 Frog host with its AI suppressed; the hovering body is EB_Untargetable (CF_IsFlying mirror) so ground Pikmin leave it alone while thrown Pikmin latch onto the retail collision spheres (60 airborne latches), 13 FlyFlick shake-offs, suction of Pikmin, 151 monotone DAMAGE lines 2485 to 10, P2_KURAGE_OWN_DEAD on its own generator, corpse drawn as dead1 and carried, Onion receipt onion:p2:57:3; normal-squad run k7 shows the six-latch Fall, Land, grounded squad attack, GroundFlick and TakeOff before the natural kill",
+            "log": "output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log (sha256 a3ff30c09e624b62...) L1387 bind, L4276 first latch, L4417 FlyFlick, L8098 dead, L8209 escape, L9247 receipt; k7 (output/claude-orch/p2-w3-flyers/runs/k7-57/session/runs/a5c1d2bef108f347eb9a72a8dde49b9096a05be6e6e3cdf207b9963007697368/native.log sha256 2c8c498d9aad4...) L4760 Fall, L4868 Land, L4914 grounded latch, L7132 dead; native claude/p2-wave3-flyers f599fe03a, exe sha256 e929736321f3be37...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 57 -> kurage "
+                         "(stages p2-kurage-teki.txt and the kurage pose meshes)",
+        },
+    },
 )
 
 

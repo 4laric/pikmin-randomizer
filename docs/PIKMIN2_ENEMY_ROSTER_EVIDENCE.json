@@ -1036,28 +1036,33 @@
       ]
     },
     "57": {
-      "native_module": "pc_p2_kurage",
+      "native_module": "pc_p2_kurage_own_host",
       "owner_lane": "29",
-      "eligibility": "candidate",
-      "eligibility_reason": "Owner decision 2026-09-28 (#888): campaign Kurage runs on the P1 Frog host AI: its P2 FSM arms only under PIKMIN_P2_KURAGE_SHOWCASE (pc_p2_kurage_teki.cpp:456) and there is no doAI suppression, so movement/attacks are host-driven (proxy under the OWN bar). Pulled from the roster for now.",
+      "eligibility": "admitted",
+      "eligibility_reason": "Lesser Spotted Jellyfloat (Kurage, source 57): OWN campaign port on wave 3 flyers (#960); the source Kurage FSM with its retail parms drives the campaign Jellyfloat, which hovers untargetable, is latched by thrown Pikmin, sucks Pikmin, flicks them off, dies naturally, is carried as its dead1 corpse and delivers Onion receipt onion:p2:57:3 on its own generator token.",
       "source": [
         "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
-        "PIKMIN2_KURAGE_MATERIAL.md"
+        "PIKMIN2_KURAGE_MATERIAL.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "BLOCKED",
-        "attacks_receivers": "BLOCKED",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "corpse:kurage:689702860 (P2_POD_RECEIPT id=corpse:kurage:689702860 value=2 new=1 pokos=2 seeds=0) output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858",
+      "delivery_receipt": "onion:p2:57:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log:L9247 receipt (sha256 a3ff30c09e624b62829ef4cfe339f6940943be29e3f955cf59e7d554490836e6)",
       "notes": [
-        "Kurage (Lesser Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
-        "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243).",
-        "Natural generated-slot transport/reward receipt corpse:kurage:689702860 (P2_POD_RECEIPT value=2 new=1) in the muse-l58 generated-birth run (output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858); identity_spawn closed on the reviewed l52 accepted slot.",
-        "Owner decision 2026-09-28 (#888): movement_animation and attacks_receivers downgraded PASS->BLOCKED; earlier PASS rows came from preview/arena fixture runs (output/dsw, output/muse-wave), not an OWN campaign run."
+        "Kurage (Lesser Spotted Jellyfloat): #960 OWN port. Native 4laric/Open-Nectar claude/p2-wave3-flyers f599fe03a (fork main bbb9821f7 + 1 commit): pc_p2_kurage_own_host (KurageState.cpp transcribed FSM, retail parms, ten retail clips through the retail event player, getSearchedTarget/isSuck/suckPikmin/flick), P1 Frog actor AI suppressed with a stored-damage drain, retail enemycoll tree on the actor (pc_p2_flyer_coll), multi-owner suction receiver, onion:p2:57 delivery bind, P1-approximation SFX.",
+        "Flyer targeting rule: P2 EnemyBase::isFlying() is EB_Untargetable, mirrored onto CF_IsFlying (pc_p2_flyer.h). Hovering states are untargetable, so ground Pikmin skip the body (P1 flyer behaviour unchanged, no edit to generic Piki AI) while thrown Pikmin latch onto the retail collision spheres and stuck Pikmin keep biting; Fall/Land/Ground clear the flag so a fallen body is attackable by the whole squad.",
+        "Campaign evidence, bot-driven power-mode run k6 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 57, all on the species' own generator: output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log (sha256 a3ff30c09e624b62829ef4cfe339f6940943be29e3f955cf59e7d554490836e6) L1387 P2_KURAGE_OWN_BIND retail_parms=1 coll=1, L4276 first airborne latch, L4417 FlyFlick (P2_KURAGE_OWN_FLICK stick=4 flicked=4), 60 latches, 151 monotone P2_KURAGE_OWN_DAMAGE lines 2485 to 10, L8098 P2_KURAGE_OWN_DEAD, L8209 P2_KURAGE_OWN_ESCAPE, L8212 CORPSE_DRAW dead1, L9247 receipt onion:p2:57:3 new=1, L9249 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1 seconds=147.",
+        "Normal-squad run k7 (no power mode, 20 reds) on the same exe: output/claude-orch/p2-w3-flyers/runs/k7-57/session/runs/a5c1d2bef108f347eb9a72a8dde49b9096a05be6e6e3cdf207b9963007697368/native.log (sha256 2c8c498d9aad45b2c7852e39a046fee257c8f066716da8906e9c9a2165bfe2df) shows the full flyer lifecycle naturally: latches while hovering, L4760 Attack to Fall with 6 stuck (ip01), L4868 Land (alt 0.1, untargetable=0), L4914 the squad latches the grounded body (stuck=7 airborne=0), 40 DAMAGE lines while grounded, L4974 GroundFlick (7 flicked), L5045 TakeOff, back to flight, then the natural kill at L7132 P2_KURAGE_OWN_DEAD and L7245 ESCAPE, AUTOPLAY_RESULT damaged=1 killed=1 (the 20-squad carry stalled: the corpse pellet config is the P1 Frog's, the same accommodation as the other admitted species).",
+        "Pins: root claude/p2-wave3-flyers (origin/main 3fc77bf6 + #960 admission), content output/w3-flyers-content, exe nectar.exe sha256 e929736321f3be3763f7aae2432726c8244a11e0ba9d75db120d52d05c253bfe (private build output/native-w3-flyers-build, ninja -n pikmin_pc no work).",
+        "cleanup_reentry: the real day cycle (PIKMIN_P2_TEST_DAY_CYCLE=time:100,time:100) on the same exe, run r1: output/claude-orch/p2-w3-flyers/runs/r1-57/session/runs/96737443f272b98871854060f6d3ce7e6ba3ca78eacfd2df4437ce4fa08a6d07/native.log (sha256 b7638dc700d8fd938c90cf916c79603e00d164fcf83229131b28e41349e8c2a0) ends day 2 and day 3 with the Jellyfloats alive at sunset (L6956 SUNSET, L6966/L6969 P2_KURAGE_TEKI_FORGET bound=1 remaining=0), re-enters the stage (L7302 MAPSELECT day=3, L8141/L8145 P2_KURAGE_OWN_BIND again on both generators, L13233 SUNSET, L14407/L14411 BIND day 4), prints P2_TEST_DAY_CYCLE_DONE day=4 (L20032), and the day-4 Jellyfloat then dies and is delivered (L21888 P2_KURAGE_OWN_DEAD, L25561 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1); no crash across three stage loads.",
+        "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the P1 Frog actor's collision/pellet config stands in for the body (the corpse carry weight comes from the Frog carcass config), the body joint is the rest-mesh centroid because joint matrices are not available for sampled poses, and the joint-driven pose animation is a per-motion sampled pose. Stacking six latched Pikmin (ip01) drops the body to the ground where the whole squad attacks it, as in P2 (run k7).",
+        "Saturated smoke seed (CONTRIBUTING playtest rules): 16 Forest of Hope ordinary slots open on the start day, all bound to 57, headless run s2 on exe sha256 75ff66a799a2f1a81d7c00c1bd62a09dcab1b3936f260f8d3d490c99835878c0 (native 7e0c63420, which only raises the receiver owner cap from 16 to 64): 24 P2_KURAGE_OWN_BIND (group slots bind two or three bodies), no P2_SETUP_SKIP, no slot-rejected, first positions within 50 units of the slot coordinates, the landing-site slot hope_0-29_3073 at (-72,30,1)."
       ]
     },
     "58": {

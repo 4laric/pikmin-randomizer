@@ -49,10 +49,11 @@ every existing caller keeps working. Today the pool is:
 | 38 | PanModoki | breadbug |
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
+| 57 | Kurage | kurage |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
-9 Kogane, 57 Kurage, plus 26 Catfish,
+9 Kogane, plus 26 Catfish,
 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
@@ -67,8 +68,19 @@ never P2 identities and never enter this table.
   placement document and this table name the same species. `tests/test_p2_pool_roster_sync.py`
   checks equality, not subset. A bare `--p2-enemies` seed (no `--p2-species`)
   must generate.
-- **Pulled for now:** 9 Kogane (see the no-check rule below) and 57 Kurage.
-  The campaign Kurage runs on the P1 Frog host AI, because its P2 FSM is env-gated.
+- **Pulled for now:** 9 Kogane (see the no-check rule below). 57 Kurage was pulled
+  while it ran on the P1 Frog host AI; it is admitted again below (#960).
+- **57 Kurage (Lesser Spotted Jellyfloat): admitted (#960).** The source Kurage FSM
+  with its retail parms (life 2500, flight height 70) drives the campaign body; the
+  P1 Frog host AI is suppressed. P2 `EnemyBase::isFlying()` is `EB_Untargetable`, and the
+  port mirrors it onto the host `CF_IsFlying` (`pc_p2_flyer.h`): while it hovers, ground
+  Pikmin leave it alone exactly as for any P1 flyer, thrown Pikmin latch onto its retail
+  collision spheres and keep biting, and once six latched Pikmin drag it into Fall/Land/Ground
+  the flag drops and the whole squad engages. It sucks Pikmin in, shakes latched Pikmin off,
+  dies naturally, is carried as its dead corpse and delivers `onion:p2:57:3` on its own
+  generator. Known accommodations: the Frog host collision/pellet config stands in for the
+  body, the body joint is the rest-mesh centroid, and the bot run kills it while airborne
+  (Fall/Land is proven by `p2_flyer_test`, not observed in the run).
 - **78 MiniHoudai (Gatling Groink): admitted.** Its Windows OWN campaign run
   (#888 §4A) and the shell visuals (#892) are in. The source FSM fights, the
   Groink dies naturally, is carried, and delivers `onion:p2:78:3`. The owner
@@ -102,9 +114,9 @@ never P2 identities and never enter this table.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
   species that did not fit are listed as `unplaced` in the layout
-  (`sampled-v1`). With 41 species on 35 slots, a given seed may leave out any
-  four ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
-  boss arenas outside the ordinary slots, so 39 ordinary species share 35
+  (`sampled-v1`). With 42 species on 35 slots, a given seed may leave out any
+  five ordinary pool species: the arena bosses (94, 73; #899, #246) are placed in
+  boss arenas outside the ordinary slots, so 40 ordinary species share 35
   ordinary slots. A pool that fits keeps the legacy fill unchanged.
 - **32 Demon (Bumbling Snitchbug): admitted (#215).** It rides the Sarai host
   with its own retail profile and bank. It grabs the captain, flies, drops him
