@@ -138,7 +138,7 @@ class DocumentTests(unittest.TestCase):
         # Emperor lane #289) have a profile; the other lane bosses (30, 66)
         # carry descriptors and get their profile with pool admission.
         roster = load_and_validate()
-        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30, 40})
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30})
         descriptors = {e["identity"] for e in self.document["encounters"]}
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
@@ -330,27 +330,23 @@ class SeedTests(unittest.TestCase):
         self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
-        # A --p2-purple-campaign seed adds the Giant Breadbug as a fifth arena boss.
+        # A --p2-purple-campaign seed does not add a fifth arena boss: the Giant Breadbug (40)
+        # has no arena receipt (#958), so it stays on ordinary slots.
         purple = generate("arena-playable", "solo", "Player1", starting_area="forest",
                           p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
         validate(purple)
         placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 40, 53, 73, 94])
-        self.assertEqual(len({row["arena"] for row in placed}), 5)
-        self.assertLessEqual(len(purple["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
 
-    def test_giant_breadbug_fits_every_measured_arena(self):
-        # OoPanModoki footprint 200 (fp09 territory): every measured, unprotected arena
-        # covers it, so it is not a cast list (#958); five bosses seat in six arenas.
-        seen = set()
-        for i in range(40):
+    def test_giant_breadbug_is_not_an_arena_boss(self):
+        # #958: r9/r11 killed the Giant in an arena but never delivered the corpse, so it has no
+        # arena descriptor and is not seated in any arena, even on a Purple-campaign seed.
+        self.assertNotIn(40, arenas.ARENA_BOSS_SOURCES)
+        self.assertNotIn("OoPanModoki", arenas.BOSS_ENCOUNTERS)
+        for i in range(10):
             layout = self.layout(f"giant-{i}", species=sorted(PLAYABLE_P2_SPECIES))
-            placed = {row["source_id"]: row["arena"] for row in layout[BOSS_ARENA_KEY]["placed"]}
-            self.assertEqual(set(placed), {30, 40, 53, 73, 94})
-            self.assertEqual(len(set(placed.values())), 5)
-            seen.add(placed[40])
-            validate_layout(layout, self.roster)
-        self.assertGreater(len(seen), 2)
+            placed = {row["source_id"] for row in layout[BOSS_ARENA_KEY]["placed"]}
+            self.assertNotIn(40, placed)
 
 
 if __name__ == "__main__":

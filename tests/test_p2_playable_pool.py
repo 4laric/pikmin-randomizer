@@ -47,7 +47,7 @@ def test_playable_pool_binds_only_playable_species():
     validate(full)
     bound = {b['source_id'] for b in full['p2_layout']['bindings']}
     assert bound | set(full['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES)
-    assert 40 in bound | {row['source_id'] for row in full['p2_layout']['boss_arenas']['placed']}
+    assert 40 in bound | set(full['p2_layout'].get('unplaced', []))
 
 
 def test_purple_only_species_need_the_purple_campaign():
@@ -63,7 +63,9 @@ def test_purple_only_species_need_the_purple_campaign():
         generate('9', p2_purple_campaign=True)
     opt = generate('9', p2_enemies=True, p2_species=[40], p2_purple_campaign=True)
     validate(opt)
-    assert {r['source_id'] for r in opt['p2_layout']['boss_arenas']['placed']} == {40}
+    # Ordinary slots only: no arena receipt exists for 40 (r9/r11 killed it, never carried it).
+    assert {b['source_id'] for b in opt['p2_layout']['bindings']} == {40}
+    assert 'boss_arenas' not in opt['p2_layout']
     stripped = {k: v for k, v in opt.items() if k != 'p2_purple_campaign'}
     with pytest.raises(ValueError, match='Purple'):
         validate(stripped)

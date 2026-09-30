@@ -175,8 +175,8 @@ CANDIDATE_SPECS = (
     # campaign run bound spring_init_7002 (native TEKI_Collec placement type).
     (38, 'PanModoki', 18, ['ground'], 8, False),
     # #958: Giant Breadbug (OoPanModoki 40) runs the same OWN driver on the
-    # TEKI_Collec placement type. It is an IS_ENEMY_BOSS species, so its real-seed
-    # placement is a boss arena (randomizer.p2_boss_arenas BOSS_ENCOUNTERS).
+    # TEKI_Collec placement type. It is an IS_ENEMY_BOSS species but is admitted
+    # on ordinary slots only: no arena receipt exists (r9/r11 killed it, no carry).
     (40, 'OoPanModoki', 18, ['ground'], 8, False),
     # #948 (#951 U4): Careening Dirigibug (58) is an ordinary pool species
     # (admitted #244). It hovers on the P1 flying vehicle TEKI_Napkid, so it
