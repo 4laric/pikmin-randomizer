@@ -272,8 +272,8 @@
     "12": {
       "native_module": "pc_p2_uji",
       "owner_lane": "13",
-      "eligibility": "admitted",
-      "eligibility_reason": "Female Sheargrub (UjiA, source 12): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:12:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Female Sheargrub (UjiA, source 12): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:12:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -287,6 +287,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3 Bind/dead/receipt on the own generator token (L1828 bind, L2176 dead, L2645 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 12 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -294,8 +295,8 @@
     "13": {
       "native_module": "pc_p2_uji",
       "owner_lane": "13",
-      "eligibility": "admitted",
-      "eligibility_reason": "Male Sheargrub (UjiB, source 13): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:13:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Male Sheargrub (UjiB, source 13): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:13:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -309,6 +310,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3 Bind/dead/receipt on the own generator token (L1641 bind, L1958 dead, L2156 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 13 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -385,8 +387,8 @@
     "17": {
       "native_module": "pc_p2_frog",
       "owner_lane": "16",
-      "eligibility": "admitted",
-      "eligibility_reason": "Yellow Wollywog (Frog, source 17): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:17:3 on the species' own generator token per rev2-frogs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Yellow Wollywog (Frog, source 17): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:17:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -400,6 +402,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3 Bind/dead/receipt on the own generator token (L1005 bind, L2095 dead, L2288 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 17 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -407,8 +410,8 @@
     "18": {
       "native_module": "pc_p2_frog",
       "owner_lane": "16",
-      "eligibility": "admitted",
-      "eligibility_reason": "Wollywog (MaroFrog, source 18): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:18:3 on the species' own generator token per rev2-frogs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Wollywog (MaroFrog, source 18): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:18:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -422,6 +425,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3 Bind/dead/receipt on the own generator token (L1013 bind, L2066 dead, L2169 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 18 -> frog (experimental/pikmin2_frog_install). Log C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -490,8 +494,8 @@
     "23": {
       "native_module": "pc_p2_sarai_host",
       "owner_lane": "30",
-      "eligibility": "admitted",
-      "eligibility_reason": "Sarai (Swooping Snitchbug): all six gates natural on the lane-30 ordinary-spawn line; free Pikmin killed the generated actor, the corpse was carried across the room and the Pod credited corpse:sarai:385875968.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Sarai (Swooping Snitchbug): all six gates natural on the lane-30 ordinary-spawn line; free Pikmin killed the generated actor, the corpse was carried across the room and the Pod credited corpse:sarai:385875968.",
       "source": [
         "PIKMIN2_FLYING_ENEMY_AUDIT.md"
       ],
@@ -504,6 +508,7 @@
         "cleanup_reentry": "PASS"
       },
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane 30 ordinary-spawn manager: identity/movement/capture output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7/native.log:787,827,854; death/corpse output/l30-drive-pod-arena/15f359d18d8b4adc8cc9ac6fd7470bcf/native.log:840,848; Pod receipt :879; cleanup/re-entry output/l30-drive-reentry-arena/9f0bdb7023dd43798b6dbfe573157beb/native.log:799,868.",
         "Natural six-gate evidence on the pinned wave line; no enemy health/state/animation was written by the runs."
       ],
@@ -1909,8 +1914,8 @@
     "14": {
       "native_module": "pc_p2_uji",
       "owner_lane": "13",
-      "eligibility": "admitted",
-      "eligibility_reason": "Shearwig (Tobi, source 14): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:14:3 on the species' own generator token per rev2-bugs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-09-30: P1 version is good enough. History: Shearwig (Tobi, source 14): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:14:3 on the species' own generator token per rev2-bugs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1924,6 +1929,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: \"Remove P2 version from pool -- P1 version is good enough\"). Reason: withdrawn by owner ruling 2026-09-30: P1 version is good enough. Gate results and receipt are the history from before the withdrawal; native code kept.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3 Bind/dead/receipt on the own generator token (L1853 bind, L2002 dead, L2052 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 14 -> uji (experimental/pikmin2_uji_content). Log C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
