@@ -187,3 +187,33 @@ seed (`scripts/p2_smoke_seed.py --area foh --near-start`).
   simplification of `isStartFlick`, not the source `mFlickTimer` gate.
 - **Pool, roster and evidence** were updated together: the `randomizer/seed.py`
   `P2_PLAYABLE_POOL` rows for 26, 27, 84 and 93 cite the runs above.
+
+## Owner playtest fixes: Hana, Water Dumple, Empress (2026-09-30, #964)
+
+Package `output/smoke-w3-mechanics/foh-1` (previous one kept as `foh-1.prev2`).
+
+- **Hana buried idle** (`pc_p2_hana.cpp`, `pc_p2_hana_sleep_policy.h`): the old code forced clip type1
+  phase 0 while buried, which is the standing body. The source Sleep state plays type1 from frame 70
+  and loops frames 30..100 (LOOP_START/LOOP_END); waking sets speed 60 and finish-motion, which plays the
+  rest of the clip (ground burst at frame 120) before Walk. The wake radius is the source private radius
+  70 in a seed (`wakeRadius(campaign)`); staged fixtures keep 500. Logs: `P2_HANA_SLEEP`,
+  `P2_HANA_WAKE`, `P2_HANA_EMERGE_BURST`.
+- **Corpse vertex explosion**: root cause is the converter (`experimental/pikmin2_rigid.joint_matrices`
+  ignored the J3D scale-compensate joint flag; fix root 33db1fcc, PR #1002, cherry-picked here). Hana
+  dead poses went from 651 tall and a 393x30x18 line to a 215 maximum and a 72x46x72 bud. Safety nets
+  for any future bad bake: `p2motion::holdPick` steps a death-clip hold back from a spike, logged as
+  `P2_POSE_HOLD_ADJUST`; `p2pose::present` refuses non-finite or exploded poses, logged as
+  `P2_POSE_GUARD_REFUSED`. Converter-changed species in the admitted set: Hana, Sokkuri, UmiMushi,
+  Jigumo, Tadpole, SnakeCrow, SnakeWhole, BigTreasure, BombSarai, Kabuto/Fkabuto/Rkabuto,
+  FminiHoudai, Tank/Wtank (Catfish, Armor, ElecBug, Imomushi, TamagoMushi, Frog, Miulin, Otakaras and
+  DangoMushi unchanged). `output/p2-content-dense-fixed` re-extracts the ground, aquatic and snagret
+  families only.
+- **Latch positions** (native `claude/p2-stick-surface`): a P2 mesh drawn on a P1 host kept the host's
+  collision tree. Hana stuck Pikmin to a radius-9 head sphere, the Dumple to a radius-21 sphere 16 above
+  a 20-tall body. `pc_p2_body_fit.h` fits spheres to the rest pose, `pc_p2_body_coll.cpp` seats them
+  through `P2FlyerColl`; `P2_STICK` logs the latch against the part radius. Covered: Hana 84, Dumple 26,
+  Wogpole 27, Empress 30, Crawbster 94, Sokkuri, Armor, ElecBug, Imomushi, TamagoMushi, Jigumo, UmiMushi.
+  `PIKMIN_P2_BODY_COLL=0` restores the host trees.
+
+Evidence: runs hj84, hj26, hq30c, host A/B hb84 under `output/claude-orch/p2-hana-fix/runs`, frames in
+`output/claude-orch/p2-hana-fix/png`.
