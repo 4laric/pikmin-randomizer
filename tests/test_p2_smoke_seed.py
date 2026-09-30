@@ -265,3 +265,68 @@ def test_launcher_sets_env_and_runs_randomizer(tmp_path):
 def test_cli_rejects_bad_slots(tmp_path):
     with pytest.raises(SystemExit):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
+
+
+# --- captain start + verification (owner-playtest landing defect, 2026-09-30) ---
+
+def test_captain_start_data_is_the_default_origin_not_map_origin():
+    starts = smoke.load_captain_starts()
+    assert starts['foh'] == (-316.0, 2022.0)
+    assert starts['impact'] == (48.0, 1920.0)
+    assert set(starts) == set(smoke.AREAS)
+    assert all(pos != (0.0, 0.0) for pos in starts.values())
+
+
+def test_near_start_orders_by_distance_from_the_captain_start(document):
+    positions = smoke.slot_positions()
+    slots = smoke.ordinary_slots(document, 'foh', smoke.SEED_START_DAY)
+    origin = smoke.LANDING_BY_AREA['foh']
+    picked = smoke.pick_slots(slots, 3, True, positions, origin)
+    dists = [smoke.distance_xz(positions[int(s['uid'])], origin) for s in picked]
+    assert dists == sorted(dists)
+    # the old map-origin ranking put slot 2506165730 (-72, 1.4) first; it is ~2000 from the real start
+    assert int(picked[0]['uid']) != 2506165730
+
+
+def _log(captain=True, resolves=((94, 111, -300, 2000), (94, 222, -100, 2100)), extra=''):
+    lines = []
+    if captain:
+        lines.append('AUTOPLAY_NAVI state=withdraw_seek navi=(-316,2022) tgt=(0,0)')
+    for sid, uid, x, z in resolves:
+        lines.append(f'P2_SEED_RESOLVE source_id={sid} target={uid} original_type=4 x={x}.0 z={z}.0')
+    for sid, uid, x, z in resolves:
+        lines.append(f'P2_ENEMY_READY species=X source_id={sid} generator={uid} x={x}.5 y=0 z={z}.5 health=1')
+    return '\n'.join(lines) + extra
+
+
+def test_verify_passes_when_nearest_instance_is_close():
+    from scripts import p2_smoke_verify as v
+    result = v.evaluate(v.parse_log(_log()), {111: 94, 222: 94})
+    assert result['ok'], result['problems']
+    assert result['species'][94]['nearest'] < 50
+
+
+def test_verify_fails_when_nearest_instance_is_far():
+    from scripts import p2_smoke_verify as v
+    log = _log(resolves=((94, 111, -72, 1), (94, 222, 900, 200)))
+    result = v.evaluate(v.parse_log(log), {111: 94, 222: 94})
+    assert not result['ok']
+    assert any('nearest instance' in p for p in result['problems'])
+
+
+def test_verify_fails_on_unbound_slot_failure_line_and_missing_captain():
+    from scripts import p2_smoke_verify as v
+    assert not v.evaluate(v.parse_log(_log(resolves=((94, 111, -300, 2000),))), {111: 94, 222: 94})['ok']
+    transient = v.evaluate(v.parse_log(_log(extra='\nP2_CHAPPY_UNBOUND generator=111 reason=unstaged_bank')), {111: 94, 222: 94})
+    assert transient['ok'], transient['problems']  # generator 111 later reached READY
+    bad = v.evaluate(v.parse_log(_log(extra='\nP2_CHAPPY_UNBOUND generator=333 reason=x\nslot-rejected reason=y')), {111: 94, 222: 94})
+    assert sum('failure line' in p for p in bad['problems']) == 2
+    noready = v.parse_log(_log().replace('P2_ENEMY_READY', 'P2_NOTHING'))
+    assert any('did not spawn' in p for p in v.evaluate(noready, {111: 94, 222: 94})['problems'])
+    assert not v.evaluate(v.parse_log(_log(captain=False)), {111: 94, 222: 94})['ok']
+
+
+def test_explicit_captain_start_marker_wins():
+    from scripts import p2_smoke_verify as v
+    parsed = v.parse_log('AUTOPLAY_NAVI navi=(1,2)\nCAPTAIN_START x=-5.0 z=7.0\n')
+    assert parsed['captain_start'][:2] == (-5.0, 7.0)
