@@ -43,8 +43,8 @@ CLIPS = ('walk', 'search1', 'turn1', 'attack1', 'flick1', 'dead1', 'type5', 'reb
 # most; type5 is the carcass hold and needs only its two end poses.
 # #895: every clip samples the shared campaign density; the native Groink
 # draw loads through pc_p2_pose_loader.h and lerps between samples.
-POSE_LIMITS = {'walk': 16, 'search1': 16, 'turn1': 16, 'attack1': 16,
-               'flick1': 16, 'dead1': 16, 'type5': 16, 'rebirth': 16}
+POSE_LIMITS = {'walk': 24, 'search1': 24, 'turn1': 24, 'attack1': 24,
+               'flick1': 24, 'dead1': 24, 'type5': 24, 'rebirth': 24}
 
 # Native parseBank bounds (pc_p2_groink_fsm.cpp).
 MAX_FRAMES = 10000

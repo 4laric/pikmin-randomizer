@@ -116,7 +116,7 @@ def test_prepare_orchestrates_playable_first_with_stubs(tmp_path, monkeypatch):
     monkeypatch.setattr(prepare, "extract_bluekochappy", fake_blue)
     monkeypatch.setattr(prepare, "extract_miulin", fake_miulin)
     monkeypatch.setattr(prepare, "extract_dweevil", fake_dweevil)
-    def fake_kogane(iso_arg, dest):
+    def fake_kogane(iso_arg, dest, pose_limit=None):
         calls.append(9)
         target = Path(dest) / "Kogane"
         target.mkdir(parents=True)

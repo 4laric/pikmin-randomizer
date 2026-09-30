@@ -11,7 +11,7 @@ MAX_POSES = 24  # P2_SNOW_2 bank format cap (native p2animation::parse)
 # vectors), so there is no longer a sparser legacy tier. LEGACY_POSE_LIMIT is
 # kept as an alias for callers that still pass it.
 POSE_LIMIT_MAX = 64
-DEFAULT_POSE_LIMIT = 16
+DEFAULT_POSE_LIMIT = 24
 LEGACY_POSE_LIMIT = DEFAULT_POSE_LIMIT
 CLIP_BYTES = 512 * 1024
 TOTAL_BYTES = 2 * 1024 * 1024

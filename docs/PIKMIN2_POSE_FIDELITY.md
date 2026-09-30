@@ -22,16 +22,19 @@ The colour and brightness half of #895 is a separate track on
 | Constant | Value | Meaning |
 |---|---|---|
 | `POSE_LIMIT_MAX` | 64 | Native bank row cap (every native loader accepts up to 64 poses per clip). |
-| `DEFAULT_POSE_LIMIT` | 16 | Campaign density for every family (proxy and Chappy rows included). |
+| `DEFAULT_POSE_LIMIT` | 24 | Campaign density for every family (Chappy rows included; proxy rows still declare 16). Raised from 16 in #943 after the 2026-09-29 smoke test: 24 is the ceiling shared by the own-behaviour loaders (Groink, Breadbug, BombSarai, Fuefuki, BigTreasure visual). |
 | `LEGACY_POSE_LIMIT` | = `DEFAULT_POSE_LIMIT` | Kept as an alias. There is no sparser legacy tier: Blue Kochappy, Miulin, Frog, Tank and Kabuto are on the compact loader. |
 | `FALLBACK_SHAPES` | 4 | Full Shapes native keeps per clip (mirror of `p2motion::Tunables::fallbackShapes`). |
 | `RESIDENT_CLIP_BYTES` | 1 MiB | Per-clip budget, resident (owner-approved raise from 512 KiB; see below). |
 | `RESIDENT_TOTAL_BYTES` | 48 MiB | Approved per-setup budget, resident. |
 
-`scripts/p2_prepare_content.py` exposes `--pose-limit` (default 16, range
+`scripts/p2_prepare_content.py` exposes `--pose-limit` (default 24, range
 2..64). `--legacy-pose-limit` is now only an optional override for those five
 families (default: the `--pose-limit` value). The Groink per-clip table
-(`pikmin2_groink_stage.POSE_LIMITS`) is 16 for every clip, and Sarai adds the
+(`pikmin2_groink_stage.POSE_LIMITS`) is 24 for every clip, Kogane, BombSarai,
+Fuefuki and BigTreasure follow `--pose-limit` clamped to their native 24-pose
+bound, Breadbug thins its uniform samples so samples plus key-event frames
+stay within 24, and Sarai adds the
 dense uniform samples to its event and capture-window frames.
 
 ### Runtime side: `pc_port/pc_p2_pose_motion.h`

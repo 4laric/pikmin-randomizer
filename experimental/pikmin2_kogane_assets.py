@@ -161,9 +161,12 @@ def joints(model):
     return names
 
 
+MAX_POSES = 24  # pikmin2_kogane_content clip bound (native Kogane bank)
+
+
 def extract(iso, output, pose_limit=3):
-    if type(pose_limit) != int or not 2 <= pose_limit <= 8:
-        raise ValueError('Pose limit must be 2..8')
+    if type(pose_limit) != int or not 2 <= pose_limit <= MAX_POSES:
+        raise ValueError(f'Pose limit must be 2..{MAX_POSES}')
     output.mkdir(parents=True, exist_ok=False)
     index = disc_files(iso)
     hashes = {}

@@ -79,7 +79,7 @@ through `<ap-root>/Generate.py --player_files_path <work>/players
 | `--work-dir <dir>` | Manifest/actors/AP output location. |
 | `--cache-dir <dir>` | Content cache namespace (default `output/p2-play-cache`). |
 | `--ap-root <dir>` | Local Archipelago install (default above). |
-| `--pose-limit <2-8>` | Sampled poses per clip for the family banks. |
+| `--pose-limit <2-64>` | Sampled poses per clip for the family banks (default 24; own-behaviour families clamp to 24). |
 | `--stage-timeout <s>` | Seconds to wait for the binding receipt when staging. |
 | `--dry-run` | Print every step and path; do nothing. |
 

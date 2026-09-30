@@ -57,7 +57,9 @@ LEG_FEET = ('rhand3jnt', 'lhand3jnt', 'rfoot3jnt', 'lfoot3jnt')
 WEAPONS = ('elec', 'fire', 'gas', 'water')
 # Pose sampling per clip for the native draw (bounded bytes); the extractor
 # samples up to its own pose limit and we keep an even subset.
-MAX_POSES = 6
+# #943: 12 per clip. The extractor bakes up to 24 but Titan poses are ~97 KiB
+# each over 29 clips, so 12 is what fits MAX_BYTES with the weapon pellets.
+MAX_POSES = 12
 MAX_BYTES = 40 * 1024 * 1024
 
 

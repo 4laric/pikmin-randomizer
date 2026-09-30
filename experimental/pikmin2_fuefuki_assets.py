@@ -69,7 +69,7 @@ PROPER_RETAIL = {'fp01': 20.0, 'fp02': 10.0, 'fp03': 3.0, 'fp11': 0.0,
                  'fp12': 3.0, 'fp13': 10.0, 'fp21': 2.5, 'fp22': 0.0,
                  'fp31': 0.5}
 
-MAX_POSES = 12
+MAX_POSES = 24  # native pc_p2_fuefuki_teki loadPoses bound
 DEFAULT_POSES = 4
 POSE_PREFIX = 'fuefuki'
 
