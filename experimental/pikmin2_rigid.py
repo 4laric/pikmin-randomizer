@@ -54,6 +54,13 @@ def joint_matrices(blocks, local_overrides=None):
             if index>=count or index in parents: raise ValueError('Invalid joint hierarchy')
             parents[index]=stack[-1] if stack else None;current=index
     if stack or set(parents)!=set(range(count)): raise ValueError('Incomplete joint hierarchy')
+    maya=read(h,'H',8)[0]&0xF==2
+    def local_scale(index):
+        if local_overrides is not None:
+            m=local_overrides[index]
+            return [math.sqrt(sum(m[r][c]*m[r][c] for r in range(3))) for c in range(3)]
+        remap=read(j,'I',16)[0];record=index if not remap else read(j,'H',remap+2*index)[0]
+        return list(read(j,'3f',read(j,'I',12)[0]+64*record+4))
     matrices={};visiting=set()
     def world(index):
         if index in matrices: return matrices[index]
@@ -63,7 +70,15 @@ def joint_matrices(blocks, local_overrides=None):
         at=read(j,'I',12)[0]+64*record
         if local_overrides is None and read(j,'3f',at+4)!=(1.,1.,1.): raise ValueError('Scaled rigid joints not supported')
         matrix=local_matrix(read(j,'3h',at+16),read(j,'3f',at+24)) if local_overrides is None else local_overrides[index]
-        if parents[index] is not None: matrix=compose(world(parents[index]),matrix)
+        parent=parents[index]
+        if maya and parent is not None and j[at+2]==1:
+            # J3DMtxCalcCalcTransformMaya (JSystem J3DJoint.cpp:311): a scale-compensate
+            # joint divides the parent's local scale back out of its own basis
+            # (rows of the 3x3 scaled by 1/parentS; translation untouched). The
+            # parent's scale still applies to this joint's translation.
+            inverse=[1.0/s if abs(s)>1e-30 else 1.0 for s in local_scale(parent)]
+            matrix=[[matrix[r][c]*inverse[r] if c<3 else matrix[r][c] for c in range(4)] for r in range(3)]
+        if parent is not None: matrix=compose(world(parent),matrix)
         matrices[index]=matrix;visiting.remove(index);return matrix
     return [world(i) for i in range(count)]
 
