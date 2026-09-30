@@ -565,11 +565,11 @@ def build(args):
     starting_area = AREAS[args.area][0]
     from randomizer.seed import P2_REQUIRES_PURPLE
     pool = species_pool(assignments, bosses)
-    # A Purple-only species (seed.P2_REQUIRES_PURPLE, e.g. the Giant Breadbug) makes this a
+    # A species listed in seed.P2_REQUIRES_PURPLE (currently none; the Giant Breadbug no longer is) makes this a
     # Purple-campaign seed; the launcher then needs the Purple banks.
     needs_purple = sorted(set(pool) & set(P2_REQUIRES_PURPLE))
     if needs_purple and not (args.purple_bank and args.purple_motion):
-        raise SmokeSeedError(f"species {needs_purple} only take Purple presses "
+        raise SmokeSeedError(f"species {needs_purple} need Purple "
                              f"({'; '.join(P2_REQUIRES_PURPLE[i] for i in needs_purple)}): "
                              "pass --purple-bank and --purple-motion")
     manifest = generate(args.seed, 'solo', 'Player1', starting_area=starting_area,

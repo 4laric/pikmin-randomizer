@@ -697,16 +697,18 @@ PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 # manifest (no native capability: the native hello echoes the capability list, and
 # the Purple banks are already an explicit run-time opt-in); ``randomizer run`` then
 # refuses to launch that seed without ``--purple-bank``/``--purple-motion``.
-#   40 Giant Breadbug: OoPanModoki::Obj::pressCallBack (panModoki.cpp:1738-1744)
-#      returns false for any Pikmin whose kind is not Purple, and the base
-#      damageCallBack (panModoki.cpp:450-457) only forwards damage while the body
-#      is bittered, an item Pikmin 1 does not have. Without Purple presses the
-#      only damage left is the one-off container suck (2000 -> 1000), so the
-#      Giant could never die, never be carried and would permanently replace the
-#      P1 boss it took the arena from (#958).
-P2_REQUIRES_PURPLE = {
-    40: "OoPanModoki::pressCallBack panModoki.cpp:1738-1744: Purple presses only",
-}
+# The mechanism is generic and currently EMPTY. 40 Giant Breadbug was listed here
+# (#958) on the claim that only Purple presses hurt it; the owner's red-only kill
+# (2026-09-30) and the source disproved that. P2's damage paths for OoPanModoki:
+#   - latched attacks do nothing (PanModokiBase::Obj::damageCallBack,
+#     panModoki.cpp:450-456, bitter-gated);
+#   - non-Purple presses/hipdrops are refused (OoPanModoki::pressCallBack
+#     panModoki.cpp:1738-1744; hipdropCallBack 521-524);
+#   - bombs hurt it (EnemyBase::bombCallBack, enemyBase.cpp:2908-2912);
+#   - an Onion suck of the pellet it grabbed, carried by ANY colour, does
+#     suckDamage 1000 of 2000 health, every time (pelletState.cpp:541-549 ->
+#     panModoki.cpp:1381-1392 -> panModokiState.cpp:453-481). It is not one-off.
+P2_REQUIRES_PURPLE = {}
 
 
 def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False):

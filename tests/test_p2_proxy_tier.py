@@ -111,7 +111,7 @@ def _assert_playable_first(layout):
     from randomizer.seed import _default_admitted_placement
 
     base = {str(slot["uid"]) for slot in _default_admitted_placement()["slots"]}
-    playable = set(PLAYABLE_P2_SPECIES) - {40}   # 40 is Purple-campaign only (#958)
+    playable = set(PLAYABLE_P2_SPECIES)   # 40 needs no Purple (owner ruling 2026-09-30, #958)
     unplaced_playable = playable & set(layout.get("unplaced", []))
     on_base = [b["source_id"] for b in layout["bindings"] if b["target"] in base]
     if unplaced_playable:
@@ -149,8 +149,7 @@ def test_full_plus_proven_is_playable_plus_every_proven_row():
                         p2_proxy_tier="proven", p2_species="full")
     layout = manifest["p2_layout"]
     bound = {b["source_id"] for b in layout["bindings"]}
-    # #958: 40 (Giant Breadbug) is Purple-campaign only.
-    assert bound | set(layout.get("unplaced", [])) == (set(PLAYABLE_P2_SPECIES) - {40}) | set(tier_ids("proven"))
+    assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids("proven"))
     _assert_playable_first(layout)
     validate(manifest)
 
@@ -166,7 +165,7 @@ def test_full_plus_proven_equals_playable_six(monkeypatch):
     # #893: 37 playable species on 35 slots; with no proven proxies the
     # layout is the sampled playable pool.
     assert bound <= set(PLAYABLE_P2_SPECIES)
-    assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES) - {40}
+    assert bound | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
     validate(manifest)
 
 

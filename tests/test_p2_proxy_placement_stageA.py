@@ -459,7 +459,7 @@ def test_sampled_layout_covers_the_full_pool():
                           p2_proxy_tier="declared")["p2_layout"]
         counts = Counter(binding["source_id"] for binding in layout["bindings"])
         assert not layout.get("unplaced"), layout.get("unplaced")
-        assert set(PLAYABLE_P2_SPECIES) - {40} <= set(counts)   # 40: Purple-campaign seeds only (#958)
+        assert set(PLAYABLE_P2_SPECIES) <= set(counts)   # 40 needs no Purple (#958 ruling 2026-09-30)
         held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
         for binding in layout["bindings"]:
             if binding["target"] in held:
