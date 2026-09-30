@@ -52,6 +52,7 @@ AREAS = {
     'spring': ('spring', 3, 'spring'),
 }
 LANDING_XZ = (0.0, 0.0)
+SEED_START_DAY = 2  # generate() start profiles are '<area>-day2' (native START_STAGE day=2)
 # Measured captain start per area (native.log AUTOPLAY_NAVI at rest, day start).
 LANDING_BY_AREA = {'foh': (-316.0, 2022.0), 'forest': (-316.0, 2022.0)}
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
@@ -69,7 +70,7 @@ def load_default_document():
     return json.loads((ROOT / 'docs' / 'PIKMIN2_ADMITTED_PLACEMENT.json').read_text(encoding='utf-8'))
 
 
-def ordinary_slots(document, area):
+def ordinary_slots(document, area, start_day=None):
     """Ordinary enemy slots of ``area``: unprotected, non-boss, not a held-part
     anchor; document order. Native probe evidence is not required (#948: an
     unprobed slot is a to-do, not a restriction)."""
@@ -80,6 +81,11 @@ def ordinary_slots(document, area):
     out = []
     for slot in document['slots']:
         if slot['stage'] != stage or slot.get('protected') or slot.get('boss_slot'):
+            continue
+        # A slot whose first_day is after the seed's start day never spawns on
+        # day 1 of the run (CONTRIBUTING "No gates"): skip it (wave-3 polish
+        # 75/78: four saturation slots silently never bound).
+        if start_day is not None and int(slot.get('first_day', 0)) > start_day:
             continue
         if slot['uid'] in held:
             continue
@@ -402,7 +408,7 @@ def build(args):
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
     origin = parse_origin(args.origin) if args.origin else LANDING_BY_AREA.get(args.area, LANDING_XZ)
-    slots = pick_slots(ordinary_slots(document, args.area), args.slots, args.near_start, positions, origin)
+    slots = pick_slots(ordinary_slots(document, args.area, SEED_START_DAY), args.slots, args.near_start, positions, origin)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
