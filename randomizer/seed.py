@@ -442,18 +442,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 56,
-        "enum_name": "Damagumo",
-        "family": "long_legs",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3",
-            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 56 -> long_legs "
-                         "(experimental/pikmin2_long_legs_install)",
-        },
-    },
-    {
         "source_id": 63,
         "enum_name": "Jigumo",
         "family": "aquatic",

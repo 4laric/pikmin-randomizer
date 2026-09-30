@@ -1035,8 +1035,8 @@
     "56": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "admitted",
-      "eligibility_reason": "Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 (P2 Beady Long Legs is pretty broken; the P1 native Beady stays; the P2 species is out of the playable pool, native code kept). History: Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1050,6 +1050,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: beady long legs pretty broken i would just give up on that one, the P1 native version works great). The gate results and receipt below are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
