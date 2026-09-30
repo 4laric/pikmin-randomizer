@@ -62,6 +62,11 @@ def pose_name(clip, number, source_id=38):
     return f'{VARIANTS[source_id]["prefix"]}_{clip}_{number:02}.mod'
 
 
+def nest_name(source_id=38):
+    """Native lair mesh filename (pc_p2_breadbug_teki.cpp loadBank)."""
+    return f'{VARIANTS[source_id]["prefix"]}_nest.mod'
+
+
 # ------------------------------------------------------------------ parms
 def parse_enemyparm(raw):
     """Mirror of native ``p2breadbugfsm::parseEnemyParm`` block detection.
@@ -262,6 +267,20 @@ def plan(source, source_id=None):
             room.append((pose_name(name, index, source_id), data))
         events = [(int(e[0]), int(e[1])) for e in clip.get('events', [])]
         rows.append(dict(anim_id=anim, name=name, frames=int(clip['source_frames']), events=events, poses=frames))
+    # Lair model (#1022): optional so pre-#1022 extractor trees still stage.
+    nest = manifest.get('nest')
+    if nest:
+        data = (source / nest['file']).read_bytes()
+        if not data or len(data) > MESH_BYTES:
+            raise BreadbugStageError(f'nest mesh out of budget: {nest["file"]}')
+        if nest.get('sha256') and hashlib.sha256(data).hexdigest() != nest['sha256']:
+            raise BreadbugStageError(f'nest hash mismatch: {nest["file"]}')
+        if nest['file'] != nest_name(source_id):
+            raise BreadbugStageError(f'unexpected nest file name: {nest["file"]}')
+        total += len(data)
+        if total > TOTAL_BYTES:
+            raise BreadbugStageError('Breadbug pose budget exceeded')
+        room.append((nest['file'], data))
     parm = source / 'enemyparm.txt'
     if not parm.is_file():
         raise BreadbugStageError(f'{variant["enum_name"]} enemyparm.txt missing from the extractor tree')
