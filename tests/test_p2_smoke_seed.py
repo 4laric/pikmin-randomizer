@@ -262,6 +262,55 @@ def test_launcher_sets_env_and_runs_randomizer(tmp_path):
     assert "Push-Location '" + str(smoke.ROOT) + "'" in text
 
 
+def test_ordinary_slots_can_drop_slots_gated_behind_a_later_day(document):
+    every = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    assert day2 and len(day2) < len(every)
+    assert all(int(s.get('first_day', 0)) <= smoke.START_DAY for s in day2)
+    assert {s['uid'] for s in day2} <= {s['uid'] for s in every}
+    assert smoke.ordinary_slots(document, 'foh', max_first_day=99) == every
+
+
+def test_pick_uids_names_exact_ordinary_slots(document):
+    slots = smoke.ordinary_slots(document, 'foh', max_first_day=smoke.START_DAY)
+    want = [int(slots[3]['uid']), int(slots[1]['uid'])]
+    picked = smoke.pick_uids(slots, want)
+    assert [int(s['uid']) for s in picked] == want
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.pick_uids(slots, [12345])
+    assert smoke.parse_uids('1, 2') == [1, 2]
+    for bad in ('', 'x', '1,1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_uids(bad)
+
+
+def test_landing_is_the_measured_captain_start_not_the_origin():
+    assert smoke.LANDING['foh'] != smoke.LANDING_XZ
+    assert smoke.parse_landing('-464, 1967') == (-464.0, 1967.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_landing('nope')
+
+
+def test_launcher_sets_and_clears_extra_env(tmp_path):
+    text = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                               tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS,
+                               extra_env={'PIKMIN_P2_KING_WAKE_RANGE': '400'})
+    assert "$env:PIKMIN_P2_KING_WAKE_RANGE = '400'" in text
+    assert "Remove-Item Env:PIKMIN_P2_KING_WAKE_RANGE" in text
+    assert text.index("$env:PIKMIN_P2_KING_WAKE_RANGE") < text.index('Push-Location')
+    plain = smoke.launcher_text(tmp_path / 's.json', tmp_path / 'content', tmp_path / 'actors.json',
+                                tmp_path, r'C:\x\nectar.exe', smoke.DEFAULT_ASSETS)
+    assert 'PIKMIN_P2_KING_WAKE_RANGE' not in plain
+
+
+def test_parse_env_validates():
+    assert smoke.parse_env(['A_B=1', 'C=x=y']) == {'A_B': '1', 'C': 'x=y'}
+    assert smoke.parse_env(None) == {}
+    for bad in ('NOEQUALS', '=v', '1BAD=v', 'A-B=v', smoke.SMOKE_ENV + '=1'):
+        with pytest.raises(smoke.SmokeSeedError):
+            smoke.parse_env([bad])
+
+
 def test_cli_rejects_bad_slots(tmp_path):
     with pytest.raises(SystemExit):
         smoke.main(['--area', 'foh', '--slots', 'two', '--species', '58', '--seed', 's', '--out', str(tmp_path)])
