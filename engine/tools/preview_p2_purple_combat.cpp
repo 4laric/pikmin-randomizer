@@ -81,6 +81,7 @@ class PurpleCombatApp : public PlugPikiApp {
         const char* mode=std::getenv("P2_PURPLE_COMBAT_MODE");
         return mode && (std::strcmp(mode,"dwarf_quake")==0 || crushMode());
     }
+    Vector3f dwarfObservationPosition;
     BTeki* dwarf=nullptr;
     unsigned dwarfUid=0;
     unsigned long long dwarfLifetime=0;
@@ -400,7 +401,13 @@ class PurpleCombatApp : public PlugPikiApp {
         }
         if(crushPressed && !crushIsolated) {
             if(acquired->isStickTo()) acquired->endStickObject();
-            acquired->changeMode(PikiMode::FreeMode,n); acquired->resetPosition(parkPosition); n->resetPosition(parkPosition);
+            acquired->changeMode(PikiMode::FreeMode,n); acquired->resetPosition(parkPosition);
+            const float observeX=dwarf->mSRT.t.x+112.f;
+            const float observeY=mapMgr->getMinY(observeX,dwarf->mSRT.t.z,true);
+            require(std::isfinite(observeY),"observer terrain must be finite");
+            dwarfObservationPosition=Vector3f(observeX,observeY,dwarf->mSRT.t.z);
+            n->resetPosition(dwarfObservationPosition);
+            std::printf("P2_PURPLE_QUAKE_OBSERVER_POSITION uid=%u dx=112 dz=0 enemy_y=%.3f captain_y=%.3f native_grid_modified=0\n",dwarfUid,dwarf->mSRT.t.y,dwarfObservationPosition.y);
             crushIsolated=true;
         }
         require(present || crushPressed,"crush target disappeared before press evidence");
@@ -453,6 +460,17 @@ class PurpleCombatApp : public PlugPikiApp {
             require(std::isfinite(dwarfHealth) && dwarfHealth>0 && std::fabs(dwarfHealth-dwarf->getMaxLife())<0.01f
                 && dwarf->mStoredDamage==0.f,"quake requires undamaged full-health dwarf");
             parkPosition=n->mSRT.t;
+            // Keep the captain/camera near the untouched receiver during
+            // observation; returning to the distant acquisition site culls
+            // the native enemy mid-bounce. The Purple remains parked there.
+            require(std::isfinite(dwarf->mCollisionRadius) && dwarf->mCollisionRadius>=0.f
+                && dwarf->mCollisionRadius+60.f<112.f,"observer must remain outside quake annulus");
+            const float observeX=dwarf->mSRT.t.x+112.f;
+            const float observeY=mapMgr->getMinY(observeX,dwarf->mSRT.t.z,true);
+            require(std::isfinite(observeY),"observer terrain must be finite");
+            dwarfObservationPosition=Vector3f(observeX,observeY,dwarf->mSRT.t.z);
+            std::printf("P2_PURPLE_QUAKE_OBSERVATION uid=%u captain_x=%.3f captain_y=%.3f captain_z=%.3f offset=%.3f captain_position_staged=1 enemy_culling_modified=0\n",
+                dwarfUid,dwarfObservationPosition.x,dwarfObservationPosition.y,dwarfObservationPosition.z,112.f);
             Iterator squad(pikiMgr);
             CI_LOOP(squad) {
                 Piki* p=static_cast<Piki*>(*squad);
@@ -538,7 +556,13 @@ class PurpleCombatApp : public PlugPikiApp {
         const bool sourceReady=acquired->getState()==PIKISTATE_Normal && !pc_p2_purple_flight_active(acquired) && !acquired->isStickTo();
         if(quakeFlying && sourceReady) {
             require(quakeRecovery && quakePositionChecked,"throw ended without observed ground recovery (possible direct collision)");
-            acquired->changeMode(PikiMode::FreeMode,n); acquired->resetPosition(parkPosition); n->resetPosition(parkPosition);
+            acquired->changeMode(PikiMode::FreeMode,n); acquired->resetPosition(parkPosition);
+            const float observeX=dwarf->mSRT.t.x+112.f;
+            const float observeY=mapMgr->getMinY(observeX,dwarf->mSRT.t.z,true);
+            require(std::isfinite(observeY),"observer terrain must be finite");
+            dwarfObservationPosition=Vector3f(observeX,observeY,dwarf->mSRT.t.z);
+            n->resetPosition(dwarfObservationPosition);
+            std::printf("P2_PURPLE_QUAKE_OBSERVER_POSITION uid=%u dx=112 dz=0 enemy_y=%.3f captain_y=%.3f native_grid_modified=0\n",dwarfUid,dwarf->mSRT.t.y,dwarfObservationPosition.y);
             quakeFlying=false;
         }
         if(crushMode() && quakeFit && !quakeFlying && sourceReady && eligible && stun.phase==2 && stun.fitElapsed>=1.f) {
