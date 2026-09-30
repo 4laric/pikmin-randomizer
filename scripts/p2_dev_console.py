@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -81,6 +82,36 @@ def ensure_content(iso, content: Path, species, *, run=subprocess.run, allow_spa
     return staged
 
 
+def refresh_session_cache(session: Path, content: Path):
+    """Drop the session's staged-content cache when the content root changed.
+
+    ``install_layout`` keys its session cache by bindings + actors only, not by
+    content, so the fixed dev session dir would otherwise replay a stale
+    (sparse) staging after the content root is re-extracted (#970). A stamp of
+    the content path + ``prepared.json`` detects the change; the old cache is
+    renamed ``p2-content-cache.stale``. Returns True when it was reset.
+    """
+    import hashlib
+    session, content = Path(session), Path(content)
+    prepared = content / "prepared.json"
+    digest = hashlib.sha256(str(content.resolve()).encode() + b"|" +
+                            (prepared.read_bytes() if prepared.is_file() else b"")).hexdigest()
+    stamp = session / "p2-content-cache.stamp"
+    cache = session / "p2-content-cache"
+    if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == digest:
+        return False
+    reset = False
+    if cache.exists():
+        stale = session / "p2-content-cache.stale"
+        if stale.exists():
+            shutil.rmtree(stale)
+        cache.rename(stale)
+        reset = True
+    session.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(digest + "\n", encoding="utf-8")
+    return reset
+
+
 def write_manifest(session: Path, species, seed_name):
     manifest = dev_console.build_dev_manifest(species, seed_name)
     session.mkdir(parents=True, exist_ok=True)
@@ -110,6 +141,8 @@ def main(argv=None):
     if not staged:
         raise SystemExit("no staged species; nothing to launch")
     session = args.session_dir.resolve()
+    if refresh_session_cache(session, args.content):
+        print("P2_DEV_CONTENT session staging cache reset (content root changed)", flush=True)
     manifest, manifest_path = write_manifest(session, staged, args.seed_name)
     actors = dev_console.actor_bindings(manifest["p2_layout"])
     (session / "dev-actors.json").write_text(json.dumps(actors, indent=1), encoding="utf-8")

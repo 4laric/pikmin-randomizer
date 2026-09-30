@@ -154,3 +154,19 @@ def test_native_species_and_arena_tables_match_root():
     arenas = re.findall(r"\{\"(\w+)\", (\d), (-?[\d.]+)f, (-?[\d.]+)f, (-?[\d.]+)f\}", text)
     assert [(a[0], int(a[1]), [float(a[2]), float(a[3]), float(a[4])]) for a in arenas] == \
         [(row["id"], row["stage"], row["center"]) for row in P1_BOSS_ARENAS]
+
+
+def test_session_cache_reset_when_content_root_changes(tmp_path):
+    from scripts import p2_dev_console as launcher
+    content = tmp_path / "content"
+    content.mkdir()
+    (content / "prepared.json").write_text(json.dumps({"pose_limit": 12}), encoding="utf-8")
+    session = tmp_path / "session"
+    (session / "p2-content-cache" / "p2bind-x").mkdir(parents=True)
+    assert launcher.refresh_session_cache(session, content) is True   # no stamp yet: stale cache dropped
+    assert not (session / "p2-content-cache").exists()
+    assert (session / "p2-content-cache.stale" / "p2bind-x").is_dir()
+    (session / "p2-content-cache").mkdir()
+    assert launcher.refresh_session_cache(session, content) is False  # unchanged content keeps the cache
+    (content / "prepared.json").write_text(json.dumps({"pose_limit": 24}), encoding="utf-8")
+    assert launcher.refresh_session_cache(session, content) is True   # re-extracted content resets it
