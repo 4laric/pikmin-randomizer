@@ -43,7 +43,11 @@ def _slots(document):
 def test_shared_uid_set_is_exactly_the_overlap():
     admitted = set(_slots(_load("PIKMIN2_ADMITTED_PLACEMENT.json")))
     proxy = set(_slots(_load("PIKMIN2_PROXY_PLACEMENT.json")))
-    assert admitted & proxy == set(SHARED)
+    # #948: the admitted document carries every campaign generator, so the
+    # proxy sibling's 16 uids are all admitted slots too. The two probed
+    # singletons remain the shared-evidence pair.
+    assert proxy <= admitted
+    assert set(SHARED) <= admitted & proxy
     assert set(placement.PROXY_SHARED_UIDS) == set(SHARED)
     assert placement.PROXY_SHARED_UIDS <= placement.PROXY_SINGLETON_UIDS
 

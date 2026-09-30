@@ -79,23 +79,26 @@ def test_fitting_pool_keeps_the_legacy_fill():
     assert set(bound) == set(fit), "every selected species appears when the selection fits"
 
 
-def test_committed_pool_samples_four_ordinary_species_out():
+def test_committed_pool_fits_the_constraint_derived_targets():
     # 41 admitted species (Groink 78 #888, Demon 32 #215, Titan Dweevil 73
     # #246, Breadbug 38 #898, Antenna Beetle 41 #245, Dirigibug 58 #244). The
-    # Crawbster 94 and the Titan 73 live only in boss arenas (#899), so 39
-    # species compete for the 35 ordinary slots and four are sampled out per
-    # seed (#893).
+    # Crawbster 94 and the Titan 73 live in boss arenas for real seeds
+    # (#899). Since #948 the ordinary target set is every campaign generator
+    # (72 slots), so the 39 ordinary species all fit: nothing is sampled out,
+    # the legacy fill binds every target and no species is dropped for lack
+    # of a slot. (Sampling, #893, still applies to a trimmed document below.)
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == len(ordinary_slots(document)) + 6
+    assert len(pool) == 41
+    assert len(ordinary_slots(document)) == 72
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)
-    assert layout["density"] == DENSITY_SAMPLED
+    assert layout["density"] == DENSITY_LEGACY
     assert arena_bosses(layout) == {73, 94}
-    assert len(bound) == len(set(bound)) == len(ordinary_slots(document))
-    assert len(layout["unplaced"]) == 4
-    assert set(layout["unplaced"]) == pool - set(bound) - arena_bosses(layout)
+    assert "unplaced" not in layout
+    assert set(bound) == pool - arena_bosses(layout)
+    assert len(bound) == len(ordinary_slots(document))
 
 
 def test_oversubscribed_pool_samples_distinct_species():

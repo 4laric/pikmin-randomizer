@@ -73,15 +73,12 @@ def main():
         try:
             manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, prerelease_trap_weight=args.prerelease_trap_weight, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, death_link=args.death_link, death_link_pikmin=args.death_link_pikmin, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.prerelease_trap_weight or args.goal == "emperor_bulblax"), p2_enemies=args.p2_enemies, p2_species=(None if not args.p2_species else 'playable' if args.p2_species == 'playable' else 'full' if args.p2_species == 'full' else [int(x) for x in args.p2_species.split(',')]), p2_placement=(json.loads(args.p2_placement.read_text(encoding='utf-8')) if args.p2_placement else None), p2_density=args.p2_density, p2_proxy_tier=args.p2_proxy_tier, progressive_maturity=True, progressive_day_length=args.progressive_day_length, day_length_step=args.day_length_step, whistle_pluck_item=args.whistle_pluck_item)
         except ValueError as exc:
-            # Roster rfix (#871): 36 admitted identities exceed the 33-slot
-            # committed target set, so bare --p2-enemies (no --p2-species)
-            # fails closed in the bridge. Report it as a clean actionable
-            # CLI error (exit 2), never an uncaught traceback.
+            # Report a bridge/placement rejection as a clean actionable CLI
+            # error (exit 2), never an uncaught traceback.
             print(f"Error: {exc}", file=sys.stderr)
             if args.p2_enemies and not args.p2_species:
-                print("Hint: the admitted cohort (36) exceeds the committed "
-                      "33-slot target set; retry with --p2-species playable "
-                      "(33-on-33 exact fit).", file=sys.stderr)
+                print("Hint: retry with --p2-species playable, or pass a "
+                      "--p2-placement document that accepts the pool.", file=sys.stderr)
             raise SystemExit(2)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:

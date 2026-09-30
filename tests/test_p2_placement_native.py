@@ -134,22 +134,26 @@ class TestEndToEnd:
         slot_record = next(s for s in stamped['slots'] if s['uid'] == uid)
         return p2p.evaluate(slot_record, profile())
 
-    def test_denied_before_stamp_legal_after(self):
+    def test_legal_before_and_after_stamp(self):
+        # #948: probe evidence is recorded, not required; the slot's physical
+        # fields carry the constraint.
         doc = ground_document(1)
-        assert self._evaluate_slot(doc, 1)['status'] == 'denied'
+        assert self._evaluate_slot(doc, 1)['status'] == 'legal'
         stamped = p2n.stamp_evidence(doc, {'schema': p2n.PROBE_SCHEMA, 'slots': [
             {'uid': 1, 'xyz': True, 'terrain': True, 'route': True},
         ]})
         assert self._evaluate_slot(stamped, 1)['status'] == 'legal'
 
-    def test_route_false_stays_denied(self):
+    def test_route_false_is_recorded_not_a_denial(self):
         doc = ground_document(1)
         stamped = p2n.stamp_evidence(doc, {'schema': p2n.PROBE_SCHEMA, 'slots': [
             {'uid': 1, 'xyz': True, 'terrain': True, 'route': False},
         ]})
+        slot_record = next(s for s in stamped['slots'] if s['uid'] == 1)
+        assert slot_record['evidence']['route'] is False
         result = self._evaluate_slot(stamped, 1)
-        assert result['status'] == 'denied'
-        assert 'slot lacks accepted native placement evidence' in result['reasons']
+        assert result['status'] == 'legal'
+        assert 'slot lacks accepted native placement evidence' not in result['reasons']
 
 
 class TestAuditNative:

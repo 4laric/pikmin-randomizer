@@ -18,7 +18,7 @@ EXPECTED = {
                 'terrains': ['ground']},
     'Imomushi': {'footprint_radius': 17.5, 'helper_budget': 0, 'requires_burrow_ground': True,
                  'terrains': ['ground']},
-    'TamagoMushi': {'footprint_radius': 18, 'helper_budget': 10, 'requires_burrow_ground': True,
+    'TamagoMushi': {'footprint_radius': 18, 'helper_budget': 0, 'requires_burrow_ground': True,
                     'terrains': ['ground', 'underground']},
     'Sokkuri': {'footprint_radius': 25, 'helper_budget': 0, 'requires_burrow_ground': False,
                 'terrains': ['ground', 'mixed', 'water']},
@@ -122,8 +122,9 @@ class GroundPlacementFactsTests(unittest.TestCase):
         small = ground_slot(radius=50)
         self.assertTrue(placement.compatibility(small, profiles['Hana']))
         self.assertEqual(placement.compatibility(ground_slot(), profiles['Hana']), [])
-        # TamagoMushi's group budget exceeds a slot with no helper capacity.
-        self.assertTrue(placement.compatibility(ground_slot(), profiles['TamagoMushi']))
+        # #948: TamagoMushi's 10/30 group cap is a manager parameter, not a slot need,
+        # so it is compatible with a slot that has no helper capacity.
+        self.assertEqual(placement.compatibility(ground_slot(), profiles['TamagoMushi']), [])
         self.assertEqual(
             placement.compatibility(ground_slot(helper_capacity=10), profiles['TamagoMushi']), [])
 

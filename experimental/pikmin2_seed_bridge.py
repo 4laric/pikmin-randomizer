@@ -33,6 +33,11 @@ from experimental.pikmin2_enemy_roster import (
 from randomizer.seed import SeedRandom
 
 LAYOUT_VERSION = "p2-enemy-layout-v1"
+# Native parser limit on ENEMY_P2 bindings per seed (pc_randomizer.cpp
+# kP2MaxBindings). It was 64 until #948; the constraint-derived target set
+# (every campaign generator, holders and arenas) needs more. Runtime cap:
+# native refuses a seed above it.
+P2_MAX_BINDINGS = 256
 PROTOCOL_HEADER = "ENEMY_P2"
 PROTOCOL_VERSION = 1
 
@@ -93,11 +98,11 @@ def _boss_slot_uids(document) -> set[str]:
 
 # P1 ship-part holder teki slots (#901, randomizer/p2_held_parts.py): a slot
 # whose held_part_transfer flag is set is listed in the document's
-# ``held_parts`` and accepted for the compatible ordinary identities, but it
-# never joins the ordinary target fill. Its own RNG stream binds one pool
-# species there after the ordinary layout, so the ordinary layout is
-# byte-identical with or without the holder slots. The P2 occupant holds the
-# P1 holder's part natively (pc_held_part.cpp).
+# ``held_parts`` and accepted for the compatible ordinary identities. It is
+# bound by its own RNG stream after the ordinary layout (a seed-stability
+# design choice, #951 U18, not a placement rule: the occupant is drawn from
+# the same pool). The P2 occupant holds the P1 holder's part natively
+# (pc_held_part.cpp).
 HELD_PART_KEY = "held_parts"
 HELD_PART_VERSION = "p2-held-part-v1"
 
@@ -222,10 +227,10 @@ def _attach_boss_arenas(layout: dict, seed, slot, document, roster: list[RosterE
     combined = list(layout["bindings"]) + bindings
     if len({binding["target"] for binding in combined}) != len(combined):
         raise SeedBridgeError("boss arena target collides with an ordinary P2 target")
-    if len(combined) > 64:
+    if len(combined) > P2_MAX_BINDINGS:
         raise SeedBridgeError(
-            "P2 layout exceeds the native 64-binding cap "
-            "(pc_randomizer.cpp:256,644; pc_p2_proxy_table.h:63)")
+            f"P2 layout exceeds the native {P2_MAX_BINDINGS}-binding cap "
+            "(pc_randomizer.cpp kP2MaxBindings)")
     layout["bindings"] = _sort_bindings(combined)
     layout[BOSS_ARENA_KEY] = info
     return layout
@@ -347,9 +352,12 @@ def _accepted_placement_targets(document, roster: list[RosterEntry]) -> dict[int
 def binding_targets_from_placement(document, roster: list[RosterEntry] | None = None) -> list[str]:
     """Ordered lane 04 constraint-compatible targets for the admitted cohort.
 
-    Delegates to ``randomizer.p2_placement_catalog.binding_targets_for_sources``,
-    which is lane 04's flat binding-target contract (constraint compatibility
-    only; acceptance is enforced separately by :func:`resolve_placement_layout`).
+    The ordinary target set is the *union* of every admitted identity's
+    constraint-compatible slots (#948): a water slot that only the Skitter
+    Leaf can take is still a target, paired below with the identities the
+    document accepts there. (Before #948 this was the intersection across the
+    cohort, which silently dropped every slot any one species could not use.)
+    Acceptance is enforced separately by :func:`resolve_placement_layout`.
     """
     from randomizer import p2_placement_catalog as catalog
     from randomizer.p2_placement import validate_document
@@ -366,7 +374,7 @@ def binding_targets_from_placement(document, roster: list[RosterEntry] | None = 
         return []
     document = validate_document(document)
     try:
-        targets = catalog.binding_targets_for_sources(admitted, document=document)
+        targets = catalog.binding_targets_union_for_sources(admitted, document)
     except ValueError as exc:
         raise SeedBridgeError(f"placement catalog rejected the admitted cohort: {exc}") from exc
     if not targets:
@@ -425,6 +433,23 @@ def _proxy_accepted_targets(document, proxy_rows, roster: list[RosterEntry], pro
             tokens -= pack_uids
         result[source_id] = tokens
     return result
+
+
+def _least_contended(remaining, eligible, source_id):
+    """Targets ``source_id`` may take, narrowed to the ones fewest species want.
+
+    The first pass gives every species one target. With a terrain-mixed
+    target set (#948: ground, water, air and shore slots) a flexible species
+    that took a ground slot could starve a ground-only species even though a
+    water or air slot was free for it, so a species is steered to its least
+    contended targets first (deterministic; the seed still shuffles ties).
+    """
+    choices = [target for target in remaining if source_id in eligible[target]]
+    if not choices:
+        return choices
+    contention = {target: len(eligible[target]) for target in choices}
+    lowest = min(contention.values())
+    return [target for target in choices if contention[target] == lowest]
 
 
 def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None, *,
@@ -547,7 +572,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         remaining = sorted(eligible, key=lambda item: (len(item), item))
         assigned: dict[str, int] = {}
         for source_id in identity_order:
-            choices = [target for target in remaining if source_id in eligible[target]]
+            choices = _least_contended(remaining, eligible, source_id)
             if not choices:
                 continue
             target = rng.shuffle(choices)[0]
@@ -564,10 +589,10 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
             fresh = [source_id for source_id in eligible[target]
                      if source_id not in covered_so_far]
             assigned[target] = rng.shuffle(fresh or eligible[target])[0]
-        if len(assigned) > 64:
+        if len(assigned) > P2_MAX_BINDINGS:
             raise SeedBridgeError(
-                "P2 layout exceeds the native 64-binding cap "
-                "(pc_randomizer.cpp:256,644; pc_p2_proxy_table.h:63)")
+                f"P2 layout exceeds the native {P2_MAX_BINDINGS}-binding cap "
+                "(pc_randomizer.cpp kP2MaxBindings)")
         covered = set(assigned.values())
         unplaced = sorted(set(pool) - covered)
         bindings = [{"target": target, "source_id": source_id,
@@ -633,7 +658,7 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     # and remain stable functions of ``(seed, slot, document, species)``.
     assigned = {}
     for source_id in identity_order:
-        choices = [target for target in remaining if source_id in eligible[target]]
+        choices = _least_contended(remaining, eligible, source_id)
         if not choices:
             continue
         target = rng.shuffle(choices)[0]

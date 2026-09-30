@@ -49,12 +49,14 @@ def test_apply_evidence_admits_only_observed_slot_and_listed_identities():
     assert slot['evidence'] == {'xyz': True, 'terrain': True, 'route': True}
 
     result = placement.audit(document)
-    assert result['admitted'] == {'YellowKochappy': [row['uid']], 'BlueKochappy': [row['uid']]}
-    # Only the observed slot is raised: it is the sole admitted slot for the
-    # listed identities, it is not in their denied list, and unlisted identities
-    # have no admitted slot at all.
-    assert row['uid'] not in result['denied']['YellowKochappy']
-    assert row['uid'] not in result['denied']['BlueKochappy']
+    # #948: evidence is recorded on the observed slot but gates nothing; the
+    # listed identities are admitted on every constraint-compatible slot
+    # (the observed one included) and unlisted identities on none.
+    assert set(result['admitted']) == {'YellowKochappy', 'BlueKochappy'}
+    assert row['uid'] in result['admitted']['YellowKochappy']
+    assert row['uid'] in result['admitted']['BlueKochappy']
+    assert row['uid'] not in result['denied'].get('YellowKochappy', [])
+    assert row['uid'] not in result['denied'].get('BlueKochappy', [])
     assert 'Chappy' not in result['admitted']
     assert 'Kochappy' not in result['admitted']
 

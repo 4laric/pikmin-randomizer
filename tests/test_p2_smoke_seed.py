@@ -35,7 +35,9 @@ def test_ordinary_slots_exclude_protected_boss_and_held(document):
     labels = {s['label'] for s in slots}
     assert 'hope_snagret_pit' not in labels and 'hope_snagret_part' not in labels
     assert all(s['stage'] == 1 for s in slots)
-    assert len(slots) == 12
+    # #948: every Forest of Hope campaign generator (ground, grub, frog, dwarf,
+    # flying cohorts), not only the probed ground ones.
+    assert len(slots) == 21
     held = {int(h['uid']) for h in document['held_parts']}
     spring = smoke.ordinary_slots(document, 'spring')
     assert not held & {int(s['uid']) for s in spring}
@@ -114,7 +116,10 @@ def test_build_override_pins_exactly_the_assignment(document, roster):
         if identity not in ('BombSarai', 'Demon', 'DangoMushi'):
             assert profile['accepted_slot_uids'] == []
     base = {p['identity']: p for p in document['profiles']}
-    assert base['BombSarai']['accepted_slot_uids'] == [1787125272, 613834665]
+    # #948: the committed profile accepts every constraint-compatible slot
+    # (its evidence slot among them), and the override never touches it.
+    assert 1787125272 in base['BombSarai']['accepted_slot_uids']
+    assert len(base['BombSarai']['accepted_slot_uids']) > 2
     assert override['slots'] == document['slots']
     from randomizer.p2_placement import validate_document
     validate_document(override)
@@ -122,8 +127,14 @@ def test_build_override_pins_exactly_the_assignment(document, roster):
 
 def test_build_override_rejects_misuse(document, roster):
     slots = smoke.ordinary_slots(document, 'foh')[:2]
-    with pytest.raises(smoke.SmokeSeedError, match='arena boss'):
-        smoke.build_override(document, roster, smoke.assign_round_robin([94], slots))
+    # #948: an arena boss may take ordinary slots in a smoke seed; it just
+    # cannot be listed both ways.
+    override = smoke.build_override(document, roster, smoke.assign_round_robin([94], slots))
+    dango = next(p for p in override['profiles'] if p['identity'] == 'DangoMushi')
+    assert dango['is_boss'] is False and dango['encounter_descriptor'] is None
+    assert dango['accepted_slot_uids'] == sorted(int(s['uid']) for s in slots)
+    with pytest.raises(smoke.SmokeSeedError, match='both in --species and --bosses'):
+        smoke.build_override(document, roster, smoke.assign_round_robin([94], slots), {94: 'hope_snagret_pit'})
     with pytest.raises(smoke.SmokeSeedError, match='not in the P2 roster'):
         smoke.build_override(document, roster, smoke.assign_round_robin([9999], slots))
     with pytest.raises(smoke.SmokeSeedError, match='unknown arena'):

@@ -48,13 +48,14 @@ def playable_manifest(mode="solo"):
 
 
 def test_playable_pool_binds_all_playable_species():
-    # #893: 37 playable species on 35 slots; the seed samples the pool, so
-    # every species is either bound once or listed as unplaced.
+    # #948: the pool fits the constraint-derived target set, so every
+    # playable species is bound (repeats fill the spare targets) and nothing
+    # is unplaced; a trimmed document still samples (#893).
     layout = playable_manifest()["p2_layout"]
     held = {row["target"] for row in layout.get("held_parts", {}).get("placed", [])}
     bound = [b["source_id"] for b in layout["bindings"] if b["target"] not in held]
-    assert len(bound) == len(set(bound))
     assert set(bound) | set(layout.get("unplaced", [])) == set(PLAYABLE_P2_SPECIES)
+    assert not layout.get("unplaced")
     assert not set(bound) & set(layout.get("unplaced", []))
 
 
