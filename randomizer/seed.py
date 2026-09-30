@@ -633,6 +633,54 @@ P2_PLAYABLE_POOL = (
                          "(stages p2-bombsarai-parms/bomb-parms/own-bank and the Bomb meshes)",
         },
     },
+    {
+        "source_id": 26,
+        "enum_name": "Catfish",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run c26 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Catfish FSM (KochappyBase wait/turn/walk/attack/flick/gohome/dead with the retail parms, life 200) on the Catfish's own generator token; walk, BITE frame 17 and EAT through the two-slot mouth, flick shake-offs, damage from the squad down to P2_CATFISH_DEAD, the dead corpse carried, Onion receipt onion:p2:26:3. Re-entry run e26: alive at two sunsets, rebound on each new day, then killed and delivered on day 4. The kill runs used a land slot (start-area slot rebind); the water slots were only checked for binding: all three pack members bind and draw the P2 model (run w26)",
+            "log": "output/claude-orch/p2-w3-mech/runs/c26-26/session/runs/de223067922572071581c75193fc724a63e5ac3ded101f0d8d0b46e840b25a5c/native.log (sha256 6cb9781d950cd460...) L3462 bind, L8782 dead, L13172 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e26-26/session/runs/62e9fcae373cd7516ba27e35ac20424cc7ec4134fbafdc04d2420804d9fb3d56/native.log (sha256 dab030cefaca064f...) sunsets L4868/L9453, receipt L20685; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 26 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 27,
+        "enum_name": "Tadpole",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run c27 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Tadpole FSM (wait/move/amaze/escape/leap/dead, retail parms, life 200) on the Wogpole's own generator token; it hops away from the squad, takes damage, dies naturally, the dead corpse is carried and delivers Onion receipt onion:p2:27:3. Re-entry run e27: alive at two sunsets, rebound on each new day, killed and delivered on day 4. Harmless in source (attack power 0). The kill runs used a land slot (start-area slot rebind)",
+            "log": "output/claude-orch/p2-w3-mech/runs/c27-27/session/runs/17477bf0c322e2e59ed561abe90ab21aa68181037e5f46128afc1fb15911c8d3/native.log (sha256 710bc0d48998367d...) L3469 bind, L8042 dead, L11265 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e27-27/session/runs/9eefd062b0f23a9f15cfc2954b90b30fe5985b49bf308879a7e08b3911893399/native.log (sha256 c141251c5d81d7f7...) sunsets L4905/L9512, receipt L21584; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 27 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 84,
+        "enum_name": "Hana",
+        "family": "ground_inverts",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run c84 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Hana FSM (ChappyBase sleep/emerge/walk/attack/eat/flick/gohome/dead, retail parms, life 2500) on the Chrysanthemum's own generator token; buried Sleep gate (no atari, invulnerable), emerge, BITE frame 18 and EAT, flick when Pikmin are stuck to it, natural death, the dead corpse carried, Onion receipt onion:p2:84:3. Re-entry run e84: alive at two sunsets, rebound each new day, killed and delivered on day 4",
+            "log": "output/claude-orch/p2-w3-mech/runs/c84-84/session/runs/95328a93d0e55dabb9b381bd1b5ebc85fcf0fcd9ff7a0d4334d659cf38008128/native.log (sha256 1b836d806bbc81a6...) L3461 bind, L12330 dead, L16327 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e84-84/session/runs/9ef038b4f92926e3274cec28dcd8e7fee087b6afb095bce46e51f096dd690484/native.log (sha256 f33b6d9f3544a3ab...) sunsets L4888/L9489, receipt L31469; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 84 -> ground_inverts "
+                         "(experimental/pikmin2_ground_inverts_install)",
+        },
+    },
+    {
+        "source_id": 93,
+        "enum_name": "BombOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign run c93 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Otakara Dweevil FSM carrying a Bomb (BombOtakara pursues its target, the stimulateBomb 1.5 s fuse detonates the Bomb through the shared blast primitive, damage also detonates it), natural death on its own generator token, the dead corpse carried, Onion receipt onion:p2:93:3. Re-entry run e93: alive at two sunsets, rebound on each new day, killed and delivered on day 4. Run f93 on seed s3 (a Dweevil on a grub-cohort pack slot) proves the pack fix; before it the scene aborted",
+            "log": "output/claude-orch/p2-w3-mech/runs/c93-93/session/runs/8ab1e19c235ef42fecc4380c8f77cd97edd1d6e7528f7c649c0f6d0bd588647a/native.log (sha256 4ffaa17a7d3c3a01...) L2306 bind, L4357 dead, L5608 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e93-93/session/runs/59bc2e2b2d4210285df3efb6501ac4d357d865a5c1c33088e4a526bc3874b921/native.log (sha256 2066cca2138f423e...) sunsets L3969/L7651, receipt L12606; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 93 -> dweevil "
+                         "(p2-dweevil-actors.txt)",
+        },
+    },
 )
 
 

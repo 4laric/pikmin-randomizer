@@ -556,45 +556,58 @@
     "26": {
       "native_module": "pc_p2_catfish",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Water Dumple (Catfish, source 26): campaign port of the source Catfish FSM (#964); the squad damages it, it dies naturally, is carried as its dead corpse and delivers Onion receipt onion:p2:26:3 on its own generator token, and it survives two sunsets and re-binds each new day.",
       "source": [
         "PIKMIN2_CATFISH_NATIVE.md",
-        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md",
+        "PIKMIN2_WAVE3_MECHANICS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Catfish (Water Dumple): natural spawn/move PASS; two-slot bite/saucer poison + flick receiver PASS (natural, PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md).",
-        "Death/corpse/transport/cleanup UNTESTED (#167)."
-      ]
+        "Water Dumple (Catfish): #964 campaign port of the transcribed KochappyBase FSM with the retail parms; the P1 Namazu body carries it with its AI suppressed and the stored damage drained by the module.",
+        "Kill and delivery runs used a land slot (start-area slot rebind spring_init_7002); the module has no water plane, so it walks on land wherever it is placed. On the real water slots all three pack members bind and draw the P2 model (run w26), but the autoplay bot could not reach the water pack, so no fight was observed there.",
+        "Known accommodations: two-slot mouth is an explicit nearest-first capture at the banked bite event; White Pikmin poison path stays unexercised (no White Pikmin in P1); flick fires on Pikmin contact rather than the source stuck-count timer.",
+        "Fix in this change: the Hana/Catfish/Tadpole death funnel is pcEscapeNow (die alone left no corpse); before it the same run gave killed=1 carried=0.",
+        "Campaign evidence, bot-driven power-mode run c26 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to source 26, all on the species' own generator: output/claude-orch/p2-w3-mech/runs/c26-26/session/runs/de223067922572071581c75193fc724a63e5ac3ded101f0d8d0b46e840b25a5c/native.log (sha256 6cb9781d950cd460...) L3462 bind, L8782 dead, L13172 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e26-26/session/runs/62e9fcae373cd7516ba27e35ac20424cc7ec4134fbafdc04d2420804d9fb3d56/native.log (sha256 dab030cefaca064f...) sunsets L4868/L9453, receipt L20685; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+        "Pins: root claude/p2-wave3-mechanics (origin/main 3fc77bf6 + #964), native 4laric/Open-Nectar claude/p2-wave3-mechanics b37a3ddea (fork main bbb9821f7 + 2 commits), exe nectar.exe sha256 7c121533bac94dafd939508601a0ad49e525be90a79bb86a5724aa4c11a9f573 (private build output/native-w3-mechanics-build, ninja -n pikmin_pc: no work to do), content output/w3-mech-content."
+      ],
+      "delivery_receipt": "onion:p2:26:3 (P2 dead corpse delivered, P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-mech/runs/c26-26/session/runs/de223067922572071581c75193fc724a63e5ac3ded101f0d8d0b46e840b25a5c/native.log:L13172 (sha256 6cb9781d950cd46073ddc30983a66bf307674e04be413539baf903fb3a046e85)"
     },
     "27": {
       "native_module": "pc_p2_tadpole",
       "owner_lane": "16",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Wogpole (Tadpole, source 27): campaign port of the source Tadpole FSM (#964); it hops and flees, takes squad damage, dies naturally, is carried as its dead corpse and delivers Onion receipt onion:p2:27:3 on its own generator token, and it survives two sunsets and re-binds each new day.",
       "source": [
-        "PIKMIN2_TADPOLE_NATIVE.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_TADPOLE_NATIVE.md",
+        "PIKMIN2_WAVE3_MECHANICS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "N/A",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "N/A",
-        "cleanup_reentry": "UNTESTED"
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Tadpole (Wogpole): natural spawn/move/escape PASS; harmless (fp24=0) so attacks/reward N/A (#167).",
-        "Escape/death chain + cleanup/re-entry remain UNTESTED."
-      ]
+        "Wogpole (Tadpole): #964 campaign port of the transcribed Tadpole FSM (wait/move/amaze/escape/leap/dead); harmless in source, so attacks_receivers records the receiver side only: squad damage lands and drives escape and death.",
+        "Kill and delivery runs used a land slot (start-area slot rebind); on the water slots the pack binds (all members) but the autoplay bot could not reach it.",
+        "Known accommodations: the water-leap gate is a dry-land timer; the Amaze panic shake is omitted because it does no damage.",
+        "Campaign evidence, bot-driven power-mode run c27 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to source 27, all on the species' own generator: output/claude-orch/p2-w3-mech/runs/c27-27/session/runs/17477bf0c322e2e59ed561abe90ab21aa68181037e5f46128afc1fb15911c8d3/native.log (sha256 710bc0d48998367d...) L3469 bind, L8042 dead, L11265 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e27-27/session/runs/9eefd062b0f23a9f15cfc2954b90b30fe5985b49bf308879a7e08b3911893399/native.log (sha256 c141251c5d81d7f7...) sunsets L4905/L9512, receipt L21584; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+        "Pins: root claude/p2-wave3-mechanics (origin/main 3fc77bf6 + #964), native 4laric/Open-Nectar claude/p2-wave3-mechanics b37a3ddea (fork main bbb9821f7 + 2 commits), exe nectar.exe sha256 7c121533bac94dafd939508601a0ad49e525be90a79bb86a5724aa4c11a9f573 (private build output/native-w3-mechanics-build, ninja -n pikmin_pc: no work to do), content output/w3-mech-content."
+      ],
+      "delivery_receipt": "onion:p2:27:3 (P2 dead corpse delivered, P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-mech/runs/c27-27/session/runs/17477bf0c322e2e59ed561abe90ab21aa68181037e5f46128afc1fb15911c8d3/native.log:L11265 (sha256 710bc0d48998367d11c4b515e791c240ecae0a0e05f45ecd43a61e0745b43fb6)"
     },
     "28": {
       "native_module": "pc_p2_elecbug",
@@ -1505,24 +1518,30 @@
     "84": {
       "native_module": "pc_p2_hana",
       "owner_lane": "14",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Creeping Chrysanthemum (Hana, source 84): campaign port of the source Hana FSM (#964); buried until a Pikmin or captain comes near, bites and eats Pikmin, dies naturally, is carried as its dead corpse and delivers Onion receipt onion:p2:84:3 on its own generator token, and it survives two sunsets and re-binds each new day.",
       "source": [
         "PIKMIN2_HANA_NATIVE.md",
-        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md",
+        "PIKMIN2_WAVE3_MECHANICS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Hana (Creeping Chrysanthemum): natural spawn/emerge/walk/eat PASS; bite receiver PASS (frames 18.1/18.2, once/eat); underground gate + poison + attackNavi PASS (natural, PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md).",
-        "Death/corpse/transport/cleanup natural acceptance remains (#165)."
-      ]
+        "Creeping Chrysanthemum (Hana): #964 campaign port of the transcribed ChappyBase Hana FSM; buried Sleep gate, emerge, bite (attackNavi + eat), flick, gohome, dead; delivered as the dead corpse.",
+        "Fix in this change: the flick now keys on Pikmin stuck to the body (source isStartFlick tier 1) and a flick outside the territory returns to GoHome; the earlier proximity rule made it drift 1200 units from home and left the corpse on an unroutable spot (run f84: killed=1 carried=0).",
+        "Known accommodations: the three mouth slots are one explicit capture per bite; White poison is not exercised.",
+        "Campaign evidence, bot-driven power-mode run c84 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to source 84, all on the species' own generator: output/claude-orch/p2-w3-mech/runs/c84-84/session/runs/95328a93d0e55dabb9b381bd1b5ebc85fcf0fcd9ff7a0d4334d659cf38008128/native.log (sha256 1b836d806bbc81a6...) L3461 bind, L12330 dead, L16327 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e84-84/session/runs/9ef038b4f92926e3274cec28dcd8e7fee087b6afb095bce46e51f096dd690484/native.log (sha256 f33b6d9f3544a3ab...) sunsets L4888/L9489, receipt L31469; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+        "Pins: root claude/p2-wave3-mechanics (origin/main 3fc77bf6 + #964), native 4laric/Open-Nectar claude/p2-wave3-mechanics b37a3ddea (fork main bbb9821f7 + 2 commits), exe nectar.exe sha256 7c121533bac94dafd939508601a0ad49e525be90a79bb86a5724aa4c11a9f573 (private build output/native-w3-mechanics-build, ninja -n pikmin_pc: no work to do), content output/w3-mech-content."
+      ],
+      "delivery_receipt": "onion:p2:84:3 (P2 dead corpse delivered, P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-mech/runs/c84-84/session/runs/95328a93d0e55dabb9b381bd1b5ebc85fcf0fcd9ff7a0d4334d659cf38008128/native.log:L16327 (sha256 1b836d806bbc81a6af3fabc10e391099174ea669e3566668afab267cdf40a045)"
     },
     "87": {
       "native_module": "pc_p2_plant",
@@ -1587,23 +1606,29 @@
     "93": {
       "native_module": "pc_p2_bombotakara",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Volatile Dweevil (BombOtakara, source 93): campaign run of the source Otakara FSM with a Bomb (#964); it pursues, the fuse or any damage detonates the Bomb, it dies naturally, is carried as its dead corpse and delivers Onion receipt onion:p2:93:3 on its own generator token, and it survives two sunsets and re-binds each new day.",
       "source": [
-        "PIKMIN2_BOMBOTAKARA_NATIVE.md"
+        "PIKMIN2_BOMBOTAKARA_NATIVE.md",
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_WAVE3_MECHANICS.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "UNTESTED",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "BombOtakara: carry/arm/detonate + exactly-once PASS injected; shared blast (InteractBomb) wired PASS injected or BLOCKED at older base.",
-        "Real Bomb payload actor + visuals/corpse BLOCKED; no natural claim (#170/#408)."
-      ]
+        "Volatile Dweevil (BombOtakara): #964 campaign run of the source Otakara FSM carrying a Bomb: pursue, stimulateBomb 1.5 s fuse, damage detonates the Bomb, carrier dies with the payload, corpse carried.",
+        "Fix in this change: Dweevils (59-62, 93) on grub-cohort pack slots no longer abort the scene (duplicate generator in the dweevil family); run f93 on seed s3 covers it.",
+        "Known accommodations: the carried Bomb has no separate model or actor; its blast goes through the shared blast primitive (radius 90, teki damage 500, Navi/Pikmin damage 10). The blast in the observed runs hit no Pikmin.",
+        "Campaign evidence, bot-driven power-mode run c93 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to source 93, all on the species' own generator: output/claude-orch/p2-w3-mech/runs/c93-93/session/runs/8ab1e19c235ef42fecc4380c8f77cd97edd1d6e7528f7c649c0f6d0bd588647a/native.log (sha256 4ffaa17a7d3c3a01...) L2306 bind, L4357 dead, L5608 receipt; re-entry output/claude-orch/p2-w3-mech/runs/e93-93/session/runs/59bc2e2b2d4210285df3efb6501ac4d357d865a5c1c33088e4a526bc3874b921/native.log (sha256 2066cca2138f423e...) sunsets L3969/L7651, receipt L12606; native claude/p2-wave3-mechanics b37a3ddea, exe sha256 7c121533bac94daf...",
+        "Pins: root claude/p2-wave3-mechanics (origin/main 3fc77bf6 + #964), native 4laric/Open-Nectar claude/p2-wave3-mechanics b37a3ddea (fork main bbb9821f7 + 2 commits), exe nectar.exe sha256 7c121533bac94dafd939508601a0ad49e525be90a79bb86a5724aa4c11a9f573 (private build output/native-w3-mechanics-build, ninja -n pikmin_pc: no work to do), content output/w3-mech-content."
+      ],
+      "delivery_receipt": "onion:p2:93:3 (P2 dead corpse delivered, P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-w3-mech/runs/c93-93/session/runs/8ab1e19c235ef42fecc4380c8f77cd97edd1d6e7528f7c649c0f6d0bd588647a/native.log:L5608 (sha256 4ffaa17a7d3c3a01ec7dfb73aee778cedfd508cff5dc9d74819285ae1e93c794)"
     },
     "94": {
       "native_module": "pc_p2_dangomushi",
