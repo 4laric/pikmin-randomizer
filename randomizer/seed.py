@@ -418,18 +418,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 24,
-        "enum_name": "Tank",
-        "family": "tank",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3",
-            "log": "C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 24 -> tank "
-                         "(experimental/pikmin2_tank_identity_install)",
-        },
-    },
-    {
         "source_id": 75,
         "enum_name": "Kabuto",
         "family": "kabuto",
@@ -439,18 +427,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 75 -> kabuto "
                          "(experimental/pikmin2_kabuto_identity_install)",
-        },
-    },
-    {
-        "source_id": 56,
-        "enum_name": "Damagumo",
-        "family": "long_legs",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3",
-            "log": "C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt; output/claude-orch/evidence/botcamp-inst-legs-56c.md; output/claude-orch/review/rev2-legs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 56 -> long_legs "
-                         "(experimental/pikmin2_long_legs_install)",
         },
     },
     {
@@ -499,18 +475,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 70 -> snagret "
                          "(experimental/pikmin2_snagret_install)",
-        },
-    },
-    {
-        "source_id": 65,
-        "enum_name": "Imomushi",
-        "family": "ground_inverts",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3",
-            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 65 -> ground_inverts "
-                         "(experimental/pikmin2_ground_inverts_install)",
         },
     },
     {

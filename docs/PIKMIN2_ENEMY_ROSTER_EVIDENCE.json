@@ -512,8 +512,8 @@
     "24": {
       "native_module": "pc_p2_tank",
       "owner_lane": "22",
-      "eligibility": "admitted",
-      "eligibility_reason": "Fiery Blowhog (Tank, source 24): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:24:3 on the species' own generator token per rev2-frogs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 (redundant with the P1 Fiery Blowhog; native code kept, it is shared with the Watery Blowhog 25). History: Fiery Blowhog (Tank, source 24): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:24:3 on the species' own generator token per rev2-frogs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -527,6 +527,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog). Gate results and receipt are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-frogs-3 (owner ruling 2026-09-25: power mode admits): campaign bind, breath-cone + flick fight, P2_TANK_DEAD on its own generator, corpse carried, Onion receipt onion:p2:24:3 Bind/dead/receipt on the own generator token (L1103 bind, L1844 dead, L2034 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 24 -> tank (experimental/pikmin2_tank_identity_install). Log C:/cop/botcamp-inst-frogs-3-24-Tank/session/runs/bed551239c66842a02748952356864755012674b38740de35e925aa0e65433bd/native.log (sha256 706dfef24a6ab859...) L1103 bind, L1844 dead, L2034 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -1035,8 +1036,8 @@
     "56": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "admitted",
-      "eligibility_reason": "Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 (P2 Beady Long Legs is pretty broken; the P1 native Beady stays; the P2 species is out of the playable pool, native code kept). History: Beady Long Legs (Damagumo, source 56): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:56:3 on the species' own generator token per rev2-legs.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1050,6 +1051,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: beady long legs pretty broken i would just give up on that one, the P1 native version works great). The gate results and receipt below are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-56c (owner ruling 2026-09-25: power mode admits): campaign bind, landing-crush + flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:56:3 Bind/dead/receipt on the own generator token (L1706 bind, L1998 dead, L2126 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 56 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-56c-56-Damagumo/session/runs/b65b1cdcc9745669f9a04da41a4f36a932b502ba12611320fc3e1f57007ec5d2/native.log (sha256 c13a933ddd892223...) L1706 bind, L1998 dead, L2126 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -1228,8 +1230,8 @@
     "65": {
       "native_module": "pc_p2_imomushi",
       "owner_lane": "14",
-      "eligibility": "admitted",
-      "eligibility_reason": "Ravenous Whiskerpillar (Imomushi, source 65): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:65:3 on the species' own generator token per rev2-worms.md.",
+      "eligibility": "excluded",
+      "eligibility_reason": "Withdrawn by owner ruling 2026-09-30 pending berry plants (source behaviour eats from fruit plants, Imomushi.cpp:803-826); native code kept. History: Ravenous Whiskerpillar (Imomushi, source 65): all six gates natural PASS on the lane campaign line; Onion receipt onion:p2:65:3 on the species' own generator token per rev2-worms.md.",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1243,6 +1245,7 @@
         "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "notes": [
+        "Withdrawn from the P2 playable pool by owner ruling 2026-09-30 (verbatim: whiskerpillar keep out of pool for now, pending berries), pending berry plants (source behaviour eats from fruit plants, Imomushi.cpp:803-826). Gate results and receipt are the history from before the withdrawal.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3 Bind/dead/receipt on the own generator token (L1714 bind, L1858 dead, L1984 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 65 -> ground_inverts (experimental/pikmin2_ground_inverts_install). Log C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]

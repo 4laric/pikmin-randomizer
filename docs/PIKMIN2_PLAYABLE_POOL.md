@@ -169,8 +169,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Eleven P2 bosses are already here (30, 34, 40, 53,
-  56, 69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots). The remaining bosses
+- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 40, 53,
+  69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots; 56 Beady Long Legs was withdrawn, see below). The remaining bosses
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -269,3 +269,9 @@ retains its intentional squad.
 
 This source fix is for future packages. The existing `output/p2play` delivery,
 its running game, AP progress and saves were not patched or migrated.
+
+## Withdrawn
+
+- **56 Damagumo (P2 Beady Long Legs): withdrawn by owner ruling 2026-09-30.** "beady long legs pretty broken i would just give up on that one, the P1 native version works great." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `denied` with its admission history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. The native module (`pc_p2_long_legs`), the installers and the P1 native Beady Long Legs stay as they are. 69 Raging Long Legs is a separate row and stays admitted. Re-admission needs a new owner decision and the usual six gates.
+- **24 Tank (P2 Fiery Blowhog): withdrawn by owner ruling 2026-09-30.** "remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (shared with 25 Wtank Watery Blowhog, which stays admitted); the P1 Fiery Blowhog is untouched.
+- **65 Imomushi (Ravenous Whiskerpillar): withdrawn by owner ruling 2026-09-30, pending berry plants.** "whiskerpillar keep out of pool for now, pending berries." The source behaviour eats from fruit plants (`Imomushi.cpp:803-826`). The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays. Re-admission follows berry plants.
