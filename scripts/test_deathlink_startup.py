@@ -14,7 +14,7 @@ def main(exe, assets, output, unit=5):
     env = dict(os.environ, PIKMIN_RANDOMIZER_TEST_BACKGROUND='1', SDL_AUDIODRIVER='dummy'); env.pop('BBFT_PORT', None)
     log = run.directory / 'native.log'
     with log.open('w', encoding='utf-8') as stream:
-        startup = subprocess.STARTUPINFO(); startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup = subprocess.STARTUPINFO(); startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
         process = subprocess.Popen([str(exe.resolve()), '--randomizer-seed', str(run.bootstrap.resolve())],
                                    cwd=run.directory, env=env, stdout=stream, stderr=subprocess.STDOUT, startupinfo=startup)
         try:

@@ -596,11 +596,9 @@ def supervise(command, session, token, run_dir, seconds):
     mingw = Path("C:/msys64/mingw64/bin")
     if mingw.is_dir():
         env["PATH"] = str(mingw) + os.pathsep + env.get("PATH", "")
-    startup = None
-    if os.name == "nt":
-        startup = subprocess.STARTUPINFO()
-        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startup.wShowWindow = 0
+    from randomizer.test_run import apply_test_run_env, hidden_startupinfo
+    apply_test_run_env(env)
+    startup = hidden_startupinfo(env) if os.name == "nt" else None
 
     stop = threading.Event()
 

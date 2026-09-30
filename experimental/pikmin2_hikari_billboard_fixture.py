@@ -95,7 +95,7 @@ def run(exe, directory):
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''),
                SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_BACKGROUND='1')
     startup = subprocess.STARTUPINFO()
-    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.dwFlags |= __import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     startup.wShowWindow = 0
     with (directory / 'native.log').open('x') as log:
         result = subprocess.run([str(exe), '--experimental-pikmin2-room'], cwd=directory, env=env,

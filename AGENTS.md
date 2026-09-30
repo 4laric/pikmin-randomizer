@@ -74,6 +74,13 @@ py -3.12 scripts/capacity_gate.py --status
 
 The limits and their rationale are in `scripts/capacity_gate.py` (#953). This laptop bugchecked twice on 2026-09-29 under about 8 parallel builds plus several sessions. Don't bypass the gate. Raise its limits only after sustained stable runs, and record why.
 
+## Test runs: always background (#975)
+
+Every agent-driven `nectar.exe` run must set `PIKMIN_RANDOMIZER_TEST_BACKGROUND=1`, or the native game pauses whenever its window loses focus. Use `randomizer/test_run.py` (`apply_test_run_env`, `hidden_startupinfo`) in new launchers. Hand-play launchers (`play.ps1`, play-dev) stay normal and unset.
+
+- Boot logs `TEST_RUN_MODE background=B visible=V focus_hold=H`. A `FOCUS_HOLD stalled seconds=N` line means the run was paused for focus, so it is a broken run: rerun it in background mode.
+- The owner watches runs by creating `output/workflow/WATCH_RUNS` (or `PIKMIN_WATCH_RUNS=1`). Launchers then add `PIKMIN_RANDOMIZER_TEST_VISIBLE=1`, and the native game also checks for the file itself. The window is shown without taking focus and never holds. Delete the file to hide runs again; it applies to runs launched afterwards. Don't pass a hidden `STARTUPINFO` when watching.
+
 ## Build isolation (required)
 
 **Prefer CI builds.** Local parallel builds and headless sessions have crashed the owner's PC. Push your native branch to the `fork` remote (a `claude/**` branch or an open PR triggers the `Windows build` workflow), then fetch the verified exe with `py -3.12 scripts/ci_native_build.py <branch|sha>` (see `docs/CI_BUILDS.md`); record the printed commit, artifact and exe SHA-256 as build evidence. Build locally only while iterating on compile errors, with `-j 4`, and only one local build at a time on this machine. Do not run headless game sessions in parallel.

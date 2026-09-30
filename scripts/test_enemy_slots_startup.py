@@ -18,7 +18,7 @@ for area in (('impact','forest','navel','spring','trial') if a.campaign else ('f
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy')
     env.pop('BBFT_PORT',None);env.pop('PIKMIN_RANDOMIZER_TEST_SCRIPT',None)
-    startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
+    startup=subprocess.STARTUPINFO();startup.dwFlags|=__import__('randomizer.test_run', fromlist=['x']).show_window_flag()
     log=r.directory/'native.log'
     with log.open('w',encoding='utf-8') as stream:
         process=subprocess.Popen([str(a.exe.resolve()),'--randomizer-seed',str(r.bootstrap)],cwd=r.directory,env=env,startupinfo=startup,stdout=stream,stderr=subprocess.STDOUT)
