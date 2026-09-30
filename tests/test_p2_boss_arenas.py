@@ -133,7 +133,7 @@ class DocumentTests(unittest.TestCase):
         # other lane bosses (30, 66) carry descriptors and get their profile
         # with pool admission.
         roster = load_and_validate()
-        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73})
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 30})
         descriptors = {e["identity"] for e in self.document["encounters"]}
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
@@ -235,7 +235,7 @@ class SeedTests(unittest.TestCase):
     def test_crawbster_only_in_boss_arenas(self):
         used = set()
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s != 73])
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73)])
             block = layout[BOSS_ARENA_KEY]
             for binding in layout["bindings"]:
                 if binding["source_id"] == 94:
@@ -258,24 +258,26 @@ class SeedTests(unittest.TestCase):
         # and the arena varies per seed.
         titan_arenas = {"impact_goolix", "navel_beady_long_legs", "navel_puffstool",
                         "spring_cannon_beetle"}
-        seen = {73: set(), 94: set()}
+        seen = {30: set(), 73: set(), 94: set()}
         for i in range(40):
             layout = self.layout(f"arena-{i}", species=sorted(PLAYABLE_P2_SPECIES))
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(set(placed), {73, 94})
+            self.assertEqual(set(placed), {30, 73, 94})
             self.assertIn(placed[73], titan_arenas)
-            self.assertNotEqual(placed[73], placed[94])
+            self.assertIn(placed[30], titan_arenas)  # Empress footprint 250 (#256)
+            self.assertEqual(len(set(placed.values())), 3)
             for source_id, arena in placed.items():
                 seen[source_id].add(arena)
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
-                if binding["source_id"] in (73, 94):
+                if binding["source_id"] in (30, 73, 94):
                     self.assertIn(binding["target"], self.all_arena)
                 else:
                     self.assertNotIn(binding["target"], self.all_arena)
             validate_layout(layout, self.roster)
         self.assertGreater(len(seen[73]), 1)
+        self.assertGreater(len(seen[30]), 1)
         self.assertGreater(len(seen[94]), 1)
 
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
@@ -285,11 +287,11 @@ class SeedTests(unittest.TestCase):
             with_boss = self.layout(f"eq-{i}", species=pool)
             ordinary = dict(with_boss)
             ordinary.pop(BOSS_ARENA_KEY)
-            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (73, 94)]
+            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (30, 73, 94)]
             self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
 
     def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
-        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (73, 94)]
+        without = [s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 94)]
         stripped = _strip_arenas(self.document)
         for i in range(10):
             new = self.layout(f"id-{i}", species=without)
@@ -315,7 +317,7 @@ class SeedTests(unittest.TestCase):
                             p2_enemies=True, p2_species="playable")
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [73, 94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
 

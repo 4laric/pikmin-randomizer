@@ -49,6 +49,7 @@ every existing caller keeps working. Today the pool is:
 | 38 | PanModoki | breadbug |
 | 41 | Fuefuki | fuefuki |
 | 58 | BombSarai | bombsarai |
+| 30 | Queen | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
@@ -118,8 +119,8 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Nine P2 bosses are already here (34, 53, 56,
-  69, 70, 71, 73, 94, 101). The remaining bosses 30 Queen, 40 Giant Breadbug,
+- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 53, 56,
+  69, 70, 71, 73, 94, 101). The remaining bosses 40 Giant Breadbug,
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
