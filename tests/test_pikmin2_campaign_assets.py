@@ -34,6 +34,21 @@ def test_removes_only_reserved_fixture_records():
     assert without_test_squad(b'unrelated format') == b'unrelated format'
 
 
+def test_txen_record_is_counted_in_rewritten_header():
+    # Retail Hope: header counts four-space records plus the inactive `next`
+    # record (txen); the harness copy's header had skipped that record.
+    retail = [record(b'retail sprout %d' % i) for i in range(3)]
+    txen = b'txen' + record(b'next')[4:]
+    expected = generator(*retail, txen)
+    assert struct.unpack_from('>I', expected, 20)[0] == 4
+    dirty = generator(*retail, txen, record(SQUAD_LABEL), record(SQUAD_LABEL))
+    assert without_test_squad(dirty) == expected
+    miscounted = dirty[:20] + struct.pack('>I', 5) + dirty[24:]
+    assert without_test_squad(miscounted) == expected
+    with pytest.raises(ValueError):
+        without_test_squad(dirty[:20] + struct.pack('>I', 4) + dirty[24:])
+
+
 @pytest.mark.parametrize('data', [generator(record(SQUAD_LABEL, kind=b'iket')),
                                 generator(record(SQUAD_LABEL, color=2)),
                                 generator(record(SQUAD_LABEL))[:20] + struct.pack('>I', 2) + record(SQUAD_LABEL)])
