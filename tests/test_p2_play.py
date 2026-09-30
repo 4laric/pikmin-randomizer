@@ -5,6 +5,7 @@ and the dry-run step report. A real staged run is proven by the handoff, not
 here; nothing in these tests launches Archipelago, the game or the runner.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -82,7 +83,7 @@ def test_ensure_content_extracts_once_then_reuses(tmp_path, monkeypatch):
     def fake_prepare(iso_arg, out, research=None, pose_limit=3, wanted=None):
         calls.append(Path(out))
         Path(out).mkdir(parents=True, exist_ok=True)
-        (Path(out) / "prepared.json").write_text("{}\n")
+        (Path(out) / "prepared.json").write_text(json.dumps({"pose_limit": pose_limit}) + "\n")
 
     monkeypatch.setattr(p2_play.prepare, "prepare_content_root", fake_prepare)
 

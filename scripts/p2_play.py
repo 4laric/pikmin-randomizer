@@ -104,9 +104,23 @@ def content_cache_dir(cache_root, iso):
     return Path(cache_root) / ISO_PREFIX / iso_sha256(iso)[:16]
 
 
-def content_is_cached(content_dir):
-    """A content root is reusable once ``prepare_content_root`` wrote its summary."""
-    return (Path(content_dir) / "prepared.json").is_file()
+def content_is_cached(content_dir, pose_limit=None):
+    """A content root is reusable once ``prepare_content_root`` wrote its summary.
+
+    With ``pose_limit`` the summary must also record that density (#943): a
+    root baked before the pose-density raise, or at another ``--pose-limit``,
+    is stale and gets rebuilt instead of silently staging sparse banks.
+    """
+    marker = Path(content_dir) / "prepared.json"
+    if not marker.is_file():
+        return False
+    if pose_limit is None:
+        return True
+    try:
+        summary = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(summary, dict) and summary.get("pose_limit") == pose_limit
 
 
 def sanitize_name(name):
@@ -258,8 +272,8 @@ from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT, POSE_LIMIT_MAX  #
 
 
 def ensure_content(iso, content_dir, pool, pose_limit, research):
-    """Extract the content root once per ISO hash; return whether it was rebuilt."""
-    if content_is_cached(content_dir):
+    """Extract the content root once per ISO hash and pose limit; return whether it was rebuilt."""
+    if content_is_cached(content_dir, pose_limit):
         return False
     content_dir = Path(content_dir)
     content_dir.parent.mkdir(parents=True, exist_ok=True)
