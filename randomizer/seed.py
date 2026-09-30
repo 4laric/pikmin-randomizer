@@ -657,8 +657,9 @@ PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 # Purple campaign (Violet supply, randomizer/purple_campaign.py). This is a
 # runtime constraint, not an owner whitelist: source id -> citation. Generation
 # binds such a species only for ``p2_purple_campaign=True`` (CLI
-# ``--p2-purple-campaign``), which records ``p2_purple_campaign`` and the
-# ``p2-purple-campaign-v1`` capability in the manifest; ``randomizer run`` then
+# ``--p2-purple-campaign``), which records ``p2_purple_campaign`` in the
+# manifest (no native capability: the native hello echoes the capability list, and
+# the Purple banks are already an explicit run-time opt-in); ``randomizer run`` then
 # refuses to launch that seed without ``--purple-bank``/``--purple-motion``.
 #   40 Giant Breadbug: OoPanModoki::Obj::pressCallBack (panModoki.cpp:1738-1744)
 #      returns false for any Pikmin whose kind is not Purple, and the base
@@ -932,7 +933,6 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result['capabilities'].append('p2-enemy-bridge-v1')
         if p2_purple_campaign:
             result['p2_purple_campaign'] = True
-            result['capabilities'].append('p2-purple-campaign-v1')
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
             result['capabilities'].append('p2-proxy-tier-v1')
@@ -1186,7 +1186,6 @@ def validate(m):
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
-    if m.get('p2_purple_campaign'): fixed['capabilities'].append('p2-purple-campaign-v1')
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:

@@ -43,7 +43,7 @@ def test_playable_pool_binds_only_playable_species():
     assert m == generate('12345', p2_enemies=True, p2_species='playable')
     assert 'p2_purple_campaign' not in m
     full = generate('12345', p2_enemies=True, p2_species='playable', p2_purple_campaign=True)
-    assert full['p2_purple_campaign'] is True and 'p2-purple-campaign-v1' in full['capabilities']
+    assert full['p2_purple_campaign'] is True
     validate(full)
     bound = {b['source_id'] for b in full['p2_layout']['bindings']}
     assert bound | set(full['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES)
@@ -65,7 +65,6 @@ def test_purple_only_species_need_the_purple_campaign():
     validate(opt)
     assert {r['source_id'] for r in opt['p2_layout']['boss_arenas']['placed']} == {40}
     stripped = {k: v for k, v in opt.items() if k != 'p2_purple_campaign'}
-    stripped['capabilities'] = [c for c in stripped['capabilities'] if c != 'p2-purple-campaign-v1']
     with pytest.raises(ValueError, match='Purple'):
         validate(stripped)
 
