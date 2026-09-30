@@ -290,8 +290,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "KingChappy",
         "family": "chappy",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-chappy-53r2c (owner ruling 2026-09-25: power mode admits): campaign bind, WarCry + attack fight, P2_CHAPPY_DEAD on its own generator, corpse carried, Onion receipt onion:p2:53:3",
-            "log": "C:/cop/botcamp-inst-chappy-53r2c-53-KingChappy/session/runs/78ad0e865e190db9de5cbc4e3d626875892d3bf77b5161d26ca157144d7cfd86/native.log (sha256 40b0759327273001...) L1571 bind, L2370 dead, L2693 receipt; output/claude-orch/evidence/botcamp-inst-chappy-53r2c.md; output/claude-orch/review/rev2-chappy.md",
+            "run": "Bot-driven power-mode campaign (owner ruling 2026-09-25: power mode admits) of the OWN-behaviour Emperor Bulblax (wave-3 lane 53, #289): buried HideWait spawn and proximity wake with the Appear shake-off, tongue/eat/swallow fights with the tongue-tip terrain trace, checkFlick shake-offs, WarCry x7, dive (Hide) and re-Appear, retail collision tree with head/nose/mouth stickable parts, P1 Emperor sound bank; P2_CHAPPY_DEAD on its own generator 1945764764, corpse carried, Onion receipt onion:p2:53:3 (AUTOPLAY_RESULT killed=1 carried=1 received=1). Seed: spring_init_7002 smoke-override slot (PIKMIN_P2_SMOKE_ANY_SLOT, scripts/p2_smoke_seed.py --slot-uids); native claude/p2-wave3-53-emperor 03e8fd23f, exe sha256 da96b5ff... (private IPO build); a second run on the previous exe (s9) killed, carried and delivered the same way.",
+            "log": "output/claude-orch/p2-w3-53/runs/s12/session/runs/09ef65f20941a20d25701f95380624906f925eefdd80064fdfa28c8920ae0b5c/native.log (sha256 723bfe1743bbf31b...) L1300 bind, L1486 wake, L1509 appear, L5275 dead, L5399 receipt; scored by output/claude-orch/p2-w3-53/king_score.py; docs/PIKMIN2_KING_OWN.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 53 -> chappy "
                          "(experimental/pikmin2_chappy_content)",

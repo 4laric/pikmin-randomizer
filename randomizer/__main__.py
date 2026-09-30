@@ -61,6 +61,7 @@ def main():
     run.add_argument("--family-actor", action="append", default=[], metavar="ID:SPECIES", help="generator_id:Species for --family-install (repeatable)")
     run.add_argument("--p2-content", type=Path, help="Lane 05 identity-keyed content root; auto-stages each p2_layout binding's family content")
     run.add_argument("--p2-actors", type=Path, help="JSON {target: generator_id} actor bindings for --p2-content")
+    run.add_argument("--dev-console", action="store_true", help="Enable the native in-game dev console (PIKMIN_DEV_CONSOLE=1; commands also read from <session>/dev-console.txt). Dev/testing only.")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -144,6 +145,10 @@ def main():
                 import json as _json
                 raw = _json.loads(args.p2_actors.read_text(encoding='utf-8'))
                 p2_actors = {str(target): int(generator) for target, generator in raw.items()}
+            if args.dev_console:
+                import os as _os
+                from .dev_console import DEFAULT_SCRIPT_NAME, native_environment
+                _os.environ.update(native_environment(args.session_dir.resolve() / DEFAULT_SCRIPT_NAME))
             launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
                    args.content_manifest, args.family_install, args.family_source, family_actors,
                    args.p2_content, p2_actors, args.purple_bank, args.purple_motion)
