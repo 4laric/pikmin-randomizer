@@ -53,6 +53,8 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--purple-bank", type=Path, help="Opt in to ordinary P2 Purple campaign; source pose bank directory")
+    run.add_argument("--purple-motion", type=Path, help="Required retail Purple throw/fall bank with --purple-bank")
     run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest; staged into the run's private asset tree before launch")
     run.add_argument("--family-install", help="Lane 05 family installer name (an existing family installer to consume)")
     run.add_argument("--family-source", type=Path, help="Family bank/imported source directory for --family-install")
@@ -147,7 +149,7 @@ def main():
                 p2_actors = {str(target): int(generator) for target, generator in raw.items()}
             launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
                    args.content_manifest, args.family_install, args.family_source, family_actors,
-                   args.p2_content, p2_actors)
+                   args.p2_content, p2_actors, args.purple_bank, args.purple_motion)
 
 
 if __name__ == "__main__":

@@ -93,7 +93,7 @@ def test_legacy_default_is_unchanged_and_deterministic():
     # #893: the admitted pool (37) outgrew the 35 slots and a bare default
     # now samples it; a 35-species subset still fits, and there None and the
     # explicit legacy token agree.
-    fit = [source_id for source_id in admitted_ids(roster) if source_id not in (78, 32)]
+    fit = [source_id for source_id in admitted_ids(roster) if source_id not in (78, 32, 38, 41, 58)]
     first = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     second = resolve_placement_layout("seed-a", "Player1", document, roster, species=fit)
     assert first == second
@@ -106,11 +106,11 @@ def test_legacy_multi_species_multiset_is_pinned():
     from collections import Counter
     from randomizer.seed import PLAYABLE_P2_SPECIES
 
-    # #893: the pool is 38; #899 moved the Crawbster 94, and #246 the Titan
+    # #893: the pool is 41; #899 moved the Crawbster 94, and #246 the Titan
     # Dweevil 73, to the boss arenas, so the 35 ordinary slots fit once Demon
-    # 32 is left out.
-    assert len(PLAYABLE_P2_SPECIES) == 38
-    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (73, 94, 32)]
+    # 32, Breadbug 38, Antenna Beetle 41 and Dirigibug 58 are left out.
+    assert len(PLAYABLE_P2_SPECIES) == 41
+    fit = [source_id for source_id in PLAYABLE_P2_SPECIES if source_id not in (73, 94, 32, 38, 41, 58)]
     roster = load_and_validate()
     layout = resolve_placement_layout(
         "seed-a", "Player1", committed_document(), roster, species=fit)

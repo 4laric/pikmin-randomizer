@@ -336,7 +336,7 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     Pool (8 playable + 10 pool identities + all 17 declared proxies) fits
     the 35-slot base document exactly: placement-cap admitted 2 more slots,
     so the exact-fit pool is 8 playable + 10 more pool identities
-    (Chappy/Uji/Sarai/Sokkuri) + 2 small-host + 15 large-host proxies = 35.
+    (Chappy/Uji/Sarai/Sokkuri/Fuefuki) + 2 small-host + 14 large-host proxies = 35.
     The sibling layout (49 targets) still needs repeats, and which species
     the sampler repeats there is pool-sensitive (not an invariant), so this
     pins the real guarantees instead: eligibility soundness on every
@@ -361,24 +361,27 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
     # All 38 own-identity species left the proxy tier for their own
     # installers (integ #871), so this pins the declared shape, not a
-    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 13 large-host
+    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 11 large-host
     # proxies remain (BigTreasure 73 left for its own campaign installer, #246,
-    # and #215 retired the Demon 32 proxy for its own Sarai-host profile).
-    assert len(small_ids) == 2 and len(large_ids) == 13
+    # #215 retired the Demon 32 proxy for its own Sarai-host profile, Breadbug 38
+    # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245).
+    assert len(small_ids) == 2 and len(large_ids) == 11
     assert sorted(small_ids) == [10, 11]
     for finished in (2, 33, 35, 43, 53, 67, 76,
                      12, 13, 14, 28, 68, 94,
                      17, 18, 24, 25, 15, 75,
                      56, 63, 69,
                      34, 70, 65, 71, 101,
-                     26, 27, 66, 84, 93, 97, 73, 32):
+                     26, 27, 66, 84, 93, 97, 73, 32, 38, 41):
         assert finished not in small_ids + large_ids
     pool = [44, 54, 59, 60, 61, 62, 10, 11] + large_ids
     # Twelve more pool identities (admitted, non-proxy) bring the pool to the
     # exact 35-slot fit: 8 playable + 10 pool + 17 proxies = 35.
     # (#215: SnakeCrow 34 takes the slot the retired Demon proxy held; #246: one
-    # more admitted identity, 28 ElecBug, takes the slot BigTreasure 73 held.)
-    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28]
+    # more admitted identity, 28 ElecBug, takes the slot BigTreasure 73 held;
+    # #898: 17 takes the slot the Breadbug 38 proxy held; #245: 18 takes the
+    # slot the Antenna Beetle 41 proxy held.)
+    pool = pool + [2, 33, 35, 43, 53, 67, 76, 12, 13, 14, 23, 79, 34, 28, 17, 18]
     assert len(pool) == 35 and len(set(pool)) == 35
     proxy_rows = [row for row in rows if row["source_id"] in set(pool)]
     for seed in ("norepeat-a", "norepeat-b", "norepeat-c"):

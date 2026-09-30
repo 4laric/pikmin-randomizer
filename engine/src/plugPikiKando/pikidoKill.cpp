@@ -77,6 +77,8 @@ void Piki::doKill()
 					item->init(pos);
 
 					item->setColor(mColor);
+                    item->mP2Purple = mP2Purple;
+                    item->mP2White = mP2White;
 #if defined(PIKI_PC_PORT)
 					item->mPcOwner = mPlayerId;
 #endif

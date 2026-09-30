@@ -298,6 +298,7 @@ set(PC_PORT_SOURCES
     # TEST-ONLY headless autoplay bot (bot-impl): scripted player driving the
     # normal pad path. Env-gated (PIKMIN_RANDOMIZER_AUTOPLAY), inert otherwise.
     pc_port/pc_p2_autoplay.cpp
+    pc_port/pc_p2_ship.cpp
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_purple_motion.cpp
     pc_port/pc_p2_purple_impact.cpp

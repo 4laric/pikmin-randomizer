@@ -1,3 +1,5 @@
+#include "pc_p2_ship.h"
+#include "pc_randomizer.h"
 #include "ItemAI.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
@@ -776,6 +778,7 @@ void GoalAI::BootEmit::act(AICreature* item)
 	CI_LOOP(it)
 	{
 		PikiHeadItem* item = (PikiHeadItem*)*it;
+        if (pc_randomizer_purple_campaign() && (item->mP2Purple || item->mP2White)) continue;
 		f32 dist           = qdist2(item->mSRT.t.x, item->mSRT.t.z, obj->mSRT.t.x, obj->mSRT.t.z);
 		if (dist > seeddist) {
 			seeddist = dist;
@@ -801,6 +804,7 @@ void GoalAI::BootEmit::act(AICreature* item)
 		CI_LOOP(pikiIt)
 		{
 			Piki* item = (Piki*)*pikiIt;
+            if (pc_p2_ship_special(item)) continue;
 			f32 dist   = qdist2(item->mSRT.t.x, item->mSRT.t.z, obj->mSRT.t.x, obj->mSRT.t.z);
 			if (dist > pikidist) {
 				pikidist = dist;

@@ -1,3 +1,4 @@
+#include "pc_p2_ship.h"
 #include "pc_randomizer.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
@@ -413,6 +414,7 @@ void GoalItem::suckMe(Pellet* item)
  */
 void GoalItem::enterGoal(Piki* piki)
 {
+    if (pc_p2_ship_special(piki)) { pc_p2_ship_deposit(piki); return; }
 	int old = mItemAnimator.mMotionIdx;
 	playEventSound(this, SE_PIKI_GOHOME);
 	pikiInfMgr.incPiki(piki);

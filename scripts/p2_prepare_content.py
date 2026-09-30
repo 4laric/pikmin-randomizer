@@ -42,6 +42,11 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   the private model room) plus the ``p2-groink-teki.txt`` carcass sidecar
   (source timeline). Poses are sampled per clip
   (``pikmin2_groink_stage.POSE_LIMITS``), not by the global pose limit.
+* 38 PanModoki: ``pikmin2_breadbug_own_assets.extract`` -> ``<out>/PanModoki/``
+  (``breadbug.json`` + ``identity.json`` + ``breadbug_<clip>_<ii>.mod``);
+  the Breadbug adapter stages exactly the native OWN inputs through
+  ``experimental.pikmin2_breadbug_stage`` (retail ``p2-breadbug-parms.txt``,
+  ``p2-breadbug-bank.txt`` and the poses into the private model room).
 * 79 Sokkuri: ``pikmin2_sokkuri_assets.extract`` -> ``<out>/Sokkuri/``
   (``sokkuri.json`` + ``ginv_Sokkuri_<clip>_<ii>.mod``); the Sokkuri adapter
   stages the batch-2 ground files through ``pikmin2_sokkuri_content``. A legacy
@@ -138,6 +143,19 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
 * 66 Houdai: ``pikmin2_long_legs_assets.extract`` -> ``<out>/Houdai/``.
 * 97 FminiHoudai: ``pikmin2_cannon_projectile_assets.extract`` ->
   ``<out>/FminiHoudai/``.
+* 58 BombSarai (#244 OWN): ``pikmin2_bombsarai_assets.extract`` ->
+  ``<out>/BombSarai/`` (``bombsarai.json`` + ``identity.json`` + the
+  ``BombSarai/`` carrier and ``Bomb/`` payload pose banks, retail parms and
+  bca clips); the BombSarai adapter runs the shared
+  ``pikmin2_bombsarai_install`` and stages the native OWN inputs through
+  ``pikmin2_bombsarai_stage`` (``p2-bombsarai-parms.txt``,
+  ``p2-bombsarai-bomb-parms.txt``, ``p2-bombsarai-own-bank.txt``, the Bomb
+  meshes and ``p2-bombsarai-teki.txt``).
+* 41 Fuefuki (#245 OWN): ``pikmin2_fuefuki_assets.extract`` -> ``<out>/Fuefuki/``
+  (``fuefuki.json`` + ``identity.json`` + retail parms/animmgr, the ten BCA
+  clips incl. landing/landfail under the singular-scale policy, and
+  ``fuefuki_Fuefuki_<clip>_<ii>.mod`` poses); the Fuefuki adapter stages the
+  native source-FSM inputs through ``pikmin2_fuefuki_campaign_stage``.
 * 73 BigTreasure (#246 OWN): ``pikmin2_bigtreasure_assets.extract`` ->
   ``<out>/BigTreasure/`` (the full import tree plus ``identity.json``); the
   BigTreasure adapter stages the native campaign core inputs through
@@ -224,6 +242,7 @@ ENUM_FOR_SOURCE = {
     27: "Tadpole",
     28: "ElecBug",
     34: "SnakeCrow",
+    38: "PanModoki",
     68: "TamagoMushi",
     94: "DangoMushi",
     44: "BlueKochappy",
@@ -249,6 +268,7 @@ ENUM_FOR_SOURCE = {
     93: "BombOtakara",
     97: "FminiHoudai",
     101: "UmiMushiBlind",
+    41: "Fuefuki",
 }
 
 
@@ -624,6 +644,62 @@ def extract_minihoudai(iso, dest, pose_limit=None):
         shutil.rmtree(tmp, ignore_errors=True)
     try:
         minihoudai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_bombsarai(iso, dest, pose_limit=8):
+    """Build <dest>/BombSarai/ via the BombSarai extractor (#244 OWN).
+
+    ``experimental.pikmin2_bombsarai_assets.extract`` writes ``bombsarai.json``
+    (schema-1 ``P2_BOMBSARAI_IMPORT_1``) plus the ``BombSarai/`` carrier and
+    ``Bomb/`` payload trees (retail parms, bca clips, sampled pose meshes); this
+    wrapper adds the ``identity.json`` the family installer pre-flights. The
+    BombSarai adapter stages what the native OWN port opens from this tree.
+    """
+    from experimental import pikmin2_bombsarai_assets as bombsarai_assets
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "BombSarai"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-bombsarai"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        bombsarai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        (tmp / "identity.json").write_text(
+            json.dumps(dict(schema=1, source_id=58, enum_name="BombSarai"), indent=2) + "\n",
+            encoding="utf-8")
+        shutil.copytree(tmp, target)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
+def extract_breadbug(iso, dest):
+    """Build <dest>/PanModoki/ via the Breadbug OWN extractor (#898).
+
+    Poses are sampled per clip (``pikmin2_breadbug_own_assets.POSE_LIMITS``
+    plus every key-event frame), not by the global pose limit.
+    """
+    from experimental import pikmin2_breadbug_own_assets as breadbug
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    target = dest / "PanModoki"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-breadbug"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        breadbug.extract(iso, tmp)
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -1317,6 +1393,40 @@ def extract_kabuto(iso, research, dest, pose_limit=6):
     return target
 
 
+def extract_fuefuki(iso, dest, pose_limit=12):
+    """Build <dest>/Fuefuki/ via the Fuefuki extractor (#245 OWN).
+
+    ``pikmin2_fuefuki_assets.extract`` writes the import directory (retail
+    parms, animmgr, ten BCA clips, sampled poses) plus ``fuefuki.json``; both
+    land in ``<dest>/Fuefuki`` with an ``identity.json`` (schema 1, 41,
+    ``Fuefuki``) for the family pre-flight. ``pose_limit`` defaults to 12 per
+    clip (the native bank allows 24) so the draw animates every clip.
+    """
+    from experimental import pikmin2_fuefuki_assets as fuefuki
+
+    iso, dest = Path(iso), Path(dest)
+    if not iso.is_file():
+        raise ValueError(f"ISO not found: {iso}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= fuefuki.MAX_POSES:
+        raise ValueError(f"pose limit must be 2..{fuefuki.MAX_POSES}: {pose_limit!r}")
+    target = dest / "Fuefuki"
+    if target.exists():
+        raise ValueError(f"content dir already exists: {target}")
+    tmp = dest / ".tmp-fuefuki"
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        fuefuki.extract(iso, tmp, pose_limit=pose_limit)
+        shutil.copytree(tmp / fuefuki.ENEMY, target)
+        shutil.copy2(tmp / "fuefuki.json", target / "fuefuki.json")
+        (target / "identity.json").write_text(
+            json.dumps(dict(schema=1, source_id=41, enum_name="Fuefuki"), indent=2) + "\n",
+            encoding="utf-8")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return target
+
+
 def extract_proxy(iso, dest, source_id, pose_limit=None):
     """Build <dest>/<Enum>/ for one proxy species via the generic extractor.
 
@@ -1428,6 +1538,7 @@ EXTRACTORS = {
     75: "extract_kabuto",
     57: "extract_kurage",
     78: "extract_minihoudai",
+    38: "extract_breadbug",
     79: "extract_sokkuri",
     26: "extract_catfish",
     27: "extract_tadpole",
@@ -1435,6 +1546,7 @@ EXTRACTORS = {
     93: "extract_bombotakara",
     66: "extract_houdai",
     97: "extract_fminihoudai",
+    58: "extract_bombsarai",
     12: "extract_uji",
     13: "extract_uji",
     14: "extract_uji",
@@ -1449,6 +1561,7 @@ EXTRACTORS = {
     65: "extract_ground",
     71: "extract_aquatic",
     101: "extract_aquatic",
+    41: "extract_fuefuki",
 }
 for _row in _PROXY_ROWS:
     # An own-identity extractor (e.g. Chappy) wins over the generic proxy
@@ -1532,6 +1645,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             # Per-clip pose limits (native Groink bank), not the global limit.
             extract_minihoudai(iso, out)
             extracted.append(source_id)
+        elif source_id == 38:
+            # Per-clip pose limits (native Breadbug bank), not the global limit.
+            extract_breadbug(iso, out)
+            extracted.append(source_id)
         elif source_id == 79:
             extract_sokkuri(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
@@ -1552,6 +1669,14 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 97:
             extract_fminihoudai(iso, research, out, pose_limit=pose_limit)
+            extracted.append(source_id)
+        elif source_id == 58:
+            # Per-clip pose bank for the native OWN draw, not the global limit.
+            extract_bombsarai(iso, out)
+            extracted.append(source_id)
+        elif source_id == 41:
+            # Per-clip pose bank for the native draw, not the global limit.
+            extract_fuefuki(iso, out)
             extracted.append(source_id)
         elif source_id == 73:
             extract_bigtreasure(iso, research, out)
@@ -1656,7 +1781,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         else:
             # Supported by the family map but with no extractor wired here
-            # (e.g. Kochappy 1 / Snow 45 / BombSarai 58): report, don't invent.
+            # (e.g. Kochappy 1 / Snow 45): report, don't invent.
             if source_id not in unsupported:
                 no_extractor.append(source_id)
     # Two distinct causes, and conflating them sends people to the wrong file:

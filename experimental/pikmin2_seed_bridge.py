@@ -52,13 +52,15 @@ DENSITY_POLICIES = (DENSITY_LEGACY, DENSITY_BOUNDED, DENSITY_SAMPLED)
 # the equality); the 2026-09-26 roster wave grew this from the original six;
 # admit-frogs5 (#871) appends Wtank 25 + Armor 15; #888 appends MiniHoudai 78;
 # #215 appends Demon 32.
+# #898 appends PanModoki (Breadbug) 38.
+# #244 appends BombSarai 58.
 PLAYABLE_IDS = (44, 54, 59, 60, 61, 62, 23, 79,
                 2, 33, 35, 43, 53, 67, 76,
                 12, 13, 14, 28, 94, 68,
                 17, 18, 24, 75,
                 56, 63, 69,
                 34, 70, 65, 71, 101,
-                25, 15, 78, 73, 32)
+                25, 15, 78, 73, 32, 38, 41, 58)
 
 
 class SeedBridgeError(ValueError):
