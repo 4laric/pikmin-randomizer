@@ -25,7 +25,7 @@ Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
 The landing site is where the captain starts. It is NOT (0, 0): the Forest of Hope start was measured
-at about (-464, 1967) from a native log (wave-3 lane 53), so ``LANDING`` records measured starts and
+at (-465, 1964) from a native log (P2_CHAPPY_KING_HIDEWAIT navi_x/navi_z) (wave-3 lane 53), so ``LANDING`` records measured starts and
 ``--landing X,Z`` overrides any area whose start has not been measured. Every start profile begins on
 day 2 (``randomizer.catalog.START_AREAS``), so ``--near-start`` slots default to ``first_day <= 2``:
 CONTRIBUTING "Playtest seeds" rule 3 (nothing under test behind a later day).
@@ -55,7 +55,7 @@ AREAS = {
 }
 LANDING_XZ = (0.0, 0.0)  # legacy default for areas whose start is not measured
 # Measured captain start (x, z), from native logs. Only measured areas are listed.
-LANDING = {'foh': (-464.0, 1967.0), 'forest': (-464.0, 1967.0)}
+LANDING = {'foh': (-465.0, 1964.0), 'forest': (-465.0, 1964.0)}
 START_DAY = 2  # every START_AREAS profile is '<area>-day2'
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
