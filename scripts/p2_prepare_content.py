@@ -873,7 +873,7 @@ def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
     return target
 
 
-def extract_queen(iso, research, dest, pose_limit=12):
+def extract_queen(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/Queen/ for the Empress Bulblax OWN binding (#256).
 
     Runs the audited Bulblax import (``pikmin2_bulblax_assets.extract``, which
@@ -893,8 +893,8 @@ def extract_queen(iso, research, dest, pose_limit=12):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
-        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= bulblax_bank.MAX_POSES:
+        raise ValueError(f"pose limit must be 2..{bulblax_bank.MAX_POSES}: {pose_limit!r}")
     target = dest / "Queen"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1862,7 +1862,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extract_kabuto(iso, research, out, pose_limit=legacy_pose_limit)
             extracted.append(source_id)
         elif source_id == 30:
-            extract_queen(iso, research, out)
+            extract_queen(iso, research, out, pose_limit=max(12, min(pose_limit, DEFAULT_POSE_LIMIT)))
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)
