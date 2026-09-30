@@ -200,6 +200,103 @@ def load(source):
     return _load_iso(source)
 
 
+# Balloon materials (lambert14 .. lambert14(5), #1027). Their two source TEV
+# stages colour each balloon from its own MAT3 registers:
+#   stage 0: lerp(C2, C1, TEXC) with alpha A0 * RASA (texmap 0 = the I4 highlight)
+#   stage 1: C0 + CPREV * RASC (x2), alpha APREV
+# The approximate single stage drew TEXC * RASC instead, i.e. the grey highlight
+# texture on black. These are written verbatim (registers, konst, orders).
+BALLOON_STAGES = (
+    dict(color=[6, 4, 8, 15, 0, 0, 0, 1, 0], alpha=[7, 1, 5, 7, 0, 0, 0, 1, 0], order=[0, 0, 4]),
+    dict(color=[15, 0, 10, 2, 0, 0, 1, 1, 0], alpha=[7, 7, 7, 0, 0, 0, 0, 1, 0], order=[0, 0, 4]),
+)
+
+
+def _material_of_shapes(mb):
+    """Shape index -> MAT3 material index from the INF1 draw hierarchy."""
+    hierarchy = mb['INF1']
+    at = struct.unpack_from('>I', hierarchy, 20)[0]
+    material, mapping = 0, {}
+    while True:
+        kind, index = struct.unpack_from('>HH', hierarchy, at)
+        at += 4
+        if kind == 0:
+            return mapping
+        if kind == 0x11:
+            material = index
+        elif kind == 0x12:
+            mapping[index] = material
+
+
+def _index_range(indices):
+    """(first, count) of a contiguous index set, else ValueError."""
+    ordered = sorted(indices)
+    if not ordered or ordered[-1] - ordered[0] + 1 != len(ordered):
+        raise ValueError('billboard vertex indices are not contiguous')
+    return [ordered[0], len(ordered)]
+
+
+def balloon_patch(mb, decoded):
+    """Source TEV overrides for the balloon billboards plus their vertex ranges.
+
+    Returns ``(tev_overrides, billboards)``. ``billboards`` lists, per camera-
+    facing billboard shape (J3D shape matrix type 1), ``[first_position,
+    position_count, first_normal, normal_count]``: the native draw turns those
+    vertices to face the camera about their centroid (the source billboard
+    replaces the joint rotation with the view basis). The balloon UVs get the
+    source texture-matrix SRT (MAT3 texmtx, mode 0) that the converter drops.
+    """
+    b, arrays, shapes, _ = decoded
+    billboard_shapes = list(b.get('_billboard_shapes', ()))
+    if not billboard_shapes:
+        return {}, []
+    m = mb['MAT3']
+    u32 = lambda at: struct.unpack_from('>I', m, at)[0]
+    u16 = lambda at: struct.unpack_from('>H', m, at)[0]
+    mapping = _material_of_shapes(mb)
+    overrides, billboards, patched_uvs = {}, [], set()
+    other_uvs = {v[13] for si, tris in enumerate(shapes) if si not in billboard_shapes
+                 for tri in tris for v in tri if 13 in v}
+    for si in billboard_shapes:
+        tris = shapes[si]
+        billboards.append(_index_range({v[9] for tri in tris for v in tri})
+                          + _index_range({v[10] for tri in tris for v in tri if 10 in v}))
+        r = u32(0x0C) + u16(u32(0x10) + 2 * mapping[si]) * 332
+        count = m[u32(0x58) + m[r + 4]]
+        if count != len(BALLOON_STAGES):
+            continue
+        stages = []
+        for k, want in enumerate(BALLOON_STAGES):
+            stage = u32(0x5C) + u16(r + 0xE4 + 2 * k) * 20
+            order = u32(0x4C) + u16(r + 0xBC + 2 * k) * 4
+            if (list(m[stage + 1:stage + 10]) != want['color'] or list(m[stage + 10:stage + 19]) != want['alpha']
+                    or list(m[order:order + 3]) != want['order']):
+                break
+            stages.append(dict(order=want['order'], color=want['color'], alpha=want['alpha'],
+                               kcolor=m[r + 0x9C + k], kalpha=m[r + 0xAC + k]))
+        else:
+            regs = [list(struct.unpack_from('>4h', m, u32(0x50) + u16(r + 0xDC + 2 * k) * 8)) for k in range(3)]
+            konst = b''.join(m[u32(0x54) + u16(r + 0x94 + 2 * k) * 4:][:4] for k in range(4))
+            overrides[si] = dict(regs=regs, konst=konst, stages=stages)
+            # Source texture matrix 0 of the material (texgen TEX0 -> TEXMTX0).
+            tm = u16(r + 0x48)
+            if tm != 0xFFFF and 13 in arrays:
+                info = m[u32(0x40) + tm * 100:u32(0x40) + tm * 100 + 100]
+                if info[1] != 0 or struct.unpack_from('>h', info, 24)[0] != 0:
+                    raise ValueError('unaudited balloon texture matrix mode')
+                cx, cy = struct.unpack_from('>2f', info, 4)
+                sx, sy = struct.unpack_from('>2f', info, 16)
+                tx, ty = struct.unpack_from('>2f', info, 28)
+                uvs = {v[13] for tri in tris for v in tri if 13 in v}
+                if uvs & other_uvs:
+                    raise ValueError('balloon UVs shared with other shapes')
+                for index in uvs - patched_uvs:
+                    u, v = arrays[13][index]
+                    arrays[13][index] = ((u - cx) * sx + cx + tx, (v - cy) * sy + cy + ty)
+                patched_uvs |= uvs
+    return overrides, billboards
+
+
 def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                   prefix, report, reference):
     """Write enemy.bmd and the sampled pose bank; return (clips, reference)."""
@@ -239,8 +336,13 @@ def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                         decoded = decode(model, True, bake_rigid=True,
                                          draw_matrices=matrices, **TOLERANCES)
                         name = f'{prefix}_{species}_{stem}_{number:02}.mod'
-                        conversion = write_model(decoded, root / name, 'enemy.bmd')
+                        overrides, billboards = balloon_patch(mb, decoded)
+                        conversion = write_model(decoded, root / name, 'enemy.bmd',
+                                                 tev_overrides=overrides)
                         conversion.update(source='enemy.bmd', output=name)
+                        if billboards:
+                            conversion['billboard_vertex_ranges'] = billboards
+                            conversion['balloon_tev_shapes'] = sorted(overrides)
                         data = (root / name).read_bytes()
                         resources = resource_chunks(data)
                         if reference is not None and resources != reference:
