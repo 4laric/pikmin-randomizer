@@ -121,6 +121,10 @@ IDENTITY_FAMILY = {
     # experimental.pikmin2_breadbug_stage; the campaign actor is driven by
     # pc_p2_breadbug_fsm on the TEKI_Collec vehicle and delivers onion:p2:38.
     38: 'breadbug', 'panmodoki': 'breadbug',
+    # #256: Empress Bulblax (Queen, 30) OWN. Stages the native source-FSM
+    # inputs (disc parms + clip/key-event/pose bank, poses, BTK specular);
+    # the seeded actor rides TEKI_Swallow and pc_p2_queen_teki drives it.
+    30: 'queen', 'queen': 'queen',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
     # than forking it; the source dir holds the full aquatic import.
@@ -1139,6 +1143,35 @@ def _adapt_bombsarai(source, run, actors):
     except (BombSaraiStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'BombSarai OWN staging failed: {error}') from error
     return dict(receipt, own=own)
+def _validate_queen(source):
+    """Pre-flight check for Queen (Empress Bulblax, source 30) content."""
+    _read_identity_source(source, 30, 'Queen')
+    from experimental.pikmin2_queen_stage import QueenStageError, plan
+    try:
+        plan(source)
+    except (QueenStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Queen content invalid: {error}') from error
+
+
+def _adapt_queen(source, run, actors):
+    """Adapter for Queen (source 30): native OWN bank, poses and specular.
+
+    The campaign (bridge) setup binds every seeded 30 actor from the seed
+    itself, so no per-generator sidecar is written.
+    """
+    from experimental.pikmin2_queen_stage import QueenStageError, stage_from
+    _read_identity_source(source, 30, 'Queen')
+    generators = [int(generator) for generator, _species in actors]
+    for _, species in actors:
+        if species != 'Queen':
+            raise StagingError(f'Queen adapter got non-Queen species: {species!r}')
+    if not generators:
+        raise StagingError('Queen install requires at least one generator')
+    try:
+        receipt = stage_from(Path(source), Path(run))
+    except (QueenStageError, OSError, KeyError, ValueError) as error:
+        raise StagingError(f'Queen staging failed: {error}') from error
+    return dict(species='Queen', source_id=30, generators=sorted(set(generators)), queen=receipt)
 
 
 def _adapt_cannon_projectile(source, run, actors):
@@ -1563,6 +1596,7 @@ ADAPTERS = {
     'breadbug': {'install': _adapt_breadbug, 'validate': _validate_breadbug},
     'fuefuki': {'install': _adapt_fuefuki, 'validate': _validate_fuefuki},
     'bombsarai': {'install': _adapt_bombsarai, 'validate': _validate_bombsarai},
+    'queen': {'install': _adapt_queen, 'validate': _validate_queen},
     'cannon_projectile': {'install': _adapt_cannon_projectile},
     'chappy': {'install': _adapt_chappy, 'validate': _validate_chappy},
     'frog': {'install': _adapt_frog, 'validate': _validate_frog},

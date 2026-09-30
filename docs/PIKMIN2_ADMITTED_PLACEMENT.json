@@ -5393,6 +5393,41 @@
       ]
     },
     {
+      "identity": "Queen",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 24,
+      "footprint_radius": 250.0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 10,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": true,
+      "encounter_descriptor": "queen_arena",
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "bridge.spawn",
+        "placement.boss_arena"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "P2 source_id 30; boss arena placement (#899, owner ruling 2026-09-29 #3): placed only in P1 boss arenas, replacing the P1 boss; accepted on every measured, unprotected arena whose clearance fits the queen_arena footprint. Pool admission is still the family lane's natural kill -> carry -> Onion receipt.",
+      "cohort": null,
+      "accepted_slot_uids": [
+        4019261003,
+        304372265,
+        2974383966,
+        2903640892
+      ]
+    },
+    {
       "identity": "BigTreasure",
       "terrains": [
         "ground"
