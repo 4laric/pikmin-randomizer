@@ -73,8 +73,12 @@ Native log sha256 for each run. Executables are staged under
 
 Flags: `hope_snagret_part` is true. The Breadbug holder is proven but stays
 false because the Navel Breadbug is the only Breadbug spawn, so a takeover
-strands the Breadbug bestiary check until #905 re-keys it. Beady Long Legs,
-Cannon Beetle and Puffstool stay protected until delivery is shown.
+strands the Breadbug bestiary check until #905 re-keys it (un09 stays
+protected pending #905). Beady Long Legs, Cannon Beetle and Puffstool arenas
+now have `held_part_transfer` true per the owner ruling (#901) and the merged
+#955 placement document. Delivery for those three is still unproven by bot
+runs (b1, k3 and p1 above ended on squad size or day length before a CHECK).
+Emperor stays protected.
 
 Not reachable with the current bot, so not run: the next-day load half of a
 dropped part (the day-end save screen does not advance under scripted A),

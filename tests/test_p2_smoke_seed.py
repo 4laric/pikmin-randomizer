@@ -30,6 +30,43 @@ def roster():
     return load_and_validate()
 
 
+def test_ordinary_slots_can_skip_slots_gated_behind_a_later_day(document):
+    all_slots = smoke.ordinary_slots(document, 'foh')
+    day2 = smoke.ordinary_slots(document, 'foh', smoke.SEED_START_DAY)
+    assert len(day2) < len(all_slots)
+    assert all(s['first_day'] <= smoke.SEED_START_DAY for s in day2)
+    gated = {s['label'] for s in all_slots} - {s['label'] for s in day2}
+    assert 'hope_14-29_24' in gated and 'hope_4-29_2237' in gated
+
+
+def test_foh_landing_origin_is_the_measured_captain_start():
+    assert smoke.LANDING_BY_AREA['foh'] == (-316.0, 2022.0)
+    assert smoke.parse_origin('-316,2022') == (-316.0, 2022.0)
+    with pytest.raises(smoke.SmokeSeedError):
+        smoke.parse_origin('nope')
+
+
+def test_stage_content_extracts_before_copying_cached_species(tmp_path):
+    cache = tmp_path / 'cache'
+    (cache / 'Cached').mkdir(parents=True)
+    (cache / 'Cached' / 'a.txt').write_text('x')
+    out = tmp_path / 'content'
+    manifest = {'p2_layout': {'bindings': [
+        {'source_id': 75, 'enum_name': 'Cached'}, {'source_id': 78, 'enum_name': 'Fresh'}]}}
+    seen = {}
+
+    def prepare(iso, dest, wanted):
+        seen['dest_empty_at_extract'] = not any(dest.iterdir())
+        (dest / 'Fresh').mkdir()
+        (dest / 'Fresh' / 'b.txt').write_text('y')
+        return {'extracted_enums': ['Fresh']}
+
+    summary = smoke.stage_content(manifest, out, cache, 'iso', prepare_fn=prepare)
+    assert seen['dest_empty_at_extract'] is True
+    assert (out / 'Cached' / 'a.txt').exists() and (out / 'Fresh' / 'b.txt').exists()
+    assert summary['from_cache'] == ['Cached'] and summary['extracted'] == ['Fresh']
+
+
 def test_ordinary_slots_exclude_protected_boss_and_held(document):
     slots = smoke.ordinary_slots(document, 'foh')
     labels = {s['label'] for s in slots}

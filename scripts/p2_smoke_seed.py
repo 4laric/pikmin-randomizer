@@ -25,8 +25,8 @@ Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
 The landing site is where the captain starts. It is NOT (0, 0): the Forest of Hope start was measured
-at (-465, 1964) from a native log (P2_CHAPPY_KING_HIDEWAIT navi_x/navi_z) (wave-3 lane 53), so ``LANDING`` records measured starts and
-``--landing X,Z`` overrides any area whose start has not been measured. Every start profile begins on
+at (-316, 2022) from a native log (AUTOPLAY_NAVI at rest at START; wave-3 polish 75/78), so ``LANDING`` records measured starts and
+``--landing X,Z`` (alias ``--origin``) overrides any area whose start has not been measured. Every start profile begins on
 day 2 (``randomizer.catalog.START_AREAS``), so ``--near-start`` slots default to ``first_day <= 2``:
 CONTRIBUTING "Playtest seeds" rule 3 (nothing under test behind a later day).
 """
@@ -55,8 +55,10 @@ AREAS = {
 }
 LANDING_XZ = (0.0, 0.0)  # legacy default for areas whose start is not measured
 # Measured captain start (x, z), from native logs. Only measured areas are listed.
-LANDING = {'foh': (-465.0, 1964.0), 'forest': (-465.0, 1964.0)}
+LANDING = {'foh': (-316.0, 2022.0), 'forest': (-316.0, 2022.0)}
 START_DAY = 2  # every START_AREAS profile is '<area>-day2'
+SEED_START_DAY = START_DAY  # alias kept for the polish 75/78 tests
+LANDING_BY_AREA = LANDING
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
 SMOKE_ENV = 'PIKMIN_P2_SMOKE_ANY_SLOT'
@@ -110,6 +112,14 @@ def slot_positions(probe_log_text=None):
             if probe.get('slot') and probe.get('position'):
                 positions[int(probe['slot'])] = list(probe['position'])
     return positions
+
+
+def parse_origin(text):
+    try:
+        x, z = (float(v) for v in text.split(','))
+    except ValueError:
+        raise SmokeSeedError('--origin must be X,Z') from None
+    return (x, z)
 
 
 def distance_xz(position, origin=LANDING_XZ):
@@ -348,7 +358,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
-    reused, cached, missing = [], [], []
+    reused, cached, missing, pending_copies = [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
         if target.is_dir() and any(target.iterdir()):
@@ -356,8 +366,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            copy(source, target)
-            cached.append(enum)
+            pending_copies.append((source, target))  # copied after any extraction: the
+            cached.append(enum)                      # extractor needs an empty output dir
             continue
         missing.append(sid)
     extracted = []
@@ -380,6 +390,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 if not (cache_dir / enum).exists():
                     copy(fresh, cache_dir / enum)
+    for source, target in pending_copies:
+        copy(source, target)
     return {'reused': reused, 'from_cache': cached, 'extracted': extracted,
             'missing_ids': missing, 'needed': {str(k): v for k, v in sorted(needed.items())}}
 
@@ -446,7 +458,8 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    landing = parse_landing(args.landing) if args.landing else LANDING.get(args.area, LANDING_XZ)
+    landing = (parse_landing(args.landing) if args.landing
+               else parse_origin(args.origin) if args.origin else LANDING.get(args.area, LANDING_XZ))
     max_day = None if args.max_first_day < 0 else args.max_first_day
     if args.slot_uids:
         slots = pick_uids(ordinary_slots(document, args.area, max_day), parse_uids(args.slot_uids))
@@ -508,6 +521,7 @@ def main(argv=None):
     parser.add_argument('--slots', default='all', help="how many ordinary slots to fill: N or 'all' (default all)")
     parser.add_argument('--species', required=True, help='comma-separated P2 source ids, assigned round-robin in this order')
     parser.add_argument('--near-start', action='store_true', help='fill the N slots nearest the landing site (x/z distance from navi_start 0,0)')
+    parser.add_argument('--origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', required=True, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
