@@ -24,7 +24,9 @@ Example (PowerShell)::
 Slot coordinates come from the committed catalogs (``randomizer.campaign_data``
 ``CAMPAIGN_SLOTS`` and ``randomizer.spawn_data`` ``ADULT_SLOTS``/``GROUP_SLOTS``)
 and, optionally, ``P2_PLACEMENT_SLOT`` lines from a native log (``--probe-log``).
-The landing site is the stage ``navi_start`` (0, 0) in every P1 area.
+The landing site defaults to (0, 0), except Forest of Hope, where a native run
+logged the Captain standing still at (-316, 2022) at START (AUTOPLAY_NAVI, wave-3
+polish 75/78). ``--origin X,Z`` overrides either.
 """
 
 from __future__ import annotations
@@ -50,6 +52,8 @@ AREAS = {
     'spring': ('spring', 3, 'spring'),
 }
 LANDING_XZ = (0.0, 0.0)
+# Measured captain start per area (native.log AUTOPLAY_NAVI at rest, day start).
+LANDING_BY_AREA = {'foh': (-316.0, 2022.0), 'forest': (-316.0, 2022.0)}
 DEFAULT_ASSETS = r'C:\Users\alari\bbft\dist\cohesion\pikmin\assets'
 DEFAULT_GATES = ['placement.xyz', 'placement.terrain', 'placement.route', 'bridge.spawn']
 SMOKE_ENV = 'PIKMIN_P2_SMOKE_ANY_SLOT'
@@ -101,6 +105,14 @@ def slot_positions(probe_log_text=None):
             if probe.get('slot') and probe.get('position'):
                 positions[int(probe['slot'])] = list(probe['position'])
     return positions
+
+
+def parse_origin(text):
+    try:
+        x, z = (float(v) for v in text.split(','))
+    except ValueError:
+        raise SmokeSeedError('--origin must be X,Z') from None
+    return (x, z)
 
 
 def distance_xz(position, origin=LANDING_XZ):
@@ -309,7 +321,7 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
-    reused, cached, missing = [], [], []
+    reused, cached, missing, pending_copies = [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
         if target.is_dir() and any(target.iterdir()):
@@ -317,8 +329,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
             continue
         source = cache_dir / enum if cache_dir else None
         if source is not None and source.is_dir() and any(source.iterdir()):
-            copy(source, target)
-            cached.append(enum)
+            pending_copies.append((source, target))  # copied after any extraction: the
+            cached.append(enum)                      # extractor needs an empty output dir
             continue
         missing.append(sid)
     extracted = []
@@ -341,6 +353,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 if not (cache_dir / enum).exists():
                     copy(fresh, cache_dir / enum)
+    for source, target in pending_copies:
+        copy(source, target)
     return {'reused': reused, 'from_cache': cached, 'extracted': extracted,
             'missing_ids': missing, 'needed': {str(k): v for k, v in sorted(needed.items())}}
 
@@ -387,7 +401,8 @@ def build(args):
     bosses = parse_bosses(args.bosses)
     probe_text = Path(args.probe_log).read_text(encoding='utf-8', errors='replace') if args.probe_log else None
     positions = slot_positions(probe_text)
-    slots = pick_slots(ordinary_slots(document, args.area), args.slots, args.near_start, positions)
+    origin = parse_origin(args.origin) if args.origin else LANDING_BY_AREA.get(args.area, LANDING_XZ)
+    slots = pick_slots(ordinary_slots(document, args.area), args.slots, args.near_start, positions, origin)
     assignments = assign_round_robin(species, slots)
     override = build_override(document, roster, assignments, bosses)
     override_path = out / 'placement-override.json'
@@ -423,7 +438,7 @@ def build(args):
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
              'enum_name': next(b['enum_name'] for b in manifest['p2_layout']['bindings'] if int(b['target']) == uid),
              'position': positions.get(uid),
-             'distance_from_landing': round(distance_xz(positions[uid]), 1) if uid in positions else None}
+             'distance_from_landing': round(distance_xz(positions[uid], origin), 1) if uid in positions else None}
             for uid, sid in sorted(assignments.items(), key=lambda kv: (positions.get(kv[0]) is None,
                                                                          distance_xz(positions[kv[0]]) if kv[0] in positions else 0))],
         'bosses': [{'source_id': sid, 'arena': arena} for sid, arena in sorted(bosses.items())],
@@ -442,6 +457,7 @@ def main(argv=None):
     parser.add_argument('--slots', default='all', help="how many ordinary slots to fill: N or 'all' (default all)")
     parser.add_argument('--species', required=True, help='comma-separated P2 source ids, assigned round-robin in this order')
     parser.add_argument('--near-start', action='store_true', help='fill the N slots nearest the landing site (x/z distance from navi_start 0,0)')
+    parser.add_argument('--origin', default=None, help='landing site X,Z for --near-start (default: measured per area)')
     parser.add_argument('--bosses', default='', help="boss pins SOURCE_ID:ARENA_ID[,...] e.g. 94:hope_snagret_pit")
     parser.add_argument('--seed', required=True, help='seed name (also the manifest file name)')
     parser.add_argument('--out', required=True, type=Path, help='output directory (seed, override, content, actors.json, play.ps1, smoke.json)')
