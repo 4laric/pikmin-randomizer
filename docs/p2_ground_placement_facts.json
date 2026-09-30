@@ -121,7 +121,7 @@
         "min_water_depth": 0,
         "requires_burrow_ground": true,
         "requires_home": false,
-        "helper_budget": 10,
+        "helper_budget": 0,
         "requires_corpse_route": true
       },
       "facts": {
