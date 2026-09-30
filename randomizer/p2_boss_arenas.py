@@ -113,6 +113,9 @@ P1_BOSS_ARENAS = (
         "protected_drop": "ship part (pellet config 29)",
         # #948: owner permits P2 bosses on every ship-part arena (#901); the
         # boss-arena birth path carries the pellet-config part in mID.
+        # #924 evidence: a seed-placed P2 own-FSM occupant in this arena dropped uf06 and the
+        # carried part fired CHECK 9 Pikmin: Geiger Counter (vanilla index), run g8, native
+        # log sha256 c2389cd96d82daeea68df75de74463bb8c76b989c5e67e35e47625b39bdcfa1a.
         "held_part_transfer": True,
     },
     {

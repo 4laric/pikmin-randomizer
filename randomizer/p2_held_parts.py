@@ -64,9 +64,7 @@ P1_HELD_PART_SLOTS = (
         # Kept protected: only Breadbug generator, bestiary check would be lost
         # (see module docstring; #905).
         "held_part_transfer": False,
-        "evidence": ("u4/u5: DROP part=un09 via=die ok=1 (late un** shape); carry and CHECK not "
-                     "yet proven; protection kept for the bestiary check (#905), not for "
-                     "lack of evidence"),
+        "evidence": ("Proven on a seed-generated binding (root flag temporarily set): run h2, ASSIGN via=slot, DROP part=un09 via=die, carried, CHECK 23 Space Float = vanilla index. Kept False because the Navel Breadbug is the only Breadbug spawn, so a takeover would strand the Breadbug bestiary check until #905 re-keys it. Protection is an owner ruling for that bestiary check (#905), not for lack of evidence"),
     },
 )
 

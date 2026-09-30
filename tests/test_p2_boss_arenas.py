@@ -173,6 +173,14 @@ class HeldPartTransferTests(unittest.TestCase):
                      "spring_cannon_beetle"):
             self.assertFalse(arenas.arena_protected(by_id[name]), name)
 
+    def test_only_proven_arenas_transfer(self):
+        # #924: hope_snagret_part was proven by a campaign run that reached the vanilla
+        # check. #948 / #901 owner ruling: Puffstool and the other ship-part arenas
+        # also transfer. Emperor and the Goolix/pit arenas stay protected.
+        proven = {a["id"] for a in arenas.P1_BOSS_ARENAS if a.get("held_part_transfer")}
+        self.assertEqual(proven, {"hope_snagret_part", "navel_puffstool",
+                                  "navel_beady_long_legs", "spring_cannon_beetle"})
+
     def test_every_transfer_arena_holds_a_ship_part(self):
         for arena in arenas.P1_BOSS_ARENAS:
             if arena.get("held_part_transfer"):
