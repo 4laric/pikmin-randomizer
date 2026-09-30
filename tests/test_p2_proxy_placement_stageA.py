@@ -359,11 +359,12 @@ def test_sampled_fill_prefers_unplaced_eligible_over_repeats():
     large_ids = [row["source_id"] for row in rows if row["host_teki"] not in PACK_HOSTS]
     # All 38 own-identity species left the proxy tier for their own
     # installers (integ #871), so this pins the declared shape, not a
-    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 11 large-host
+    # universal constant: 2 small-host proxies (10 Wealthy, 11 Fart) + 10 large-host
     # proxies remain (BigTreasure 73 left for its own campaign installer, #246,
     # #215 retired the Demon 32 proxy for its own Sarai-host profile, Breadbug 38
     # left for its OWN port, #898, and Antenna Beetle 41 for its OWN port, #245).
     assert len(small_ids) == 2 and len(large_ids) == 10
+    # Queen 30 left for its OWN installer (#256).
     assert sorted(small_ids) == [10, 11]
     for finished in (2, 33, 35, 43, 53, 67, 76,
                      12, 13, 14, 28, 68, 94,
