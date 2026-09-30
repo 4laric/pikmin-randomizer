@@ -46,3 +46,40 @@ docstring). Useful flags: `--held-target UID --held-species N` searches seeds
 whose own held-part layer binds that slot; `--arena A --species N` searches
 seeds whose arena sampling places N in arena A; `--power 10` for the bot's
 damage multiplier; `--stop-on-check REGEX`.
+
+Two more autoplay-gated switches, both logged and inert otherwise:
+
+- `PIKMIN_RANDOMIZER_AUTOPLAY_TELEPORT_TO_PART=1`: a dropped ship part whose
+  crew stays short for 20 s (it fell where the squad cannot walk) gets the
+  captain and free Pikmin moved beside it once
+  (`AUTOPLAY_TELEPORT_TO_PART`). The carry is still done by the Pikmin.
+- `PIKMIN_RANDOMIZER_AUTOPLAY_NEXT_DAY=1`: taps A whenever no captain exists
+  after the first stage. It does not get past the day-end save screen (see
+  below), so it is not enough for a next-day run.
+
+## Evidence (issue #924)
+
+Native log sha256 for each run. Executables are staged under
+`output/claude-orch/p2-held-part/bin-*`.
+
+| run | what | result |
+|---|---|---|
+| f1 | seed-generated binding of the Puffy Blowhog holder to BlueKochappy 44, no hand binding | ASSIGN via=slot, DROP via=die, CHECK 5 Interstellar Radio (vanilla index). `25bf4de1...2782` |
+| g8 | Hope Snagret part arena (`hope_snagret_part`), P2 own-FSM occupant, teleport | ASSIGN via=arena, DROP part=uf06, CHECK 9 Geiger Counter (vanilla index). `c2389cd9...a1c` |
+| h2 | Navel Breadbug holder bound to 44 (seed-generated), teleport | ASSIGN via=slot, DROP part=un09, carried, CHECK 23 Space Float (vanilla index). `db81a9ba...dae0` |
+| b1, b2 | Beady Long Legs arena, occupant 44 | ASSIGN, DROP part=uf03, 26-31 carriers hauling; the day ended first (`UFO_PART_CACHE_SAVE part=uf03`). No CHECK. |
+| k3 | Cannon Beetle arena, occupant 44 | ASSIGN, DROP part=ust1, crew 29 of 30 short. No CHECK. |
+| p1 | Puffstool arena, occupant 44 | ASSIGN via=slot, DROP part=uf09, crew 8 of 30. No CHECK. |
+
+Flags: `hope_snagret_part` is true. The Breadbug holder is proven but stays
+false because the Navel Breadbug is the only Breadbug spawn, so a takeover
+strands the Breadbug bestiary check until #905 re-keys it. Beady Long Legs,
+Cannon Beetle and Puffstool stay protected until delivery is shown.
+
+Not reachable with the current bot, so not run: the next-day load half of a
+dropped part (the day-end save screen does not advance under scripted A),
+vanilla regressions for the Snagret and Beady Long Legs arenas (they are P1
+bosses, not `BTeki`, so the bot cannot target them), the Cannon Beetle vanilla
+holder (a UI overlay held the run after the teleport), and two-peer lockstep
+(the netplay branch is not in `fork/main`).
+
