@@ -562,7 +562,7 @@ def extract_demon(iso, dest):
     return target
 
 
-def extract_kogane(iso, dest):
+def extract_kogane(iso, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/Kogane/ via the existing kogane extractor plus a flat bank.
 
     ``pikmin2_kogane_assets.extract`` produces the source bank
@@ -583,7 +583,7 @@ def extract_kogane(iso, dest):
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
-        result = kogane.extract(iso, tmp)
+        result = kogane.extract(iso, tmp, pose_limit=min(pose_limit, kogane.MAX_POSES))
         target.mkdir(parents=True)
         (target / "beetles.json").write_text(json.dumps(result, indent=2) + "\n",
                                              encoding="utf-8")
@@ -650,7 +650,7 @@ def extract_minihoudai(iso, dest, pose_limit=None):
     return target
 
 
-def extract_bombsarai(iso, dest, pose_limit=8):
+def extract_bombsarai(iso, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/BombSarai/ via the BombSarai extractor (#244 OWN).
 
     ``experimental.pikmin2_bombsarai_assets.extract`` writes ``bombsarai.json``
@@ -671,7 +671,7 @@ def extract_bombsarai(iso, dest, pose_limit=8):
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     try:
-        bombsarai_assets.extract(iso, tmp, pose_limit=pose_limit)
+        bombsarai_assets.extract(iso, tmp, pose_limit=min(pose_limit, bombsarai_assets.MAX_POSES))
         (tmp / "identity.json").write_text(
             json.dumps(dict(schema=1, source_id=58, enum_name="BombSarai"), indent=2) + "\n",
             encoding="utf-8")
@@ -866,7 +866,7 @@ def extract_houdai(iso, dest):
     return target
 
 
-def extract_bigtreasure(iso, research, dest, pose_limit=8):
+def extract_bigtreasure(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/BigTreasure/ via the BigTreasure import (#246 OWN).
 
     ``pikmin2_bigtreasure_assets.extract`` produces the disc import tree
@@ -881,8 +881,9 @@ def extract_bigtreasure(iso, research, dest, pose_limit=8):
         raise ValueError(f"ISO not found: {iso}")
     if not research.is_dir():
         raise ValueError(f"research checkout not found: {research}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= 12:
-        raise ValueError(f"pose limit must be 2..12: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
+    pose_limit = min(pose_limit, bigtreasure.MAX_POSES)
     target = dest / "BigTreasure"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1393,7 +1394,7 @@ def extract_kabuto(iso, research, dest, pose_limit=6):
     return target
 
 
-def extract_fuefuki(iso, dest, pose_limit=12):
+def extract_fuefuki(iso, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/Fuefuki/ via the Fuefuki extractor (#245 OWN).
 
     ``pikmin2_fuefuki_assets.extract`` writes the import directory (retail
@@ -1407,8 +1408,9 @@ def extract_fuefuki(iso, dest, pose_limit=12):
     iso, dest = Path(iso), Path(dest)
     if not iso.is_file():
         raise ValueError(f"ISO not found: {iso}")
-    if type(pose_limit) is not int or not 2 <= pose_limit <= fuefuki.MAX_POSES:
-        raise ValueError(f"pose limit must be 2..{fuefuki.MAX_POSES}: {pose_limit!r}")
+    if type(pose_limit) is not int or not 2 <= pose_limit <= POSE_LIMIT_MAX:
+        raise ValueError(f"pose limit must be 2..{POSE_LIMIT_MAX}: {pose_limit!r}")
+    pose_limit = min(pose_limit, fuefuki.MAX_POSES)
     target = dest / "Fuefuki"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
@@ -1639,7 +1641,7 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extract_kurage(iso, out)
             extracted.append(source_id)
         elif source_id == 9:
-            extract_kogane(iso, out)
+            extract_kogane(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 78:
             # Per-clip pose limits (native Groink bank), not the global limit.
@@ -1672,14 +1674,14 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 58:
             # Per-clip pose bank for the native OWN draw, not the global limit.
-            extract_bombsarai(iso, out)
+            extract_bombsarai(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 41:
             # Per-clip pose bank for the native draw, not the global limit.
-            extract_fuefuki(iso, out)
+            extract_fuefuki(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 73:
-            extract_bigtreasure(iso, research, out)
+            extract_bigtreasure(iso, research, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id in (34, 70):
             if not snagret_done:

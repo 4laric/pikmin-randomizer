@@ -19,7 +19,7 @@ Acceptance checks (``violations``):
   ``--min-poses`` poses (default 12) or samples no more than ``--max-gap``
   source frames apart (default 5);
 * trailer: every ``P2_*_BANK_1`` clip row with poses carries a valid trailer;
-* budget: every clip is within 512 KiB resident and every setup (bank file)
+* budget: every clip is within 1 MiB resident and every setup (bank file)
   within 48 MiB resident.
 
 ``--stage CONTENT --assets ASSETS`` first stages every identity in the content

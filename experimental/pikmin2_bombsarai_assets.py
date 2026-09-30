@@ -78,7 +78,7 @@ LOOPS = {0: 'stop at end', 1: 'reset to start and stop', 2: 'repeat',
 # required. Nothing else is relaxed: strict converter defaults everywhere else.
 TOLERANCES = {'billboard': 'static'}
 
-MAX_POSES = 12
+MAX_POSES = 24  # native pc_p2_bombsarai_own parseBank bound
 DEFAULT_POSES = 4
 POSE_PREFIX = 'bombsarai'
 

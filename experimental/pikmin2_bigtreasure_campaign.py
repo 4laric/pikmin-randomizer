@@ -57,7 +57,7 @@ LEG_FEET = ('rhand3jnt', 'lhand3jnt', 'rfoot3jnt', 'lfoot3jnt')
 WEAPONS = ('elec', 'fire', 'gas', 'water')
 # Pose sampling per clip for the native draw (bounded bytes); the extractor
 # samples up to its own pose limit and we keep an even subset.
-MAX_POSES = 6
+MAX_POSES = 24  # native pc_p2_bigtreasure_visual kMaxPoses (#943)
 MAX_BYTES = 40 * 1024 * 1024
 
 

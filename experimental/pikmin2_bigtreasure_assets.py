@@ -34,7 +34,7 @@ PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 OTAKARA_SOURCE = 'user/Abe/Pellet/us/otakara_config.txt'
 DATA_ROOT = 'enemy/data/BigTreasure'
 PELLET_DIR = 'user/Abe/Pellet/us/'
-MAX_POSES = 12
+MAX_POSES = 24  # native pc_p2_bigtreasure_visual kMaxPoses
 CLIP_BYTES = 4 * 1024 * 1024
 TOTAL_BYTES = 64 * 1024 * 1024
 

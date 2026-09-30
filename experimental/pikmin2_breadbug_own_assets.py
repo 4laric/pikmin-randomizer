@@ -60,8 +60,9 @@ CLIPS = ('dead', 'move1', 'move2', 'type1', 'type2', 'type3', 'type4', 'type5', 
 # Poses sampled per clip (native bound: <= 24 per clip, <= 1 MiB per mesh,
 # <= 24 MiB total). Looping locomotion gets the most; type5 is the carcass
 # hold, type1 the short pulled loop.
-POSE_LIMITS = {'dead': 6, 'move1': 8, 'move2': 8, 'type1': 4, 'type2': 6,
-               'type3': 6, 'type4': 6, 'type5': 3, 'wait1': 4}
+MAX_POSES = 24  # native pc_p2_breadbug_fsm parseBank bound
+POSE_LIMITS = {'dead': 16, 'move1': 24, 'move2': 24, 'type1': 12, 'type2': 16,
+               'type3': 16, 'type4': 16, 'type5': 6, 'wait1': 12}
 
 LIMITATIONS = [
     'Sampled rigid poses with approximate materials; no skeletal playback. The native draw holds the staged pose nearest the source FSM clip frame.',
@@ -77,8 +78,8 @@ def pose_name(clip, number):
 
 
 def extract(iso, output, pose_limit=None):
-    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 8):
-        raise ValueError(f'Pose limit must be 2..8 or None: {pose_limit!r}')
+    if pose_limit is not None and (type(pose_limit) is not int or not 2 <= pose_limit <= 24):
+        raise ValueError(f'Pose limit must be 2..24 or None: {pose_limit!r}')
     iso, output = Path(iso), Path(output)
     if not iso.is_file():
         raise ValueError(f'ISO not found: {iso}')
@@ -143,7 +144,13 @@ def extract(iso, output, pose_limit=None):
         limit = pose_limit if pose_limit is not None else POSE_LIMITS[stem]
         # Sampled frames plus every key-event frame (loop bounds, hide key), so
         # the short pulled loop (type1 5..10) and the carcass hold have poses.
-        frames = sorted(set(sample_frames(duration, limit)) | {int(e[0]) for e in row["events"] if 0 <= int(e[0]) < duration})
+        event_frames = {int(e[0]) for e in row["events"] if 0 <= int(e[0]) < duration}
+        frames = sorted(set(sample_frames(duration, limit)) | event_frames)
+        # Native bound is MAX_POSES per clip (pc_p2_breadbug_fsm): thin the
+        # uniform samples until the union with the key-event frames fits.
+        while len(frames) > MAX_POSES and limit > 2:
+            limit -= 1
+            frames = sorted(set(sample_frames(duration, limit)) | event_frames)
         for frame in frames:
             try:
                 _, pose = bca_pose(raw, frame, len(names), allow_scale=True)

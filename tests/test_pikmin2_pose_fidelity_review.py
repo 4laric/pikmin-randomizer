@@ -44,7 +44,7 @@ def test_approved_budgets_restored():
     assert anim.RESIDENT_CLIP_BYTES == 1024 * 1024  # owner-approved (#895)
     assert anim.RESIDENT_TOTAL_BYTES == 48 * 1024 * 1024
     assert proxy.CLIP_BYTES == 1024 * 1024 and proxy.TOTAL_BYTES == 8 * 1024 * 1024
-    assert anim.LEGACY_POSE_LIMIT == anim.DEFAULT_POSE_LIMIT == 16
+    assert anim.LEGACY_POSE_LIMIT == anim.DEFAULT_POSE_LIMIT == 24
 
 
 def one_joint_bca(scale):
