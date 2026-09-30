@@ -40,6 +40,9 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT  # noqa: E402
 sys.path.insert(0, str(ROOT))
 
 DEFAULT_ASSETS = Path("C:/Users/alari/bbft/dist/cohesion/pikmin/assets")
@@ -232,7 +235,14 @@ def _stage_content(args, work, manifest_path):
         return root
     out = work / "p2-content"
     if (out / "prepared.json").is_file():
-        return out
+        try:
+            recorded = json.loads((out / "prepared.json").read_text(encoding="utf-8")).get("pose_limit")
+        except (OSError, ValueError, AttributeError):
+            recorded = None
+        if recorded == DEFAULT_POSE_LIMIT:
+            return out
+        # Baked at another density (#943): rebuild rather than stage sparse banks.
+        shutil.rmtree(out)
     command = [sys.executable, str(ROOT / "scripts/p2_prepare_content.py"),
                "--iso", str(args.iso), "--out", str(out),
                "--seed-manifest", str(manifest_path),

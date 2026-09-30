@@ -1806,6 +1806,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
                "playable": list(PLAYABLE_SOURCE_IDS),
                "extracted": sorted(extracted),
                "extracted_enums": sorted(ENUM_FOR_SOURCE[i] for i in extracted),
+               "pose_limit": pose_limit,
+               "proxy_pose_limit": proxy_pose_limit,
+               "legacy_pose_limit": legacy_pose_limit,
                "skipped": skipped}
     (out / "prepared.json").write_text(json.dumps(summary, indent=2) + "\n",
                                        encoding="utf-8")
