@@ -361,6 +361,10 @@ P2_PLAYABLE_POOL = (
         "source_id": 28,
         "enum_name": "ElecBug",
         "family": "elecbug",
+        # Placement unit (owner ruling 2026-09-30): a slot given an Anode Beetle gets a
+        # linked PAIR. Data, not code: randomizer/p2_units.py stages it for the native
+        # generator hook (pc_port/pc_p2_species_unit.h); rows without "unit" mean 1.
+        "unit": 2,
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3",
             "log": "C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 d6b74d9abef0f6fc...) L1860 bind, L2043 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst-bugs-10.md; output/claude-orch/review/rev2-bugs.md",

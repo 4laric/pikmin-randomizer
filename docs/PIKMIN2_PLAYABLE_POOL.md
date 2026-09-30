@@ -292,3 +292,18 @@ its running game, AP progress and saves were not patched or migrated.
 - **56 Damagumo (P2 Beady Long Legs): withdrawn by owner ruling 2026-09-30.** "beady long legs pretty broken i would just give up on that one, the P1 native version works great." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `denied` with its admission history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. The native module (`pc_p2_long_legs`), the installers and the P1 native Beady Long Legs stay as they are. 69 Raging Long Legs is a separate row and stays admitted. Re-admission needs a new owner decision and the usual six gates.
 - **24 Tank (P2 Fiery Blowhog): withdrawn by owner ruling 2026-09-30.** "remove P2 fiery blowhog, it's redundant with the P1 fiery blowhog." The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays (shared with 25 Wtank Watery Blowhog, which stays admitted); the P1 Fiery Blowhog is untouched.
 - **65 Imomushi (Ravenous Whiskerpillar): withdrawn by owner ruling 2026-09-30, pending berry plants.** "whiskerpillar keep out of pool for now, pending berries." The source behaviour eats from fruit plants (`Imomushi.cpp:803-826`). The row left `seed.P2_PLAYABLE_POOL`, the roster evidence entry is `excluded` with its history kept, and its smoke package moved to `output/smoke-roster/_withdrawn/`. Native code stays. Re-admission follows berry plants.
+
+## Anode Beetle 28: owner pass and placement unit (2026-09-30, #1017)
+
+Owner playtest: "anode pass. the bones are there." Admission of 28 stands (pool row, roster
+evidence, accepted placement unchanged). Owner ruling on placement: "the unit of anode beetle
+should be 2. so like, a bulborb gets swapped to 2 anode beetles."
+
+A pool row may carry a `unit` (default 1): the number of actors a slot is born with when that
+species replaces it. Anode Beetle 28 has `"unit": 2`, so each slot it takes holds a linked pair
+(spawned 40 units apart, well inside the ~300-unit partner radius of `ElecBug::StateCharge`). The
+value is data on `randomizer.seed.P2_PLAYABLE_POOL`; `randomizer/p2_units.py` stages
+`p2-species-units.txt` into the run directory and native `pc_port/pc_p2_species_unit.h` reads it
+at the generator (`GenTypeAtOnce::init`). A group slot whose own count is already larger keeps it
+(the count is `max(slot count, unit)`). Smoke seeds go through the same launcher, and
+`p2_smoke_verify` fails a slot with fewer READY actors than the unit.
