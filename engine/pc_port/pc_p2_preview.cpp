@@ -165,6 +165,9 @@ Pellet* pc_p2_preview_treasure() { return previewTreasure; }
 void pc_p2_preview_setup() {
     if (!pc_pikipelago_room_preview()) {
         if (pc_randomizer_p2_bridge()) {
+            // Red resets the shared dwarf quake table; bind it before Orange.
+            // Keep this new campaign adapter scoped to explicit Purple opt-in.
+            if (pc_randomizer_purple_campaign()) pc_p2_kochappy_setup();
             pc_p2_dwarf_orange_setup();
             pc_p2_kochappy_fsm_setup();
             pc_p2_kogane_setup();

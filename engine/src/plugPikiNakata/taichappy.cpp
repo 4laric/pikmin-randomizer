@@ -583,9 +583,10 @@ TaiChappyStrategy::TaiChappyStrategy(TekiParameters* params)
 	TaiChappyPurpleImpactAction* purpleImpact = new TaiChappyPurpleImpactAction(TAI_RETURN_TRANSIT);
 	// Dedicated Purple receiver: normal queued damage and lethal transition run
 	// before bounce/Fit progression. Press/smash events retain native priority.
-	state = new TaiState(6);
+	// The receiver already stops horizontal motion. Generic stopMove on entry
+	// would erase its upward impulse before the first physics update.
+	state = new TaiState(5);
 	j     = 0;
-	state->setAction(j++, stopMove);
 	state->setAction(j++, simDamage);
 	state->setAction(j++, dead1);
 	state->setAction(j++, pressed);

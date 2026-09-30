@@ -901,13 +901,13 @@ void pc_p2_chappy_forget(BTeki* actor)
 
 float pc_p2_chappy_max_health(const BTeki* actor, float fallback)
 {
-    return health.life(actor, fallback);
+    return health.life(static_cast<const PelletView*>(actor), fallback);
 }
 
 float pc_p2_chappy_param_f(const BTeki* actor, int idx, float fallback)
 {
     if (!bankLoaded || !actors.count(const_cast<BTeki*>(actor))) return fallback;
-    if (idx == TPF_Life) return health.life(actor, fallback);
+    if (idx == TPF_Life) return health.life(static_cast<const PelletView*>(actor), fallback);
     // Host blinding (catfish pattern): the suppressed P1 strategy must not
     // see/decide on stale P1 radii even if a future path calls it.
     switch (idx) {

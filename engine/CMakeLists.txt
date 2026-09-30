@@ -2042,3 +2042,38 @@ add_test(NAME p2_campaign_goal_lifecycle_test COMMAND p2_campaign_goal_lifecycle
 add_library(p2_campaign_goal_lifecycle_runtime_compile OBJECT tools/p2_campaign_goal_lifecycle_runtime.cpp)
 target_include_directories(p2_campaign_goal_lifecycle_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
 target_compile_options(p2_campaign_goal_lifecycle_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
+
+# Explicit replacement-main diagnostics: CI compiles/packages but never runs
+# them or receives local game assets. Default production builds stay unchanged.
+file(WRITE "${CMAKE_BINARY_DIR}/ci-fixtures.txt" "")
+function(pikmin_add_ci_fixture name source)
+    if(ANDROID)
+        return()
+    endif()
+    if(NOT name MATCHES "^[a-z0-9_]+$" OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+        message(FATAL_ERROR "Invalid explicit CI fixture: ${name} ${source}")
+    endif()
+    set(target "pikmin_ci_fixture_${name}")
+    set(sources ${PC_PORT_SOURCES})
+    list(REMOVE_ITEM sources pc_port/pc_main.cpp)
+    list(APPEND sources "${source}")
+    add_executable(${target} EXCLUDE_FROM_ALL ${sources})
+    # Copy final production settings, including platform libraries and IPO.
+    # Inherited directory includes/definitions and source properties also apply.
+    foreach(prop COMPILE_OPTIONS COMPILE_DEFINITIONS INCLUDE_DIRECTORIES LINK_LIBRARIES LINK_OPTIONS INTERPROCEDURAL_OPTIMIZATION)
+        get_target_property(value ${NECTAR_GAME} ${prop})
+        if(NOT value STREQUAL "value-NOTFOUND")
+            set_property(TARGET ${target} PROPERTY ${prop} "${value}")
+        endif()
+    endforeach()
+    target_include_directories(${target} PRIVATE tools)
+    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/fixtures")
+    file(APPEND "${CMAKE_BINARY_DIR}/ci-fixtures.txt" "${target}\n")
+endfunction()
+
+# #940 ordinary Purple combat: bounded local runtime only, never run by CI.
+pikmin_add_ci_fixture(purple_combat tools/preview_p2_purple_combat.cpp)
+add_executable(p2_purple_combat_bindings_test tools/test_p2_purple_combat_bindings.cpp)
+target_include_directories(p2_purple_combat_bindings_test PRIVATE pc_port)
+target_compile_options(p2_purple_combat_bindings_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_purple_combat_bindings_test COMMAND p2_purple_combat_bindings_test)

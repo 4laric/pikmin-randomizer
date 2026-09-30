@@ -765,6 +765,8 @@ bool pc_randomizer_p2_room_bootstrap(const char* path) {
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
     if (pc_randomizer_p2_bridge()) {
         const unsigned source = pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(generator));
+        const int purpleHost = p2campaign::purpleHostType(source, original, protectedSpawn, pc_randomizer_purple_campaign());
+        if (purpleHost >= 0) return purpleHost;
         if (protectedSpawn || p2campaign::hasStaticHost(source))
             return p2campaign::hostType(source, original, protectedSpawn);
         const int proxy = pc_p2_proxy_host(source);

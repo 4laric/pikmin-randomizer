@@ -111,3 +111,13 @@ bool pc_p2_kochappy_stun_active(const BTeki* actor)
     auto found = actors.find(const_cast<BTeki*>(actor));
     return found != actors.end() && found->second.state.phase != p2purpleimpact::Phase::None;
 }
+
+PcP2KochappyStunSample pc_p2_kochappy_stun_sample(const BTeki* actor)
+{
+    const auto found = actors.find(const_cast<BTeki*>(actor));
+    if (found == actors.end()) return {};
+    const Runtime& runtime = found->second;
+    return { true, static_cast<unsigned long long>(runtime.lifetime),
+        static_cast<int>(runtime.state.phase), runtime.state.bounceUpdates,
+        runtime.state.fitElapsed, runtime.fitDuration };
+}

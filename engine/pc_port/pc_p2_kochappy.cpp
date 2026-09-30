@@ -1,4 +1,5 @@
 #include "pc_p2_kochappy.h"
+#include "pc_p2_campaign_actor.h"
 #include "pc_p2_kochappy_policy.h"
 #include "pc_p2_kochappy_stun.h"
 #include "pc_p2_pose_bank.h"
@@ -19,6 +20,10 @@
 #include <cstdio>
 #include <cstdlib>
 namespace {
+[[noreturn]] void setupFailure(int line) {
+    std::fprintf(stderr,"P2_KOCHAPPY_FAILURE line=%d\n",line);
+    std::fflush(stderr); std::abort();
+}
 std::map<std::string,std::vector<Shape*>> clips;
 std::map<std::string,p2animation::Clip> timing;
 std::set<PelletView*> actors;
@@ -38,33 +43,39 @@ BTeki* pc_p2_kochappy_first_registered(){return actors.empty()?nullptr:static_ca
 void pc_p2_kochappy_setup(){
     pc_p2_kochappy_reset();
     std::ifstream option("p2-kochappy-interpolation.txt");
-    if(option){std::string magic,extra;if(!(option>>magic)||magic!="P2_KOCHAPPY_INTERPOLATION_1"||(option>>extra))std::abort();interpolation=true;}
+    if(option){std::string magic,extra;if(!(option>>magic)||magic!="P2_KOCHAPPY_INTERPOLATION_1"||(option>>extra))setupFailure(__LINE__);interpolation=true;}
     std::ifstream profile("p2-kochappy-profile.txt"),bank("p2-kochappy-bank.txt"),bindings("p2-kochappy-actors.txt");
-    if(!profile && !bank && !bindings){if(interpolation)std::abort();return;}
+    if(!profile && !bank && !bindings){if(interpolation)setupFailure(__LINE__);return;}
     std::vector<p2animation::Clip> manifest;std::set<std::uint32_t> wanted;
-    if(!profile || !bank || !bindings || !tekiMgr || !health.read(profile) || !p2kochappy::bank(bank,manifest) || !p2kochappy::bindings(bindings,wanted))std::abort();
+    if(!profile || !bank || !bindings || !tekiMgr || !health.read(profile) || !p2kochappy::bank(bank,manifest) || !p2kochappy::bindings(bindings,wanted))setupFailure(__LINE__);
+    if (pc_randomizer_p2_bridge()) {
+        const auto current = pc_p2_campaign_ids(1);
+        for (unsigned uid : current) if (!wanted.count(uid)) setupFailure(__LINE__);
+        wanted = current;
+        if (wanted.empty()) return;
+    }
     // Reject identity overlap and unresolved/duplicate generator IDs before loading.
     std::vector<Teki*> selected;std::set<std::uint32_t> seen;
     Iterator it(tekiMgr);CI_LOOP(it){
         Teki* actor=static_cast<Teki*>(*it);
-        if(!actor || !actor->mGenerator || !wanted.count(actor->mGenerator->_70))continue;
-        if(!seen.insert(actor->mGenerator->_70).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor))std::abort();
+        if(!actor || !actor->mGenerator || !wanted.count(pc_p2_campaign_token(actor)))continue;
+        if(!seen.insert(pc_p2_campaign_token(actor)).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor))setupFailure(__LINE__);
         selected.push_back(actor);
     }
-    if(seen!=wanted)std::abort();
+    if(seen!=wanted)setupFailure(__LINE__);
     size_t total=0,poses=0;std::vector<unsigned char> reference,topology;
     for(const auto& clip:manifest){
-        if(interpolation&&clip.frames.empty())std::abort();
+        if(interpolation&&clip.frames.empty())setupFailure(__LINE__);
         size_t clipBytes=0;
         for(int i=0;i<clip.count;++i){
             char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/kochappy_%s_%02d.mod",clip.name.c_str(),i);
-            std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)std::abort();auto bytes=file.tellg();
-            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total)std::abort();
+            std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)setupFailure(__LINE__);auto bytes=file.tellg();
+            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total)setupFailure(__LINE__);
             clipBytes+=size_t(bytes);total+=size_t(bytes);file.seekg(0);
             std::vector<unsigned char> data(size_t(bytes),0),resources;
-            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))std::abort();
-            if(!reference.empty() && reference!=resources)std::abort();reference=resources;
-            if(interpolation){p2pose::Baked pose;if(!p2pose::decodeBaked(data,pose)||(!topology.empty()&&topology!=pose.topology))std::abort();topology=pose.topology;baked[clip.name].push_back(std::move(pose));}
+            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))setupFailure(__LINE__);
+            if(!reference.empty() && reference!=resources)setupFailure(__LINE__);reference=resources;
+            if(interpolation){p2pose::Baked pose;if(!p2pose::decodeBaked(data,pose)||(!topology.empty()&&topology!=pose.topology))setupFailure(__LINE__);topology=pose.topology;baked[clip.name].push_back(std::move(pose));}
         }
     }
     const auto started=std::chrono::steady_clock::now();Shape* shared=nullptr;int attachments=0;
@@ -72,13 +83,13 @@ void pc_p2_kochappy_setup(){
         timing[clip.name]=clip;
         for(int i=0;i<clip.count;++i){
             char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/kochappy_%s_%02d.mod",clip.name.c_str(),i);
-            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
+            Shape* shape=gameflow.loadShape(path,true);if(!shape)setupFailure(__LINE__);
             if(!shared){shared=shape;for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture){shape->mTexAttrList[t].mTexture->attach();++attachments;}}
             else{
-                if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount || shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
+                if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount || shape->mTevInfoCount!=shared->mTevInfoCount)setupFailure(__LINE__);
                 for(int j=0;j<shape->mTotalMatpolyCount;++j){auto* poly=shape->mMatpolyList[j];if(!poly || !poly->mMaterial)continue;int material=-1;
                     for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
-                    if(material<0)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
+                    if(material<0)setupFailure(__LINE__);poly->mMaterial=&shared->mMaterialList[material];}
                 shape->mMaterialList=shared->mMaterialList;shape->mTexAttrList=shared->mTexAttrList;shape->mTevInfoList=shared->mTevInfoList;
             }
             clips[clip.name].push_back(shape);++poses;
@@ -88,16 +99,18 @@ void pc_p2_kochappy_setup(){
         if(interpolation){
             const int heap=gsys->setHeap(SYSHEAP_App);const auto& first=manifest.front();const auto& base=baked.at(first.name).front().pose;
             std::string path="courses/pikmin2room/kochappy_"+first.name+"_00.mod";
-            Mutable state;state.shape=p2pose::privateShape(path.c_str(),*shared,base);if(!state.shape)std::abort();
+            Mutable state;state.shape=p2pose::privateShape(path.c_str(),*shared,base);if(!state.shape)setupFailure(__LINE__);
             state.scratch.positions.resize(base.positions.size());state.scratch.normals.resize(base.normals.size());
-            for(const auto& entry:instances)if(entry.second.shape->mVertexList==state.shape->mVertexList||entry.second.shape->mNormalList==state.shape->mNormalList)std::abort();
+            for(const auto& entry:instances)if(entry.second.shape->mVertexList==state.shape->mVertexList||entry.second.shape->mNormalList==state.shape->mNormalList)setupFailure(__LINE__);
             instances.emplace(actor,std::move(state));gsys->setHeap(heap);
             std::printf("P2_KOCHAPPY_INTERPOLATION_READY generator=%u private_geometry=1\n",actor->mGenerator->_70);
         }
-        if(!health.bind(static_cast<BTeki*>(actor)))std::abort();actors.insert(actor);actor->mHealth=actor->getParameterF(TPF_Life);
+        if(!health.bind(static_cast<BTeki*>(actor)))setupFailure(__LINE__);actors.insert(actor);actor->mHealth=actor->getParameterF(TPF_Life);
         const auto& pos=actor->getPosition();
         pc_p2_kochappy_stun_register(actor,10.0f);
-        std::printf("P2_ENEMY_READY species=Kochappy source_id=1 native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=P1 purple_stun=red_earthquake_v1\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life));
+        if (pc_randomizer_p2_bridge())
+            pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor),1,pc_p2_campaign_token(actor));
+        std::printf("P2_ENEMY_READY species=Kochappy source_id=1 native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=P1 purple_stun=red_earthquake_v1\n",pc_p2_campaign_token(actor),pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life));
     }
     std::printf("P2_KOCHAPPY_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f\n",poses,total,attachments,std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count());
 }
@@ -111,9 +124,9 @@ bool pc_p2_kochappy_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool 
     if(interpolation)name=corpse||motion==TekiMotion::Dead||motion==TekiMotion::Type1?"dead":motion==TekiMotion::Attack?"attack":motion==TekiMotion::Flick?"flick":motion==TekiMotion::Move1||motion==TekiMotion::Move2?"move1":"wait1";
     Shape* shape=clips.at(name).at(timing.at(name).index(phase,corpse));
     if(interpolation){auto& state=instances.at(actor);const auto& clip=timing.at(name);const float frame=corpse?float(clip.duration-1):std::max(0.f,std::min(1.f,phase))*float(clip.duration-1);
-        p2pose::Interval span;if(!std::isfinite(phase)||!p2pose::bracket(clip.frames,frame,span))std::abort();
+        p2pose::Interval span;if(!std::isfinite(phase)||!p2pose::bracket(clip.frames,frame,span))setupFailure(__LINE__);
         shape=state.shape;const auto& poses=baked.at(name);
-        if(!p2pose::apply(*shape,poses[span.left].pose,poses[span.right].pose,span.weight,state.scratch))std::abort();
+        if(!p2pose::apply(*shape,poses[span.left].pose,poses[span.right].pose,span.weight,state.scratch))setupFailure(__LINE__);
         state.clip=name;state.frame=frame;state.corpse=corpse;
     }
     shape->updateAnim(gfx,matrix,nullptr,actor);shape->drawshape(gfx,*gfx.mCamera,nullptr);return true;

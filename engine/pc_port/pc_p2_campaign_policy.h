@@ -4,6 +4,12 @@
 // engine vehicle; family setup still must bind its source behavior and assets.
 // Never infer admission or a legal placement from this table.
 namespace p2campaign {
+// #940: the Red adapter is opt-in with the Purple campaign. A negative result
+// means the existing static/proxy/original selection must run unchanged.
+inline int purpleHostType(unsigned source, int original, bool protectedSpawn, bool purpleCampaign) {
+    if (!purpleCampaign || source != 1) return -1;
+    return protectedSpawn ? original : 3; // TEKI_Chappy, required by Kochappy setup
+}
 inline int hostType(unsigned source, int original, bool protectedSpawn) {
     if (protectedSpawn) return original;
     switch (source) {
