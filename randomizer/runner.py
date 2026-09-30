@@ -358,6 +358,10 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             shutil.rmtree(run.directory, ignore_errors=True)
             raise
         print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)
+        from .p2_units import stage_units
+        staged_units = stage_units(run.directory, layout)
+        if staged_units:
+            print(f"PIKMIN_P2_UNITS: {staged_units}", flush=True)
     if purple_bank is not None:
         from .purple_campaign import stage_campaign
         stage_campaign(run.directory, assets, purple_bank, purple_motion, manifest)
