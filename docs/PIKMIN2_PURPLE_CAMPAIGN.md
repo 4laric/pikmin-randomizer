@@ -89,7 +89,8 @@ every Pikmin whose kind is not Purple, and the base `damageCallBack`
 (`panModoki.cpp:450-457`) only forwards damage while the body is bittered, which
 Pikmin 1 has no item for. Without Purple presses the Giant Breadbug (source 40)
 can only lose the one-off container suck (2000 to 1000) and never dies, so a
-default seed must not put it in a boss arena in place of the P1 boss.
+default seed must not place it at all (a Giant that cannot die would permanently
+replace what it displaced).
 
 The constraint lives in `randomizer.seed.P2_REQUIRES_PURPLE` (source id to
 citation), not in a slot list:
@@ -102,8 +103,9 @@ citation), not in a slot list:
 - `validate()` rejects a layout that binds a Purple-only species without the opt-in.
 - `randomizer run` refuses such a seed unless `--purple-bank` and
   `--purple-motion` are given, so the Violet supply always exists.
-- Placement itself stays constraint based: the six measured arenas are all legal,
-  and a smoke seed (`scripts/p2_smoke_seed.py`, with `--purple-bank` and
+- Placement: a `--p2-purple-campaign` seed binds it on ordinary slots only. It is not
+  seated in a boss arena, because arena runs r9/r11 killed it but never carried the
+  corpse, so there is no arena receipt (#958). A smoke seed (`scripts/p2_smoke_seed.py`, with `--purple-bank` and
   `--purple-motion`) can put the Giant on any ordinary slot. Purple stock is ship
   stock, so Purples made at the start-area Violet are available in every area.
   The dev console (`scripts/p2_dev_console.py`) may spawn the Giant on demand

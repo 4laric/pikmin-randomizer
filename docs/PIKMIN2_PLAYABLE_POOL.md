@@ -131,11 +131,20 @@ never P2 identities and never enter this table.
   waypoint slack. Only a Purple Pikmin press hurts it (a non-Purple press is
   refused and logged as `P2_BREADBUG_OWN_PRESS_REJECTED`); a cargo sucked into
   the Onion still costs it 1000. So a seed without the Purple campaign banks
-  cannot press it, and a real player needs Purple (or two Onion sucks). It is an
-  arena boss in real seeds (footprint 200 = source territory fp09) and can be
-  placed anywhere by a smoke seed. Its Bot evidence is a power-mode Purple squad
-  (`PIKMIN_RANDOMIZER_AUTOPLAY_PURPLE`, test only) on Distant Spring:
-  presses, one container suck, death, corpse carry and `onion:p2:40:3`.
+  cannot press it, and a real player needs Purple (or two Onion sucks). Generation
+  binds it only on `--p2-purple-campaign` seeds (constraint `P2_REQUIRES_PURPLE`,
+  source `OoPanModoki::pressCallBack`, `panModoki.cpp:1738-1744`), and
+  `randomizer run` refuses such a seed without the Purple banks. **Admission scope:
+  ordinary slots only. Boss-arena placement is not admitted.** Arena runs r9 and
+  r11 (pre-merge exe dc6a9f30) killed the Giant but nobody carried the corpse, so
+  there is no arena receipt; the stall was not diagnosed from the log. It has no
+  arena descriptor and is never seated in an arena; add it back to
+  `p2_boss_arenas.BOSS_ENCOUNTERS` once an arena run delivers a receipt. Its
+  ordinary-slot Bot evidence is a power-mode Purple squad
+  (`PIKMIN_RANDOMIZER_AUTOPLAY_PURPLE`, test only): Forest of Hope on the final exe
+  (y11, seed = the owner smoke seed, `onion:p2:40:1`) and on the earlier merged exe
+  (y9), plus Distant Spring on the pre-merge exe (y2, `onion:p2:40:3`): presses,
+  death, corpse carry and receipt.
   Not ported: the nest model, treasure hoarding, the retail rumble/effects.
 - **The pool may outgrow the placement slots (#893).** A seed then samples it:
   under the default density every target gets a distinct species, and the
@@ -157,7 +166,7 @@ never P2 identities and never enter this table.
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
 - **Bosses belong in the pool.** Eleven P2 bosses are already here (30, 34, 40, 53,
-  56, 69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958). The remaining bosses
+  56, 69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots). The remaining bosses
   66 Houdai and 99 Waterwraith are in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
@@ -166,8 +175,8 @@ never P2 identities and never enter this table.
 - **Boss arenas.** P2 bosses are placed only in designated P1 boss arenas,
   replacing the P1 boss there (`randomizer/p2_boss_arenas.py`). The pool's
   arena bosses are 94 Crawbster, 73 Titan Dweevil, since the wave-3 Emperor lane
-  53 Emperor Bulblax and, since #958, 40 Giant Breadbug (Purple-campaign seeds only, see
-  `docs/PIKMIN2_PURPLE_CAMPAIGN.md`); the most-constrained boss is seated first,
+  53 Emperor Bulblax (40 Giant Breadbug is not an arena boss: no arena receipt, #958);
+  the most-constrained boss is seated first,
   so the Titan (footprint 250) takes the Impact Goolix arena (clear 275) and
   the Crawbster the Hope snagret pit.
 - **73 BigTreasure (Titan Dweevil): admitted.** The source BigTreasure FSM runs

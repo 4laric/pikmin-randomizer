@@ -118,7 +118,8 @@ def capacity_gate(timeout=3600.0):
 
 
 def launch_and_read(seed_path, exe, assets, session_dir, content_dir=None, actors_path=None,
-                    extra_env=None, cwd=ROOT, want_targets=(), timeout=300.0, settle=4.0, gate=capacity_gate):
+                    extra_env=None, cwd=ROOT, want_targets=(), timeout=300.0, settle=4.0, gate=capacity_gate,
+                    purple_bank=None, purple_motion=None):
     """Capacity-gated headless launch (background window + autoplay so the log
     carries the captain start). Waits until the captain start and every wanted
     target are logged, then kills only the process tree it started. Returns the
@@ -135,6 +136,10 @@ def launch_and_read(seed_path, exe, assets, session_dir, content_dir=None, actor
         cmd += ['--p2-content', str(content_dir)]
     if actors_path:
         cmd += ['--p2-actors', str(actors_path)]
+    if purple_bank:  # #958: a --p2-purple-campaign seed does not launch without the Purple banks
+        cmd += ['--purple-bank', str(purple_bank)]
+    if purple_motion:
+        cmd += ['--purple-motion', str(purple_motion)]
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     text = ''
     deadline = time.time() + timeout

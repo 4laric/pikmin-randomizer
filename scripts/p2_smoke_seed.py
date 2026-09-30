@@ -615,7 +615,9 @@ def run_verify(summary, assignments, seed_path, content_dir, actors_path, exe, a
     text = verify.launch_and_read(seed_path.resolve(), exe, args.assets, session.resolve(),
                                   content_dir=None if args.no_content else content_dir.resolve(),
                                   actors_path=actors_path.resolve(), extra_env={SMOKE_ENV: '1'}, cwd=ROOT,
-                                  want_targets=list(assignments), timeout=args.verify_timeout)
+                                  want_targets=list(assignments), timeout=args.verify_timeout,
+                                  purple_bank=args.purple_bank.resolve() if args.purple_bank else None,
+                                  purple_motion=args.purple_motion.resolve() if args.purple_motion else None)
     (out / 'verify-native.log').write_text(text, encoding='utf-8')
     result = verify.evaluate(verify.parse_log(text), assignments, max_distance=args.max_distance)
     result['log'] = str(out / 'verify-native.log')

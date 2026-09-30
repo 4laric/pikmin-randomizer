@@ -64,5 +64,5 @@ def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
     assert code == 0
     purple = json.loads(purple_file.read_text(encoding="utf-8"))
     assert purple["p2_purple_campaign"] is True
-    assert len(purple["p2_layout"]["bindings"]) == 72 + 5 + len(held)
-    assert sorted(row["source_id"] for row in purple["p2_layout"]["boss_arenas"]["placed"]) == [30, 40, 53, 73, 94]
+    assert len(purple["p2_layout"]["bindings"]) == 72 + 4 + len(held)
+    assert sorted(row["source_id"] for row in purple["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 73, 94]  # 40 has no arena receipt: ordinary slots only
