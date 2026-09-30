@@ -161,8 +161,9 @@ def test_bank_round_trips_through_the_python_grammar(tmp_path):
         assert clip['poses'] == sample(FRAMES[stem], groink.POSE_LIMITS[stem])
     assert parsed['muzzle'] == [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [1.5, 32.25, 18.0]]
     text = plan['bank'].decode('ascii')
-    assert text.startswith('P2_GROINK_BANK_1 8\nclip 0 walk 36 3 10 0 18 2 25 1 8 0 5 10 15 20 25 30 35\n')
-    assert 'clip 3 attack1 44 4 11 2 22 3 25 4 32 5 10 ' in text
+    assert text.startswith('P2_GROINK_BANK_1 8\nclip 0 walk 36 3 10 0 18 2 25 1 '
+                           '24 0 2 3 5 6 8 9 11 12 14 15 17 18 20 21 23 24 26 27 29 30 32 33 35\n')
+    assert 'clip 3 attack1 44 4 11 2 22 3 25 4 32 5 24 ' in text  # 24 poses (#943)
     assert text.endswith('muzzle 0 0 -1 0 1 0 1 0 0 1.5 32.25 18\nEND\n')
 
 
@@ -340,7 +341,7 @@ def test_cannon_adapter_stages_groink_inputs_only_for_fminihoudai(tmp_path, monk
 
 def test_extractor_pose_limits_and_emission_frame():
     from experimental import pikmin2_minihoudai_assets as minihoudai
-    assert minihoudai.clip_pose_limit('attack1') == groink.POSE_LIMITS['attack1'] == 10
+    assert minihoudai.clip_pose_limit('attack1') == groink.POSE_LIMITS['attack1'] == 24  # #943 density
     assert minihoudai.clip_pose_limit('attack1', 3) == 3
     assert minihoudai.emission_frame(EVENTS['attack1']) == 25
     with pytest.raises(ValueError):

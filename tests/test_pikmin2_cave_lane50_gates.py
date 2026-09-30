@@ -95,6 +95,67 @@ def door_by_id(plan, door_id):
     return next(door for door in plan["doors"] if door["id"] == door_id)
 
 
+@pytest.mark.parametrize("species,hazard", [("yellow", "elec"), ("blue", "water")])
+@pytest.mark.parametrize("salt", [0, 7])
+def test_schema_bud_through_rooms_is_not_a_carry_barrier(species, hazard, salt):
+    from experimental.pikmin2_cave_schema import worked_example, slot_id
+    from experimental.pikmin2_cave_lane41_generator import canonical_to_spike
+    from experimental.pikmin2_cave_rooms import rooms_from_layout
+
+    canonical = worked_example()
+    canonical["buds"] = [{"slot_id": slot_id("forest_1", 1, "bud", 0),
+                          "index": 0, "segment": 0, "species": species, "count": 5}]
+    # The production projection validates the canonical schema and translates
+    # species to hazard. Layout below is a host fixture, not a native run.
+    table = canonical_to_spike(canonical)
+    nodes = [{"id": f"segment_{s['index']}", "kind": "segment",
+              "segment_index": s["index"]} for s in table["segments"]]
+    edges = []
+    for choke in table["chokes"]:
+        nodes.append({"id": choke["id"], "kind": "choke", "hazard": choke["kind"],
+                      "segment_index": choke["segment_index"]})
+        edges.extend([[f"segment_{choke['segment_index'] - 1}", choke["id"]],
+                      [choke["id"], f"segment_{choke['segment_index']}"]])
+    gated_segments = {choke["segment_index"] for choke in table["chokes"]}
+    edges.extend([[f"segment_{s['index'] - 1}", f"segment_{s['index']}"]
+                  for s in table["segments"] if s["index"] and s["index"] not in gated_segments])
+    for leaf in table["leaves"]:
+        nodes.append({"id": leaf["id"], "kind": "leaf", "hazard": leaf["hazard"],
+                      "segment_index": leaf["segment_index"]})
+        edges.append([f"segment_{leaf['segment_index']}", leaf["id"]])
+    bud = table["buds"][0]
+    nodes.append({"id": "bud_0", "kind": "bud", "hazard": bud["hazard"],
+                  "segment_index": bud["segment_index"]})
+    edges.append([f"segment_{bud['segment_index']}", "bud_0"])
+    layout = {"schema": "p2-cave-observed-layout/1", "source": "fixture",
+              "seed": table["seed"], "cave": table["cave"], "floor": table["floor"],
+              "nodes": nodes, "edges": edges, "entrance": "segment_0",
+              "hole": f"segment_{table['hole']['segment_index']}"}
+    rooms = rooms_from_layout(layout, salt=salt)
+    plan = gates.build_gates(rooms)
+    assert door_by_id(plan, "bud_0") == {
+        "id": "bud_0", "kind": "bud", "hazard": hazard, "carry_block": "none", "key": "-"}
+    barriers = [door for door in plan["doors"] if door["kind"] in ("choke", "leaf")]
+    assert {door["hazard"] for door in barriers} == {"water", "elec"}
+    for door in barriers:
+        assert door["carry_block"] == door["hazard"]
+        assert door["key"] == {"water": "blue", "elec": "yellow"}[door["hazard"]]
+    text = gates.gates_text(plan)
+    assert gates.parse_gates_text(text) == plan
+    assert gates.gates_report(plan)["no_block"] == len(table["segments"]) + 1
+
+    # Stale/malformed bud barriers must fail in every public representation.
+    invalid = copy.deepcopy(plan)
+    door_by_id(invalid, "bud_0").update(carry_block=hazard, key=species)
+    with pytest.raises(gates.CaveGatesError, match="carry_block"):
+        gates.validate_gates(invalid)
+    with pytest.raises(gates.CaveGatesError, match="carry_block"):
+        gates.gates_text(invalid)
+    with pytest.raises(gates.CaveGatesError, match="carry_block"):
+        gates.parse_gates_text(text.replace(f"bud_0 bud {hazard} none -",
+                                           f"bud_0 bud {hazard} {hazard} {species}"))
+
+
 def test_build_preserves_order_ids_and_round_trips():
     rooms = forest_rooms()
     plan = gates.build_gates(rooms)

@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from experimental import pikmin2_seed_bridge as bridge
 from randomizer.seed import generate, validate
 
-STAGING_IDS = [1, 26, 27, 45, 58, 66, 84, 93, 97]
+STAGING_IDS = [1, 26, 27, 45, 66, 84, 93, 97]  # 58 admitted by its OWN port (#244)
 
 
 @pytest.mark.parametrize("dropped", [34, 70, 2, 44])

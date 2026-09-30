@@ -69,7 +69,7 @@ PROPER_RETAIL = {'fp01': 20.0, 'fp02': 10.0, 'fp03': 3.0, 'fp11': 0.0,
                  'fp12': 3.0, 'fp13': 10.0, 'fp21': 2.5, 'fp22': 0.0,
                  'fp31': 0.5}
 
-MAX_POSES = 12
+MAX_POSES = 24  # native pc_p2_fuefuki_teki loadPoses bound
 DEFAULT_POSES = 4
 POSE_PREFIX = 'fuefuki'
 
@@ -90,8 +90,9 @@ LIMITATIONS = [
     'whistle-effect ring is provided by this slice.',
     'The 10 FUEFUKIANIM slots are converted from the disc bank only when their source '
     'clip decodes; unsupported clips are recorded with a reason, never fabricated.',
-    'landing and landfail author a singular joint scale, which the strict bca_pose '
-    'policy refuses; both are recorded unsupported rather than silently collapsed.',
+    'landing and landfail author a singular (zero) joint scale at frame 0; those poses '
+    'use the explicit singular_scale=allow + transpose-adjugate-zero normal policy and '
+    'are flagged singular_scale=true per pose.',
 ]
 
 
@@ -230,14 +231,27 @@ def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                     event_loop_boundaries=[event for event in events if event[1] in (0, 1)],
                     poses=[], status='unsupported')
         try:
-            duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
+            # landing/landfail author a zero joint scale at frame 0 (the
+            # beetle grows out of the ground); the duration read and those
+            # poses take the explicit singular policy (#245) instead of
+            # dropping the clip the Land/Struggle states need.
+            duration, _ = bca_pose(raw, 0, len(names), allow_scale=True, singular_scale='allow')
             clip['source_frames'] = duration
             for number, frame in enumerate(sample_frames(duration, pose_limit)):
                 try:
-                    _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                    try:
+                        _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
+                        singular = False
+                    except ValueError as error:
+                        if 'Singular' not in str(error):
+                            raise
+                        _, pose = bca_pose(raw, frame, len(names), allow_scale=True,
+                                           singular_scale='allow')
+                        singular = True
                     matrices = draw_matrices(mb, pose)
-                    decoded = decode(model, True, bake_rigid=True,
-                                     draw_matrices=matrices, **TOLERANCES)
+                    decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices,
+                                     singular_normal='transpose-adjugate-zero' if singular else 'error',
+                                     **TOLERANCES)
                     name = f'{prefix}_{species}_{stem}_{number:02}.mod'
                     conversion = write_model(decoded, root / name, 'enemy.bmd')
                     conversion.update(source='enemy.bmd', output=name)
@@ -249,7 +263,7 @@ def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                     report['total_pose_bytes'] += len(data)
                     report['total_poses'] += 1
                     clip['poses'].append(dict(file=name, frame=frame, bytes=len(data),
-                                              sha256=sha(data)))
+                                              sha256=sha(data), singular_scale=singular))
                     (root / Path(name).with_suffix('.json')).write_bytes(
                         (json.dumps(conversion, sort_keys=True, indent=2) + '\n').encode())
                 except (ValueError, KeyError, ArithmeticError) as error:

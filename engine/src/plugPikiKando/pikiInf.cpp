@@ -1,3 +1,7 @@
+#include "pc_randomizer.h"
+#include "pc_p2_ship_store.h"
+#include "pc_p2_ship.h"
+#include <cstdlib>
 #include "BaseInf.h"
 #include "DebugLog.h"
 #include "Dolphin/os.h"
@@ -80,6 +84,10 @@ void PikiInfMgr::loadCard(RandomAccessStream& input)
  */
 void PikiInfMgr::incPiki(Piki* piki)
 {
+    if (pc_p2_ship_special(piki)) {
+        if (!p2ship::stock.add(piki->mP2White ? 4 : 3, piki->mHappa)) std::abort();
+        return;
+    }
 	if (piki->mColor < PikiMinColor || piki->mColor > PikiMaxColor) {
 		ERROR("illegal col %d\n", piki->mColor);
 	}
@@ -217,6 +225,10 @@ void BPikiInf::saveCard(RandomAccessStream& card)
 {
 	BaseInf::saveCard(card);
 	u8 byte = (mNextKeyIndex << 2) | mPikiColour;
+    if (pc_randomizer_purple_campaign() && mPikiColour >= 3) {
+        if (mPikiColour > 4 || mNextKeyIndex > 2) std::abort();
+        byte = (mNextKeyIndex << 2) | 3 | (mPikiColour == 3 ? 0x40 : 0x80);
+    }
 	card.writeByte(byte);
 }
 
@@ -229,6 +241,15 @@ void BPikiInf::loadCard(RandomAccessStream& card)
 	u8 byte       = card.readByte();
 	mPikiColour   = byte & 0x3;
 	mNextKeyIndex = (byte >> 2) & 0x3F;
+    if (pc_randomizer_purple_campaign() && (byte & 3) == 3) {
+        const int tag = byte & 0xC0;
+        if ((tag != 0x40 && tag != 0x80) || (byte & 0x30) || ((byte >> 2) & 3) > 2) std::abort();
+        // White data is reserved, never silently reinterpreted as Red.
+        if (tag == 0x80) std::abort();
+        mPikiColour = tag == 0x40 ? 3 : 4;
+        mNextKeyIndex = (byte >> 2) & 3;
+        return;
+    }
 
 #if defined(PIKI_PC_PORT)
 	// These values index fixed-size colour and growth-stage tables later in
@@ -254,6 +275,11 @@ void BPikiInf::doStore(Creature* piki)
 		ERROR("mail to teppe\n");
 	}
 	mPikiColour   = static_cast<PikiHeadItem*>(piki)->mSeedColor;
+    if (pc_randomizer_purple_campaign()) {
+        PikiHeadItem* sprout = static_cast<PikiHeadItem*>(piki);
+        if (sprout->mP2Purple) mPikiColour = 3;
+        if (sprout->mP2White) mPikiColour = 4;
+    }
 	mNextKeyIndex = static_cast<PikiHeadItem*>(piki)->mFlowerStage;
 }
 
@@ -272,6 +298,11 @@ void BPikiInf::doRestore(Creature* piki)
 	// sprout, commonly crashing near the end of GameCoreSection::initStage().
 	PikiHeadItem* item = static_cast<PikiHeadItem*>(piki);
 	item->mSeedColor   = mPikiColour;
+    if (pc_randomizer_purple_campaign() && mPikiColour >= 3) {
+        item->mSeedColor = Red;
+        item->mP2Purple = mPikiColour == 3;
+        item->mP2White = mPikiColour == 4;
+    }
 	item->mFlowerStage = mNextKeyIndex;
 }
 

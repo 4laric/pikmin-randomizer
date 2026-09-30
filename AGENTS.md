@@ -29,6 +29,8 @@ registry under `output/workflow/` across participating worktrees. Private runtim
 launches are exempt from shared-runtime reservations; private build directories
 still require exclusive ownership and respect the aggregate heavy-build budget.
 
+Any seed, build or instructions handed to the owner for a playtest must follow [the playtest-seed rules in CONTRIBUTING.md](CONTRIBUTING.md#playtest-seeds-for-the-owner-binding). The thing under test must sit at the start, saturated and verified bound, and the handoff must say where to look.
+
 P2 implementation agents must read [the fan-out and mandatory fixture baseline guide](docs/PIKMIN2_IMPLEMENTATION_FANOUT.md) before claiming or resuming work. Before the next runtime acceptance run, adopt the current starting-Pikmin overlay and 960×540 centred-window native startup, regenerate stale arenas, and record per-lane adoption evidence as required there. Existing active lanes are included.
 
 Before starting any implementation, ensure its scope and acceptance criteria are written in a GitHub issue in 4laric/pikmin-randomizer and assign that issue to the authenticated account (currently 4laric). Record Codex as the implementation owner when using that shared account; do not imply a separate Codex GitHub identity. Update the issue with progress, commits, validation evidence and remaining work. Assignment indicates ownership, not that every backlog item is actively underway. This issue-first requirement also applies to work inside native/ and bbft/.
@@ -60,16 +62,30 @@ Gate evidence contract (2026-09-14): `docs/PIKMIN2_ENEMY_ROSTER.md` §"Gate tabl
 
 Lessons (2026-09-15/16, DeepSeek integrator v2 + paid Muse wave): a single opencode session held the lane-01 integrator role for ~8 h and drove 17 merges (P2 lane 19 + Muse lanes 52–67) plus six review-lane acceptances through the serialized loop — merge under the `slot.py integrate` lock, one `build_lane.py wave`, checker→ingest→advance-report, engine re-export, `codex/p2-main-review` checkpoint, MinGW sweep. What worked: the lock kept one writer on the wave; `--no-ff` merges of dependency-consuming branches were conflict-free because git de-dupes identical cherry-picks; the checker/ingest contract cleanly separated accepted PASS rows from refused/injected ones. What bit: (1) the controller's `receipt()` requires the lane's *current* registry generation; two receipts written with the handoff's generation (1 vs 2) were refused as stale ownership and the LLM shepherd misdiagnosed the same failures as a "non-existent output/dsw" — verify the generation before believing a receipt diagnosis. (2) Receipt ancestry is directional: the lane head must be an ancestor of the integrated wave commit, so producer-head substitution is wrong. (3) Hand-editing `transport_reward`/`delivery_receipt` for a natural receipt made 54/57/78 admission candidates and correctly turned the deny-by-default suite red (19 failures) — that red is the intended signal, not a regression. (4) Muse workers on the free `muse-spark-1.3-contributor-free` provider wedged on rate limits with uncommitted work; moving sessions to `opencode-go/muse-spark-1.3-contributor` resumed them, so commit early per checkpoint. (5) The cave wave (l42–l51) is a separate divergent line (163 files/19.4k insertions since the fork at `64d6adef`); merging it into the P2 wave would revert work — keep separate integrators. (6) Roster `admit-check` marks every PASS `<gate>:injected` when the entry's notes contain a `NONNATURAL_MARKERS` word ("vehicle"/"host"/"proxy"), even for otherwise-natural evidence; wording hygiene gates admission as much as evidence does.
 
+## Machine capacity (required)
+
+Before launching a game session (`nectar.exe`, including bot and headless runs) or a heavy native build, pass the capacity gate. It admits jobs from live free RAM, CPU load and the number of running games and compilers, instead of a fixed session count:
+
+```powershell
+py -3.12 scripts/capacity_gate.py --kind game --wait
+py -3.12 scripts/capacity_gate.py --kind build --jobs 4 --wait
+py -3.12 scripts/capacity_gate.py --status
+```
+
+The limits and their rationale are in `scripts/capacity_gate.py` (#953). This laptop bugchecked twice on 2026-09-29 under about 8 parallel builds plus several sessions. Don't bypass the gate. Raise its limits only after sustained stable runs, and record why.
+
 ## Build isolation (required)
 
-`native/build-randomizer` is a single shared resource. Do **not** run your regular builds in it — agents queuing on the one maintained build dir is the pipeline's main bottleneck. Build in your own environment so lanes can compile in parallel.
+**Prefer CI builds.** Local parallel builds and headless sessions have crashed the owner's PC. Push your native branch to the `fork` remote (a `claude/**` branch or an open PR triggers the `Windows build` workflow), then fetch the verified exe with `py -3.12 scripts/ci_native_build.py <branch|sha>` (see `docs/CI_BUILDS.md`); record the printed commit, artifact and exe SHA-256 as build evidence. Build locally only while iterating on compile errors, with `-j 4`, and only one local build at a time on this machine. Do not run headless game sessions in parallel.
+
+`native/build-randomizer` is a single shared resource. Do **not** run your regular builds in it — agents queuing on the one maintained build dir is the pipeline's main bottleneck. When you do build locally, use your own private build directory, never the shared one.
 
 - Work in your own `native/` git worktree/branch (e.g. `output/native-<lane>` switched to a `opencode/*` branch). Keep uncommitted build work out of the shared `native/` checkout, which the integration lead also uses.
 - Configure a private build directory under ignored `output/`, matching the maintained generator and toolchain, then build there:
   ```powershell
   $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
   cmake -S output/native-<lane> -B output/native-<lane>-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-  cmake --build output/native-<lane>-build --target pikmin_pc -j 6
+  cmake --build output/native-<lane>-build --target pikmin_pc -j 4
   cmake --build output/native-<lane>-build --target pikmin_pc -- -n   # expect: ninja: no work to do.
   ```
   Generator is Ninja (the Python-bundled `ninja.exe`); compiler is `C:/msys64/mingw64/bin/g++.exe`. See `docs/PIKMIN2_BATCH_RESOURCES.md` §2.

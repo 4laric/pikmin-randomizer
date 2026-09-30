@@ -374,8 +374,8 @@ P2_PLAYABLE_POOL = (
         "enum_name": "DangoMushi",
         "family": "dangomushi",
         "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-11 (owner ruling 2026-09-25: power mode admits): campaign bind, Turn-window DAMAGE_ACCEPTED, DEAD on its own generator, corpse carried, Onion receipt onion:p2:94:3",
-            "log": "C:/cop/botcamp-inst-bugs-11-94-DangoMushi/session/runs/b6fc0330a0e77b860f208ee331e06e83f1681c577f70937e7b94d47a7d2eb4aa/native.log (sha256 4a5a138eaa228226...) L1722 bind, L2338 dead, L2456 receipt; output/claude-orch/evidence/botcamp-inst-bugs-11.md; output/claude-orch/review/rev2-bugs.md",
+            "run": "Bot-driven power-mode campaign v2f in the impact_goolix boss arena (#897/#899; natural playable seed dango-arena-impact_goolix-impact-0, no rebind; TEST-ONLY PIKMIN_P2_TEST_START_DAY=11, since the arena goes live on day 9, so a normal campaign meets 94 there on day 9 or later): P2_BOSS_ARENA_BIRTH on the arena primary, bind, rain drawn (ROCK_DRAW), Turn-window DAMAGE_ACCEPTED only, DEAD from turn on its own generator 4019261003, carcass row 20/30/30, corpse drawn on the carried pellet (CORPSE_DRAW) and carried by 22, Onion receipt onion:p2:94:0",
+            "log": "output/claude-orch/p2-port-94/runs/v2f-94/session/runs/ef11a6259feab977d2b324e7115cbbaf7da209c5c9cc9f35669a1579cc3610ac/native.log (sha256 0c3408dc1a1f83ba...) L704 arena birth, L1073 bind, L1643 dead, L1966 receipt; repeat v2h at power 2 (sha256 5f4d78f5d57e389b...) L1732 dead, L2050 receipt; native claude/p2-port-94-arena-v2 @ a4aa232a4, nectar.exe sha256 ecf8d6512f5d0f4a...",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 94 -> dangomushi "
                          "(experimental/pikmin2_dangomushi_content)",
@@ -571,6 +571,66 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 78 -> minihoudai "
                          "(stages p2-groink-parms/fixed-parms/bank and the minihoudai pose meshes)",
+        },
+    },
+    {
+        "source_id": 73,
+        "enum_name": "BigTreasure",
+        "family": "bigtreasure",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign e7 (owner ruling 2026-09-25: power mode admits; #246, boss arena #899): natural playable seed bt-own-73-red-impact-0 places 73 in the impact_goolix boss arena; red squad, source BigTreasure FSM with retail collision parts, all four weapons knocked off by Pikmin on their own parts, body damage only after the last drop, P2_BIGTREASURE_DEAD on its own generator, carryable corpse (owner ruling 2026-09-29 #1) carried, Onion receipt onion:p2:73:0; repeated in e3-e6/e8, re-entry across days 11-15 in rc2",
+            "log": "output/claude-orch/p2-bigtreasure-own/runs/e7-73/session/runs/370351d982abac8ba6a36d43d748b2cd2a3056da284557caf157bba4d2e98f5c/native.log (sha256 f9ceec6c30bee188...) L1367 bind, L2060 dead, L2139 receipt; native claude/p2-port-73-titan-v2 ad5124e12, exe sha256 2010385d86baaea7...; #246",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 73 -> bigtreasure "
+                         "(stages the retail enemyparm/enemycoll, event table, pose bank and weapon meshes)",
+        },
+    },
+    {
+        "source_id": 32,
+        "enum_name": "Demon",
+        "family": "demon",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign v2b (owner ruling 2026-09-25: power mode admits; #215): red squad, campaign OWN bind of the Demon profile of the Sarai FSM with retail parms, 4 captain grabs each dropped for 10 damage, flick, fall under Pikmin weight, 82 DAMAGE lines, P2_DEMON_DEAD on its own generator, type5 carcass carried, Onion receipt onion:p2:32:3",
+            "log": "output/claude-orch/p2-demon-own/runs/v2b-32/session/runs/066dd7552325f90932b03f651dc88496a20f0e9bec57d788b4fa081d6a25170a/native.log (sha256 eb38e61bcca84a82...) L1578 bind, L2812 capture, L2876 drop, L3632 dead, L3926 receipt; native claude/p2-port-32-demon-v2 6e88fad0d, exe sha256 c329ed2d0a0e5209...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 32 -> demon "
+                         "(stages the demon-* parms/bank and the demon pose meshes)",
+        },
+    },
+    {
+        "source_id": 38,
+        "enum_name": "PanModoki",
+        "family": "breadbug",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs z2, z3 and z6 (owner ruling 2026-09-25: power mode admits; #898 second review): red squad, campaign OWN bind of the source PanModoki FSM, never a Pikmin or captain target (0 attacks), grabs a carcass and hauls it home through Back, CarryEnd, Hide (refill, carcass spared) and Appear, dies to six thrown-Pikmin presses 1100->-100, OWN_DEAD on its own generator, corpse carried, Onion receipt onion:p2:38:3 in all three runs",
+            "log": "output/claude-orch/p2-breadbug-own/runs/z2-38/session/runs/57cb91f00857a4b3be3874c89b5018a340ad2dc415c6d0b6be0b904766e8d39c/native.log (sha256 f89d2a6eb8691c51...) L1259 bind, L4732 dead, L4898 receipt; z3 L5526 receipt, z6 L6902 receipt; native claude/p2-port-38-breadbug-v2 91fe15a50, exe sha256 0248be824d662aea...; #898",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 38 -> breadbug "
+                         "(stages p2-breadbug-parms/bank and the breadbug pose meshes)",
+        },
+    },
+    {
+        "source_id": 41,
+        "enum_name": "Fuefuki",
+        "family": "fuefuki",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs (owner ruling 2026-09-25: power mode admits; #245) on native f60b8a1e7 with the P1 Land/Walk target guard: campaign OWN bind of the source Fuefuki FSM on a P1 Chappy teki with its AI suppressed, whistle casts steal and release followers, a thrown Pikmin lands in the mCanStruggle window and flips it into Struggle, jump/stay/land cycle, P2_FUEFUKI_DEAD on its own generator, corpse carried, Onion receipt. Full chain on three maps: d7 Distant Spring (slot 1945764764, harness rebind, onion:p2:41:3), v1 Forest Navel on a NATURAL seed with no rebind (fue-nat-navel-g6, slot 873045719, onion:p2:41:2), f3 Forest of Hope (slot 2049888785, harness rebind, onion:p2:41:1). Correction: pre-guard run d4 (exe 97cf4d08) killed the beetle on a ledge ~76 u above home after a Land roll put it there; four carriers lifted the corpse but its route to the Onion stalled on a closed waypoint (P1 path-blocked message), carried=0. That failure is why the guard exists",
+            "log": "output/claude-orch/p2-port-41/runs/d7-41/session/runs/a5c8ec4ee2a89d146c65e986b54dc461c7651a61d62d2ff1e0f805bce5369b2a/native.log (sha256 c918ca45765da57e...) receipt L3451; output/claude-orch/p2-port-41/runs/v1-41/session/runs/05a0e945002c161aed4f14092f458853fa0d8d8778182efcf5d2682f67f43da4/native.log (sha256 3e79931b1c859f47...) receipt L4678; output/claude-orch/p2-port-41/runs/f3-41/session/runs/c17d3b3ca790114e1e488b12f48731849f68bafb97f992de55b0de1736e94a80/native.log (sha256 8795a90bce819ead...) receipt L5583; native claude/p2-port-41-antenna-beetle-v2 f60b8a1e7, exe sha256 9cb65f685fb91b6c...; #245",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 41 -> fuefuki "
+                         "(stages p2-fuefuki-parms/motion/bank and the fuefuki pose meshes)",
+        },
+    },
+    {
+        "source_id": 58,
+        "enum_name": "BombSarai",
+        "family": "bombsarai",
+        "evidence": {
+            "run": "Bot-driven campaign runs v1 (normal 20 squad) and v2p (power mode; owner ruling 2026-09-25: power mode admits) (#244): red squad, campaign OWN bind of the source BombSarai FSM with retail parms, hover, bomb Supply/BombMove/Release, lethal blast (v2p pikmin_lethal=81, field 100->19; v1 lethal 2, field 20->18), latch/Fall/Damage/TakeOff/Flick, natural death on its own generator, corpse carried, Onion receipt onion:p2:58:3",
+            "log": "output/claude-orch/p2-bombsarai-own/runs/v2p-58/session/runs/a6264c6ad0f250aa0444a8922ddf8b866f1f573eb7fc0b40e0c045f615ca30f9/native.log (sha256 30384556062612033...) L1251 bind, L2144 blast, L2226 dead, L2538 receipt; v1 native.log sha256 fd7367f8612d6b9a... L2851 receipt; native claude/p2-port-58-bombsarai-v2 e54d87ff5, exe sha256 b15b6c0044c39d67...",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 58 -> bombsarai "
+                         "(stages p2-bombsarai-parms/bomb-parms/own-bank and the Bomb meshes)",
         },
     },
 )

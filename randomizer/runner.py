@@ -15,7 +15,10 @@ from .session import Session, SessionLock, atomic_write
 
 
 class NativeRun:
-    def __init__(self, session):
+    def __init__(self, session, purple_campaign=False):
+        if purple_campaign and not session.manifest.get("p2_layout"):
+            raise ValueError("Purple campaign requires a P2 enemy seed")
+        self.purple_campaign = bool(purple_campaign)
         self.session = session
         self.token = secrets.token_hex(32)
         self.directory = session.directory / "runs" / self.token
@@ -26,7 +29,7 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + "END\n")
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + ("PURPLE 1\n" if self.purple_campaign else "") + "END\n")
         self.seen = 0
         self.deaths_seen = 0
         self.handshaken = False
@@ -249,15 +252,15 @@ async def serve(session, run, process=None, server=None, password=None, updates=
 
 def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
            family_install=None, family_source=None, family_actors=None,
-           p2_content=None, p2_actors=None):
+           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
     with SessionLock(session_dir):
         return _launch(manifest, session_dir, exe, assets, server, content_manifest,
-                       family_install, family_source, family_actors, p2_content, p2_actors)
+                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion)
 
 
 def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
             family_install=None, family_source=None, family_actors=None,
-            p2_content=None, p2_actors=None):
+            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
     staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
@@ -266,8 +269,12 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
     if exe and manifest.get("p2_layout") and content_manifest is None and p2_content is None:
         raise ValueError("P2 native launch requires --content-manifest or --p2-content "
                          "covering the seed identities; unstaged P2 seeds cannot launch")
+    if purple_bank is not None and (assets is None or not (Path(assets) / 'dataDir/stages').is_dir()):
+        raise ValueError('Purple campaign requires --assets with dataDir/stages')
+    from .purple_campaign import bind_campaign_mode
+    bind_campaign_mode(Path(session_dir), manifest, purple_bank, purple_motion)
     session = Session(manifest, session_dir)
-    run = NativeRun(session)
+    run = NativeRun(session, purple_campaign=purple_bank is not None)
     if family_install is not None:
         # Consume a family-owned installer into the run's private model destination.
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
@@ -317,6 +324,9 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             shutil.rmtree(run.directory, ignore_errors=True)
             raise
         print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)
+    if purple_bank is not None:
+        from .purple_campaign import stage_campaign
+        stage_campaign(run.directory, assets, purple_bank, purple_motion, manifest)
     process = None
     overlay = None
     log = None
@@ -325,7 +335,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
-        if content_manifest is None and family_install is None and p2_content is None:
+        if content_manifest is None and family_install is None and p2_content is None and purple_bank is None:
             # Windows directory junction, only into the new private runtime directory.
             import _winapi
             _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))

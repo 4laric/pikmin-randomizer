@@ -1,3 +1,4 @@
+#include "pc_p2_ship_store.h"
 #include "pc_p2_campaign_policy.h"
 #include "pc_p2_proxy.h"
 #include "pc_randomizer.h"
@@ -78,6 +79,7 @@ std::filesystem::path benefitJournal, campaignDirectory;
 std::string campaignBlock;
 unsigned long long campaignGeneration = 0;
 bool campaignResumed = false;
+bool purpleCampaign = false;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
@@ -114,7 +116,10 @@ void loadCampaignCheckpoint() {
     unsigned used[7] = {};
     bool valid = bool(meta >> magic >> savedFingerprint >> generation);
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) valid = valid && bool(meta >> used[i]) && used[i] <= checkCount;
-    if (!valid || !(meta >> hash) || magic != (prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    p2ship::Store restoredShip;
+    if (purpleCampaign) valid = valid && restoredShip.read(meta) && restoredShip.counts[1][0] == 0
+        && restoredShip.counts[1][1] == 0 && restoredShip.counts[1][2] == 0;
+    if (!valid || !(meta >> hash) || magic != (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != campaignGeneration || (meta >> extra))
         fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
     campaignBlock.resize(32768);
@@ -123,6 +128,7 @@ void loadCampaignCheckpoint() {
         || checkpointHash(header.substr(0, header.rfind(' ')) + "\n" + campaignBlock) != hash)
         fail("campaign checkpoint is damaged; preserve campaign files for recovery");
     for (int i=0; i<7; ++i) consumedBenefits[i] = used[i];
+    p2ship::stock = restoredShip;
     campaignResumed = true;
 }
 bool hex64(const std::string& s) {
@@ -299,7 +305,7 @@ bool pc_randomizer_init(int argc, char** argv) {
             p2ProxyTier = true;
             input >> end;
         }
-        if (end != "END") fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (end != "END" && end != "PURPLE") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
@@ -356,6 +362,12 @@ bool pc_randomizer_init(int argc, char** argv) {
             groupAssignments[i] = species;
         }
         groupEnemies = true;
+        input >> end;
+    }
+    if (end == "PURPLE") {
+        unsigned version;
+        if (!p2EnemyBridge || !(input >> version) || version != 1) fail("Purple requires P2 campaign bridge version 1");
+        purpleCampaign = true;
         input >> end;
     }
     if (end != "END") fail("unsupported or malformed bootstrap");
@@ -1017,6 +1029,7 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 }
 
 // Immutable generations keep the last committed day intact if a write is interrupted.
+bool pc_randomizer_purple_campaign() { return enabled && purpleCampaign; }
 bool pc_randomizer_resumed() { return enabled && campaignResumed; }
 bool pc_randomizer_load_campaign(void* destination) {
     if (!pc_randomizer_resumed()) return false;
@@ -1028,8 +1041,9 @@ void pc_randomizer_save_campaign(const void* source) {
     std::filesystem::create_directories(campaignDirectory);
     const auto generation = campaignGeneration + 1;
     std::ostringstream meta;
-    meta << (prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
+    if (purpleCampaign) p2ship::stock.write(meta);
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
     std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;

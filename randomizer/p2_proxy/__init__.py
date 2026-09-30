@@ -248,7 +248,7 @@ def load_rows(directory=None):
     id, a duplicate source or enum, a source id that already has a non-proxy
     path (anything in today's ``IDENTITY_FAMILY``/``EXTRACTORS`` outside the
     ``proxy``/``extract_proxy`` rows this family owns), a     ``pose_limit``
-    outside 2..8, a ``host_teki`` outside the safe-vehicle allowlist, a
+    outside 2..64 (the native bank row cap, #895), a ``host_teki`` outside the safe-vehicle allowlist, a
     ``terrains`` entry outside the proxy terrain allowlist, a malformed
     ``evidence`` block, or a ``missing_normals`` value outside the opt-in
     converter policy allowlist.
@@ -317,8 +317,8 @@ def load_rows(directory=None):
             raise ValueError(
                 f"proxy declaration source already has a non-proxy extractor: {path.name}")
         if type(pose_limit) is not int or isinstance(pose_limit, bool) \
-                or not 2 <= pose_limit <= 8:
-            raise ValueError(f"proxy declaration pose_limit must be 2..8: {path.name}")
+                or not 2 <= pose_limit <= 64:
+            raise ValueError(f"proxy declaration pose_limit must be 2..64: {path.name}")
         if type(host_teki) is not int or isinstance(host_teki, bool) \
                 or host_teki not in HOST_ALLOW:
             raise ValueError(f"proxy declaration host_teki not an allowed vehicle: {path.name}")

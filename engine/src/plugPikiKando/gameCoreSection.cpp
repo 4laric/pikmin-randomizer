@@ -1,3 +1,7 @@
+#include "pc_p2_ship.h"
+#include "pc_p2_ship_store.h"
+#include "pc_p2_purple.h"
+#include "pc_p2_purple_motion.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_kurage_visual.h"
 #include "pc_p2_teki_lifetime.h"
@@ -508,6 +512,7 @@ void GameCoreSection::exitDayEnd()
 	{
 		Piki* piki = (Piki*)*it;
 		if (piki->isAlive()) {
+            if (pc_p2_ship_special(piki)) { if (pc_p2_ship_deposit(piki)) ++entered; continue; }
 			GoalItem* item = itemMgr->getContainer(piki->mColor);
 			if (item) {
 				item->enterGoal(piki);
@@ -607,7 +612,8 @@ void GameCoreSection::enterFreePikmins()
 					if (goal
 					    && qdist2(goal->mSRT.t.x, goal->mSRT.t.z, piki->mSRT.t.x, piki->mSRT.t.z)
 					           <= pikiMgr->mPikiParms->mPikiParms.mSunsetSafetyRange()) {
-						if (state == PIKISTATE_LookAt || state == PIKISTATE_Nukare || state == PIKISTATE_Absorb) {
+						if (pc_p2_ship_special(piki)) { pc_p2_ship_deposit(piki); break; }
+                        if (state == PIKISTATE_LookAt || state == PIKISTATE_Nukare || state == PIKISTATE_Absorb) {
 							piki->mFSM->transit(piki, PIKISTATE_Normal);
 						}
 						piki->mFSM->transit(piki, PIKISTATE_Normal);
@@ -621,7 +627,8 @@ void GameCoreSection::enterFreePikmins()
 					if (ufo) {
 						Vector3f pos = ufo->getGoalPos();
 						if (qdist2(pos.x, pos.z, piki->mSRT.t.x, piki->mSRT.t.z) <= pikiMgr->mPikiParms->mPikiParms.mSunsetSafetyRange()) {
-							if (state == PIKISTATE_LookAt || state == PIKISTATE_Nukare || state == PIKISTATE_Absorb) {
+							if (pc_p2_ship_special(piki)) { pc_p2_ship_deposit(piki); break; }
+                        if (state == PIKISTATE_LookAt || state == PIKISTATE_Nukare || state == PIKISTATE_Absorb) {
 								piki->mFSM->transit(piki, PIKISTATE_Normal);
 							}
 							piki->mFSM->transit(piki, PIKISTATE_Normal);
@@ -838,6 +845,15 @@ void GameCoreSection::cleanupDayEnd()
 			playerState->mResultFlags.setOn(zen::RESFLAG_PikminLeftBehind);
 		}
 	}
+    // The vanilla sunset safety pass above decides survivors. Store specials
+    // before the Onion-only movie routing; they need no Red Onion actor.
+    if (pc_randomizer_purple_campaign()) {
+        Iterator survivors(pikiMgr);
+        CI_LOOP(survivors) {
+            Piki* piki = static_cast<Piki*>(*survivors);
+            if (pc_p2_ship_special(piki) && piki->isAlive()) pc_p2_ship_deposit(piki);
+        }
+    }
 	PRINT("++++++ %d PIKIS KILLED\n", killed);
 	tekiMgr->killAll();
 	bossMgr->killAll();
@@ -1804,6 +1820,8 @@ void GameCoreSection::initStage()
 				item->mSRT.t.y = mMapMgr->getMinY(item->mSRT.t.x, item->mSRT.t.z, true);
 				item->init(item->mSRT.t);
 				item->setColor(item->mSeedColor);
+                // init/setColor clear experimental identity; restore it afterward.
+                if (pc_randomizer_purple_campaign()) a->doRestore(item);
 				item->startAI(0);
 				C_SAI(item)->start(item, PikiHeadAI::PIKIHEAD_Wait);
 				PRINT(" NEW PIKIHEAD ****\n");
@@ -1987,6 +2005,12 @@ void GameCoreSection::finalSetup()
 	pc_p2_demon_manager_setup();
 	pc_p2_sarai_manager_setup();
 	pc_p2_preview_setup();
+    if (pc_randomizer_purple_campaign()) {
+        pc_p2_purple_setup();
+        pc_p2_purple_motion_setup();
+        pc_p2_purple_flight_setup();
+        std::printf("P2_SHIP_READY stored=%d controls=F10_withdraw_ShiftF10_deposit near_ship=180\n", p2ship::stock.total());
+    }
 	pc_p2_snow_campaign_setup();
 	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.
 	pc_p2_scene_begin();
@@ -2452,7 +2476,7 @@ void GameCoreSection::update()
 	pc_p2_kabuto_fsm_update_stones();
 	pc_p2_long_legs_update_all();
 
-	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
+	if (GameStat::allPikis == 0 && (!pc_randomizer_purple_campaign() || p2ship::stock.total() == 0) && GameStat::maxPikis > 0) {
 #if defined(PIKI_PC_PORT)
 		// Cooperativo: la secuencia de extinción la hace un Olimar vivo, no
 		// un cuerpo caído. Si el vivo ya está en ella, no se repite.
@@ -2991,6 +3015,9 @@ void GameCoreSection::updateAI()
     pc_p2_cave_tick();
     pc_p2_giant_breadbug_actor_tick();
     pc_p2_breadbug_actor_tick();
+    const bool shipActive = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
+        && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && mNavi && mNavi->mHealth > 0.0f;
+    pc_p2_ship_tick(naviMgr ? naviMgr->getActiveNavi() : nullptr, shipActive);
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
@@ -3023,9 +3050,22 @@ void GameCoreSection::updateAI()
             }
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
-            pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
+            pc_randomizer_observe_total_population(int(GameStat::allPikis) + (pc_randomizer_purple_campaign() ? p2ship::stock.total() : 0), true);
+            int specialAliases[3] = {};
+            if (pc_randomizer_purple_campaign()) {
+                Iterator live(pikiMgr);
+                CI_LOOP(live) {
+                    Piki* p = static_cast<Piki*>(*live);
+                    if (p && p->isAlive() && (p->mP2Purple || p->mP2White)) ++specialAliases[p->mColor];
+                }
+                Iterator sprouts(itemMgr->getPikiHeadMgr());
+                CI_LOOP(sprouts) {
+                    PikiHeadItem* p = static_cast<PikiHeadItem*>(*sprouts);
+                    if (p && (p->mP2Purple || p->mP2White)) ++specialAliases[p->mSeedColor];
+                }
+            }
             for (int color = PikiMinColor; color < PikiColorCount; ++color)
-                pc_randomizer_observe_color_population(color, GameStat::allPikis[color], true);
+                pc_randomizer_observe_color_population(color, std::max(0, GameStat::allPikis[color] - specialAliases[color]), true);
             if (flowCont.mCurrentStage) {
                 auto observe = [](Creature* obj, int kind, bool complete) {
                     if (!obj || !obj->mGenerator) return;

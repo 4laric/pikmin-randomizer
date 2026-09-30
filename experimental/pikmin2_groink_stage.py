@@ -41,8 +41,10 @@ CLIPS = ('walk', 'search1', 'turn1', 'attack1', 'flick1', 'dead1', 'type5', 'reb
 # Poses sampled per clip by the MiniHoudai extractor (native bound: <= 24 per
 # clip, <= 1 MiB per mesh, <= 24 MiB total). The looping/visible clips get the
 # most; type5 is the carcass hold and needs only its two end poses.
-POSE_LIMITS = {'walk': 8, 'search1': 4, 'turn1': 4, 'attack1': 10,
-               'flick1': 6, 'dead1': 8, 'type5': 2, 'rebirth': 6}
+# #895: every clip samples the shared campaign density; the native Groink
+# draw loads through pc_p2_pose_loader.h and lerps between samples.
+POSE_LIMITS = {'walk': 24, 'search1': 24, 'turn1': 24, 'attack1': 24,
+               'flick1': 24, 'dead1': 24, 'type5': 24, 'rebirth': 24}
 
 # Native parseBank bounds (pc_p2_groink_fsm.cpp).
 MAX_FRAMES = 10000

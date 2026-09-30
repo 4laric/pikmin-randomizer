@@ -1,3 +1,5 @@
+#include <filesystem>
+#include "pc_p2_ship_store.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include <cstdlib>
@@ -17,6 +19,27 @@ int main(int argc, char** argv) {
     if (!pc_randomizer_init(argc, argv)) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--purple-save-probe")) {
+        assert(pc_randomizer_purple_campaign());
+        unsigned char block[32768] = {};
+        const bool resumed = pc_randomizer_load_campaign(block);
+        std::printf("PURPLE_LOADED resumed=%d stock=%d,%d,%d marker=%u\n", resumed,
+            p2ship::stock.counts[0][0], p2ship::stock.counts[0][1], p2ship::stock.counts[0][2], unsigned(block[0]));
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--deposit")) {
+                assert(p2ship::stock.add(3, 0)); assert(p2ship::stock.add(3, 1)); assert(p2ship::stock.add(3, 2));
+                ++block[0];
+            }
+            if (!std::strcmp(argv[i], "--fail-write")) {
+                for (int j = 1; j + 1 < argc; ++j) if (!std::strcmp(argv[j], "--randomizer-seed")) {
+                    const auto token = std::filesystem::path(argv[j+1]).parent_path().filename().string();
+                    std::filesystem::create_directory(std::filesystem::path(pc_randomizer_save_root()).parent_path() / (token + ".tmp"));
+                }
+            }
+            if (!std::strcmp(argv[i], "--commit")) pc_randomizer_save_campaign(block);
+        }
+        return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--campaign-probe")) {
         int objects[72] = {};

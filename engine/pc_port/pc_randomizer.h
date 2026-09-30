@@ -116,3 +116,6 @@ int pc_randomizer_deathlink_casualties();
 void pc_randomizer_deathlink_induce(const void* piki);
 void pc_randomizer_deathlink_consume(int killed);
 void pc_randomizer_observe_pikmin_death(const void* piki);
+
+// Explicit ordinary-campaign Purple mode; no implicit preview/asset enable.
+bool pc_randomizer_purple_campaign();

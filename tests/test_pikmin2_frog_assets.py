@@ -6,7 +6,7 @@ class FrogAssetsTests(unittest.TestCase):
  def test_preserve_event_loop_boundaries_deterministically(self):
   events=[[0,0],[4,2],[28,3],[34,1]]
   frames=event_frames(35,events)
-  self.assertEqual(frames,event_frames(35,events));self.assertEqual(len(frames),12)
+  self.assertEqual(frames,event_frames(35,events));self.assertEqual(len(frames),24)  # DEFAULT_POSE_LIMIT (#943)
   self.assertTrue({0,4,28,34}.issubset(frames));self.assertEqual(frames,sorted(set(frames)))
   self.assertEqual(event_frames(1,[]),[0])
  def test_reject_bad_sampling(self):
