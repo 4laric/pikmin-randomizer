@@ -478,18 +478,6 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 65,
-        "enum_name": "Imomushi",
-        "family": "ground_inverts",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst2-worms-65b (owner ruling 2026-09-25: power mode admits): campaign bind, appear/move walk cycle, P2_IMOMUSHI_DEAD on its own generator, corpse carried, Onion receipt onion:p2:65:3",
-            "log": "C:/cop/botcamp-inst2-worms-65b-65-Imomushi/session/runs/e9f4fc39ebad3e73d4cf98eebc879915c802c998f86e9e844ba8b7a1b74604d9/native.log (sha256 7ccd8abf9afdabaf...) L1714 bind, L1858 dead, L1984 receipt; output/claude-orch/evidence/botcamp-inst2-worms-65b.md; output/claude-orch/review/rev2-worms.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 65 -> ground_inverts "
-                         "(experimental/pikmin2_ground_inverts_install)",
-        },
-    },
-    {
         "source_id": 71,
         "enum_name": "UmiMushi",
         "family": "aquatic",
