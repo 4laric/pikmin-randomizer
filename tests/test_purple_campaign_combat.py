@@ -9,6 +9,61 @@ from pathlib import Path
 from randomizer.purple_campaign import combat_profile
 
 class CombatBindingsTests(unittest.TestCase):
+    def test_actual_purple_state_entry_preserves_receiver_impulse(self):
+        native = Path(os.environ.get('PIKMIN_NATIVE_SOURCE', Path(__file__).resolve().parents[1] / 'native'))
+        compiler = shutil.which('g++')
+        source = native / 'src/plugPikiNakata/taichappy.cpp'
+        if not compiler or not source.exists():
+            self.skipTest('Set PIKMIN_NATIVE_SOURCE and provide g++')
+        text = source.read_text(encoding='utf-8')
+        begin = text.index('// Dedicated Purple receiver:')
+        end = text.index('setState(CHAPPYSTATE_P2PurpleImpact, state);', begin)
+        factory = text[begin:end]
+        # Compile the production action list and state-entry loop. The test
+        # models only motion storage; live gravity/landing remain runtime gates.
+        tai = (native/'src/plugPikiNakata/tai.cpp').read_text(encoding='utf-8')
+        begin = tai.index('void TaiState::start(')
+        entry = tai[begin:tai.index('\n}', begin)+2].replace('\r', '')
+        move = (native/'src/plugPikiNakata/taimoveactions.cpp').read_text(encoding='utf-8')
+        begin = move.index('void TaiStopMoveAction::start(')
+        stop = move[begin:move.index('\n}', begin)+2]
+        code = '''#include <cassert>
+#include <vector>
+struct Teki { float vy=245.f, driveY=245.f; void stopMove(){vy=driveY=0.f;} };
+struct TaiAction { virtual void start(Teki&){}; virtual ~TaiAction()=default; };
+struct TaiStopMoveAction: TaiAction { void start(Teki&) override; };
+struct TaiState {
+    int mCount; std::vector<TaiAction*> mActions;
+    TaiState(int count):mCount(count),mActions(count,nullptr){}
+    void setAction(int index,TaiAction* action){mActions.at(index)=action;}
+    void start(Teki&);
+};
+''' + entry + '\n' + stop + '''
+int main(){
+    TaiAction damage, death, press, smash, purple;
+    TaiStopMoveAction stopAction;
+    TaiAction *simDamage=&damage, *dead1=&death, *pressed=&press,
+              *chappySmashed=&smash, *purpleImpact=&purple, *stopMove=&stopAction;
+    (void)stopMove;
+    TaiState* state=nullptr; int j=0;
+''' + factory + '''
+    assert(j==state->mCount);
+    Teki actor; state->start(actor);
+    assert(actor.vy==245.f && actor.driveY==245.f);
+    assert(state->mCount==5);
+    assert(state->mActions[0]==simDamage && state->mActions[1]==dead1);
+    assert(state->mActions[2]==pressed && state->mActions[3]==chappySmashed);
+    assert(state->mActions[4]==purpleImpact);
+    delete state;
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp)/'entry.cpp'
+            exe = Path(tmp)/'entry.exe'
+            probe.write_text(code, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', str(probe), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([str(exe)], check=True, capture_output=True)
+
     def test_production_health_accessors_adjust_registered_base_pointer(self):
         native = Path(os.environ.get('PIKMIN_NATIVE_SOURCE', Path(__file__).resolve().parents[1] / 'native'))
         compiler = shutil.which('g++')
