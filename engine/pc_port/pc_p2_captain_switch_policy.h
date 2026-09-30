@@ -34,6 +34,9 @@ inline int p2_captain_camera_drag_player(bool singlePlayerPair, int targetCaptai
 // otherwise it continues reading the neutralized old captain's controller.
 template<class CameraT, class NaviT>
 void p2_captain_bind_camera(CameraT& camera, NaviT& captain) {
+    // The opt-in second Navi is reset after the normal/coop cursor setup.
+    // A hidden cursor also disables whistle entry in NaviWalkState.
+    captain.mIsCursorVisible = true;
     camera.mController = captain.mKontroller;
     camera.startCamera(&captain);
 }

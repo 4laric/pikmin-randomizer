@@ -3015,9 +3015,10 @@ void GameCoreSection::updateAI()
     pc_p2_cave_tick();
     pc_p2_giant_breadbug_actor_tick();
     pc_p2_breadbug_actor_tick();
+    Navi* shipNavi = naviMgr ? naviMgr->getActiveNavi() : nullptr;
     const bool shipActive = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
-        && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && mNavi && mNavi->mHealth > 0.0f;
-    pc_p2_ship_tick(naviMgr ? naviMgr->getActiveNavi() : nullptr, shipActive);
+        && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && shipNavi && shipNavi->mHealth > 1.0f;
+    pc_p2_ship_tick(shipNavi, shipActive);
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll

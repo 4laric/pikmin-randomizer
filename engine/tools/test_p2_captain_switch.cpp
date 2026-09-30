@@ -18,7 +18,7 @@ struct Scene {
     int active=0, ownershipWrites=0;
 };
 
-struct CameraNavi { Input* mKontroller; };
+struct CameraNavi { Input* mKontroller; bool mIsCursorVisible = false; };
 struct Camera {
     Input* mController;
     CameraNavi* target = nullptr;
@@ -59,6 +59,7 @@ int main() {
     Camera camera{&old};
     p2_captain_bind_camera(camera,second);
     assert(camera.target==&second && camera.mController->mMainStickX==74);
+    assert(second.mIsCursorVisible); // live whistle entry requires this
     // Reconciliation is equally valid for the automatic survivor transition.
     p2_captain_bind_camera(camera,first);
     assert(camera.target==&first && camera.mController==&old);

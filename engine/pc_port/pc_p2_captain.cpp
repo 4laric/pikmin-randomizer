@@ -230,6 +230,7 @@ void update_player_switch()
     // Reconcile both before processing a new switch (also covers survivor-down).
     if (current && current->mKontroller && cameraMgr
         && cameraMgr->mController != current->mKontroller) {
+        if (Navi* other = naviMgr->getOtherNavi(current)) other->mIsCursorVisible = false;
         p2_captain_bind_camera(*cameraMgr, *current);
     }
     if (!g_switchHintShown) {
@@ -247,6 +248,7 @@ void update_player_switch()
     p2_captain_neutral_input(*current->mKontroller);
     p2_captain_neutral_input(*next->mKontroller);
     current->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+    current->mIsCursorVisible = false;
     p2_captain_bind_camera(*cameraMgr, *next);
     std::printf("P2_CAPTAIN_SWITCH from=%d to=%d\n", current->getNaviIndex(), next->getNaviIndex());
 }

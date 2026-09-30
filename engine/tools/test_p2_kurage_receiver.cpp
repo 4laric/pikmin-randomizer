@@ -18,6 +18,11 @@
 #define _SYSTEM_H
 #define _PIKIAI_H
 #define _OBJECTMGR_H
+#define _NAVISTATE_H
+#define _KONTROLLER_H
+#define _PCAM_CAMERAMANAGER_H
+#define _GAMEFLOW_H
+#define _CINEMATICPLAYER_H
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_captain.h"
 #include "pc_p2_kurage_receiver.cpp"
