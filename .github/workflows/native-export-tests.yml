@@ -1,0 +1,34 @@
+name: Native snapshot exporter tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/export_native_source.py'
+      - 'tests/test_native_source_export.py'
+      - 'ENGINE_SOURCE.md'
+      - '.github/workflows/native-export-tests.yml'
+  push:
+    branches: ['codex/native-export-preflight']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exporter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record exact tested source
+        run: |
+          git rev-parse HEAD
+          git rev-parse 'HEAD^{tree}'
+          sha256sum scripts/export_native_source.py tests/test_native_source_export.py ENGINE_SOURCE.md .github/workflows/native-export-tests.yml
+      - name: Run Git-backed snapshot regressions
+        run: python -m unittest discover -s tests -p test_native_source_export.py -v
