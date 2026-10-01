@@ -11,6 +11,7 @@ from .core.seed import generate, fingerprint
 from .core.enemy_catalog import all_location_ids as p2_location_ids
 from .core.stats import UPGRADE_ITEMS
 from .core.benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS, TRAP, TRAP_ITEMS
+from .core.compatibility import restore_slot_manifest
 
 
 class PikminItem(Item):
@@ -27,13 +28,33 @@ class PikminRandomizerWorld(World):
     item_name_to_id = ITEM_IDS
     location_name_to_id = {**ALL_AREA_LOCATION_IDS, **MODERN_LOCATION_IDS, **p2_location_ids()}
     required_client_version = (0, 6, 0)
-    # Universal Tracker: the manifest depends on the room seed, so a local
-    # regeneration must reuse the authoritative manifest from slot_data.
     ut_can_gen_without_yaml = True
+    item_name_groups = {
+        "Ship Repairs": {REPAIR},
+        "Onions": {name for name in ITEM_IDS if name.endswith(" Onion")},
+        "Area Access": {name for name in ITEM_IDS if name.endswith(" Access")},
+        "Color Upgrades": set(UPGRADE_ITEMS),
+        "Benefits": set(BENEFIT_ITEMS) - set(TRAP_ITEMS),
+        "Traps": set(TRAP_ITEMS),
+    }
+    location_name_groups = {
+        "Ship Parts": {name for name in location_name_to_id if name.startswith("Pikmin: ") and not name.endswith(" Discovery")},
+        "Onion Discovery": {name for name in location_name_to_id if name.endswith(" Discovery")},
+        "Population": {name for name in location_name_to_id if name.startswith("Population: ")},
+        "Bestiary": {name for name in location_name_to_id if name.startswith("Bestiary: ")},
+        "Exploration": {name for name in location_name_to_id if name.startswith("Explore: ")},
+        "Structures": {name for name in location_name_to_id if name.startswith("Build: ")},
+    }
 
     @staticmethod
     def interpret_slot_data(slot_data):
-        return slot_data
+        manifest = restore_slot_manifest(slot_data)
+        return {"manifest": manifest, "manifest_fingerprint": fingerprint(manifest)}
+
+    def generate_early(self):
+        passthrough = getattr(self.multiworld, "re_gen_passthrough", None) or {}
+        if self.game in passthrough:
+            self._manifest = restore_slot_manifest(passthrough[self.game])
 
     def create_regions(self):
         menu = Region("Menu", self.player, self.multiworld)
@@ -87,11 +108,8 @@ class PikminRandomizerWorld(World):
         if not hasattr(self, '_manifest'):
             passthrough = getattr(self.multiworld, 're_gen_passthrough', {}).get(GAME)
             if passthrough:
-                manifest = passthrough['manifest']
-                if fingerprint(manifest) != passthrough.get('manifest_fingerprint'):
-                    raise ValueError('Universal Tracker slot_data manifest does not match its fingerprint')
-                self._manifest = manifest
-                return manifest
+                self._manifest = restore_slot_manifest(passthrough)
+                return self._manifest
             selected_p2 = None
             if self.options.p2_enemy_randomizer and self.options.p2_species.value:
                 try:
