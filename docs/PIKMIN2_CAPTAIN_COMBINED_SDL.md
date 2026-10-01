@@ -8,6 +8,22 @@ CI executable-local DLLs with a different local toolchain is rejected before
 launch. `--prepare-only` stages inputs and records provenance without running
 the game. The historical results below remain pinned to their original builds.
 
+The #1157 portability update adopts the unchanged #1174 platform helpers.
+Windows retains the packaged DLL preflight and its existing metadata. Linux
+omits `--runtime-dir` and records ELF, loader and shared-library evidence from
+the staged native run directory, so relative loader paths use the correct cwd.
+The pinned common launcher repeats that probe and requires controller admission
+before spawning. Both platforms pass the canonical root and private session
+context to that launcher; failed admission produces no gameplay acceptance.
+
+Local Windows validation passed 12 tests, with four Linux-only tests skipped.
+Mocked runner tests cover staging-before-probe, the exact probe cwd, launcher
+context and denial before reading a nonexistent native log. Actual Linux ELF,
+process-group and controller/runtime qualification remains pending. No build,
+remote dispatch or game launch is part of this portability validation; the
+runner upgrade hold remains in effect. Save, population, reward, captain and
+60-second acceptance oracles are unchanged.
+
 When linked with `PIKMIN_NETPLAY_BUILD=ON`, this fixture still runs an offline
 two-captain session. Its replacement main does not execute production netplay
 startup, and the runner clears inherited `PIKMIN_`, `P2_` and `COOP_` settings.
