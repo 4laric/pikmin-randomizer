@@ -681,7 +681,7 @@ PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 P2_REQUIRES_PURPLE = {}
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_checks=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_checks=False, p2_second_captain=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
@@ -725,6 +725,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if p2_checks: collection_checks = True
     if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
         raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
+    if type(p2_second_captain) is not bool: raise ValueError("invalid p2_second_captain")
+    if p2_second_captain and not p2_enemies: raise ValueError("p2_second_captain requires p2_enemies")
     if type(p2_purple_campaign) is not bool: raise ValueError("invalid p2_purple_campaign")
     if p2_purple_campaign and not p2_enemies: raise ValueError("p2_purple_campaign requires p2_enemies")
     p2_species_explicit = p2_species is not None and p2_species not in ("playable", "full")
@@ -952,6 +954,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                                          proxy_ids=[r['source_id'] for r in proxy_rows or []])
         result['locations'] = location_ids(result)
         result['capabilities'].append(CAPABILITY)
+    if p2_second_captain:
+        result['p2_second_captain'] = True
+        result['capabilities'].append('p2-second-captain-v1')
     validate(result)
     return result
 
@@ -1086,6 +1091,10 @@ def validate(m):
             raise ValueError('invalid p2_proxy_tier')
         if 'p2_layout' not in m:
             raise ValueError('p2_proxy_tier requires a p2_layout')
+    if type(m) is dict and 'p2_second_captain' in m:
+        expected.add('p2_second_captain')
+        if m['p2_second_captain'] is not True or 'p2_layout' not in m:
+            raise ValueError('invalid p2_second_captain')
     if type(m) is dict and 'p2_purple_campaign' in m:
         expected.add('p2_purple_campaign')
         if m['p2_purple_campaign'] is not True or 'p2_layout' not in m:
@@ -1216,6 +1225,7 @@ def validate(m):
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     if m.get('enemy_catalog'): fixed['capabilities'].append('resolved-enemy-checks-v1')
+    if m.get('p2_second_captain'): fixed['capabilities'].append('p2-second-captain-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
