@@ -4,11 +4,11 @@ Implementation owner: Codex through shared account `4laric`, [issue1120](https:/
 
 ## Observed slice
 
-Native `d562f7b369aec4d20117f395f13cee9a2e0b3b9b`, fixture08, fresh positive `output/white-ingestion/run-positive-2e484f74e5` exited0 in39.531 seconds. The scene began with20 Reds, one Ivory and one explicitly registered native adult `TEKI_Swallow` mechanics adapter. Real SDL P1/native polling performed whistle, ordinary Red-to-White birth, Red dismissal (Release4 to Walk0), player pluck, movement, throw and retreat. The White was observed alive attached to the predator's mouth before ordinary native consumption.
+Native `d562f7b369aec4d20117f395f13cee9a2e0b3b9b`, fixture08, fresh positive `output/white-ingestion/run-positive-2e484f74e5` exited0 in39.531 seconds. The scene began with20 Reds, one Ivory and one explicitly registered native P1 adult `TEKI_Swallow` mechanics adapter. Real SDL P1/native polling performed whistle, ordinary Red-to-White birth, Red dismissal (Release4 to Walk0), player pluck, movement, throw and retreat. The White was observed alive attached to the predator's mouth before ordinary native consumption.
 
 The production callback logged exactly one `P2_WHITE_POISON_CONSUMED damage=750.000 queued_health=1016.843`. The fixture next observed HP267.026 and19 Reds/zero Whites/19 bodies. Starting HP was1100, from the ordinary loaded native adult parameters; White melee damage and native recovery preceded consumption. The queued750 is the P2 Chappy proper `fp02`; the remaining HP includes normal native regeneration. Neither the fixture nor runner writes HP, White identity, mouth attachment, swallowing events, callbacks, budgets, rewards or conversion timers. The predator survived (`death=0`); lethal poison and corpse creation are untested in this ordinary run.
 
-Same executable fresh negative `run-negative-2149b020c6` exited86 with no success marker. The captain guard runs immediately after engine idle and before startup/movie/pause/readiness returns; missing initialized captain/state and independent health/dead signals fail. Its negative-only helper input is disclosed and does not alter production health.
+Same executable fresh negative `run-negative-2149b020c6` exited86 with no success marker. The canonical three-signal captain guard runs immediately after engine idle and before startup/movie/pause/readiness returns; missing initialized captain/state and independent health/dead signals fail. Its negative-only helper input is disclosed and does not alter production health. Supplemental `naviMgr->isNaviDead(n)` observation/negative control is a future fixture enhancement; the accepted08 guard already checks the three mandatory fan-out signals.
 
 ## Source and staging
 

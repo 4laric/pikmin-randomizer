@@ -20,7 +20,7 @@ def stage(a,run):
  gen.unlink();gen.write_bytes(data[:20]+struct.pack('>I',struct.unpack_from('>I',data,20)[0]+1)+data[24:]+pred)
  for name in ('p2-white-poison.txt','white-poison.json'):(run/name).write_bytes((a.poison/name).read_bytes())
  (run/'p2-cave-entry.txt').write_text('P2_CAVE_ENTRY_2\n'+uuid.uuid4().hex+'\n1 1 20\n'+'1 0\n'*20)
- return dict(generator_sha256=sha(gen),poison_sha256=sha(run/'p2-white-poison.txt'),predator_uid=436207616,predator_family='TEKI_Swallow',position=[200,0,-145],rotation=[0,270,0],placement='staged ordinary generator; no actor writes',initial='fresh current 20 Red overlay with native ENTRY2 restore',controls='actual SDL P1 polling only',startup='movie skip/tutorial flags/audio dummy',positive_injections='none: no HP/species/attachment/callback/reward/budget/timer writes',source_exe_sha256=sha(a.exe),runner_sha256=sha(__file__),timeout_seconds=60)
+ return dict(generator_sha256=sha(gen),poison_sha256=sha(run/'p2-white-poison.txt'),predator_uid=436207616,predator_family='native P1 TEKI_Swallow adapter',presentation='native P1 adult; imported P2 adult presentation/AI/HP unclaimed',position=[200,0,-145],rotation=[0,270,0],placement='staged ordinary generator; no actor writes',initial='staged canonical 20 Red overlay with native ENTRY2 baseline restoration; natural starting supply unclaimed',controls='actual SDL P1 polling only',startup='movie skip/tutorial flags/audio dummy',positive_injections='none: no HP/species/attachment/callback/reward/budget/timer writes',source_exe_sha256=sha(a.exe),runner_sha256=sha(__file__),timeout_seconds=60)
 
 def main():
  p=argparse.ArgumentParser(description=__doc__)
