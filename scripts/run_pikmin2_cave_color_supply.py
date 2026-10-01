@@ -95,6 +95,10 @@ def main():
                            (previous / 'p2-cave-item-receipts.txt').read_text(), manifest,
                            parse_items_text((previous / 'p2-cave-items.txt').read_text()))
     stage(manifest, args.assets, args.pod, args.production, args.generator, run, 0, prior)
+    if prior is None:
+        # The ordinary supervisor initializes the durable ledger before launch.
+        # Fresh stage itself deliberately supplies no checkpoint sidecars.
+        (run / 'p2-cave-item-receipts.txt').write_text('P2_RECEIPTS_1\n')
     (run / 'staging-disclosure.json').write_text(json.dumps(dict(mode=args.mode, starting_species=('15 Red/5 Blue from actual producer transfer' if args.mode == 'restore' else 'ordinary fresh stage: 20 Red, entry species 1'), starting_squad=(prior['squad'] if prior else [[1, 0]] * 20), entry_override=prior is not None,
         previous=str(args.previous) if args.previous else None, input='SDL virtual gamepad assigned P1 process-locally', position_writes=False,
         velocity_writes=False, species_writes=False, state_writes=False, bud_auto_pluck='existing production behavior', captain_only_exit=True, confirmation_bypassed=True), indent=2))
