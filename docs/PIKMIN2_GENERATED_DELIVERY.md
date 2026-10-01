@@ -5,7 +5,7 @@ This private lane tests one generated encounter; it does not grant full P2,
 full campaign, all original-slot routes or human gameplay acceptance.
 
 The supported generator receives a subset of the existing admitted placement
-with audited Hope singleton4222852521 (`1/0-29.gen@2659`). Every retained slot,
+with audited Spring singleton3921089765 (`3/0-14.gen@231`). Every retained slot,
 profile and admission fact stays intact. Pool44 Dwarf Orange Bulborb and34 Female
 Sheargrub samples44 into this singleton and records34 as unplaced. The resolved
 catalog adds only the placed P2 identity and retains surviving P1 checks.

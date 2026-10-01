@@ -18,7 +18,7 @@ from experimental.pikmin2_family_install import install_layout
 from scripts.preview_pikmin2_room import overlay
 from randomizer.test_run import apply_test_run_env
 
-TARGET = 4222852521
+TARGET = 3921089765
 SOURCE = 44
 ABSENT = 34
 
@@ -37,7 +37,7 @@ def case(seed='p2-journal-1096'):
     document.pop('held_parts', None)
     assert len(document['slots']) == 1
     manifest = generate(seed, mode='ap', p2_enemies=True, p2_species=[SOURCE, ABSENT],
-                        p2_checks=True, p2_placement=document, starting_area='forest',
+                        p2_checks=True, p2_placement=document, starting_area='spring',
                         starting_color='red', starting_flarlic=2)
     validate(manifest)
     assert manifest['p2_layout']['bindings'] == [dict(target=str(TARGET), source_id=SOURCE, enum_name='BlueKochappy')]
@@ -75,16 +75,19 @@ def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifes
     # Use that tested equivalent baseline; no generator/player inventory edits.
     game=directory/'game';game.mkdir()
     overrides={};suppressed={}
+    stage_folder=('practice','stage1','stage2','stage3','last')[audit['campaign_slot']['stage']]
+    target_file=audit['campaign_slot']['source'].split('/',1)[1].split('@',1)[0]
+    stage_dir='dataDir/stages/'+stage_folder
     if minimal_surroundings:
-        for path in (assets/'dataDir/stages/stage1').glob('*.gen'):
-            if path.name in ('default.gen','0-29.gen'):continue
+        for path in (assets/stage_dir).glob('*.gen'):
+            if path.name in ('default.gen',target_file):continue
             blob=path.read_bytes()
             if blob[:4]!=b'1.0v' or len(blob)<24:raise ValueError('Unsupported generator header: '+str(path))
-            key='dataDir/stages/stage1/'+path.name
+            key=stage_dir+'/'+path.name
             overrides[key]=blob[:20]+bytes(4)
             suppressed[key]={'original_sha256':digest(path),'zero_record_sha256':hashlib.sha256(overrides[key]).hexdigest()}
     overlay(run.directory/'assets',game/'assets',overrides)
-    audit['surrounding_content_subset']={'enabled':minimal_surroundings,'suppressed':suppressed,'target_file_byte_exact':digest(game/'assets/dataDir/stages/stage1/0-29.gen')==digest(assets/'dataDir/stages/stage1/0-29.gen'),'original_ship_onions_default_byte_exact':digest(game/'assets/dataDir/stages/stage1/default.gen')==digest(assets/'dataDir/stages/stage1/default.gen'),'full_campaign_route_acceptance':False}
+    audit['surrounding_content_subset']={'enabled':minimal_surroundings,'suppressed':suppressed,'target_file_byte_exact':digest(game/'assets'/stage_dir/target_file)==digest(assets/stage_dir/target_file),'original_ship_onions_default_byte_exact':digest(game/'assets'/stage_dir/'default.gen')==digest(assets/stage_dir/'default.gen'),'full_campaign_route_acceptance':False}
     for file in run.directory.iterdir():
         if file.is_file() and file.name not in ('bootstrap.txt','state.txt'):
             shutil.copy2(file,game/file.name)
@@ -96,8 +99,8 @@ def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifes
                  field_staging={'count':20,'species':'Red','method':'Existing production TEST_BACKGROUND real Onion withdrawal',
                                 'fixture_inventory_writes':False,'fixture_generator_writes':False,
                                 'enemy_position_override':False,
-                                'source_default_sha256':digest(assets/'dataDir/stages/stage1/default.gen'),
-                                'original_enemy_file_sha256':digest(assets/'dataDir/stages/stage1/0-29.gen')},
+                                'source_default_sha256':digest(assets/stage_dir/'default.gen'),
+                                'original_enemy_file_sha256':digest(assets/stage_dir/target_file)},
                  local_ap_readiness=False, network_ap_acceptance=False)
     (directory / 'readiness.json').write_text(json.dumps(audit, indent=2) + '\n')
     return audit, session, run

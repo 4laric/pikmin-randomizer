@@ -9,7 +9,7 @@ class GeneratedDeliveryCaseTests(unittest.TestCase):
     def test_subset_keeps_exact_original_slot_and_source(self):
         manifest, audit = case()
         self.assertEqual(audit['slot']['uid'], TARGET)
-        self.assertEqual(audit['campaign_slot']['source'], '1/0-29.gen@2659')
+        self.assertEqual(audit['campaign_slot']['source'], '3/0-14.gen@231')
         self.assertEqual(audit['slot']['stage'], audit['campaign_slot']['stage'])
         checks = manifest['enemy_catalog']['checks']
         self.assertEqual([r['species'] for r in checks if r['game'] == 'p2'], [SOURCE])
