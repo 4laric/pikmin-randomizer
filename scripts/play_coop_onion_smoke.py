@@ -13,7 +13,7 @@ def main():
     checkout = Path(__file__).resolve().parents[1]
     root = checkout.parent.parent if checkout.parent.name == 'output' else checkout
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--exe', type=Path, default=root/'output/coop-onion-refresh/fixture-build05/onion-smoke.exe')
+    parser.add_argument('--exe', type=Path, default=root/'output/coop-onion-refresh/fixture-build06/onion-smoke.exe')
     parser.add_argument('--assets', type=Path, default=Path('C:/Users/alari/AppData/Roaming/PikminRandomizer/game-data/assets'))
     parser.add_argument('--orientation', choices=['vertical', 'horizontal'], default='vertical')
     parser.add_argument('--seconds', type=int, default=60)
