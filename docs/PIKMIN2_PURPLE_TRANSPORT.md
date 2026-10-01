@@ -44,6 +44,7 @@ claim an uninterrupted single-Purple delivery. Recall count is reported.
 |---|---|---|
 | haul01 | `502a1ed4f4ceee2eeacf8b55aec2e479f06bf528` | FAIL: idle helpers joined before the Red control. No delivery acceptance. |
 | haul02 | `f9c7d562ae1313bd78bd7fd5c38d2ddb91243d35` | FAIL after 82.687 s: Red control and Purple approach/lift/movement passed, but an extra carrier joined before Onion uptake. Captain remained healthy. |
+| haul03 | `5fe10ae877df4f23a4e17380d4a3394b8a4d4b9d` | FAIL: 180.125 s wall-clock timeout. Continuous recalls preserved the single-Purple test; acquisition, Red control and native movement passed, but no Onion uptake or reward. Healthy captain; route diagnosis pending. |
 
 The second failure exposed incomplete fixture isolation: a one-time formation
 gather prevents free-mode volunteering, but `Piki::collisionCallback` can assign
@@ -67,6 +68,18 @@ Haul02 log SHA-256 is
 `d107b2fc5b571e7f791bec3d824f5bfb745fe814cc853fbb272a6115acc05683`.
 Each attempt has its own session, input hashes, native log and acceptance JSON;
 failed attempts are never overwritten.
+
+Haul03 merges approved native main `00cd93c5e1ff4e0ecd0c85d6bba2771bf5cc5e77`.
+Windows run `36851576507` passed all 211 selected tests. The CI checkout
+`4cdb0a5eda286f38206f62ec9b094795d67d3581` and candidate have the same Git tree
+`c0ba16a9ea43e7f35416349fbd37a20608510d03`; all seven artifact hash entries match,
+and the no-work build dry run passed. Its fixture executable SHA-256 is
+`d4bb3421e28fea38ffe5945c3a14f954fc48e8a0e78b4c5125b9c5e8f2ffb687`.
+Guard03 again rejected captain-down with raw exit86 and no PASS/timeout.
+Haul03 log SHA-256 is
+`ee43c73a861a0bfa8084174513b6ab0bbd3e269c2a01e2d9ed7ab6af23c69f58`.
+Its timeout must not be relabeled as delivery acceptance or assumed to be a
+production defect without route/destination evidence.
 
 ## Reproduction and evidence boundaries
 
