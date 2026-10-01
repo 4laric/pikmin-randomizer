@@ -164,7 +164,7 @@ def ordinary(label, manifest, output):
     print(f"PASS: {label} attach/export/mirror/reopen/tracker: {len(names)} checks, {len(items)} receipts")
 
 
-def thelynk(output, native_names=None):
+def thelynk(output, native_names=None, native_events=None):
     from randomizer.compatibility import PART_CROSSWALK
     from randomizer.thelynk import TheLynkSession, PART_ITEMS, BONUSES, LOCATIONS, read_patch
     from randomizer.runner import NetplayClientRun
@@ -240,6 +240,13 @@ def thelynk(output, native_names=None):
     refused(lambda: NetplayClientRun(dict(patch, Seed="foreign"), destination / "foreign", bundle["bootstrap_text"]))
     assert not (destination / "foreign").exists()
     print("PASS: TheLynk 330 numeric checks, 30 unique parts, 18 bonuses, patch reader, journal/replay/reopen")
+    if native_events is not None:
+        from randomizer.netplay_mirror import parse_mirror_line
+        native_names = [args[0] for _, tag, args in
+            (parse_mirror_line(line) for line in native_events.read_text(encoding="ascii").splitlines())
+            if tag == "CHECKED"]
+        assert len(native_names) >= 30, "compiled emitter journal must cover all thirty ship parts"
+        (destination / "observed-native-mirror-events.txt").write_bytes(native_events.read_bytes())
     if native_names is not None:
         # The native writer emits checkName(slot), whose ship-part table uses
         # internal engine aliases. Exercise the actual pinned table independently
@@ -250,6 +257,8 @@ def thelynk(output, native_names=None):
                 client.mirror.apply(client.mirror.load(), (1001, "CHECKED", (name,)))
             except ValueError as error:
                 failures.append(dict(native_name=name, error=str(error)))
+        if native_events is not None and not failures:
+            assert set(range(71400, 71430)) <= {LOCATIONS[n] for n in native_names}
         write_json(destination / "native-writer-consumer-mismatches.json", failures)
         return failures
     return []
@@ -261,6 +270,8 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--native-sha")
     parser.add_argument("--native-git", type=Path, help="Read the exact native ship-part writer table at --native-sha")
+    parser.add_argument("--native-mirror-events", type=Path,
+                        help="Validate an observed compiled-emitter CHECKED journal covering all thirty parts")
     parser.add_argument("--package-worker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     output = args.output.resolve()
@@ -291,7 +302,8 @@ def main():
         manifest = json.loads((output / "packaged" / label / "manifest.json").read_text(encoding="utf-8"))
         validate(manifest)
         ordinary(label, manifest, output / "protocol")
-    failures = thelynk(output / "protocol", native_names)
+    failures = thelynk(output / "protocol", native_names,
+                      args.native_mirror_events.resolve() if args.native_mirror_events else None)
     paths = sorted(p for p in output.rglob("*") if p.is_file())
     receipt = dict(schema=1, kind="packaged-consumer-protocol-only", gameplay_accepted=False,
         root_sha=subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip(),
@@ -300,6 +312,7 @@ def main():
         thelynk_patch_kind="synthetic supported metadata; not an upstream generated seed/ISO patch",
         tracker_boundary="P1/P2 host/mirror tracker verified; TheLynk metadata has no local TrackerModel UI",
         native_writer_consumer_checked=native_names is not None,
+        compiled_emitter_journal_ingested=bool(args.native_mirror_events),
         native_writer_consumer_failures=len(failures),
         files={str(p.relative_to(output)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths})
     write_json(output / "evidence.json", receipt)
