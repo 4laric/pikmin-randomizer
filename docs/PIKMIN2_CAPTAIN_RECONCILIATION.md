@@ -58,11 +58,33 @@ Generated executables and logs stay under ignored `output/`. The CMake target
 
 ## Acceptance boundary
 
-These are source/compiled-double regressions. They do not prove the engine can
-complete captain capture, natural combat, survivor control, ordinary campaign
-resume or cave transitions. A fresh guarded pair run must adopt the current
-20-Pikmin overlay, centered 960×540 startup and negative captain-down guard.
-Production compilation and final runtime evidence must identify exact source
-pins and executable hashes. No game assets, saves, binaries or generated fixtures
-belong in the source PR. Louie presentation and two-captain campaign/cave
-persistence remain separate work.
+Fresh fixture03 runtime at native `0c6e4a28d0fb1b51a58c3f067c055970c9a01628`
+passed pair and primary-down survivor checks. Both adopted20live Pikmin and a
+centered960x540 window. Walking, both-way selection, camera drag/zoom, original
+squad preservation, real disband/recruit, identified held-to-flying throw,
+unsafe-held/captive/zero-health rejection and the original capture330 crash
+regression passed. Lethal injected `InteractAttack` drove immediate survivor
+selection, retained source health-400 until normal death initialization, one
+native death roster transition at400,170 repeated selected-survivor frames and
+held-Up rejection. Secondary-down formation changed19to0 through native death
+release; primary-down began with an empty formation. All20Pikmin stayed alive.
+Single and co-op switching exclusion checks passed. Negative captain-down exited86
+without the acceptance marker; the guard was active in positive runs too.
+
+Production SHA256:
+`d9bfb150e9a151318c23135cd8d286c7fde348c631561e8c4affa0b52032f972`.
+Replacement-main fixture SHA256:
+`2e43b636542d49857ae389b3397c5ed84eb597a0e23c297bc8781e2ac0a431da`.
+Private build dry-run reported `ninja: no work to do.` Five native Release tests
+and three root compiled-production-callback tests passed. Exact local receipts
+are under `output/two-captain-followup/{build-03,focused-build-03,fixture-03,
+pair-05,survivor-05,single-05,coop-05,negative-05}` in the canonical workspace.
+
+These bounded scripted checks use injected attack/captivity and labeled spatial
+staging. They establish control/ownership repair, not natural enemy combat,
+complete campaign resume, imported-level traversal or cave transitions. Captivity
+phase remains adapter-authoritative; generic health refresh is not used to turn
+negative engine damage into a premature policy death. No game assets, saves,
+binaries or generated fixtures belong in source. Louie presentation and
+captain campaign/cave persistence remain separate work. Maintained source export
+and integration remain the integration lead's responsibility.
