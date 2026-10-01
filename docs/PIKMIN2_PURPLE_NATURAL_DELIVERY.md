@@ -9,6 +9,27 @@ All1071 reports and the user-operated staged smoke remain unchanged.
 
 ## Required forward correction: ordinary SDL throw conversion
 
+Selected Linux build36942163837 passed at native
+`319b072886052121b5055d049bbbb46a582a54bf` and root
+`ba19c7c579f90db0cdf52f7be5abbda281821f37`: ordinary OFF profile, selected Purple
+link, broker admission proof and Ninja no-work all passed. ELF SHA256
+`d52b6c4a7e8809c2a08dca32ab8f9035d31b07298f1abbf9f8c423318dc1d82a`.
+This was build-only; no native runtime ran. Helper13 was applied under supported
+agreement868444cec467e1e75f75b81d906ba248f439023b6d0e457175ea4cbfb7038311.
+
+The current root adopts the exact five reviewed #1174 provider blobs from
+`cdedd327f81a01949bec87367cdb0a928f3a2578` under supported agreement
+7f3e2f4f3dd01c8c1e128662d7fcaaef9a78a56279225f8ffafad5d629091ae6.
+It adds `scripts/run_pikmin2_purple_sdl.py`: explicit pinned paths/hashes, one
+root's imports, fresh sessions, real NativeRun heartbeat, unchanged stage
+geometry, SDL witness oracle and seven initialized guard modes, each bounded
+to60 seconds. Save/resume/combat/delivery are deliberately separate future gates.
+Local validation passed20 tests with4 POSIX-only skips; the separate log-oracle
+review accepted seven retained guard logs and rejected historical scripted throw.
+Those checks are not new native runtime evidence. A fixed runtime recipe and
+private content catalog still need matching-root execution on Linux, followed by
+Windows setup acceptance.
+
 The separate `sdl_acquire` implementation is published at native
 `a9d73bcddb1478f59a0764fd7b760b5bcfb9d26e`, branch
 `codex/purple-sdl-candidate`. Linux run36938387955 passed238 configured tests
