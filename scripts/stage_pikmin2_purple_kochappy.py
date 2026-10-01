@@ -6,6 +6,8 @@ from scripts.preview_pikmin2_room import records,overlay
 from randomizer.purple_campaign import add_violet,bank_files
 
 VIOLET_UID=0x50555255
+# Engineering starting squad only: avoid combat during ordinary startup readiness.
+PREVIEW_START=(START[0]+200,START[1],START[2])
 
 def prepare(assets,bundle,identity,red_bank,purple_bank,motion,pod,output):
     run=tutorial(assets,bundle,identity,red_bank,output,5)
@@ -18,14 +20,21 @@ def prepare(assets,bundle,identity,red_bank,purple_bank,motion,pod,output):
     # Distinct engineering preview inputs never rewrite the ordinary1150 source.
     struct.pack_into('<I',rows[-2],8,ONION_UID)
     struct.pack_into('<I',rows[-1],8,ENEMY_UID)
-    data=gen.read_bytes()[:24]+b''.join(rows)
+    # Retail Onion/enemy birth records stay intact; shift only the pre-existing
+    # engineered starting20Red grid before native birth, never live actors.
+    for row in rows[:20]:
+        struct.pack_into('>f',row,48,struct.unpack_from('>f',row,48)[0]+200)
+    header=bytearray(gen.read_bytes()[:24])
+    struct.pack_into('>3f',header,4,*PREVIEW_START)
+    data=bytes(header)+b''.join(rows)
     template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen')
                   if r[72:80]==b'ssob\x02\x00\x00\x00')
     data=add_violet(data,template,VIOLET_UID,1)
     native_rows=list(re.finditer(rb'    0\.0v',data))
     if len(native_rows)!=23:raise ValueError('20Red/Onion/Red/Violet physical framing')
     stage=(original/'dataDir/stages/p2_tutorial.ini').read_bytes()
-    empty=b'1.0v'+struct.pack('>4fI',*START,0,0)
+    stage=re.sub(rb'(?m)^navi_start[^\r\n]*',('navi_start %.6f %.6f' % (PREVIEW_START[0],PREVIEW_START[2])).encode(),stage)
+    empty=b'1.0v'+struct.pack('>4fI',*PREVIEW_START,0,0)
     models,sidecars=bank_files(purple_bank,motion)
     profile=sidecars['p2-purple.txt'].decode('ascii')
     if 'impact red_earthquake_v1' not in profile.splitlines():
@@ -47,7 +56,9 @@ def prepare(assets,bundle,identity,red_bank,purple_bank,motion,pod,output):
     sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
     record=dict(schema=1,issue=1155,scope='engineering room-preview ordinary SDL receiver diagnostic only',
                 starting_red=20,starting_purple=0,expected_conversion='one-for-one ordinary Violet throw/pluck; no flags injected',
-                enemy_uid=ENEMY_UID,violet_uid=VIOLET_UID,violet_placement='engineering START+100x; existing Boss template',
+                enemy_uid=ENEMY_UID,violet_uid=VIOLET_UID,violet_placement='engineering PREVIEW_START+100x; existing Boss template',
+                original_engineering_start=START,captain_start=PREVIEW_START,starting_overlay_x_delta=200,
+                setup='initial native births only; no live actor relocation',
                 source_enemy_position_retained=True,source_terrain_routes_retained=True,
                 source_water_file_retained=True,water_consumer_active=False,ordinary_tutorial_ap_acceptance='OPEN',
                 source_overlay_sha256=sha(Path(__file__).parent/'preview_pikmin2_room.py'),
