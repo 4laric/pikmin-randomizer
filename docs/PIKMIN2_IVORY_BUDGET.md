@@ -38,7 +38,7 @@ separately. Private build evidence is stored under ignored
 Fresh guarded engine acceptance subsequently passed twice in
 `output/white-ivory-budget/run-03` and `run-04`, using native fixture commit
 `c4c36fac769b8829fa11a70a6fb0f3078d636a9e` and `fixture-03/provenance.json`.
-The fixture observes 20 initial Reds and one bound Ivory UID25 on the P1 practice
+The fixture observes 20 initial Reds and one bound Ivory UID 25 on the P1 practice
 map, without enemies. It injects species and capture attachments, then executes
 the actual production callback, sprout births and input erase-kills:
 
@@ -50,21 +50,21 @@ the actual production callback, sprout births and input erase-kills:
 - An exhausted callback releases two living inputs; replay changes nothing.
 
 The final population is 15 actors and five White sprouts, still 20 bodies.
-Both bounded runs exit0 in about4.4 seconds. This establishes native callback,
+Both bounded runs exit 0 in about 4.4 seconds. This establishes native callback,
 allocation and population behavior with injected setup; it does not establish
 natural capture, plucking or controller conversion.
 
-The observed SDL window is960×540 at position373,263 with captainHP100.
+The observed SDL window is 960×540 at position 373,263 with captain HP 100.
 The fixture calls the canonical captain guard immediately after each engine
 idle, before movie/pause/observation/PASS handling. A separate forced-down run
-of the same executable exits86 with `P2_FIXTURE_CAPTAIN_DOWN`, without a PASS.
+of the same executable exits 86 with `P2_FIXTURE_CAPTAIN_DOWN`, without a PASS.
 The canonical guard's five policy tests also pass.
 
 Earlier failures remain in `run-01` and `run-02`; their coarse baseline assertion
 does not establish which count/binding failed. The diagnostic fixture now prints
 actual actor counts, types and UID before asserting. New staging uses the current
 native reader's little-endian raw generator identity; the successful runs verify
-UID25 and the exact 20-body baseline. Source-derived White assets were freshly
+UID 25 and the exact 20-body baseline. Source-derived White assets were freshly
 regenerated from the local disc, with the original audited source hashes.
 
 Campaign conversion receipts, Ivory-instance persistence, ship compartments,
