@@ -49,3 +49,24 @@ Human playtests should use a separate ready-to-play smoke package, a short
 mechanic prompt and reset into a fresh private session. Any pregame position
 override needed for that convenience must be explicit and excluded from proof
 of the original campaign slot's physical route.
+
+The optional `--minimal-surroundings` startup experiment clears other stage1
+generator files with valid empty headers. It preserves the complete original
+`0-29.gen` target file, original `default.gen` ship/Onions, terrain, seed bindings
+and normal20 withdrawal. Every removed file is hashed in readiness. This changes
+surrounding campaign content and cannot establish full original campaign route
+acceptance. There is no enemy position override or runtime timer/actor write.
+
+Harness correction after preserved runs01–05: readiness must be refreshed through
+the production `NativeRun.poll`/`write_state(handshaken and AP_ready)` protocol
+every100ms. Native deliberately holds when the state timestamp becomes stale
+for three seconds. Missing that heartbeat caused the first tests to stop after
+roughly60 logical frames; those failed tests do not establish a native startup
+performance defect. The final run must use fresh output and this correction.
+
+The corrected unpruned run06 reaches20 live starters and observes an actual
+960×540 centered SDL window at normal frame rate. Campaign card selection resets
+input-device assignments; the fixture now restores its disclosed virtual P1 via
+the normal device-routing API before publishing inputs. It never writes captain
+sticks, buttons, movement or species fields directly. A fresh corrected gameplay
+run remains required before claiming combat/carry acceptance.

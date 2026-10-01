@@ -50,7 +50,7 @@ def case(seed='p2-journal-1096'):
                           note='Subset of existing audited targets; unchanged geometry/profile/admission facts. Not the stock all-target seed.')
 
 
-def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifest=None):
+def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifest=None, minimal_surroundings=False):
     if directory.exists():
         raise ValueError('Use a fresh private output directory')
     directory.mkdir(parents=True)
@@ -74,11 +74,22 @@ def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifes
     # Pikmin through GoalItem::exitPikis and their native descent/join states.
     # Use that tested equivalent baseline; no generator/player inventory edits.
     game=directory/'game';game.mkdir()
-    overlay(run.directory/'assets',game/'assets',{})
+    overrides={};suppressed={}
+    if minimal_surroundings:
+        for path in (assets/'dataDir/stages/stage1').glob('*.gen'):
+            if path.name in ('default.gen','0-29.gen'):continue
+            blob=path.read_bytes()
+            if blob[:4]!=b'1.0v' or len(blob)<24:raise ValueError('Unsupported generator header: '+str(path))
+            key='dataDir/stages/stage1/'+path.name
+            overrides[key]=blob[:20]+bytes(4)
+            suppressed[key]={'original_sha256':digest(path),'zero_record_sha256':hashlib.sha256(overrides[key]).hexdigest()}
+    overlay(run.directory/'assets',game/'assets',overrides)
+    audit['surrounding_content_subset']={'enabled':minimal_surroundings,'suppressed':suppressed,'target_file_byte_exact':digest(game/'assets/dataDir/stages/stage1/0-29.gen')==digest(assets/'dataDir/stages/stage1/0-29.gen'),'original_ship_onions_default_byte_exact':digest(game/'assets/dataDir/stages/stage1/default.gen')==digest(assets/'dataDir/stages/stage1/default.gen'),'full_campaign_route_acceptance':False}
     for file in run.directory.iterdir():
         if file.is_file() and file.name not in ('bootstrap.txt','state.txt'):
             shutil.copy2(file,game/file.name)
-    audit.update(schema=1, fingerprint=fingerprint(manifest), native_run=str(run.directory),
+    source_root=Path(__file__).resolve().parents[1]
+    audit.update(schema=1, root_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=source_root,text=True).strip(), root_dirty=subprocess.check_output(['git','status','--porcelain'],cwd=source_root,text=True), stager_sha256=digest(__file__), fingerprint=fingerprint(manifest), native_run=str(run.directory),
                  bootstrap_sha256=digest(run.bootstrap), content_receipt=receipt,
                  state_sha256=digest(run.directory / 'state.txt'),
                  runtime_status='UNTESTED', delivery_status='UNTESTED', game=str(game),
@@ -125,7 +136,7 @@ def observe(audit, session, run, fixture, workspace, negative=False):
         report=dict(passed=all(checks.values()),checks=checks,raw=raw,checked=list(session.data['checked']),
                     journal_sha256=digest(run.directory/'checks.txt') if (run.directory/'checks.txt').exists() else None,
                     session_sha256=digest(session.path),handshake=run.handshaken,
-                    limitations=['Local AP-mode bridge; no network server/item relay/reconnect proof.','Controller automated; tutorial/movie skip instrumented.','Original enemy placement preserved.'])
+                    limitations=['Native gameplay assessment; network/reconnect evidence is separate.','Controller automated; tutorial/movie skip instrumented.','Original enemy placement preserved.'])
     report.update(fixture_sha256=digest(fixture),native_head=provenance['expected_native_head'],runtime_log_sha256=digest(game/'native.log'))
     (game/'assessment.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))
@@ -148,7 +159,19 @@ async def network_observe(audit, session, run, fixture, workspace, server, negat
         audit['network_setup'] = {'server': server, 'identity': session.data['ap_identity'], 'received_count':len(session.data['received']), 'artificial_receipts':False}
         run.write_state(True)
         (Path(audit['game']).parent/'authenticated-readiness.json').write_text(json.dumps(audit,indent=2)+'\n')
-        result = await asyncio.to_thread(observe,audit,session,run,fixture,workspace,negative)
+        async def maintain_native_protocol():
+            while True:
+                run.poll()
+                run.write_state(run.handshaken and ready[0])
+                await asyncio.sleep(.1)
+        heartbeat = asyncio.create_task(maintain_native_protocol())
+        try:
+            result = await asyncio.to_thread(observe,audit,session,run,fixture,workspace,negative)
+            if heartbeat.done():await heartbeat
+        finally:
+            heartbeat.cancel()
+            try:await heartbeat
+            except asyncio.CancelledError:pass
         await asyncio.sleep(2) # Permit actual LocationChecks -> actual server reward stream.
         if connection.done():
             await connection
@@ -189,10 +212,11 @@ def main():
     parser.add_argument('--manifest',type=Path)
     parser.add_argument('--server')
     parser.add_argument('--shader-cache',type=Path)
+    parser.add_argument('--minimal-surroundings',action='store_true')
     args = parser.parse_args()
     if not args.output.resolve().is_relative_to(args.workspace.resolve() / 'output'):
         raise ValueError('Private output must be under the canonical workspace output/')
-    report,session,run = prepare(args.output.resolve(), args.content.resolve(), args.assets.resolve(), args.seed, json.loads(args.manifest.read_text()) if args.manifest else None)
+    report,session,run = prepare(args.output.resolve(), args.content.resolve(), args.assets.resolve(), args.seed, json.loads(args.manifest.read_text()) if args.manifest else None,args.minimal_surroundings)
     if args.shader_cache:
         cache=args.shader_cache.resolve()
         if not cache.is_relative_to(args.workspace.resolve()/'output') or not cache.is_dir():raise ValueError('Reuse only private shader cache directories')
