@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import struct
 
 from experimental.pikmin2_assets import archive_files, disc_files
+from experimental.pikmin2_cave import tree
 from experimental.pikmin2_collision import plane, route_ini
 from experimental.pikmin2_surface_physics import water_boxes
 from experimental.pikmin2_surface_pocket import generators
@@ -45,6 +46,38 @@ def read_member(stream, catalog, name):
     if len(data) != size:
         raise ValueError('Truncated disc member: ' + name)
     return data, dict(offset=offset, size=size, sha256=digest(data))
+
+
+def source_generators(text):
+    """Honor retail GeneratorMgr::read's declared prefix; retain dormant rows.
+
+    Pool 20-29.txt and Wild 0-1.txt contain complete records after that prefix.
+    They are source data, not active schedules, and must never be auto-enabled.
+    The shared Valley parser keeps its strict whole-file count validation.
+    """
+    values = tree(text)
+    if len(values) < 6 or values[0] != ['v0.1']:
+        raise ValueError('Unsupported surface generator manager header')
+    count = int(values[5])
+    if count < 0 or count > len(values)-6:
+        raise ValueError('Invalid or truncated declared generator count')
+    if count == len(values)-6:
+        return generators(text)
+    # Refuse a trailing scalar/unrecognized record rather than reinterpret it
+    # as a repaired count or an active actor. Raw source bytes remain preserved.
+    ignored = values[6+count:]
+    for row in ignored:
+        if not isinstance(row, list) or len(row) < 43 or row[0] not in (['v0.1'], ['v0.2'], ['v0.3']):
+            raise ValueError('Malformed dormant generator record')
+    def serialize(value):
+        return '{ '+ ' '.join(serialize(part) for part in value)+' }' if isinstance(value, list) else value
+    prefix = ' '.join(serialize(value) for value in values[:6+count])
+    result = generators(prefix)
+    result.update(declared_count=count, serialized_count=len(values)-6,
+                  ignored_records=[dict(file_record_index=count+i, version=row[0][0])
+                                   for i, row in enumerate(ignored)],
+                  ignored_reason='Retail GeneratorMgr::read consumes only its declared count')
+    return result
 
 
 def decode_surface(texts, course):
@@ -167,7 +200,7 @@ def import_surface(iso, course, output):
         raw_route = read(gen_root+'route.txt')
         files['source/route.txt'] = raw_route
         files['texts/route.txt'] = raw_route.decode('cp932').encode('utf-8')
-        definitions, errors = {}, []
+        definitions, errors, warnings = {}, [], []
         names = sorted(name for name in catalog if name.startswith(gen_root)
                        and name.endswith('.txt') and name != gen_root+'route.txt')
         if gen_root+'defaultgen.txt' not in names:
@@ -178,7 +211,12 @@ def import_surface(iso, course, output):
             data = read(name)
             files['generators/'+relative] = data
             try:
-                definitions[relative] = generators(data.decode('cp932'))
+                definition = source_generators(data.decode('cp932'))
+                definitions[relative] = definition
+                if definition.get('ignored_records'):
+                    warnings.append(dict(source=relative, declared_count=definition['declared_count'],
+                                         serialized_count=definition['serialized_count'],
+                                         inactive_record_count=len(definition['ignored_records'])))
             except (ValueError, IndexError, TypeError, UnicodeError) as error:
                 errors.append(dict(source=relative, error=str(error)))
     # Validate required source data before creating output. Failed decode leaves
@@ -202,7 +240,7 @@ def import_surface(iso, course, output):
                   mapcode_counts=dict(sorted(Counter(room['mapcodes']).items())),
                   entrances=[actor for actor in defaults if actor.get('item') == 'cave'],
                   landing_actors=[actor for actor in defaults if actor.get('item') == 'onyn'],
-                  generator_files=len(names), generator_errors=errors,
+                  generator_files=len(names), generator_errors=errors, generator_warnings=warnings,
                   playable=False, native_validated=False,
                   requires=['Render conversion and material validation.',
                             'Native topology policy, collision and water integration.',
@@ -280,7 +318,8 @@ def main():
         result = import_surface(args.iso, args.course, args.output)
         print(json.dumps({key: result[key] for key in
                          ('course', 'vertices', 'triangles', 'route_points',
-                          'water_volumes', 'generator_files', 'generator_errors', 'identity')}))
+                          'water_volumes', 'generator_files', 'generator_errors',
+                          'generator_warnings', 'identity')}))
     else:
         receipt = verify_bundle(args.bundle, args.identity)
         print(json.dumps(dict(course=receipt['course'], identity=args.identity, verified=True)))
