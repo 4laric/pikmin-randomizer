@@ -92,13 +92,11 @@ int main() {
     std::printf("P2_MUSE_GROINK_RESOLVE source_id=%u target=%u\n", resolve.sourceId, resolve.target);
     std::fflush(stdout);
 
-    // Reviewed slot contract (muse-placement l52/#492): the staged uid must
-    // equal the native accepted slot for 78; 97 stays excluded.
-    if (!pc_p2_generated_placement_is_muse_candidate(78)) fail("slot_candidate");
-    if (pc_p2_generated_placement_muse_slot(78) != slotIt->second) fail("slot_contract");
-    if (pc_p2_generated_placement_muse_slot(97) != 0) fail("pedestal_excluded");
-    std::printf("P2_MUSE_GROINK_SLOT_CONSTANTS source=78 slot=%u pedestal=0\n",
-                pc_p2_generated_placement_muse_slot(78));
+    // #948: no compiled slot contract. The sidecar's slot is whatever the
+    // seed bound; the resolve/bind legs above already agree on it.
+    if (!pc_p2_generated_placement_is_sidecar_recorded(78)) fail("sidecar_recorded");
+    std::printf("P2_MUSE_GROINK_SLOT source=78 slot=%u
+", slotIt->second);
     std::fflush(stdout);
 
     // Real carcass birth leg: the sidecar config must drive the policy itself

@@ -170,6 +170,9 @@ struct Snake {
     float stateTime = 0.0f;
     float heading = 0.0f;
     Vector3f home;
+    Vector3f burrowPos;        // where a SnakeCrow is pinned; moves with each appearNearByTarget
+    bool hidden = false;       // source EB_ModelHidden, set only while buried (Stay)
+    bool wokeOnce = false;
     Vector3f moveTarget;
     p2captor::Held<Piki> held; // Pikmin in the kamujnt1..3 slots (validated against the host stick)
     int attackZone = p2captor::SnakeAnyZone; // source mAttackAnimIdx
@@ -283,6 +286,87 @@ void stop(BTeki* a) {
     a->mVelocity.z = 0.0f;
 }
 
+// Source SnakeCrow::Obj::onInit calls hardConstraintOn(): a Burrowing Snagret
+// is never displaced by collision. The P1 Chappy host has no hard constraint,
+// so creature-vs-creature separation let a captain walking into it shove the
+// burrow hundreds of units (#920: the bot drove it ~1000 units off its slot,
+// out of its own swarm's reach, and the corpse landed where it could not be
+// grabbed). Pin a living SnakeCrow to its burrow; SnakeWhole walks, and the
+// corpse must stay free so it can be carried.
+void holdBurrow(BTeki* a, const Snake& s) {
+    if (s.parms->sourceId != 34 || s.state == SNAKE_DEAD) return;
+    const Vector3f pos = a->getPosition();
+    a->mVelocity.x = a->mVelocity.z = 0.0f;
+    a->mVolatileVelocity.x = a->mVolatileVelocity.z = 0.0f;
+    if (pos.x != s.burrowPos.x || pos.z != s.burrowPos.z) a->resetPosition(Vector3f(s.burrowPos.x, pos.y, s.burrowPos.z));
+}
+
+// Source StateStay::init/cleanup (SnakeCrowState.cpp:110-127, SnakeWholeState.cpp:113-130):
+// buried = EB_ModelHidden + setAtari(false) + life gauge hidden + appear1 held at
+// frame 0; StateStay::cleanup restores them. The P1 Chappy host otherwise kept
+// drawing the appear1 end pose, so the snagret stood fully out of the ground.
+void applyBurrowVisibility(BTeki* a, Snake& s, unsigned generator) {
+    const bool buried = s.state == SNAKE_STAY;
+    if (buried == s.hidden) return;
+    s.hidden = buried;
+    constexpr int kOpts = TEKIOPT_Atari | TEKIOPT_ShadowVisible | TEKIOPT_LifeGaugeVisible;
+    Teki* teki = static_cast<Teki*>(a);
+    if (buried) teki->clearTekiOption(kOpts);
+    else teki->setTekiOption(kOpts);
+    std::printf("P2_SNAKEJOINT_BURIED generator=%u buried=%d model_hidden=%d atari=%d\n", generator,
+                int(buried), int(buried), int(teki->isAtari()));
+    std::fflush(stdout);
+}
+
+constexpr float APPEAR_OFFSET = 120.0f; // source appearNearByTarget ring radius
+
+// Source Obj::appearNearByTarget (SnakeWhole.cpp:331-373, SnakeCrow.cpp:297): the
+// snagret surfaces 120 units from the target it woke for, inside its territory of
+// home, else on the home-to-target bearing +/- 90 degrees.
+void appearNearByTarget(BTeki* a, Snake& s, const Vector3f& target) {
+    float face = rand01(s) * TAU;
+    Vector3f np(target.x - std::sin(face) * APPEAR_OFFSET, 0.0f, target.z - std::cos(face) * APPEAR_OFFSET);
+    const float t2 = s.parms->territory * s.parms->territory;
+    auto sqrXZ = [](const Vector3f& p, const Vector3f& q) {
+        const float dx = p.x - q.x, dz = p.z - q.z;
+        return dx * dx + dz * dz;
+    };
+    if (sqrXZ(s.home, np) > t2) {
+        face = std::atan2(target.x - s.home.x, target.z - s.home.z) + (rand01(s) * PI - PI * 0.5f);
+        np = Vector3f(target.x - std::sin(face) * APPEAR_OFFSET, 0.0f,
+                      target.z - std::cos(face) * APPEAR_OFFSET);
+    }
+    np.y = mapMgr ? mapMgr->getMinY(np.x, np.z, true) : a->getPosition().y;
+    a->resetPosition(np);
+    s.burrowPos = np;
+    s.heading = std::atan2(target.x - np.x, target.z - np.z);
+    a->setDirection(s.heading);
+}
+
+// Source StateStay::exec target query: a live, unheld Pikmin (then a captain) inside
+// the territory radius of home. Anything only inside 400 just keeps the boss BGM.
+Creature* buriedWakeTarget(const Snake& s) {
+    const float t2 = s.parms->territory * s.parms->territory;
+    auto sqr3 = [&](const Vector3f& p) {
+        const float dx = p.x - s.home.x, dy = p.y - s.home.y, dz = p.z - s.home.z;
+        return dx * dx + dy * dy + dz * dz;
+    };
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive() || p->isStickToMouth()) continue;
+            if (sqr3(p->getPosition()) < t2) return p;
+        }
+    }
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (n->isAlive() && sqr3(n->getPosition()) < t2) return n;
+        }
+    }
+    return nullptr;
+}
+
 // Source Obj::turnToTarget: proportional turn clamped to the source max turn.
 void turnAndMove(BTeki* a, Snake& s, const Vector3f& target, float speed) {
     const Vector3f pos = a->getPosition();
@@ -343,6 +427,7 @@ void setState(BTeki* a, Snake& s, State state, const char* clip) {
     enter(s, state, clip);
     std::printf("P2_SNAKEJOINT_STATE generator=%u state=%s\n", generator, stateName(state));
     std::fflush(stdout);
+    applyBurrowVisibility(a, s, generator);
 }
 
 const p2captor::Geometry& mouthGeometry(const Snake& s) {
@@ -378,6 +463,7 @@ bool findAttack(BTeki* a, Snake& s, int animIdx) {
         if (!n->isAlive()) continue;
         zone = p2captor::snakeZoneOf(z, animIdx, apos, s.heading, floorY, p2captorhost::vec(n->getPosition()));
         if (zone >= 0) {
+            std::printf("P2_SNAKEJOINT_ATTACK_TRIGGER target=navi zone=%d\n", zone);
             s.attackZone = zone;
             return true;
         }
@@ -508,6 +594,12 @@ float pc_p2_snakejoint_param_f(const BTeki* actor, int idx, float fallback) {   
     }
 }
 
+bool pc_p2_snakejoint_model_hidden(const BTeki* actor) {
+    if (!ready) return false;
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    return it != actors.end() && it->second.hidden;
+}
+
 bool pc_p2_snakejoint_clip(const BTeki* actor, const char*& name, float& phase) {
     if (!ready) return false;
     auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
@@ -593,6 +685,11 @@ void pc_p2_snakejoint_setup() {
                         }
                     }
                     clipBank[species][name] = clip;
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
                 } else {
                     break;
                 }
@@ -648,6 +745,8 @@ void pc_p2_snakejoint_setup() {
         std::printf("P2_SNAKEJOINT_DELIVERY_BIND generator=%u source_id=%d\n",
                     token, s.parms->sourceId);
         enter(s, SNAKE_STAY, "appear1");
+        s.burrowPos = s.home;
+        applyBurrowVisibility(actor, s, token);
         std::printf("P2_SNAKEJOINT_BIND generator=%u species=%s source_id=%d visual_only=0\n",
                     token, s.parms->name, s.parms->sourceId);
         // Slice-2 joint-fidelity measurement: the source rig drives six spinal
@@ -689,6 +788,7 @@ void pc_p2_snakejoint_update(BTeki* actor) {
     if (actor->mStoredDamage > 0.0f) actor->makeDamaged();
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
+    holdBurrow(actor, s);
     const Vector3f pos = actor->getPosition();
     const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
 
@@ -712,9 +812,15 @@ void pc_p2_snakejoint_update(BTeki* actor) {
         // Source StateStay: after the proper fp12 underground time, wake when a
         // target is inside the territory (else the 400-unit near radius).
         if (s.stateTime > parms.undergroundTime) {
-            Creature* target = nearestTarget(pos, parms.sight);
-            if (!target) target = nearestTarget(pos, 400.0f);
+            Creature* target = buriedWakeTarget(s);
             if (target) {
+                const Vector3f tp = target->getPosition();
+                appearNearByTarget(actor, s, tp);
+                std::printf("P2_SNAKEJOINT_WAKE generator=%u source_id=%d buried_seconds=%.2f "
+                            "target_dist_home=%.1f territory=%.0f emerge_x=%.1f emerge_z=%.1f\n",
+                            generator, parms.sourceId, s.stateTime, distXZ(tp, s.home),
+                            parms.territory, s.burrowPos.x, s.burrowPos.z);
+                std::fflush(stdout);
                 if (rand01(s) < parms.fastAppearChance) {
                     setState(actor, s, SNAKE_APPEAR1, "appear1");
                 } else {
@@ -870,8 +976,11 @@ void pc_p2_snakejoint_update(BTeki* actor) {
     s.logTimer += dt;
     if (s.logTimer >= 1.0f) {
         s.logTimer = 0.0f;
-        std::printf("P2_SNAKEJOINT_POS generator=%u state=%s clip=%s phase=%.2f x=%.2f z=%.2f\n",
-                    generator, stateName(s.state), s.clip.c_str(), s.phase, pos.x, pos.z);
+        std::printf("P2_SNAKEJOINT_POS generator=%u state=%s clip=%s phase=%.2f x=%.2f z=%.2f "
+                    "stickers=%d mouth=%d health=%.1f\n",
+                    generator, stateName(s.state), s.clip.c_str(), s.phase, pos.x, pos.z,
+                    p2captorhost::pikiStickerCount(actor), p2captorhost::mouthStickerCount(actor),
+                    actor->mHealth);
         std::fflush(stdout);
     }
 }

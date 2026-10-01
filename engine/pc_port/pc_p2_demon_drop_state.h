@@ -11,3 +11,5 @@ P2DemonDropPhase pc_demon_drop_phase(Navi*);
 
 void pc_demon_drop_before_transition(Navi*, int nextState);
 void pc_demon_drop_scene_exit(); // Before exitStage nulls manager; no physics/state transitions.
+// True while the deferred P2 KokeDamage HP deduction runs: the hit feedback already fired at impact.
+bool pc_demon_drop_silent_damage();

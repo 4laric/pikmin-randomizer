@@ -311,6 +311,16 @@ void GameSetupSection::update()
             playerState->mLivingPikiNum = 20;
             playerState->mTotalPluckedPikiCount = 20;
             gameflow.mWorldClock.mCurrentDay = 2;
+            // TEST-ONLY (P2 boss arenas): start a fresh campaign on a later day so
+            // a day-scheduled arena (Impact Goolix, 8..28.gen) is live on the
+            // first landing. Unset in every player path.
+            if (const char* testDay = std::getenv("PIKMIN_P2_TEST_START_DAY")) {
+                const int day = std::atoi(testDay);
+                if (day >= 2 && day <= 30) {
+                    gameflow.mWorldClock.mCurrentDay = day;
+                    std::printf("TEST_ONLY P2_TEST_START_DAY day=%d\n", day);
+                }
+            }
             gameflow.mWorldClock.setTime(gameflow.mParameters->mStartHour());
         }
         if (pc_pikipelago_challenge_level() >= 0 && !pc_pikipelago_room_preview()) {

@@ -1,4 +1,5 @@
 #include "DebugLog.h"
+#include "pc_p2_gas_cloud.h"
 #include "EffectMgr.h"
 #include "FlowController.h"
 #include "GameStat.h"
@@ -35,6 +36,7 @@ void Piki::doKill()
 {
 	pc_p2_purple_flight_cancel(this);
 	pc_p2_purple_impact_forget(this);
+	pc_p2_gas_cloud_end(this, true);
 	if (mRouteHandle) {
 		routeMgr->getPathFinder('test')->releaseHandle(mRouteHandle);
 		mRouteHandle         = 0;

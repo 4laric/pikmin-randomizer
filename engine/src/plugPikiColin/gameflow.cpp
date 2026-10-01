@@ -1,3 +1,6 @@
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "pc_randomizer.h"
 #include "gameflow.h"
 #include "pc_bbft.h"
@@ -18,6 +21,7 @@
 #include "OnePlayerSection.h"
 #include "PaniTestSection.h"
 #include "RumbleMgr.h"
+#include "Shape.h"
 #include "Texture.h"
 #include "TitlesSection.h"
 #include "WorldClock.h"
@@ -598,6 +602,21 @@ void GameFlow::hardReset(BaseApp* baseApp)
 	PRINT("reading parms\n");
 	PRINT("load params\n");
 	load("parms/", "gamePrms.bin", 1);
+#if defined(PIKI_PC_PORT)
+	// Debug/evidence knob (#895): start every day at a chosen hour so lighting
+	// captures (noon vs dusk) do not need a full real-time day. Off unless set;
+	// clamped below the end-of-day hour.
+	// LOCAL-ONLY: this changes simulation state (the day clock), so it must
+	// never be set on a netplay/lockstep peer; peers that disagree on it would
+	// desync, and it is not part of any handshake. Solo captures only.
+	if (const char* hour = std::getenv("PIKMIN_DEBUG_START_HOUR")) {
+		const f32 value = static_cast<f32>(std::strtod(hour, nullptr));
+		if (value >= 0.0f && value < mParameters->mEndHour()) {
+			mParameters->mStartHour(value);
+			std::printf("PIKMIN_DEBUG_START_HOUR hour=%.2f local_only=1 (changes the day clock; never set on a netplay peer)\n", value);
+		}
+	}
+#endif
 
 	// reset movie player and movie flags
 	mDemoFlags   = CinePlayerFlags::Empty;
@@ -804,7 +823,25 @@ void GameFlow::softReset()
  */
 Shape* GameFlow::loadShape(immut char* modelPath, bool checkCache)
 {
+#if defined(PIKI_PC_PORT)
+	Shape* shape = gsys->loadShape(modelPath, checkCache);
+	// Imported P2 pose MODs (courses/pikmin2room/) are loaded by the P2
+	// family setup hooks after the stage's StdSystem::attachObjs pass, so
+	// their textures stay unattached (zero GXTexObj -> black surfaces) until
+	// the next attachObjs, e.g. after a cutscene (#895). Attach them now, as
+	// pc_p2_tank/pc_p2_sheargrub/pc_p2_preview already do for their own
+	// shapes. Texture::attach is idempotent (guarded by mAttachName == -1).
+	if (shape && modelPath && std::strstr(modelPath, "pikmin2room/")) {
+		for (int i = 0; i < shape->mTexAttrCount; ++i) {
+			if (shape->mTexAttrList[i].mTexture) {
+				shape->mTexAttrList[i].mTexture->attach();
+			}
+		}
+	}
+	return shape;
+#else
 	return gsys->loadShape(modelPath, checkCache);
+#endif
 }
 
 /**

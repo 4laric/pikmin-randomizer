@@ -41,13 +41,20 @@
 // Every hook is a no-op for unregistered actors; no other lane's module is
 // modified.
 #include "pc_p2_umimushi.h"
+#include "pc_p2_umimushi_policy.h"
+#include "pc_p2_skewer.h"
+#include "pc_p2_skewer_cam.h"
 #include "pc_p2_captor_host.h"
+#include "Collision.h"
+#include "CreatureCollPart.h"
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_setup_failsafe.h"
 #include "pc_randomizer.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
+#include "PikiState.h"
+#include "gl/pc_gfx.h"
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
@@ -62,6 +69,8 @@
 #include <set>
 #include <string>
 #include <vector>
+
+extern Matrix4f invCamMat; // collInfo.cpp: camera inverse used by CollPart::getMatrix
 
 namespace {
 enum State {
@@ -106,11 +115,10 @@ constexpr float SEARCH_DISTANCE = 200.0f;  // general fp14 default
 constexpr float SEARCH_ANGLE = 2.0943951f; // general fp15 default 120 deg
 constexpr float ATTACK_RANGE = 30.0f;      // general fp20 max attack range
 constexpr float ATTACK_HIT = 170.0f;       // general fp22 attack hit radius
-constexpr float ATTACK_HIT_ANGLE = 0.26179939f; // general fp23 default 15 deg
+constexpr float ATTACK_HIT_ANGLE = 0.52359878f; // general fp23 retail 30 deg
 constexpr float ATTACK_DAMAGE = 10.0f;     // general fp24
-constexpr float SHAKE_KNOCKBACK = 300.0f;  // general fp17 default
-constexpr float SHAKE_DAMAGE = 0.0f;       // general fp18 default
-constexpr float SHAKE_RANGE = 20.0f;       // port latch radius for isStartFlick (fp19 default 120 is too broad on the P1 host, where it would pre-empt every bite)
+// Shake-off values are the retail general fp16..fp19 (p2umi::Shake*): chance 1.0, knockback 120,
+// damage 1.0, range 90. isStartFlick is the source timer/stuck-tier test (p2umi::isStartFlick).
 constexpr float TURN_START_ANGLE = 0.52359878f; // proper fp02 30 deg
 constexpr float TURN_END_ANGLE = 0.17453293f;   // proper fp03 10 deg
 constexpr float ROTATE_RATE = 0.05f;       // proper fp06
@@ -169,6 +177,31 @@ struct Umi {
     float blindMoveTimer = 0.0f;
     bool escaped = false;
     float lastHealth = 0.0f;
+    // #995: source mFlickTimer (addDamage flickSpeed 1.0 per accepted hit) and hit census.
+    float flickTimer = 0.0f;
+    int hitsStuck = 0, hitsPartless = 0, hitsRefused = 0;
+    // #995: own collision tree (root/head/kuti/ketu/weak + 'slot' with seven 'kamN' children).
+    struct Coll {
+        CollInfo* own = nullptr;
+        CollInfo* host = nullptr;
+        CollPart* node[p2umitables::kNodeCount] = {};
+        CollPart* slot = nullptr;
+        CollPart* kam[p2umitables::kKamuCount] = {};
+        bool released = false;
+    } coll;
+    float scale = 1.0f;
+    int latchedLogged = -1;
+    bool holdLogged = false;
+    // TEST-ONLY evidence probe (PIKMIN_P2_UMIMUSHI_PROBE), never active in a normal run.
+    float probeTime = 0.0f;
+    bool probeBait = false;
+    bool probeCaptain = false;
+    int probeThrows = 0;
+    float probeNextThrow = 0.0f;
+    Piki* probeThrown[8] = {};
+    float probeThrownAt[8] = {};
+    bool probeLanded[8] = {};
+    bool probeMid[8] = {};
 };
 
 std::map<PelletView*, Umi> actors;
@@ -231,54 +264,88 @@ Piki* nearestPikiAngle(const Vector3f& pos, float heading, float radius, float a
         Iterator it(pikiMgr);
         CI_LOOP(it) {
             Piki* p = static_cast<Piki*>(*it);
-            if (!p || !p->isAlive()) continue;
+            if (!p || !p->isAlive() || p->isStickToMouth()) continue;
             const Vector3f q = p->getPosition();
             const float dx = q.x - pos.x, dz = q.z - pos.z;
             const float d = dx * dx + dz * dz;
             if (d >= bestSq) continue;
-            if (std::fabs(wrapPi(std::atan2(dx, dz) - heading)) > angle) continue;
+            if (!p2umi::withinCone(p2captorhost::vec(pos), heading, p2captorhost::vec(q), radius, angle)) continue;
             bestSq = d; best = p;
         }
     }
     return best;
 }
-bool isStartFlick(const Vector3f& pos) {
-    if (nearestPiki(pos, SHAKE_RANGE)) return true;
-    for (Navi* n : pc_p2_navis())
-        if (n->isAlive() && distXZ(n->getPosition(), pos) < SHAKE_RANGE) return true;
-    return false;
+// Probe screenshot (PIKMIN_P2_PROXY_SHOT=<dir>, one BMP per key, taken 30 presented frames later).
+void shot(const Umi& s, const char* what) {
+    char key[64];
+    std::snprintf(key, sizeof(key), "x|umi%s_%s", s.blind ? "blind" : "", what);
+    pc_gfx_proxy_shot_notify_after(key, 4); // the moment of the event, not the default 30-frame delay
 }
-int flickNearby(BTeki* a) {
-    const Vector3f pos = a->getPosition();
-    int hit = 0;
+
+int stuckToBody(BTeki* a) {
+    // Source mStuckPikminCount tier input: Pikmin stuck to the body, not held in the mouth.
+    return p2captorhost::pikiStickerCount(a) - p2captorhost::mouthStickerCount(a);
+}
+// Source EnemyFunc::isStartFlick(this, false): the flick timer (1.0 per accepted hit) against the
+// shake-off tier of the stuck-Pikmin count (#995; the old rule was a 20-unit proximity test).
+bool isStartFlick(BTeki* a, const Umi& s) {
+    return p2umi::isStartFlick(s.flickTimer, stuckToBody(a));
+}
+void logHit(BTeki* a, const Umi& s, unsigned generator, const char* kind, const Vector3f& at, int slot) {
+    const p2umi::Polar pl = p2umi::polar(p2captorhost::vec(a->getPosition()), s.heading, p2captorhost::vec(at));
+    std::printf("P2_UMIMUSHI_HIT generator=%u source_id=%d kind=%s angle_deg=%.1f dist_xz=%.1f slot=%d\n",
+                generator, s.sourceId, kind, double(pl.angleDeg), double(pl.distXZ), slot);
+    std::fflush(stdout);
+}
+// Source StateFlick key 2 / StateAttack key 6: flickNearbyPikmin (3D < fp19, not stuck to this
+// body, not in a mouth), flickStickPikmin (fp16 chance, angle facing + pi, every Pikmin stuck to
+// this body) and flickNearbyNavi, all with fp17 knockback and fp18 damage; then mFlickTimer = 0.
+int doFlick(BTeki* a, Umi& s, unsigned generator, int frame, const char* event, bool logEmpty) {
+    const p2chappymouth::Vec3 apos = p2captorhost::vec(a->getPosition());
+    std::vector<Piki*> nearby, stuck;
     if (pikiMgr) {
         Iterator it(pikiMgr);
         CI_LOOP(it) {
             Piki* p = static_cast<Piki*>(*it);
-            if (!p || !p->isAlive() || p2captorhost::heldBy(a, p)) continue;
-            const Vector3f q = p->getPosition();
-            if (distXZ(q, pos) >= SHAKE_RANGE) continue;
-            const float angle = std::atan2(q.x - pos.x, q.z - pos.z);
-            p->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, SHAKE_DAMAGE, angle));
-            ++hit;
+            if (!p || !p->isAlive() || p->isStickToMouth()) continue; // a mouth-held Pikmin is never flicked
+            if (p->getStickObject() == a) stuck.push_back(p);
+            else if (p2chappymouth::distance(p2captorhost::vec(p->getPosition()), apos) < p2umi::shakeRange(s.scale))
+                nearby.push_back(p);
         }
     }
-    for (Navi* n : pc_p2_navis()) {
-        if (!n->isAlive() || distXZ(n->getPosition(), pos) >= SHAKE_RANGE) continue;
-        const Vector3f q = n->getPosition();
-        const float angle = std::atan2(q.x - pos.x, q.z - pos.z);
-        n->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, SHAKE_DAMAGE, angle));
-        ++hit;
+    int nearHit = 0, stuckHit = 0, naviHit = 0;
+    for (Piki* p : nearby) {
+        if (p->isAlive()
+                && p->stimulate(InteractFlick(a, p2umi::ShakeKnockback, p2umi::ShakeDamage, FLICK_BACKWARDS_ANGLE))) {
+            ++nearHit;
+            logHit(a, s, generator, "flick_near", p->getPosition(), -1);
+        }
     }
-    return hit;
-}
-void attackNearbyNavi(BTeki* a) {
+    const float stuckAngle = p2umi::flickStuckAngle(s.heading);
+    for (Piki* p : stuck) {
+        if (!p->isAlive() || p->getStickObject() != a || p->isStickToMouth()) continue;
+        if (p->stimulate(InteractFlick(a, p2umi::ShakeKnockback, p2umi::ShakeDamage, stuckAngle))) {
+            ++stuckHit;
+            logHit(a, s, generator, "flick_stuck", p->getPosition(), -1);
+        }
+    }
     for (Navi* n : pc_p2_navis()) {
         if (!n->isAlive()) continue;
-        if (distXZ(n->getPosition(), a->getPosition()) < ATTACK_HIT) {
-            n->stimulate(InteractAttack(a, nullptr, ATTACK_DAMAGE, false));
+        if (p2chappymouth::distance(p2captorhost::vec(n->getPosition()), apos) >= p2umi::shakeRange(s.scale)) continue;
+        if (n->stimulate(InteractFlick(a, p2umi::ShakeKnockback, p2umi::ShakeDamage, FLICK_BACKWARDS_ANGLE))) {
+            ++naviHit;
+            logHit(a, s, generator, "flick_navi", n->getPosition(), -1);
         }
     }
+    const float before = s.flickTimer;
+    s.flickTimer = 0.0f;
+    if (logEmpty || nearHit + stuckHit + naviHit > 0) {
+        std::printf("P2_UMIMUSHI_FLICK generator=%u frame=%d pikmin=%d near=%d stuck=%d navi=%d event=%s "
+                    "flick_timer_before=%.2f\n", generator, frame, nearHit + stuckHit, nearHit, stuckHit,
+                    naviHit, event, double(before));
+        std::fflush(stdout);
+    }
+    return nearHit + stuckHit;
 }
 void stop(BTeki* a) {
     a->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
@@ -403,11 +470,10 @@ bool isAttackStart(BTeki* a, Umi& s) {
             return true;
         }
     }
+    // Source umiMushi.cpp:1233: only a Pikmin inside the fp23 (30 deg) cone ahead and the fp22
+    // radius starts the attack (#995: the old radius-only fallback started bites at Pikmin beside or
+    // behind the body, where the tongue can never reach them).
     Piki* piki = nearestPikiAngle(pos, s.heading, ATTACK_HIT, ATTACK_HIT_ANGLE);
-    // Port adaptation: the source also gates the bite on the fp23=15 deg cone.
-    // The P1 host has no tongue geometry, so a Pikmin anywhere inside the source
-    // fp22=170 hit radius starts the attack (the tongue then captures it).
-    if (!piki) piki = nearestPiki(pos, ATTACK_HIT);
     if (piki) {
         s.goal = piki->getPosition();
         return true;
@@ -442,6 +508,7 @@ void enter(Umi& s, State state, const char* clip) {
     s.nextState = UMI_NULL;
     s.stateTime = 0.0f;
     s.firedEvents.clear();
+    s.holdLogged = false;
     if (clip) s.clip = clip;
     // Source StateWalk::init resets both Blind pace counters and starts moving.
     if (state == UMI_WALK) {
@@ -475,14 +542,59 @@ void setState(BTeki* a, Umi& s, State state, const char* clip) {
 const p2captor::Geometry& mouthGeometry(const Umi& s) {
     return *p2captor::geometryFor(s.blind ? 101u : 71u);
 }
+float phaseOf(const Umi& s) {
+    const float duration = clipDuration(s.clip);
+    const float len = duration > 0.0f ? duration : 1.0f;
+    float phase = s.stateTime / len;
+    if (clipLoops(s.clip)) phase -= std::floor(phase);
+    else if (phase > 1.0f) phase = 1.0f;
+    return phase;
+}
+// Source frame of the drawn clip: the same phase * (frames - 1) the pose draw uses.
+float drawFrame(const Umi& s) {
+    const int clip = p2umi::clipIndex(s.clip.c_str());
+    const int frames = p2umi::clipFrames(clip);
+    return frames > 1 ? phaseOf(s) * float(frames - 1) : 0.0f;
+}
+// World positions of the seven mouth slots (kamu_joint1..7, source initMouthSlots). attack1 and eat1
+// carry every frame of the tongue; any other clip has no tongue table, so the slots rest on the mouth.
+void slotPositions(BTeki* actor, const Umi& s, p2captor::Vec3* out) {
+    const int clip = p2umi::clipIndex(s.clip.c_str());
+    const float frame = drawFrame(s);
+    const p2chappymouth::Vec3 apos = p2captorhost::vec(actor->getPosition());
+    float mouth[3] = {0.0f, 0.0f, 0.0f};
+    p2umi::nodeCentre(clip, frame, 2, mouth);
+    for (int i = 0; i < p2umitables::kKamuCount; ++i) {
+        float local[3] = {mouth[0], mouth[1], mouth[2]};
+        p2umi::kamuCentre(clip, frame, i, local);
+        out[i] = p2umi::toWorld(apos, s.heading, s.scale, local);
+    }
+}
+// Source StateAttack key 5 (umiMushiState.cpp:521-539): every captain is tested against every
+// mouth slot with `_length2` (the SQUARED separation) below the slot radius.
+void attackNaviBySlots(BTeki* a, Umi& s, unsigned generator) {
+    p2captor::Vec3 slots[p2umitables::kKamuCount];
+    slotPositions(a, s, slots);
+    const float radius = mouthGeometry(s).radius;
+    for (Navi* n : pc_p2_navis()) {
+        if (!n->isAlive()) continue;
+        const p2chappymouth::Vec3 np = p2captorhost::vec(n->getPosition());
+        for (int i = 0; i < p2umitables::kKamuCount; ++i) {
+            if (!p2umi::naviHitBySlot(slots[i], np, radius)) continue;
+            n->stimulate(InteractAttack(a, nullptr, ATTACK_DAMAGE, false));
+            logHit(a, s, generator, "navi_bite", n->getPosition(), i);
+        }
+    }
+}
 // One source EnemyFunc::eatPikmin pass over the seven tongue slots.
 int tongueEat(BTeki* actor, Umi& s, unsigned generator, int frame) {
     const p2captor::Geometry& g = mouthGeometry(s);
+    p2captor::Vec3 slotPos[p2umitables::kKamuCount];
+    slotPositions(actor, s, slotPos);
     if (!s.mouthLogged) {
         s.mouthLogged = true;
-        std::printf("P2_UMIMUSHI_MOUTH generator=%u source_id=%d slots=%d radius=%.1f local_z=%.1f..%.1f "
-                    "host_slots=%d\n", generator, s.sourceId, g.slots, g.radius, g.local[0][2],
-                    g.local[g.slots - 1][2], p2captorhost::hostSlotCount(actor));
+        std::printf("P2_UMIMUSHI_MOUTH generator=%u source_id=%d slots=%d radius=%.1f source=kamu_joint_tables "
+                    "host_slots=%d\n", generator, s.sourceId, g.slots, g.radius, p2captorhost::hostSlotCount(actor));
         std::fflush(stdout);
     }
     bool occupied[p2captor::MaxSlots] = {};
@@ -490,13 +602,17 @@ int tongueEat(BTeki* actor, Umi& s, unsigned generator, int frame) {
     p2captorhost::Scene scene = p2captorhost::snapshot(actor);
     const p2captor::Vec3 apos = p2captorhost::vec(actor->getPosition());
     int refused = 0;
-    const int caught = p2captor::eat(g, apos, s.heading, scene.prey.data(), (int)scene.prey.size(), occupied,
-                                     p2captor::defaultEligible, [&](int n, int slot) {
+    const int caught = p2captor::eatAt(slotPos, g.slots, g.radius, scene.prey.data(), (int)scene.prey.size(),
+                                       occupied, p2captor::defaultEligible, [&](int n, int slot) {
         if (!p2captorhost::swallowInto(actor, scene, n, slot, s.held, 0, &refused)) return false;
         const p2captor::Vec3 l = p2captor::toLocal(apos, s.heading, scene.prey[n].pos);
+        const p2umi::Polar pl = p2umi::polar(apos, s.heading, scene.prey[n].pos);
         std::printf("P2_UMIMUSHI_BITE generator=%u frame=%d pikmin=1 slot=%d local_x=%.1f local_y=%.1f "
-                    "local_z=%.1f\n", generator, frame, slot, l.x, l.y, l.z);
+                    "local_z=%.1f angle_deg=%.1f dist_xz=%.1f slot_x=%.1f slot_y=%.1f slot_z=%.1f\n",
+                    generator, frame, slot, l.x, l.y, l.z, double(pl.angleDeg), double(pl.distXZ),
+                    double(slotPos[slot].x), double(slotPos[slot].y), double(slotPos[slot].z));
         std::fflush(stdout);
+        shot(s, "bite");
         return true;
     });
     if (refused > 0) {
@@ -528,15 +644,10 @@ void fireAttackEvents(BTeki* actor, Umi& s, unsigned generator) {
         if (event.second == 3) {
             s.tongueActive = true; // source KEYEVENT_3: the tongue starts eating
         } else if (event.second == 5) {
-            attackNearbyNavi(actor);
+            attackNaviBySlots(actor, s, generator);
         } else if (event.second == 6) {
             s.tongueActive = false; // source KEYEVENT_6 closes the tongue
-            const int hit = flickNearby(actor);
-            if (hit > 0) {
-                std::printf("P2_UMIMUSHI_FLICK generator=%u frame=%d pikmin=%d\n",
-                            generator, event.first, hit);
-                std::fflush(stdout);
-            }
+            doFlick(actor, s, generator, event.first, "attack", false);
         }
     }
 }
@@ -548,29 +659,319 @@ void fireFlickEvents(BTeki* actor, Umi& s, unsigned generator) {
         if (s.firedEvents.count(event.first)) continue;
         if (frame < event.first) continue;
         s.firedEvents.insert(event.first);
-        if (event.second == 2) {
-            const int hit = flickNearby(actor);
-            std::printf("P2_UMIMUSHI_FLICK generator=%u frame=%d pikmin=%d\n",
-                        generator, event.first, hit);
-            std::fflush(stdout);
-        }
+        if (event.second == 2) doFlick(actor, s, generator, event.first, "flick", true);
     }
 }
 
 void setPhase(Umi& s) {
-    const float duration = clipDuration(s.clip);
-    const float len = duration > 0.0f ? duration : 1.0f;
-    if (clipLoops(s.clip)) {
-        s.phase = s.stateTime / len;
-        s.phase -= std::floor(s.phase);
-    } else {
-        s.phase = s.stateTime / len;
-        if (s.phase > 1.0f) s.phase = 1.0f;
+    s.phase = phaseOf(s);
+}
+
+// ---- Own collision tree (#995) -------------------------------------------------------------
+// The P1 Chappy host's tree neither matches the drawn Bloyster nor the source parts. The bound
+// Bloyster wears the retail umimushi/enemycoll.txt tree instead (root r180, head r80, kuti r40,
+// ketu r25 and the stickable `weak` tail bulb r10 x Parms::mTailScale 1.4), posed through the
+// current clip from the tables generated by scripts/p2_umimushi_tables.py, plus a 'slot' mouth part
+// with seven 'kamN' children that follow kamu_joint1..7 for the swallow. Same host-swap pattern
+// as the Emperor (pc_p2_chappy.cpp kingBuildColl). PIKMIN_P2_UMIMUSHI_OWN_COLL=0 keeps the host tree.
+bool ownCollEnabled() {
+    static const bool on = [] {
+        const char* e = std::getenv("PIKMIN_P2_UMIMUSHI_OWN_COLL");
+        return !(e && e[0] == '0');
+    }();
+    return on;
+}
+u32 fourcc(const char* id) {
+    u32 v = 0;
+    for (int i = 0; i < 4; ++i) v = (v << 8) | u32(static_cast<unsigned char>(id[i] ? id[i] : '_'));
+    return v;
+}
+void buildColl(BTeki* actor, Umi& s, unsigned generator) {
+    if (!ownCollEnabled() || s.coll.own || s.coll.released || !actor->mCollInfo) return;
+    namespace T = p2umitables;
+    std::vector<ObjCollInfo*> nodes;
+    auto make = [&](const char* id, const char* code, float radius) {
+        auto* n = new ObjCollInfo();
+        n->mId.setID(fourcc(id));
+        n->mCode.setID(fourcc(code));
+        n->mRadius = radius;
+        n->mCentrePosition.set(0.0f, 0.0f, 0.0f);
+        n->mJointIndex = 0;
+        nodes.push_back(n);
+        return n;
+    };
+    for (int i = 0; i < T::kNodeCount; ++i) make(T::kNodes[i].id, T::kNodes[i].code, T::kNodes[i].radius * s.scale);
+    for (int i = 1; i < T::kNodeCount; ++i) nodes[size_t(T::kNodes[i].parent)]->add(nodes[size_t(i)]);
+    ObjCollInfo* slot = make("slot", "____", 1.0f);
+    nodes[0]->add(slot);
+    static const char* const kam[T::kKamuCount] = {"kam1", "kam2", "kam3", "kam4", "kam5", "kam6", "kam7"};
+    for (int i = 0; i < T::kKamuCount; ++i) slot->add(make(kam[i], "____", s.blind ? p2umi::SlotRadiusBlind : p2umi::SlotRadius));
+    Umi::Coll c;
+    c.own = new CollInfo(int(nodes.size()) + 14);
+    c.own->initInfoTree(nodes[0]);
+    auto prepare = [](CollPart* part) {
+        if (!part) return;
+        part->mIsUpdateActive = false; // no parent shape: updateColl owns centre/radius
+        part->mJointMatrix = Matrix4f::ident;
+    };
+    for (int i = 0; i < T::kNodeCount; ++i) {
+        c.node[i] = c.own->getSphere(fourcc(T::kNodes[i].id));
+        prepare(c.node[i]);
     }
+    c.slot = c.own->getSphere(fourcc("slot"));
+    prepare(c.slot);
+    for (int i = 0; i < T::kKamuCount; ++i) {
+        c.kam[i] = c.own->getSphere(fourcc(kam[i]));
+        prepare(c.kam[i]);
+    }
+    c.host = actor->mCollInfo;
+    actor->mCollInfo = c.own;
+    // The host's model platforms would report contacts whose part this tree cannot resolve.
+    actor->mPlatMgr.release();
+    s.coll = c;
+    std::printf("P2_UMIMUSHI_COLL_BIND generator=%u source_id=%d nodes=%zu stickable=%d root_radius=%.0f "
+                "weak_radius=%.1f host_parts_replaced=1\n", generator, s.sourceId, nodes.size(),
+                p2umi::stickableCount(), double(T::kNodes[0].radius * s.scale),
+                double(T::kNodes[4].radius * s.scale * p2umi::TailScale));
+    std::fflush(stdout);
+}
+// Poses every part at the actor position / heading for the current clip frame.
+void updateColl(BTeki* actor, Umi& s) {
+    if (!s.coll.own || s.coll.released) return;
+    namespace T = p2umitables;
+    Matrix4f yaw, camRot, camYaw;
+    yaw.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, actor->getDirection(), 0.0f), Vector3f(0.0f, 0.0f, 0.0f));
+    camRot.makeIdentity();
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c) camRot.mMtx[r][c] = invCamMat.mMtx[c][r];
+    camRot.multiplyTo(yaw, camYaw);
+    const int clip = p2umi::clipIndex(s.clip.c_str());
+    const float frame = drawFrame(s);
+    const p2chappymouth::Vec3 apos = p2captorhost::vec(actor->getPosition());
+    float mouth[3] = {0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < T::kNodeCount; ++i) {
+        CollPart* part = s.coll.node[i];
+        if (!part) continue;
+        float c[3] = {0.0f, 0.0f, 0.0f};
+        p2umi::nodeCentre(clip, frame, i, c);
+        if (i == 2) for (int k = 0; k < 3; ++k) mouth[k] = c[k];
+        const p2chappymouth::Vec3 w = p2umi::toWorld(apos, actor->getDirection(), s.scale, c);
+        part->mCentre.set(w.x, w.y, w.z);
+        part->mRadius = T::kNodes[i].radius * s.scale * (i == 4 ? p2umi::TailScale : 1.0f);
+        part->mJointMatrix = camYaw;
+    }
+    const p2chappymouth::Vec3 mw = p2umi::toWorld(apos, actor->getDirection(), s.scale, mouth);
+    if (s.coll.slot) {
+        s.coll.slot->mCentre.set(mw.x, mw.y, mw.z);
+        s.coll.slot->mRadius = 1.0f;
+        s.coll.slot->mJointMatrix = camYaw;
+    }
+    // World position of every slot first: a held Pikmin is laid along the local tangent of the tongue (#1020).
+    float slotW[T::kKamuCount][3];
+    for (int i = 0; i < T::kKamuCount; ++i) {
+        float local[3] = {mouth[0], mouth[1], mouth[2]};
+        p2umi::kamuCentre(clip, frame, i, local);
+        const p2chappymouth::Vec3 w = p2umi::toWorld(apos, actor->getDirection(), s.scale, local);
+        slotW[i][0] = w.x;
+        slotW[i][1] = w.y;
+        slotW[i][2] = w.z;
+    }
+    for (int i = 0; i < T::kKamuCount; ++i) {
+        CollPart* part = s.coll.kam[i];
+        if (!part) continue;
+        float dir[3];
+        p2skewer::tangent(slotW, T::kKamuCount, i, dir);
+        float seated[3] = {slotW[i][0], slotW[i][1], slotW[i][2]};
+        p2skewer::seat(seated, dir, s.scale);
+        part->mCentre.set(seated[0], seated[1], seated[2]);
+        part->mRadius = s.blind ? p2umi::SlotRadiusBlind : p2umi::SlotRadius;
+        float rot[9];
+        if (p2skewer::umiRotation(s.clip.c_str(), frame, i, rot))
+            p2skewer::jointMatrixBasis(part->mJointMatrix, camRot, p2skewer::fromRotation(rot, actor->getDirection()));
+        else
+            p2skewer::jointMatrix(part->mJointMatrix, camRot, dir, actor->getDirection());
+    }
+}
+// Gives the actor its host CollInfo back (the own tree is never freed: stuck Pikmin may still
+// hold its CollPart pointers) and, for a death, seats the host carcass/centre on the body so the
+// corpse pellet is born where the Bloyster died.
+void restoreColl(BTeki* actor, Umi& s, bool dead) {
+    if (!s.coll.own || s.coll.released) return;
+    s.coll.released = true;
+    if (!s.coll.host) return;
+    if (actor->mCollInfo == s.coll.own) actor->mCollInfo = s.coll.host;
+    const Vector3f p = actor->getPosition();
+    if (dead && actor->mCollInfo) {
+        if (CollPart* carcass = actor->mCollInfo->getSphere('carc')) carcass->mCentre.set(p.x, p.y, p.z);
+        if (actor->mCollInfo->hasInfo()) {
+            if (CollPart* bound = actor->mCollInfo->getBoundingSphere()) bound->mCentre.set(p.x, p.y, p.z);
+            if (CollPart* cent = actor->mCollInfo->getSphere('cent')) cent->mCentre.set(p.x, p.y, p.z);
+        }
+    }
+    s.coll.host = nullptr;
+}
+// ---- TEST-ONLY evidence probe (PIKMIN_P2_UMIMUSHI_PROBE=1) ---------------------------------------
+// Headless runs have no player, so the skewer hold and the tail latch are exercised by moving Pikmin
+// into the scene and throwing them through the REAL Navi::throwPiki + PikiFlyingState path:
+//   * once, 2 s after bind: one bait Pikmin is placed 110 units straight ahead (inside the fp23 cone),
+//     so the real attack, tongue capture, hold and swallow run;
+//   * from 10 s: eight Pikmin are thrown (0.6 s apart) from 170 units behind the tail bulb, aimed at the
+//     bulb XZ scaled by 0.9, 1.0 .. 1.6 (the descending arc crosses the raised bulb earlier than the
+//     cursor point), so the real collision decides which ones latch.
+// Nothing here changes a normal run; the env var is read once and unset by default.
+BTeki* probeOwner = nullptr;
+bool probeEnabled() {
+    static const bool on = [] {
+        const char* e = std::getenv("PIKMIN_P2_UMIMUSHI_PROBE");
+        return e && *e && *e != '0';
+    }();
+    return on;
+}
+// While the eight probe throws are in the air the Bloyster is held still (no AI tick), so the bulb the
+// Pikmin aim at is where the physics finds it. Before 9.5 s and after the window it runs normally.
+bool probeFrozen(const BTeki* actor, const Umi& s) {
+    return probeEnabled() && probeOwner == actor && s.probeTime >= 9.5f && s.probeTime < 18.0f;
+}
+Piki* probeFreePiki() {
+    if (!pikiMgr) return nullptr;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p || !p->isAlive() || p->isStickTo() || p->isStickToMouth() || p->isBuried() || !p->isVisible()) continue;
+        return p;
+    }
+    return nullptr;
+}
+void runProbe(BTeki* actor, Umi& s, unsigned generator, float dt) {
+    if (!probeEnabled() || s.state == UMI_DEAD) return;
+    if (!probeOwner) probeOwner = actor; // the probe drives exactly one Bloyster (the first to tick)
+    if (probeOwner != actor) return;
+    s.probeTime += dt;
+    const Vector3f ap = actor->getPosition();
+    if (s.probeTime >= 0.5f && !s.probeCaptain) {
+        // Frame the scene: the camera follows the captain, who starts ~720 units away.
+        if (Navi* navi = naviMgr ? naviMgr->getActiveNavi() : nullptr) {
+            s.probeCaptain = true;
+            // Stand the captain 300 units "behind" the Bloyster along the camera's own forward axis, so the
+            // Bloyster is in front of the lens (the camera yaw follows the captain, not the other way round).
+            float fx = 0.0f, fz = 1.0f;
+            if (Camera* cam = navi->controlCamera()) {
+                fx = -cam->mLookAtMtx.mMtx[2][0];
+                fz = -cam->mLookAtMtx.mMtx[2][2];
+                const float len = std::sqrt(fx * fx + fz * fz);
+                if (len > 1.0e-4f) { fx /= len; fz /= len; }
+            }
+            const float cx = ap.x - fx * 300.0f, cz = ap.z - fz * 300.0f;
+            const float cy = mapMgr ? mapMgr->getMinY(cx, cz, true) : ap.y;
+            navi->mSRT.t = Vector3f(cx, cy, cz);
+            navi->mFaceDirection = std::atan2(fx, fz);
+            std::printf("P2_UMIMUSHI_PROBE kind=captain generator=%u x=%.1f y=%.1f z=%.1f\n", generator, double(cx),
+                        double(cy), double(cz));
+            std::fflush(stdout);
+        }
+    }
+    if (!s.probeBait && s.probeTime >= 2.0f) {
+        if (Piki* p = probeFreePiki()) {
+            s.probeBait = true;
+            p->mSRT.t = Vector3f(ap.x + std::sin(s.heading) * 110.0f, ap.y, ap.z + std::cos(s.heading) * 110.0f);
+            p->mVelocity.set(0.0f, 0.0f, 0.0f);
+            std::printf("P2_UMIMUSHI_PROBE kind=bait generator=%u x=%.1f y=%.1f z=%.1f\n", generator, double(p->mSRT.t.x),
+                        double(p->mSRT.t.y), double(p->mSRT.t.z));
+            std::fflush(stdout);
+        }
+    }
+    for (int i = 0; i < s.probeThrows; ++i) {
+        if (s.probeMid[i] || s.probeTime < s.probeThrownAt[i] + 0.5f || !s.probeThrown[i]) continue;
+        s.probeMid[i] = true;
+        Piki* t = s.probeThrown[i];
+        std::printf("P2_UMIMUSHI_PROBE kind=flight n=%d pos=(%.1f,%.1f,%.1f) vel=(%.1f,%.1f,%.1f) state=%d\n", i,
+                    double(t->mSRT.t.x), double(t->mSRT.t.y), double(t->mSRT.t.z), double(t->mVelocity.x),
+                    double(t->mVelocity.y), double(t->mVelocity.z), int(t->getState()));
+        std::fflush(stdout);
+    }
+    // Landing census: 1.8 s after each throw, where did the Pikmin end up relative to the bulb?
+    for (int i = 0; i < s.probeThrows; ++i) {
+        if (s.probeLanded[i] || s.probeTime < s.probeThrownAt[i] + 1.8f || !s.coll.node[4]) continue;
+        s.probeLanded[i] = true;
+        Piki* t = s.probeThrown[i];
+        if (!t) continue;
+        const CollPart* w = s.coll.node[4];
+        const Vector3f q = t->mSRT.t;
+        const float dx = q.x - w->mCentre.x, dy = q.y - w->mCentre.y, dz = q.z - w->mCentre.z;
+        std::printf("P2_UMIMUSHI_PROBE kind=landing generator=%u n=%d dist_to_bulb=%.1f stuck_to_weak=%d stuck=%d alive=%d\n",
+                    generator, i, double(std::sqrt(dx * dx + dy * dy + dz * dz)),
+                    int(t->mStickPart == s.coll.node[4]), int(t->isStickTo()), int(t->isAlive()));
+        std::fflush(stdout);
+    }
+    if (s.probeTime < 10.0f || s.probeThrows >= 8 || s.probeTime < s.probeNextThrow || !s.coll.node[4]) return;
+    Navi* navi = naviMgr ? naviMgr->getActiveNavi() : nullptr;
+    Piki* p = probeFreePiki();
+    if (!navi || !p) return;
+    const CollPart* weak = s.coll.node[4];
+    const float bx = std::sin(s.heading), bz = std::cos(s.heading);
+    const Vector3f bulb(weak->mCentre.x, weak->mCentre.y, weak->mCentre.z);
+    const float lx = bulb.x - bx * 120.0f, lz = bulb.z - bz * 120.0f; // a captain 120 units behind the bulb, on the ground there
+    const Vector3f launch(lx, mapMgr ? mapMgr->getMinY(lx, lz, true) : ap.y, lz);
+    // Throw height of a quick tap (hold time 0) and the lock-on pin the game would use for it.
+    const float quickHeight = C_NAVI_PARM(navi, mThrowMinHeight);
+    const float lockK = p2umi::pinScale(bulb.y - ap.y, quickHeight, 550.0f, 0.5f);
+    const float scan[8] = {1.0f, 1.1f, 1.2f, lockK, 1.3f, 1.35f, 1.4f, 1.5f};
+    const float k = scan[s.probeThrows];
+    const Vector3f aim(launch.x + (bulb.x - launch.x) * k, bulb.y, launch.z + (bulb.z - launch.z) * k);
+    const Vector3f saved = navi->mSRT.t;
+    navi->mSRT.t = launch;
+    p->mFSM->transit(p, 14); // PIKISTATE_Flying, exactly as NaviThrowState key action 0
+    navi->throwPiki(p, aim);
+    navi->mSRT.t = saved;
+    s.probeThrown[s.probeThrows] = p;
+    s.probeThrownAt[s.probeThrows] = s.probeTime;
+    std::printf("P2_UMIMUSHI_PROBE kind=throw generator=%u n=%d k=%.2f launch=(%.1f,%.1f,%.1f) bulb=(%.1f,%.1f,%.1f) "
+                "aim=(%.1f,%.1f,%.1f)\n", generator, s.probeThrows, double(k), double(launch.x), double(launch.y),
+                double(launch.z), double(bulb.x), double(bulb.y), double(bulb.z), double(aim.x), double(aim.y),
+                double(aim.z));
+    std::fflush(stdout);
+    ++s.probeThrows;
+    s.probeNextThrow = s.probeTime + 0.6f;
+}
+// Latched-Pikmin census (the tail bulb): logs when the number of Pikmin stuck to the body changes.
+void logLatched(BTeki* actor, Umi& s, unsigned generator) {
+    int weak = 0, other = 0;
+    float nearest = -1.0f;
+    for (Creature* c = actor->mStickListHead; c; c = c->mNextSticker) {
+        if (!c->isPiki() || c->isStickToMouth()) continue;
+        if (s.coll.node[4] && c->mStickPart == s.coll.node[4]) ++weak;
+        else ++other;
+        if (s.coll.node[4]) {
+            const Vector3f q = c->mSRT.t;
+            const float dx = q.x - s.coll.node[4]->mCentre.x, dy = q.y - s.coll.node[4]->mCentre.y,
+                        dz = q.z - s.coll.node[4]->mCentre.z;
+            const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (nearest < 0.0f || d < nearest) nearest = d;
+        }
+    }
+    const int total = weak + other;
+    if (weak >= 1) shot(s, "latch1");
+    if (weak >= 3) shot(s, "latch3");
+    if (total == s.latchedLogged) return;
+    s.latchedLogged = total;
+    std::printf("P2_UMIMUSHI_LATCH generator=%u source_id=%d stuck=%d on_weak=%d other=%d nearest_to_weak=%.1f "
+                "weak_centre=(%.1f,%.1f,%.1f) weak_radius=%.1f flick_timer=%.2f health=%.1f\n", generator,
+                s.sourceId, total, weak, other, double(nearest),
+                s.coll.node[4] ? double(s.coll.node[4]->mCentre.x) : 0.0,
+                s.coll.node[4] ? double(s.coll.node[4]->mCentre.y) : 0.0,
+                s.coll.node[4] ? double(s.coll.node[4]->mCentre.z) : 0.0,
+                s.coll.node[4] ? double(s.coll.node[4]->mRadius) : 0.0, double(s.flickTimer), double(actor->mHealth));
+    std::fflush(stdout);
 }
 }
 
 void pc_p2_umimushi_reset() {
+    for (auto& e : actors) {
+        BTeki* actor = static_cast<BTeki*>(e.first);
+        if (actor && e.second.coll.own && !e.second.coll.released && e.second.coll.host
+                && actor->mCollInfo == e.second.coll.own)
+            actor->mCollInfo = e.second.coll.host; // stage boundary: hand every Bloyster its host tree back
+    }
     actors.clear();
     corpses.clear();
     clips.clear();
@@ -584,7 +985,10 @@ void pc_p2_umimushi_forget_piki(Piki* piki) {
 void pc_p2_umimushi_forget(BTeki* actor) {
     pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     auto it = actors.find(static_cast<PelletView*>(actor));
-    if (it != actors.end()) p2captorhost::release(actor, it->second.held); // teardown frees the tongue
+    if (it != actors.end()) {
+        p2captorhost::release(actor, it->second.held); // teardown frees the tongue
+        restoreColl(actor, it->second, false);
+    }
     actors.erase(static_cast<PelletView*>(actor));
     corpses.erase(static_cast<PelletView*>(actor));
 }
@@ -662,6 +1066,11 @@ void pc_p2_umimushi_setup() {
                         }
                         clips[name] = clip;
                     }
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
                 } else {
                     break;
                 }
@@ -718,6 +1127,7 @@ void pc_p2_umimushi_setup() {
         // Source setParameters applies scale 0.5 to Blind; the P1 host draws the
         // actor from mSRT.s (batch-3 onCamMtx), so the visual is genuinely half.
         if (s.blind) actor->mSRT.s.set(BLIND_SCALE, BLIND_SCALE, BLIND_SCALE);
+        s.scale = s.blind ? BLIND_SCALE : 1.0f;
         // Lane 06 ordinary delivery: bind the campaign source so the corpse
         // mints onion:p2:<id> via GoalItem::suckMe.
         pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor),
@@ -787,10 +1197,12 @@ void pc_p2_umimushi_update(BTeki* actor) {
         if (generator) corpses[static_cast<PelletView*>(actor)] = generator;
         releaseTongue(actor, s, generator, "death");
         setState(actor, s, UMI_DEAD, "dead1");
+        restoreColl(actor, s, true);
     }
 
     s.stateTime += dt;
-    switch (s.state) {
+    if (probeFrozen(actor, s)) stop(actor);
+    else switch (s.state) {
     case UMI_WALK: {
         if (distXZ(pos, s.goal) < 50.0f) {
             if (isOutOfTerritory(s, pos, 1.0f) || !isFindTarget(actor, s)) setNextGoal(s);
@@ -823,7 +1235,7 @@ void pc_p2_umimushi_update(BTeki* actor) {
         } else {
             walkFunc(actor, s);
         }
-        if (isStartFlick(pos)) {
+        if (isStartFlick(actor, s)) {
             setState(actor, s, UMI_FLICK, "flick1");
             s.nextState = UMI_WALK;
         } else if (isAttackStart(actor, s)) {
@@ -837,7 +1249,7 @@ void pc_p2_umimushi_update(BTeki* actor) {
     case UMI_WAIT:
         stop(actor);
         if (s.stateTime < WAIT_TIME) break;
-        if (isStartFlick(pos)) {
+        if (isStartFlick(actor, s)) {
             setState(actor, s, UMI_FLICK, "flick1");
             s.nextState = UMI_SEARCH;
         } else if (isChangeNavi(actor, s)) {
@@ -868,7 +1280,7 @@ void pc_p2_umimushi_update(BTeki* actor) {
         if (s.targetNavi) turnFunc(actor, s);
         if (canMove(actor, s)) searchMove(actor, s);
         else outMove(actor, s);
-        if (isStartFlick(pos)) {
+        if (isStartFlick(actor, s)) {
             setState(actor, s, UMI_FLICK, "flick1");
             s.nextState = UMI_SEARCH;
         } else if (isChangeNavi(actor, s)) {
@@ -883,7 +1295,7 @@ void pc_p2_umimushi_update(BTeki* actor) {
     case UMI_TURN: {
         stop(actor);
         const float residual = turnFunc(actor, s);
-        if (isStartFlick(pos)) {
+        if (isStartFlick(actor, s)) {
             setState(actor, s, UMI_FLICK, "flick1");
             s.nextState = UMI_TURN;
         } else if (isChangeNavi(actor, s)) {
@@ -921,6 +1333,15 @@ void pc_p2_umimushi_update(BTeki* actor) {
         break;
     case UMI_EAT:
         stop(actor);
+        if (s.stateTime >= 0.4f && p2captorhost::mouthStickerCount(actor) > 0) {
+            if (!s.holdLogged) {
+                s.holdLogged = true; // held-on-tongue census, once per Eat state
+                std::printf("P2_UMIMUSHI_HOLD generator=%u source_id=%d held=%d frame=%.1f clip=%s\n", generator,
+                            s.sourceId, p2captorhost::mouthStickerCount(actor), double(drawFrame(s)), s.clip.c_str());
+                std::fflush(stdout);
+            }
+            shot(s, "held");
+        }
         if (s.stateTime >= clipDuration("eat1")) {
             // Source StateEat END: swallowPikmin on the Pikmin still held.
             int white = 0;
@@ -930,6 +1351,7 @@ void pc_p2_umimushi_update(BTeki* actor) {
             std::fflush(stdout);
             releaseTongue(actor, s, generator, "eat_end");
             setState(actor, s, UMI_WAIT, "srun1");
+            shot(s, "swallowed");
         }
         break;
     case UMI_LOST:
@@ -953,6 +1375,11 @@ void pc_p2_umimushi_update(BTeki* actor) {
         break;
     }
     setPhase(s);
+    buildColl(actor, s, generator);
+    updateColl(actor, s);
+    pc_p2_skewer_cam_follow(actor, actor->getDirection(), s.blind ? "umiblind" : "umi");
+    runProbe(actor, s, generator, dt);
+    logLatched(actor, s, generator);
     s.logTimer += dt;
     if (s.logTimer >= 1.0f) {
         s.logTimer = 0.0f;
@@ -963,6 +1390,69 @@ void pc_p2_umimushi_update(BTeki* actor) {
                     now.x, now.y, now.z);
         std::fflush(stdout);
     }
+}
+
+// Source Obj::damageCallBack (umiMushi.cpp:467-492) through p2umi::damageAccept, evaluated on the
+// InteractAttack fields (mOwner, mCollPart) before the P1 host sees the hit. A refused hit takes no
+// damage and adds no flickSpeed; a partless low hit is scaled by proper fp01 (retail 0.03). Returns
+// < 0 for every actor that is not a live registered Bloyster (host path unchanged).
+float pc_p2_umimushi_damage_rate(BTeki* actor, Creature* owner, CollPart* part) {
+    if (!ready || !actor) return -1.0f;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end()) return -1.0f;
+    Umi& s = it->second;
+    if (s.state == UMI_DEAD || actor->mHealth <= 0.0f) return -1.0f; // dead: host corpse path
+    p2umi::DamageAttacker a;
+    a.present = owner != nullptr;
+    a.hasCollPart = p2umi::sourceHasCollPart(part != nullptr, owner && owner->mObjType == OBJTYPE_Navi);
+    if (owner) {
+        a.alive = owner->isAlive();
+        a.stuck = owner->isStickTo();
+        a.pos = p2captorhost::vec(owner->getPosition());
+    }
+    const p2umi::DamageAccept d = p2umi::damageAccept(p2captorhost::vec(actor->getPosition()), a);
+    const int count = d == p2umi::DamageStuck ? ++s.hitsStuck : d == p2umi::DamagePartless ? ++s.hitsPartless : ++s.hitsRefused;
+    if (count <= 3 || count % 20 == 0) {
+        const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+        const p2umi::Polar pl = owner ? p2umi::polar(p2captorhost::vec(actor->getPosition()), s.heading, a.pos)
+                                      : p2umi::Polar{0.0f, 0.0f};
+        char partId[5] = {'-', 0, 0, 0, 0};
+        if (part && part->mCollInfo) {
+            const char* raw = part->mCollInfo->mId.mStringID; // packed little-endian: 'weak' prints as "kaew"
+            for (int i = 0; i < 4; ++i) partId[i] = raw[3 - i];
+        }
+        std::printf("P2_UMIMUSHI_RECV generator=%u source_id=%d result=%s part=%s navi=%d stuck=%d angle_deg=%.1f "
+                    "dist_xz=%.1f n=%d rate=%.3f\n", generator, s.sourceId,
+                    d == p2umi::DamageStuck ? "stuck" : d == p2umi::DamagePartless ? "partless" : "refused", partId,
+                    int(owner && owner->mObjType == OBJTYPE_Navi), int(a.stuck), double(pl.angleDeg),
+                    double(pl.distXZ), count, double(p2umi::damageRate(d)));
+        std::fflush(stdout);
+    }
+    return p2umi::damageRate(d);
+}
+
+// Source EnemyBase::addDamage flickSpeed (1.0) for every hit damageCallBack accepts. No-op for every
+// other actor.
+void pc_p2_umimushi_attacked(BTeki* actor, bool accepted) {
+    if (!ready || !actor || !accepted) return;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end() || it->second.state == UMI_DEAD) return;
+    it->second.flickTimer += p2umi::FlickPerHit;
+}
+
+bool pc_p2_umimushi_lock_aim(Creature* target, float naviX, float naviZ, float throwHeight, float gravity,
+                             float halfTime, float& offsetX, float& offsetZ) {
+    if (!ready || !target || !target->isTeki()) return false;
+    auto it = actors.find(static_cast<PelletView*>(static_cast<BTeki*>(target)));
+    if (it == actors.end()) return false;
+    const Umi& s = it->second;
+    const CollPart* weak = s.coll.node[4];
+    if (s.state == UMI_DEAD || !weak || s.coll.released) return false;
+    const float feet = static_cast<BTeki*>(target)->getPosition().y;
+    const float k = p2umi::pinScale(weak->mCentre.y - feet, throwHeight, gravity, halfTime);
+    offsetX = (weak->mCentre.x - naviX) * k;
+    offsetZ = (weak->mCentre.z - naviZ) * k;
+    return true;
 }
 
 bool pc_p2_umimushi_receipt(PelletView* view, unsigned& generator) {

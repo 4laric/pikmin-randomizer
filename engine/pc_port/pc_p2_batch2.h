@@ -38,12 +38,16 @@ void pc_p2_batch2_setup();
 void pc_p2_batch2_rebind();
 void pc_p2_batch2_reset();
 void pc_p2_batch2_forget(BTeki*);
+// Simulation tick (#895): advances move/wait hysteresis and clip crossfades.
+void pc_p2_batch2_update(BTeki*, float seconds);
 bool pc_p2_batch2_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
 // Runtime evidence helper: true once any live or corpse pose has been drawn.
 bool pc_p2_batch2_any_drawn();
 // Fixture observability (#397): read-only registration count / membership.
 unsigned long pc_p2_batch2_count();
 bool pc_p2_batch2_registered(BTeki*);
+// Runtime-born group member (Mitite fellows, #992): copy the host visual key.
+void pc_p2_batch2_adopt(BTeki* child, BTeki* host);
 // Runtime evidence helper: count of authored clock events delivered exactly once
 // by the sampled clock (#431). Does not execute damage/capture/drops.
 unsigned long long pc_p2_batch2_event_count();

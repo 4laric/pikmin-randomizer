@@ -8,6 +8,11 @@
 #include "RopeCreature.h"
 #include "Stickers.h"
 #include "Traversable.h"
+#if defined(PIKI_PC_PORT)
+#include "Piki.h"
+#include "teki.h"
+#include "pc_p2_body_coll.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -294,6 +299,9 @@ void Creature::startStickObject(Creature* obj, CollPart* stickPart, int slot, f3
 		mStickPart = stickPart;
 		resetCreatureFlag(CF_StuckToMouth);
 		setCreatureFlag(CF_StuckToObject);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		pc_p2_body_coll_note_stick(this, obj, stickPart);
+#endif
 		return;
 	}
 
@@ -358,6 +366,13 @@ bool Creature::startStick(Creature* stickTarget, CollPart* stickPart)
 	}
 
 	mStickPart = stickPart;
+#if defined(PIKI_PC_PORT)
+	// #892: report a Pikmin latching onto a bound Gatling Groink part.
+	if (mObjType == OBJTYPE_Piki && stickTarget->mObjType == OBJTYPE_Teki) {
+		pc_p2_groink_teki_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(stickTarget)), static_cast<Piki*>(this), stickPart, "stick");
+		pc_p2_long_legs_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(stickTarget)), static_cast<Piki*>(this), stickPart, "stick");
+	}
+#endif
 
 	stickToCallback(stickTarget);
 	stickTarget->stickCallback(this);

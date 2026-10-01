@@ -116,5 +116,14 @@ bool pc_p2_bluechappy_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned 
 {
     if (sourceId != 42) return false;
     if (!actor) return false;
-    return bindActor(actor, generatorId);
+    if (bindActor(actor, generatorId)) return true;
+    // #948: never a silent refusal; say which runtime condition failed.
+    const char* reason = actor->mTekiType != TEKI_Chappy ? "host_type_mismatch"
+                         : actors.count(static_cast<PelletView*>(actor)) ? "already_bound"
+                         : claimedElsewhere(actor) ? "claimed_by_other_family"
+                         : "health_bind_failed";
+    std::printf("P2_BLUECHAPPY_UNBOUND generator=%u source_id=42 type=%d reason=%s\n", generatorId,
+                int(actor->mTekiType), reason);
+    std::fflush(stdout);
+    return false;
 }

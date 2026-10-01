@@ -29,3 +29,9 @@ int pc_p2_kurage_teki_tick_calls();
 // false for any body not owned by a bound Kurage.
 bool pc_p2_kurage_receipt(PelletView* view, unsigned& generator);
 int pc_p2_kurage_bound_count();
+// Wave 3 flyers (#960): campaign OWN Jellyfloat. The bound actor's P1 strategy
+// is suppressed while the source FSM (pc_p2_kurage_own_host.h) is alive, and
+// the retail life (fp00) replaces the host's.
+bool pc_p2_kurage_teki_suppress_ai(const BTeki*);
+float pc_p2_kurage_teki_param_f(const BTeki*, int idx, float fallback);
+bool pc_p2_kurage_teki_own(const BTeki*);

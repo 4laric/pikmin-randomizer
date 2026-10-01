@@ -1,5 +1,11 @@
 # Native source provenance
 
+The current tested P2 integration snapshot is native
+`a301346b7225dee5ba6156b46b6d6cc708032162`, exported from the clean private
+`output/native-p2-playable-1073` worktree under #1073. See
+[the combined baseline and acceptance limits](docs/PIKMIN2_PLAYABLE_INTEGRATION.md).
+The release descriptions below are historical provenance.
+
 `engine/` is a source-only snapshot of the isolated Open Nectar/BBFT-derived native checkout used for this randomizer, at native commit `597d8f926833e1aa5c2a25df823a5e824d1118ce` (4laric/Open-Nectar---Pikmin-Native-PC-Port `main`, exported for v0.32.0-playtest.1; see the release note at the end). It includes the inherited native compatibility and adapter code, standalone randomizer integration, health-gauge fix, guarded day-end saves, collection-check hooks, configurable starting Flarlic, and seeded per-color stats, progressive AP stat upgrades stacked on optional wider initial rolls, weighted carrying, scalable check storage permanent-structure observers and damage-per-event structure work, expanded bestiary and exploration-free new seeds and portable boss-generator parameter decoding and per-color total-population milestones, durable consumable benefits and progressive captain upgrades. The native source history is retained locally; this directory is a snapshot, not a submodule.
 
 Upstream: https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port (itself based on https://github.com/projectPiki/pikmin). The original local upstream boundary was `71db8405b78d5ae5765ac5d5f71d3305ca67c1ef`; upstream main through `511f22fe` is merged in draft #432; validation and limits are recorded in UPSTREAM_SYNC.md. Local BBFT-derived changes are included in the engine source; standalone play does not require the BBFT conductor or its separate repository.

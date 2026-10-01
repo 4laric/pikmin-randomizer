@@ -1,6 +1,24 @@
 #include "pc_p2_bigtreasure_elements.h"
 
 namespace {
+// Deterministic per-attack scatter for the elec nodes. The source draws
+// startAngle = rand(TAU), per node angle = base + rand(0.2) - 0.1, speedXZ =
+// baseH + rand(jitterH), yVel = baseV + rand(jitterV) (BigTreasureAttack.cpp
+// startElecAttack :2356-2373). The runtime has no RNG of its own, so the host's
+// two random inputs are hashed into the same ranges (splitmix-style), which keeps
+// every attack distinct and reproducible from the logged inputs.
+float scatter01(float a, float b, unsigned index, unsigned channel) {
+    unsigned ia, ib;
+    static_assert(sizeof(ia) == sizeof(a), "float is 32-bit");
+    __builtin_memcpy(&ia, &a, sizeof(ia));
+    __builtin_memcpy(&ib, &b, sizeof(ib));
+    unsigned long long x = 0x9E3779B97F4A7C15ULL ^ ((unsigned long long)ia << 32 | ib);
+    x += (unsigned long long)(index * 4u + channel + 1u) * 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27; x *= 0x94D049BB133111EBULL;
+    x ^= x >> 31;
+    return float(double(x >> 40) / double(1ULL << 24));
+}
 constexpr float kElecJointRaise = 100.0f;
 constexpr float kWaterEmitRaise = 100.0f;
 constexpr float kWaterTargetRange = 200.0f;
@@ -10,14 +28,15 @@ bool P2BigTreasureElementRuntime::start(int weapon, const P2BigTreasureVec3& ori
                                         float groundHeight, float weaponHealth,
                                         float damagedPick, float pick01)
 {
+    const P2BigTreasureElementAim aim = mAim;
     reset();
+    mAim = aim;
     if (weapon < 0 || weapon >= P2BTWEAPON_Count) {
         return false;
     }
     mWeapon = weapon;
     mGround = groundHeight;
     mOrigin = origin;
-    const float zero[P2BigTreasureElecPolicy::kCapacity] = {};
     switch (weapon) {
     case P2BTWEAPON_Fire:
         return mFire.start(p2_bigtreasure_fire_params(weaponHealth));
@@ -27,9 +46,19 @@ bool P2BigTreasureElementRuntime::start(int weapon, const P2BigTreasureVec3& ori
     case P2BTWEAPON_Water:
         return mWater.start(p2_bigtreasure_water_params(weaponHealth));
     case P2BTWEAPON_Elec: {
-        const P2BigTreasureVec3 joint{ origin.x, origin.y + kElecJointRaise, origin.z };
-        return mElec.start(p2_bigtreasure_elec_params(weaponHealth, pick01), joint, 0.0f,
-                           zero, zero, zero);
+        P2BigTreasureVec3 joint{ origin.x, origin.y + kElecJointRaise, origin.z };
+        if (mAim.set) joint = mAim.emit;
+        const P2BigTreasureElecParams params = p2_bigtreasure_elec_params(weaponHealth, pick01);
+        float angleJitter[P2BigTreasureElecPolicy::kCapacity] = {};
+        float speedH[P2BigTreasureElecPolicy::kCapacity] = {};
+        float speedV[P2BigTreasureElecPolicy::kCapacity] = {};
+        for (unsigned i = 0; i < unsigned(P2BigTreasureElecPolicy::kCapacity); ++i) {
+            angleJitter[i] = scatter01(damagedPick, pick01, i, 0) * 0.2f - 0.1f;
+            speedH[i] = scatter01(damagedPick, pick01, i, 1) * params.jitterHSpeed;
+            speedV[i] = scatter01(damagedPick, pick01, i, 2) * params.jitterVSpeed;
+        }
+        const float startAngle = scatter01(damagedPick, pick01, 99u, 3) * 6.2831853f;
+        return mElec.start(params, joint, startAngle, angleJitter, speedH, speedV);
     }
     default:
         break;
@@ -72,6 +101,7 @@ void P2BigTreasureElementRuntime::reset()
     mOrigin = P2BigTreasureVec3{};
     mGasArms = 3;
     mPrevNodes = 0;
+    mAim = P2BigTreasureElementAim{};
 }
 
 void P2BigTreasureElementRuntime::tick(float delta, const P2BigTreasureElementHost& host,
@@ -92,9 +122,10 @@ void P2BigTreasureElementRuntime::tick(float delta, const P2BigTreasureElementHo
         break;
     case P2BTWEAPON_Water: {
         if (mWater.tickEmitter(delta)) {
-            const P2BigTreasureVec3 emit{ mOrigin.x, mGround + kWaterEmitRaise, mOrigin.z };
-            const P2BigTreasureVec3 target{ mOrigin.x, mGround,
-                                            mOrigin.z + kWaterTargetRange };
+            P2BigTreasureVec3 emit{ mOrigin.x, mGround + kWaterEmitRaise, mOrigin.z };
+            P2BigTreasureVec3 target{ mOrigin.x, mGround, mOrigin.z + kWaterTargetRange };
+            if (mAim.set) emit = mAim.emit;
+            if (mAim.set && mAim.haveWaterTarget) target = mAim.waterTarget;
             mWater.emitShot(emit, target, 0.0f, 0.0f, delta);
         }
         int groundHits = 0;
@@ -104,7 +135,8 @@ void P2BigTreasureElementRuntime::tick(float delta, const P2BigTreasureElementHo
         break;
     }
     case P2BTWEAPON_Elec: {
-        const P2BigTreasureVec3 joint{ mOrigin.x, mOrigin.y + kElecJointRaise, mOrigin.z };
+        P2BigTreasureVec3 joint{ mOrigin.x, mOrigin.y + kElecJointRaise, mOrigin.z };
+        if (mAim.set) joint = mAim.emit;
         int bounces = 0;
         mElec.tick(delta, joint, host.trace, host.context, &bounces);
         out.bounces = bounces;
@@ -127,8 +159,9 @@ bool P2BigTreasureElementRuntime::queryHit(const P2BigTreasureVec3& target, int*
     }
     switch (mWeapon) {
     case P2BTWEAPON_Fire: {
-        const P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
-        const P2BigTreasureVec3 dir{ 0.0f, 0.0f, 1.0f };
+        P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
+        P2BigTreasureVec3 dir{ 0.0f, 0.0f, 1.0f };
+        if (mAim.set) { emit = mAim.emit; dir = mAim.direction; }
         for (int i = 0; i < P2BigTreasureFirePolicy::kCapacity; ++i) {
             if (mFire.nodeRatio(i) <= 0.0f) continue;
             if (mFire.nodeHit(i, emit, dir, target)) {
@@ -139,7 +172,8 @@ bool P2BigTreasureElementRuntime::queryHit(const P2BigTreasureVec3& target, int*
         return false;
     }
     case P2BTWEAPON_Gas: {
-        const P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
+        P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
+        if (mAim.set) emit = mAim.emit;
         const float ratio = mGas.nodeRatio(0);
         for (int arm = 0; arm < mGasArms; ++arm) {
             if (mGas.nodeHit(emit, arm, ratio, target)) {

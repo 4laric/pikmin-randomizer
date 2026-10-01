@@ -16,6 +16,16 @@ void pc_p2_sokkuri_update(BTeki*);
 // living, non-bithered Sokkuri. Returns false for any other actor.
 bool pc_p2_sokkuri_pressed(BTeki*, Creature*);
 
+// Source EnemyBase::damageCallBack -> addDamage(damage, 1.0): an accepted damaging
+// hit adds 1.0 to the flick timer that arms the shake-off (#996). No-op for
+// unregistered actors.
+void pc_p2_sokkuri_attacked(BTeki*, bool accepted);
+
+// Source Obj::startCarcassMotion: the corpse plays the looping Carry motion
+// ('type5', upright leaf). Writes the clip name and [0,1) phase; false when the
+// bank has no such clip. The caller must only ask for Sokkuri corpses.
+bool pc_p2_sokkuri_carcass_clip(const BTeki*, const char*& name, float& phase);
+
 // Source Life (fp00=120) plus harmless-host parameter zeroing for registered
 // actors only.
 float pc_p2_sokkuri_param_f(const BTeki*, int idx, float fallback);

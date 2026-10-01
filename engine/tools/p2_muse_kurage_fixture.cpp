@@ -39,7 +39,7 @@
 namespace {
 
 const char* kSourceToken = "source_id=57";
-// Reviewed Kurage57 generated slot (muse-placement l52 MUSE_GENERATED_SLOTS).
+// Kurage57 evidence slot (historic run; #948: evidence, not a restriction).
 const char* kAcceptedSlot = "689702860";
 
 bool hasToken(const std::string& line, const char* token) {

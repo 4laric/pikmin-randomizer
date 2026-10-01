@@ -3,6 +3,10 @@
 void pc_bbft_init(int argc, char** argv);
 bool pc_bbft_enabled();
 bool pc_bbft_hold();
+// Agent test-run policy: background never holds for focus; visible shows the window without activating it.
+bool pc_bbft_test_background();
+bool pc_bbft_test_visible();
+bool pc_bbft_focus_hold_policy(bool testBackgroundMode, bool foreground);
 void pc_bbft_update();
 void pc_bbft_warp();
 bool pc_bbft_forest_access();

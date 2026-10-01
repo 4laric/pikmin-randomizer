@@ -6,7 +6,9 @@
 #include "pc_window.h"
 #include "pc_bbft.h"
 #include "pc_p2_cave.h"
+#include "pc_dev_console.h"
 #include "pc_gyro.h"
+#include "pc_pad_bindings.h"
 #include "pc_icon.h"
 #if PIKI_PC_TOUCH
 #include "gl/pc_gfx.h"
@@ -244,33 +246,8 @@ const SDL_Scancode kDefaultKeyBindings[PC_KEY_ACT_COUNT] = {
     /* PC_KEY_ACT_GYRO_RECENTER */ SDL_SCANCODE_UNKNOWN, // el giroscopio va en el mando
 };
 
-// Default gamepad bindings (SDL_GameControllerButton).
-const int kDefaultGamepadBindings[PC_KEY_ACT_COUNT] = {
-    /* PC_KEY_ACT_A       */ SDL_CONTROLLER_BUTTON_A,
-    /* PC_KEY_ACT_B       */ SDL_CONTROLLER_BUTTON_B,
-    /* PC_KEY_ACT_X       */ SDL_CONTROLLER_BUTTON_X,
-    /* PC_KEY_ACT_Y       */ SDL_CONTROLLER_BUTTON_Y,
-    /* PC_KEY_ACT_Z       */ SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-    /* PC_KEY_ACT_START   */ SDL_CONTROLLER_BUTTON_START,
-    /* PC_KEY_ACT_L       */ SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-    /* PC_KEY_ACT_R       */ -1, // Right analog trigger supplies R by default
-    /* PC_KEY_ACT_DPAD_UP    */ SDL_CONTROLLER_BUTTON_DPAD_UP,
-    /* PC_KEY_ACT_DPAD_DOWN  */ SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-    /* PC_KEY_ACT_DPAD_LEFT  */ SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-    /* PC_KEY_ACT_DPAD_RIGHT */ SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-    /* PC_KEY_ACT_STICK_UP   */ -1, // Analog stick, no default button
-    /* PC_KEY_ACT_STICK_DOWN */ -1,
-    /* PC_KEY_ACT_STICK_LEFT */ -1,
-    /* PC_KEY_ACT_STICK_RIGHT*/ -1,
-    /* PC_KEY_ACT_CSTICK_UP   */ -1, // C-stick, no default button
-    /* PC_KEY_ACT_CSTICK_DOWN */ -1,
-    /* PC_KEY_ACT_CSTICK_LEFT */ -1,
-    /* PC_KEY_ACT_CSTICK_RIGHT*/ -1,
-    /* PC_KEY_ACT_SWARM       */ -1, // Optional; D-pad Down is taken by the pad's own D-pad
-    /* PC_KEY_ACT_LOCKON      */ SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-    /* PC_KEY_ACT_FIRSTPERSON */ SDL_CONTROLLER_BUTTON_LEFTSTICK,
-    /* PC_KEY_ACT_GYRO_RECENTER */ -1, // sin botón libre por defecto; se asigna en Controls
-};
+// Default gamepad bindings (kDefaultGamepadBindings) live in pc_pad_bindings.cpp,
+// next to the routing that reads them.
 
 // Action names for UI display.
 static const char* kKeyActionNames[PC_KEY_ACT_COUNT] = {
@@ -349,6 +326,7 @@ int pc_window_get_gamepad_binding(int action) {
     if (action < 0 || action >= PC_KEY_ACT_COUNT) return -1;
     initGamepadBindings();
     if (sGamepadBindings[action] >= 0) return sGamepadBindings[action];
+    if (sGamepadBindings[action] == PC_GP_UNBOUND) return PC_GP_UNBOUND;
     return kDefaultGamepadBindings[action];
 }
 
@@ -417,6 +395,10 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize)
 			return;
 		}
 		const int button = pc_window_get_gamepad_binding(action);
+		if (button == PC_GP_UNBOUND) {
+			snprintf(buf, bufSize, "Unbound");
+			return;
+		}
 		if (button < 0) {
 			if (action == PC_KEY_ACT_R)
 				snprintf(buf, bufSize, "R Trigger");
@@ -439,7 +421,9 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize)
 		bool allSingle = true;
 		for (int i = 0; i < 4; i++) {
 			const char* name = pc_bind_is_mouse(keys[i]) ? nullptr : SDL_GetScancodeName(keys[i]);
-			if (!name || name[1] != '\0') {
+			// A cleared C-stick key is scancode 0, whose name is "": check the
+			// terminator before reading name[1].
+			if (!name || !name[0] || name[1] != '\0') {
 				allSingle = false;
 				break;
 			}
@@ -466,6 +450,7 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize)
 }
 
 const char* pc_window_get_gamepad_button_name(int button) {
+    if (button == PC_GP_UNBOUND) return "Unbound";
     if (button < 0) return "None";
     if (button >= PC_GP_AXIS_BIND) {
         const int axis = (button - PC_GP_AXIS_BIND) / 2;
@@ -496,19 +481,12 @@ const char* pc_window_get_gamepad_button_name(int button) {
 
 bool pc_window_gamepad_bind_held(SDL_GameController* controller, int bind)
 {
-    if (!controller || bind < 0)
+    if (!controller)
         return false;
-    if (bind < SDL_CONTROLLER_BUTTON_MAX)
-        return SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(bind)) != 0;
-    if (bind >= PC_GP_AXIS_BIND) {
-        const int axis = (bind - PC_GP_AXIS_BIND) / 2;
-        const int positive = (bind - PC_GP_AXIS_BIND) & 1;
-        if (axis < 0 || axis >= SDL_CONTROLLER_AXIS_MAX)
-            return false;
-        const int v = SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(axis));
-        return positive ? v > 12000 : v < -12000;
-    }
-    return false;
+    return pc_pad_bind_held(
+        bind,
+        [controller](int b) { return SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(b)) != 0; },
+        [controller](int a) { return static_cast<int>(SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(a))); });
 }
 
 int pc_window_gamepad_first_held_binding(SDL_GameController* controller)
@@ -556,6 +534,7 @@ Uint32 pc_window_take_mouse_pressed(void) {
 }
 
 const char* pc_window_binding_name(int binding) {
+    if (binding == PC_BIND_UNBOUND) return "Unbound";
     if (pc_bind_is_mouse(binding)) {
         static char name[24];
         switch (binding - PC_BIND_MOUSE_BASE) {
@@ -654,6 +633,10 @@ bool pc_window_init(const char* title, int width, int height) {
     };
     applyGlAttrs();
 
+    const bool testBackground = pc_randomizer_enabled() && pc_bbft_test_background();
+    const bool testVisible = pc_randomizer_enabled() && pc_bbft_test_visible();
+    // Visible agent runs must not steal focus from whatever the owner is using.
+    if (testVisible) SDL_SetHint(SDL_HINT_WINDOW_NO_ACTIVATION_WHEN_SHOWN, "1");
     bool retriedGpu = false;
     for (;;) {
         sWindow = SDL_CreateWindow(
@@ -662,8 +645,7 @@ bool pc_window_init(const char* title, int width, int height) {
             SDL_WINDOWPOS_CENTERED,
             sWindowWidth,
             sWindowHeight,
-            SDL_WINDOW_OPENGL | ((pc_randomizer_enabled() && std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND")
-                && !std::strcmp(std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND"), "1")) ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE
+            SDL_WINDOW_OPENGL | ((testBackground && !testVisible) ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE
 #ifdef __ANDROID__
                 // Modo inmersivo: SDLActivity oculta la barra de estado y los
                 // botones de navegación solo si la ventana es FULLSCREEN.
@@ -769,22 +751,22 @@ bool pc_window_init(const char* title, int width, int height) {
 static bool pc_window_read_gamepad(SDL_GameController* ctl, u16& button, s8& stickX, s8& stickY,
                                    s8& substickX, s8& substickY, u8& triggerL, u8& triggerR, bool& swarmHeld, int player = 0)
 {
-    auto boundButtonPressed = [ctl](int action) {
-        return pc_window_gamepad_bind_held(ctl, pc_window_get_gamepad_binding(action));
-    };
+    // La ruta resuelve qué entradas físicas alimentan cada acción; el analógico de los gatillos y
+    // de los sticks solo llega al juego mientras siga ligado a ella.
+    initGamepadBindings();
+    PcPadRoute route;
+    pc_pad_route_build(sGamepadBindings, &route, sStickInvert, sCStickInvert);
+    PcPadRaw raw;
+    for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; b++)
+        raw.button[b] = SDL_GameControllerGetButton(ctl, static_cast<SDL_GameControllerButton>(b)) != 0;
+    for (int a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++)
+        raw.axis[a] = SDL_GameControllerGetAxis(ctl, static_cast<SDL_GameControllerAxis>(a));
+    auto boundButtonPressed = [&route, &raw](int action) { return pc_pad_raw_bind_held(raw, route.bind[action]); };
     if (boundButtonPressed(PC_KEY_ACT_A)) button |= PAD_BUTTON_A;
     if (boundButtonPressed(PC_KEY_ACT_B)) button |= PAD_BUTTON_B;
     if (boundButtonPressed(PC_KEY_ACT_X)) button |= PAD_BUTTON_X;
     if (boundButtonPressed(PC_KEY_ACT_Y)) button |= PAD_BUTTON_Y;
     if (boundButtonPressed(PC_KEY_ACT_Z)) button |= PAD_TRIGGER_Z;
-    if (boundButtonPressed(PC_KEY_ACT_L)) {
-        button |= PAD_TRIGGER_L;
-        triggerL = 255;
-    }
-    if (boundButtonPressed(PC_KEY_ACT_R)) {
-        button |= PAD_TRIGGER_R;
-        triggerR = 255;
-    }
     if (boundButtonPressed(PC_KEY_ACT_START)) button |= PAD_BUTTON_START;
 
     if (boundButtonPressed(PC_KEY_ACT_DPAD_UP))    button |= PAD_BUTTON_UP;
@@ -792,44 +774,46 @@ static bool pc_window_read_gamepad(SDL_GameController* ctl, u16& button, s8& sti
     if (boundButtonPressed(PC_KEY_ACT_DPAD_LEFT))  button |= PAD_BUTTON_LEFT;
     if (boundButtonPressed(PC_KEY_ACT_DPAD_RIGHT)) button |= PAD_BUTTON_RIGHT;
 
-    // Triggers
-    Sint16 axisL = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-    Sint16 axisR = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+    // L and R: the on/off bindings, then the analog triggers. Only the trigger
+    // an action is bound to feeds it (by default each one its own), so a
+    // remapped or cleared L no longer gets camera-follow from a half-pressed
+    // left trigger.
+    const int axisL = raw.axis[SDL_CONTROLLER_AXIS_TRIGGERLEFT];
+    const int axisR = raw.axis[SDL_CONTROLLER_AXIS_TRIGGERRIGHT];
     const int axisDeadZone = sStickDeadZone * 256;
-    if (axisL > axisDeadZone) {
-        triggerL = (u8)(axisL / 128);
-        if (axisL > 30000) button |= PAD_TRIGGER_L;
-    }
-    if (axisR > axisDeadZone) {
-        triggerR = (u8)(axisR / 128);
-        if (axisR > 30000) button |= PAD_TRIGGER_R;
-    }
+    pc_pad_route_triggers(route, raw, axisDeadZone, &button, &triggerL, &triggerR);
 
-    // Left Stick
-    int lx = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_LEFTX);
-    int ly = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_LEFTY);
+    // Left Stick. A direction cleared in the bindings stops the stick driving it.
+    int lx = raw.axis[SDL_CONTROLLER_AXIS_LEFTX];
+    int ly = raw.axis[SDL_CONTROLLER_AXIS_LEFTY];
     if (sStickInvert & 1) lx = -lx;
     if (sStickInvert & 2) ly = -ly;
-    if (abs(lx) > axisDeadZone) stickX = pc_pad_axis_from_sdl(lx);
-    if (abs(ly) > axisDeadZone) stickY = pc_pad_axis_from_sdl(-ly); // SDL Y-down to GC Y-up
+    if (abs(lx) > axisDeadZone && pc_pad_route_stick_live(route.stick, lx, false))
+        stickX = pc_pad_axis_from_sdl(lx);
+    if (abs(ly) > axisDeadZone && pc_pad_route_stick_live(route.stick, -ly, true))
+        stickY = pc_pad_axis_from_sdl(-ly); // SDL Y-down to GC Y-up
 
     // Right Stick (C-Stick)
-    int rx = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_RIGHTX);
-    int ry = SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_RIGHTY);
+    int rx = raw.axis[SDL_CONTROLLER_AXIS_RIGHTX];
+    int ry = raw.axis[SDL_CONTROLLER_AXIS_RIGHTY];
     if (sCStickInvert & 1) rx = -rx;
     if (sCStickInvert & 2) ry = -ry;
     // Mod "Free Camera": the right stick orbits instead of pushing the squad,
     // the way Pikmin 3 rearranged it. The squad moves to the Swarm button,
     // which defaults to D-pad Down here because the mod frees it up.
     if (pc_settings_get_free_camera()) {
-        if (abs(rx) > axisDeadZone) {
+        if (abs(rx) > axisDeadZone && pc_pad_route_stick_live(route.cstick, rx, false)) {
             // Cada mando gira la cámara de su jugador (en cooperativo, J2 la suya).
             pc_window_add_camera_drag_player(player, -(float)rx / 32767.0f * 0.02f);
         }
-        if (SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_DPAD_DOWN)) swarmHeld = true;
+        // D-pad Down is only the stock Swarm button: once Swarm is rebound or
+        // cleared it must stop swarming.
+        if (route.freeCamSwarmDpad && raw.button[SDL_CONTROLLER_BUTTON_DPAD_DOWN]) swarmHeld = true;
     } else {
-        if (abs(rx) > axisDeadZone) substickX = pc_pad_axis_from_sdl(rx);
-        if (abs(ry) > axisDeadZone) substickY = pc_pad_axis_from_sdl(-ry);
+        if (abs(rx) > axisDeadZone && pc_pad_route_stick_live(route.cstick, rx, false))
+            substickX = pc_pad_axis_from_sdl(rx);
+        if (abs(ry) > axisDeadZone && pc_pad_route_stick_live(route.cstick, -ry, true))
+            substickY = pc_pad_axis_from_sdl(-ry);
     }
 
     // Optional digital bindings for stick directions are merged after the
@@ -868,6 +852,9 @@ void pc_window_poll_events(PADStatus* pad) {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        // #942 dev console: swallows its toggle key and, while open, every
+        // key/text event. No-op unless PIKMIN_DEV_CONSOLE=1.
+        if (pc_dev_console_handle_event(event)) continue;
         switch (event.type) {
             case SDL_QUIT:
                 sShouldClose = true;
@@ -1025,6 +1012,9 @@ void pc_window_poll_events(PADStatus* pad) {
     }
 
     const Uint8* state = SDL_GetKeyboardState(NULL);
+    // #942: while the dev console input is open the virtual pad reads no keys.
+    static const Uint8 sNoKeys[SDL_NUM_SCANCODES] = {0};
+    if (pc_dev_console_open()) state = sNoKeys;
     // Bindings may name a mouse button (issue #42); sample the mouse once here.
     const Uint32 boundMouse = SDL_GetMouseState(NULL, NULL);
     auto held = [&](int action) { return pc_window_binding_held(sKeyBindings[action], state, boundMouse); };

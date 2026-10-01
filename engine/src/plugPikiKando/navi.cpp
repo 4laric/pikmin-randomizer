@@ -2,13 +2,16 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
 #include "pc_p2_demon_bridge.h"
+#include "pc_p2_demon_anchor.h"
 #endif
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "pc_p2_species.h"
 #include "pc_p2_bulbmin.h"
+#include "pc_p2_umimushi.h"
 #include "Navi.h"
 #include "pc_randomizer.h"
 #include <cstdlib>
@@ -16,6 +19,8 @@
 #include "GameStat.h"
 #include "pc_permadeath.h"
 #include "pc_coop.h"
+#include "pc_p2_captain_switch_policy.h"
+#include "pc_p2_captain.h"
 #include "pc_window.h"
 #include "pc_gyro.h"
 #include "settings/pc_settings.h"
@@ -438,6 +443,11 @@ void Navi::startDamageEffect()
 		gameflow.mGameInterface->message(MOVIECMD_TextDemo, zen::ogScrTutorialMgr::TUT_APunchUFO);
 	}
 
+	// P2 FallMeck: the feedback already fired on the ground-impact frame.
+	if (pc_demon_drop_silent_damage()) {
+		return;
+	}
+
 	zen::particleGenerator* ptclGenA = effectMgr->create(EffectMgr::EFF_Navi_DamageA, part->mCentre, nullptr, nullptr);
 	zen::particleGenerator* ptclGenB = effectMgr->create(EffectMgr::EFF_Navi_DamageB, part->mCentre, nullptr, nullptr);
 	if (ptclGenB) {
@@ -774,10 +784,20 @@ bool pcIsLastNaviStanding(Navi* navi)
 	return true;
 }
 
+// In the opt-in single-player pair, mouse/keyboard/global actions follow the
+// active captain, just like the shared pad. Co-op keeps device assignments.
+static bool pcCaptainOwnsInput(Navi* navi, int deviceOwner)
+{
+	const bool pair = pc_p2_captain::single_player_switch_enabled();
+	Navi* active = pair ? naviMgr->getActiveNavi() : nullptr;
+	return navi && p2_captain_input_owner(pair, navi->mNaviID,
+	    active ? active->mNaviID : -1, deviceOwner);
+}
+
 int pc_preferred_throw_color_for(Navi* navi)
 {
 	if (!navi) return -1;
-	if (navi->mNaviID == pc_window_get_keyboard_owner()) return sPreferredThrowColor;
+	if (pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner())) return sPreferredThrowColor;
 	return sPreferredThrowColorP2;
 }
 
@@ -808,7 +828,8 @@ static bool pcSquadHasColor(Navi* navi, int selection)
  */
 static bool pcUpdatePreferredThrowColor(Navi* navi)
 {
-	const bool keyboardOwner = navi->mNaviID == pc_window_get_keyboard_owner();
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(navi, 0)) return false;
+	const bool keyboardOwner = pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner());
 	int& preferred = keyboardOwner ? sPreferredThrowColor : sPreferredThrowColorP2;
 
 	// Tocar el icono del HUD cuenta como una muesca, y funciona aunque la
@@ -892,7 +913,7 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 		}
 		if (nearest) {
 			// Co-op: the second captain keeps its own preference (upstream #43).
-			(navi->mNaviID == pc_window_get_keyboard_owner() ? sPreferredThrowColor : sPreferredThrowColorP2) = color;
+			(pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner()) ? sPreferredThrowColor : sPreferredThrowColorP2) = color;
 			navi->mNextThrowPiki = nearest;
 			return nearest;
 		}
@@ -1103,6 +1124,11 @@ void Navi::postUpdate(int unused, f32 deltaTime)
  */
 void Navi::pcUpdateLockOn()
 {
+	// Global press queues must only be consumed by the selected local captain.
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(this, 0)) {
+		mPcLockTarget = nullptr;
+		return;
+	}
 	// Se consume siempre, esté activo el mod o no, para que una pulsación no
 	// quede encolada y salte sola al activarlo.
 	const bool lockPressed   = pc_window_take_lockon_press();
@@ -1115,7 +1141,7 @@ void Navi::pcUpdateLockOn()
 		fflush(stderr);
 	}
 
-	if (!pc_settings_get_lock_on() || !tekiMgr || mNaviID != 0) {
+	if (!pc_settings_get_lock_on() || !tekiMgr || !pcCaptainOwnsInput(this, 0)) {
 		mPcLockTarget = nullptr;
 		pc_settings_note_lock_on(0);
 		return;
@@ -1158,6 +1184,9 @@ void Navi::pcUpdateLockOn()
 				Creature* teki = *iter;
 				if (!teki->isTeki() || !teki->isAlive() || !teki->isVisible()) {
 					continue;
+				}
+				if (pc_p2_breadbug_teki_untargetable(teki, "navi_lock_on")) {
+					continue; // #898
 				}
 				Vector3f sep = teki->mSRT.t - mCursorWorldPos;
 				f32 dist     = speedy_sqrtf(sep.x * sep.x + sep.z * sep.z);
@@ -1214,6 +1243,25 @@ void Navi::pcPinCursorToLock()
 	}
 	Vector3f offset = mPcLockTarget->mSRT.t - mSRT.t;
 	offset.y        = 0.0f;
+	// #995: a Bloyster's only stickable part is the raised tail bulb, so the lock-on aims the arc there
+	// instead of at the feet (no-op for every other target).
+	{
+		f32 lockX, lockZ;
+		const f32 throwHeight = NAVI_PARM(mThrowMinHeight)
+		                      + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
+		if (pc_p2_umimushi_lock_aim(mPcLockTarget, mSRT.t.x, mSRT.t.z, throwHeight, AICONST.mGravity(),
+		                            0.5f * NAVI_PARM(mThrowFlightTime), lockX, lockZ)) {
+			mCursorPosition       = Vector3f(lockX, 0.0f, lockZ);
+			mCursorTargetPosition = mCursorPosition;
+			mCursorNaviDist       = mCursorPosition.length();
+			return;
+		}
+	}
+	// Objetivo en vuelo (#215, snitchbug): el lanzamiento alcanza su cúspide a
+	// mitad de camino del cursor y pasa por el XZ del cursor ya de bajada, así
+	// que clavado sobre el bicho el Pikmin le pasa por debajo. Con el cursor al
+	// doble de distancia la cúspide cae sobre el objetivo (pc_p2_demon_anchor.h).
+	offset = offset * p2demonanchor::lockPinScale(mPcLockTarget->isFlying() != 0);
 	mCursorPosition       = offset;
 	mCursorTargetPosition = offset;
 	mCursorNaviDist       = offset.length();
@@ -1235,6 +1283,7 @@ void Navi::pcPinCursorToLock()
  */
 void Navi::pcPinCursorFirstPerson()
 {
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(this, 0)) return;
 	if (!pc_first_person_active()) {
 		return;
 	}
@@ -1374,13 +1423,13 @@ void Navi::update()
 	}
 #endif
 
-	// Lane 12 (#130): only the controlled captain polls the shared pad; an
-	// inactive second captain never updates its Kontroller, so it observes
-	// neutral input instead of mirroring the active captain (source P2 maps each
-	// Navi to its own pad; that split is not ported). Single-captain play always
-	// polls (naviMgr is a single Navi, so getActiveNavi() == this).
-	if (!naviMgr || naviMgr->getActiveNavi() == this) {
+	// Only the opt-in single-player pair shares a pad. Clear the inactive
+	// captain's previous input; skipped polling alone leaves stale controls.
+	// Co-op/VS retain their per-player polling.
+	if (!pc_p2_captain::single_player_switch_enabled() || naviMgr->getActiveNavi() == this) {
 		mKontroller->update();
+	} else {
+		p2_captain_neutral_input(*mKontroller);
 	}
 	mWalkAnimPrevDir = mFaceDirection;
 	Creature::update();
@@ -1518,6 +1567,9 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		bool callable = piki->mNavi == this || piki->mNavi == nullptr || piki->mMode != PikiMode::FormationMode;
 		// VS: solo se silban los propios y los que aún no tienen dueño.
 		if (pc_vs_active() && piki->mPlayerId >= 0 && piki->mPlayerId != mNaviID) callable = false;
+		// #245: an Antenna Beetle ActTeki follower ignores the whistle while its
+		// beetle lives (InteractFue::actPiki returns false unless Panic).
+		if (pc_p2_fuefuki_follower_blocks_recruit(piki)) callable = false;
 #else
 		const bool callable = piki->mNavi == this || piki->mNavi == nullptr;
 #endif
@@ -1548,6 +1600,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 				// Mod "Instant Whistle Response": lo que hacen el inicio y el
 				// final de LookAt (aviso, soltarse, pasar a formación) sin la
 				// espera aleatoria ni la animación de girarse a mirar.
+				pc_p2_fuefuki_note_whistle(piki, this);
 				if (pc_settings_get_instant_whistle()) {
 					SeSystem::playPlayerSe(SE_PIKI_CALLED);
 					seSystem->playPikiSound(SEF_PIKI_CALLED, piki->mSRT.t);
@@ -2374,7 +2427,7 @@ void Navi::makeVelocity(bool isSunset)
 	#ifdef PIKI_PC_PORT
 	// El ratón y el cursor virtual van con el jugador que tiene el teclado;
 	// el otro usa siempre el modo clásico.
-	const bool mouseIsMine = mNaviID == pc_window_get_keyboard_owner();
+	const bool mouseIsMine = pcCaptainOwnsInput(this, pc_window_get_keyboard_owner());
 	// "Gyro Recenter": el cursor vuelve delante del capitán, en la dirección
 	// de la cámara, para corregir la deriva acumulada del giroscopio.
 	if (mouseIsMine && pc_gyro_take_recenter_cursor()) {
@@ -2509,7 +2562,7 @@ void Navi::makeVelocity(bool isSunset)
 	// For cursor-facing logic, use virtual cursor in mouse modes
 	#ifdef PIKI_PC_PORT
 	f32 cursorStickMag = moveStickMag;
-	if (mNaviID == pc_window_get_keyboard_owner() && pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
+	if (pcCaptainOwnsInput(this, pc_window_get_keyboard_owner()) && pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
 		cursorStickMag = sqrtf(
 			(pc_window_get_virtual_cursor_x() / 127.0f) * (pc_window_get_virtual_cursor_x() / 127.0f) +
 			(pc_window_get_virtual_cursor_y() / 127.0f) * (pc_window_get_virtual_cursor_y() / 127.0f)
@@ -2574,7 +2627,9 @@ void Navi::makeCStick(bool isSunset)
 	// Con el Charge activo el botón de swarm pasa a lanzar la carga contra el
 	// objetivo fijado, así que aquí deja de dirigir al pelotón.
 	const bool swarmIsCharge = pc_settings_get_charge() != 0;
-	const bool swarmHeld     = mNaviID == 0 ? pc_window_swarm_held() : pc_window_swarm_held_p2();
+	const bool swarmHeld = pc_p2_captain::single_player_switch_enabled()
+	    ? (pcCaptainOwnsInput(this, 0) && pc_window_swarm_held())
+	    : (mNaviID == 0 ? pc_window_swarm_held() : pc_window_swarm_held_p2());
 	if (!isSunset && !swarmIsCharge && swarmHeld && cStickInput.length() < 0.05f) {
 		NVector3f toCursor(mCursorWorldPos.x - mSRT.t.x, 0.0f, mCursorWorldPos.z - mSRT.t.z);
 		if (toCursor.length() > 1.0f) {
@@ -2979,7 +3034,7 @@ void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	// controla el jugador; en cooperativo el otro se sigue viendo. Se salta
 	// solo el dibujado: la animación y updateInfo siguen corriendo, y de ahí
 	// salen las esferas de colisión (sin ellas no se abre la cebolla).
-	bool drawn = mNaviID == 0 && pc_first_person_active();
+	bool drawn = pcCaptainOwnsInput(this, 0) && pc_first_person_active();
 	if (drawn) {
 	} else if (pcDrawAsPikmin(gfx)) {
 		drawn = true;
@@ -3007,7 +3062,7 @@ void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	}
 #if defined(PIKI_PC_PORT)
 	// Capitán Pikmin: la luz sale de la punta de la hoja, no de la antena.
-	if (pc_captain_piki_color(pcCaptain()) >= 0 && !(mNaviID == 0 && pc_first_person_active())) {
+	if (pc_captain_piki_color(pcCaptain()) >= 0 && !(pcCaptainOwnsInput(this, 0) && pc_first_person_active())) {
 		mNaviLightPosition = mPcPikiLeafTip;
 	}
 #endif
@@ -3317,8 +3372,10 @@ bool InteractAttack::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
-	SeSystem::playPlayerSe(SE_DAMAGED);
+	if (!pc_demon_drop_silent_damage()) {
+		rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
+		SeSystem::playPlayerSe(SE_DAMAGED);
+	}
 	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {

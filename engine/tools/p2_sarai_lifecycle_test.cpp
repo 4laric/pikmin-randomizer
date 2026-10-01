@@ -25,7 +25,10 @@
 // drops live AND corpse-map central bindings (the review defect: pre-fix
 // defect: pre-fix reset stranded them for recycled addresses); rebind after
 // reset delivers exactly once on the real ledger; bridge-mode setup claims
-// nothing.
+// nothing. Case 10 (#215) is the Demon 32 teardown: kill/finalise keeps the
+// escaped binding for the carcass draw, the stage reset (day end / area exit)
+// clears it, a same-token re-entry anchor rebinds fresh, the second delivery
+// is a durable Duplicate, and no Demon entry ever resolves as corpse:sarai.
 // Exit 0 only if every check passes; any failure prints FAIL and exits 1.
 #include "teki.h"
 #include "Generator.h"
@@ -60,10 +63,22 @@ inline int currentPid() { return static_cast<int>(getpid()); }
 // behavior is out of scope here (host/captor/capture suites own it).
 bool gSaraiHostPresent = true;
 int gHostUnbinds = 0;
+// #215 Demon teardown doubles. The retail Fall/Dead FSM itself is covered by
+// p2_demon_profile_test; here update() only raises the host's own
+// demonKillRequested() flag (Dead KEYEVENT_END) when the test asks, so the
+// PRODUCTION manager's escaped/retained-binding bookkeeping runs unchanged.
+bool gDemonKillOnUpdate = false;
+int gDemonInits = 0;
+int gDemonDrains = 0;
+int gDemonFinalizes = 0;
+int gDemonCarcassDraws = 0;
 
 P2SaraiHost::P2SaraiHost() = default;
 P2SaraiHost::~P2SaraiHost() = default;
-void P2SaraiHost::update() {}
+void P2SaraiHost::update()
+{
+    if (mDemonEnabled && gDemonKillOnUpdate) mDemonKill = true;
+}
 void P2SaraiHost::refresh(Graphics&) {}
 void P2SaraiHost::doKill() {}
 int P2SaraiHost::naturalPhase() const { return 1; }
@@ -90,6 +105,29 @@ bool P2SaraiHost::bindNativeActor(BTeki* actor, unsigned generatorId, int tekiTy
     (void)tekiType;
     return true;
 }
+// #215 Demon profile seams (engine side lives in pc_p2_sarai_demon.cpp).
+bool P2SaraiHost::enableDemon(const p2demon::Parms& parms, const p2retail::Table&, const char* prefix,
+                              const Vector3f&, unsigned)
+{
+    mDemonEnabled = gSaraiHostPresent && parms.retail && prefix != nullptr;
+    return mDemonEnabled;
+}
+void P2SaraiHost::demonAnchorInit() { ++gDemonInits; }
+void P2SaraiHost::demonAnchorDrain() { ++gDemonDrains; }
+void P2SaraiHost::demonAnchorFollow() {}
+// Engine side: mHealth = 0 then pcEscapeNow() (die + dieSoon). The double
+// mirrors the observable result the manager must survive: the anchor is dead
+// AND no longer revalidates (its generator is detached), yet the retained
+// binding must keep the carcass draw and must not grant a Sarai receipt.
+void P2SaraiHost::demonAnchorFinalize()
+{
+    ++gDemonFinalizes;
+    if (!mBoundActor) return;
+    mBoundActor->mHealth = 0.0f;
+    mBoundActor->alive = false;
+    mBoundActor->mGenerator = nullptr;
+}
+void P2SaraiHost::demonDrawCarcass(Graphics&, const Matrix4f&) { ++gDemonCarcassDraws; }
 void P2SaraiHost::unbindNativeActor(BTeki* actor)
 {
     if (actor && mBoundActor == actor) {
@@ -249,6 +287,34 @@ void writeStagedFiles(const std::filesystem::path& dir)
     for (const char* name : {"wait1.bca", "move1.bca", "attack1.bca", "waitact2.bca", "waitact1.bca"})
         events << name << " 100 0 0000000000000000000000000000000000000000000000000000000000000000 0\n";
 }
+
+// Demon (32) staged set read by the PRODUCTION buildDemonHost: the mouth bank,
+// a complete P2_DEMON_PARMS_1 table parsed by the real p2demon::loadParms, and
+// a real P2_RETAIL_EVENTS_1 table.
+void writeDemonStagedFiles(const std::filesystem::path& dir)
+{
+    std::ofstream mouths(dir / "demon-attack-mouths.txt");
+    mouths << "P2_DEMON_MOUTHS_1 test 1\n0\n";
+    for (int i = 0; i < 24; ++i) mouths << "1.0" << (i == 23 ? "\n" : " ");
+    static const char* const general[] = {"fp00", "fp06", "fp08", "fp28", "fp09", "fp10", "fp12",
+                                          "fp13", "fp16", "fp17", "fp18", "fp24"};
+    static const char* const proper[] = {"fp01", "fp02", "fp03", "fp04", "fp05", "fp06", "fp11",
+                                         "fp12", "fp21", "fp22", "fp23", "fp31", "fp32", "fp41"};
+    std::ofstream parms(dir / "demon-parms.txt");
+    parms << "P2_DEMON_PARMS_1 " << std::string(64, '0') << ' '
+          << (sizeof(general) / sizeof(*general) + sizeof(proper) / sizeof(*proper)) << '\n';
+    for (const char* key : general) parms << "general " << key << ' ' << (std::strcmp(key, "fp00") ? 10.0f : 1500.0f) << '\n';
+    for (const char* key : proper) parms << "proper " << key << ' ' << 10.0f << '\n';
+    std::ofstream events(dir / "demon-retail-events.txt");
+    events << "P2_RETAIL_EVENTS_1 " << std::string(64, '0') << " 1\n";
+    events << "wait1.bca 100 0 " << std::string(64, '0') << " 0\n";
+}
+
+void removeDemonStagedFiles(const std::filesystem::path& dir)
+{
+    for (const char* name : {"demon-attack-mouths.txt", "demon-parms.txt", "demon-retail-events.txt"})
+        std::filesystem::remove(dir / name);
+}
 } // namespace
 
 int main()
@@ -366,6 +432,122 @@ int main()
     CHECK(countCalls("bind", nullptr) == 0, "absent-sidecar-no-bind");
     CHECK(pc_p2_sarai_manager_bound_count() == 0, "absent-sidecar-count-zero");
     gSaraiHostPresent = true;
+
+    // 10. Demon (32) day-end / area re-entry teardown (#215 review). The Demon
+    // keeps its own teardown state that Sarai 23 never exercises: after
+    // Dead KEYEVENT_END the escaped binding stays in the live map, the carcass
+    // is drawn from that retained binding, and the private-room receipt is
+    // refused for Demon entries. This drives the PRODUCTION manager through
+    // bind -> kill/finalise -> delivery -> stage reset (pc_p2_reset_all_teki,
+    // the day-end and area-exit seam) -> same-token re-entry rebind, with the
+    // durable grant on the REAL ledger.
+    {
+        constexpr unsigned kDemonGen = 1945764764u; // v2b spring_init_7002
+        clearActors();
+        pc_p2_sarai_manager_reset();
+        gCentralCalls.clear();
+        gCentralSources.clear();
+        writeDemonStagedFiles(dir);
+        alignas(16) unsigned char gfxStorage[64] = {};
+        Graphics& gfx = *reinterpret_cast<Graphics*>(gfxStorage);
+        const Matrix4f mtx{};
+
+        BTeki* demon = makeActor(kDemonGen, kChappy, 130.0f);
+        CHECK(pc_p2_sarai_manager_bind_demon(demon, kDemonGen, kDemonGen), "demon-binds");
+        CHECK(centralBound(demon, 32, kDemonGen), "demon-central-index-source-32");
+        CHECK(gDemonInits == 1, "demon-anchor-init-once");
+        CHECK(pc_p2_sarai_manager_demon_host(demon) != nullptr, "demon-host-live");
+        CHECK(!pc_p2_sarai_receipt(demon, resolved), "demon-live-no-sarai-receipt");
+        CHECK(!pc_p2_sarai_manager_bind_demon(demon, kDemonGen, kDemonGen), "demon-rejects-double-bind");
+        CHECK(!pc_p2_sarai_manager_bind_dynamic(demon, kDemonGen, kDemonGen), "demon-slot-not-claimed-as-sarai");
+        CHECK(countCalls("bind", demon) == 1, "demon-central-bind-once");
+
+        pc_p2_sarai_manager_update_actor(demon);
+        CHECK(gDemonDrains == 1 && gDemonFinalizes == 0, "demon-live-tick-drains-only");
+
+        // Dead KEYEVENT_END: finalise once, keep the escaped binding.
+        gDemonKillOnUpdate = true;
+        pc_p2_sarai_manager_update_actor(demon);
+        gDemonKillOnUpdate = false;
+        CHECK(gDemonFinalizes == 1 && !demon->alive && !demon->mGenerator, "demon-finalised-anchor-detached");
+        CHECK(pc_p2_sarai_manager_demon_host(demon) != nullptr, "demon-binding-retained-after-finalise");
+        CHECK(pc_p2_sarai_manager_bound_count() == 2, "demon-escaped-live-plus-corpse-count");
+        pc_p2_sarai_manager_update_actor(demon);
+        CHECK(gDemonFinalizes == 1 && gDemonDrains == 2, "demon-escaped-not-refinalised");
+        CHECK(pc_p2_sarai_manager_draw_actor(demon, gfx, mtx, true) && gDemonCarcassDraws == 1,
+              "demon-carcass-drawn-from-retained-binding");
+        CHECK(!pc_p2_sarai_receipt(demon, resolved), "demon-corpse-no-sarai-receipt");
+        CHECK(centralBound(demon, 32, kDemonGen), "demon-central-kept-for-onion-delivery");
+
+        // Onion receipt onion:p2:32:<token> on the real durable ledger.
+        const std::string demonLedger = (dir / "demon-receipts.txt").string();
+        fs::remove(demonLedger);
+        using R = P2DeliveryHostResult;
+        P2DeliveryHostHandle dh = pc_p2_delivery_host_open(demonLedger.c_str());
+        require(dh != nullptr, "demon-ledger-open");
+        CHECK(pc_p2_delivery_host_deliver(dh, "demon-lifecycle", 32, kChappy, 1, kDemonGen, "onion") == R::Granted,
+              "demon-first-delivery-granted");
+        pc_p2_delivery_host_close(dh);
+
+        // Day end / area exit: the stage reset drops the retained binding,
+        // its corpse entry and the central source-32 binding.
+        const int demonUnbindsBefore = gHostUnbinds;
+        pc_p2_sarai_manager_reset();
+        CHECK(countCalls("forget", demon) >= 2, "demon-reset-forgets-live-and-corpse");
+        CHECK(gCentralSources.empty(), "demon-reset-central-empty");
+        CHECK(gHostUnbinds > demonUnbindsBefore, "demon-reset-unbinds-host");
+        CHECK(pc_p2_sarai_manager_bound_count() == 0, "demon-reset-count-zero");
+        CHECK(pc_p2_sarai_manager_demon_host(demon) == nullptr, "demon-reset-host-gone");
+        CHECK(!pc_p2_sarai_manager_draw_actor(demon, gfx, mtx, true) && gDemonCarcassDraws == 1,
+              "demon-reset-no-carcass-draw");
+
+        // Re-entry: the stage reload spawns a NEW anchor for the same
+        // generator token. It rebinds as a fresh Demon; the old anchor stays
+        // absent; delivering it again is a durable Duplicate (no second grant).
+        gCentralCalls.clear();
+        BTeki* reentered = makeActor(kDemonGen, kChappy, 130.0f);
+        CHECK(pc_p2_sarai_manager_bind_demon(reentered, kDemonGen, kDemonGen), "demon-reentry-same-token-rebinds");
+        CHECK(centralBound(reentered, 32, kDemonGen) && gCentralSources.size() == 1, "demon-reentry-central-single");
+        CHECK(pc_p2_sarai_manager_bound_count() == 1, "demon-reentry-count-one");
+        CHECK(pc_p2_sarai_manager_demon_host(reentered) != nullptr, "demon-reentry-host-live");
+        CHECK(pc_p2_sarai_manager_demon_host(demon) == nullptr, "demon-reentry-old-anchor-absent");
+        CHECK(gDemonInits == 2, "demon-reentry-anchor-reinit");
+        gDemonKillOnUpdate = true;
+        pc_p2_sarai_manager_update_actor(reentered);
+        gDemonKillOnUpdate = false;
+        CHECK(gDemonFinalizes == 2, "demon-reentry-finalised");
+        dh = pc_p2_delivery_host_open(demonLedger.c_str());
+        require(dh != nullptr, "demon-ledger-reopen");
+        CHECK(pc_p2_delivery_host_deliver(dh, "demon-lifecycle", 32, kChappy, 1, kDemonGen, "onion") == R::Duplicate,
+              "demon-reentry-delivery-duplicate");
+        pc_p2_delivery_host_close(dh);
+
+        // Delivery consumes the pellet: the central forget seam clears both
+        // the retained binding and its corpse entry.
+        pc_p2_sarai_manager_forget(reentered);
+        CHECK(pc_p2_sarai_manager_bound_count() == 0, "demon-forget-clears-retained-and-corpse");
+        CHECK(!centralBound(reentered, 32, kDemonGen), "demon-forget-central-cleared");
+        CHECK(pc_p2_sarai_manager_demon_host(reentered) == nullptr, "demon-forget-host-gone");
+
+        // A Demon anchor that fails revalidation before finalisation lands in
+        // the corpse map; it must never pass as a corpse:sarai receipt.
+        BTeki* stale = makeActor(kDemonGen + 1u, kChappy, 130.0f);
+        CHECK(pc_p2_sarai_manager_bind_demon(stale, kDemonGen + 1u, kDemonGen + 1u), "demon-stale-binds");
+        stale->mGenerator = nullptr;
+        pc_p2_sarai_manager_update_actor(stale);
+        CHECK(pc_p2_sarai_manager_bound_count() == 1 && pc_p2_sarai_manager_demon_host(stale) == nullptr,
+              "demon-stale-moved-to-corpse-map");
+        CHECK(!pc_p2_sarai_receipt(stale, resolved), "demon-stale-corpse-no-sarai-receipt");
+        pc_p2_sarai_manager_reset();
+        CHECK(pc_p2_sarai_manager_bound_count() == 0 && gCentralSources.empty(), "demon-stale-reset-clean");
+
+        // Missing staged demon-* files: nothing binds (fails closed, loud marker).
+        removeDemonStagedFiles(dir);
+        gCentralCalls.clear();
+        BTeki* unstaged = makeActor(kDemonGen, kChappy, 130.0f);
+        CHECK(!pc_p2_sarai_manager_bind_demon(unstaged, kDemonGen, kDemonGen), "demon-unstaged-no-bind");
+        CHECK(countCalls("bind", nullptr) == 0 && pc_p2_sarai_manager_bound_count() == 0, "demon-unstaged-count-zero");
+    }
 
     fs::current_path(savedCwd);
 #ifdef _WIN32

@@ -1,4 +1,7 @@
 #include "DualCreature.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_dangomushi.h"
+#endif
 #include "DebugLog.h"
 #include "Graphics.h"
 #include "ItemMgr.h"
@@ -165,7 +168,16 @@ void DualCreature::refresh(Graphics& gfx)
 #if defined(VERSION_PIKIDEMO) || defined(VERSION_GPIJ01_01)
 	// I don't enjoy splitting this difference in two, but syntax highlighting really hates extra opening braces.
 #else
+#if defined(PIKI_PC_PORT)
+	f32 cullRadius = 2.0f * getBoundingSphereRadius();
+	const f32 p2CullRadius = pc_p2_dangomushi_cull_radius(this);
+	if (p2CullRadius > cullRadius) {
+		cullRadius = p2CullRadius;
+	}
+	bool isPointVisible = gfx.mCamera->isPointVisible(mSRT.t, cullRadius);
+#else
 	bool isPointVisible = gfx.mCamera->isPointVisible(mSRT.t, 2.0f * getBoundingSphereRadius());
+#endif
 
 	if (isPointVisible) {
 		disableAICulling();

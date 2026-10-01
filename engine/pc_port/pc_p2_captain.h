@@ -3,6 +3,7 @@
 #include "pc_p2_squad_policy.h"
 #include <cmath>
 #include <cstdint>
+#include <unordered_set>
 
 // Lane 12 engine-facing captain / squad ownership host adapter (#130).
 //
@@ -78,6 +79,22 @@ class P2CaptainAdapter {
     P2CaptainPolicy mPolicy;
     P2CaptainHostOps mHost;
     bool mBound = false;
+    // Distinguish a deliberate policy release from an actor never observed.
+    std::unordered_set<std::uint32_t> mManagedActors;
+
+    void reconcileActor(P2PikiHandle actor)
+    {
+        const auto id = mHost.actorId(mHost.context, actor);
+        if (!id || mPolicy.isCaptive(id)) return;
+        const int live = mHost.ownerSlot(mHost.context, actor);
+        const int old = mTable.ownerOf(id);
+        mManagedActors.insert(id);
+        if (old == live) return;
+        if (P2CaptainOwnershipTable::isCaptain(old)) mTable.release(id, old);
+        // This records an existing engine owner, even immediately before its
+        // knockout; it is not a new policy claim on a down/captured captain.
+        if (P2CaptainOwnershipTable::isCaptain(live)) mTable.tryClaim(id, live);
+    }
 
     bool liveCaptain(int slot, P2CaptainHandle& out) const
     {
@@ -148,21 +165,21 @@ public:
         return true;
     }
 
-    // Claim every enumerated actor whose current engine owner is a captain.
+    // Reconcile live whistle/disband ownership before policy mutations.
+    // Captor-held identities retain their epoch and previous-owner record.
     // Returns the number adopted, or -1 on enumeration failure.
     int adoptSquad()
     {
         if (!mBound) return -1;
         P2PikiHandle actors[P2_CAPTAIN_ADOPT_CAPACITY];
         int count = mHost.enumerate(mHost.context, actors, P2_CAPTAIN_ADOPT_CAPACITY);
-        if (count < 0) return -1;
+        if (count < 0 || count > P2_CAPTAIN_ADOPT_CAPACITY) return -1;
         int adopted = 0;
         for (int i = 0; i < count; ++i) {
             std::uint32_t id = mHost.actorId(mHost.context, actors[i]);
             if (!id) continue;
-            int owner = mHost.ownerSlot(mHost.context, actors[i]);
-            if (!P2CaptainOwnershipTable::isCaptain(owner)) continue;
-            if (mPolicy.claim(owner, id)) ++adopted;
+            reconcileActor(actors[i]);
+            if (mTable.isOwned(id)) ++adopted;
         }
         return adopted;
     }
@@ -174,11 +191,13 @@ public:
         if (!mBound) return false;
         P2PikiHandle actors[P2_CAPTAIN_ADOPT_CAPACITY];
         int count = mHost.enumerate(mHost.context, actors, P2_CAPTAIN_ADOPT_CAPACITY);
-        if (count < 0) return false;
+        if (count < 0 || count > P2_CAPTAIN_ADOPT_CAPACITY) return false;
         for (int i = 0; i < count; ++i) {
             std::uint32_t id = mHost.actorId(mHost.context, actors[i]);
-            if (!id) continue;
+            if (!id || mPolicy.isCaptive(id)
+                || (!mManagedActors.count(id) && !mTable.isOwned(id))) continue;
             int owner = mTable.ownerOf(id);
+            if (owner == mHost.ownerSlot(mHost.context, actors[i])) continue;
             mHost.setOwnerSlot(mHost.context, actors[i],
                                P2CaptainOwnershipTable::isCaptain(owner) ? owner : P2CaptainInvalid);
         }
@@ -229,7 +248,7 @@ public:
     // to the survivor.
     bool captureCaptain(int captain, std::uint64_t captorEpoch)
     {
-        if (!mBound || !mPolicy.capture(captain, captorEpoch)) return false;
+        if (!mBound || adoptSquad() < 0 || !mPolicy.capture(captain, captorEpoch)) return false;
         syncOwnership();
         notifyActive(mPolicy.activeCaptain());
         return true;
@@ -249,7 +268,7 @@ public:
     // this drives the shared policy and the engine active/dead bookkeeping.
     bool damageCaptain(int captain, float amount)
     {
-        if (!mBound || !mPolicy.damage(captain, amount)) return false;
+        if (!mBound || adoptSquad() < 0 || !mPolicy.damage(captain, amount)) return false;
         syncOwnership();
         notifyKnockout(captain);
         notifyActive(mPolicy.activeCaptain());
@@ -263,7 +282,7 @@ public:
     std::vector<std::uint32_t> splitSquad(int from, int to, std::size_t count)
     {
         std::vector<std::uint32_t> moved;
-        if (!mBound) return moved;
+        if (!mBound || adoptSquad() < 0) return moved;
         moved = mPolicy.splitSquad(from, to, count);
         if (!moved.empty()) syncOwnership();
         return moved;
@@ -273,7 +292,7 @@ public:
     std::size_t transferSquad(int from, int to, const std::uint32_t* actors,
                               std::size_t count)
     {
-        if (!mBound) return 0;
+        if (!mBound || adoptSquad() < 0) return 0;
         std::size_t moved = mPolicy.transferSquad(from, to, actors, count);
         if (moved) syncOwnership();
         return moved;
@@ -291,7 +310,10 @@ public:
     {
         if (!mBound || !mHost.prepareCapture) return false;
         std::uint32_t id = mHost.actorId(mHost.context, actor);
-        if (!id || !mPolicy.captureActor(captorEpoch, id)) return false;
+        if (!id) return false;
+        reconcileActor(actor);
+        if (!mPolicy.captureActor(captorEpoch, id)) return false;
+        mManagedActors.insert(id);
         if (!mHost.prepareCapture(mHost.context, actor)
             || mPolicy.captiveEpochOf(id) != captorEpoch) {
             // Cleanup killed/recycled the actor, or a callback established a
@@ -320,7 +342,7 @@ public:
     std::vector<std::uint32_t> dropAllCaptured(std::uint64_t captorEpoch)
     {
         std::vector<std::uint32_t> out;
-        if (!mBound) return out;
+        if (!mBound || adoptSquad() < 0) return out;
         out = mPolicy.dropAllCaptured(captorEpoch);
         syncOwnership();
         return out;
@@ -358,7 +380,7 @@ public:
     {
         if (!mBound) return;
         const std::uint32_t id = mHost.actorId(mHost.context, actor);
-        if (id) mPolicy.forgetActor(id);
+        if (id) { mPolicy.forgetActor(id); mManagedActors.erase(id); }
     }
 
     // --- Lifecycle ---
@@ -368,7 +390,7 @@ public:
     // conserved.
     bool reload()
     {
-        if (!mBound) return false;
+        if (!mBound || adoptSquad() < 0) return false;
         mPolicy.reload();
         refresh();
         return syncOwnership();
@@ -382,6 +404,7 @@ public:
         if (!mBound) return;
         mPolicy.cancel();
         mTable.invalidateDomain();
+        mManagedActors.clear();
         mPolicy = P2CaptainPolicy();
         mHost  = P2CaptainHostOps();
         mBound = false;
@@ -411,6 +434,10 @@ bool set_health(int captain, float value);
 bool capture_captain(int captain, std::uint64_t captorEpoch);
 bool release_captain(int captain, std::uint64_t captorEpoch);
 bool switch_active(int captain);
+// Opt-in single-player only; never intercept co-op/VS input.
+bool single_player_switch_enabled();
+// Called exactly once after NaviMgr updates both captains.
+void update_player_switch();
 bool reload();
 int adopt_squad();
 

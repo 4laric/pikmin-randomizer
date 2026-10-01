@@ -72,8 +72,11 @@ bool P2BombSaraiFsm::gateOnHeight(const P2BombSaraiFsmInput& input, P2BombSaraiF
     }
     const int stuck = clampStuck(input.stuckPikmin);
     if (stuck >= 1) {
+        // BombSarai.cpp:326-330: popCount = clamp(stuck - 1, 0, 4); the chance
+        // lerps fp31 -> fp32 by popCount / 4 (1 stuck = fp31, 5+ stuck = fp32).
+        const int pop = stuck - 1 > 4 ? 4 : stuck - 1;
         const float chance = mParms.flickChanceFree
-            + (mParms.flickChanceLaden - mParms.flickChanceFree) * (float)stuck / 5.0f;
+            + (mParms.flickChanceLaden - mParms.flickChanceFree) * (float)pop / 4.0f;
         if (input.flickRoll < chance) {
             next = input.carrying ? P2BombSaraiFsmState::BombFlick : P2BombSaraiFsmState::Flick;
         } else {

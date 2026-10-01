@@ -39,6 +39,7 @@
 //    ported (no P1 source); Dead KEYEVENT_2 is surfaced as `deadBomb`.
 //  * A transit to MINIHOUDAI_NULL (only reachable with a looping clip that
 //    lacks LOOP_END) restarts the current state instead of indexing -1.
+#include "pc_p2_groink_burst.h"
 #include "pc_p2_groink.h"
 #include "pc_p2_groink_attack.h"
 #include "pc_p2_groink_hit.h"
@@ -240,6 +241,7 @@ struct TickOutput {
     int volley = 0;
     float volleySpeed = 0.0f, volleyAngle = 0.0f;
     P2GroinkVec3 volleyTarget;
+    p2groinkburst::Summary burst; // shells/interval/spread of this emitShotGun call (#892)
     // emitShotGun ran (its TChibiShoot fires even when the pool is full,
     // MiniHoudaiShotGun.cpp:1385) and the kuti basis passed to emit (#892).
     bool shotFired = false;

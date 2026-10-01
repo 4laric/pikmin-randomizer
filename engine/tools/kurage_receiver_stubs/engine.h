@@ -26,7 +26,23 @@ struct Vector3f {
 };
 struct CollPart { Vector3f mCentre; float mRadius=15; };
 struct Creature { struct {Vector3f s{1,1,1},t;} mSRT; virtual ~Creature()=default; };
+constexpr int NAVISTATE_NULL=-1, NAVISTATE_Walk=0, NAVISTATE_Idle=1;
+constexpr unsigned KBBTN_DPAD_UP=1;
+struct NaviState { int getID()const{return NAVISTATE_Walk;} };
+struct Kontroller {
+    unsigned mCurrentInput=0,mPrevInput=0,mInputPressed=0,mInputReleased=0;
+    unsigned mInputDoublePressed=0,mDoublePressMask=0,mInputDelay=0;
+    float mMainStickX=0,mMainStickY=0,mSubStickX=0,mSubStickY=0;
+    float mAnalogA=0,mAnalogB=0,mTriggerL=0,mTriggerR=0;
+    bool keyDown(unsigned key)const{return (mCurrentInput & key)!=0;}
+};
 struct Navi:Creature {
+    Kontroller controller; Kontroller* mKontroller=&controller;
+    NaviState state;
+    bool mIsCursorVisible=false;
+    NaviState* getCurrState(){return &state;}
+    bool isGrabbed()const{return false;}
+    bool isHolding()const{return false;}
     float mHealth=100.0f;
     int mNaviIndex=0;
     bool alive=true;
@@ -40,10 +56,12 @@ struct Piki;
 struct TopAction { int mCurrActionIdx=0; int cleanups=0; void abandon(void*){++cleanups;} };
 struct FSM {void transit(Piki*,int){}};
 struct Piki:Creature {
-    Navi* mNavi=nullptr;
+    Navi* mNavi=nullptr; Vector3f mAttachPosition;
     TopAction action; TopAction* mActiveAction=&action;
     int mMode=0;
     bool alive=true,stickable=true;
+    int mState=0; // PIKISTATE_*
+    int getState()const{return mState;}
     Creature* owner=nullptr; CollPart* part=nullptr;
     Vector3f mVelocity,mTargetVelocity; FSM fsm; FSM* mFSM=&fsm;
     int kills=0,changes=0;
@@ -79,5 +97,22 @@ struct NaviMgr {
 inline PikiMgr* pikiMgr=nullptr;
 inline NaviMgr* naviMgr=nullptr;
 namespace PikiMode {constexpr int FreeMode=0; constexpr int AttackMode=1; constexpr int FormationMode=2;}
-namespace PikiAction {constexpr int NOACTION=0;}
+namespace PikiAction {constexpr int NOACTION=0; constexpr int Crowd=1;}
 constexpr int PIKISTATE_Normal=0;
+
+// This receiver harness models the default single-captain engine. The opt-in
+// switch behavior is covered separately by the captain policy/runtime tests.
+struct PcamCameraManager {
+    Kontroller* mController=nullptr;
+    void startCamera(Navi*){}
+};
+inline PcamCameraManager* cameraMgr=nullptr;
+inline struct GameFlowDouble { unsigned mDemoFlags=0; } gameflow;
+namespace CinePlayerFlags { constexpr unsigned NaviNoAI=1; }
+inline bool pc_coop_active(){return false;}
+inline bool pc_vs_active(){return false;}
+namespace pc_p2_captain { inline bool second_captain_requested(){return false;} }
+constexpr int PIKISTATE_Flying=14; // real PikiState.h ids (the suction policy compares them)
+constexpr int PIKISTATE_Push=20;
+constexpr int PIKISTATE_PushPiki=21;
+constexpr int PIKISTATE_Emotion=31;

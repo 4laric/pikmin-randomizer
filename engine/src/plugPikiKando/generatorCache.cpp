@@ -1,6 +1,7 @@
 #include "DebugLog.h"
 #include <cstdint>
 #include "Generator.h"
+#include <cstdio>
 #include "OnePlayerSection.h"
 #include "Pellet.h"
 #include "PelletState.h"
@@ -664,9 +665,21 @@ void GeneratorCache::loadUfoParts(GeneratorCache::Cache* cache)
 		part->init(part->mSRT.t);
 		if (playerState->hasUfoParts(id)) {
 			PRINT("Discarding cached duplicate UFO part %s\n", ID32(id).mStringID);
+#if defined(PIKI_PC_PORT)
+			std::printf("UFO_PART_CACHE_LOAD part=%c%c%c%c kept=0 reason=collected\n", char(id >> 24), char(id >> 16),
+			            char(id >> 8), char(id));
+			std::fflush(stdout);
+#endif
 			part->kill(false);
 			continue;
 		}
+#if defined(PIKI_PC_PORT)
+		// #901 evidence: a loose ship part (a dropped, uncarried held part)
+		// carried over from an earlier day of this stage.
+		std::printf("UFO_PART_CACHE_LOAD part=%c%c%c%c kept=1 x=%.1f z=%.1f\n", char(id >> 24), char(id >> 16),
+		            char(id >> 8), char(id), double(part->mSRT.t.x), double(part->mSRT.t.z));
+		std::fflush(stdout);
+#endif
 		part->startAI(0);
 		part->mStateMachine->transit(part, 5);
 		PRINT("CREATE PELLET !!!!!!!!\n");
@@ -714,6 +727,14 @@ void GeneratorCache::saveUfoParts(Pellet* part)
 	cache->mUfoPartsCount++;
 	cache->mTotalCacheSize += pos;
 	cache->mUfoPartsCacheSize += pos;
+#if defined(PIKI_PC_PORT)
+	{
+		const u32 id = part->mConfig->mModelId.mId;
+		std::printf("UFO_PART_CACHE_SAVE part=%c%c%c%c x=%.1f z=%.1f\n", char(id >> 24), char(id >> 16), char(id >> 8),
+		            char(id), double(part->mSRT.t.x), double(part->mSRT.t.z));
+		std::fflush(stdout);
+	}
+#endif
 }
 
 /**

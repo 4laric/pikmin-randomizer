@@ -73,6 +73,40 @@ bool emitPlacementSlot(float x, float y, float z, unsigned generator, unsigned s
                 static_cast<double>(depth));
     return hasTerrain && route;
 }
+
+// #256 boss-slot measurement (read-only): walk 16 rays out from the slot in
+// 25-unit steps to 300 and record how far each ray stays on dry ground whose
+// height never steps by more than 20 between samples (a wall or ledge) and
+// stays within 60 of the slot height. `clear` is the minimum over all rays:
+// the radius of a flat, dry, wall-free disc around the slot. A rolling boss
+// with territory 200 needs clear >= 250 (P2_BOSS_SLOT_PROBE ok=1).
+void emitBossClearance(float x, float y, float z, unsigned slot)
+{
+    if (!mapMgr || !bounded(x, y, z)) return;
+    const float centre = mapMgr->getMinY(x, z, true);
+    float clear = 1e9f, maxDy = 0.0f;
+    int water = 0, missing = 0, steps = 0;
+    for (int ray = 0; ray < 16; ++ray) {
+        const float a = float(ray) * 6.2831853f / 16.0f;
+        float prev = centre, reach = 0.0f;
+        for (float r = 25.0f; r <= 300.0f; r += 25.0f) {
+            const float px = x + std::sin(a) * r, pz = z + std::cos(a) * r;
+            CollTriInfo* tri = mapMgr->getCurrTri(px, pz, true);
+            if (!tri) { ++missing; break; }
+            if (MapCode::getAttribute(tri) == ATTR_Water) { ++water; break; }
+            const float h = mapMgr->getMinY(px, pz, true);
+            if (std::fabs(h - prev) > 20.0f || std::fabs(h - centre) > 60.0f) { ++steps; break; }
+            if (std::fabs(h - centre) > maxDy) maxDy = std::fabs(h - centre);
+            prev = h;
+            reach = r;
+        }
+        if (reach < clear) clear = reach;
+    }
+    std::printf("P2_BOSS_SLOT_PROBE slot=%u clear=%.0f max_dy=%.1f water_rays=%d offmap_rays=%d wall_rays=%d ok=%d "
+                "x=%.1f y=%.1f z=%.1f\n",
+                slot, static_cast<double>(clear), static_cast<double>(maxDy), water, missing, steps,
+                clear >= 250.0f ? 1 : 0, static_cast<double>(x), static_cast<double>(centre), static_cast<double>(z));
+}
 }
 
 void pc_p2_placement_probe_birth(float x, float y, float z, unsigned generator, unsigned slot, int actorType)
@@ -80,6 +114,7 @@ void pc_p2_placement_probe_birth(float x, float y, float z, unsigned generator, 
     // Campaign path: the generated placement already carries its catalog slot uid
     // (pc_randomizer_generator_id), so no sidecar join is needed. Read-only.
     emitPlacementSlot(x, y, z, generator, slot, actorType);
+    emitBossClearance(x, y, z, slot);
     std::fflush(stdout);
 }
 

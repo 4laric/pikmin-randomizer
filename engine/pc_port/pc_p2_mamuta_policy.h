@@ -16,7 +16,9 @@
 namespace p2mamuta {
 
 // Dense time-sampled import banks (even source frames + every event frame).
-constexpr int kMaxPoses = 16;
+// #895: 64, the shared native pose-bank row cap (16 even samples plus event
+// frames can exceed the old 16).
+constexpr int kMaxPoses = 64;
 static_assert(kMaxPoses >= 8, "dense sampled Mamuta banks need at least 8 poses");
 static_assert(kMaxPoses <= 64, "Mamuta bank cap must stay bounded");
 

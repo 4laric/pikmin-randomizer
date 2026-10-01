@@ -461,7 +461,14 @@ int TopAction::exec()
 			}
 			case 1:
 			{
+#if defined(PIKI_PC_PORT)
+				// A Pikmin released by a P2 captor (Jellyfloat suction) has no captain until the
+				// whistle reclaims it; qdist2 on the null mNavi crashed here (gdb run g2, #960).
+				// No captain means no party to rejoin: fall through to free mode.
+				f32 dist = mPiki->mNavi ? qdist2(mPiki->mNavi, mPiki) : 1e30f;
+#else
 				f32 dist = qdist2(mPiki->mNavi, mPiki);
+#endif
 				if (dist <= C_PIKI_PARM(mPiki, mPostWorkJoinPartyRange)) {
 					doJoinParty = true;
 				}

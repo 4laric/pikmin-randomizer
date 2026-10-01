@@ -532,6 +532,7 @@ public:
 		mPtclMgr.killGenerator(cb1, cb2, doForceFinish);
 	}
 
+	u32 getLiveGeneratorCount() { return mPtclMgr.getLiveGeneratorCount(); }
 	void kill(zen::particleGenerator* gen, bool doForceFinish) { mPtclMgr.killGenerator(gen, doForceFinish); }
 
 	void killAll()

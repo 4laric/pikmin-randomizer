@@ -4,6 +4,8 @@
 #include "pc_gyro.h"
 #include "settings/pc_settings.h"
 #include "pc_coop.h"
+#include "pc_p2_captain.h"
+#include "pc_p2_captain_switch_policy.h"
 #endif
 #include "Creature.h"
 #include "DebugLog.h"
@@ -291,7 +293,8 @@ void PcamCamera::control(Controller& controller)
 	control(info);
 	// Arrastre de cámara: el pellizco táctil, y con el mod "Free Camera" el
 	// ratón y el stick derecho. Mismo acumulador para los tres.
-	const int dragPlayer   = (mTargetCreature && mTargetCreature->mObjType == OBJTYPE_Navi) ? static_cast<Navi*>(mTargetCreature)->mNaviID : 0;
+	const int targetCaptain = (mTargetCreature && mTargetCreature->mObjType == OBJTYPE_Navi) ? static_cast<Navi*>(mTargetCreature)->mNaviID : 0;
+	const int dragPlayer = p2_captain_camera_drag_player(pc_p2_captain::single_player_switch_enabled(), targetCaptain);
 	const float cameraDrag = pc_window_take_camera_drag_player(dragPlayer);
 	if (mIsActive && mControlsEnabled && cameraDrag != 0.0f) {
 		// Aproximadamente media vuelta por una pasada de un ancho de pantalla.

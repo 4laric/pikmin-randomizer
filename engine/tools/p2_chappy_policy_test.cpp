@@ -117,6 +117,14 @@ int main()
         require(!health.contains(&a) && !health.isDead(&a), "forget clears binding and death");
     }
 
+    // --- #994: awake Bulborbs keep updating when the captain leaves the AI grid ---
+    require(keepUpdatingOffGrid(PinAdult, true, false), "awake Fiery/Chappy/Hairy is pinned active");
+    require(keepUpdatingOffGrid(PinKuma, true, false), "awake Kuma/Leaf is pinned active");
+    require(keepUpdatingOffGrid(PinKumako, true, false), "awake KumaKochappy is pinned active");
+    require(!keepUpdatingOffGrid(PinAdult, true, true), "a sleeping adult is not pinned");
+    require(!keepUpdatingOffGrid(PinAdult, false, false), "a dead actor is not pinned");
+    require(!keepUpdatingOffGrid(PinKing, true, false), "the Emperor keeps its own path");
+
     std::printf("PASS p2_chappy_policy_test checks=%d\n", gChecks);
     return 0;
 }

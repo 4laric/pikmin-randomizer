@@ -248,6 +248,10 @@ int main() {
                 if (o.volley > maxShells) maxShells = o.volley;
                 if (emitFrame < 0) emitFrame = frameBefore;
                 check(o.volleySpeed > 0.0f, "shell speed comes from the locked aim");
+                // #892 burst policy: one key event, three shells, same tick, primary first.
+                check(o.burst.shots == 3 && o.burst.intervalTicks == 0 && o.burst.sameTick, "burst is 3 shells in one tick");
+                check(o.burst.primaryFirst, "first shell of the burst is the primary");
+                check(o.burst.maxSpreadDeg > 0.0f && o.burst.maxSpreadDeg < 25.0f, "burst spread is the +-0.1 jitter");
                 // #892: the flash basis is the one the shells left from.
                 check(o.shotFired, "a volley tick reports emitShotGun (TChibiShoot)");
                 const P2GroinkVec3 m0 = o.volleyMuzzle.column0;

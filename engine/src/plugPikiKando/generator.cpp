@@ -13,6 +13,23 @@
 #include <cstdio>
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
+#include "pc_p2_species_unit.h"
+#include <cmath>
+
+// Species placement unit (pc_p2_species_unit.h): a seed-bound species that comes in
+// groups (Anode Beetle = 2) is born at least `unit` times by the generator.
+static int p2UnitCount(Generator* gen, int count)
+{
+	return p2unit::effectiveCount(count, p2unit::unitForGenerator(gen));
+}
+// Extra unit members ring the generator spot (index >= the generator's own count).
+static void p2UnitOffset(BirthInfo& info, int i, int own, int total)
+{
+	if (total <= own || i < own) return;
+	const float angle = 6.2831853f * float(i - own) / float(total - own);
+	info.mPosition.x += std::cos(angle) * p2unit::kSpacing;
+	info.mPosition.z += std::sin(angle) * p2unit::kSpacing;
+}
 #include "FlowController.h"
 #include <cstring>
 #endif
@@ -1222,14 +1239,18 @@ f32 deg2rad(int val)
  */
 void GenTypeOne::init(Generator* gen)
 {
-	BirthInfo info;
-	setBirthInfo(info, gen);
-	if (gen->mGenObject) {
-		Creature* obj = gen->mGenObject->birth(info);
-		if (obj) {
-			obj->mGenerator = gen;
-			gen->mAliveCount++;
-			gen->mLatestSpawnCreature = obj;
+	const int count = p2UnitCount(gen, 1);
+	for (int i = 0; i < count; i++) {
+		BirthInfo info;
+		setBirthInfo(info, gen);
+		p2UnitOffset(info, i, 1, count);
+		if (gen->mGenObject) {
+			Creature* obj = gen->mGenObject->birth(info);
+			if (obj) {
+				obj->mGenerator = gen;
+				gen->mAliveCount++;
+				gen->mLatestSpawnCreature = obj;
+			}
 		}
 	}
 }
@@ -1283,15 +1304,17 @@ int GenTypeAtOnce::getMaxCount()
 	return mMaxCount();
 }
 
+
 /**
  * @todo: Documentation
  */
 void GenTypeAtOnce::init(Generator* gen)
 {
-	int max = mMaxCount();
+	int max = p2UnitCount(gen, mMaxCount());
 	for (int i = 0; i < max; i++) {
 		BirthInfo info;
 		setBirthInfo(info, gen);
+		p2UnitOffset(info, i, mMaxCount(), max);
 		if (gen->mGenObject) {
 			Creature* obj = gen->mGenObject->birth(info);
 			if (obj) {
@@ -1333,9 +1356,12 @@ int GenTypeInitRand::getMaxCount()
 void GenTypeInitRand::init(Generator* gen)
 {
 	int randCount = _38() + int(gsys->getRand(1.0f) * f32(mMaxCount() - _38()));
+	const int ownCount = randCount;
+	randCount          = p2UnitCount(gen, randCount);
 	for (int i = 0; i < randCount; i++) {
 		BirthInfo info;
 		setBirthInfo(info, gen);
+		p2UnitOffset(info, i, ownCount, randCount);
 		if (gen->mGenObject) {
 			Creature* obj = gen->mGenObject->birth(info);
 			if (obj) {

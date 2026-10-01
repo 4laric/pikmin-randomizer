@@ -136,10 +136,13 @@ int main()
         out                   = fsm.tick(jin);
         assert(out.escapeVelocity && out.flickNavi && out.flickPikmin && out.flickStuck);
         assert(out.eventSet & P2FUEFUKI_EB_Untargetable);
+        // #245: EnemyBase::isFlying() is EB_Untargetable, so the follower's
+        // ActTeki Success/emote exit happens at this key, not at Stay entry.
+        assert(out.releasedSuspend.size() == 1 && out.releasedSuspend[0] == 10);
         jin.keyEvent = 4;
         out          = fsm.tick(jin);
         assert(out.transited && out.state == S::Stay);
-        assert(out.releasedSuspend.size() == 1 && out.releasedSuspend[0] == 10);
+        assert(out.releasedSuspend.empty()); // Stay's suspend is idempotent
         assert(!fsm.squad().holds(10));
         assert(!fsm.squad().reclaimPanic(10).accepted); // suspend is not Panic
 

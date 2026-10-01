@@ -27,3 +27,17 @@ void pc_p2_kurage_receiver_owner_invalidated(Creature* owner);
 void pc_p2_kurage_receiver_piki_invalidated(Piki* piki);
 int pc_p2_kurage_receiver_count();
 int pc_p2_kurage_receiver_stomach_count();
+
+// Multi-owner API (wave 3 flyers): campaign Jellyfloats each register their own
+// mouth part; the legacy calls above address the primary (first) owner.
+bool pc_p2_kurage_receiver_register(Creature* owner, CollPart* mouth);
+bool pc_p2_kurage_receiver_admit_for(Creature* owner, Piki* piki);
+// Marks a registered owner as a campaign OWN Jellyfloat: its mouth part is the
+// source `suck` part (Proom joint), standing Pikmin are takeable and are held
+// inside the bell. `bodyCentreOffsetY` is for the hold log only.
+void pc_p2_kurage_receiver_configure_own(Creature* owner, float bodyCentreOffsetY);
+int pc_p2_kurage_receiver_scan_admit_for(Creature* owner, float verticalOffset, float attackRadius, int maxAdmissions, bool admitEligible);
+void pc_p2_kurage_receiver_update_for(Creature* owner, float delta, bool ownerAlive, bool ownerHasHealth, bool bittered);
+void pc_p2_kurage_receiver_release_all_for(Creature* owner);
+int pc_p2_kurage_receiver_count_for(const Creature* owner);
+int pc_p2_kurage_receiver_stomach_count_for(const Creature* owner);

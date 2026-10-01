@@ -1,5 +1,6 @@
 #include "pc_p2_ship.h"
 #include "pc_randomizer.h"
+#include "pc_p2_campaign_actor.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "GoalItem.h"
@@ -361,6 +362,12 @@ void GoalItem::suckMe(Pellet* item)
             if (config->mModelId.mId == static_cast<u32>(TekiMgr::getTypeId(type))) {
                 const bool gameplay = !gameflow.mIsChallengeMode && !gameflow.mPauseAll
                     && !gameflow.mIsUIOverlayActive && !gameflow.mMoviePlayer->mIsActive;
+                // Capture provenance before delivery consumes its single-use
+                // binding. Dead Teki no longer have mGenerator, so use the
+                // retained PelletView association as the primary identity.
+                const bool sourceBound = item->mPelletView
+                    && (pc_randomizer_p2_source_for(item->mPelletView) != 0
+                        || pc_p2_campaign_source(static_cast<BTeki*>(item->mPelletView)) != 0);
                 // Lane 06: a bound P2 corpse grants its own ordinary receipt identity;
                 // it must never ALSO credit the P1-proxy bestiary check. The delivery
                 // call returns true only when it handled a bound P2 source.
@@ -368,16 +375,11 @@ void GoalItem::suckMe(Pellet* item)
                     && pc_randomizer_p2_corpse_delivered(item->mPelletView, type,
                         flowCont.mCurrentStage->mStageID, gameplay);
                 if (!deliveredP2) {
-                    // bot-unkilled (wf11): under the P2 bridge a Teki corpse with
-                    // a pellet view is a P2 actor's corpse even when unbound
-                    // (static-host families like dwarf_orange/otakara never bind
-                    // lane-06, and consumed single-use bindings read unbound on
-                    // a recycled address). Its P1 host type (e.g. 3/Chappy for
-                    // Wealthy/Fart/BlueKochappy/Otakara) must not mint the P1
-                    // host CHECK (e.g. Deliver Dwarf Bulborb) with zero P2
-                    // deaths. Bound P2 corpses already returned true above;
-                    // unbound P2-actor corpses grant nothing here.
-                    if (pc_randomizer_p2_bridge() && item->mPelletView) {
+                    // Legacy seeds retain blanket suppression. Resolved seeds
+                    // permit surviving P1 corpses, but a P2 delivery failure
+                    // must never fall through and credit its P1 host species.
+                    if (pc_randomizer_p2_bridge() && item->mPelletView
+                        && (!pc_randomizer_resolved_checks() || sourceBound)) {
                         std::printf("[Pikmin Randomizer] P2_P1_CHECK_SUPPRESSED host_type=%d stage=%d\n",
                             type, flowCont.mCurrentStage->mStageID);
                     } else {

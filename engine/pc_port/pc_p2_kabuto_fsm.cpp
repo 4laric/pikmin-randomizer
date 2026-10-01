@@ -11,6 +11,7 @@
 // lane and the source Wait/Turn/Move selection (pc_p2_kabuto_aim.h), not the
 // old 180 / 0.5 rad cone.
 #include "pc_p2_kabuto_fsm.h"
+#include "pc_p2_sfx.h"
 #include "pc_p2_kabuto_fsm_policy.h"
 #include "pc_p2_kabuto_stone_fleet.h"
 #include "pc_p2_kabuto_aim.h"
@@ -25,7 +26,11 @@
 #include "Texture.h"
 #include "Graphics.h"
 #include "Camera.h"
+#include "EffectMgr.h"
+#include "MapMgr.h"
+#include "zen/particle.h"
 #include "gameflow.h"
+#include "pc_p2_pose_family.h"
 #include "Piki.h"
 #include "PikiState.h"
 #include "PikiMgr.h"
@@ -78,40 +83,35 @@ struct StoneMap{p2rockhost::TraceProxy proxy;unsigned long long calls=0,walls=0;
 double stoneDebt=0.0;
 unsigned slotGen[p2kabutostone::kFleetCapacity]={};
 int slotPosTicks[p2kabutostone::kFleetCapacity]={};
+// Visual-only roll state (#884): horizontal distance rolled per slot and the
+// tick counter for the ground dust; neither feeds the simulation.
+float slotRoll[p2kabutostone::kFleetCapacity]={};
+int slotDustTicks[p2kabutostone::kFleetCapacity]={};
 bool stoneDrawLogged=false;
+constexpr int kDustTickInterval=3;       // 10 Hz puffs
+constexpr float kDustGroundSlack=6.0f;   // base within 6 of the floor = rolling
+constexpr float kDustParticles=3.0f;
+constexpr short kDustLifetime=20;
+// The P1 Iwagon mesh (tekis/iwagon/iwagon.mod) is a unit-scale boulder centred
+// on its origin, radius 25.44 (vertex extremes -28.5..25.4).
+constexpr float kIwagonMeshRadius=25.44f;
 std::map<std::uint64_t,BTeki*> shooters;
 std::uint64_t tokenOf(Creature* c){return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(c));}
 float wrapPi(float a){while(a>PI_F)a-=2.0f*PI_F;while(a<-PI_F)a+=2.0f*PI_F;return a;}
 float distXZ(const Vector3f& a,const Vector3f& b){const float dx=a.x-b.x,dz=a.z-b.z;return std::sqrt(dx*dx+dz*dz);}
 float clipSeconds(const std::string& name){auto it=timing.find(name);return it==timing.end()?1.0f:it->second.duration/30.0f;}
+p2posefamily::Bank poseBank("KABUTO"); // #895 interpolated draw
+p2posefamily::Actors poseVis;
 void loadAnimation(const std::vector<p2animation::Clip>& bank){
-    size_t total=0;std::vector<unsigned char> reference;
-    for(const auto& clip:bank){size_t clipBytes=0;
-        for(int i=0;i<clip.count;++i){char path[192];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/kabuto_Kabuto_%s_%02d.mod",clip.name.c_str(),i);
-            std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)std::abort();auto size=file.tellg();
-            if(size<=0||size>512*1024)std::abort();clipBytes+=size_t(size);total+=size_t(size);
-            if(clipBytes>512*1024||total>10*1024*1024)std::abort();file.seekg(0);
-            std::vector<unsigned char> bytes(size_t(size),0),resources;
-            if(!file.read(reinterpret_cast<char*>(bytes.data()),size)||!p2animation::resources(bytes,resources))std::abort();
-            if(!reference.empty()&&reference!=resources)std::abort();reference=resources;
-        }
-    }
-    Shape* shared=nullptr;
+    // #895: compact loader (few Shapes + decoded vectors per clip); the Shapes
+    // stay the nearest-pose fallback. Fail-closed as before.
+    size_t total=0;p2poseload::Shared shared;
     for(const auto& clip:bank){timing[clip.name]=clip;
-        for(int i=0;i<clip.count;++i){char path[160];std::snprintf(path,sizeof(path),"courses/pikmin2room/kabuto_Kabuto_%s_%02d.mod",clip.name.c_str(),i);
-            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
-            if(!shared){shared=shape;for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture)shape->mTexAttrList[t].mTexture->attach();}
-            else{
-                if(shape->mMaterialCount!=shared->mMaterialCount||shape->mTexAttrCount!=shared->mTexAttrCount||shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
-                for(int j=0;j<shape->mTotalMatpolyCount;++j){auto* poly=shape->mMatpolyList[j];if(!poly||!poly->mMaterial)continue;int material=-1;
-                    for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
-                    if(material<0)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
-                shape->mMaterialList=shared->mMaterialList;shape->mTexAttrList=shared->mTexAttrList;shape->mTevInfoList=shared->mTevInfoList;
-            }
-            animated[clip.name].push_back(shape);
-        }
+        std::string error;
+        if(!p2posefamily::loadFamilyClip(poseBank,clip.name,"kabuto_Kabuto_"+clip.name,clip.count,clip.duration,clip.frames,shared,total,animated[clip.name],error)){
+            std::printf("P2_KABUTO_BANK_INVALID clip=%s reason=%s\n",clip.name.c_str(),error.c_str());std::fflush(stdout);std::abort();}
     }
-    std::printf("P2_KABUTO_BANK_READY mod_bytes=%zu gameplay=P1_unchanged\n",total);
+    std::printf("P2_KABUTO_BANK_READY mod_bytes=%zu resident=1 gameplay=P1_unchanged\n",total);
 }
 void stop(BTeki* a){a->inputDrive(Vector3f(0.0f,0.0f,0.0f));a->mVelocity.x=0.0f;a->mVelocity.y=0.0f;a->mVelocity.z=0.0f;}
 // Facing (EnemyBase::updateFaceDir) and StateMove setTargetSpeed along it.
@@ -162,6 +162,22 @@ void logLane(unsigned gen,const char* from,const KabutoFsm& s,const Vector3f& po
     std::printf("P2_KABUTO_LANE generator=%u from=%s lane=1 face_deg=%.1f target=%s forward=%.1f lateral=%.1f dy=%.1f\n",
         gen,from,s.heading*180.0f/PI_F,a.cands[size_t(i)].navi?"navi":"piki",l.forward,l.lateral,l.dy);std::fflush(stdout);
 }
+// P1 Armored Cannon Beetle shot burst (TAIbeatle.cpp:605-623): when the beetle
+// spawns its rolling boulder it emits EFF_Beatle_RockClouds / RockSpray /
+// RockBlast 60 units ahead of the mouth, along the mouth's forward axis. The
+// source P2 createRockEmitEffect is a JPA2 particle this port cannot play, so
+// the P1 beetle's own effects stand in (owner request, #884). One-shots only:
+// no generator handle is retained.
+void p1BeetleShotBurst(const P2CannonStoneVec3& birth,float heading){
+    if(!effectMgr)return;
+    const Vector3f dir(std::sin(heading),0.0f,std::cos(heading));
+    const Vector3f at(birth.x+dir.x*60.0f,birth.y,birth.z+dir.z*60.0f);
+    const EffectMgr::effTypeTable ids[3]={EffectMgr::EFF_Beatle_RockClouds,EffectMgr::EFF_Beatle_RockSpray,EffectMgr::EFF_Beatle_RockBlast};
+    for(EffectMgr::effTypeTable id:ids){
+        zen::particleGenerator* g=effectMgr->create(id,at,nullptr,nullptr);
+        if(g)g->setEmitDir(dir);
+    }
+}
 // Logs the outcome of p2kabutostone::attackStep (source StateAttack KEYEVENT_2
 // -> createStoneAttack, Kabuto.cpp:268-290): Stone 74 born at the "mouth"
 // joint XZ (retail pose at attack frame 51) and 25 over the Kabuto's own Y,
@@ -175,8 +191,10 @@ void logStoneFire(KabutoFsm& s,unsigned gen,const p2kabutostone::AttackStep& ste
         return;
     }
     if(step.action!=p2kabutostone::AttackAction::Fired)return;
+    pc_p2_sfx(75,gen,p2sfx::Event::Shot,Vector3f(step.birth.x,step.birth.y,step.birth.z));
     const int slot=step.slot;
-    slotGen[slot]=gen;slotPosTicks[slot]=0;
+    slotGen[slot]=gen;slotPosTicks[slot]=0;slotRoll[slot]=0.0f;slotDustTicks[slot]=0;
+    p1BeetleShotBurst(step.birth,s.heading);
     const auto at=timing.find("attack");
     std::printf("P2_KABUTO_STONE_BIRTH generator=%u source_id=75 stone=%u stone_type=74 slot=%d homing=%d frame=%d t=%.4f clip_frames=%d birth=(%.2f,%.2f,%.2f) face_deg=%.1f mouth_source=joint pose_frame=%d mouth_local=(%.3f,%.3f) active=%d\n",
         gen,step.id,slot,int(fleet.stone(slot).homing()),p2kabutostone::kAttackKey2Frame,s.stateTime,at==timing.end()?0:at->second.duration,
@@ -207,18 +225,21 @@ void transition(BTeki* a,KabutoFsm& s,KState st,const char* clip,unsigned gen){
     if(st==KB_MOVE)s.moveTimer=0.0f;
     if(st==KB_ATTACK)s.alert=0.0f;
     std::printf("P2_KABUTO_STATE generator=%u state=%s\n",gen,p2kabutofsm::stateName(st));std::fflush(stdout);
+    // P1 Cannon Beetle bank approximation (output-only, #946).
+    if(st==KB_DEAD)pc_p2_sfx(75,gen,p2sfx::Event::Dead,a);
+    if(st==KB_FLICK)pc_p2_sfx(75,gen,p2sfx::Event::Flick,a);
 }
 void die(BTeki* a,KabutoFsm& s,unsigned gen,float prior){
     if(!s.deadLogged){s.deadLogged=true;std::printf("P2_KABUTO_DEAD generator=%u source_id=75 health=0 prior_health=%.1f\n",gen,prior);std::fflush(stdout);}
     transition(a,s,KB_DEAD,"dead",gen);
 }
 }
-void pc_p2_kabuto_fsm_reset(){
+void pc_p2_kabuto_fsm_reset(){poseBank.reset();poseVis.clear();
     if(fleet.active()>0){std::printf("P2_KABUTO_STONE_RESET active=%d\n",fleet.active());std::fflush(stdout);}
     fleet.reset();stoneDebt=0.0;stoneMap.proxy.clear();stoneDrawLogged=false;shooters.clear();
-    for(int i=0;i<p2kabutostone::kFleetCapacity;++i){slotGen[i]=0;slotPosTicks[i]=0;}
+    for(int i=0;i<p2kabutostone::kFleetCapacity;++i){slotGen[i]=0;slotPosTicks[i]=0;slotRoll[i]=0.0f;slotDustTicks[i]=0;}
     actors.clear();fsms.clear();drawn.clear();drawnCorpse.clear();animated.clear();timing.clear();ready=false;}
-void pc_p2_kabuto_fsm_forget(BTeki* a){auto* v=static_cast<PelletView*>(a);
+void pc_p2_kabuto_fsm_forget(BTeki* a){poseVis.forget(a);auto* v=static_cast<PelletView*>(a);
     // The shooter is gone; its stones keep flying and Press is no longer
     // attributed to it (no dangling actor pointer is kept).
     const std::uint64_t tok=tokenOf(a);const int orphaned=fleet.forgetOwner(tok);shooters.erase(tok);
@@ -248,7 +269,12 @@ void pc_p2_kabuto_fsm_setup(){
     Iterator it(tekiMgr);CI_LOOP(it){Teki* teki=static_cast<Teki*>(*it);if(!teki||!teki->mGenerator)continue;
         const unsigned token=bridge?pc_p2_campaign_token(teki):teki->mGenerator->_70;
         if(wanted.find(token)==wanted.end())continue;
-        if(!seen.insert(token).second)std::abort();if(teki->mTekiType!=TEKI_Beatle)std::abort();
+        if(teki->mTekiType!=TEKI_Beatle){ // #948: wrong vehicle: refuse with a reason, never abort a campaign
+            if(!bridge)std::abort();
+            std::printf("P2_KABUTO_UNBOUND generator=%u source_id=75 type=%d reason=host_type_mismatch\n",token,int(teki->mTekiType));std::fflush(stdout);continue;}
+        if(!seen.insert(token).second){
+            if(!bridge)std::abort();
+            std::printf("P2_KABUTO_UNBOUND generator=%u source_id=75 reason=duplicate_generator\n",token);std::fflush(stdout);continue;}
         actors[static_cast<PelletView*>(teki)]=true;shooters[tokenOf(teki)]=teki;
         teki->mHealth=p2kabutofsm::params().health;
         KabutoFsm& f=fsms[static_cast<PelletView*>(teki)];
@@ -261,7 +287,7 @@ void pc_p2_kabuto_fsm_setup(){
         std::printf("P2_ENEMY_READY species=Kabuto native_family=Kabuto generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented\n",token,teki->getPosition().x,teki->getPosition().y,teki->getPosition().z,teki->mHealth,p2kabutofsm::params().health);
         std::printf("P2_KABUTO_STATE generator=%u state=wait\n",token);std::fflush(stdout);
     }
-    if(seen.size()!=wanted.size()){std::printf("P2_KABUTO_ERROR missing_actor wanted=%zu found=%zu\n",wanted.size(),seen.size());std::abort();}
+    if(seen.size()!=wanted.size()){std::printf("P2_KABUTO_MISSING wanted=%zu found=%zu\n",wanted.size(),seen.size());std::fflush(stdout);if(!bridge)std::abort();}
     loadAnimation(bank);ready=true;
 }
 void pc_p2_kabuto_fsm_update(BTeki* actor){
@@ -279,6 +305,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
     if(actor->mHealth<=0.0f&&!s.deathPriorSet&&previousHealth>0.0f){s.deathPrior=previousHealth;s.deathPriorSet=true;}
     const float priorForDeath=s.deathPriorSet?s.deathPrior:previousHealth;
     if(actor->mHealth<s.lastHealth&&actor->mHealth>0.0f){
+        pc_p2_sfx(75,gen,p2sfx::Event::Damage,actor);
         std::printf("P2_KABUTO_DAMAGE generator=%u source_id=75 health=%.1f\n",gen,actor->mHealth);std::fflush(stdout);}
     s.lastHealth=actor->mHealth;
     if(s.poolFullCooldown>0.0f)s.poolFullCooldown-=dt;
@@ -329,6 +356,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         break;}
     case KB_MOVE:{
         // StateMove::exec (KabutoState.cpp:203-260) via p2kabutoaim::moveExec.
+        pc_p2_sfx_stride(75,gen,actor,24.0f);
         if(actor->mHealth<=0.0f){die(actor,s,gen,priorForDeath);break;}
         if(shouldFlick(actor)){stop(actor);transition(actor,s,KB_FLICK,"flick",gen);break;}
         buildAim(aim);
@@ -396,7 +424,11 @@ bool pc_p2_kabuto_fsm_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,boo
     auto ft=fsms.find(static_cast<PelletView*>(actor));
     const char* name=corpse?"dead":(ft!=fsms.end()?ft->second.clip.c_str():p2kabutofsm::motionClip(actor->mTekiAnimator->getCurrentMotionIndex()));
     Shape* shape=animated.at("wait").front();
-    if(name){float phase=corpse?1.0f:(ft!=fsms.end()?ft->second.phase:0.0f);shape=animated.at(name).at(timing.at(name).index(phase,corpse));}
+    if(name){float phase=corpse?1.0f:(ft!=fsms.end()?ft->second.phase:0.0f);shape=animated.at(name).at(timing.at(name).index(phase,corpse));
+        // #895: lerp + crossfade into a private Shape; nearest pose stays the fallback.
+        const p2animation::Clip& clipTiming=timing.at(name);
+        const float sourceFrame=corpse?float(clipTiming.duration-1):std::max(0.f,std::min(1.f,phase))*float(clipTiming.duration-1);
+        if(Shape* smooth=poseVis.draw(actor,poseBank,name,sourceFrame,actor->mGenerator?pc_p2_campaign_token(actor):0u))shape=smooth;}
     shape->updateAnim(gfx,matrix,nullptr,actor);
     pc_gfx_specular_family_scope(1);
     shape->drawshape(gfx,*gfx.mCamera,nullptr);
@@ -483,6 +515,21 @@ bool kabutoHostStoneAttack(Creature* target,float damage,P2ProjectileEngineHit& 
     hit.healthAfter=t->mHealth;hit.storedDamageAfter=t->mStoredDamage;hit.rejected=!hit.applied&&t->isAlive();
     return true;
 }
+// Visual roll + the P1 boulder's ground dust (#884). The rolled distance is the
+// horizontal path length per 30 Hz source tick (display only). While the stone
+// is on the floor, a detached one-shot EFF_Iwagon_Start2 puff (the P1 boulder's
+// own rolling dust, runrock_kb.pcr) is emitted at its base every few ticks.
+void rollStone(int i){
+    const P2CannonStone& st=fleet.stone(i);
+    const float vx=st.velocity().x,vz=st.velocity().z;
+    slotRoll[i]+=std::sqrt(vx*vx+vz*vz)*P2CannonStone::kSourceDelta;
+    if(!effectMgr||!mapMgr||!mapMgr->mMapModel||st.scale()<1.0f)return;
+    if(++slotDustTicks[i]%kDustTickInterval!=0)return;
+    const Vector3f base(st.position().x,st.position().y,st.position().z);
+    if(base.y-mapMgr->getMinY(base.x,base.z,true)>kDustGroundSlack)return; // airborne: no dust
+    zen::particleGenerator* g=effectMgr->create(EffectMgr::EFF_Iwagon_Start2,base,nullptr,nullptr);
+    if(g)g->configureOneShotBurst(kDustParticles,kDustLifetime);
+}
 void stoneTick(StoneSnapshot& snap){
     buildSnapshot(snap);snapshotOthers(snap);
     p2kabutostone::Strike strikes[64];p2kabutostone::DeadEvent deads[p2kabutostone::kFleetCapacity];p2kabutostone::Released rel[p2kabutostone::kFleetCapacity];
@@ -514,10 +561,11 @@ void stoneTick(StoneSnapshot& snap){
             d.closestNaviPiki<99999.0f?d.closestNaviPiki:99999.0f,d.pos.x,d.pos.y,d.pos.z);}
     for(int i=0;i<rn;++i){
         std::printf("P2_KABUTO_STONE_RELEASE generator=%u stone=%u slot=%d\n",slotGen[rel[i].slot],rel[i].stone,rel[i].slot);
-        slotGen[rel[i].slot]=0;slotPosTicks[rel[i].slot]=0;}
+        slotGen[rel[i].slot]=0;slotPosTicks[rel[i].slot]=0;slotRoll[rel[i].slot]=0.0f;slotDustTicks[rel[i].slot]=0;}
     bool pos=false;
     for(int i=0;i<p2kabutostone::kFleetCapacity;++i){
         if(!fleet.used(i)||!fleet.stone(i).isAlive())continue;
+        rollStone(i);
         if(++slotPosTicks[i]%15!=0)continue;
         const P2CannonStone& st=fleet.stone(i);pos=true;
         std::printf("P2_KABUTO_STONE_POS generator=%u stone=%u x=%.1f y=%.1f z=%.1f scale=%.3f t=%.3f\n",slotGen[i],fleet.id(i),st.position().x,st.position().y,st.position().z,st.scale(),st.timer());
@@ -575,9 +623,17 @@ void pc_p2_kabuto_fsm_draw_stones(Graphics& gfx){
         if(!fleet.used(i))continue;
         const P2CannonStone& st=fleet.stone(i);
         if(st.phase()!=P2CannonStonePhase::Move&&st.phase()!=P2CannonStonePhase::Dead)continue;
-        const float k=(p2kabutostone::kBoundRadiusFull/24.0f)*st.scale();
-        Matrix4f world,view;
-        world.makeSRT(Vector3f(k,k,k),Vector3f(0.0f,st.faceDir(),0.0f),Vector3f(st.position().x,st.position().y,st.position().z));
+        // P1 boulder, sized to the Stone's map sphere (r25, mPosition is the
+        // sphere bottom) so the drawn rock sits on the floor exactly where the
+        // trace puts it, and rolled about the axis perpendicular to its
+        // heading by the distance travelled (visual only).
+        const float radius=p2kabutostone::kMapRadius*st.scale();
+        const float k=radius/kIwagonMeshRadius;
+        const float roll=(i>=0&&i<p2kabutostone::kFleetCapacity)?slotRoll[i]/p2kabutostone::kMapRadius:0.0f;
+        Matrix4f yaw,body,world,view;
+        yaw.makeSRT(Vector3f(1.0f,1.0f,1.0f),Vector3f(0.0f,st.faceDir(),0.0f),Vector3f(st.position().x,st.position().y+radius,st.position().z));
+        body.makeSRT(Vector3f(k,k,k),Vector3f(roll,0.0f,0.0f),Vector3f(0.0f,0.0f,0.0f));
+        yaw.multiplyTo(body,world);
         gfx.mCamera->mLookAtMtx.multiplyTo(world,view);
         // Frame pinned so the shared Iwagon animation context is not advanced.
         float frame=0.0f;

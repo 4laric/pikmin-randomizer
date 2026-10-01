@@ -46,8 +46,14 @@
 #include "pc_p2_imomushi.h"
 #include "pc_p2_otakara.h"
 #include "pc_p2_groink_teki.h"
+#include "pc_p2_bombsarai_teki.h"
+#include "pc_p2_fuefuki_teki.h"
+#include "pc_p2_breadbug_teki.h"
+#include "pc_p2_kurage_teki.h"
+#include "pc_p2_bigtreasure_teki.h"
 #include "pc_p2_chappy.h"
 #include "pc_p2_long_legs.h"
+#include "pc_p2_sarai_manager.h"
 #endif
 #if defined(PIKI_PC_PORT)
 #include "mods/pc_hd_models.h"
@@ -273,6 +279,9 @@ public:
 	// alone only arms mDeadState, but dieSoon() runs inside doAI's !mDeadState
 	// block, so a die() issued outside doAI would never finalize.
 	void pcEscapeNow() { die(); dieSoon(); }
+	// #256 larva teardown: arm the death state and finalize without die()'s
+	// P1 enemy-defeat report (a spawned larva is not a P1 enemy kill).
+	void pcTeardownSilently() { mDeadState = 1; dieSoon(); }
 #endif
 	virtual void updateTimers();                               // _17C
 	virtual void gravitate(f32);                               // _180
@@ -466,16 +475,16 @@ public:
 		const f32 before_jigumo=pc_p2_snakejoint_param_f(this,idx,before_snakejoint);
 		const f32 before_umimushi=pc_p2_jigumo_param_f(this,idx,before_jigumo);
 		const f32 qurione=pc_p2_otakara_param_f(this,idx,pc_p2_umimushi_param_f(this,idx,before_umimushi));
-		const f32 legs=pc_p2_long_legs_param_f(this,idx,qurione);
-		if(idx==TPF_Life)return pc_p2_chappy_max_health(this,pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,legs)))));
-		return pc_p2_chappy_param_f(this, idx, legs);
+		const f32 legs=pc_p2_kurage_teki_param_f(this,idx,pc_p2_fuefuki_teki_param_f(this,idx,pc_p2_breadbug_teki_param_f(this,idx,pc_p2_bigtreasure_teki_param_f(this,idx,pc_p2_long_legs_param_f(this,idx,qurione)))));
+		if(idx==TPF_Life)return pc_p2_bombsarai_teki_param_f(this,idx,pc_p2_sarai_param_f(this,idx,pc_p2_chappy_max_health(this,pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,legs)))))));
+		return pc_p2_bombsarai_teki_param_f(this, idx, pc_p2_chappy_param_f(this, idx, legs));
 #endif
 		return value;
 	} // see TekiFloatParams enum
 	int getParameterI(int idx) {
 		const int value=mTekiParams->getI(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		if(idx==TPI_CorpseType)return pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value));
+		if(idx==TPI_CorpseType)return pc_p2_queen_teki_corpse_type(this,pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value)));
 #endif
 		return value;
 	} // see TekiIntParams enum
@@ -642,6 +651,11 @@ public:
 	SearchData mTekiSearchData[3];                // _42C
 	WayPoint** mRouteWayPoints;                   // _450, array of something, unsure what
 	                                              // _454 = PaniAnimKeyListener
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// #901 generic held ship part: set once the held part has dropped (any
+	// death funnel), so exactly one part pellet spawns. Sim state; reset().
+	bool mPcHeldPartDropped = false;
+#endif
 };
 
 /**

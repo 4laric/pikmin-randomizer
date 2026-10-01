@@ -39,6 +39,10 @@ bool pc_randomizer_p2_bound(unsigned source_id);
 unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id);
 unsigned pc_randomizer_generator_id(const void* generator);
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid);
+// Dev console (#942): register a runtime generator under a synthetic dev
+// target uid that is not in the spawn-slot catalogue. Only the dev console
+// calls this; the seed's ENEMY_P2 line must already bind the uid.
+void pc_randomizer_dev_set_generator_id(const void* generator, unsigned uid);
 // `sourceId70` is the generator's on-file id (Generator::_70); it is consulted
 // only for the P2 enemy bridge when the (stage,file,offset) spawn-slot catalogue
 // misses, via lane 04's p2-placement-slots.txt sidecar.
@@ -68,6 +72,7 @@ void pc_randomizer_p2_delivery_reset();
 // it exactly once through the durable ordinary receipt host (p1Proxy=false).
 // Returns true when a bound P2 delivery was handled; callers use the return value
 // so a bound P2 corpse is never ALSO credited to the P1-proxy bestiary check.
+bool pc_randomizer_resolved_checks();
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay);
 // Read-only receipt query for the TEST-ONLY autoplay bot (bot-v2 gap 1):
 // true once this process granted (or saw a durable duplicate of) the Onion

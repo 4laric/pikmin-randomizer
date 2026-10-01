@@ -76,4 +76,18 @@ inline float poisonDamage(const PoisonInputs& in)
     return appliesWhitePoison(in) ? WhitePoisonDamage : 0.0f;
 }
 
+// Source StateFlick::exec KEYEVENT_END (chappyState.cpp:2206-2207) transits to
+// mPreviousID, the state Flick was entered from. Hana enters Flick from Walk or
+// GoHome (both run the same case). The port records the entering state with
+// noteEnter() and reads it back at the Flick end with returnState(); the ids
+// are the caller's own state values so this header stays engine-free.
+struct FlickReturn {
+    int previous = -1; // -1 until Flick has been entered once
+    void noteEnter(int enteringState) { previous = enteringState; }
+    int returnState(int walkState, int goHomeState) const
+    {
+        return previous == goHomeState ? goHomeState : walkState;
+    }
+};
+
 } // namespace p2hanapolicy

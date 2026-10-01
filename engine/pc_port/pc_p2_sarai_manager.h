@@ -27,3 +27,15 @@ bool pc_p2_sarai_manager_draw_actor(BTeki* actor, Graphics& gfx, const Matrix4f&
 // owned by a bound Sarai.
 bool pc_p2_sarai_receipt(PelletView* view, unsigned& generator);
 int pc_p2_sarai_manager_bound_count();
+
+// #215 Demon (Bumbling Snitchbug, 32) species profile of the same host/manager.
+// Campaign claim for a seed-bridge actor resolved to source 32; binds the
+// source-32 Onion delivery (onion:p2:32:<token>). Fails closed (bound=0
+// reason=host) when the staged demon-* files are absent.
+class P2SaraiHost;
+bool pc_p2_sarai_manager_bind_demon(BTeki* actor, unsigned generatorId, unsigned seedTargetUid);
+P2SaraiHost* pc_p2_sarai_manager_demon_host(const BTeki* actor);
+bool pc_p2_sarai_suppress_ai(const BTeki* actor);
+float pc_p2_sarai_param_f(const BTeki* actor, int idx, float fallback);
+class Creature;
+bool pc_p2_sarai_ignore_atari(const BTeki* actor, Creature* other);

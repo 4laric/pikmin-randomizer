@@ -1,10 +1,14 @@
 #if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
+#if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
 #include "pc_p2_demon_escape_state.h"
 #include "pc_p2_demon_bridge.h"
 #endif
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
@@ -842,7 +846,11 @@ void NaviWalkState::exec(Navi* navi)
 			{
 				Creature* teki = *tekiIter;
 				if (!roughCull(teki, navi, teki->getCentreSize() + navi->getCentreSize() + 10.0f) && teki->isAlive() && teki->isVisible()
-				    && !teki->isFlying() && teki->isOrganic()) {
+				    && !teki->isFlying() && teki->isOrganic()
+#if defined(PIKI_PC_PORT)
+				    && !pc_p2_breadbug_teki_untargetable(teki, "navi_attack_entry") // #898
+#endif
+				) {
 					Vector3f diff = teki->mSRT.t - navi->mSRT.t;
 					f32 unused    = atan2f(diff.x, diff.z);
 					if (diff.length() <= teki->getCentreSize() + navi->getCentreSize() + 10.0f) {
@@ -2216,6 +2224,13 @@ void NaviThrowWaitState::procAnimMsg(Navi* navi, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_Action0:
 	{
+#if defined(PIKI_PC_PORT)
+		// Captured by a P2 captor since the grab began (see exec).
+		if (!mHeldThrowPiki || !p2captivenavi::keepThrowPick(mHeldThrowPiki->mNavi != nullptr)) {
+			p2captivenavi::note("grab_key_lost_captain");
+			break;
+		}
+#endif
 		mIsHoldingThrowPiki = true;
 		mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Hanged);
 		break;
@@ -2285,6 +2300,24 @@ void NaviThrowWaitState::exec(Navi* navi)
 		return;
 	}
 	navi->makeVelocity(false);
+
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, ...) may take the Pikmin this captain
+	// picked to throw while the grab is still pending: the capture clears
+	// Piki::mNavi. It is no longer this captain's to hang or throw; drop it and
+	// walk on (the grab transit to Hanged read the null captain, #972 crash
+	// follow-up).
+	if ((mHeldThrowPiki && !p2captivenavi::keepThrowPick(mHeldThrowPiki->mNavi != nullptr))
+	    || (mPendingThrowPiki && !p2captivenavi::keepThrowPick(mPendingThrowPiki->mNavi != nullptr))) {
+		p2captivenavi::note("throw_pick_lost_captain");
+		mHeldThrowPiki       = nullptr;
+		mPendingThrowPiki    = nullptr;
+		mIsHoldingThrowPiki  = false;
+		navi->mNextThrowPiki = nullptr;
+		transit(navi, NAVISTATE_Walk);
+		return;
+	}
+#endif
 
 #if defined(PIKI_PC_PORT)
 	// Swap only once the original grab has completed. Preserve the captain's
@@ -3233,6 +3266,11 @@ void NaviAttackState::exec(Navi* navi)
 	CI_LOOP(it)
 	{
 		Creature* teki = *it;
+#if defined(PIKI_PC_PORT)
+		if (pc_p2_breadbug_teki_untargetable(teki, "navi_punch")) {
+			continue; // #898
+		}
+#endif
 		if (teki->isAlive() && teki->isVisible() && !teki->isFlying()) {
 			Vector3f diff = teki->mSRT.t - navi->mSRT.t;
 			f32 angle     = atan2f(diff.x, diff.z);

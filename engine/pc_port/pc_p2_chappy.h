@@ -48,6 +48,10 @@ float pc_p2_chappy_king_damage_rate(BTeki* actor, Creature* owner, CollPart* par
 // hits pc_p2_chappy_king_damage_rate passed; adds 1.0 to the King's flick
 // timer per accepted hit. No-op for every other actor.
 void pc_p2_chappy_attacked(BTeki* actor, bool accepted);
+// Emperor Bulblax bombCallBack (kingChappy.cpp:875-880): a bomb blast that reaches a Teki.
+// Returns true when `actor` is a registered Emperor (0.25 x damage, flick +1.0; nothing
+// while buried or dead); false leaves the host path unchanged.
+bool pc_p2_chappy_king_bomb(BTeki* actor, float damage);
 const char* pc_p2_chappy_name(PelletView*);
 bool pc_p2_chappy_registered(const BTeki*);
 bool pc_p2_chappy_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
