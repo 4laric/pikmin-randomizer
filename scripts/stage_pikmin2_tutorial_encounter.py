@@ -61,7 +61,21 @@ def encounter_generator(assets, original_squad):
         raise ValueError("Unexpected native Onion/teki framing")
     onion = positioned(practice[1], ONION_UID, ONION_POSITION, "P2 tutorial original Red Onion")
     enemy = positioned(challenge[9], ENEMY_UID, ENEMY_POSITION, "P2 original day5 Kochappy1")
+    one = onion.index(b"eno10.0v", 80)
+    yaw = onion.index(b"p01\x04", one) + 4
+    # GenTypeOne stores integer-degree rotation. Disclose the 0.12-degree
+    # conversion loss instead of retaining the unrelated P1 template's100deg.
+    struct.pack_into(">i", onion, yaw, -49)
     enemy[80] = 3  # Native TEKI_Chappy scaffold; explicit imported Red1 bank/FSM owns it.
+    if enemy[83:87] != b"enon" or len(enemy) < 127:
+        raise ValueError("Unexpected v10 teki personality framing")
+    enemy[81] = 0  # P2 pellet-size1 maps to native one-pellet kind0.
+    enemy[82] = 255  # P2 color3=random maps to native signed color-1.
+    # Source count/probability; no inherited Posy double strength, nectar or item.
+    struct.pack_into(">5i5f", enemy, 87, 1, 2, 0, 0, 0, 1, 1, 500, .4, 0)
+    circle = enemy.index(b"cric0.0v", 80)
+    radius = enemy.index(b"p00\x04", circle) + 4
+    struct.pack_into(">f", enemy, radius, 0)  # Fixed source center, not retail RNG.
     type_start = enemy.index(b"nota0.0v", 80)
     count_start = enemy.index(b"p00\x04", type_start) + 4
     if struct.unpack_from(">I", enemy, count_start)[0] != 2:
@@ -103,10 +117,11 @@ def prepare(assets, bundle, identity, bank, output, day=5):
                   source_raw_sha256=raw_sha, full_source_route_graph=True,
                   source_spawn_adaptation="fixed original generator center inside retail100-radius circle; no retail RNG claim",
                   source_yaw=0, onion_source_yaw=onion["rotation"][1],
-                  onion_rotation_admitted=False, starting_squad="20 native Red1 near captain, engineering placement",
+                  onion_native_yaw_degrees=-49, onion_yaw_precision="intdegree native scaffold; source-48.880001 rounded-49",
+                  onion_exact_float_rotation=False, starting_squad="20 native Red1 near captain, engineering placement",
                   captain_start=START, source_fsm_optin=True, other_retail_generators_imported=False,
                   native_goal_visual="P1 Red Onion scaffold at original retail coordinates",
-                  source_generator_loot_parity=False, playable_acceptance=False)
+                  source_generator_loot_parameters_mapped=True, source_rng_sequence_parity=False, playable_acceptance=False)
     result["inputs_sha256"] = {name: hashlib.sha256((run / name).read_bytes()).hexdigest() for name in
          ("assets/dataDir/stages/p2_tutorial/default.gen", "assets/dataDir/courses/p2tutorial/full.mod",
           "assets/dataDir/courses/p2tutorial/full.ini", "assets/dataDir/courses/p2tutorial/full.water", "p2-dwarf-red-fsm.txt")}
