@@ -18,7 +18,7 @@ from experimental.pikmin2_family_install import install_layout
 from scripts.preview_pikmin2_room import overlay
 from randomizer.test_run import apply_test_run_env
 
-TARGET = 1849273021
+TARGET = 4222852521
 SOURCE = 44
 ABSENT = 34
 
