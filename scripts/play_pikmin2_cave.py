@@ -23,7 +23,8 @@ def receipts(text,placement):
     words=text.split()
     if not words or words[0]!='P2_RECEIPTS_1' or (len(words)-1)%4:
         raise ValueError('invalid cave receipt ledger')
-    expected={('treasure:forest_1:f1:'+e['slot_id'],e['host']):ITEMS[e['item']] for e in placement['items']}
+    cave, floor = placement.get('cave', 'forest_1'), placement.get('floor', 1)
+    expected={(f'treasure:{cave}:f{floor}:'+e['slot_id'],e['host']):ITEMS[e['item']].replace('F1 ', f'F{floor} ') for e in placement['items']}
     seen=set(); names=[]
     for i in range(1,len(words),4):
         seed,reward,host,event=words[i:i+4]
@@ -35,7 +36,8 @@ def receipts(text,placement):
 
 def checkpoint(transfer,buds,receipt_text,manifest,placement):
     words=transfer.split()
-    if len(words)<5 or words[:2]!=['P2_CAVE_TRANSFER_1',fingerprint(manifest)[:32]] or words[2]!='1':
+    floor=manifest['table']['floor']
+    if len(words)<5 or words[:2]!=['P2_CAVE_TRANSFER_1',fingerprint(manifest)[:32]] or words[2]!=str(floor):
         raise ValueError('foreign cave transfer')
     health=float(words[3]); count=int(words[4])
     if not math.isfinite(health) or not 0<health<=1 or not 1<=count<=100 or len(words)!=5+2*count:
@@ -43,7 +45,7 @@ def checkpoint(transfer,buds,receipt_text,manifest,placement):
     squad=[[int(words[5+i*2]),int(words[6+i*2])] for i in range(count)]
     if any(s not in (0,1,2) or m not in (0,1,2) for s,m in squad): raise ValueError('unsupported squad')
     w=buds.split(); table=manifest['table']
-    expected=['P2_CAVE_BUD_STATE_1',str(placement['seed']),'forest_1','1',str(len(table['buds']))]
+    expected=['P2_CAVE_BUD_STATE_1',str(placement['seed']),table['cave_id'],str(floor),str(len(table['buds']))]
     if w[:5]!=expected or len(w)!=5+2*len(table['buds']): raise ValueError('foreign bud checkpoint')
     for i,b in enumerate(table['buds']):
         if w[5+2*i]!=b['slot_id'] or not 0<=int(w[6+2*i])<=b['count']: raise ValueError('invalid bud budget')
@@ -86,12 +88,17 @@ def runtime_capacity():
 def main(package):
     package=Path(package).resolve()
     meta=json.loads((package/'package.json').read_text())
+    if meta.get('schema')==3 and meta.get('policy')=='forest1-two-floor-journey-v1':
+        from scripts.play_pikmin2_cave_journey import main as journey_main
+        return journey_main(package)
     if meta.get('schema')!=2 or meta.get('policy')!='forest1-bounded-developer-package-v2':
         raise ValueError('unsupported developer cave package; restage current source')
     for name,digest in meta['files'].items():
         if Path(name).name!=name or hashlib.sha256((package/name).read_bytes()).hexdigest()!=digest:
             raise ValueError('package input changed: '+name)
     manifest=json.loads((package/'cave.json').read_text()); validate(manifest)
+    if manifest['schema'] != 'p2-bounded-developer-cave/1':
+        raise ValueError('journey floors require a versioned journey package')
     if fingerprint(manifest)!=meta['fingerprint']: raise ValueError('foreign package seed')
     live_paths=live_runtime_paths()
     session_dir=package/'session'; session_dir.mkdir(exist_ok=True)

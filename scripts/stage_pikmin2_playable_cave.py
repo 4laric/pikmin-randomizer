@@ -130,6 +130,7 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
                 raise ValueError('executable is incomplete; wait for its build: '+str(binary))
     output.mkdir(parents=True)
     table=manifest['table']
+    floor=table['floor']
     write_native_table(table,output/'p2-cave-floor.txt')
     layout=run_native_generator(generator_exe,output/'p2-cave-floor.txt',output/'layout.json')['layout']
     rooms,tiles,water=physical_layout(layout,salt)
@@ -170,9 +171,10 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     (output/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
     token=fingerprint(manifest)[:32]
     health=checkpoint['health'] if checkpoint else 1
-    (output/'p2-cave-entry.txt').write_text(f'P2_CAVE_ENTRY_1 {token} 1 {health} {len(squad)}\n'+''.join(f'{s} {m}\n' for s,m in squad))
+    (output/'p2-cave-entry.txt').write_text(f'P2_CAVE_ENTRY_1 {token} {floor} {health} {len(squad)}\n'+''.join(f'{s} {m}\n' for s,m in squad))
     end=8+salt%3*2
-    (output/'p2-cave-transition.txt').write_text(f'P2_CAVE_TRANSITION_1 hole {end*100} 0 100 40\n')
+    kind='geyser' if floor==2 else 'hole'
+    (output/'p2-cave-transition.txt').write_text(f'P2_CAVE_TRANSITION_1 {kind} {end*100} 0 100 40\n')
     if checkpoint:
         (output/'p2-cave-item-receipts.txt').write_text(checkpoint['receipts'])
         (output/'p2-cave-bud-entry.txt').write_text(checkpoint['buds'])
