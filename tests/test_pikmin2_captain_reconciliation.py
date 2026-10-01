@@ -84,6 +84,9 @@ int main() {
 '''
 
 
+@unittest.skipIf(not os.environ.get("P2_CAPTAIN_SOURCE")
+                 and not (SOURCE / "tools/test_p2_captain_reconciliation.cpp").is_file(),
+                 "Requires the paired native candidate or its maintained source export")
 class CaptainReconciliationTests(unittest.TestCase):
     def compile_run(self, source_text=None, source_path=None):
         output = ROOT / "output"
