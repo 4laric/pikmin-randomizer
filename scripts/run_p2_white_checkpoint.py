@@ -9,7 +9,7 @@ def transfer(path):
  words=Path(path).read_text().split()
  if len(words)!=45 or words[0]!='P2_CAVE_TRANSFER_2' or not re.fullmatch('[0-9a-f]{32}',words[1]):raise ValueError('transfer header/length')
  floor=int(words[2]);health=float(words[3]);count=int(words[4]);records=[tuple(map(int,words[i:i+2])) for i in range(5,len(words),2)]
- if floor!=1 or not math.isfinite(health) or not 0<health<=1 or count!=20 or records.count((2,0))!=19 or records.count((4,0))!=1:raise ValueError('transfer species/maturity/health/count')
+ if floor!=1 or not math.isfinite(health) or not 0<health<=1 or count!=20 or records.count((1,0))!=19 or records.count((4,0))!=1:raise ValueError('transfer species/maturity/health/count')
  return words,records
 
 def accepted_producer(directory):
@@ -39,7 +39,7 @@ def main():
  prepare(a.assets,a.white,a.pod,a.room,run)
  token=restored[0][1] if restored else uuid.uuid4().hex
  health=restored[0][3] if restored else '1'
- records=restored[1] if restored else [(2,0)]*20
+ records=restored[1] if restored else [(1,0)]*20
  (run/'p2-cave-entry.txt').write_text('P2_CAVE_ENTRY_2\n'+token+'\n1 '+health+' 20\n'+''.join(f'{s} {m}\n' for s,m in records))
  disclosure=dict(mode=a.mode,entry_token=token,producer=str(a.producer) if restored else None,starting='fresh current 20-body generator overlay',input='actual SDL virtual P1/native polling; consumer uses native checkpoint restoration',movies='skipped',tutorial_flags='suppressed',confirmation='bypassed through native checkpoint(false)',squad_checkpoint='global survivors; full-squad arrival untested',bud_budget_persistence=False,ship_day_save_campaign_accepted=False,timeout_seconds=60,runner_sha256=sha(__file__),exe_sha256=sha(a.exe))
  (run/'disclosure.json').write_text(json.dumps(disclosure,indent=2))
