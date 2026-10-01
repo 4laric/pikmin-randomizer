@@ -11,13 +11,14 @@ ITEMS = dict(zip(("treasure_water", "treasure_elec"), NAMES))
 SCHEMA = "p2-bounded-developer-cave/1"
 
 
-def resolve(seed, slot):
+def _resolve(seed, slot, policy=POLICY, floor=1):
     from experimental.pikmin2_cave_schema import validate_floor_table, slot_id
-    material = json.dumps([POLICY, str(seed), slot], separators=(",", ":")).encode()
+    identity = [policy, str(seed), slot] if policy == POLICY else [policy, str(seed), slot, floor]
+    material = json.dumps(identity, separators=(",", ":")).encode()
     floor_seed = int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
-    sid = lambda kind, index: slot_id("forest_1", 1, kind, index)
-    table = dict(schema=1, seed=str(floor_seed), cave_id="forest_1", floor=1,
-        unit_pool=POLICY, unit_candidates=["room_north3_1_tsuchi"],
+    sid = lambda kind, index: slot_id("forest_1", floor, kind, index)
+    table = dict(schema=1, seed=str(floor_seed), cave_id="forest_1", floor=floor,
+        unit_pool=policy, unit_candidates=["room_north3_1_tsuchi"],
         segments=[dict(slot_id=sid("segment", i), index=i) for i in range(2)],
         chokes=[dict(slot_id=sid("choke", 0), index=0, after_segment=0,
                      before_segment=1, hazard="water", kind="hard", hardness="hard", unit="way2_tsuchi")],
@@ -29,7 +30,11 @@ def resolve(seed, slot):
                    for i,(t,h) in enumerate((("treasure_water","water"),("treasure_elec","elec")))],
         hole=dict(slot_id=sid("segment", 1), segment=1), generated=True, geometry_rerolls=True)
     validate_floor_table(table)
-    return dict(policy=POLICY, table=table)
+    return dict(policy=policy, table=table)
+
+
+def resolve(seed, slot):
+    return _resolve(seed, slot)
 
 
 def requirements(floor):
@@ -53,10 +58,28 @@ def create(seed, slot="Player1"):
                 table=floor["table"], required_colors=requirements(floor))
 
 
+def create_journey_floor(seed, slot, floor):
+    """Opt-in new descriptor namespace; legacy descriptors are byte-identical."""
+    if type(seed) is not str or not seed or type(slot) is not str or not slot:
+        raise ValueError('cave seed and slot must be nonempty strings')
+    if type(floor) is not int or floor not in (1, 2):
+        raise ValueError('journey supports exactly floors 1 and 2')
+    resolved = _resolve(seed, slot, 'forest1-two-floor-journey-v1', floor)
+    return dict(schema='p2-journey-floor/1', seed=seed, slot=slot,
+                policy=resolved['policy'], table=resolved['table'],
+                required_colors=requirements(resolved))
+
+
 def validate(descriptor):
     if type(descriptor) is not dict:
         raise ValueError("expected standalone developer cave descriptor")
-    expected = create(descriptor.get("seed"), descriptor.get("slot"))
+    if descriptor.get('schema') == 'p2-journey-floor/1':
+        table = descriptor.get('table')
+        if type(table) is not dict:
+            raise ValueError('invalid journey floor table')
+        expected = create_journey_floor(descriptor.get('seed'), descriptor.get('slot'), table.get('floor'))
+    else:
+        expected = create(descriptor.get("seed"), descriptor.get("slot"))
     # Canonical JSON also rejects bools substituted for integer fields.
     if json.dumps(descriptor, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True):
         raise ValueError("incompatible standalone cave descriptor (campaign/AP unsupported)")
