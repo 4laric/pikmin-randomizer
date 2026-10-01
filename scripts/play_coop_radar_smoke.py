@@ -10,7 +10,8 @@ import uuid
 
 
 def main():
-    root = Path(__file__).resolve().parents[3]
+    checkout = Path(__file__).resolve().parents[1]
+    root = checkout.parent.parent if checkout.parent.name == 'output' else checkout
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--exe', type=Path, default=root/'output/native-coop-radar-build/bin/nectar.exe')
     parser.add_argument('--assets', type=Path, default=Path('C:/Users/alari/AppData/Roaming/PikminRandomizer/game-data/assets'))
@@ -43,7 +44,7 @@ def main():
             stopped.wait(.1)
     worker = threading.Thread(target=refresh)
     worker.start()
-    env = {k:v for k,v in os.environ.items() if not k.startswith(('PIKMIN_NETPLAY_', 'PIKMIN_INPUT_', 'PIKMIN_RANDOMIZER_TEST_', 'PIKMIN_COOP'))}
+    env = {k:v for k,v in os.environ.items() if not k.startswith(('PIKMIN_NETPLAY_', 'PIKMIN_INPUT_', 'PIKMIN_RANDOMIZER_TEST_', 'PIKMIN_COOP', 'PIKMIN_FRAME_DUMP'))}
     env['PATH'] = 'C:/msys64/mingw64/bin;'+env.get('PATH','')
     env['NECTAR_SAVE_DIR'] = str(run/'save')
     env['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
