@@ -10,7 +10,7 @@ from preview_pikmin2_room import overlay,ensure_pikmin_squad
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
- p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--prepare-only',action='store_true');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--prepare-only',action='store_true');p.add_argument('--timeout',type=int,choices=[60,120],default=60);a=p.parse_args()
  canonical=a.canonical_root.resolve();sessiondir=a.session_root.resolve()
  assert sessiondir.is_relative_to(canonical/'output'),'Private output only'
  # This control/save fixture intentionally uses original P1 campaign geometry,
@@ -28,7 +28,7 @@ def main():
  overrides={'dataDir/stages/practice/default.gen':staged};overlay(a.assets,run.directory/'assets',overrides)
  snapshot=lambda:{f.name:digest(f) for f in sorted((sessiondir/'campaign').glob('*.sav'))} if (sessiondir/'campaign').exists() else {}
  before=snapshot();assert len(before)==(0 if a.phase=='save' else 1)
- adoption=dict(phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
+ adoption=dict(wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
  info=a.exe.resolve().parent/'BUILD_INFO.txt'
  if info.exists():adoption['CI_build_info']=dict(path=str(info),sha256=digest(info),text=info.read_text(encoding='utf-8'))
  (run.directory/'adoption-inputs.json').write_text(json.dumps(adoption,indent=2),encoding='utf-8')
@@ -51,7 +51,7 @@ def main():
  args=['--randomizer-seed',str(run.bootstrap)];marker='PASS P2_CAPTAIN_CAMPAIGN_SAVE' if a.phase=='save' else 'PASS P2_CAPTAIN_CAMPAIGN_RESUME'
  if a.phase!='save':args.append('--resume-phase')
  if a.negative:args.append({'active':'--force-captain-down','inactive':'--force-inactive-down','null-state':'--force-null-state','missing-manager':'--force-missing-manager'}[a.negative])
- try:result=guarded.launch(a.exe,run.directory,args,[marker],60,a.exe.resolve().parent)
+ try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,a.exe.resolve().parent)
  finally:done.set();thread.join()
  assert not errors,errors
  run.poll() # consume the final flushed native journal before comparing rewards
