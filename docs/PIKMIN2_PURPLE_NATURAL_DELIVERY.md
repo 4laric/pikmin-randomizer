@@ -7,6 +7,38 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
+## Latest status: round04 and live collision correction
+
+Producer `d66bd52de5c04da4d8fde9ccd8aeb6acc5555a98` passed public Windows
+run36908646606: 212 tests, eight artifact hashes and no-work dry-run. Actual
+compiled merge `50fdb9383f43082e4614baefe0083c53fca79b4b`, tree
+`0a17f4fcdac5ddf878e6f5d6f9bf55d4e339876d`; fixture matches producer. Executable
+SHA256 `3b4579e127b05ad7e486ffcac51fda2911ac3d704cb3e117aa5e645fe922fa6a`.
+All seven fresh initialized guard04 cases PASS with live20, centered960x540,
+same-frame raw86 and no positive PASS, including pause/movie cases.
+
+Natural East04 FAIL60.079s and West04 FAIL60.078s. Both convert through the live
+Violet and produce a pullable native sprout, but stall before plucking, at final
+distances56.159 and51.620. Final five captain observations are stationary despite
+unfrozen nonzero input. Neither run creates cargo or establishes delivery.
+Original Violet, sprout and cargo policy remain unchanged; no actor teleport or
+speed override. Full immutable receipt: `output/purple1128-runtime-summary04.json`.
+
+The route planner incorrectly inflated Violet parts with the captain's ground
+radius8.5. Actual creature collision uses both actors' CollInfo parts. It also
+retained an early Violet animation snapshot. Follow-up native
+`5c5ca307f4660ad024471ae35ae57b33f59e120b` derives a conservative route from live
+captain/Violet sphere parts, refreshes blocked segments, and logs read-only actual
+collision pairs. Unsupported non-sphere geometry fails explicitly. MinGW syntax
+passes; Windows36912221783 is pending. No runtime result is claimed for that fix.
+
+Fresh05 scenes preserve legacy version2 placement bytes and the same baseline.
+Next: exact-artifact guard05 and natural East05/West05, then ordinary combat and
+native day-save/resume. Historical staged combat, direct stock helpers and forced
+clock advancement do not satisfy those ordinary acceptance gates. Public Windows
+CI supplies this custom fixture; no private runner dispatch or local heavy build.
+The sections below preserve earlier evidence and are historical snapshots.
+
 ## Initial bounded scope
 
 Private branches `codex/purple-natural` begin at root3355a25d371417eb3918531907b0e3c74ddee62e
