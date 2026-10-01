@@ -40,8 +40,8 @@ def prepare(assets, bundle, identity, output, species_probe=False):
                         or data[offset+88:offset+92] != b'p01\x04'):
                     raise ValueError('Unsupported generator record')
                 # 18 Reds stay free at the dry entrance; a Red and a Blue start
-                # on the dry shoreline in formation. Native color0 is Blue.
-                struct.pack_into('>i', data, offset+84, 2 if i<2 else 1)
+                # free on the dry shoreline for ordinary whistle gathering. Native color0 is Blue.
+                struct.pack_into('>i', data, offset+84, 1)
                 if i<2:
                     struct.pack_into('>3f', data, offset+48, 220, 96.0442, 995+i*10)
                 struct.pack_into('>i', data, offset+92, 0 if i==1 else 1)
@@ -58,7 +58,7 @@ def prepare(assets, bundle, identity, output, species_probe=False):
                   native_body_convention='P1 feet position and collision radius',
                   captain_start_xz=[220, 1000], captain_spawn_y=96.0442, spawn_clearance_above_source_floor=40, starting_squad='19 Reds/1 Blue disclosed probe' if species_probe else '20 Reds retained on dry entrance bank',
                   species_probe=species_probe,
-                  species_probe_staging='19 Reds/1 Blue; 18 free dry-bank Reds, two shoreline followers' if species_probe else None,
+                  species_probe_staging='19 Reds/1 Blue; 18 free dry-bank Reds, two shoreline free actors gathered by ordinary whistle' if species_probe else None,
                   water_sha256=hashlib.sha256(water).hexdigest(),
                   source_waterbox_sha256=hashlib.sha256((bundle/'texts/waterbox.txt').read_bytes()).hexdigest(),
                   source_volume_inventory_sha256=hashlib.sha256((bundle/'surface-water.json').read_bytes()).hexdigest(),
