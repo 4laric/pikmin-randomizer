@@ -14,5 +14,5 @@ empty=b'1.0v'+struct.pack('>4fI',-290.3365,0,1505.612,90,0)
 overrides={'dataDir/stages/chal0/default.gen':bytes(gen),'dataDir/courses/pikmin2room/treasure.mod':a.treasure_model.read_bytes()}
 for f in (a.assets/'dataDir/stages/chal0').glob('*.gen'):overrides.setdefault('dataDir/stages/chal0/'+f.name,empty)
 a.run_dir.mkdir(parents=True);overlay(a.assets,a.run_dir/'assets',overrides)
-(a.run_dir/'adoption-inputs.json').write_text(json.dumps(dict(scope='P1 practice terrain, scripted real scene transition; no native save or cave claim',spawn=[-290.3365,0,1505.612],assets=str(a.assets),live_generator_pikmin=20,overrides={k:hashlib.sha256(v).hexdigest() for k,v in overrides.items()}),indent=2),encoding='utf-8')
+(a.run_dir/'adoption-inputs.json').write_text(json.dumps(dict(scope='P1 practice terrain, scripted real scene transition; no native save or cave claim',spawn=[-290.3365,0,1505.612],assets=str(a.assets),expected_starting_pikmin=20,overrides={k:hashlib.sha256(v).hexdigest() for k,v in overrides.items()}),indent=2),encoding='utf-8')
 print(a.run_dir)

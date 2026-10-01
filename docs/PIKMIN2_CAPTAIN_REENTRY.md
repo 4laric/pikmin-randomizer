@@ -14,7 +14,7 @@ Build the `pikmin_ci_fixture_captain_reentry` CI artifact from the exact native 
 
 Stage a fresh arena with `scripts/run_pikmin2_captain_reentry.py --root <root-worktree> --run-dir <canonical-root>/output/<new-run> --assets <legal-P1-assets> --treasure-model <local-room-model>`. The stager preserves the existing practice terrain, explicitly positions the landing and ship, and uses the current `overlay()` and its 20-Pikmin generator baseline. It never launches a runtime.
 
-Run with the canonical guarded fixture runner, `--experimental-pikmin2-room`, explicit PASS marker `PASS P2_CAPTAIN_REENTRY`, and a 120-second wall-clock limit. Separate fresh `--force-captain-down` and `--force-inactive-down` runs inject zero HP and pause, then must exit86 through the next ordinary guard with the strict captain-down marker and no PASS. The fixture sets and records a centered960x540 window after settings load; the runner records exact input/executable hashes.
+Run with the canonical guarded fixture runner, `--experimental-pikmin2-room`, explicit PASS marker `PASS P2_CAPTAIN_REENTRY`, and a 60-second wall-clock limit. Separate fresh `--force-captain-down` and `--force-inactive-down` runs inject zero HP and pause, then must exit86 through the next ordinary guard with the strict captain-down marker and no PASS. The fixture sets and records a centered960x540 window after settings load; the runner records exact input/executable hashes.
 
 ## Current evidence
 
