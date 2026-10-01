@@ -33,3 +33,5 @@ bool pc_bbft_bomb_rocks();
 int pc_pikipelago_challenge_level();
 
 bool pc_pikipelago_room_preview();
+const char* pc_pikipelago_surface_course();
+const char* pc_pikipelago_surface_stage();

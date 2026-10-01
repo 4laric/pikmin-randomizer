@@ -79,7 +79,7 @@ bool pc_test_window_size(int& width, int& height) {
             return true;
         }
     }
-    if (pc_pikipelago_room_preview()) {
+    if (pc_pikipelago_room_preview() || pc_pikipelago_surface_course()) {
         width = 960;
         height = 540;
         return true;

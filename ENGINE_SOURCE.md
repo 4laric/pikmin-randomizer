@@ -1,9 +1,10 @@
 # Native source provenance
 
 The current tested P2 integration snapshot is native
-`a301346b7225dee5ba6156b46b6d6cc708032162`, exported from the clean private
-`output/native-p2-playable-1073` worktree under #1073. See
-[the combined baseline and acceptance limits](docs/PIKMIN2_PLAYABLE_INTEGRATION.md).
+`03fa75bd4bd304a13950cf5dbc285223bcb69d99`, exported from the clean private
+`output/native-p2-playable-1087` worktree under #1087. See
+[the next integration and acceptance limits](docs/PIKMIN2_PLAYABLE_NEXT_INTEGRATION.md).
+The preceding combined baseline remains recorded under #1073.
 The release descriptions below are historical provenance.
 
 `engine/` is a source-only snapshot of the isolated Open Nectar/BBFT-derived native checkout used for this randomizer, at native commit `597d8f926833e1aa5c2a25df823a5e824d1118ce` (4laric/Open-Nectar---Pikmin-Native-PC-Port `main`, exported for v0.32.0-playtest.1; see the release note at the end). It includes the inherited native compatibility and adapter code, standalone randomizer integration, health-gauge fix, guarded day-end saves, collection-check hooks, configurable starting Flarlic, and seeded per-color stats, progressive AP stat upgrades stacked on optional wider initial rolls, weighted carrying, scalable check storage permanent-structure observers and damage-per-event structure work, expanded bestiary and exploration-free new seeds and portable boss-generator parameter decoding and per-color total-population milestones, durable consumable benefits and progressive captain upgrades. The native source history is retained locally; this directory is a snapshot, not a submodule.

@@ -19,6 +19,9 @@
 static bool enabled = false;
 static int challengeLevel = -1;
 static bool p2RoomPreview = false;
+static bool p2SurfaceTutorial = false;
+const char* pc_pikipelago_surface_course() { return p2SurfaceTutorial ? "tutorial" : nullptr; }
+const char* pc_pikipelago_surface_stage() { return p2SurfaceTutorial ? "stages/p2_tutorial.ini" : nullptr; }
 bool pc_pikipelago_room_preview() { return p2RoomPreview; }
 int pc_pikipelago_challenge_level() { return challengeLevel; }
 static std::string p2ChallengeStage;
@@ -145,7 +148,7 @@ void pc_bbft_milestone(const char* text) {
 }
 const char* pc_bbft_save_root() {
     if (pc_randomizer_enabled()) return pc_randomizer_save_root();
-    if (!enabled && challengeLevel < 0 && p2ChallengeStage.empty()) return "save";
+    if (!enabled && challengeLevel < 0 && p2ChallengeStage.empty() && !p2SurfaceTutorial) return "save";
     // A quick-boot run must never reuse a user's named memory-card slot.
     static const std::string session = "save/bbft_sessions/" + std::to_string(
         std::chrono::system_clock::now().time_since_epoch().count());
@@ -163,10 +166,16 @@ bool pc_bbft_take_skip() {
 }
 void pc_bbft_init(int argc, char** argv) {
     for (int i=1; i<argc; ++i) {
-        if (!std::strcmp(argv[i], "--experimental-pikmin2-room")) {
-            if (challengeLevel >= 0) { std::fprintf(stderr,"Only one experimental preview may be selected\n"); std::exit(2); }
+        if (!std::strcmp(argv[i], "--experimental-pikmin2-surface")) {
+            if (++i >= argc || challengeLevel >= 0 || !p2ChallengeStage.empty() || p2SurfaceTutorial || std::strcmp(argv[i], "tutorial")) {
+                std::fprintf(stderr,"--experimental-pikmin2-surface requires tutorial and no other preview\n"); std::exit(2);
+            }
+            p2SurfaceTutorial = true;
+        } else if (!std::strcmp(argv[i], "--experimental-pikmin2-room")) {
+            if (challengeLevel >= 0 || p2SurfaceTutorial) { std::fprintf(stderr,"Only one experimental preview may be selected\n"); std::exit(2); }
             p2RoomPreview = true; challengeLevel = 0;
         } else if (!std::strcmp(argv[i], "--experimental-challenge-stage")) {
+            if (p2SurfaceTutorial) { std::fprintf(stderr,"Only one experimental preview may be selected\n"); std::exit(2); }
             if (++i>=argc) { std::fprintf(stderr,"--experimental-challenge-stage needs a stage key\n"); std::exit(2); }
             const char* key = argv[i];
             size_t len = std::strlen(key);
@@ -179,11 +188,19 @@ void pc_bbft_init(int argc, char** argv) {
             p2ChallengeStage = key;
             std::printf("P2_CHALLENGE_STAGE_FLAG cave=%s\n", key); std::fflush(stdout);
         } else if (!std::strcmp(argv[i], "--experimental-challenge-level")) {
-            if (++i>=argc || challengeLevel>=0 || std::strlen(argv[i])!=1 || argv[i][0]<'0' || argv[i][0]>'4') {
+            if (++i>=argc || challengeLevel>=0 || p2SurfaceTutorial || std::strlen(argv[i])!=1 || argv[i][0]<'0' || argv[i][0]>'4') {
                 std::fprintf(stderr,"--experimental-challenge-level requires one ID 0-4\n"); std::exit(2);
             }
             challengeLevel=argv[i][0]-'0';
         }
+    }
+    if (p2SurfaceTutorial) {
+        const char* port = std::getenv("BBFT_PORT");
+        if (port && *port) { std::fprintf(stderr,"Surface boot cannot use BBFT sessions\n"); std::exit(2); }
+        for (int i=1; i<argc; ++i) if (!std::strcmp(argv[i],"--randomizer-seed") || !std::strcmp(argv[i],"--bbft-port")) {
+            std::fprintf(stderr,"Surface boot cannot use AP or BBFT sessions\n"); std::exit(2);
+        }
+        return;
     }
     if (challengeLevel>=0) {
         for(int i=1;i<argc;++i) if(!std::strcmp(argv[i],"--bbft-port")) {
@@ -226,9 +243,9 @@ void pc_bbft_init(int argc, char** argv) {
     }
 #endif
 }
-bool pc_bbft_enabled() { return enabled || challengeLevel >= 0; }
+bool pc_bbft_enabled() { return enabled || challengeLevel >= 0 || p2SurfaceTutorial; }
 bool pc_bbft_skip_tutorial() {
-    if (challengeLevel >= 0) return true;
+    if (challengeLevel >= 0 || p2SurfaceTutorial) return true;
     if (pc_randomizer_enabled()) return true;
 #ifdef _WIN32
     return enabled && bbft_pikmin_skip_tutorial();

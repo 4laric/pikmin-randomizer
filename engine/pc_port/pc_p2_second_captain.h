@@ -10,7 +10,8 @@
 // split camera, control routing, survivor-gated game over) is still tracked in
 // docs/PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md.
 //
-//   * second_captain_requested() reads PIKMIN_P2_SECOND_CAPTAIN (default off).
+//   * second_captain_requested() uses the seed choice for randomizer campaigns,
+//     otherwise PIKMIN_P2_SECOND_CAPTAIN (default off).
 //   * second_captain_live_allowed() now defaults true; the live spawn is open
 //     and gated by second_captain_requested().
 //   * navi_capacity() is the count to pass to NaviMgr::create(): 1 normally,
@@ -18,15 +19,15 @@
 //   * prepare_second_captain_assets() and birth_second_captain() are the two
 //     halves of the spawn; they refuse only if the request/gate or assets fail.
 //
-// Nothing here runs unless the environment variable is set, so default
-// single-captain play is unchanged.
+// Default single-captain seeds and standalone play remain single-captain.
 
 class NaviMgr;
 class Navi;
 
 namespace pc_p2_captain {
 
-// True when PIKMIN_P2_SECOND_CAPTAIN is set to a non-empty value (not "0").
+// Randomizer campaigns use their fingerprint-bound choice. Standalone previews
+// use PIKMIN_P2_SECOND_CAPTAIN when non-empty and not "0".
 bool second_captain_requested();
 
 // Whether this build may actually birth a live second Navi. Defaults true now

@@ -85,6 +85,7 @@ std::string campaignBlock;
 unsigned long long campaignGeneration = 0;
 bool campaignResumed = false;
 bool purpleCampaign = false;
+bool secondCaptain = false;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
@@ -355,7 +356,7 @@ bool pc_randomizer_init(int argc, char** argv) {
             checkCount = count;
             input >> end;
         }
-        if (end != "END" && end != "PURPLE") fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
@@ -420,6 +421,13 @@ bool pc_randomizer_init(int argc, char** argv) {
         purpleCampaign = true;
         input >> end;
     }
+    if (end == "CAPTAINS") {
+        std::string count;
+        if (!p2EnemyBridge || !(input >> count) || count != "2")
+            fail("two captains require P2 campaign bridge and count 2");
+        secondCaptain = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -467,6 +475,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (p2EnemyBridge) hello << " p2-enemy-bridge-v1";
     if (p2ProxyTier) hello << " p2-proxy-tier-v1";
     if (!resolvedCheckNames.empty()) hello << " resolved-enemy-checks-v1";
+    if (secondCaptain) hello << " p2-second-captain-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -1097,6 +1106,7 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 
 // Immutable generations keep the last committed day intact if a write is interrupted.
 bool pc_randomizer_purple_campaign() { return enabled && purpleCampaign; }
+bool pc_randomizer_second_captain() { return enabled && secondCaptain; }
 bool pc_randomizer_resumed() { return enabled && campaignResumed; }
 bool pc_randomizer_load_campaign(void* destination) {
     if (!pc_randomizer_resumed()) return false;
