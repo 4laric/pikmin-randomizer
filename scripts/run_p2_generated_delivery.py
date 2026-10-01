@@ -191,7 +191,7 @@ async def network_observe(audit, session, run, fixture, workspace, server, negat
             await asyncio.sleep(.1)
         network = {'authenticated':ready[0], 'before_reconnect':before, 'after_reconnect':session.data, 'no_duplicate_receipts':before['received']==session.data['received'], 'gameplay_result':result, 'no_check_injection':True}
         (Path(audit['game']).parent/'network-assessment.json').write_text(json.dumps(network,indent=2)+'\n')
-        return result
+        return result if ready[0] and network['no_duplicate_receipts'] else 1
     finally:
         connection.cancel()
         try:
