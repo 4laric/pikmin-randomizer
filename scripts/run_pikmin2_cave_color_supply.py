@@ -102,6 +102,7 @@ def main():
             del env[key]
     env['PIKMIN_RANDOMIZER_AUTOPLAY'] = '0'
     apply_test_run_env(env, workspace)
+    env['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = '1'
     env['P2_CAVE_TEST_SCENARIO'] = 'restore' if args.mode == 'restore' else 'supply'
     if args.mode == 'negative':
         env['P2_CAVE_GUARDED_BOOT_FORCE_CAPTAIN_DOWN'] = '1'
@@ -116,6 +117,7 @@ def main():
                '--run-dir', str(run), '--arg=--experimental-pikmin2-room', '--pass-marker', marker, '--timeout', '60']
     (run / 'fixture-inputs.json').write_text(json.dumps(dict(command=command, fixture_sha256=sha(args.fixture),
         native_head=provenance['expected_native_head'], runner_sha256=sha(__file__), autoplay_disabled=True,
+        sdl_joystick_allow_background_events=env['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'],
         inputs={p.name: sha(p) for p in run.iterdir() if p.is_file()}), indent=2))
     subprocess.run(command, cwd=workspace, env=env, check=False)
     report, state = assess(run, args.mode, manifest)
