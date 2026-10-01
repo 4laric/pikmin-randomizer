@@ -28,7 +28,7 @@ def main():
  overrides={'dataDir/stages/practice/default.gen':staged};overlay(a.assets,run.directory/'assets',overrides)
  snapshot=lambda:{f.name:digest(f) for f in sorted((sessiondir/'campaign').glob('*.sav'))} if (sessiondir/'campaign').exists() else {}
  before=snapshot();assert len(before)==(0 if a.phase=='save' else 1)
- adoption=dict(wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
+ adoption=dict(diagnostic=a.timeout!=60,acceptance_eligible=a.timeout==60,wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
  info=a.exe.resolve().parent/'BUILD_INFO.txt'
  if info.exists():adoption['CI_build_info']=dict(path=str(info),sha256=digest(info),text=info.read_text(encoding='utf-8'))
  (run.directory/'adoption-inputs.json').write_text(json.dumps(adoption,indent=2),encoding='utf-8')
@@ -70,6 +70,6 @@ def main():
   facts=re.search(r'P2_SAVE_SCENE phase=resume resumed=1 day=(\d+) live=(\d+) stored=(\d+)',log);assert facts
   assert sorted(session.data['checked'])==baseline['checked'] and dict(session.inventory)==baseline['inventory'],'duplicate or new reward on unchanged replay path'
   assert int(facts[1])==baseline['day'] and int(facts[2])+int(facts[3])==baseline['total'],'day/population did not conserve through actual card load'
- (run.directory/'phase-verified.json').write_text(json.dumps(dict(passed=True,result=result,before=before,after=after,baseline=baseline),indent=2),encoding='utf-8')
+ (run.directory/'phase-verified.json').write_text(json.dumps(dict(passed=True,diagnostic=a.timeout!=60,acceptance=a.timeout==60,result=result,before=before,after=after,baseline=baseline),indent=2),encoding='utf-8')
  print(json.dumps(result),flush=True)
 if __name__=='__main__':main()
