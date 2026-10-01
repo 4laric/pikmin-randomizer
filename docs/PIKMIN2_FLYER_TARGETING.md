@@ -69,3 +69,36 @@ behave as before.
   natural kill, carry and Onion receipt is unreachable. This is the same class as the
   unkillable enemies of the #888 no-check rule; it needs an owner ruling (exclude it
   like 9, 10, 11 and 16, or wait for a spray mechanic).
+
+## Jellyfloat suction polish (owner playtest 2026-09-30, #960)
+
+Four owner findings, three causes:
+
+* **Standing Pikmin were never sucked** (both species). Source
+  `Kurage::suckPikmin` takes every live Pikmin under the bell; the port's receiver
+  gated admission on P1 `Piki::mayIstick()`, which is true only mid-throw or in
+  attack/carry mode, so a Pikmin walking under the body never entered the suction
+  and the body "just hovered". The receiver now uses a source-shaped eligibility
+  for campaign OWN owners (`pc_p2_kurage_suction_policy.h`): every live Pikmin not
+  already stuck, except unsafe P1 states (thrown, dying, held, ...). The
+  Lesser (57) only ever sucks Pikmin (`Kurage.cpp:463-526` iterates `pikiMgr`
+  only); only the Greater (72) sucks the captain (`OniKurage::suckNavi`).
+* **Capture height.** The source stomach is the `suck` part on the `Proom` joint
+  (enemycoll.txt, joint 4), not the body origin. The port held Pikmin at the
+  origin minus the part radius (15/25 units under the bell). The host now places
+  the part at the retail Proom position of the drawn pose
+  (`pc_p2_kurage_proom.h`, regenerate/check with
+  `scripts/kurage_proom_offsets.py`), pulls Pikmin to it and holds them on a
+  ring inside the stomach sphere; the Greater's captain hangs from it
+  (+ `kCaptainHoldLift`). `P2_KURAGE_HOLD` logs the held height against the body
+  origin and centre.
+* **Stale translucency.** The no-depth-write, deferred translucent bell from #973
+  never reached the smoke package: `output/p2-content-dense` still held the
+  pre-#973 Kurage/OniKurage/MiniHoudai bakes (recorded only as "24 poses"), so the
+  bell wrote depth and hid the Onion beam and the carry counter flares behind it.
+  Cache entries now record converter revisions (`density.REQUIRED_REVISIONS`) and
+  `p2_smoke_seed.stage_content` re-extracts a stale entry like a sparse one.
+* **Suction wind** (`pc_p2_kurage_fx.*`): while the attack clip's suction window is
+  open, one P1 Blowhog wind jet (`EFF_Mar_WindJet`) plus its ground dust is emitted
+  per 30 Hz source tick, aimed up from the ground under the body. Visual only;
+  logged as `P2_KURAGE_FX kind=suction`.

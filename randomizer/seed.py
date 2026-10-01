@@ -120,11 +120,12 @@ class SeedRandom:
 # was run and where the log lives, plus the family installer that stages it.
 # Adding a row does NOT admit a species on its own -- see
 # docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure (owner
-# power-mode ruling 2026-09-25). Species not yet admitted (1 Kochappy, 45 Snow,
+# power-mode ruling 2026-09-25). Species not yet admitted (45 Snow,
 # 57 Kurage, 26 Catfish, 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai,
 # 97 FminiHoudai) join when their natural campaign evidence lands; nothing
 # else keeps them out (#948, #951 R10). 9 Kogane stays out by owner ruling and
-# 10/11/16 carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS).
+# 10/11/16 carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS). 0/1/3/4/5/29 are
+# P1 duplicates withdrawn by owner ruling 2026-10-01 (p2_proxy.WITHDRAWN_SOURCE_IDS).
 P2_PLAYABLE_POOL = (
     {
         "source_id": 44,
@@ -213,17 +214,6 @@ P2_PLAYABLE_POOL = (
                    "tests/test_pikmin2_otakara_runtime.py",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 62 -> dweevil (p2-dweevil-actors.txt)",
-        },
-    },
-    {
-        "source_id": 23,
-        "enum_name": "Sarai",
-        "family": "sarai",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign bc5 (owner ruling 2026-09-25: power mode admits): campaign bind, fight, P2_SARAI_DEAD health=0 on its own generator, corpse carried, Onion receipt onion:p2:23:3; movement/combat also seen in owner playtest",
-            "log": "C:/cop/botcamp-bc5-23-Sarai/session/runs/e4da72b1eb8f1d730171bd2cb671faa82557a579d3df53023988f02cb93f1f26/native.log (sha256 3231b0baf8077f23...) L1140 dead, L1239 receipt; output/claude-orch/evidence/botcamp-bc5.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 23 -> sarai",
         },
     },
     {
@@ -322,45 +312,13 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
-        "source_id": 12,
-        "enum_name": "UjiA",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-7c (owner ruling 2026-09-25: power mode admits): campaign bind, OWN ujiStrike attacks, burrow/exit cycle, DEAD on its own generator, corpse carried, Onion receipt onion:p2:12:3",
-            "log": "C:/cop/botcamp-inst-bugs-7c-12-UjiA/session/runs/c79f17696181b7a5474cc31bf51e721d577ae1a705add0c2e2c8ac92e33e0bc0/native.log (sha256 8b4e008235893288...) L1828 bind, L2176 dead, L2645 receipt; output/claude-orch/evidence/botcamp-inst-bugs-7c.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 12 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
-        "source_id": 13,
-        "enum_name": "UjiB",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-8 (owner ruling 2026-09-25: power mode admits): campaign bind, Attack1/Attack2-Eat chain, DEAD on its own generator, corpse carried, Onion receipt onion:p2:13:3",
-            "log": "C:/cop/botcamp-inst-bugs-8-13-UjiB/session/runs/c5d3f464b51b039f1d8b79c23d93001b159500237c8d93338b8cbd91e08f9cbc/native.log (sha256 1f57998bf095ed2d...) L1641 bind, L1958 dead, L2156 receipt; output/claude-orch/evidence/botcamp-inst-bugs-8.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 13 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
-        "source_id": 14,
-        "enum_name": "Tobi",
-        "family": "uji",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-bugs-9b (owner ruling 2026-09-25: power mode admits): campaign bind, OWN attacks, DEAD on its own generator, corpse carried, Onion receipt onion:p2:14:3",
-            "log": "C:/cop/botcamp-inst-bugs-9b-14-Tobi/session/runs/4c6acbdfa5ad7ea4ffd7274e02a936e44cf7d2b218f547e6a00b800bfc44b220/native.log (sha256 5e8e730acc2a4446...) L1853 bind, L2002 dead, L2052 receipt; output/claude-orch/evidence/botcamp-inst-bugs-9b.md; output/claude-orch/review/rev2-bugs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 14 -> uji "
-                         "(experimental/pikmin2_uji_content)",
-        },
-    },
-    {
         "source_id": 28,
         "enum_name": "ElecBug",
         "family": "elecbug",
+        # Placement unit (owner ruling 2026-09-30): a slot given an Anode Beetle gets a
+        # linked PAIR. Data, not code: randomizer/p2_units.py stages it for the native
+        # generator hook (pc_port/pc_p2_species_unit.h); rows without "unit" mean 1.
+        "unit": 2,
         "evidence": {
             "run": "Bot-driven power-mode campaign inst-bugs-10 (owner ruling 2026-09-25: power mode admits): campaign bind, NATURAL_PRESS flip, graduated HITs on own token, DEAD, corpse carried, Onion receipt onion:p2:28:3",
             "log": "C:/cop/botcamp-inst-bugs-10-28-ElecBug/session/runs/5bc3ed6eb0f934aae4db128c293e50cd8bb55af006bf8ca93b96bf72189a7665/native.log (sha256 d6b74d9abef0f6fc...) L1860 bind, L2043 dead, L2239 receipt; output/claude-orch/evidence/botcamp-inst-bugs-10.md; output/claude-orch/review/rev2-bugs.md",
@@ -391,30 +349,6 @@ P2_PLAYABLE_POOL = (
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 68 -> tamago "
                          "(experimental/pikmin2_tamago_content)",
-        },
-    },
-    {
-        "source_id": 17,
-        "enum_name": "Frog",
-        "family": "frog",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-1 (owner ruling 2026-09-25: power mode admits): campaign bind, jump/flick/press fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:17:3",
-            "log": "C:/cop/botcamp-inst-frogs-1-17-Frog/session/runs/2ec7a951b7c5a37a1aeb968281fdd71fd11abf777f4266e242c61e01cdc3fc16/native.log (sha256 9e757690449df2fb...) L1005 bind, L2095 dead, L2288 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 17 -> frog "
-                         "(experimental/pikmin2_frog_install)",
-        },
-    },
-    {
-        "source_id": 18,
-        "enum_name": "MaroFrog",
-        "family": "frog",
-        "evidence": {
-            "run": "Bot-driven power-mode campaign inst-frogs-2 (owner ruling 2026-09-25: power mode admits): campaign bind, captain-retarget fight, P2_FROG_DEAD on its own generator, corpse carried, Onion receipt onion:p2:18:3",
-            "log": "C:/cop/botcamp-inst-frogs-2-18-MaroFrog/session/runs/bbab4ddc3c84c3d6dde50b9515d3bfddfcccac4d08fdfd68621ebc0e46cf07fc/native.log (sha256 4f2398378590e177...) L1013 bind, L2066 dead, L2169 receipt; output/claude-orch/review/rev2-frogs.md",
-            "installer": "experimental/pikmin2_family_install.py "
-                         "IDENTITY_FAMILY 18 -> frog "
-                         "(experimental/pikmin2_frog_install)",
         },
     },
     {
@@ -646,12 +580,60 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
+        "source_id": 26,
+        "enum_name": "Catfish",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs j26 and l26 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Catfish FSM (KochappyBase wait/turn/walk/attack/flick/gohome/dead with the retail parms, life 200) on the Catfish's own generator token; walk, attackNavi, BITE frame 17 on both mouth slots, flick shake-offs, damage from the squad down to P2_CATFISH_DEAD, the dead corpse carried, Onion receipt onion:p2:26:3. Day-cycle run l26: a fresh Catfish binds each stage, alive at two sunsets, killed and delivered in the third stage (day 4). The kill runs used a land slot (start-area slot rebind); the water slots were only checked for binding (run w26, earlier exe)",
+            "log": "output/claude-orch/p2-w3-mech/runs/j26-26/session/runs/688307161d692c6f2c0a95e37caaf16d687e2e64590e56458ef4523f77e3b9e2/native.log (sha256 a96d490796eac61f...) L3483 bind, L5129 dead, L5930 receipt; day cycle output/claude-orch/p2-w3-mech/runs/l26-26/session/runs/97c21760d66337b9f5905e6cc605cd7dbd700b12f3a75e4cc26048bf9b1a51ee/native.log (sha256 c752e0ce50c065a3...) sunsets L4608/L8941, dead L14106, receipt L15073; native claude/p2-wave3-mechanics 535a4da10 (exe built from 1959f6b5d), exe sha256 fe21fd5e99634438ca03fbc204bc86c45fbe58b4619e60825ba04f4960c6a03a, content output/p2-content-dense",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 26 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 27,
+        "enum_name": "Tadpole",
+        "family": "aquatic",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs j27 and l27 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Tadpole FSM (wait/move/amaze/escape/leap/dead, retail parms, life 200) on the Wogpole's own generator token; it hops away from the squad, takes damage, dies naturally, the dead corpse is carried and delivers Onion receipt onion:p2:27:3. Day-cycle run l27: a fresh Wogpole binds each stage, alive at two sunsets, killed and delivered in the third stage (day 4). Harmless in source (attack power 0): attacks_receivers is receiver-side only, no attack is claimed. The kill runs used a land slot (start-area slot rebind)",
+            "log": "output/claude-orch/p2-w3-mech/runs/j27-27/session/runs/41692195c7e20f1886de67b09fae9d8f79ad53689af728ee6dc76972c29da45b/native.log (sha256 df33bd80e4390489...) L4836 bind, L6164 dead, L6959 receipt; day cycle output/claude-orch/p2-w3-mech/runs/l27-27/session/runs/e3d52f33017fe47f0041df84e7dc3cb18340ccb1adc874079bc018ced2d8ee99/native.log (sha256 670a965f0f64403e...) sunsets L5597/L10884, dead L17079, receipt L17894; native claude/p2-wave3-mechanics 535a4da10 (exe built from 1959f6b5d), exe sha256 fe21fd5e99634438ca03fbc204bc86c45fbe58b4619e60825ba04f4960c6a03a, content output/p2-content-dense",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 27 -> aquatic "
+                         "(experimental/pikmin2_aquatic_install)",
+        },
+    },
+    {
+        "source_id": 84,
+        "enum_name": "Hana",
+        "family": "ground_inverts",
+        "evidence": {
+            "run": "Bot-driven power-mode day-cycle run k84 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): red squad, campaign bind of the transcribed source Hana FSM (ChappyBase sleep/emerge/walk/attack/eat/flick/gohome/dead, retail parms, life 2500) on the Chrysanthemum's own generator token; buried Sleep gate at each bind (no atari, invulnerable), alive at two sunsets, then in the third stage (day 4) emerge, BITE frame 18 and EAT, gohome, flick when Pikmin are stuck to it (from Walk; a flick from GoHome was not exercised by any run and is covered by the unit test p2_hana_residual_policy_test), natural death, the dead corpse carried, Onion receipt onion:p2:84:3",
+            "log": "output/claude-orch/p2-w3-mech/runs/k84-84/session/runs/81e0e34451f2eb2c5b8c056f29dcd38b56da99102814caf91ffb5733dcc304e1/native.log (sha256 bf2546c26f19d6cb...) sleep binds L3464/L8101/L12611, sunsets L4812/L9355, BITE L14170, flick L15295, dead L17304, receipt L18679; native claude/p2-wave3-mechanics 535a4da10 (exe built from 1959f6b5d), exe sha256 fe21fd5e99634438ca03fbc204bc86c45fbe58b4619e60825ba04f4960c6a03a, content output/p2-content-dense",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 84 -> ground_inverts "
+                         "(experimental/pikmin2_ground_inverts_install)",
+        },
+    },
+    {
+        "source_id": 93,
+        "enum_name": "BombOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign runs r93, j93 and k93 (owner ruling 2026-09-25: power mode admits; wave 3 mechanics, #964): campaign bind of the transcribed source Otakara Dweevil FSM carrying a Bomb (BombOtakara pursues its target, the stimulateBomb 1.5 s fuse detonates the Bomb through the shared blast primitive, damage also detonates it); once the Bomb is not alive it dies with it by the source rule (OtakaraBase.cpp:93-108, P2_BOMBOTAKARA_PAYLOAD_DEAD), then the dead corpse is carried and delivers Onion receipt onion:p2:93:3 on its own generator token. r93 (blue): the blast hit a Pikmin (pikmin_hits=1). Day-cycle run k93: a fresh Dweevil binds each stage, one alive at the day-3 sunset, killed and delivered in the third stage (day 4). Earlier runs c93/e93, which showed the Dweevil surviving the blast, are superseded. Run f93 on seed s3 (a Dweevil on a grub-cohort pack slot, earlier exe) proves the pack fix",
+            "log": "output/claude-orch/p2-w3-mech/runs/r93-93/session/runs/e6772ecac2f7225efcc8ff56bc6bc63256e7c481f8c857ee850f7f7877ead920/native.log (sha256 339324a413d51f8b...) L5130 FUSE, L5132 BLAST pikmin_hits=1, L5134 PAYLOAD_DEAD, L6249 receipt; j93 output/claude-orch/p2-w3-mech/runs/j93-93/session/runs/030e0f752619d95e3c3ccc665cb422b8f24b5dac0a7507afc6aaac14859109c1/native.log (sha256 ae2a8144815b1575...) receipt L5692; day cycle output/claude-orch/p2-w3-mech/runs/k93-93/session/runs/4c95ae0ff87d2dd63f18732c2b8fd49a979cb0aea63fad6012b8a85fc1c3b0ab/native.log (sha256 cdacfda090a1bfd1...) sunsets L4472/L8616, dead L13040, receipt L14160; earlier exe 6421207b h93 sha256 1778de329be329be... L3730 BLAST pikmin_hits=1, i93 sha256 c66f6efb69434bb6... L10927 pikmin_hits=32; native claude/p2-wave3-mechanics 535a4da10 (exe built from 1959f6b5d), exe sha256 fe21fd5e99634438ca03fbc204bc86c45fbe58b4619e60825ba04f4960c6a03a, content output/p2-content-dense",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 93 -> dweevil "
+                         "(p2-dweevil-actors.txt)",
+        },
+    },
+    {
         "source_id": 66,
         "enum_name": "Houdai",
         "family": "long_legs",
         "evidence": {
-            "run": "Bot-driven power-mode campaign a4 (#1012; owner ruling 2026-09-25: power mode admits): own-brain bind (P2HoudaiFsm, disc parms) with the sampled clip rig, IK legs, retail collision tree, Stay->Land->Wait->Walk->Dead on its own generator 1945764764, natural kill (23 damage lines 2687.5->212.5), P2 corpse carried by 10 Pikmin, Onion receipt onion:p2:66:3; combat run a1 (same exe): laser sight sweep, 192 shells, 42 Pikmin hits, tama latch damage, life gauge",
-            "log": "output/claude-orch/p2-66-own/runs/a4/session/runs/6c4f6da3f0469c20c7bd4684afcc9eebf8914a5ae4c7bb87a958b4a876de4877/native.log (sha256 d64d8135e9452f21...) L1199 own bind, L1200 delivery bind, L1447 dead, L1538 receipt, L1539 AUTOPLAY_RESULT 1/1/1/1; a1 native.log sha256 15c0c1725c15cd9b...; native claude/p2-66-man-at-legs e928ae579, exe sha256 342bacde780537ca...; docs/PIKMIN2_HOUDAI_PORT.md",
+            "run": "Bot-driven power-mode campaign c2 (#1012; owner ruling 2026-09-25: power mode admits): own-brain bind (P2HoudaiFsm, disc parms) with the sampled clip rig, IK legs, retail collision tree, Stay->Land->Wait->Walk->Dead on its own generator 1945764764, natural kill, P2 corpse carried, Onion receipt onion:p2:66:3; no-multiplier run b2 (same exe): rises, walks, laser sight sweep, 87 shells",
+            "log": "output/claude-orch/p2-66-own/runs/c2/session/runs/0a737916a5c704ec2cd5ea489d43d5dd3a0ecfd63b9030830219a0187af8d44b/native.log (sha256 9efc43f3e7e35dd2...) L1199 own bind, L1200 delivery bind, L1464 dead, L1575 receipt, L1576 AUTOPLAY_RESULT 1/1/1/1; b2 native.log sha256 ffa4415dd704a644...; native claude/p2-66-man-at-legs 0f84fcc37, exe sha256 7c2f13033f9eba48...; docs/PIKMIN2_HOUDAI_PORT.md",
             "installer": "experimental/pikmin2_family_install.py "
                          "IDENTITY_FAMILY 66 -> long_legs "
                          "(experimental/pikmin2_long_legs_install; rig via pikmin2_houdai_rig)",

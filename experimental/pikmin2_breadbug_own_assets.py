@@ -78,8 +78,11 @@ CLIPS = ('dead', 'move1', 'move2', 'type1', 'type2', 'type3', 'type4', 'type5', 
 # <= 24 MiB total). Looping locomotion gets the most; type5 is the carcass
 # hold, type1 the short pulled loop.
 MAX_POSES = 24  # native pc_p2_breadbug_fsm parseBank bound
-POSE_LIMITS = {'dead': 16, 'move1': 24, 'move2': 24, 'type1': 12, 'type2': 16,
-               'type3': 16, 'type4': 16, 'type5': 6, 'wait1': 12}
+# Smoothing pass (#972): every clip now asks for the dense default (24); a clip
+# with fewer source frames keeps every source frame (sample_frames clamps), and
+# key-event frames are always included (thinned to MAX_POSES).
+POSE_LIMITS = {'dead': 24, 'move1': 24, 'move2': 24, 'type1': 24, 'type2': 24,
+               'type3': 24, 'type4': 24, 'type5': 24, 'wait1': 24}
 
 LIMITATIONS = [
     'Sampled rigid poses with approximate materials; no skeletal playback. The native draw holds the staged pose nearest the source FSM clip frame.',

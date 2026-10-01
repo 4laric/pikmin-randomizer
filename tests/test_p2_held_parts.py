@@ -156,7 +156,7 @@ class SeedTests(unittest.TestCase):
 
     def test_bounded_density_leaves_holders_vanilla(self):
         layout = resolve_placement_layout("held-a", "Player1", _document(), self.roster,
-                                          species=[23], density="bounded-coverage-v1")
+                                          species=[2], density="bounded-coverage-v1")
         self.assertNotIn(HELD_PART_KEY, layout)
 
     def test_validate_layout_rejects_a_mismatched_block(self):

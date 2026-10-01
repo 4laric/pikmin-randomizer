@@ -69,6 +69,33 @@ def test_stage_content_extracts_before_copying_cached_species(tmp_path):
     assert summary['from_cache'] == ['Cached'] and summary['extracted'] == ['Fresh']
 
 
+def test_stage_content_reextracts_a_stale_translucent_entry(tmp_path):
+    """#960: a dense Jellyfloat entry written before the #973 converter is stale."""
+    from scripts import p2_content_density as density
+    cache = tmp_path / 'cache'
+    (cache / 'Kurage').mkdir(parents=True)
+    (cache / 'Kurage' / 'wait_0000.mod').write_text('old')
+    (cache / 'Kurage' / density.MARKER).write_text('{"pose_limit": 24, "source": "main 3fc77bf6"}')
+    out = tmp_path / 'content'
+    manifest = {'p2_layout': {'bindings': [{'source_id': 57, 'enum_name': 'Kurage'}]}}
+
+    def prepare(iso, dest, wanted):
+        (dest / 'Kurage').mkdir()
+        (dest / 'Kurage' / 'wait_0000.mod').write_text('new')
+        return {'extracted_enums': ['Kurage']}
+
+    with pytest.raises(smoke.SmokeSeedError, match='stale'):
+        smoke.stage_content(manifest, tmp_path / 'c0', cache, None)
+    summary = smoke.stage_content(manifest, out, cache, 'iso', prepare_fn=prepare)
+    assert (out / 'Kurage' / 'wait_0000.mod').read_text() == 'new'
+    assert summary['sparse_replaced'] == ['Kurage'] and summary['extracted'] == ['Kurage']
+    assert (cache / 'Kurage' / 'wait_0000.mod').read_text() == 'new'
+    assert density.entry_is_current(cache, 'Kurage')
+    # the next staging now reuses the refreshed entry without an ISO
+    again = smoke.stage_content(manifest, tmp_path / 'c2', cache, None)
+    assert again['from_cache'] == ['Kurage']
+
+
 def test_ordinary_slots_exclude_protected_boss_and_held(document):
     slots = smoke.ordinary_slots(document, 'foh')
     labels = {s['label'] for s in slots}
@@ -456,3 +483,11 @@ def test_p1_bulborb_flag_defaults_and_verify_threshold(monkeypatch, tmp_path):
     assert seen == {'near': True, 'maxd': smoke.DEFAULT_BULBORB_RADIUS, 'p1': True}
     smoke.main(['--area', 'foh', '--species', '53', '--seed', 's', '--out', str(tmp_path)])
     assert seen['maxd'] == 400.0 and seen['p1'] is False
+
+
+def test_verify_accepts_token_keyed_bind_lines():
+    """BombSarai (58) logs P2_BOMBSARAI_OWN_BIND ... token=<generator> instead of generator=."""
+    from scripts import p2_smoke_verify as v
+    log = _log(resolves=((58, 111, -300, 2000),)) + "\nP2_BOMBSARAI_OWN_BIND source_id=58 token=111 host_type=11 state=Wait\n"
+    result = v.evaluate(v.parse_log(log), {111: 58})
+    assert result['ok'], result

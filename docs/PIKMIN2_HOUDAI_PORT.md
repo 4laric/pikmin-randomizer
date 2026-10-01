@@ -130,3 +130,19 @@ See the roster entry for 66 in `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` (run a4
 `onion:p2:66:3`; run a1: sight, shells, latch damage, life gauge). A frame dump of run a6 showed the boss
 standing with thin legs and its health bar. Unit gates: `p2_houdai_rig_test` (real rig via
 `P2_HOUDAI_RIG_FILE`), `p2_houdai_fsm_test`, `tests/test_pikmin2_houdai_rig.py`.
+
+## Owner playtest 2026-09-30 and the fix
+
+The first package (exe 342bacde) was played by hand and reported as "never stood up, stuck in the ground sliding
+around, no collision". The brain was right (it woke, walked and shot, from the risen gun height) but the drawn mesh
+never left landing frame 0: the private mesh's vertex storage is rewritten on the CPU every frame and the resident-mesh
+cache (`pc_gfx_mark_dynamic_vertex_range`, as `p2pose::write` does) was not told, so the first pose drawn stayed on
+screen. Collision was posed correctly (`P2_HOUDAI_POSE_DIAG` logs `tama_y` about 123 above the ground in Wait) but
+looked absent because the body was drawn sunk. Fixed in `houdaiIkPose`; a source-level test
+(`tests/test_pikmin2_houdai_rig.py::test_native_private_mesh_is_marked_dynamic`) pins it.
+
+Wake condition (`StateStay::exec`, `HoudaiState.cpp:94-125`; `isThereOlimar` `enemyAction.cpp:1525`, `isTherePikmin`
+`:1250`): the captain or any searchable Pikmin within `mPrivateRadius` (70 *disc*, fp11) by 3D distance, or any damage
+(`EB_TakingDamage`). The port now uses the 3D test for the captain. The tick runs from `gameCoreSection`, outside
+`Creature::update`, so the P1 AI-grid culling (`creature.cpp:678`) does not stop it. A run with no damage multiplier
+(b2) rises, walks, runs Wait->Shot->Walk with the laser sight and hits Pikmin.

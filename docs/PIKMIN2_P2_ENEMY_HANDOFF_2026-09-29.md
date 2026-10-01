@@ -68,7 +68,7 @@ Stale or unrelated open PRs, not part of this line: #891 (the 09-28 handoff doc)
 **66 Man-at-Legs.** It has a real P2 IK leg walk and a natural kill/carry/receipt on an ordinary slot. It is not admitted: the owner wants it in an arena, and the bot can't reach arenas (`target_unreachable`).
 
 **Visual fidelity.**
-- UmiMushi `sturn1` has 0 poses: the retail BCA has 26 joints but the model has 25.
+- UmiMushi `sturn1` had 0 poses (the retail BCA has 26 tracks for the 25-joint model). Fixed in #995: the trailing track is ignored, as J3D does; re-extract to get 24 poses.
 - These families still use their own loaders: King/Queen, Kurage, Fuefuki, Qurione, Kogane, Shijimi and Snow.
 - Content staging got slower because the banks are bigger.
 

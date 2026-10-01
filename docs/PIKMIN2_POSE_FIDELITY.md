@@ -159,7 +159,7 @@ Markers:
 ## Not changed (follow-ups)
 
 - **Timing:** pose phase still follows the P1 host animator (`counter/(frames-1)`). A separate P2-native clock would let the pose drift from P1 event and damage timing.
-- **UmiMushi `sturn1`** stays unconverted. The retail BCA animates 26 joints but the model has 25, so it is a retail data mismatch and no conversion gap. The clip has 0 poses and is never drawn.
+- **UmiMushi `sturn1`** (fixed in #995): the retail BCA carries 26 tracks for the 25-joint model; the 26th is a trailing track with no joint, and the first 25 line up with the skeleton (run1/sturn1 frame 0 agree on every static joint). J3D applies track i to joint i and ignores the extra one, so `bca_pose(..., extra_tracks=True)` (opt-in, used only by the aquatic extractor) decodes the first 25 tracks. The clip now bakes 24 poses. Re-extract UmiMushi (71) and UmiMushiBlind (101) to pick it up.
 - **Long Legs** (BigFoot, Damagumo): the native draw is a single bind-pose mesh (`longlegs_<species>_bind_00.mod`); only the body translates, and the legs stay in bind pose. It has no sampled pose bank, so there is nothing to densify. Animating it needs a skeletal leg path, which is separate work.
 - **Families outside the campaign pool:** bulblax King/Queen, kurage, BigTreasure, fuefuki, qurione, kogane, shijimi, Snow and Kochappy keep their own loaders.
 - **On-disk size:** a vector-only pose file format would shrink dense clips on disk. No budget needs it.

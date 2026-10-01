@@ -112,3 +112,19 @@ def test_disc_bake_meets_the_admission_pose_bar():
     assert joint_y('attack', 39, gun) == pytest.approx(90.0, abs=0.5)       # gun deployed below the body
     # Deterministic: a second bake is byte-identical.
     assert rig.bake(model, motions, coll)[0] == text
+
+
+def test_native_private_mesh_is_marked_dynamic():
+    """Owner playtest 2026-09-30 (#1012): the drawn boss never left the crouch because the resident-mesh cache kept
+    the first pose drawn. The native rig draw must mark the rewritten vertex and normal storage dynamic."""
+    import os
+    for base in (os.environ.get('PIKMIN_NATIVE_ROOT'), str(Path(__file__).resolve().parents[1] / 'native'),
+                 str(Path(__file__).resolve().parents[2] / 'native-66')):
+        path = Path(base) / 'pc_port' / 'pc_p2_long_legs.cpp' if base else None
+        if path and path.is_file() and 'houdaiIkPose' in path.read_text(encoding='utf-8'):
+            text = path.read_text(encoding='utf-8')
+            body = text.split('bool houdaiIkPose(', 1)[1].split('\n}\n', 1)[0]
+            assert body.count('pc_gfx_mark_dynamic_vertex_range(') == 2
+            assert 'mVertexList' in body and 'mNormalList' in body
+            return
+    pytest.skip('native checkout with the Houdai rig draw not present (set PIKMIN_NATIVE_ROOT)')
