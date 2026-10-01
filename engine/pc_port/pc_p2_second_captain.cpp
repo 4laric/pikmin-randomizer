@@ -1,4 +1,5 @@
 #include "pc_p2_second_captain.h"
+#include "pc_randomizer.h"
 
 #include "NaviMgr.h"
 
@@ -12,6 +13,9 @@ namespace pc_p2_captain {
 
 bool second_captain_requested()
 {
+    // Ordinary campaigns own this choice through their bootstrap/fingerprint.
+    // Keep the environment flag only for standalone experimental fixtures.
+    if (pc_randomizer_enabled()) return pc_randomizer_second_captain();
     const char* env = std::getenv("PIKMIN_P2_SECOND_CAPTAIN");
     if (!env || env[0] == '\0') return false;
     if (env[0] == '0' && env[1] == '\0') return false;
