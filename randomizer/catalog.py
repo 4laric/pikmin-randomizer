@@ -194,6 +194,9 @@ BESTIARY_TARGETS.update({name: (row[0], row[2]) for name, row in NEW_BESTIARY.it
 
 
 def bestiary_sources(name, manifest):
+    if "enemy_catalog" in manifest:
+        from .enemy_catalog import check_sources
+        return check_sources(name, manifest)
     from .enemies import sources_for
     if name not in BESTIARY_TARGETS or 'enemy_layout' not in manifest: return []
     return sources_for(manifest['enemy_layout'], BESTIARY_TARGETS[name][0])
@@ -204,6 +207,9 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
+    if "enemy_catalog" in manifest:
+        from .enemy_catalog import active_names as resolved_names
+        return resolved_names(manifest)
     if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False), manifest.get("no_sticks", False))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
@@ -258,6 +264,9 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if 'enemy_catalog' in manifest and (name in BESTIARY_TARGETS or name.startswith('Bestiary: Deliver P2 ')):
+        from .enemy_catalog import can_reach as resolved_reach
+        return resolved_reach(name, inventory, manifest)
     # Lane 39 cave hook: only fires for locations the seed layer wrote into the
     # seeded cave requirement map. Absent for every existing legacy location.
     cave_requirements = manifest.get('cave_requirements')
@@ -368,6 +377,7 @@ def item_pool(manifest):
 
 
 def check_area(name):
+    if name.startswith("Bestiary: Deliver P2 "): return "Bestiary"
     if name in NEW_BESTIARY: return NEW_BESTIARY[name][1]
     if name in FINE_POPULATION or name in COLOR_POPULATION or name in COMPACT_POPULATION: return 'The Forest of Hope'
     if name in OBSTACLES:
