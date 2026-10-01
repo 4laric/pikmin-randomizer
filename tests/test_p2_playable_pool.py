@@ -14,7 +14,7 @@ def test_pool_table_derives_playable_tuple():
                                    63, 69,
                                    34, 70, 71, 101,
                                    25, 15, 78, 73, 32, 38, 40, 41, 58, 57, 72, 30, 31,
-                                   26, 27, 84, 93)
+                                   26, 27, 84, 93, 66)
     assert PLAYABLE_P2_SPECIES == tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 

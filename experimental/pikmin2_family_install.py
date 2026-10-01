@@ -1559,6 +1559,15 @@ def _adapt_long_legs(source, run, actors):
     room = run / 'assets/dataDir/courses/pikmin2room'
     staged = {species for _, species in pairs}
     parked = None
+    if 'Houdai' in staged:
+        # Sampled Man-at-Legs joint pose bank (#1012, optional): present only in content trees extracted
+        # with pikmin2_houdai_rig; absent keeps the static bind / IK-legs draw.
+        rig = Path(source) / 'rig' / 'longlegs_Houdai_rig_00.txt'
+        if rig.is_file():
+            target = room / rig.name
+            if target.exists():
+                raise StagingError(f'Refusing existing/conflicting Houdai rig file: {target}')
+            _shutil.copyfile(rig, target)
     if 'Damagumo' in staged:
         mesh_path = room / 'Damagumo_enemy.bmd'
         if mesh_path.is_file():

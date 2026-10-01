@@ -986,6 +986,11 @@ def extract_houdai(iso, dest):
         shutil.rmtree(tmp, ignore_errors=True)
     try:
         longlegs.extract(iso, tmp)
+        # Man-at-Legs sampled joint pose bank (#1012): five clips of model-space joint matrices, the
+        # retail collision tree and the joint hierarchy. The installer copies ``rig/`` into the room;
+        # a content dir without it keeps the static bind draw.
+        from experimental import pikmin2_houdai_rig as houdai_rig
+        houdai_rig.extract(iso, tmp / "rig")
         shutil.copytree(tmp, target)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
