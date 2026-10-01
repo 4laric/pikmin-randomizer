@@ -7,7 +7,48 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
-## Latest status: round08 diary failure and shared observer reuse
+## Required forward correction: ordinary SDL throw conversion
+
+Current `natural_*` acquisition reports explicitly mean native conversion after
+`scripted_throw=1`. `naturalStep` selects an actor, changes it to FreeMode/Flying
+and calls `Navi::throwPiki` with a scripted aim. The controller-driven approach
+and pluck do not turn that earlier operation into an ordinary SDL throw.
+No existing receipt establishes the full ordinary-input conversion gate.
+
+Add a separately named SDL acquisition path after coordination with #1155's
+ordinary Violet throw investigation. Keep historical modes/receipts unchanged.
+
+1. Drive the mapped SDL virtual P1 only: whistle/gather, legal captain movement,
+   native cursor aiming, A hold/release and later pluck. Extend the existing pad
+   driver to both axes. No direct throw, FSM transition, changeMode, selected
+   actor assignment, position/velocity write or collision/health modification
+   may appear in the new positive path. Starting20 fixture withdrawal stays
+   disclosed and is not ordinary starting-Onion UI acceptance.
+2. Read loaded classic controller/cursor parameters and live camera axes.
+   Distinguish cursor-only deflections from walking; the p44 walking correction
+   is not an aiming solution. Walk within the native reticle's reachable range
+   through valid terrain/live collision. Do not reuse the scripted1.2 aim
+   multiplier as evidence of a legal player cursor position.
+3. Log actual SDL held/pressed/released input, Navi state and position,
+   `mCursorWorldPos`, actual held/next-throw actor identity, its native state,
+   XYZ/velocity, Violet state/animation/contact and conversion witness. Native
+   `NaviThrowState::procAnimMsg(KEY_Action0)` reads `mCursorWorldPos` and invokes
+   the production throw. The fixture observes that path; it never calls it.
+4. Use #1155's read-only reticle/trajectory diagnosis through the coordinator.
+   Bound retries; a miss remains a miss. Preserve original Violet and emitted
+   sprout positions. Observe actual input-driven conversion, grounded/pullable
+   sprout, ordinary approach/pluck, one Purple/19Reds, selection and strength.
+5. Emit a distinct SDL-acquisition marker with direct API/state writes0 only
+   after all observations agree. Require it in new SDL save/transport runs.
+   Full playable acceptance still needs ordinary combat/carry controls,
+   actual delivery, physical ship withdrawal and genuine checkpoint restore.
+
+The reviewed #1166 diary observer can be reused unchanged after SDL acquisition.
+Continue the current bounded save investigation as a separate mechanism test;
+its scripted throw must remain visible in every acceptance claim. A card written
+by that test is useful checkpoint evidence, not full SDL campaign sign-off.
+
+## Round08 diary failure and shared observer reuse
 
 Producer `974eddd75022064d8bd3c313facb99220a0b42d4` passed Windows36921912346:
 212 tests, eight hashes/no-work, actual merge
