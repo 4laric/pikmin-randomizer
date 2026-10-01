@@ -30,7 +30,7 @@ def prepare(assets, bundle, identity, output, species_probe=False):
             raise ValueError('Unsupported private generator header')
         # GeneratorMgr::read sets the captain from this header, overriding stage
         # navi_start. Keep actor positions untouched except the disclosed probe.
-        struct.pack_into('>3f', data, 4, 220, 56.0442, 1000)
+        struct.pack_into('>3f', data, 4, 220, 96.0442, 1000)
         if name == 'default.gen' and species_probe:
             starts = [m.start() for m in re.finditer(b'    0.0v', data)]
             if len(starts) != 20:
@@ -43,7 +43,7 @@ def prepare(assets, bundle, identity, output, species_probe=False):
                 # on the dry shoreline in formation. Native color0 is Blue.
                 struct.pack_into('>i', data, offset+84, 2 if i<2 else 1)
                 if i<2:
-                    struct.pack_into('>3f', data, offset+48, 220, 56.0442, 995+i*10)
+                    struct.pack_into('>3f', data, offset+48, 220, 96.0442, 995+i*10)
                 struct.pack_into('>i', data, offset+92, 0 if i==1 else 1)
         path.write_bytes(data)
     inputs = run / 'full-surface-inputs.json'
@@ -56,7 +56,7 @@ def prepare(assets, bundle, identity, output, species_probe=False):
     record = dict(schema=1, receipt_identity=identity, static_source_boxes=3,
                   native_water_consumer=True, dynamic_lowering=False,
                   native_body_convention='P1 feet position and collision radius',
-                  captain_start_xz=[220, 1000], starting_squad='19 Reds/1 Blue disclosed probe' if species_probe else '20 Reds retained on dry entrance bank',
+                  captain_start_xz=[220, 1000], captain_spawn_y=96.0442, spawn_clearance_above_source_floor=40, starting_squad='19 Reds/1 Blue disclosed probe' if species_probe else '20 Reds retained on dry entrance bank',
                   species_probe=species_probe,
                   species_probe_staging='19 Reds/1 Blue; 18 free dry-bank Reds, two shoreline followers' if species_probe else None,
                   water_sha256=hashlib.sha256(water).hexdigest(),
