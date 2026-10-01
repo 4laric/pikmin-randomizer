@@ -2,6 +2,78 @@
 
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
 
+## Communicating agents and runner builds (2026-10-01, #1145)
+
+This policy supersedes conflicting historical OpenCode-only instructions below.
+Agents coordinate directly, retain each producer's task and claims, and prepare
+the combined candidate in a separate private worktree. Serialize maintained
+integration writes and final acceptance. Ordinary lane registration stays exclusive;
+do not mark unfinished producers Done to obtain editing access.
+
+Prefer the GitHub runner for supported builds. Follow the canonical ignored
+`output/workflow/GITHUB_RUNNER_QUICKSTART.md` for routing, exact root/native pins,
+capability and results. Remote jobs use the runner queue and isolated job workspaces:
+**do not acquire a local heavy-build lease or wait on local RAM admission to dispatch
+them**. Local controller capacity rules below apply only to builds on this host.
+Unsupported local Windows/custom-fixture fallbacks still require exclusive private
+build-directory leases and aggregate local RAM/capacity admission. Linux evidence
+does not establish Windows or replacement-main runtime coverage.
+
+### One scoped editing agreement
+
+The live registered integration owner records an issue-backed agreement through
+`workflow.coordination`, then amends its own scope. This grants editing access in
+distinct private git worktrees without deleting or transferring producer claims.
+It grants no shared-review approval, source receipt, gameplay acceptance or
+authority to change the maintained checkout. Existing independent review, source
+and handoff validation, final integration writer, WIP and process fences remain.
+
+Agreements freeze lane, issue, generation, actual worker/task/process identities,
+full root/native source records, exact semantic file keys, private checkout
+identities, preservation obligations and hashed evidence. The actor must run inside
+its live registered process; desktop agents need no fictitious controller launch.
+Describe the coordination basis honestly: `owner-communication` means actual owner
+communication; `user-authorized-legacy-preservation` means explicit user authority
+and preservation evidence for historical inactive owners, never invented consent.
+Missing historical checkouts or invalid handoffs stay disclosed and invalid for
+delivery; preparing a private candidate does not require reviving an old agent.
+
+Put issue scope, actual communication and preservation references in private
+immutable evidence files. Each producer's `source` is the complete object returned
+by `workflow.coordination.identity(producer)` from a fresh registry snapshot.
+An `agree` JSON request has `lane`, `generation`, `revision`, `issue`, `scope`,
+`authorization: {path, sha256}` and `participants`. Each participant has `lane`,
+`generation`, `source`, exact `files`, `basis`, bounded `preservation`, and nonempty
+`evidence: [{path, sha256}]`. Record it, then use its returned ID:
+
+```powershell
+py -3.12 <landed-checkout>/scripts/workflow_module.py coordination agree --root C:/Users/alari/pikmin-randomizer --request output/<agreement-request>.json
+py -3.12 <landed-checkout>/scripts/workflow_module.py coordination amend --root C:/Users/alari/pikmin-randomizer --request output/<scope-request>.json
+py -3.12 <landed-checkout>/scripts/workflow_module.py coordination check --root C:/Users/alari/pikmin-randomizer --request <agreement-id>
+```
+
+For example, the scope request contains:
+
+```json
+{"key":"<actual integration lane>","generation":1,"revision":2,
+ "agreement_ids":["<returned agreement ID>"],
+ "additions":["native/<exact producer-owned file>"],
+ "scope":"Issue-backed private combination preserving the agreed behavior"}
+```
+
+Every unfinished owner of an overlapping key must be covered. An intervening drift
+refuses amendment without partial claims. Check agreements before coordinated edits:
+source/task/generation/process or checkout drift and changed evidence invalidate
+them. A commit advancing the integration checkout requires its normal source
+checkpoint and a fresh agreement before further coordinated edits. Refresh at new
+pins rather than relabeling old evidence. Only the actor's own scope changes.
+
+These operations never repair legacy handoffs, mutate producer states, resolve
+pending shared reviews or manufacture receipt evidence. Source acceptance still
+requires the actual combined diff, affected consumers, exact-head build/CI,
+independent review and verified delivery. Communication removes the global editing
+deadlock while preserving these concrete acceptance checks.
+
 CI builds (#937): native Windows builds and the p2_ ctest run in GitHub Actions.
 Prefer `py -3.12 scripts/ci_native_build.py <native branch|sha>` over a local
 build; it downloads and sha256-verifies the CI `nectar.exe` into

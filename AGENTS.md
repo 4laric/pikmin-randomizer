@@ -1,4 +1,24 @@
-# Muse admission wave: current execution policy (2026-09-15, #491)
+# Communicating agents: current execution policy (2026-10-01, #1145)
+
+Use the GitHub runner by default for supported builds, following the canonical
+`output/workflow/GITHUB_RUNNER_QUICKSTART.md`. Remote dispatch uses its own queue
+and job isolation; do not acquire local heavy-build leases or wait on local RAM.
+Actual unsupported local Windows/custom-fixture builds still require exclusive
+private-directory leases and local aggregate admission.
+
+Agents may communicate and delegate within the user's authorization. Exact
+issue-backed agreements and scope amendment through `workflow.coordination`
+permit overlapping semantic files in separate private worktrees while retaining
+producer claims and task identities. Ordinary ownership stays exclusive. Preserve
+honest owner communication or explicit user-authorized legacy preservation evidence;
+never fabricate consent, handoffs or Done receipts. The integration owner remains
+the sole maintained writer. Final independent review, source/gameplay acceptance,
+worker WIP and process fences remain. See [the workflow contract](docs/PIKMIN2_WORKFLOW.md).
+
+This supersedes conflicting OpenCode-wave restrictions below, including blanket
+no-subagent instructions and local lease requirements for remote builds.
+
+# Muse admission wave: historical execution policy (2026-09-15, #491)
 
 This section supersedes historical conflicting workflow details below. Read the
 maintained C:/Users/alari/pikmin-randomizer/AGENTS.md and docs/PIKMIN2_WORKFLOW.md.

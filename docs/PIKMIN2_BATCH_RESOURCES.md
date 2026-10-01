@@ -1,5 +1,16 @@
 # P2 batch sessions â€” assets and engine runbook
 
+## Current build admission (2026-10-01, #1145)
+
+Dispatch supported builds to the GitHub runner using the canonical
+`output/workflow/GITHUB_RUNNER_QUICKSTART.md`. Pin both repositories and verify
+the requested target is supported. Remote jobs queue on the runner and use
+isolated job workspaces; they do not acquire this host's heavy-build leases or
+wait for its RAM budget. Build leases below apply to actual local fallback builds,
+including unsupported Windows/custom-fixture work. Those still require exclusive
+private build directories and aggregate local RAM/capacity admission. Runner
+Linux results do not prove Windows or custom-fixture runtime acceptance.
+
 Read [the current workflow](PIKMIN2_WORKFLOW.md) and [the mandatory fixture baseline and fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md) before starting or resuming a lane. The latter provides private build commands and requires the starting-Pikmin overlay plus 960×540 centred-window adoption evidence.
 
 Use [fixture build provenance](PIKMIN2_FIXTURE_BUILDS.md), [room preview](PIKMIN2_ROOM_PREVIEW.md), and [enemy arena acceptance](PIKMIN2_ENEMY_ARENA.md) for tooling. Historical shared-build examples are not lane build instructions.
