@@ -14,6 +14,7 @@ def main():
  canonical=a.canonical_root.resolve();sessiondir=a.session_root.resolve()
  removed={k:os.environ.pop(k) for k in list(os.environ) if k.startswith(('PIKMIN_','P2_'))}
  os.environ['PIKMIN_RANDOMIZER_AUTOPLAY']='0'
+ os.environ['PIKMIN_RANDOMIZER_TEST_BACKGROUND']='1'  # Inherit into CRT getenv before native startup (SDL_setenv alone is insufficient on this Windows runtime).
  os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS']='1'
  os.environ['PIKMIN_P2_ROOM_WINDOW']='960x540'
  assert sessiondir.is_relative_to(canonical/'output'),'Private output only'
