@@ -18,7 +18,8 @@ from tests.test_pikmin2_convert_normals import normal_model
 KURAGE_ALPHA = [7, 7, 7, 1, 0, 0, 0, 1, 0]
 
 
-def blended_model(alpha=KURAGE_ALPHA, category=4, mode=1, depth_write=1, a0=100):
+def blended_model(alpha=KURAGE_ALPHA, category=4, mode=1, depth_write=1, a0=100,
+                  compare=(7, 0, 1, 7, 0)):
     """Extend the synthetic model's MAT3 with pixel-state and TEV tables."""
     model = normal_model()
     b = blocks(model)
@@ -35,7 +36,7 @@ def blended_model(alpha=KURAGE_ALPHA, category=4, mode=1, depth_write=1, a0=100)
             m.append(0)
     add(112, bytes([mode, 4, 5, 3]))                       # blend: SRCALPHA / INVSRCALPHA
     add(116, bytes([1, 3, depth_write, 255]))              # z test, LEQUAL, write
-    add(108, bytes([7, 0, 1, 7, 0, 255, 255, 255]))        # alpha compare: always
+    add(108, bytes(list(compare) + [255, 255, 255]))       # alpha compare (default: always)
     add(88, bytes([1, 0, 0, 0]))                            # one TEV stage
     add(92, bytes([255, 15, 8, 10, 15, 0, 0, 0, 1, 0]) + bytes(alpha) + bytes([1, 0, 255]))
     add(76, bytes([0, 0, 4, 255]))                          # order: texcoord 0, texmap 0, COLOR0A0
@@ -111,6 +112,22 @@ class TranslucentMaterialTests(unittest.TestCase):
     def test_unsupported_alpha_input_falls_back(self):
         _, report = convert(blended_model(alpha=[0, 5, 4, 7, 0, 0, 0, 1, 0]))  # APREV input
         self.assertNotIn('alpha_stages', report)
+
+    def test_alpha_tested_opaque_material_keeps_source_alpha_stage(self):
+        # #1022 Breadbug lair (PanHouse): opaque, alpha compare GEQUAL 128 AND
+        # LEQUAL 255, alpha = A0 + TEXA*RASA with A0 = 255 -> solid in P2.
+        lair = [7, 7, 7, 1, 0, 0, 0, 1, 0]
+        mod, report = convert(blended_model(alpha=lair, category=1, mode=0, a0=255, compare=(6, 128, 0, 3, 255)))
+        self.assertEqual(report['alpha_stages'], [lair])
+        self.assertNotIn('translucent_path', report)
+        pos = (mod_chunk(mod, 48)[0] + 16 + 31) // 32 * 32
+        self.assertEqual(list(mod[pos + 112:pos + 121]), lair)
+        self.assertEqual(struct.unpack_from('>4h', mod, pos)[3], 255)
+
+    def test_alpha_compare_that_always_passes_is_not_alpha_tested(self):
+        for compare in ((7, 0, 0, 7, 0), (6, 0, 0, 3, 255), (6, 128, 1, 7, 0)):
+            _, report = convert(blended_model(category=1, mode=0, compare=compare))
+            self.assertNotIn('alpha_stages', report, compare)
 
 
 if __name__ == '__main__':

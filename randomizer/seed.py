@@ -120,11 +120,12 @@ class SeedRandom:
 # was run and where the log lives, plus the family installer that stages it.
 # Adding a row does NOT admit a species on its own -- see
 # docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure (owner
-# power-mode ruling 2026-09-25). Species not yet admitted (1 Kochappy, 45 Snow,
+# power-mode ruling 2026-09-25). Species not yet admitted (45 Snow,
 # 57 Kurage, 26 Catfish, 27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai,
 # 97 FminiHoudai) join when their natural campaign evidence lands; nothing
 # else keeps them out (#948, #951 R10). 9 Kogane stays out by owner ruling and
-# 10/11/16 carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS).
+# 10/11/16 carry no check (#888, p2_proxy.NO_CHECK_SOURCE_IDS). 0/1/3/4/5/29 are
+# P1 duplicates withdrawn by owner ruling 2026-10-01 (p2_proxy.WITHDRAWN_SOURCE_IDS).
 P2_PLAYABLE_POOL = (
     {
         "source_id": 44,

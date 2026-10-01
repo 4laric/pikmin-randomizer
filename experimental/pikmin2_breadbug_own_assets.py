@@ -68,6 +68,11 @@ IDENTITY = 'identity.json'
 MODEL_PATH = PANMODOKI['model_path']
 ANIM_PATH = PANMODOKI['anim_path']
 PARM_PATH = 'enemy/parm/enemyParms.szs'
+# The lair (#1022): PanModokiBase::Obj::birth (panModoki.cpp:55) births a
+# Nest::Obj (EnemyID_PanHouse) at the Breadbug's birth position; Nest::Mgr
+# draws enemy/data/PanHouse/model.szs enemy.bmd, scaled by the Breadbug's
+# proper-parm fp00 "nest scale" (PanModoki 1.0, OoPanModoki 2.0).
+NEST_MODEL_PATH = 'enemy/data/PanHouse/model.szs'
 PARM_PREFIX = PANMODOKI['parm_prefix']
 METADATA_FILES = ('enemyparm.txt', 'enemycoll.txt', 'enemyanimmgr.txt', 'enemystoneinfo.txt')
 
@@ -131,6 +136,10 @@ def extract(iso, output, pose_limit=None, variant=PANMODOKI):
             raise ValueError(f'{variant["species"]} model missing enemy.bmd') from None
         motions = archive_files(read(disc, variant['anim_path']))
         params = archive_files(read(disc, PARM_PATH))
+        try:
+            nest_model = archive_files(read(disc, NEST_MODEL_PATH))['enemy.bmd']
+        except KeyError:
+            raise ValueError('PanHouse model missing enemy.bmd') from None
     names = joints(model)
     model_blocks = blocks(model)
 
@@ -192,8 +201,17 @@ def extract(iso, output, pose_limit=None, variant=PANMODOKI):
             clip['unsupported_reason'] = 'no sampled frames converted'
         clips.append(clip)
 
+    # Static lair model (bind pose), staged next to the poses.
+    nest_name = f'{variant["pose_prefix"]}_nest.mod'
+    nest_conversion = write_model(decode(nest_model, True, bake_rigid=True), output / nest_name, 'PanHouse/enemy.bmd')
+    (output / Path(nest_name).with_suffix('.json')).write_text(
+        json.dumps(nest_conversion, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+    proper = next((b for b in reversed(parameter) if 'fp16' in b and 'ip01' in b), {})
+    nest = dict(file=nest_name, sha256=sha((output / nest_name).read_bytes()), source=NEST_MODEL_PATH,
+                source_sha256=sha(nest_model), scale=float(proper.get('fp00', 1.0)))
+
     result = dict(
-        schema=1, species=variant['species'], enemy_id=variant['enemy_id'], enum_name=variant['enum_name'],
+        schema=1, nest=nest, species=variant['species'], enemy_id=variant['enemy_id'], enum_name=variant['enum_name'],
         disc_id=header[:6].decode(), disc_revision=header[7],
         source_sha256=hashes, model_sha256=sha(model), joints=names,
         parameters=parameter, metadata_sha256=metadata, clips=clips,

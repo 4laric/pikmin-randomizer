@@ -15,8 +15,8 @@
     "0": {
       "native_module": "pc_p2_flora_actor",
       "owner_lane": "23",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_FLORA_NATIVE.md"
       ],
@@ -29,6 +29,7 @@
         "cleanup_reentry": "UNTESTED"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "Pelplant (Pellet Posy, plant): identity via injected TEKI_Palm proxy (not the P2 FSM); natural fell+pellet release (death_corpse) and restart dedupe (cleanup) PASS.",
         "Onion receipt uses an injected fixture endpoint (seeds=0 open); plant is non-randomizable."
       ]
@@ -36,8 +37,8 @@
     "1": {
       "native_module": "pc_p2_kochappy",
       "owner_lane": "13",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
       ],
@@ -50,6 +51,7 @@
         "cleanup_reentry": "UNTESTED"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "Kochappy (Dwarf Red Bulborb); source identity sharing the KochappyBase family; native pc_p2_kochappy visual/vehicle only.",
         "Natural combat/death/carry remain on the family contract; no per-identity receiver acceptance. Injected vs natural: none asserted."
       ]
@@ -79,8 +81,8 @@
     "3": {
       "native_module": "pc_p2_pom",
       "owner_lane": "23",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_POM_NATIVE.md"
       ],
@@ -93,6 +95,7 @@
         "cleanup_reentry": "N/A"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "BluePom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
         "Conservation/refund policy PASS injected; not natural gameplay."
       ]
@@ -100,8 +103,8 @@
     "4": {
       "native_module": "pc_p2_pom",
       "owner_lane": "23",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_POM_NATIVE.md"
       ],
@@ -114,6 +117,7 @@
         "cleanup_reentry": "N/A"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "RedPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
         "Conservation/refund policy PASS injected; not natural gameplay."
       ]
@@ -121,8 +125,8 @@
     "5": {
       "native_module": "pc_p2_pom",
       "owner_lane": "23",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_POM_NATIVE.md"
       ],
@@ -135,6 +139,7 @@
         "cleanup_reentry": "N/A"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "YellowPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
         "Conservation/refund policy PASS injected; not natural gameplay."
       ]
@@ -642,8 +647,8 @@
     "29": {
       "native_module": "pc_p2_mar",
       "owner_lane": "15",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "excluded",
+      "eligibility_reason": "withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). History: native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_MAR_NATIVE.md"
       ],
@@ -656,6 +661,7 @@
         "cleanup_reentry": "UNTESTED"
       },
       "notes": [
+        "Withdrawn from admission candidacy by owner ruling 2026-10-01 (verbatim: \"i rule the duplicates are withdrawals\"). Reason: withdrawn by owner ruling 2026-10-01: P1 duplicate (P1 version is good enough). Prior status was denied (never admitted); gates and notes below are history; native code kept.",
         "Mar (Puffy Blowhog): natural spawn/eat/wind PASS; wind->Flick receiver PASS (bounded; Purple excluded).",
         "Death/corpse, reward N/A, cleanup UNTESTED (#166)."
       ]
