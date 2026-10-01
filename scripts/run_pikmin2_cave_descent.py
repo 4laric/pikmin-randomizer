@@ -84,6 +84,15 @@ def main():
     provenance = read_json(a.fixture.with_name('provenance.json'))
     if provenance['status'] != 'built' or provenance['artifacts'][str(a.fixture.resolve())]['sha256'] != sha(a.fixture):
         raise ValueError('fixture is not its frozen built artifact')
+    source = Path(__file__).resolve().parents[1]
+    root_head = subprocess.check_output(['git','rev-parse','HEAD'],cwd=source,text=True).strip()
+    root_dirty = subprocess.check_output(['git','status','--porcelain'],cwd=source,text=True)
+    if root_dirty:
+        raise ValueError('commit and freeze root source before runtime acceptance')
+    source_hashes = {name:sha(source/name) for name in ('randomizer/cave_floor.py','randomizer/cave_journey.py',
+        'scripts/play_pikmin2_cave.py','scripts/play_pikmin2_cave_journey.py',
+        'scripts/stage_pikmin2_playable_cave.py','scripts/stage_pikmin2_cave_journey.py',
+        'scripts/run_pikmin2_cave_descent.py')}
     out.mkdir(parents=True)
     before = set()
     if a.mode in ('restart','resume'):
@@ -138,9 +147,11 @@ def main():
         expected_floors = [1,2] if a.mode == 'normal' else [2]
         checks['actual_supervisor_children'] = sorted(c['floor'] for c in children) == expected_floors
         checks['recovery_policy'] = invocation['recovered_boundary'] == (a.mode == 'resume')
+    checks['source_unchanged'] = all(sha(source/name) == digest for name,digest in source_hashes.items())
     report = dict(schema=1,mode=a.mode,package=str(package),passed=all(checks.values()),driver_exit=code,
                   checks=checks,children=children,inputs=dict(fixture_sha256=sha(a.fixture),production_sha256=sha(a.production),
-                      runner_sha256=sha(__file__),native_head=provenance['expected_native_head']),
+                      runner_sha256=sha(__file__),native_head=provenance['expected_native_head'],
+                      root_head=root_head,root_dirty=root_dirty,source_hashes=source_hashes),
                   limitations=['Ordinary staged20Red baseline; SDL virtual controller scripted input.',
                       'Bud auto-pluck, captain-only source exit, confirmation bypass.',
                       'Runtime incoming maturity all leaf/health1; heterogeneous values covered only by policy tests.',
