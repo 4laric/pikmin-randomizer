@@ -84,6 +84,40 @@ def test_staging_needs_a_private_room(tmp_path):
         stage.stage(tmp_path, dict(plan, parms=b"{\n}\n"))
 
 
+def _tree(tmp_path, nest=None):
+    import hashlib
+    clips = [dict(file=f"{name}.bca", events=[], source_frames=10, status="unsupported", poses=[])
+             for name in stage.CLIPS]
+    manifest = dict(schema=1, enemy_id=38, clips=clips)
+    if nest is not None:
+        (tmp_path / nest["file"]).write_bytes(nest.pop("data"))
+        manifest["nest"] = nest
+    (tmp_path / "breadbug.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "enemyparm.txt").write_bytes(RETAIL_PARM.encode("ascii"))
+    return hashlib
+
+
+def test_plan_stages_the_lair_model_when_present(tmp_path):
+    hashlib = _tree(tmp_path, dict(file="breadbug_nest.mod", data=b"nest-bytes", scale=1.0))
+    plan = stage.plan(tmp_path, 38)
+    assert ("breadbug_nest.mod", b"nest-bytes") in plan["room"]
+
+
+def test_plan_without_lair_still_stages_and_rejects_bad_lair(tmp_path):
+    _tree(tmp_path)
+    assert all(name != "breadbug_nest.mod" for name, _ in stage.plan(tmp_path, 38)["room"])
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    _tree(bad, dict(file="breadbug_nest.mod", data=b"x", sha256="0" * 64))
+    with pytest.raises(stage.BreadbugStageError):
+        stage.plan(bad, 38)
+    wrong = tmp_path / "wrong"
+    wrong.mkdir()
+    _tree(wrong, dict(file="other_nest.mod", data=b"x"))
+    with pytest.raises(stage.BreadbugStageError):
+        stage.plan(wrong, 38)
+
+
 @pytest.mark.skipif(not ISO.is_file(), reason="needs the owner's GPVE01 ISO")
 def test_iso_extract_and_stage_what_native_opens(tmp_path):
     target = prepare.extract_breadbug(ISO, tmp_path / "content")
@@ -99,7 +133,11 @@ def test_iso_extract_and_stage_what_native_opens(tmp_path):
     assert general["fp00"] == 1100.0 and proper["fp06"] == 200.0 and proper["fp04"] == 1000.0
     parsed = stage.parse_bank((run / stage.BANK_TXT).read_bytes())
     staged = sorted(p.name for p in (run / stage.ROOM).iterdir())
-    expected = sorted(stage.pose_name(c["name"], i) for c in parsed["clips"].values() for i in range(len(c["poses"])))
+    expected = sorted([stage.pose_name(c["name"], i) for c in parsed["clips"].values() for i in range(len(c["poses"]))]
+                      + [stage.nest_name(38)])
     assert staged == expected and len(staged) == receipt["breadbug"]["poses"] > 0
+    # #1022 lair: the PanHouse model at the proper-parm nest scale.
+    assert manifest["nest"]["file"] == "breadbug_nest.mod" and manifest["nest"]["scale"] == 1.0
+    assert manifest["nest"]["source"] == "enemy/data/PanHouse/model.szs"
     # Pulled loop (type1 5..10) and the carcass hold (type5 10) have poses.
     assert 5 in parsed["clips"][3]["poses"] and 10 in parsed["clips"][7]["poses"]
