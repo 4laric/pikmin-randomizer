@@ -1,5 +1,6 @@
 """Synthetic boundary bytes test policy only, not compiled gameplay acceptance."""
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -7,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from randomizer.cave_floor import create as legacy, fingerprint, atomic_write
-from randomizer.cave_journey import create, identity, encoded, Session, zero_buds
+from randomizer.cave_journey import create, identity, encoded, Session, zero_buds, POLICY
 from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 
 
@@ -150,6 +151,36 @@ class JourneyTests(unittest.TestCase):
             self.session.recover()
         self.assertTrue(self.session.pending_path.exists())
         self.assertEqual(self.session.load()['floor'],1)
+
+    def test_package_hash_descriptor_and_duplicate_json_refused(self):
+        from scripts.play_pikmin2_cave_journey import package_inputs
+        package = Path(self.tmp.name)/'package'; package.mkdir()
+        (package/'journey.json').write_text(encoded(self.journey))
+        for name in ('nectar.exe','cave-generator.exe'):
+            (package/name).write_bytes(b'synthetic unit-test input')
+        blueprints, files = {}, {}
+        names = ('cave.json','layout.json','render.mod','collision.json',
+                 'assets/dataDir/courses/pikmin2room/room.mod')
+        for n in (1,2):
+            floor = package/f'floor-{n}'
+            for name in (*names,'p2-cave-items.txt'):
+                p = floor/name; p.parent.mkdir(parents=True,exist_ok=True)
+                p.write_text(encoded(self.session.manifests[n]) if name=='cave.json' else 'synthetic unit-test input')
+                files[p.relative_to(package).as_posix()] = hashlib.sha256(p.read_bytes()).hexdigest()
+            blueprints[str(n)] = {name:files[(floor/name).relative_to(package).as_posix()] for name in names}
+        for name in ('journey.json','nectar.exe','cave-generator.exe'):
+            files[name] = hashlib.sha256((package/name).read_bytes()).hexdigest()
+        meta = dict(schema=3,policy=POLICY,files=files,blueprints=blueprints,fingerprint=identity(self.journey))
+        path = package/'package.json'; path.write_text(encoded(meta))
+        package_inputs(package)
+        (package/'nectar.exe').write_bytes(b'changed')
+        with self.assertRaisesRegex(ValueError,'input changed'): package_inputs(package)
+        (package/'nectar.exe').write_bytes(b'synthetic unit-test input')
+        bad = copy.deepcopy(meta); bad['files']['../escape'] = '0'*64
+        path.write_text(encoded(bad))
+        with self.assertRaises(ValueError): package_inputs(package)
+        path.write_text('{"schema":3,"schema":3}')
+        with self.assertRaisesRegex(ValueError,'duplicate JSON'): package_inputs(package)
 
 
 if __name__ == '__main__':

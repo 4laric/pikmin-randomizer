@@ -29,7 +29,7 @@ def exclusive(path):
 
 def package_inputs(package):
     meta = read_json(package/'package.json')
-    if meta.get('schema') != 3 or meta.get('policy') != POLICY or type(meta.get('files')) is not dict:
+    if type(meta.get('schema')) is not int or meta['schema'] != 3 or meta.get('policy') != POLICY or type(meta.get('files')) is not dict:
         raise ValueError('unsupported journey package')
     for name, digest in meta['files'].items():
         path = package/name
