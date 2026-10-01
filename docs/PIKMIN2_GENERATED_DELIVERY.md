@@ -50,7 +50,12 @@ Acceptance requires natural combat death, ordinary carrying into the Onion,
 production P2 delivery journal, exact resolved Session check once, real AP
 LocationChecks/server reward, durable recovery and reconnect without duplicate
 receipts. Readiness, policy tests and real P1 population bridge receipts alone
-do not accept P2 combat/carry. Fresh final gameplay evidence remains required.
+do not accept P2 combat/carry. Bounded run19 passes in43.219 seconds: source44
+natural death, six physical carriers with minimum3, production Onion CHECK62
+P2:44, actual AP location1347094060 and reward1347096616, Session persistence
+and authenticated reconnect without duplicates. Same-build negative19 exits86
+in1.015 seconds before early waits with no PASS. These are one-scene scripted
+acceptance results; full native campaign save/resume and human feel remain open.
 
 Preserved early failures exposed missing heartbeat and the background physical
 input gate. They do not establish missing starter inventory or a native startup
