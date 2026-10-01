@@ -125,7 +125,7 @@ def main():
         return 75
     marker = {'full_squad': 'P2_CAVE_FULL_SQUAD_CHECKPOINT', 'restore': 'PASS CAVE_FULL_SQUAD_RESTORE', 'negative': 'P2_FIXTURE_CAPTAIN_DOWN'}[args.mode]
     command = [sys.executable, str(workspace / 'scripts/run_pikmin2_fixture.py'), '--exe', str(args.fixture.resolve()),
-               '--run-dir', str(run), '--arg=--experimental-pikmin2-room', '--pass-marker', marker, '--timeout', '180']
+               '--run-dir', str(run), '--arg=--experimental-pikmin2-room', '--pass-marker', marker, '--timeout', '60']
     (run / 'fixture-inputs.json').write_text(json.dumps(dict(command=command, fixture_sha256=sha(args.fixture),
         native_head=provenance['expected_native_head'], runner_sha256=sha(__file__), autoplay_disabled=True,
         inputs={p.name: sha(p) for p in run.iterdir() if p.is_file()}), indent=2))
