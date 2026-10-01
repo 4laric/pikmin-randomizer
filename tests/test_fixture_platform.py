@@ -43,6 +43,19 @@ class WindowsDependencies(unittest.TestCase):
 
 
 class PrivateOverlay(unittest.TestCase):
+    def test_overlay_package_import_without_scripts_search_path(self):
+        checkout = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp); source = base / 'source'; source.mkdir()
+            (source / 'data').write_bytes(b'original')
+            target = base / 'copy'
+            code = (f'import sys;sys.path.insert(0,{str(checkout)!r});'
+                    'from pathlib import Path;from scripts.preview_pikmin2_room import overlay;'
+                    f'overlay(Path({str(source)!r}),Path({str(target)!r}),{{"data":b"private"}})')
+            subprocess.run([sys.executable, '-I', '-c', code], check=True, capture_output=True, timeout=10)
+            self.assertEqual((source / 'data').read_bytes(), b'original')
+            self.assertEqual((target / 'data').read_bytes(), b'private')
+
     def test_materialized_files_are_independent_and_overrides_are_exact(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); source = root / 'source'; source.mkdir()
