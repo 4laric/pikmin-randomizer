@@ -1,6 +1,7 @@
 """Bounded #1164 fixture launch; requires an exact supplied executable hash."""
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -48,6 +49,58 @@ def validate_artifact(exe, expected_sha, native_commit, native_tree):
     return fields
 
 
+def contact_witness(text):
+    """Correlate real dispatch to one observed ordinary throw; fail closed."""
+    histories = {}
+    for line in text.splitlines():
+        tag, _, tail = line.partition(" ")
+        if tag not in {"P2_ELECBUG_THROW", "P2_ELECBUG_OFF_CONTACT",
+                       "P2_ELECBUG_CONTACT_DISPATCH", "P2_ELECBUG_CONTACT_CANDIDATE"}:
+            continue
+        pairs = [part.split("=", 1) for part in tail.split()]
+        if any(len(pair) != 2 for pair in pairs) or len({p[0] for p in pairs}) != len(pairs):
+            return None
+        fields = dict(pairs)
+        pointer = fields.get("piki", "").lower().removeprefix("0x")
+        if not re.fullmatch(r"[0-9a-f]+", pointer) or int(pointer, 16) == 0:
+            return None
+        pointer = str(int(pointer, 16))
+        history = histories.get(pointer)
+        if tag == "P2_ELECBUG_THROW":
+            phase = fields.get("phase")
+            if phase == "held":
+                histories[pointer] = ["held", int(fields["frame"])]
+            elif phase == "invalidated":
+                histories.pop(pointer, None)
+            elif history:
+                expected = {"released": "held", "rising": "released", "descending": "rising"}
+                frame = int(fields["frame"])
+                later = frame >= history[1] if phase == "released" else frame > history[1]
+                if expected.get(phase) == history[0] and later:
+                    histories[pointer] = [phase, frame]
+                else:
+                    histories.pop(pointer, None)
+        elif fields.get("generator") == "346002" and history:
+            if tag == "P2_ELECBUG_OFF_CONTACT":
+                frame = int(fields["frame"])
+                if history[0] == "descending" and frame >= history[1] and fields.get("contact") == "0":
+                    histories[pointer] = ["off_contact", frame]
+            elif tag == "P2_ELECBUG_CONTACT_DISPATCH":
+                vy = float(fields.get("vy", "nan"))
+                if (history[0] == "off_contact" and math.isfinite(vy) and vy < -.01
+                        and fields.get("contact") == "1" and fields.get("species") == "1"
+                        and fields.get("enemy_before") in {"wait", "turn", "move", "charge", "childcharge", "discharge", "childdischarge"}
+                        and fields.get("enemy_after") == "reverse"):
+                    histories[pointer] = ["dispatch", history[1]]
+                else:
+                    histories.pop(pointer, None)
+            elif tag == "P2_ELECBUG_CONTACT_CANDIDATE":
+                if history[0] == "dispatch" and int(fields["frame"]) > history[1] and fields.get("observed_reverse") == "1":
+                    return dict(generator=346002, piki_hex=hex(int(pointer)), ordinary_throw=True,
+                                ordered_off_contact_dispatch_reverse=True)
+    return None
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ("exe", "assets", "content", "output"):
@@ -62,7 +115,7 @@ def main():
     run = prepare(a.assets, a.content, a.output / uuid.uuid4().hex)
     private_save = run / "private-save"
     private_save.mkdir()
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("P2_ELECBUG_", "PIKMIN_RANDOMIZER_"))}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("P2_ELECBUG_", "PIKMIN_RANDOMIZER_", "PIKMIN_NETPLAY_TEST_"))}
     env.update(NECTAR_SAVE_DIR=str(private_save), NECTAR_EXECUTABLE_PATH=str(exe),
                SDL_AUDIODRIVER="dummy", SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="1",
                PIKMIN_RANDOMIZER_TEST_BACKGROUND="1", PIKMIN_P2_ROOM_WINDOW="960x540")
@@ -70,7 +123,7 @@ def main():
         env["P2_ELECBUG_FORCE_CAPTAIN_DOWN"] = "1"
     if a.mode == "ready":
         env["P2_ELECBUG_READY_ONLY"] = "1"
-    marker = {"ready": "PASS P2_ELECBUG_READY_ONLY", "positive": "PASS P2_ELECBUG_CONTACT",
+    marker = {"ready": "PASS P2_ELECBUG_READY_ONLY", "positive": "P2_ELECBUG_CONTACT_CANDIDATE",
               "negative": "P2_FIXTURE_CAPTAIN_DOWN"}[a.mode]
     provenance = dict(exe=str(exe), exe_sha256=sha(exe), mode=a.mode, wall_seconds=60,
                       compiled_identity=identity,
@@ -82,6 +135,7 @@ def main():
     raw = supervise([str(exe), "--experimental-pikmin2-room"], run, 60, env, [marker])
     text = (run / "native.log").read_text(errors="replace")
     expected = 86 if a.mode == "negative" else 0
+    witness = None
     passed = not raw.get("timed_out") and raw.get("exit_code") == expected and marker in text
     if a.mode == "negative":
         passed = passed and "PASS P2_ELECBUG" not in text
@@ -90,9 +144,14 @@ def main():
         passed = passed and "P2_ELECBUG_CONTACT_WINDOW size=960x540 centered=1" in text
         passed = passed and "P2_ELECBUG_CONTACT_READY live=20 red=20" in text
         if a.mode == "positive":
-            passed = passed and "P2_ELECBUG_NATURAL_PRESS" in text
+            try:
+                witness = contact_witness(text)
+            except (KeyError, ValueError):
+                witness = None
+            passed = passed and witness is not None
     result = dict(mode=a.mode, passed=passed, raw=raw, log_sha256=sha(run / "native.log"),
                   natural_contact_validated=passed and a.mode == "positive",
+                  contact_witness=witness,
                   whole_family_acceptance=False)
     (run / "assessment.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(dict(run=str(run), **result), indent=2))
