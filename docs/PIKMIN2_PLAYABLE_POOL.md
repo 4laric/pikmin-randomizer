@@ -53,11 +53,12 @@ every existing caller keeps working. Today the pool is:
 | 57 | Kurage | kurage |
 | 72 | OniKurage | onikurage |
 | 30 | Queen | queen |
+| 66 | Houdai | long_legs |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (1 Kochappy, 45 Snow,
 9 Kogane, plus 26 Catfish,
-27 Tadpole, 84 Hana, 93 BombOtakara, 66 Houdai, 97 FminiHoudai).
+27 Tadpole, 84 Hana, 93 BombOtakara, 97 FminiHoudai).
 Staging is not admission: those species stay out of the table until their
 campaign evidence lands.
 
@@ -169,9 +170,9 @@ never P2 identities and never enter this table.
   a kill, carry and Onion check is unreachable. They are `excluded` in the roster
   evidence, never enter this table, and are dropped from every proxy tier
   (`randomizer.p2_proxy.NO_CHECK_SOURCE_IDS`). A proxy host would only fake the death.
-- **Bosses belong in the pool.** Ten P2 bosses are already here (30, 34, 40, 53,
-  69, 70, 71, 73, 94, 101; 40 Giant Breadbug joined them in #958, on ordinary slots; 56 Beady Long Legs was withdrawn, see below). The remaining bosses
-  66 Houdai and 99 Waterwraith are in scope under the same admission bar.
+- **Bosses belong in the pool.** Eleven P2 bosses are already here (30, 34, 40, 53,
+  66, 69, 70, 71, 73, 94, 101; 66 Man-at-Legs joined them in #1012 as an arena boss; 40 Giant Breadbug joined them in #958, on ordinary slots; 56 Beady Long Legs was withdrawn, see below). The remaining bosses
+  99 Waterwraith is in scope under the same admission bar.
   Per-boss arena feasibility is the work, not a policy question.
 
 ## Owner rulings, 2026-09-29 (#246, #899)

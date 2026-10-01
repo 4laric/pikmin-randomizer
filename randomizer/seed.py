@@ -645,6 +645,18 @@ P2_PLAYABLE_POOL = (
                          "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage)",
         },
     },
+    {
+        "source_id": 66,
+        "enum_name": "Houdai",
+        "family": "long_legs",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign a4 (#1012; owner ruling 2026-09-25: power mode admits): own-brain bind (P2HoudaiFsm, disc parms) with the sampled clip rig, IK legs, retail collision tree, Stay->Land->Wait->Walk->Dead on its own generator 1945764764, natural kill (23 damage lines 2687.5->212.5), P2 corpse carried by 10 Pikmin, Onion receipt onion:p2:66:3; combat run a1 (same exe): laser sight sweep, 192 shells, 42 Pikmin hits, tama latch damage, life gauge",
+            "log": "output/claude-orch/p2-66-own/runs/a4/session/runs/6c4f6da3f0469c20c7bd4684afcc9eebf8914a5ae4c7bb87a958b4a876de4877/native.log (sha256 d64d8135e9452f21...) L1199 own bind, L1200 delivery bind, L1447 dead, L1538 receipt, L1539 AUTOPLAY_RESULT 1/1/1/1; a1 native.log sha256 15c0c1725c15cd9b...; native claude/p2-66-man-at-legs e928ae579, exe sha256 342bacde780537ca...; docs/PIKMIN2_HOUDAI_PORT.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 66 -> long_legs "
+                         "(experimental/pikmin2_long_legs_install; rig via pikmin2_houdai_rig)",
+        },
+    },
 )
 
 

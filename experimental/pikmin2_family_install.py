@@ -1543,6 +1543,15 @@ def _adapt_long_legs(source, run, actors):
     finally:
         if parked is not None and parked.is_file():
             parked.rename(room / 'Damagumo_enemy.bmd')
+    if 'Houdai' in staged:
+        # Sampled Man-at-Legs joint pose bank (#1012, optional): present only in content trees extracted
+        # with pikmin2_houdai_rig; absent keeps the static bind / IK-legs draw.
+        rig = Path(source) / 'rig' / 'longlegs_Houdai_rig_00.txt'
+        if rig.is_file():
+            target = room / rig.name
+            if target.exists():
+                raise StagingError(f'Refusing existing/conflicting Houdai rig file: {target}')
+            _shutil.copyfile(rig, target)
     if 'Damagumo' in staged:
         mesh_path = room / 'Damagumo_enemy.bmd'
         mod_path = room / 'longlegs_Damagumo_bind_00.mod'

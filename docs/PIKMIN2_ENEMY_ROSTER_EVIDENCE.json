@@ -1253,26 +1253,28 @@
     "66": {
       "native_module": "pc_p2_long_legs",
       "owner_lane": "26",
-      "eligibility": "denied",
-      "eligibility_reason": "Man-at-Legs (Houdai, 66): own source brain P2HoudaiFsm (native fork claude/p2-port-66-houdai 49e634d17) completes a natural bot-driven power-mode kill, carry and Onion receipt, but it is NOT admitted: the legs never animate (bind pose, no IKSystemMgr, no clip sampling), the death model (source: no carcass, explode) is an open owner decision, and pool growth past 35 breaks placement until #893 lands (#173).",
+      "eligibility": "admitted",
+      "eligibility_reason": "Man-at-Legs (Houdai, source 66): own source brain P2HoudaiFsm with the sampled clip rig, aimed gun, laser sight and retail collision tree (#1012). Bot-driven power-mode run a4 (owner ruling 2026-09-25: power mode admits) on the species' own generator token 1945764764: natural kill, carcass carried by 10 Pikmin, Onion receipt onion:p2:66:3.",
       "source": [
-        "PIKMIN2_LONG_LEGS_POLICY.md",
-        "PIKMIN2_P2_CAMPAIGN_READINESS.md"
+        "PIKMIN2_HOUDAI_PORT.md",
+        "PIKMIN2_LONG_LEGS_AUDIT.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
+      "delivery_receipt": "onion:p2:66:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-66-own/runs/a4/session/runs/6c4f6da3f0469c20c7bd4684afcc9eebf8914a5ae4c7bb87a958b4a876de4877/native.log:L1538 (sha256 d64d8135e9452f21c6d0f8c6bec16ea2dc1f6c9e3ea5398763355d0a95971d5b)",
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "FAIL",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "BLOCKED",
+        "death_corpse": "PASS",
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Lane campaign evidence (not admission): bot-driven power-mode run f4-66 (damage_mult 3), native 49e634d17, exe sha256 797745676ea6cba0816b092441f9e226df188c55fbc9470fd0b6bbbda1355cd1, root 41521921. Log output/claude-orch/p2-port-66/runs/f4-66/session/runs/9f94b37a43ce9b219025d4a6284d4d0fef80f9d1efcaa8e91304aab6d06124e9/native.log (sha256 70ee80b375241435eb95380c1cb9116a1c4532f7d37eb3656fff059de0ba71c7): L1723 P2_HOUDAI_INTANGIBLE on=1 (dormant body has no collision), L1724 own bind health=2800 parms=disc (logged once), L1725 delivery bind source_id=66 (once), L1895 Stay->Land, L1896 intangible off, L2088-2092 shell hits with the source sideways blast direction, 58 damage lines 2755->10, L2389 P2_LONG_LEGS_DEAD prior_health 10 (shells=44 hits 17 piki/2 navi), L2427 corpse register, L2745 receipt onion:p2:66:3 new=1, L2746 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1.",
-        "movement_animation FAIL: no animation playback at all. The bind-pose mesh slides during Walk (WALK_END 1.3/6.6/23.1 units in f4-66), holds the standing pose through Dead, and the carried corpse is the standing boss with legs. Owner decision pending on #173.",
-        "death_corpse BLOCKED: the source Houdai leaves no carcass (EB_LeaveCarcass off; StateDead throws up items and explodes). The port follows the 56/69 carriable-corpse precedent with the host pellet weight (one carrier moves it). Owner decision pending on #173.",
-        "Same-exe 56/69 runs f4-56 (L2370 receipt onion:p2:56:3) and f4-69 (L3670 receipt onion:p2:69:3), and the earlier f2-56 (L2417) and f3-69 (L5284; f2-69 has no receipt, its carry failed) only show bind/dead/receipt plumbing. They are NOT behaviour regression controls: the host max-life clamp drops Damagumo 1300->130 and BigFoot 10000->130 on the first damage line (f4-56 L1959, f4-69 L1952). Clamp fix tracked separately on #173.",
-        "Stay damage: stuck-Pikmin hits count at 1x in Stay per the US damageCallBack (unit test only; at runtime nothing can stick while dormant, like the source's out-of-reach body). Shells live about 0.1 s (fired almost straight down from the bind-pose gun height 112), so only muzzle and impact bursts are visible."
+        "Pins: native 4laric/Open-Nectar fork claude/p2-66-man-at-legs e928ae579 (fork main 531226358 merged), exe nectar.exe sha256 342bacde780537cabeacbaa0acb2fc76a429eaaea6d2a0a2c4eb3a47e22a399d (Ninja, MinGW, private build dir output/native-66-build, -j 2). Root claude/p2-66-man-at-legs on main 6356fe94 plus this admission diff. Content: output/p2-content-dense/Houdai with rig/ (pikmin2_houdai_rig, 239 poses: landing 52, wait 40, flick 49, attack 50, dead 48).",
+        "Run a4 (power x30, seed man-at-legs-ev2, slot 1945764764 via p2_smoke_seed --slot-uids, smoke any-slot marker only): native.log sha256 d64d8135e9452f21c6d0f8c6bec16ea2dc1f6c9e3ea5398763355d0a95971d5b. L1199 P2_HOUDAI_OWN_BIND health=2800 parms=disc, L1200 delivery bind source_id=66, L1203 P2_HOUDAI_RIG status=ready, L1206 IK_READY private_geometry=1, L1211 COLL_BIND (retail tree, tama the only stickable part), L1351 IK_START pose=clip, Stay->Land->Wait->Walk (10 IK strides) ->Dead, 23 damage lines 2687.5 -> 212.5, L1447 P2_LONG_LEGS_DEAD prior_health 212.5, L1459 ESCAPE, L1462 corpse register, L1538 receipt, L1539 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1 in 100 s. No P2_SETUP_SKIP, no fatal line, the process ran on after the receipt.",
+        "Combat run a1 (power x3, same exe, five Man-at-Legs on the Forest of Hope Bulborb slots): native.log sha256 15c0c1725c15cd9bcb9c0ce518d724d1c8d83ab3f180f392ffe768c6a1f6ddbc. L1796 P2_HOUDAI_RECEIVER stuck Pikmin on part=tama accepted at the Land 0.25x rate, L1798 life gauge audit source_id=66 visible drawn, L2632 laser sight start, L2633 sight trace (lock point on the floor, sweeping with the gun), L2653 shell fire, L2654 shell hit on a Pikmin with the source sideways blast, L3381 shell end on a wall (map trace), L2798 sight end after 277 ticks, 192 shells fired, 42 accepted Pikmin hits, 5 flicks, Wait->Shot->Walk cycles. Run a2 (power x30, same package) killed three Man-at-Legs naturally and registered their corpses; the bot did not finish the carries before the day ended (the corpses need 10 carriers), which is a bot-time limit, not a receipt claim.",
+        "Source-faithful changes in this admission: bombs damage it (EnemyBase::bombCallBack), the dormant body is the visible landing frame 0 with live collision, shells use the Groink map trace and effects, the gun pivot comes from the posed clip. The corpse the Pikmin carry is the port's: the source Houdai leaves no carcass (EB_LeaveCarcass off); the carried body shows the dead clip's last pose. No sound, no 35 percent smoke, no Purple hip-drop path (see docs/PIKMIN2_HOUDAI_PORT.md).",
+        "Placement: arena boss by footprint (houdai_arena, 250, carried over from #899; measured leg spread 114): accepted on every measured, unprotected arena whose clearance covers it. The caveinfo type is 1 (boss floor), like Queen, KingChappy, BigTreasure and DangoMushi. No natural arena-placement run was made; run a4 used the smoke any-slot marker on spring_init_7002."
       ]
     },
     "68": {
