@@ -48,6 +48,7 @@ every existing caller keeps working. Today the pool is:
 | 57 | Kurage | kurage |
 | 72 | OniKurage | onikurage |
 | 30 | Queen | queen |
+| 31 | Baby | queen |
 
 The installer table (`experimental/pikmin2_family_install.py`
 `IDENTITY_FAMILY`) can already stage more species (45 Snow,
@@ -212,6 +213,32 @@ never P2 identities and never enter this table.
   Emperor arena stays protected. Details, dev switches and known gaps are in
   `docs/PIKMIN2_KING_OWN.md`. The Chappy `Health` registry also stopped
   clamping the Emperor to the host's 1100 life (now the retail 1300).
+
+- **31 Baby (Bulborb Larva): admitted (#1042).** Owner ruling 2026-10-01: "queue larva, it should be
+  pretty free since it's already thoroughly tested as part of the empress encounter". It reuses the
+  source Baby FSM the admitted Empress 30 already spawns (`pc_p2_queen_own.h` `Baby`,
+  `pc_p2_queen_teki.cpp`); the new native piece is `bindLarva()`, which binds a seeded ordinary slot
+  as a standalone larva (TEKI_Swallow placement at larva scale, health 5). The larva starts in Born
+  and walks toward the nearest Pikmin or captain in sight (800 units, 180 degrees), bites a captain for
+  2, and `eatPikmin` then `swallowPikmin` kills the Pikmin in its mouth (BabyState.cpp:516-540), so the
+  owner's memory of P2 holds: let the attack animation start and it kills a Pikmin. It has no idle
+  wander (Baby.cpp:262-279), dies to Pikmin damage (5 health) and shows the shared life gauge (fp27 50).
+  **Death and corpse:** the source larva leaves no carcass (Baby.cpp:40 disables `EB_LeaveCarcass`;
+  BabyState.cpp:41/80 `kill()`), which would make its check unreachable. A standalone larva therefore
+  leaves a small carryable corpse (carry 1-2 Pikmin, radius 15, 1 matching and 1 other Onion seed
+  rather than the Swallow config's 12/12) that delivers `onion:p2:31:<stage>` on its own generator,
+  the 2026-09-29 #1 accommodation for carcass-less species. Queen-born larvae still leave nothing.
+  **Placement:** ordinary ground slots (profile terrain ground, the same accepted set as the other
+  ground species); group generators birth two or three larvae each, as the slot count says.
+  **Unit: 1** (default, no `unit` field). The source does not clearly support more: the Empress births
+  one larva per Born cycle (Queen.cpp:423-441 `createBabyChappy`, no burst), and the cave rosters list
+  Baby as ordinary rows (BULBLAX_BOSS_AUDIT). A unit of 2 or 3 is a data-only change
+  (`"unit": N` on the pool row) if the owner wants a swarm. Evidence: the roster entry cites bot runs
+  p4, n2 and nat2 (natural seed, committed placement, no smoke override). Not ported: the 20 percent
+  nectar roll on death (BabyState.cpp `createHoney`), the White Pikmin poison on the swallowed Pikmin
+  (fp01 300), and a thrown-Pikmin press kill (no P1 trigger on a standalone larva). Baby also moved
+  from the roster class `boss_helper` to `enemy`; the staged content tree is `Baby/` (extract_baby, the
+  Queen extraction under its own enum), installed by the shared `queen` family.
 
 ## Admission bar
 

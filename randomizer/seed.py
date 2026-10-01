@@ -580,6 +580,18 @@ P2_PLAYABLE_POOL = (
         },
     },
     {
+        "source_id": 31,
+        "enum_name": "Baby",
+        "family": "queen",
+        "evidence": {
+            "run": "Bot-driven campaign runs on the existing Baby FSM (owner ruling 2026-10-01 queued larva; power-mode runs admit per the 2026-09-25 ruling): p4 (smoke package, power x3), n2 (normal squad) and nat2 (natural seed, committed placement, no smoke override, power x3): standalone P2_LARVA_OWN_BIND, captain bites and swallowPikmin kills, natural death, a carryable corpse carried to the Onion, receipt onion:p2:31:1 on the larva's own generator (nat2 4222852521; p4 and n2 also 1877315663)",
+            "log": "output/larva-evidence/nat2/runs/00bd993b66d9f927e4c4f7b9bbd3ee83e5fd5feeee02db0f20ceadad68e18f82/native.log (sha256 b1e471019c9390a3...) L1287 bind, L1555 dead, L1569 carcass, L1612 receipt; output/larva-evidence/p4/runs/d7c9a6b0f689dc5faef77be04717000cc157e8949d2fec2a4788bfed9bf5def6/native.log (sha256 ce9aa9476cfa9948...) L1242 bind, L1470 bite, L1485 swallow, L1492 dead, L1536 and L1549 receipts; output/larva-evidence/n2/runs/44a03750a24c800a044d2481ee4dc4099eac11375225b2fd83eebe934c267ca6/native.log (sha256 c90f67ed89b322bb...) L1437 swallow, L1779 dead, L1863 receipt; native claude/p2-larva-31 cc2f51f5d (fork/main 7a9f7dcab), nectar.exe sha256 bfcd8bff980ad063fdac4d...d242",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 31 -> queen "
+                         "(ADAPTERS 'queen' via _adapt_queen / pikmin2_queen_stage; Baby tree from extract_baby)",
+        },
+    },
+    {
         "source_id": 26,
         "enum_name": "Catfish",
         "family": "aquatic",

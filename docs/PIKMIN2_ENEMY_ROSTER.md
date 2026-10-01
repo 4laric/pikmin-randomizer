@@ -168,8 +168,8 @@ independently, and neither is admitted by this document.
 
 Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
 
-- **102 identities**, **64 randomizable candidates** (51 `enemy`, 13 `boss`).
-- Non-candidates: 24 `plant`, 2 `boss_helper` (Baby, Tyre), 3 `nest`, 3 `hazard`,
+- **102 identities**, **65 randomizable candidates** (52 `enemy`, 13 `boss`; Baby 31 joined the `enemy` class in #1042).
+- Non-candidates: 24 `plant`, 1 `boss_helper` (Tyre), 3 `nest`, 3 `hazard`,
   4 `projectile`, 2 `manager_base` (Pom, UmiMushiBase), 2 enum-only (`JigumoNest`,
   `PanModokiNest` have no `gEnemyInfo[]` row).
 - `docs/PIKMIN2_CONTENT_INVENTORY.json` yields 149 `enemy_ids` tokens; the audit

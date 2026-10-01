@@ -62,7 +62,7 @@ def synthetic_payload():
 def test_roster_loads_and_validates():
     roster = load_and_validate()
     assert len(roster) == 102
-    assert sum(entry.is_randomizable_candidate for entry in roster) == 64
+    assert sum(entry.is_randomizable_candidate for entry in roster) == 65  # Baby 31 left boss_helper (#1042)
     assert all(entry.classification in CLASSIFICATIONS for entry in roster)
 
 
@@ -138,7 +138,8 @@ def test_classify_uses_boss_and_flags():
     assert classify("Queen", {"spawnable": True, "drop_type": "BDT_Boss"}) == "boss"
     assert classify("Hiba", {"spawnable": True}) == "hazard"
     assert classify("Rock", {"spawnable": True}) == "projectile"
-    assert classify("Baby", {"spawnable": True}) == "boss_helper"
+    assert classify("Tyre", {"spawnable": True}) == "boss_helper"
+    assert classify("Baby", {"spawnable": True}) == "enemy"  # #1042: standalone larva
 
 
 def test_inventory_tokens_are_categorized():
@@ -164,7 +165,8 @@ def test_identity_roles_real_roster():
     assert identity_role(roster[99]) == "source"          # BlackMan boss
     assert identity_role(roster[71]) == "variant"         # UmiMushi shares UmiMushiBase
     assert identity_role(roster[101]) == "variant"        # UmiMushiBlind
-    assert identity_role(roster[31]) == "helper"          # Baby boss_helper
+    assert identity_role(roster[98]) == "helper"          # Tyre boss_helper
+    assert identity_role(roster[31]) == "source"          # Baby: standalone since #1042
     assert identity_role(roster[0]) == "plant"
     assert identity_role(roster[82]) == "manager_base"
     assert all(identity_role(entry) in ROLES for entry in roster.values())

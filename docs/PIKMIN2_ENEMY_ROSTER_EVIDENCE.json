@@ -695,23 +695,35 @@
       ]
     },
     "31": {
-      "native_module": "pc_p2_bulblax_visual",
+      "native_module": "pc_p2_queen_teki",
       "owner_lane": "24",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Bulborb Larva (Baby, source 31): OWN campaign binding of the existing source Baby FSM (the one the admitted Empress 30 spawns) on ordinary seeded slots. Natural bot-driven runs: bind in Born, Move to the nearest Pikmin or captain, Attack (captain bite, eatPikmin then swallowPikmin kills the held Pikmin), natural death, a small carryable corpse carried to the Onion, receipt onion:p2:31:1 on the species' own generator token. The source larva leaves no carcass (Baby.cpp:40 disables EB_LeaveCarcass); the corpse is the owner-accepted accommodation (ruling 2026-09-29 #1).",
       "source": [
-        "PIKMIN2_BULBLAX_RUNTIME.md"
+        "PIKMIN2_BULBLAX_BOSS_AUDIT.md",
+        "PIKMIN2_BULBLAX_RUNTIME.md",
+        "PIKMIN2_PLAYABLE_POOL.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "N/A",
-        "cleanup_reentry": "UNTESTED"
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:p2:31:1 (P2_LARVA_CARCASS then P2_ORDINARY_P2_RECEIPT new=1) output/larva-evidence/nat2/runs/00bd993b66d9f927e4c4f7b9bbd3ee83e5fd5feeee02db0f20ceadad68e18f82/native.log:L1612 receipt on generator 4222852521 (sha256 b1e471019c9390a3aa79ff9201d70be0d8833399748679285ed5e9f73147633c)",
       "notes": [
-        "Baby (Bulborb Larva, boss_helper): never seeded independently; visual via pc_p2_bulblax_visual; historical baby attack receiver PASS (#172/#256)."
+        "Admission follows owner ruling 2026-10-01 (typed to the coordinator): 'queue larva, it should be pretty free since it's already thoroughly tested as part of the empress encounter'. The Empress encounter larva behaviour was owner-passed (#256: 'larva are a huge improvement', 'spawning of larva is good'). Issue #1042.",
+        "Reuse, not reimplementation: pc_p2_queen_teki.cpp already ran Baby 31 as real teki driven by pc_p2_queen_own.h Baby (BabyState.cpp FSM). #1042 adds bindLarva() (a seeded slot becomes a standalone larva, same FSM and same attack/eat/swallow code), the campaign placement row p2campaign::hostType 31 -> 4 (TEKI_Swallow at larva scale 0.35, as the Queen-born larvae), the life gauge fp27 row (50, baby/enemyparm.txt) and the regenerated roster revision header.",
+        "Source citations (pikmin2-research src/plugProjectNishimuraU): Baby.cpp:36-48 onInit (EB_Cullable and EB_LeaveCarcass disabled, starts in BABY_Born); Baby.cpp:114-137 pressCallBack and hipdropCallBack (any press past Born is an instant Press death); Baby.cpp:202-210 one mouth slot 'kamu' radius 20; Baby.cpp:262-279 moveNoTarget (no idle wander outside zukan mode); BabyState.cpp:20-100 StateDead/StatePress (kill() at KEYEVENT_END, lines 41 and 80); BabyState.cpp:146-186 StateMove (nearest Pikmin or captain within sight 800 and view 180, quarter speed while turning, Attack inside 30 and 45 degrees); BabyState.cpp:516-540 StateAttack (key 2 attackNavi plus eatPikmin, AttackFail when the mouth is empty; key 3 swallowPikmin).",
+        "Health 5, move speed 40, sight 800, view 180, attack radius 30, attack damage 2 (baby/enemyparm.txt via the staged bulblax.json); the gauge is shown through the shared P2 life gauge (fp27 50).",
+        "Exe nectar.exe sha256 bfcd8bff980ad063fdac4d40efb0117774804430221687dc15dd53e2d816d242 (private build output/native-larva-build, Ninja, MinGW, JAudio on, ninja -n: no work to do), native claude/p2-larva-31 cc2f51f5d (fork/main 7a9f7dcab), root claude/p2-larva-31 on origin/main b90601db. Bot-driven, autoplay env only (PIKMIN_RANDOMIZER_AUTOPLAY, power x3 where stated), no behaviour overrides; the smoke package adds PIKMIN_P2_SMOKE_ANY_SLOT=1, the natural seed run does not.",
+        "Run p4 (smoke package, power x3, 80 flowered Pikmin): output/larva-evidence/p4/runs/d7c9a6b0f689dc5faef77be04717000cc157e8949d2fec2a4788bfed9bf5def6/native.log (sha256 ce9aa9476cfa9948e9a7aa55ed80363f7428aad6f4d8b33b6122fd1148683718). L1242-L1250 five P2_LARVA_OWN_BIND (host_type=4 health=5.0 draw=p2_baby); L1470 and L1482 P2_QUEEN_LARVA_BITE accepted=1 damage=2.0 on the captain (100 -> 96); L1485 and L1507 swallowPikmin killed=1 (a Pikmin eaten); L1492 and L1513 P2_QUEEN_LARVA_DEAD no_corpse=0 (hits=2, hits=23); L1501 and L1521 P2_LARVA_CARCASS; L1536 and L1549 P2_ORDINARY_P2_RECEIPT id=onion:p2:31:1 on generators 1877315663 and 4222852521.",
+        "Run n2 (smoke package, normal 20-Pikmin squad, no power): output/larva-evidence/n2/runs/44a03750a24c800a044d2481ee4dc4099eac11375225b2fd83eebe934c267ca6/native.log (sha256 c90f67ed89b322bb762fc88681e2e4973d2e7505625f126f6f359ae6541130e3). L1437, L1460, L1535-L1575 swallowPikmin killed=1 (six Pikmin eaten in all); L1464, L1542, L1577, L1779 four larva dead; L1863 P2_ORDINARY_P2_RECEIPT onion:p2:31:1 on generator 1877315663 after a Pikmin carried the corpse (AUTOPLAY_RESULT killed=1 carried=1 received=1). The first larva in this run was killed but the bot's captain got stuck at a gate and gave up carrying it (carry_stalled), which is bot navigation, not the larva.",
+        "Run nat2 (NATURAL seed from `randomizer generate --p2-enemies --p2-species 31`, no smoke override, committed placement document, power x3): output/larva-evidence/nat2/runs/00bd993b66d9f927e4c4f7b9bbd3ee83e5fd5feeee02db0f20ceadad68e18f82/native.log (sha256 b1e471019c9390a3aa79ff9201d70be0d8833399748679285ed5e9f73147633c). L1287-L1325 twenty P2_LARVA_OWN_BIND on the normal generator path, including group generators that birth two or three larvae each (3679976242 x2, 1102975523 x3, 3768801221 x3, 2637843033 x2); L1538 captain bite; L1542 swallow; L1555 dead; L1569 carcass; L1612 receipt onion:p2:31:1 on generator 4222852521.",
+        "Accommodations and limits (owner flags): (1) the source larva leaves no carcass, so the check uses a carryable corpse (carry 1-2 Pikmin, radius 15, 1 matching and 1 other Onion seed instead of the Swallow config's 12/12), per the 2026-09-29 #1 ruling for carcass-less species; (2) the source nectar roll on death (BabyState.cpp createHoney, 20 percent) is not ported; (3) the source poison on the swallowed Pikmin (fp01 300, White Pikmin) is not ported: the swallow kills the held Pikmin; (4) larva crush by Queen rolling is unchanged; (5) a thrown Pikmin press (pressCallBack) has no P1 trigger on a standalone larva, so Pikmin attack damage (health 5) is its death path; (6) placement unit stays 1 (source: the Empress births one larva per Born cycle, Queen.cpp:423-441 createBabyChappy, no burst; the cave rosters list Baby as ordinary rows).",
+        "Roster class: Baby moved from boss_helper to enemy (it is spawnable with its own ID and cave roster rows, BULBLAX_BOSS_AUDIT); the native roster revision header was regenerated."
       ]
     },
     "32": {
