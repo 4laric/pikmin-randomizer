@@ -153,7 +153,7 @@ def main():
                             for row in sources: stages[row['stage']] = min(stages.get(row['stage'], 999), row['first_day'])
                             descriptions = [next(area for sid, area, _ in START_AREAS.values() if sid == stage)
                                 + (f" (day {day}+)" if day > 2 else '') for stage, day in sorted(stages.items())]
-                            suffix += ' â€” sources: ' + ', '.join(descriptions)
+                            suffix += ' — sources: ' + ', '.join(descriptions)
                         lines.append(f"- [{'x' if name in checked else ' '}] {name}{suffix}")
                     lines.append("")
                 text = "\n".join(lines)

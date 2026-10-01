@@ -69,7 +69,7 @@ class TrackerWindow:
         self.data = None
         self.window = tk.Toplevel(root)
         self.window.withdraw()
-        self.window.title('Pikipelago â€” Tracker')
+        self.window.title('Pikipelago — Tracker')
         self.window.geometry('940x620')
         self.window.minsize(660, 430)
         self.window.protocol('WM_DELETE_WINDOW', on_close)
@@ -80,7 +80,7 @@ class TrackerWindow:
         frame = ttk.Frame(self.window, padding=14)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, textvariable=self.summary, font=('Segoe UI', 13, 'bold')).pack(anchor='w')
-        ttk.Label(frame, text='F8 / Esc: back to game. Game continues running â€” pause it first when needed.').pack(anchor='w', pady=(4, 8))
+        ttk.Label(frame, text='F8 / Esc: back to game. Game continues running — pause it first when needed.').pack(anchor='w', pady=(4, 8))
         ttk.Label(frame, textvariable=self.details).pack(anchor='w', pady=(0, 8))
         tabs = ttk.Notebook(frame)
         tabs.pack(fill='both', expand=True)
