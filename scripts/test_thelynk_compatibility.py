@@ -15,6 +15,8 @@ NATIVE_PROBE = r'''
 #include <cstdio>
 #include <cstring>
 #include <cassert>
+// The protocol probe excludes engine-backed P2 proxy staging.
+int pc_p2_proxy_host(unsigned) { return -1; }
 int main(int argc, char** argv) {
     assert(pc_randomizer_init(argc, argv));
     assert(pc_randomizer_thelynk());
