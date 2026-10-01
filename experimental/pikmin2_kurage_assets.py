@@ -39,7 +39,9 @@ from pathlib import Path
 
 from experimental.pikmin2_assets import disc_files, archive_files
 from experimental.pikmin2_breadbug_assets import sha, parameter_blocks
+from experimental.pikmin2_animation import DEFAULT_POSE_LIMIT
 from experimental.pikmin2_convert import blocks, decode, write_model
+from experimental.pikmin2_kurage_bank import bake_bank
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
 from experimental.pikmin2_skinning import draw_matrices
@@ -72,7 +74,7 @@ OPTIONAL_VISUALS = (
 VISUALS = REQUIRED_VISUALS + OPTIONAL_VISUALS
 
 
-def extract(iso, output):
+def extract(iso, output, pose_limit=DEFAULT_POSE_LIMIT):
     """Extract Kurage's source model/motions and bake the native visual poses.
 
     Returns the schema-1 ``kurage.json`` document. ``output`` must not exist;
@@ -138,6 +140,8 @@ def extract(iso, output):
         except ValueError as error:
             clip['reason'] = str(error)
         clips.append(clip)
+    # #972: sampled pose bank (<clip>_<NN>.mod) beside the static fallback visuals.
+    bank = bake_bank(model, names, motions, rows, output, pose_limit)
     visuals = []
     for name, clip, frame in VISUALS:
         entry = poses_by_key.get((clip, frame))
@@ -153,6 +157,7 @@ def extract(iso, output):
         joints=names,
         parameters=parameter_blocks(parms[PARM_PREFIX + 'enemyparm.txt']),
         clips=clips, visuals=visuals,
+        bank=bank,
         limitations=[
             'Baked sampled poses; the host draws one static shape per FSM state.',
             'The Jellyfloat FSM is gated behind PIKMIN_P2_KURAGE_SHOWCASE '
@@ -171,8 +176,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--iso', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--pose-limit', type=int, default=DEFAULT_POSE_LIMIT)
     args = parser.parse_args()
-    result = extract(args.iso, args.output)
+    result = extract(args.iso, args.output, args.pose_limit)
     print(json.dumps(dict(clips=len(result['clips']),
                           converted=sum(c['status'] == 'converted' for c in result['clips']),
                           visuals=len(result['visuals']))))

@@ -617,7 +617,7 @@ def extract_kogane(iso, dest, pose_limit=DEFAULT_POSE_LIMIT):
     return target
 
 
-def extract_kurage(iso, dest):
+def extract_kurage(iso, dest, pose_limit=None):
     """Build <dest>/Kurage/ via the kurage extractor (identity + manifest + poses).
 
     ``experimental.pikmin2_kurage_assets.extract`` writes ``identity.json`` (the
@@ -635,11 +635,11 @@ def extract_kurage(iso, dest):
     target = dest / "Kurage"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
-    kurage.extract(iso, target)
+    kurage.extract(iso, target, *([] if pose_limit is None else [pose_limit]))
     return target
 
 
-def extract_onikurage(iso, dest):
+def extract_onikurage(iso, dest, pose_limit=None):
     """Build <dest>/OniKurage/ via the onikurage extractor (identity + manifest + poses).
 
     Wave 3 flyers (#960): same layout as :func:`extract_kurage` for the Greater
@@ -654,7 +654,7 @@ def extract_onikurage(iso, dest):
     target = dest / "OniKurage"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
-    onikurage.extract(iso, target)
+    onikurage.extract(iso, target, *([] if pose_limit is None else [pose_limit]))
     return target
 
 
@@ -1777,10 +1777,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extract_demon(iso, out)
             extracted.append(source_id)
         elif source_id == 57:
-            extract_kurage(iso, out)
+            extract_kurage(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 72:
-            extract_onikurage(iso, out)
+            extract_onikurage(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out, pose_limit=pose_limit)
