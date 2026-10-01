@@ -1,5 +1,18 @@
 # Current combined captain SDL save/reload (#1130)
 
+For current CI-packaged regression runs (#1157), pass `--runtime-dir` pointing
+to the verified fixture artifact directory containing its matching MinGW DLLs
+and `SDL2.dll`. The runner records these hashes and passes that directory to the
+bounded launcher. Omitting the option retains the local MinGW default; mixing
+CI executable-local DLLs with a different local toolchain is rejected before
+launch. `--prepare-only` stages inputs and records provenance without running
+the game. The historical results below remain pinned to their original builds.
+
+When linked with `PIKMIN_NETPLAY_BUILD=ON`, this fixture still runs an offline
+two-captain session. Its replacement main does not execute production netplay
+startup, and the runner clears inherited `PIKMIN_`, `P2_` and `COOP_` settings.
+Record the linked profile without treating this as online co-op validation.
+
 Codex through shared account 4laric. This bounded consumer uses the accepted
 combined native `2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b` and root
 `22a2a5bc6718b809c4a29cf68d85d32a3659f68a` production foundation. Its only native
