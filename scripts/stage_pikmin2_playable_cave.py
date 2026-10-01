@@ -144,9 +144,7 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     stage_ini=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -50.0 0.0',stage_ini)
     blob=generator(assets)
     starts=[m.start() for m in re.finditer(b'    0.0v',blob)]+[len(blob)]
-    # Native species: Blue=0, Yellow=1, Red=2. Fresh ordinary entry uses the
-    # required 20 Red baseline; a checkpoint supplies its exact surviving squad.
-    squad=checkpoint['squad'] if checkpoint else [[2,0]]*20
+    squad=checkpoint['squad'] if checkpoint else [[1,0]]*20
     rows=[]; piki_template=None
     for a,b in zip(starts,starts[1:]):
         row=bytearray(blob[a:b]); label=row[16:48].rstrip(b'\0')

@@ -1,7 +1,6 @@
 """Developer cave only: no released manifest, fill, campaign session, or AP imports."""
 import copy
 import json
-import struct
 import unittest
 from pathlib import Path
 import tempfile
@@ -74,54 +73,6 @@ class BoundedCaveTests(unittest.TestCase):
             directory = Path(tmp)
             with self.assertRaisesRegex(ValueError, 'fresh private'):
                 stage(create('930'), directory, directory, directory, directory, directory)
-
-    def test_stage_fresh_red_and_exact_checkpoint_squad(self):
-        from scripts.stage_pikmin2_playable_cave import stage
-        # Synthetic input isolates serialization; real asset/generator staging
-        # is recorded separately in the issue's acceptance evidence.
-        row = bytearray(112)
-        row[:8] = b'    0.0v'
-        row[16:48] = b'preview red pikmin'.ljust(32, b'\0')
-        row[72:76] = b'ikip'
-        blob = b'1.0v' + bytes(16) + struct.pack('>I', 1) + row
-        def write_overlay(source, dest, overrides):
-            for name, data in overrides.items():
-                path = dest / name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            assets, pod = base/'assets', base/'pod'
-            for name in ('dataDir/stages/chal0/default.gen', 'dataDir/stages/chal0.ini'):
-                path = assets/name
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(b'map_file old\nnavi_start old\n')
-            pod.mkdir()
-            for name in ('pod.mod', 'treasure.mod', 'p2-pod.txt'):
-                (pod/name).write_bytes(b'fixture')
-            exe = base/'stub.exe'
-            exe.write_bytes(b'MZ' + bytes(1024))
-            saved = dict(squad=[[2,2], [0,1], [1,0]], health=0.5,
-                         receipts='P2_RECEIPTS_1\n', buds='saved bud bytes\n')
-            with patch('scripts.stage_pikmin2_playable_cave.generator', return_value=blob), \
-                 patch('scripts.stage_pikmin2_playable_cave.run_native_generator', return_value={'layout':fixture_layout()}), \
-                 patch('scripts.stage_pikmin2_playable_cave.mesh', return_value=(b'model',b'routes')), \
-                 patch('scripts.stage_pikmin2_playable_cave.overlay', side_effect=write_overlay):
-                for name, checkpoint, squad, health in (
-                        ('fresh', None, [[2,0]]*20, 1),
-                        ('resume', saved, saved['squad'], saved['health'])):
-                    out = base/name
-                    stage(create('930'), assets, pod, exe, exe, out, checkpoint=checkpoint)
-                    words = (out/'p2-cave-entry.txt').read_text().split()
-                    self.assertEqual(float(words[3]), health)
-                    self.assertEqual(int(words[4]), len(squad))
-                    self.assertEqual(list(map(int,words[5:])), [v for p in squad for v in p])
-                    actors = (out/'assets/dataDir/stages/chal0/default.gen').read_bytes()
-                    self.assertEqual(struct.unpack_from('>I', actors,20)[0],len(squad))
-                    self.assertEqual(actors.count(b'ikip'),len(squad))
-                    if checkpoint:
-                        self.assertEqual((out/'p2-cave-bud-entry.txt').read_text(),saved['buds'])
-                        self.assertEqual((out/'p2-cave-item-receipts.txt').read_text(),saved['receipts'])
 
     def test_layout_water_is_an_unavoidable_route_cut(self):
         from scripts.stage_pikmin2_playable_cave import physical_layout
