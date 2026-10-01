@@ -2,6 +2,21 @@
 
 Implementation owner: Codex through shared account `4laric`.
 
+Assigned follow-up#1161 adds native-derived checkpoint adapters. Native cave
+wire1 supports Blue0/Red1/Yellow2/Purple3; wire2 adds White4. Maturity is
+Leaf0/Bud1/Flower2. Existing base-color wire1 bytes, roster order/count, health,
+bud state and receipt formats stay unchanged. Actual wire2 capability is retained
+across subsequent checkpoints even if no White survives. Bulbmin/schema3 and
+tutorial ENTRY4 admission are outside this bounded adapter.
+
+The custom surface format is distinct: historical SURFACE1/TRANSFER1 remains
+base0..2; explicit SURFACE2/TRANSFER2 carries real species0..4 and exact maturity.
+P/W generator rows use safe baseRed scaffolds, then the native checkpoint adapter
+restores actual typed flags and maturity after checking asset availability. This
+does not establish ordinary P/W acquisition or permit fabricated acceptance stock.
+Synthetic wire vectors establish source policy only. Fresh actual ordinary mixed
+P/W acquisition, route continuity and gameplay acceptance remain open.
+
 The opt-in route uses the full imported tutorial model, collision, routes and
 static water. Its entrance is an explicit fallback ring at (-210,80,1160), radius
 60. It does not replace the terrain with the historical fenced entrance pocket.

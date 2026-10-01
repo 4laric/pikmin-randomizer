@@ -43,6 +43,29 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(self.state['visit'],2);self.assertEqual(self.state['revision'],4)
         self.assertEqual(self.route.ledger(1),'P2_RECEIPTS_1\n')
 
+    def test_mixed_surface_floor_return_keeps_wire2_after_last_white_lost(self):
+        state=self.state
+        for name in ('mixed-enter','mixed-descend','mixed-exit','mixed-reenter'):
+            run=self.route.directory/'runs'/name/'run';run.mkdir(parents=True)
+            (run/'input.txt').write_text('synthetic versioned boundary policy input')
+            if state['phase']=='surface':
+                token='a'*32
+                party=state['surface'] if state['visit'] else dict(health=.75,squad=[[3,2],[4,1],[1,0]],wire_schema=2)
+                wire='P2_CAVE_ROUTE_TRANSFER_2 '+token+' -210 80 1160 '+str(party['health'])+' '+str(len(party['squad']))+' '+ ' '.join(str(x) for row in party['squad'] for x in row)
+                boundary='p2-cave-surface-transfer.txt'
+            else:
+                n=int(state['phase'][-1]);token=fingerprint(self.route.manifests[n])[:32]
+                party=dict(health=.625,squad=[[3,2],[4,1],[1,0]]) if n==1 else dict(health=.5,squad=[[1,2]])
+                wire=f'P2_CAVE_TRANSFER_2 {token} {n} '+str(party['health'])+' '+str(len(party['squad']))+' '+ ' '.join(str(x) for row in party['squad'] for x in row)
+                boundary='p2-cave-transfer.txt';(run/'p2-cave-bud-transfer.txt').write_text(zero_buds(self.route.manifests[n]))
+            self.route.begin(run,state,token,['input.txt']);(run/boundary).write_text(wire)
+            state,changed=self.route.recover();self.assertTrue(changed)
+            current=state['surface'] if state['phase']=='surface' else state['entry']
+            self.assertEqual(current['wire_schema'],2)
+            self.assertEqual(current['squad'],party['squad']);self.assertEqual(current['health'],party['health'])
+            self.assertEqual(self.route.recover(),(state,False))
+        self.assertEqual((state['phase'],state['revision'],state['visit']),('floor1',4,2))
+
     def test_crash_after_commit_before_pending_unlink_recovers_once(self):
         self.stage_run(self.state,'enter');real=cave_route.atomic_write
         def crash(path,text):

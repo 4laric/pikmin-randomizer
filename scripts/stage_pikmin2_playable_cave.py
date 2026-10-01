@@ -171,7 +171,9 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     (output/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
     token=fingerprint(manifest)[:32]
     health=checkpoint['health'] if checkpoint else 1
-    (output/'p2-cave-entry.txt').write_text(f'P2_CAVE_ENTRY_1 {token} {floor} {health} {len(squad)}\n'+''.join(f'{s} {m}\n' for s,m in squad))
+    from randomizer.cave_checkpoint import entry_text
+    party=dict(checkpoint or {},health=health,squad=squad)
+    (output/'p2-cave-entry.txt').write_text(entry_text(token,floor,party))
     end=8+salt%3*2
     kind='geyser' if floor==2 else 'hole'
     (output/'p2-cave-transition.txt').write_text(f'P2_CAVE_TRANSITION_1 {kind} {end*100} 0 100 40\n')

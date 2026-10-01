@@ -10,20 +10,25 @@ import math
 
 from randomizer.cave_floor import atomic_write, fingerprint
 from randomizer.cave_journey import identity, initial_entry, encoded, read_json
+from randomizer.cave_checkpoint import validate_party, wire_schema, NUMBER, INTEGER
 
 
 def surface_transfer(text, token):
     rows=text.split()
-    if len(rows)<7 or rows[:2]!=['P2_CAVE_ROUTE_TRANSFER_1',token]:
+    if (len(rows)<7 or rows[0] not in ('P2_CAVE_ROUTE_TRANSFER_1','P2_CAVE_ROUTE_TRANSFER_2')
+            or rows[1]!=token or any(not NUMBER.fullmatch(v) for v in rows[2:6])
+            or not INTEGER.fullmatch(rows[6])):
         raise ValueError('foreign surface boundary')
     position=list(map(float,rows[2:5]));health=float(rows[5]);count=int(rows[6])
     if (not all(math.isfinite(v) and abs(v)<=100000 for v in position)
         or not math.isfinite(health) or not 0<health<=1 or not 1<=count<=100
         or len(rows)!=7+count*2):raise ValueError('invalid surface boundary')
+    if any(not INTEGER.fullmatch(v) for v in rows[7:]):raise ValueError('invalid surface survivor integer')
     squad=[list(map(int,rows[i:i+2])) for i in range(7,len(rows),2)]
-    if any(not 0<=species<=2 or not 0<=maturity<=2 for species,maturity in squad):
+    version=int(rows[0][-1]);validate_party(squad,health,2 if version==2 else 1)
+    if version==1 and any(species>2 for species,maturity in squad):
         raise ValueError('invalid surface survivor')
-    return dict(position=position,health=health,squad=squad)
+    return dict(position=position,health=health,squad=squad,**({'wire_schema':2} if version==2 else {}))
 
 
 class Route:
@@ -56,9 +61,12 @@ class Route:
 
     @staticmethod
     def validate_surface(surface):
-        if type(surface) is not dict or set(surface)!={'position','health','squad'}:raise ValueError('invalid surface state')
+        if (type(surface) is not dict or set(surface) not in ({'position','health','squad'},{'position','health','squad','wire_schema'})
+                or ('wire_schema' in surface and (type(surface['wire_schema']) is not int or surface['wire_schema']!=2))):raise ValueError('invalid surface state')
+        validate_party(surface['squad'],surface['health'],2 if surface.get('wire_schema')==2 else 1)
         # Apply the same reader to persisted values, including finite numbers.
-        text='P2_CAVE_ROUTE_TRANSFER_1 t '+' '.join(map(str,surface['position']))+' '+str(surface['health'])+' '+str(len(surface['squad']))+' '+ ' '.join(str(x) for p in surface['squad'] for x in p)
+        version=2 if surface.get('wire_schema')==2 else 1
+        text=f'P2_CAVE_ROUTE_TRANSFER_{version} t '+' '.join(map(str,surface['position']))+' '+str(surface['health'])+' '+str(len(surface['squad']))+' '+ ' '.join(str(x) for p in surface['squad'] for x in p)
         if surface_transfer(text,'t')!=surface:raise ValueError('invalid surface state')
 
     def load(self):
@@ -76,7 +84,7 @@ class Route:
         else:
             n=int(state['phase'][-1]);entry=state['entry']
             if type(entry) is not dict or entry.get('fingerprint')!=fingerprint(self.manifests[n]):raise ValueError('foreign cave entry')
-            self.validate_surface(dict(position=state['surface']['position'],health=entry['health'],squad=entry['squad']))
+            wire_schema(entry)
         if state['revision']==0:
             if state['last_boundary'] is not None:raise ValueError('initial route has a boundary')
         else:
@@ -87,14 +95,15 @@ class Route:
             if hashlib.sha256(source.read_bytes()).hexdigest()!=b['sha256']:raise ValueError('saved boundary changed')
             if state['phase']=='floor1':
                 original=surface_transfer(source.read_text(),source.read_text().split()[1])
-                if state['surface']!=original or state['entry']!=initial_entry(self.manifests[1],original['squad'],original['health']):raise ValueError('entry differs from saved surface boundary')
+                if state['surface']!=original or state['entry']!=initial_entry(self.manifests[1],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved surface boundary')
             else:
                 from scripts.play_pikmin2_cave import checkpoint
                 n=1 if state['phase']=='floor2' else 2
                 original=checkpoint(source.read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),self.ledger(n),self.manifests[n],self.placements[n])
                 if state['phase']=='floor2':
-                    if state['entry']!=initial_entry(self.manifests[2],original['squad'],original['health']):raise ValueError('entry differs from saved floor boundary')
-                elif state['surface']['squad']!=original['squad'] or state['surface']['health']!=original['health']:raise ValueError('surface differs from terminal boundary')
+                    if state['entry']!=initial_entry(self.manifests[2],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved floor boundary')
+                elif (state['surface']['squad']!=original['squad'] or state['surface']['health']!=original['health']
+                      or state['surface'].get('wire_schema')!=original.get('wire_schema')):raise ValueError('surface differs from terminal boundary')
         return state
 
     def begin(self,run,state,token,inputs):
@@ -145,13 +154,14 @@ class Route:
         if state['phase']=='surface':
             surface=surface_transfer(source.read_text(),pending['token'])
             next_state.update(phase='floor1',visit=state['visit']+1,surface=surface,
-                              entry=initial_entry(self.manifests[1],surface['squad'],surface['health']))
+                              entry=initial_entry(self.manifests[1],surface['squad'],surface['health'],surface.get('wire_schema')))
         else:
             from scripts.play_pikmin2_cave import checkpoint
             n=int(state['phase'][-1]);saved=checkpoint(source.read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),self.ledger(n),self.manifests[n],self.placements[n])
-            if n==1:next_state.update(phase='floor2',entry=initial_entry(self.manifests[2],saved['squad'],saved['health']))
+            if n==1:next_state.update(phase='floor2',entry=initial_entry(self.manifests[2],saved['squad'],saved['health'],saved.get('wire_schema')))
             else:
                 surface=dict(position=state['surface']['position'],squad=saved['squad'],health=saved['health'])
+                if saved.get('wire_schema')==2:surface['wire_schema']=2
                 self.validate_surface(surface);next_state.update(phase='surface',surface=surface,entry=None)
         next_state.update(revision=state['revision']+1,last_boundary=dict(run=str(run),sha256=boundary))
         atomic_write(self.state_path,encoded(next_state)+'\n');self.pending_path.unlink()

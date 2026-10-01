@@ -48,10 +48,16 @@ def zero_buds(manifest):
             + ''.join(f"{b['slot_id']} 0\n" for b in table['buds']))
 
 
-def initial_entry(manifest, squad=None, health=1):
-    return dict(schema=1, fingerprint=fingerprint(manifest), health=health,
+def initial_entry(manifest, squad=None, health=1, wire_schema=None):
+    from randomizer.cave_checkpoint import wire_schema as native_schema
+    entry=dict(schema=1, fingerprint=fingerprint(manifest), health=health,
                 squad=copy.deepcopy(squad if squad is not None else [[1, 0]]*20),
                 buds=zero_buds(manifest), receipts='P2_RECEIPTS_1\n')
+    if wire_schema is not None:entry['wire_schema']=wire_schema
+    version=native_schema(entry)
+    if version!=1:entry['wire_schema']=version
+    else:entry.pop('wire_schema',None)
+    return entry
 
 
 class Session:
@@ -122,7 +128,7 @@ class Session:
         return saved, boundary
 
     def destination(self, source):
-        entry = initial_entry(self.manifests[2], source['squad'], source['health'])
+        entry = initial_entry(self.manifests[2], source['squad'], source['health'], source.get('wire_schema'))
         if self.ledger(2) != 'P2_RECEIPTS_1\n':
             raise ValueError('destination ledger predates floor transition')
         return entry
@@ -148,7 +154,7 @@ class Session:
             source, actual = self.source_boundary(run)
             if encoded(actual) != encoded(boundary):
                 raise ValueError('source boundary bytes changed')
-            expected = initial_entry(self.manifests[2], source['squad'], source['health'])
+            expected = initial_entry(self.manifests[2], source['squad'], source['health'], source.get('wire_schema'))
         if encoded(state['entry']) != encoded(expected):
             raise ValueError('incoming squad or floor identity changed')
         return state
@@ -163,9 +169,8 @@ class Session:
             raise ValueError('staged descriptor differs from journey')
         expected_entry = state['entry']
         words = (run/'p2-cave-entry.txt').read_text().split()
-        expected = (['P2_CAVE_ENTRY_1', expected_entry['fingerprint'][:32], str(state['floor']),
-                     str(expected_entry['health']), str(len(expected_entry['squad']))]
-                    + [str(v) for row in expected_entry['squad'] for v in row])
+        from randomizer.cave_checkpoint import entry_text
+        expected = entry_text(expected_entry['fingerprint'][:32],state['floor'],expected_entry).split()
         if words != expected:
             raise ValueError('staged entry differs from incoming boundary')
         pending = dict(schema=1, journey=self.fingerprint, floor=state['floor'], revision=state['revision'],

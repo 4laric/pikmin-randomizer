@@ -41,7 +41,10 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
                 # First visit retains the existing dry-bank baseline. Reentry
                 # places actual survivors on that same audited bank.
                 if not baseline:struct.pack_into('>3f',row,48,-190+(i%5)*8,80,1140+(i//5)*8)
-                struct.pack_into('>i',row,84,1);struct.pack_into('>i',row,92,species)
+                # The generator's legacy color field has only0..2. P/W use
+                # baseRed scaffolds; the native versioned checkpoint restores
+                # real mutually exclusive species flags and exact maturity.
+                struct.pack_into('>i',row,84,1);struct.pack_into('>i',row,92,species if species<=2 else 1)
                 rows.append(row)
             header=blob[:starts[0]];struct.pack_into('>I',header,20,len(rows));blob=header+b''.join(rows)
         path.write_bytes(blob)
@@ -54,7 +57,8 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
                  starting_squad=surface['squad'],captain_spawn_y=surface['position'][1],
                  captain_start_xz=[surface['position'][0],surface['position'][2]])
     water_path.write_text(json.dumps(water,indent=2)+'\n')
-    config='P2_CAVE_ROUTE_SURFACE_1 '+token+' -210 80 1160 60 '+str(surface['health'])+' '+str(len(surface['squad']))+'\n'
+    version=2 if surface.get('wire_schema')==2 else 1
+    config=f'P2_CAVE_ROUTE_SURFACE_{version} '+token+' -210 80 1160 60 '+str(surface['health'])+' '+str(len(surface['squad']))+'\n'
     config+=''.join(f'{species} {maturity}\n' for species,maturity in surface['squad'])
     (run/'p2-cave-route-surface.txt').write_text(config)
     shutil.copy2(exe,run/'nectar.exe')
@@ -66,7 +70,7 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
     (run/'route-surface-inputs.json').write_text(json.dumps(dict(schema=1,receipt_identity=identity,
         starting_party=surface,anchor=[-210,80,1160,60],files={name:sha(run/name) for name in inputs},
         limitations=['Imported terrain and static water; no retail generator actors.',
-                     'All living base-color survivors are checkpointed; gathering is not enforced.']),indent=2)+'\n')
+                     'Versioned living survivors are checkpointed; gathering is not enforced.']),indent=2)+'\n')
     return run,inputs+['route-surface-inputs.json']
 
 

@@ -17,6 +17,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from randomizer.cave_floor import ITEMS,validate,fingerprint,atomic_write
 from experimental.pikmin2_cave_items import parse_items_text
 from scripts.stage_pikmin2_playable_cave import stage
+from randomizer.cave_checkpoint import read_transfer, transfer_text
 
 
 def receipts(text,placement):
@@ -35,22 +36,15 @@ def receipts(text,placement):
 
 
 def checkpoint(transfer,buds,receipt_text,manifest,placement):
-    words=transfer.split()
     floor=manifest['table']['floor']
-    if len(words)<5 or words[:2]!=['P2_CAVE_TRANSFER_1',fingerprint(manifest)[:32]] or words[2]!=str(floor):
-        raise ValueError('foreign cave transfer')
-    health=float(words[3]); count=int(words[4])
-    if not math.isfinite(health) or not 0<health<=1 or not 1<=count<=100 or len(words)!=5+2*count:
-        raise ValueError('cave failed or invalid squad; refusing fresh starter reset')
-    squad=[[int(words[5+i*2]),int(words[6+i*2])] for i in range(count)]
-    if any(s not in (0,1,2) or m not in (0,1,2) for s,m in squad): raise ValueError('unsupported squad')
+    party=read_transfer(transfer,fingerprint(manifest)[:32],floor)
     w=buds.split(); table=manifest['table']
     expected=['P2_CAVE_BUD_STATE_1',str(placement['seed']),table['cave_id'],str(floor),str(len(table['buds']))]
     if w[:5]!=expected or len(w)!=5+2*len(table['buds']): raise ValueError('foreign bud checkpoint')
     for i,b in enumerate(table['buds']):
         if w[5+2*i]!=b['slot_id'] or not 0<=int(w[6+2*i])<=b['count']: raise ValueError('invalid bud budget')
     receipts(receipt_text,placement)
-    return dict(schema=1,fingerprint=fingerprint(manifest),health=health,squad=squad,buds=buds,receipts=receipt_text)
+    return dict(schema=1,fingerprint=fingerprint(manifest),**party,buds=buds,receipts=receipt_text)
 
 
 def recover_pending(session_dir,manifest,placement,receipt_text,live_paths=()):
@@ -119,7 +113,7 @@ def main(package):
         prior=json.loads(saved.read_text()) if saved.exists() else None
         if prior:
             # Reparse serialized values against the current contract, not only the digest.
-            transfer='P2_CAVE_TRANSFER_1\n'+fingerprint(manifest)[:32]+'\n1 '+str(prior['health'])+' '+str(len(prior['squad']))+'\n'+''.join(f'{s} {m}\n' for s,m in prior['squad'])
+            transfer=transfer_text(fingerprint(manifest)[:32],1,prior)
             if prior.get('fingerprint')!=fingerprint(manifest): raise ValueError('foreign saved checkpoint')
             checkpoint(transfer,prior['buds'],prior['receipts'],manifest,placement)
         run=session_dir/'runs'/uuid.uuid4().hex

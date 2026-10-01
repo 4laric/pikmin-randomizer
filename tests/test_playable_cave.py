@@ -142,7 +142,7 @@ class BoundedCaveTests(unittest.TestCase):
         with self.assertRaises(ValueError): receipts(ledger+ledger.splitlines()[1]+'\n',placement)
         with self.assertRaises(ValueError): checkpoint(transfer,buds.replace('bud:0 5','bud:0 6'),ledger,m,placement)
         for corrupt in (transfer.replace('0.5','nan'), transfer.replace('0.5','0'),
-                        transfer.replace('0 2\n','3 2\n'), transfer+'0 0\n',
+                        transfer.replace('0 2\n','4 2\n'), transfer+'0 0\n',
                         transfer.replace(fingerprint(m)[:32], '0'*32)):
             with self.assertRaises(ValueError): checkpoint(corrupt,buds,ledger,m,placement)
         for corrupt in (ledger.replace('cave_treasure','enemy'),ledger.replace(str(seed),'1'),
