@@ -1,6 +1,6 @@
 """Bounded real native campaign save/resume; fixture setup is never a save file."""
 from pathlib import Path
-import argparse,hashlib,json,os,re,struct,sys,threading
+import argparse,hashlib,json,os,re,struct,sys,threading,subprocess
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'scripts'))
 from randomizer.seed import generate,validate
@@ -28,13 +28,14 @@ def main():
  overrides={'dataDir/stages/practice/default.gen':staged};overlay(a.assets,run.directory/'assets',overrides)
  snapshot=lambda:{f.name:digest(f) for f in sorted((sessiondir/'campaign').glob('*.sav'))} if (sessiondir/'campaign').exists() else {}
  before=snapshot();assert len(before)==(0 if a.phase=='save' else 1)
- adoption=dict(phase=a.phase,root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
+ adoption=dict(phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=20,geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='explicit environment on pre1080 producer; generated option is separate',before_cards=before)
+ info=a.exe.resolve().parent/'BUILD_INFO.txt'
+ if info.exists():adoption['CI_build_info']=dict(path=str(info),sha256=digest(info),text=info.read_text(encoding='utf-8'))
  (run.directory/'adoption-inputs.json').write_text(json.dumps(adoption,indent=2),encoding='utf-8')
  (sessiondir/(a.phase+'-run.json')).write_text(json.dumps(dict(directory=str(run.directory)),indent=2),encoding='utf-8')
  print(run.directory,flush=True)
  if a.prepare_only:return
  # Admission and bounded supervision come from the canonical workspace tools.
- import subprocess
  adm=json.loads(subprocess.check_output(['powershell','-NoProfile','-Command',"$o=Get-CimInstance Win32_OperatingSystem;$g=@(Get-CimInstance Win32_Process|Where-Object {$_.Name -match 'nectar|fixture.*exe'});@{ram=100*(1-$o.FreePhysicalMemory/$o.TotalVisibleMemorySize);games=$g.Count}|ConvertTo-Json"],text=True))
  assert adm['ram']<=90 and adm['games']<6,adm
  (run.directory/'admission.json').write_text(json.dumps(adm),encoding='utf-8')
