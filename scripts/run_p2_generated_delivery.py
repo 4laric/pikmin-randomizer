@@ -64,7 +64,7 @@ def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifes
     (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     session = Session(manifest, directory / 'session')
     run = NativeRun(session)
-    # This is local bridge acceptance in AP mode, without a network server.
+    # Stage native state; network_observe authenticates before runtime readiness.
     # Selected starting color/area are native manifest grants; received stream may
     # legitimately be empty. Authentic readiness still requires AP authentication.
     run.write_state(False)
