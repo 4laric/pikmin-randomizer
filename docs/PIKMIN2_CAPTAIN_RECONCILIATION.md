@@ -20,6 +20,15 @@ to the selected captain. Co-op, VS and netplay keep their existing device mappin
 The native candidate contains that unmerged foundation plus this repair; the
 repair commit itself is independently identifiable as `948d57282`.
 
+The follow-up also closes a runtime-observed lethal-input gap. The source
+engine enters death at health <= 1 (`naviState.cpp:1596,3080`), while death
+animation completion later calls `NaviDeadState::init`. Opt-in single-player
+control now immediately selects an eligible healthy partner after both captain
+updates, neutralizes both controllers and binds the shared camera. It does not
+normalize health, mark death or release Pikmin early. The native death state
+retains those responsibilities. Nonfinite health, unsafe/captive partner,
+cinematic input exclusion and unavailable partner fail closed.
+
 ## Regression checks
 
 `native/tools/test_p2_captain_reconciliation.cpp` uses the production adapter
@@ -31,7 +40,11 @@ assertion fails against the preserved pre-repair header.
 The root test compiles the actual production `live_set_owner_slot()` function
 against observable formation doubles. It checks old-owner cleanup, reformation,
 free-mode release, no duplicate cleanup and rejection after callback changes to
-owner, lifetime, captivity or policy. It does not emulate the function itself.
+owner, lifetime, captivity or policy. It does not emulate the function itself. A third check compiles the actual
+`update_player_switch()` callback and observes immediate selection, camera/input
+neutralization and preserved source health, plus excluded/unsafe target cases.
+The engine-free health predicate tests the actual <= 1 boundary and rejects
+nonfinite health.
 
 Run from a root worktree, pointing at the matching private native source:
 

@@ -83,6 +83,72 @@ int main() {
 }
 '''
 
+SURVIVOR_HOST = r'''
+#include "pc_p2_captain_switch_policy.h"
+#include <cassert>
+#include <cstdio>
+struct Controller {
+    unsigned mCurrentInput=0,mPrevInput=0,mInputPressed=0,mInputReleased=0;
+    unsigned mInputDoublePressed=0,mDoublePressMask=0,mInputDelay=0;
+    float mMainStickX=0,mMainStickY=0,mSubStickX=0,mSubStickY=0;
+    float mAnalogA=0,mAnalogB=0,mTriggerL=0,mTriggerR=0;
+    bool keyDown(unsigned k) {return mCurrentInput&k;}
+};
+constexpr unsigned KBBTN_DPAD_UP=1;
+struct Velocity {void set(float,float,float){}};
+struct Navi {int id; float mHealth=100; bool mIsCursorVisible=true,safe=true;
+    Controller control; Controller* mKontroller=&control; Velocity mTargetVelocity;
+    int getNaviIndex(){return id;}
+};
+struct Manager {Navi a{0},b{1}; int active=0; bool otherPresent=true;
+    Navi* getActiveNavi(){return active?&b:&a;}
+    Navi* getOtherNavi(Navi* n){return otherPresent?(n==&a?&b:&a):nullptr;}
+} manager;
+static Manager* naviMgr=&manager;
+struct Camera {Controller* mController=nullptr; Navi* target=nullptr;
+    void startCamera(Navi* n){target=n;}
+} camera;
+static Camera* cameraMgr=&camera;
+struct Policy {bool targetControllable=true; bool controllable(int){return targetControllable;}};
+struct P2CaptainAdapter {Policy value; Policy& policy(){return value;} bool refresh(){return false;}} live;
+static bool enabled=true, g_switchHintShown=true;
+static P2CaptainSwitchPress g_switchPress;
+struct {unsigned mDemoFlags=0;} gameflow;
+namespace CinePlayerFlags {constexpr unsigned NaviNoAI=1;}
+static bool single_player_switch_enabled(){return enabled;}
+static bool safe_to_switch(Navi* n){return n && n->safe && n->mHealth>1;}
+static P2CaptainAdapter* adapter(){return &live;}
+static bool switch_active(int n){manager.active=n;return true;}
+'''
+
+SURVIVOR_CASES = r'''
+int main() {
+    manager.a.mHealth=-400;manager.a.control.mCurrentInput=0;
+    manager.b.control.mCurrentInput=8;
+    update_player_switch();
+    assert(manager.active==1 && camera.target==&manager.b && camera.mController==manager.b.mKontroller);
+    assert(manager.a.mHealth==-400 && !manager.a.mIsCursorVisible && manager.b.mIsCursorVisible);
+    assert(manager.a.control.mCurrentInput==0 && manager.b.control.mCurrentInput==0);
+    // Single/co-op/VS are represented by the production entrypoint's enabled
+    // predicate. No other, unsafe/captive target, nonfinite health and cinematic
+    // exclusions must not manufacture a healthy/dead state or input takeover.
+    for(int reason=0;reason<7;++reason) {
+        manager.active=0;manager.a.mHealth=0;manager.b.mHealth=100;
+        manager.otherPresent=true;manager.b.safe=true;live.value.targetControllable=true;
+        enabled=true;gameflow.mDemoFlags=0;
+        if(reason==0)enabled=false;
+        if(reason==1)manager.otherPresent=false;
+        if(reason==2)manager.b.safe=false;
+        if(reason==3)live.value.targetControllable=false;
+        if(reason==4)manager.a.mHealth=NAN;
+        if(reason==5)manager.b.mHealth=1;
+        if(reason==6)gameflow.mDemoFlags=CinePlayerFlags::NaviNoAI;
+        update_player_switch();assert(manager.active==0);
+    }
+    std::puts("PASS P2_CAPTAIN_SURVIVOR_CALLBACK");
+}
+'''
+
 
 @unittest.skipIf(not os.environ.get("P2_CAPTAIN_SOURCE")
                  and not (SOURCE / "tools/test_p2_captain_reconciliation.cpp").is_file(),
@@ -113,6 +179,13 @@ class CaptainReconciliationTests(unittest.TestCase):
         start = text.index("void live_set_owner_slot(")
         end = text.index("\n// Abandon the squad action", start)
         self.assertIn("PASS P2_CAPTAIN_OWNER_CALLBACK", self.compile_run(HOST + text[start:end] + CASES))
+
+    def test_production_survivor_callback(self):
+        text = (SOURCE / "pc_port/pc_p2_captain.cpp").read_text(encoding="utf-8")
+        start = text.index("void update_player_switch()")
+        end = text.index("\nbool reload()", start)
+        self.assertIn("PASS P2_CAPTAIN_SURVIVOR_CALLBACK",
+                      self.compile_run(SURVIVOR_HOST + text[start:end] + SURVIVOR_CASES))
 
 
 if __name__ == "__main__":
