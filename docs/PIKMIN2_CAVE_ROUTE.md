@@ -1,0 +1,51 @@
+# Ordinary tutorial cave route (#1154)
+
+Implementation owner: Codex through shared account `4laric`.
+
+The opt-in route uses the full imported tutorial model, collision, routes and
+static water. Its entrance is an explicit fallback ring at (-210,80,1160), radius
+60. It does not replace the terrain with the historical fenced entrance pocket.
+The surface contains a staged checkpoint party; retail surface generator actors
+are not imported by this route. Generated forest_1 floors retain the delivered
+original engineered geometry and item identities.
+
+Stage a fresh package under the canonical workspace's ignored `output/` using
+`scripts/stage_pikmin2_cave_route.py`, with `--assets`, `--pod`, `--exe`,
+`--generator`, `--bundle`, `--identity`, `--output`, and `--workspace`. The native
+executable must include the #1154 producer. The bundle identity is verified by
+the existing surface importer. Executable, floor blueprints and staged surface
+inputs are hashed; every launch creates new private runtime directories.
+
+`scripts/play_pikmin2_cave_route.py PACKAGE` starts on the tutorial surface with
+the required twenty Reds. Move the captain into the ring and press F6, then
+confirm the native dialog. The live party, maturity and normalized captain health
+are written by the engine before exit42. The supervisor consumes that actual
+boundary into floor1. The existing ordinary floor exit goes to floor2; its
+terminal boundary returns to the surface with actual survivors and permits
+another visit. Every native child is bounded to 60 seconds; the launcher defaults
+to four phases and accepts `--max-phases 1..8` for short scripted observation.
+
+The snapshot covers all living survivors, not evidence that every actor gathered
+at the entrance. Death/burial/swallowing/stuck actors, pending buds, sprouts and
+unsupported species refuse the transaction. Online F6 remains disabled. A linked
+netplay build must be tested before claiming online refusal validation.
+
+The current first compile slice supports native base colors Blue0/Red1/Yellow2.
+Purple/White preservation remains required follow-up work, and #1154 gameplay
+acceptance remains open. Unsupported parties are rejected as a whole, never
+silently shortened. This restriction is not the final playable-P2 target.
+
+An OS session lock excludes concurrent launchers. A pending launch pins the actual
+private inputs. Recovery consumes an actual native boundary once, including an
+interruption after state commit but before pending cleanup. Foreign tokens,
+changed inputs, stale revisions, live children and missing state with existing
+ledgers refuse. An interrupted child without a boundary remains pending and
+cannot silently relaunch a fresh party. Normal exit0 discards only the unsaved
+launch and retains the last boundary party; this is checkpoint restoration, not
+an autosave of arbitrary surface play. Receipt ledgers persist across visits.
+
+Synthetic policy tests do not establish gameplay. Acceptance requires fresh
+source-pinned 960×540 centered runtime evidence, ordinary SDL movement/F6 and the
+actual native confirmation dialog, live roster comparison, descent/terminal
+return/reentry, once-only recovery, and initialized captain-down exit86 under
+owned supervision. No human gameplay sign-off is claimed by these scripts.
