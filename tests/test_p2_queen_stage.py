@@ -97,3 +97,33 @@ def test_installer_and_extractor_wiring():
     assert IDENTITY_FAMILY[30] == 'queen' and IDENTITY_FAMILY['queen'] == 'queen'
     assert prepare.EXTRACTORS[30] == 'extract_queen'
     assert 30 not in {row['source_id'] for row in load_rows()}
+
+
+def test_baby_31_shares_the_queen_family_and_extracts_under_its_own_enum(tmp_path):
+    """#1042: the standalone Bulborb Larva installs through the queen family from a
+    ``Baby/`` extractor tree (the Queen extraction under its own enum)."""
+    from experimental import pikmin2_family_install as install
+    import scripts.p2_prepare_content as prepare
+    from randomizer.p2_proxy import load_rows
+    assert install.IDENTITY_FAMILY[31] == 'queen' and install.IDENTITY_FAMILY['baby'] == 'queen'
+    assert prepare.ENUM_FOR_SOURCE[31] == 'Baby' and prepare.EXTRACTORS[31] == 'extract_baby'
+    assert 31 not in {row['source_id'] for row in load_rows()}
+    for enum_name, source_id in (('Queen', 30), ('Baby', 31)):
+        tree = tmp_path / enum_name
+        tree.mkdir()
+        (tree / 'identity.json').write_text(json.dumps(
+            {'schema': 1, 'source_id': source_id, 'enum_name': enum_name}), encoding='utf-8')
+        assert install._bulblax_enum(tree) == enum_name
+    wrong = tmp_path / 'Wrong'
+    wrong.mkdir()
+    (wrong / 'identity.json').write_text(json.dumps(
+        {'schema': 1, 'source_id': 31, 'enum_name': 'Kabuto'}), encoding='utf-8')
+    with pytest.raises(install.StagingError):
+        install._bulblax_enum(wrong)
+    # A Baby tree whose identity disagrees with the Baby source id fails closed.
+    mismatch = tmp_path / 'Mismatch'
+    mismatch.mkdir()
+    (mismatch / 'identity.json').write_text(json.dumps(
+        {'schema': 1, 'source_id': 30, 'enum_name': 'Baby'}), encoding='utf-8')
+    with pytest.raises(install.StagingError):
+        install._validate_queen(mismatch)

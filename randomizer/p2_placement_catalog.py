@@ -188,6 +188,10 @@ CANDIDATE_SPECS = (
     # ``init.gen@7416`` (1787125272); that is evidence for that slot, not a
     # restriction on the others.
     (58, 'BombSarai', 27, ['ground', 'air'], None, False),
+    # #1042: the standalone Bulborb Larva (Baby 31, lane 24) is a 5-health ground crawler
+    # (source: Baby.cpp; 40 speed, root collision 25). It rides the TEKI_Swallow placement
+    # vehicle at larva scale like the Queen-born larvae and binds ordinary ground slots.
+    (31, 'Baby', 24, ['ground'], None, False),
 )
 
 # Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
