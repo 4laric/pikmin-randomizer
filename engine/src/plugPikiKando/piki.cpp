@@ -23,6 +23,9 @@
 #include "ItemObject.h"
 #include "KMath.h"
 #include "MapCode.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_surface_water.h"
+#endif
 #include "MoviePlayer.h"
 #include "Navi.h"
 #include "NaviMgr.h"
@@ -1918,6 +1921,9 @@ void Piki::bounceCallback()
 	if (mGroundTriangle) {
 		attr = MapCode::getAttribute(mGroundTriangle);
 	}
+#if defined(PIKI_PC_PORT)
+	attr = pc_p2_surface_water_attribute(this, attr);
+#endif
 
 	int state = getState();
 	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead) {
@@ -2854,6 +2860,9 @@ void Piki::realAI()
 	if (mGroundTriangle) {
 		attr = MapCode::getAttribute(mGroundTriangle);
 	}
+#if defined(PIKI_PC_PORT)
+	attr = pc_p2_surface_water_attribute(this, attr);
+#endif
 
 	bool isInWater = false;
 	if (attr == ATTR_Water) {

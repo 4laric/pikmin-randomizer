@@ -18,6 +18,9 @@
 #include "Graphics.h"
 #include "KMath.h"
 #include "MapCode.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_surface_water.h"
+#endif
 #include "MapMgr.h"
 #include "Pellet.h"
 #include "RadarInfo.h"
@@ -753,6 +756,9 @@ void Creature::update()
 	if (mGroundTriangle) {
 		terrainAttribute = MapCode::getAttribute(mGroundTriangle);
 	}
+#if defined(PIKI_PC_PORT)
+	terrainAttribute = pc_p2_surface_water_attribute(this, terrainAttribute);
+#endif
 
 	// Handle water effects if walking in water
 	if (terrainAttribute == ATTR_Water) {

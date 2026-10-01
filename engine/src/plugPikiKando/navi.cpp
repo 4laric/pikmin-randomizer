@@ -65,6 +65,9 @@ static f32 pcNaviHurt(f32 damage) { return damage; }
 #include "KIO.h"
 #include "Kontroller.h"
 #include "MapCode.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_surface_water.h"
+#endif
 #include "MemStat.h"
 #include "MoviePlayer.h"
 #include "NaviMgr.h"
@@ -1355,6 +1358,9 @@ void Navi::update()
 	if (mGroundTriangle) {
 		attr = MapCode::getAttribute(mGroundTriangle);
 	}
+#if defined(PIKI_PC_PORT)
+	attr = pc_p2_surface_water_attribute(this, attr);
+#endif
 
 	if (attr == ATTR_Water) {
 		if (!mIsInWater) {
@@ -1446,6 +1452,9 @@ void Navi::update()
 
 		Vector3f parmVel(0.01667f * mVelocity.x, 2.0f, 0.01667f * mVelocity.z);
 		int effAttr = MapCode::getAttribute(mGroundTriangle);
+#if defined(PIKI_PC_PORT)
+		effAttr = pc_p2_surface_water_attribute(this, effAttr);
+#endif
 		if (effAttr >= ATTR_Solid && effAttr <= ATTR_Wood) {
 			EffectParm parm(parmPos, parmVel);
 			UtEffectMgr::cast(effAttr + KandoEffect::SmokeOffset, parm);
@@ -1467,6 +1476,9 @@ void Navi::animationKeyUpdated(immut PaniAnimKeyEvent& event)
 		if (mGroundTriangle) {
 			attr = MapCode::getAttribute(mGroundTriangle);
 		}
+#if defined(PIKI_PC_PORT)
+		attr = pc_p2_surface_water_attribute(this, attr);
+#endif
 		int soundType;
 		switch (attr) {
 		case ATTR_Solid:
