@@ -6,6 +6,7 @@
 #include "pc_coop.h"
 #include "pc_p2_captain.h"
 #include "pc_p2_captain_switch_policy.h"
+#include "netplay/pc_netplay_camlead.h"
 #endif
 #include "Creature.h"
 #include "DebugLog.h"
@@ -161,6 +162,11 @@ void PcamCamera::startCamera(Creature* target, int zoom, int angle)
  */
 void PcamCamera::makeCurrentPosition(f32 azimuth)
 {
+#if defined(PIKI_PC_PORT)
+	// Netplay M5c lane A: a snapped sim camera invalidates the lead camera's
+	// correction (inert outside a lockstep session).
+	pc_netplay_camlead_note_snap(this);
+#endif
 	mPolarDir.set(mTargetMotionInfo.mDistance, angleToMeridian(mTargetMotionInfo.mAngle), azimuth);
 	mStoredRadius = mPolarDir.mRadius;
 	NVector3f watchPt;
@@ -274,11 +280,13 @@ void PcamCamera::control(Controller& controller)
 			if (mPcPitch > 1.0f) mPcPitch = 1.0f;
 		}
 	}
-	bool doRotate = !pc_first_person_active()
-	             && controller.mTriggerL / 170.0f >= getParameterF(PCAMF_RotationButtonThreshold);
+	// Netplay M5c lane A (issue #887): the pad-derived controls moved to
+	// controlPad() unchanged, so the netplay lead camera replays exactly the
+	// same logic on its prediction (pc_netplay_camlead.cpp).
+	controlPad(controller.mCurrentInput, controller.mInputPressed, controller.mTriggerL, controller.mMainStickX,
+	           controller.mSubStickY);
 #else
 	bool doRotate = controller.mTriggerL / 170.0f >= getParameterF(PCAMF_RotationButtonThreshold);
-#endif
 	bool isZClick = false;
 	if (controller.keyClick(KBBTN_Z)) {
 		isZClick = true;
@@ -291,17 +299,61 @@ void PcamCamera::control(Controller& controller)
 	info.init(true, doRotate, controller.keyClick(KBBTN_L) != 0, controller.keyClick(KBBTN_R) && !controller.keyDown(KBBTN_X), isZClick,
 	          false, false, controller.getMainStickX(), xSubY, controller.getSubStickY());
 	control(info);
+#endif
 	// Arrastre de cámara: el pellizco táctil, y con el mod "Free Camera" el
 	// ratón y el stick derecho. Mismo acumulador para los tres.
 	const int targetCaptain = (mTargetCreature && mTargetCreature->mObjType == OBJTYPE_Navi) ? static_cast<Navi*>(mTargetCreature)->mNaviID : 0;
 	const int dragPlayer = p2_captain_camera_drag_player(pc_p2_captain::single_player_switch_enabled(), targetCaptain);
-	const float cameraDrag = pc_window_take_camera_drag_player(dragPlayer);
+	// Netplay M5c lane A (issue #887): in a lockstep session each PC shows
+	// only its own captain, so every local drag (mouse, touch, either pad
+	// slot's free-cam stick) turns that captain's camera, and the other
+	// captain's camera (never shown here) takes none. The joiner's mouse used
+	// to turn P1's hidden camera. Keyed on this peer's own camera manager,
+	// not on the target (fix round 1, review m8). Outside a session, or with
+	// PIKMIN_NETPLAY_JOINER_OWN_CAMERA=0: unchanged.
+	const int dragRoute = pc_netplay_camlead_drag_route(this);
+	float cameraDrag    = 0.0f;
+	if (dragRoute < 0) {
+		cameraDrag = pc_window_take_camera_drag_player(dragPlayer);
+	} else if (dragRoute == 1) {
+		cameraDrag = pc_window_take_camera_drag_player(0) + pc_window_take_camera_drag_player(1);
+		if (cameraDrag < -1.0f) cameraDrag = -1.0f;
+		if (cameraDrag > 1.0f) cameraDrag = 1.0f;
+	}
 	if (mIsActive && mControlsEnabled && cameraDrag != 0.0f) {
 		// Aproximadamente media vuelta por una pasada de un ancho de pantalla.
 		mPolarDir.rotateAzimuth(cameraDrag * 3.2f);
 		mPolarDir.roundAzimuth();
 	}
 }
+
+#if defined(PIKI_PC_PORT)
+/**
+ * The pad-derived half of control(Controller&): L-hold rotation with the main
+ * stick, L click attention, R click zoom (not while X is held), Z click angle.
+ * Takes the Controller's own values (keys held and newly pressed, raw analog
+ * bytes) and computes exactly what the original inline code did. Netplay M5c
+ * lane A (issue #887) also calls it from the lead camera's prediction.
+ */
+void PcamCamera::controlPad(u32 keysDown, u32 keysClicked, u8 triggerL, s8 mainStickX, s8 subStickY)
+{
+	bool doRotate = !pc_first_person_active() && triggerL / 170.0f >= getParameterF(PCAMF_RotationButtonThreshold);
+	bool isZClick = false;
+	if (keysClicked & KBBTN_Z) {
+		isZClick = true;
+	}
+	// Controller::getMainStickX()/getSubStickY(): the raw byte over 74.
+	const f32 subY = subStickY / 74.0f;
+	f32 xSubY      = 0.0f;
+	if (keysDown & KBBTN_X) {
+		xSubY = subY;
+	}
+	PcamControlInfo info;
+	info.init(true, doRotate, (keysClicked & KBBTN_L) != 0, (keysClicked & KBBTN_R) && !(keysDown & KBBTN_X), isZClick, false,
+	          false, mainStickX / 74.0f, xSubY, subY);
+	control(info);
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -365,6 +417,13 @@ void PcamCamera::startAttention()
 void PcamCamera::playCameraSound(int soundID)
 {
 	PRINT_NAKATA("playCameraSound:%d\n", soundID);
+#if defined(PIKI_PC_PORT)
+	// Netplay M5c lane A: the lead camera's prediction replays this camera's
+	// update on a snapshot; the sound plays once, when the sim applies it.
+	if (pc_netplay_camlead_predicting()) {
+		return;
+	}
+#endif
 	SeSystem::playSysSe(soundID);
 }
 

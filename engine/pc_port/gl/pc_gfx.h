@@ -12,6 +12,9 @@ extern "C" {
 // Initialization
 void pc_gfx_init(void);
 void pc_gfx_begin_frame(void);
+// Netplay two-pass frame (issue #1031): reset the per-frame 2D mapping flags
+// between the authoritative and presentation passes.
+void pc_gfx_reset_ui_state(void);
 void pc_gfx_present(void);
 // Probe screenshot hook (#871, probe-only): called once per proxy key on its
 // first live draw. Env-gated inside pc_gfx.cpp (PIKMIN_P2_PROXY_SHOT); without
@@ -24,6 +27,13 @@ void pc_gfx_frame_dump_burst(unsigned frames);
 void pc_gfx_proxy_shot_notify_after(const char* key, int frames);
 // Probe-only: capture the next presented frame as <PIKMIN_P2_PROXY_SHOT>/<key>.bmp.
 void pc_gfx_proxy_shot_now(const char* key);
+// Netplay M5c (issue #887, test-only): the next pc_gfx_present writes the
+// finished frame (render resolution, overlays included, before the window
+// blit, so hidden windows capture too) to `path` as a 24-bit BMP. Several
+// requests before one present all get that frame. Only env-gated test
+// knobs call it (the lead-camera diagnostics and the netplay HUD's test
+// captures); nothing happens unless a caller asks.
+void pc_gfx_request_frame_shot(const char* path);
 void pc_gfx_perf_scope_begin(const char* name);
 void pc_gfx_perf_scope_end(void);
 

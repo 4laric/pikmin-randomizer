@@ -165,6 +165,12 @@ Pellet* pc_p2_preview_treasure() { return previewTreasure; }
 
 void pc_p2_preview_setup() {
     if (!pc_pikipelago_room_preview()) {
+        // #1150: ordinary imported tutorial can explicitly own Red1 without
+        // enabling room-preview cargo/Pod semantics or changing default P1.
+        const char* course = pc_pikipelago_surface_course();
+        const bool tutorialRed = course && std::string(course) == "tutorial"
+            && std::ifstream("p2-dwarf-red-fsm.txt").good();
+        if (tutorialRed) pc_p2_kochappy_setup();
         if (pc_randomizer_p2_bridge()) {
             pc_p2_dwarf_orange_setup();
             pc_p2_kochappy_fsm_setup();
@@ -215,6 +221,7 @@ void pc_p2_preview_setup() {
             pc_p2_imomushi_setup();
             pc_p2_umimushi_setup();
         }
+        if (tutorialRed && !pc_randomizer_p2_bridge()) pc_p2_kochappy_fsm_setup();
         return;
     }
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;

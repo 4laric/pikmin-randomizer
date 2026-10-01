@@ -38,12 +38,20 @@
 #include "pc_texpack.h"
 #include "../timing/pc_render_phase.h"
 #include "../timing/pc_tick_profiler.h"
+#include "../netplay/pc_netplay_present.h"
+#include "../netplay/pc_netplay_loadguard.h"
+#include "pc_gfx_deferred_tex.h"
 
 #include "../pc_p2_specular_dir.h"
 #include "pc_opengl.h"
 #ifdef __ANDROID__
 #include "../android/pc_android.h"
 #endif
+
+// Netplay M4 gap-fix lane S (issue #885) keep-alive entry (see
+// pc_port/netplay/pc_netplay_loadguard.h). Weak-linked: strong-defined by
+// pc_netplay_session.cpp in netplay builds only; null in the default build.
+__attribute__((weak)) void pc_netplay_load_keepalive(int site);
 
 // ── GL Function Pointers (Loaded via SDL_GL_GetProcAddress) ──
 typedef void (APIENTRYP PFNGLGENBUFFERSPROC) (GLsizei n, GLuint *buffers);
@@ -158,6 +166,113 @@ static PCGLBEGINQUERYPROC glBeginQuery_ptr = nullptr;
 static PCGLENDQUERYPROC glEndQuery_ptr = nullptr;
 static PCGLGETQUERYOBJECTIVPROC glGetQueryObjectiv_ptr = nullptr;
 static PCGLGETQUERYOBJECTUI64VPROC glGetQueryObjectui64v_ptr = nullptr;
+
+// M2b fix2 (issue #879 B1): authoritative-pass real-GL tripwire at a single
+// choke point. Every raw GL call in this TU -- the only TU that issues GL in
+// this architecture (gx_stubs and dgxGraphics route through here;
+// texture.cpp's direct GL is compiled only on the non-DGX path) -- expands
+// through one of the macros below, which count real GL issued while the null
+// flag is on via pc_gfx_count_real_gl(). High-level entries also return early
+// via pc_gfx_null_skip() (counted as attempts), so steady-state auth passes
+// issue zero GL and null_gl stays 0 as a real measurement: un-gating any path
+// makes the counter go non-zero (see handoff proof). The inner (name) form
+// bypasses the function-like macro so the real function/pointer is called.
+// The 7 uniform pointers aliased to cached_uniform* below are NOT wrapped
+// here; the cached wrappers count internally before each real call instead.
+// Real-GL tripwire at a single choke point: every counted call above funnels
+// through here, so null_gl is a live measurement, not true by construction.
+static inline void pc_gfx_count_real_gl()
+{
+	if (pc_netplay_present_null_active()) {
+		pc_netplay_present_note_real();
+	}
+}
+#define glActiveTexture_ptr(...) (pc_gfx_count_real_gl(), (glActiveTexture_ptr)(__VA_ARGS__))
+#define glAttachShader_ptr(...) (pc_gfx_count_real_gl(), (glAttachShader_ptr)(__VA_ARGS__))
+#define glBeginQuery_ptr(...) (pc_gfx_count_real_gl(), (glBeginQuery_ptr)(__VA_ARGS__))
+#define glBindAttribLocation_ptr(...) (pc_gfx_count_real_gl(), (glBindAttribLocation_ptr)(__VA_ARGS__))
+#define glBindBuffer_ptr(...) (pc_gfx_count_real_gl(), (glBindBuffer_ptr)(__VA_ARGS__))
+#define glBindFramebuffer_ptr(...) (pc_gfx_count_real_gl(), (glBindFramebuffer_ptr)(__VA_ARGS__))
+#define glBindRenderbuffer_ptr(...) (pc_gfx_count_real_gl(), (glBindRenderbuffer_ptr)(__VA_ARGS__))
+#define glBindTexture(...) (pc_gfx_count_real_gl(), (glBindTexture)(__VA_ARGS__))
+#define glBindVertexArray_ptr(...) (pc_gfx_count_real_gl(), (glBindVertexArray_ptr)(__VA_ARGS__))
+#define glBlendEquation_ptr(...) (pc_gfx_count_real_gl(), (glBlendEquation_ptr)(__VA_ARGS__))
+#define glBlendFunc(...) (pc_gfx_count_real_gl(), (glBlendFunc)(__VA_ARGS__))
+#define glBlitFramebuffer_ptr(...) (pc_gfx_count_real_gl(), (glBlitFramebuffer_ptr)(__VA_ARGS__))
+#define glBufferData_ptr(...) (pc_gfx_count_real_gl(), (glBufferData_ptr)(__VA_ARGS__))
+#define glBufferSubData_ptr(...) (pc_gfx_count_real_gl(), (glBufferSubData_ptr)(__VA_ARGS__))
+#define glCheckFramebufferStatus_ptr(...) (pc_gfx_count_real_gl(), (glCheckFramebufferStatus_ptr)(__VA_ARGS__))
+#define glClear(...) (pc_gfx_count_real_gl(), (glClear)(__VA_ARGS__))
+#define glClearColor(...) (pc_gfx_count_real_gl(), (glClearColor)(__VA_ARGS__))
+#define glClearDepth(...) (pc_gfx_count_real_gl(), (glClearDepth)(__VA_ARGS__))
+#define glClearDepthf(...) (pc_gfx_count_real_gl(), (glClearDepthf)(__VA_ARGS__))
+#define glClientWaitSync_ptr(...) (pc_gfx_count_real_gl(), (glClientWaitSync_ptr)(__VA_ARGS__))
+#define glColorMask(...) (pc_gfx_count_real_gl(), (glColorMask)(__VA_ARGS__))
+#define glCompileShader_ptr(...) (pc_gfx_count_real_gl(), (glCompileShader_ptr)(__VA_ARGS__))
+#define glCreateProgram_ptr(...) (pc_gfx_count_real_gl(), (glCreateProgram_ptr)(__VA_ARGS__))
+#define glCreateShader_ptr(...) (pc_gfx_count_real_gl(), (glCreateShader_ptr)(__VA_ARGS__))
+#define glCullFace(...) (pc_gfx_count_real_gl(), (glCullFace)(__VA_ARGS__))
+#define glDeleteProgram_ptr(...) (pc_gfx_count_real_gl(), (glDeleteProgram_ptr)(__VA_ARGS__))
+#define glDeleteShader_ptr(...) (pc_gfx_count_real_gl(), (glDeleteShader_ptr)(__VA_ARGS__))
+#define glDeleteSync_ptr(...) (pc_gfx_count_real_gl(), (glDeleteSync_ptr)(__VA_ARGS__))
+#define glDeleteTextures(...) (pc_gfx_count_real_gl(), (glDeleteTextures)(__VA_ARGS__))
+#define glDepthFunc(...) (pc_gfx_count_real_gl(), (glDepthFunc)(__VA_ARGS__))
+#define glDepthMask(...) (pc_gfx_count_real_gl(), (glDepthMask)(__VA_ARGS__))
+#define glDisable(...) (pc_gfx_count_real_gl(), (glDisable)(__VA_ARGS__))
+#define glDrawArrays(...) (pc_gfx_count_real_gl(), (glDrawArrays)(__VA_ARGS__))
+#define glEnable(...) (pc_gfx_count_real_gl(), (glEnable)(__VA_ARGS__))
+#define glEnableVertexAttribArray_ptr(...) (pc_gfx_count_real_gl(), (glEnableVertexAttribArray_ptr)(__VA_ARGS__))
+#define glEndQuery_ptr(...) (pc_gfx_count_real_gl(), (glEndQuery_ptr)(__VA_ARGS__))
+#define glFenceSync_ptr(...) (pc_gfx_count_real_gl(), (glFenceSync_ptr)(__VA_ARGS__))
+#define glFramebufferRenderbuffer_ptr(...) (pc_gfx_count_real_gl(), (glFramebufferRenderbuffer_ptr)(__VA_ARGS__))
+#define glFramebufferTexture2D_ptr(...) (pc_gfx_count_real_gl(), (glFramebufferTexture2D_ptr)(__VA_ARGS__))
+#define glFrontFace(...) (pc_gfx_count_real_gl(), (glFrontFace)(__VA_ARGS__))
+#define glGenBuffers_ptr(...) (pc_gfx_count_real_gl(), (glGenBuffers_ptr)(__VA_ARGS__))
+#define glGenFramebuffers_ptr(...) (pc_gfx_count_real_gl(), (glGenFramebuffers_ptr)(__VA_ARGS__))
+#define glGenQueries_ptr(...) (pc_gfx_count_real_gl(), (glGenQueries_ptr)(__VA_ARGS__))
+#define glGenRenderbuffers_ptr(...) (pc_gfx_count_real_gl(), (glGenRenderbuffers_ptr)(__VA_ARGS__))
+#define glGenTextures(...) (pc_gfx_count_real_gl(), (glGenTextures)(__VA_ARGS__))
+#define glGenVertexArrays_ptr(...) (pc_gfx_count_real_gl(), (glGenVertexArrays_ptr)(__VA_ARGS__))
+#define glGenerateMipmap_ptr(...) (pc_gfx_count_real_gl(), (glGenerateMipmap_ptr)(__VA_ARGS__))
+#define glGetActiveUniform_ptr(...) (pc_gfx_count_real_gl(), (glGetActiveUniform_ptr)(__VA_ARGS__))
+#define glGetBooleanv(...) (pc_gfx_count_real_gl(), (glGetBooleanv)(__VA_ARGS__))
+#define glGetError(...) (pc_gfx_count_real_gl(), (glGetError)(__VA_ARGS__))
+#define glGetFloatv(...) (pc_gfx_count_real_gl(), (glGetFloatv)(__VA_ARGS__))
+#define glGetIntegerv(...) (pc_gfx_count_real_gl(), (glGetIntegerv)(__VA_ARGS__))
+#define glGetProgramBinary_ptr(...) (pc_gfx_count_real_gl(), (glGetProgramBinary_ptr)(__VA_ARGS__))
+#define glGetProgramInfoLog_ptr(...) (pc_gfx_count_real_gl(), (glGetProgramInfoLog_ptr)(__VA_ARGS__))
+#define glGetProgramiv_ptr(...) (pc_gfx_count_real_gl(), (glGetProgramiv_ptr)(__VA_ARGS__))
+#define glGetQueryObjectiv_ptr(...) (pc_gfx_count_real_gl(), (glGetQueryObjectiv_ptr)(__VA_ARGS__))
+#define glGetQueryObjectui64v_ptr(...) (pc_gfx_count_real_gl(), (glGetQueryObjectui64v_ptr)(__VA_ARGS__))
+#define glGetShaderInfoLog_ptr(...) (pc_gfx_count_real_gl(), (glGetShaderInfoLog_ptr)(__VA_ARGS__))
+#define glGetShaderiv_ptr(...) (pc_gfx_count_real_gl(), (glGetShaderiv_ptr)(__VA_ARGS__))
+#define glGetString(...) (pc_gfx_count_real_gl(), (glGetString)(__VA_ARGS__))
+#define glGetUniformLocation_ptr(...) (pc_gfx_count_real_gl(), (glGetUniformLocation_ptr)(__VA_ARGS__))
+#define glGetUniformiv_ptr(...) (pc_gfx_count_real_gl(), (glGetUniformiv_ptr)(__VA_ARGS__))
+#define glInvalidateFramebuffer_ptr(...) (pc_gfx_count_real_gl(), (glInvalidateFramebuffer_ptr)(__VA_ARGS__))
+#define glIsEnabled(...) (pc_gfx_count_real_gl(), (glIsEnabled)(__VA_ARGS__))
+#define glLinkProgram_ptr(...) (pc_gfx_count_real_gl(), (glLinkProgram_ptr)(__VA_ARGS__))
+#define glLogicOp(...) (pc_gfx_count_real_gl(), (glLogicOp)(__VA_ARGS__))
+#define glMapBufferRange_ptr(...) (pc_gfx_count_real_gl(), (glMapBufferRange_ptr)(__VA_ARGS__))
+#define glPixelStorei(...) (pc_gfx_count_real_gl(), (glPixelStorei)(__VA_ARGS__))
+#define glPolygonOffset(...) (pc_gfx_count_real_gl(), (glPolygonOffset)(__VA_ARGS__))
+#define glDrawBuffers_ptr(...) (pc_gfx_count_real_gl(), (glDrawBuffers_ptr)(__VA_ARGS__))
+#define glProgramBinary_ptr(...) (pc_gfx_count_real_gl(), (glProgramBinary_ptr)(__VA_ARGS__))
+#define glProgramParameteri_ptr(...) (pc_gfx_count_real_gl(), (glProgramParameteri_ptr)(__VA_ARGS__))
+#define glReadPixels(...) (pc_gfx_count_real_gl(), (glReadPixels)(__VA_ARGS__))
+#define glRenderbufferStorage_ptr(...) (pc_gfx_count_real_gl(), (glRenderbufferStorage_ptr)(__VA_ARGS__))
+#define glScissor(...) (pc_gfx_count_real_gl(), (glScissor)(__VA_ARGS__))
+#define glShaderSource_ptr(...) (pc_gfx_count_real_gl(), (glShaderSource_ptr)(__VA_ARGS__))
+#define glTexImage2D(...) (pc_gfx_count_real_gl(), (glTexImage2D)(__VA_ARGS__))
+#define glTexParameterf(...) (pc_gfx_count_real_gl(), (glTexParameterf)(__VA_ARGS__))
+#define glTexParameteri(...) (pc_gfx_count_real_gl(), (glTexParameteri)(__VA_ARGS__))
+#define glUniform2f_ptr(...) (pc_gfx_count_real_gl(), (glUniform2f_ptr)(__VA_ARGS__))
+#define glUniform3f_ptr(...) (pc_gfx_count_real_gl(), (glUniform3f_ptr)(__VA_ARGS__))
+#define glUniform4fv_ptr(...) (pc_gfx_count_real_gl(), (glUniform4fv_ptr)(__VA_ARGS__))
+#define glUnmapBuffer_ptr(...) (pc_gfx_count_real_gl(), (glUnmapBuffer_ptr)(__VA_ARGS__))
+#define glUseProgram_ptr(...) (pc_gfx_count_real_gl(), (glUseProgram_ptr)(__VA_ARGS__))
+#define glVertexAttribPointer_ptr(...) (pc_gfx_count_real_gl(), (glVertexAttribPointer_ptr)(__VA_ARGS__))
+#define glViewport(...) (pc_gfx_count_real_gl(), (glViewport)(__VA_ARGS__))
 
 #include <SDL2/SDL.h>
 
@@ -362,79 +477,79 @@ static void check_uniform_write(GLint loc, const char* kind) {
 
 static void cached_uniform1i(GLint loc, GLint value) {
     if (loc < 0) return;
-    if (uniform_cache_disabled()) { glUniform1i_ptr(loc, value); return; }
-    if (loc >= PC_UNIFORM_CACHE_SIZE) { glUniform1i_ptr(loc, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
+    if (loc >= PC_UNIFORM_CACHE_SIZE) { pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value); return; }
     auto& entry = sUniform1iCache[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
-    glUniform1i_ptr(loc, value);
+    pc_gfx_count_real_gl(); glUniform1i_ptr(loc, value);
     check_uniform_write(loc, "1i");
 }
 static void cached_uniform1f(GLint loc, GLfloat value) {
     if (loc < 0) return;
-    if (uniform_cache_disabled()) { glUniform1f_ptr(loc, value); return; }
-    if (loc >= PC_UNIFORM_CACHE_SIZE) { glUniform1f_ptr(loc, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
+    if (loc >= PC_UNIFORM_CACHE_SIZE) { pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value); return; }
     auto& entry = sUniform1fCache[loc];
     if (entry.generation == sUniformGeneration && entry.value == value) return;
     entry.generation = sUniformGeneration; entry.value = value;
-    glUniform1f_ptr(loc, value);
+    pc_gfx_count_real_gl(); glUniform1f_ptr(loc, value);
     check_uniform_write(loc, "1f");
 }
 static void cached_uniform2i(GLint loc, GLint x, GLint y) {
     if (loc < 0) return;
-    if (uniform_cache_disabled()) { glUniform2i_ptr(loc, x, y); return; }
-    if (loc >= PC_UNIFORM_CACHE_SIZE) { glUniform2i_ptr(loc, x, y); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
+    if (loc >= PC_UNIFORM_CACHE_SIZE) { pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y); return; }
     auto& entry = sUniform2iCache[loc];
     const Uniform2iValue value { x, y };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
     entry.generation = sUniformGeneration; entry.value = value;
-    glUniform2i_ptr(loc, x, y);
+    pc_gfx_count_real_gl(); glUniform2i_ptr(loc, x, y);
     check_uniform_write(loc, "2i");
 }
 static void cached_uniform4i(GLint loc, GLint x, GLint y, GLint z, GLint w) {
     if (loc < 0) return;
-    if (uniform_cache_disabled()) { glUniform4i_ptr(loc, x, y, z, w); return; }
-    if (loc >= PC_UNIFORM_CACHE_SIZE) { glUniform4i_ptr(loc, x, y, z, w); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
+    if (loc >= PC_UNIFORM_CACHE_SIZE) { pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w); return; }
     auto& entry = sUniform4iCache[loc];
     const Uniform4iValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
     entry.generation = sUniformGeneration; entry.value = value;
-    glUniform4i_ptr(loc, x, y, z, w);
+    pc_gfx_count_real_gl(); glUniform4i_ptr(loc, x, y, z, w);
     check_uniform_write(loc, "4i");
 }
 static void cached_uniform4f(GLint loc, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
     if (loc < 0) return;
-    if (uniform_cache_disabled()) { glUniform4f_ptr(loc, x, y, z, w); return; }
-    if (loc >= PC_UNIFORM_CACHE_SIZE) { glUniform4f_ptr(loc, x, y, z, w); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
+    if (loc >= PC_UNIFORM_CACHE_SIZE) { pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w); return; }
     auto& entry = sUniform4fCache[loc];
     const Uniform4fValue value { x, y, z, w };
     if (entry.generation == sUniformGeneration && memcmp(&entry.value, &value, sizeof(value)) == 0) return;
     entry.generation = sUniformGeneration; entry.value = value;
-    glUniform4f_ptr(loc, x, y, z, w);
+    pc_gfx_count_real_gl(); glUniform4f_ptr(loc, x, y, z, w);
     check_uniform_write(loc, "4f");
 }
 static void cached_uniform_mat4(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
     if (loc < 0 || !value) return;
-    if (uniform_cache_disabled()) { glUniformMatrix4fv_ptr(loc, count, transpose, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return; }
     if (count != 1 || transpose != GL_FALSE || loc >= PC_UNIFORM_CACHE_SIZE) {
-        glUniformMatrix4fv_ptr(loc, count, transpose, value); return;
+        pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUniformMat4Cache[loc];
     if (entry.generation == sUniformGeneration && memcmp(entry.value.value, value, sizeof(entry.value.value)) == 0) return;
     entry.generation = sUniformGeneration; memcpy(entry.value.value, value, sizeof(entry.value.value));
-    glUniformMatrix4fv_ptr(loc, count, transpose, value);
+    pc_gfx_count_real_gl(); glUniformMatrix4fv_ptr(loc, count, transpose, value);
     check_uniform_write(loc, "mat4");
 }
 static void cached_uniform_mat3(GLint loc, GLsizei count, GLboolean transpose, const GLfloat* value) {
     if (loc < 0 || !value) return;
-    if (uniform_cache_disabled()) { glUniformMatrix3fv_ptr(loc, count, transpose, value); return; }
+    if (uniform_cache_disabled()) { pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return; }
     if (count != 1 || transpose != GL_FALSE || loc >= PC_UNIFORM_CACHE_SIZE) {
-        glUniformMatrix3fv_ptr(loc, count, transpose, value); return;
+        pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value); return;
     }
     auto& entry = sUniformMat3Cache[loc];
     if (entry.generation == sUniformGeneration && memcmp(entry.value.value, value, sizeof(entry.value.value)) == 0) return;
     entry.generation = sUniformGeneration; memcpy(entry.value.value, value, sizeof(entry.value.value));
-    glUniformMatrix3fv_ptr(loc, count, transpose, value);
+    pc_gfx_count_real_gl(); glUniformMatrix3fv_ptr(loc, count, transpose, value);
     check_uniform_write(loc, "mat3");
 }
 
@@ -818,6 +933,21 @@ static inline void pc_gfx_note_gl_state_change() {
     ++sGlStateEpoch;
 }
 
+// M2b null GX (issue #879 review B1): every pc_gfx entry below that can reach
+// GL returns through here first while the authoritative pass runs. The guard
+// sits before the redundancy caches, so the presentation pass re-emits
+// whatever state it needs. Pure CPU-side setters (state_touched only:
+// channels, lights, matrices, fog parameters, copy-clear colour) are
+// intentionally not gated: they never call GL, and the presentation pass
+// re-establishes everything it draws with.
+static inline bool pc_gfx_null_skip() {
+    if (pc_netplay_present_null_active()) {
+        pc_netplay_present_note_attempt();
+        return true;
+    }
+    return false;
+}
+
 // The pipeline setters (blend, depth, cull, viewport, scissor) keep a
 // redundancy guard so a repeated GX call does not touch GL. post_apply()
 // writes those bits of GL itself -- it disables blend, depth and cull --
@@ -1112,6 +1242,9 @@ static void resolve_tev_konst(u8 stage, float out[4]) {
 
 // Map of GXTexObj pointers to OpenGL Texture IDs
 static std::unordered_map<uintptr_t, GLuint> sTextureCache;
+// M2b fix2 (issue #879 B1): GL names released while null is active cannot be
+// deleted there (no GL in auth); they wait here for the next real present.
+static std::vector<GLuint> sNullDoomedTextures;
 // What the cache is costing. Every GX texture is expanded to RGBA8 -- the
 // console's formats are 4 and 8 bits per pixel, so this is four to eight times
 // the original -- and nothing ever gave one back until now.
@@ -1145,24 +1278,116 @@ struct PcTlut {
     // activo: el hash de paleta de Dolphin se calcula sobre ellos.
     std::vector<u8> raw;
 };
-struct PcCiTexture {
-    const u8* image = nullptr;
-    u16 width = 0;
-    u16 height = 0;
-    GXCITexFmt format = GX_TF_C4;
-    GXTexWrapMode wrapS = GX_CLAMP;
-    GXTexWrapMode wrapT = GX_CLAMP;
-    u32 tlutName = 0;
-    bool mipmap = false;
-};
+// (Fix2 M2/m3: the CI description is PcDeferredCi in pc_gfx_deferred_tex.h;
+// the three pending maps live in the PcDeferredTexStore unit below.)
 static std::unordered_map<uintptr_t, PcTlut> sTlutObjects;
 static std::unordered_map<u32, PcTlut> sLoadedTluts;
-static std::unordered_map<uintptr_t, PcCiTexture> sCiTextures;
+// Polish (issue #880 item 6, fix2 M2/m3): authoritative-pass deferred inits.
+// The auth pass issues no GL, so the init parameters are retained in the
+// standalone PcDeferredTexStore unit (move-only entries read through bytes(),
+// so no pointer into a map entry outlives it) and the upload happens lazily
+// on first presentation use (pc_gfx_load_tex_obj fallback below). A re-init
+// of an already-cached key during auth invalidates the stale cache entry (GL
+// name deferred to sNullDoomedTextures), so presentation never draws stale.
+static PcDeferredTexStore sNullDeferred;
+// Fix2 m3 runtime trigger: PIKMIN_NETPLAY_TEST_FORCE_AUTH_TEXINIT=<n> routes
+// the next n texture inits (across the rgba / palettised / CI entry points)
+// through the deferred record path. Deviation (fix3 R2-6): the knob records
+// OUTSIDE the authoritative pass, in the normal presentation-side init, so a
+// frame-dump run proves record, take and lazy upload, but not the auth-only
+// interplay (load suppressed until presentation, doomed names deleted at
+// present). The log line names the path ("(forced)" vs "(auth)") and the
+// counts are printed at exit. The re-upload that drains a taken entry runs
+// under sForceAuthDrain, so it always takes the real GL path instead of
+// re-deferring (which would never upload).
+static bool sForceAuthDrain = false;
+static long sForceAuthRemaining = -1;
+static bool pc_gfx_force_auth_texinit_consume()
+{
+    if (sForceAuthDrain) return false;
+    if (sForceAuthRemaining < 0) {
+        sForceAuthRemaining = 0;
+        if (const char* e = std::getenv("PIKMIN_NETPLAY_TEST_FORCE_AUTH_TEXINIT")) {
+            char* end = nullptr;
+            unsigned long n = strtoul(e, &end, 10);
+            if (end != e && *end == '\0') sForceAuthRemaining = (long)n;
+        }
+    }
+    if (sForceAuthRemaining <= 0) return false;
+    --sForceAuthRemaining;
+    return true;
+}
+// Fix3 R2-6: how many inits took the deferred path, and how many of those
+// were uploaded on first presentation use. Printed once at exit, and only
+// when at least one init was deferred, so runs that never defer log nothing
+// new.
+static long sDeferredAuthInits = 0;
+static long sDeferredForcedInits = 0;
+static long sDeferredDrains = 0;
+static void pc_gfx_log_deferred_counts()
+{
+    printf("[netplay] deferred texture inits: auth=%ld forced=%ld drained=%ld\n",
+           sDeferredAuthInits, sDeferredForcedInits, sDeferredDrains);
+    fflush(stdout);
+}
+static void pc_gfx_note_deferred_init(bool forced)
+{
+    static bool loggedAuth = false;
+    static bool loggedForced = false;
+    if (sDeferredAuthInits == 0 && sDeferredForcedInits == 0) {
+        std::atexit(pc_gfx_log_deferred_counts);
+    }
+    if (forced) {
+        ++sDeferredForcedInits;
+        if (!loggedForced) {
+            loggedForced = true;
+            printf("[netplay] deferred texture init (forced): test knob, recorded outside "
+                   "the authoritative pass (upload on first presentation use)\n");
+            fflush(stdout);
+        }
+    } else {
+        ++sDeferredAuthInits;
+        if (!loggedAuth) {
+            loggedAuth = true;
+            printf("[netplay] deferred texture init (auth): recorded in the authoritative "
+                   "pass (upload on first presentation use)\n");
+            fflush(stdout);
+        }
+    }
+}
 // Texturas con reemplazo HD del pack (PLAN_TEXTURAS_HD fase 1): texId -> si
 // trae cadena de mips propia. Sobre estas hay que saltarse glGenerateMipmap:
 // sobre un bloque comprimido es GL_INVALID_OPERATION, y además la cadena ya
 // viene con el pack.
 static std::unordered_map<GLuint, bool> sExternalMipChain;
+
+// Polish fix (review M2): authoritative-pass inits are mutually exclusive
+// per key. Drops the live cache entry (GL name deferred, never drawn stale),
+// the signature, and all three pending store maps; the caller then records
+// exactly one of CI / deferred-RGBA / deferred-tex.
+static void null_auth_invalidate(uintptr_t key)
+{
+    auto cached = sTextureCache.find(key);
+    if (cached != sTextureCache.end()) {
+        const GLuint doomed = cached->second;
+        sNullDoomedTextures.push_back(doomed);
+        // Fix3 R2-7: clear the bind cache for the retired GL name, the same
+        // way the release path does, so a later reuse of the name by GL
+        // cannot be skipped as a redundant bind.
+        for (int unit = 0; unit < 8; ++unit) {
+            if (sBoundTextures[unit] == doomed) sBoundTextures[unit] = 0;
+        }
+        sExternalMipChain.erase(doomed);
+        sTextureCache.erase(cached);
+        auto bytesIt = sTextureBytes.find(key);
+        if (bytesIt != sTextureBytes.end()) {
+            sTextureBytesLive -= bytesIt->second;
+            sTextureBytes.erase(bytesIt);
+        }
+    }
+    sTextureSignatures.erase(key);
+    sNullDeferred.invalidate(key);
+}
 
 // ── Volcado de nombres de textura (--dump-texture-names, PLAN_TEXTURAS_HD fase 0) ──
 // Reproduce TextureInfo::CalculateTextureName de Dolphin para poder cotejar las
@@ -1464,6 +1689,7 @@ static void fill_ui_43_bars() {
 }
 
 void pc_gfx_set_ui_43(int enabled) {
+    if (pc_gfx_null_skip()) return;
     const bool want = enabled != 0;
     if (want != sUi43) {
         sUi43 = want;
@@ -1648,6 +1874,7 @@ void pc_gfx_get_drawable_size(int* width, int* height)
 
 void pc_gfx_overlay_begin(void)
 {
+    if (pc_gfx_null_skip()) return;
     if (!ensure_overlay_program() || sDrawableWidth <= 0 || sDrawableHeight <= 0) return;
     pc_gfx_note_gl_state_change();
     invalidate_gl_pipeline_guards();
@@ -1671,6 +1898,7 @@ void pc_gfx_overlay_begin(void)
 void pc_gfx_overlay_sprite(unsigned texture, float x, float y, float w, float h,
                            float r, float g, float b, float a, float angleRadians)
 {
+    if (pc_gfx_null_skip()) return;
     if (!sOverlayProgram || sDrawableWidth <= 0 || sDrawableHeight <= 0) return;
     const float cx = (x + w * 0.5f) / float(sDrawableWidth) * 2.0f - 1.0f;
     const float cy = 1.0f - (y + h * 0.5f) / float(sDrawableHeight) * 2.0f;
@@ -1687,6 +1915,7 @@ void pc_gfx_overlay_sprite(unsigned texture, float x, float y, float w, float h,
 
 void pc_gfx_overlay_end(void)
 {
+    if (pc_gfx_null_skip()) return;
     if (!sOverlayProgram) return;
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray_ptr(0);
@@ -1701,6 +1930,7 @@ void pc_gfx_overlay_end(void)
 
 void pc_gfx_dim_full_target(unsigned char alpha)
 {
+    if (pc_gfx_null_skip()) return;
     const GLint w = sNativeFramebufferReady ? sRenderWidth : sDrawableWidth;
     const GLint h = sNativeFramebufferReady ? sRenderHeight : sDrawableHeight;
     if (w <= 0 || h <= 0 || alpha == 0) return;
@@ -1752,6 +1982,7 @@ static bool blur_target(int i, int w, int h)
 
 void pc_gfx_blur_gx_rect(int gxX, int gxY, int gxW, int gxH, int passes)
 {
+    if (pc_gfx_null_skip()) return;
     if (!sNativeFramebufferReady || !glBlitFramebuffer_ptr || !glBindFramebuffer_ptr) return;
     float sx, sy, ox, oy;
     gx_rect_params(sx, sy, ox, oy);
@@ -3083,7 +3314,59 @@ static void perf_gpu_scene_begin() {
 #endif
 }
 
+// Netplay two-pass frame (issue #1031): the per-frame 2D mapping flags
+// (4:3 menu, wide HUD, 4:3 menu clip) are reset by pc_gfx_begin_frame once per
+// tick, before the authoritative pass. The authoritative pass then draws every
+// 2D screen with the null GX, which leaves sHudWide / sMenuClip43 set by the
+// last of them (pc_gfx_set_hud_wide and the clip setter are CPU-side and not
+// null-gated; the end-of-day countdown's zen::DrawScreen::draw is one). Without
+// this the presentation pass started its 3D scene with the wide-HUD mapping,
+// which stretches the 640x480 viewport and scissor through the virtual HUD
+// width and leaves a black bar on the right. This puts the presentation pass
+// where a single pass starts: with the flags as pc_gfx_begin_frame leaves them.
+// Called by the two-pass driver between the passes; never from a single pass.
+void pc_gfx_reset_ui_state(void) {
+    // Test/diagnostic only: PIKMIN_NETPLAY_GFX_TRACE=1 prints the mapping the
+    // presentation pass is about to start with, and PIKMIN_NETPLAY_TEST_NO_UI_RESET=1
+    // restores the pre-fix leak so the same exe shows both behaviours.
+    static int traceMode = -1;
+    static bool noReset = false;
+    if (traceMode < 0) {
+        const char* t = std::getenv("PIKMIN_NETPLAY_GFX_TRACE");
+        traceMode = (t && *t && *t != '0') ? 1 : 0;
+        const char* n = std::getenv("PIKMIN_NETPLAY_TEST_NO_UI_RESET");
+        noReset = n && *n && *n != '0';
+    }
+    if (traceMode) {
+        static unsigned traced = 0;
+        const bool leaked = sUi43 || sHudWide || sMenuClip43;
+        if (leaked || (++traced % 600) == 0) {
+            GLint vx = 0, vy = 0;
+            GLsizei vw = 0, vh = 0;
+            map_gx_rect(0.0f, 0.0f, 640.0f, 480.0f, vx, vy, vw, vh);
+            printf("[gfx-trace] present-begin ui43=%d hudWide=%d menuClip43=%d "
+                   "viewport640=(%d,%d,%d,%d) target=%dx%d reset=%d\n",
+                   sUi43 ? 1 : 0, sHudWide ? 1 : 0, sMenuClip43 ? 1 : 0, vx, vy, int(vw), int(vh),
+                   sNativeFramebufferReady ? sRenderWidth : sDrawableWidth,
+                   sNativeFramebufferReady ? sRenderHeight : sDrawableHeight, (leaked && !noReset) ? 1 : 0);
+            fflush(stdout);
+        }
+    }
+    if (noReset) return;
+    if (sUi43 || sHudWide || sMenuClip43) {
+        sUi43 = false;
+        sHudWide = false;
+        sMenuClip43 = false;
+        invalidate_gl_pipeline_guards();
+    }
+}
+
 void pc_gfx_begin_frame(void) {
+    // M2b fix2 (issue #879 B1): no GL in the authoritative pass. This runs
+    // per renderall (both passes) via GXInvalidateVtxCache and issues a VBO
+    // ring fence plus framebuffer-resize GL; the presentation pass owns all
+    // of that (window-derived values are identical across passes).
+    if (pc_gfx_null_skip()) return;
     sUi43 = false;
     sHudWide = false;
     sMenuClip43 = false;
@@ -4400,27 +4683,10 @@ void pc_gfx_proxy_shot_now(const char* key) {
     sProxyShotPending.push_back(pending);
 }
 
-static void proxyShotWrite(const std::string& key) {
-    if (!glBindFramebuffer_ptr || sDrawableWidth <= 0 || sDrawableHeight <= 0) return;
-    const int w = sDrawableWidth;
-    const int h = sDrawableHeight;
-    std::string species = key;
-    const std::string::size_type bar = key.find('|');
-    if (bar != std::string::npos) species = key.substr(bar + 1);
-    if (species.empty()) return;
-    const std::string path = sProxyShotDir + "/" + species + ".bmp";
-    // The presented frame lives in the default framebuffer (READ is still the
-    // post source after the blit); copy the state handling from the existing
-    // glReadPixels probes: bind explicitly, use tight packing, restore after.
-    glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, 0);
-    GLint packAlign = 4;
-    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    std::vector<unsigned char> rgb(size_t(w) * size_t(h) * 3, 0);
-    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
-    glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+// Writes bottom-up tightly packed RGB rows as an uncompressed 24-bit BMP.
+static bool shotWriteBmp(const std::string& path, int w, int h, const std::vector<unsigned char>& rgb) {
     FILE* out = std::fopen(path.c_str(), "wb");
-    if (!out) return;
+    if (!out) return false;
     const int rowStride = (w * 3 + 3) & ~3;
     const uint32_t imageSize = uint32_t(rowStride) * uint32_t(h);
     const uint32_t fileSize = 54 + imageSize;
@@ -4461,8 +4727,79 @@ static void proxyShotWrite(const std::string& key) {
         ok = std::fwrite(row.data(), 1, size_t(rowStride), out) == size_t(rowStride);
     }
     std::fclose(out);
-    if (!ok) return;
+    return ok;
+}
+
+static void proxyShotWrite(const std::string& key) {
+    if (!glBindFramebuffer_ptr || sDrawableWidth <= 0 || sDrawableHeight <= 0) return;
+    const int w = sDrawableWidth;
+    const int h = sDrawableHeight;
+    std::string species = key;
+    const std::string::size_type bar = key.find('|');
+    if (bar != std::string::npos) species = key.substr(bar + 1);
+    if (species.empty()) return;
+    const std::string path = sProxyShotDir + "/" + species + ".bmp";
+    // The presented frame lives in the default framebuffer (READ is still the
+    // post source after the blit); copy the state handling from the existing
+    // glReadPixels probes: bind explicitly, use tight packing, restore after.
+    glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, 0);
+    GLint packAlign = 4;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    std::vector<unsigned char> rgb(size_t(w) * size_t(h) * 3, 0);
+    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+    if (!shotWriteBmp(path, w, h, rgb)) return;
     std::printf("P2_PROXY_SHOT key=%s file=%s w=%d h=%d\n", key.c_str(), path.c_str(), w, h);
+    std::fflush(stdout);
+}
+
+// Netplay M5c (issue #887, test-only): the one one-shot frame capture. Lane
+// A's lead-camera diagnostics (pc_netplay_camlead) and lane C's HUD test
+// captures (pc_netplay_hud) arm it; the next present serves every pending
+// request from the finished frame's framebuffer (the same source
+// PIKMIN_FRAME_DUMP reads, overlays included, before the window blit, so it
+// works for a hidden window). Two requests in one frame get the same image.
+static std::vector<std::string> sFrameShotPaths;
+
+// Bounded (issue #965 N9): a run whose present never comes (null GX, a stuck
+// window) would otherwise grow the queue for as long as the diagnostics keep
+// asking. The oldest requests are the ones dropped (with one notice), so the
+// newest capture still gets served.
+static constexpr size_t kFrameShotQueueMax = 32;
+
+void pc_gfx_request_frame_shot(const char* path) {
+    if (path == nullptr || path[0] == '\0') return;
+    if (sFrameShotPaths.size() >= kFrameShotQueueMax) {
+        static bool sWarned = false;
+        if (!sWarned) {
+            sWarned = true;
+            std::printf("[netplay] frame shot: queue full (%u pending), dropping the oldest requests\n",
+                        unsigned(kFrameShotQueueMax));
+            std::fflush(stdout);
+        }
+        sFrameShotPaths.erase(sFrameShotPaths.begin());
+    }
+    sFrameShotPaths.push_back(path);
+}
+
+static void frameShotWrite(GLuint sourceFramebuffer) {
+    const std::vector<std::string> paths = sFrameShotPaths;
+    sFrameShotPaths.clear();
+    if (!glBindFramebuffer_ptr || sRenderWidth <= 0 || sRenderHeight <= 0) return;
+    const int w = sRenderWidth;
+    const int h = sRenderHeight;
+    glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, sourceFramebuffer);
+    GLint packAlign = 4;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &packAlign);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    std::vector<unsigned char> rgb(size_t(w) * size_t(h) * 3, 0);
+    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+    glPixelStorei(GL_PACK_ALIGNMENT, packAlign);
+    for (const std::string& path : paths) {
+        const bool ok = shotWriteBmp(path, w, h, rgb);
+        std::printf("[netplay] frame shot: %s %s (%dx%d)\n", ok ? "wrote" : "FAILED", path.c_str(), w, h);
+    }
     std::fflush(stdout);
 }
 
@@ -4480,6 +4817,20 @@ static void proxyShotOnPresent() {
 }
 
 void pc_gfx_present(void) {
+    // M2b null GX (issue #879): authoritative pass issues no GL, no present.
+    if (pc_netplay_present_null_active()) {
+        pc_netplay_present_note_attempt();
+        return;
+    }
+    // M2b fix2: free GL names released during authoritative passes (heap
+    // resets on section/movie transitions). They are unbound and uncached
+    // already; the delete itself must be real GL.
+    if (!sNullDoomedTextures.empty()) {
+        for (GLuint doomed : sNullDoomedTextures) {
+            glDeleteTextures(1, &doomed);
+        }
+        sNullDoomedTextures.clear();
+    }
     pc_gfx_flush_batch();
 #ifdef GL_TIME_ELAPSED
     if (sPerfGpuSceneActive) {
@@ -4512,6 +4863,8 @@ void pc_gfx_present(void) {
     }
     sPostRanThisFrame = false;
     shadow_frame_reset();
+    // Netplay M5c (test-only): pending frame captures (lead camera, HUD).
+    if (!sFrameShotPaths.empty()) frameShotWrite(sourceFramebuffer);
     // PIKMIN_FRAME_DUMP=<dir>: the finished frame as PPM every 15 frames, for
     // looking at a scene where no screenshot tool reaches (Wayland, adb-less).
     // PIKMIN_FRAME_DUMP_EVERY=<n> changes the interval (1 = every frame, for
@@ -4619,6 +4972,7 @@ void pc_gfx_present(void) {
 }
 
 void pc_gfx_set_projection(const Mtx44 mtx, GXProjectionType type) {
+    if (pc_gfx_null_skip()) return;
     state_touched();
     // The orthographic ones matter as much as the perspective ones: the point
     // of this trace is to find where the world stops and the interface starts,
@@ -4745,6 +5099,7 @@ bool pc_gfx_project_current(float x, float y, float z, float* winX, float* winY)
 }
 
 void pc_gfx_set_viewport(f32 xOrig, f32 yOrig, f32 wd, f32 ht, f32 nearZ, f32 farZ) {
+    if (pc_gfx_null_skip()) return;
     (void)nearZ; (void)farZ;
     GLint x, y; GLsizei width, height;
     map_gx_rect(xOrig, yOrig, wd, ht, x, y, width, height);
@@ -4761,6 +5116,7 @@ void pc_gfx_set_viewport(f32 xOrig, f32 yOrig, f32 wd, f32 ht, f32 nearZ, f32 fa
 }
 
 void pc_gfx_set_scissor(u32 xOrig, u32 yOrig, u32 wd, u32 ht) {
+    if (pc_gfx_null_skip()) return;
     GLint x, y; GLsizei width, height;
     map_gx_rect((float)xOrig, (float)yOrig, (float)wd, (float)ht, x, y, width, height);
     static GLint lastX = -1, lastY = -1;
@@ -4831,6 +5187,7 @@ void pc_gfx_set_pipeline_state(const PcGfxPipelineState& st) {
 }
 
 void pc_gfx_set_z_mode(GXBool compareEnable, GXCompare func, GXBool updateEnable) {
+    if (pc_gfx_null_skip()) return;
     sPipelineState.zCompare = compareEnable; sPipelineState.zFunc = func; sPipelineState.zUpdate = updateEnable;
     static bool valid = false;
     static uint32_t seenSerial = 0;
@@ -4862,6 +5219,7 @@ void pc_gfx_set_z_mode(GXBool compareEnable, GXCompare func, GXBool updateEnable
 }
 
 void pc_gfx_set_blend_mode(GXBlendMode type, GXBlendFactor srcFactor, GXBlendFactor dstFactor, GXLogicOp op) {
+    if (pc_gfx_null_skip()) return;
     sPipelineState.blendType = type; sPipelineState.blendSrc = srcFactor; sPipelineState.blendDst = dstFactor; sPipelineState.blendOp = op;
     static bool valid = false;
     static uint32_t seenSerial = 0;
@@ -4934,6 +5292,7 @@ void pc_gfx_set_blend_mode(GXBlendMode type, GXBlendFactor srcFactor, GXBlendFac
 }
 
 void pc_gfx_set_cull_mode(GXCullMode mode) {
+    if (pc_gfx_null_skip()) return;
     sPipelineState.cull = mode;
     static bool valid = false;
     static uint32_t seenSerial = 0;
@@ -4951,6 +5310,7 @@ void pc_gfx_set_cull_mode(GXCullMode mode) {
 }
 
 void pc_gfx_set_color_update(GXBool updateEnable) {
+    if (pc_gfx_null_skip()) return;
     if (sColorUpdate == updateEnable) return;
     sColorUpdate = updateEnable;
     pc_gfx_note_gl_state_change();
@@ -4958,6 +5318,7 @@ void pc_gfx_set_color_update(GXBool updateEnable) {
 }
 
 void pc_gfx_set_alpha_update(GXBool updateEnable) {
+    if (pc_gfx_null_skip()) return;
     if (sAlphaUpdate == updateEnable) return;
     sAlphaUpdate = updateEnable;
     pc_gfx_note_gl_state_change();
@@ -5355,6 +5716,10 @@ void pc_gfx_release_texture(void* gxTexObj)
 {
     if (!gxTexObj) return;
     const uintptr_t key = reinterpret_cast<uintptr_t>(gxTexObj);
+    // M2/m4: release clears every per-key record, including the deferred store
+    // (their bytes are freed here, not leaked) — even when no live GL name
+    // exists for the key.
+    sNullDeferred.release(key);
     auto it = sTextureCache.find(key);
     if (it == sTextureCache.end()) return;
 
@@ -5363,7 +5728,14 @@ void pc_gfx_release_texture(void* gxTexObj)
     for (int unit = 0; unit < 8; ++unit) {
         if (sBoundTextures[unit] == id) sBoundTextures[unit] = 0;
     }
-    glDeleteTextures(1, &id);
+    // M2b fix2 (issue #879 B1): no GL in the authoritative pass (heap resets
+    // on section/movie transitions run there). The CPU forgets the texture
+    // now; the GL name is freed on the next real present.
+    if (pc_gfx_null_skip()) {
+        sNullDoomedTextures.push_back(id);
+    } else {
+        glDeleteTextures(1, &id);
+    }
     sExternalMipChain.erase(id);
     sTextureCache.erase(it);
     sTextureSignatures.erase(key);
@@ -5482,9 +5854,35 @@ static void apply_texture_filtering(bool gameRequestedMipmaps)
 }
 
 void pc_gfx_init_tex_obj_rgba(GXTexObj* obj, void* rgba, u16 width, u16 height, GXTexWrapMode wrapS, GXTexWrapMode wrapT) {
+    // Polish (issue #880 item 6): retain the init parameters in auth and
+    // upload lazily on first presentation use; invalidate any stale cache
+    // entry so a re-init during auth never leaves the old image live.
     if (!obj || !rgba || width == 0 || height == 0) return;
+    const bool inAuth = pc_gfx_null_skip();
+    const bool forced = !inAuth && pc_gfx_force_auth_texinit_consume();
+    if (inAuth || forced) {
+        const uintptr_t nullKey = reinterpret_cast<uintptr_t>(obj);
+        // RGBA always retains: the movie hands a new picture each frame in
+        // the same buffer, so "same pointer, same size" must still re-upload
+        // (a signature early-out like the palettised path would freeze it).
+        null_auth_invalidate(nullKey);
+        PcDeferredRgba def;
+        def.width = width;
+        def.height = height;
+        def.wrapS = static_cast<int32_t>(wrapS);
+        def.wrapT = static_cast<int32_t>(wrapT);
+        const size_t bytes = (size_t)width * (size_t)height * 4;
+        const uint8_t* src = static_cast<const uint8_t*>(rgba);
+        def.rgba.assign(src, src + bytes);
+        sNullDeferred.record_rgba(nullKey, std::move(def));
+        pc_gfx_note_deferred_init(forced);
+        return;
+    }
 
     const uintptr_t key = (uintptr_t)obj;
+    // M2: a real upload supersedes any stale authoritative-pass deferred
+    // entry for a reused key; the fresh image is authoritative now.
+    sNullDeferred.erase_deferred(key);
     GLuint texId = 0;
     auto it = sTextureCache.find(key);
     if (it != sTextureCache.end()) {
@@ -5512,7 +5910,50 @@ void pc_gfx_init_tex_obj_rgba(GXTexObj* obj, void* rgba, u16 width, u16 height, 
 }
 
 void pc_gfx_init_tex_obj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap) {
+    // Polish (issue #880 item 6): see init_tex_obj_rgba above. Retain the
+    // init parameters in auth; erase any stale cache entry.
     if (!obj || !imagePtr || width == 0 || height == 0) return;
+    const bool inAuth = pc_gfx_null_skip();
+    const bool forced = !inAuth && pc_gfx_force_auth_texinit_consume();
+    if (inAuth || forced) {
+        const uintptr_t nullKey = reinterpret_cast<uintptr_t>(obj);
+        // m4: skip the churn when nothing changed (matches the non-auth
+        // signature early-out below): same params over a live cache entry
+        // keep the texture without a decode/upload/delete cycle.
+        const PcTextureSignature incoming {
+            imagePtr, width, height, static_cast<u32>(format), wrapS, wrapT, false, 0
+        };
+        const auto sigIt = sTextureSignatures.find(nullKey);
+        if (sigIt != sTextureSignatures.end() && sigIt->second == incoming
+            && sTextureCache.find(nullKey) != sTextureCache.end()) {
+            return;
+        }
+        null_auth_invalidate(nullKey);
+        PcDeferredTex def;
+        def.width = width;
+        def.height = height;
+        def.format = static_cast<uint32_t>(format);
+        def.wrapS = static_cast<int32_t>(wrapS);
+        def.wrapT = static_cast<int32_t>(wrapT);
+        def.mipmap = (mipmap != GX_FALSE);
+        // m4: own the bytes (gx_base_level_size) so the entry never aliases
+        // a heap buffer that a section/movie reset frees before presentation.
+        // Fix2 M2: the owned copy is read through bytes(); alias stays null
+        // whenever owned is populated, so no raw member can dangle.
+        // Fix3 R2-5: keep the game's original source pointer; the drain
+        // puts it (not the owned copy's address) into the signature.
+        def.sigImage = imagePtr;
+        const size_t rawBytes = gx_base_level_size(width, height, static_cast<u32>(format));
+        if (rawBytes > 0) {
+            const uint8_t* src = static_cast<const uint8_t*>(imagePtr);
+            def.owned.assign(src, src + rawBytes);
+        } else {
+            def.alias = static_cast<const uint8_t*>(imagePtr); // unknown layout: cannot copy
+        }
+        sNullDeferred.record_tex(nullKey, std::move(def));
+        pc_gfx_note_deferred_init(forced);
+        return;
+    }
 
     uintptr_t key = (uintptr_t)obj;
     const PcTextureSignature signature {
@@ -5523,6 +5964,8 @@ void pc_gfx_init_tex_obj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, G
         && sTextureCache.find(key) != sTextureCache.end()) {
         return;
     }
+    // M2: the fresh upload supersedes any stale deferred entry for a reused key.
+    sNullDeferred.erase_deferred(key);
 
     if (sDumpTextureNames) {
         dump_dolphin_texture_name(static_cast<const u8*>(imagePtr), width, height,
@@ -5764,12 +6207,15 @@ void pc_gfx_load_tlut(GXTlutObj* obj, u32 tlutName) {
     if (it != sTlutObjects.end()) sLoadedTluts[tlutName] = it->second;
 }
 
-static bool upload_ci_texture(GXTexObj* obj, const PcCiTexture& ci) {
+static bool upload_ci_texture(GXTexObj* obj, const PcDeferredCi& ci) {
+    // Fix2 M2: the source bytes always come through bytes() (owned copy when
+    // populated), never a raw member, so this stays valid after map moves.
+    const uint8_t* image = ci.bytes();
     auto paletteIt = sLoadedTluts.find(ci.tlutName);
-    if (!obj || !ci.image || paletteIt == sLoadedTluts.end() || paletteIt->second.rgba.empty()) return false;
+    if (!obj || !image || paletteIt == sLoadedTluts.end() || paletteIt->second.rgba.empty()) return false;
     const PcTlut& palette = paletteIt->second;
     if (sDumpTextureNames) {
-        dump_dolphin_texture_name(ci.image, ci.width, ci.height, static_cast<u32>(ci.format),
+        dump_dolphin_texture_name(image, ci.width, ci.height, static_cast<u32>(ci.format),
                                   ci.mipmap,
                                   palette.raw.empty() ? nullptr : palette.raw.data(),
                                   palette.raw.size() / 2);
@@ -5786,13 +6232,13 @@ static bool upload_ci_texture(GXTexObj* obj, const PcCiTexture& ci) {
                     const int local = y * tileWidth + x;
                     u32 paletteIndex = 0;
                     if (ci.format == GX_TF_C4) {
-                        const u8 packed = ci.image[tileOffset + local / 2];
+                        const u8 packed = image[tileOffset + local / 2];
                         paletteIndex = (local & 1) ? (packed & 0xF) : (packed >> 4);
                     } else if (ci.format == GX_TF_C8) {
-                        paletteIndex = ci.image[tileOffset + local];
+                        paletteIndex = image[tileOffset + local];
                     } else {
-                        paletteIndex = ((u32(ci.image[tileOffset + local * 2]) << 8)
-                                      | ci.image[tileOffset + local * 2 + 1]) & 0x3FFF;
+                        paletteIndex = ((u32(image[tileOffset + local * 2]) << 8)
+                                      | image[tileOffset + local * 2 + 1]) & 0x3FFF;
                     }
                     const int dstX = tileX + x, dstY = tileY + y;
                     const size_t paletteOffset = static_cast<size_t>(paletteIndex) * 4;
@@ -5826,7 +6272,7 @@ static bool upload_ci_texture(GXTexObj* obj, const PcCiTexture& ci) {
         char texPackName[96];
         int glLevels = 0;
         size_t gpuBytes = 0;
-        if (compute_dolphin_name(ci.image, ci.width, ci.height, static_cast<u32>(ci.format),
+        if (compute_dolphin_name(image, ci.width, ci.height, static_cast<u32>(ci.format),
                                  ci.mipmap,
                                  palette.raw.empty() ? nullptr : palette.raw.data(),
                                  palette.raw.size() / 2,
@@ -5851,7 +6297,48 @@ static bool upload_ci_texture(GXTexObj* obj, const PcCiTexture& ci) {
 
 void pc_gfx_init_tex_obj_ci(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITexFmt format,
                             GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap, u32 tlutName) {
+    // M2b fix2 (issue #879 B1): uploads happen in presentation, never in the
+    // authoritative pass. The CPU-side CI description is still stored so the
+    // presentation load_tex_obj fallback can upload on first draw; no
+    // signature is recorded, so presentation does the full upload.
     if (!obj || !imagePtr || width == 0 || height == 0) return;
+    const bool inAuth = pc_gfx_null_skip();
+    const bool forced = !inAuth && pc_gfx_force_auth_texinit_consume();
+    if (inAuth || forced) {
+        const uintptr_t nullKey = reinterpret_cast<uintptr_t>(obj);
+        // M2/m4: mutually exclusive per key (a stale CI entry used to shadow
+        // a newer non-CI deferred init for a reused address), signature
+        // early-out against churn, owned bytes against heap resets.
+        const PcTextureSignature incoming {
+            imagePtr, width, height, static_cast<u32>(format), wrapS, wrapT, true, tlutName
+        };
+        const auto sigIt = sTextureSignatures.find(nullKey);
+        if (sigIt != sTextureSignatures.end() && sigIt->second == incoming
+            && sTextureCache.find(nullKey) != sTextureCache.end()) {
+            return;
+        }
+        null_auth_invalidate(nullKey);
+        PcDeferredCi nullCi;
+        nullCi.width = width;
+        nullCi.height = height;
+        nullCi.format = static_cast<int32_t>(format);
+        nullCi.wrapS = static_cast<int32_t>(wrapS);
+        nullCi.wrapT = static_cast<int32_t>(wrapT);
+        nullCi.tlutName = tlutName;
+        nullCi.mipmap = (mipmap != GX_FALSE);
+        nullCi.deferred = true; // counted as a drain when presentation uploads it
+        const size_t rawBytes = gx_base_level_size(width, height, static_cast<u32>(format));
+        if (rawBytes > 0) {
+            const uint8_t* src = static_cast<const uint8_t*>(imagePtr);
+            nullCi.owned.assign(src, src + rawBytes);
+            // alias stays null: bytes() reads owned (M2).
+        } else {
+            nullCi.alias = static_cast<const uint8_t*>(imagePtr);
+        }
+        sNullDeferred.record_ci(nullKey, std::move(nullCi));
+        pc_gfx_note_deferred_init(forced);
+        return;
+    }
     const uintptr_t key = reinterpret_cast<uintptr_t>(obj);
     const PcTextureSignature signature {
         imagePtr, width, height, static_cast<u32>(format), wrapS, wrapT, true, tlutName
@@ -5861,16 +6348,39 @@ void pc_gfx_init_tex_obj_ci(GXTexObj* obj, void* imagePtr, u16 width, u16 height
         && sTextureCache.find(key) != sTextureCache.end()) {
         return;
     }
-
-    PcCiTexture ci { static_cast<const u8*>(imagePtr), width, height, format, wrapS, wrapT, tlutName,
-                     mipmap != GX_FALSE };
-    sCiTextures[key] = ci;
-    if (upload_ci_texture(obj, ci)) {
+    PcDeferredCi ci;
+    ci.width = width;
+    ci.height = height;
+    ci.format = static_cast<int32_t>(format);
+    ci.wrapS = static_cast<int32_t>(wrapS);
+    ci.wrapT = static_cast<int32_t>(wrapT);
+    ci.tlutName = tlutName;
+    ci.mipmap = (mipmap != GX_FALSE);
+    // m4: own the bytes so the stored description never aliases reset heap.
+    {
+        const size_t rawBytes = gx_base_level_size(width, height, static_cast<u32>(format));
+        if (rawBytes > 0) {
+            const uint8_t* src = static_cast<const uint8_t*>(imagePtr);
+            ci.owned.assign(src, src + rawBytes);
+        } else {
+            ci.alias = static_cast<const uint8_t*>(imagePtr);
+        }
+    }
+    // Fix2 M2: record first, then read through the stored map entry. Reading
+    // the moved-from local after it was moved into the store is a
+    // use-after-move (it worked only because vector move keeps the buffer).
+    sNullDeferred.record_ci(key, std::move(ci));
+    const PcDeferredCi* stored = sNullDeferred.find_ci(key);
+    if (stored != nullptr && upload_ci_texture(obj, *stored)) {
         sTextureSignatures[key] = signature;
     }
 }
 
 void pc_gfx_load_tex_obj(GXTexObj* obj, GXTexMapID id) {
+    if (pc_netplay_present_null_active()) {
+        pc_netplay_present_note_attempt();
+        return;
+    }
     state_touched();
     if (id < GX_TEXMAP0 || id >= GX_MAX_TEXMAP) return;
     if (!obj) {
@@ -5881,8 +6391,56 @@ void pc_gfx_load_tex_obj(GXTexObj* obj, GXTexMapID id) {
     uintptr_t key = (uintptr_t)obj;
     auto it = sTextureCache.find(key);
     if (it == sTextureCache.end()) {
-        auto ci = sCiTextures.find(key);
-        if (ci != sCiTextures.end() && upload_ci_texture(obj, ci->second)) it = sTextureCache.find(key);
+        const PcDeferredCi* ci = sNullDeferred.find_ci(key);
+        if (ci != nullptr && upload_ci_texture(obj, *ci)) {
+            // A non-auth CI init whose palette was not loaded yet also
+            // uploads here; only deferred records count as drains (R2-6).
+            if (ci->deferred) ++sDeferredDrains;
+            it = sTextureCache.find(key);
+        }
+    }
+    // Polish item 6: authoritative-pass deferred inits upload lazily here,
+    // on first presentation use. The stale cache entry was already erased
+    // in auth, so this is the full upload, not a stale rebind.
+    // Fix2 M2: take moves the entry into a local before the map node is
+    // erased, and the init reads local.bytes(); no pointer outlives the entry.
+    if (it == sTextureCache.end()) {
+        PcDeferredRgba copy;
+        if (sNullDeferred.take_rgba(key, &copy)) {
+            sForceAuthDrain = true;
+            pc_gfx_init_tex_obj_rgba(obj, copy.rgba.data(), copy.width, copy.height,
+                                     (GXTexWrapMode)copy.wrapS, (GXTexWrapMode)copy.wrapT);
+            sForceAuthDrain = false;
+            it = sTextureCache.find(key);
+            if (it != sTextureCache.end()) ++sDeferredDrains;
+        }
+    }
+    if (it == sTextureCache.end()) {
+        PcDeferredTex taken;
+        if (sNullDeferred.take_tex(key, &taken)) {
+            sForceAuthDrain = true;
+            pc_gfx_init_tex_obj(obj, (void*)taken.bytes(), taken.width, taken.height,
+                                (GXTexFmt)taken.format, (GXTexWrapMode)taken.wrapS,
+                                (GXTexWrapMode)taken.wrapT,
+                                taken.mipmap ? GX_TRUE : GX_FALSE);
+            sForceAuthDrain = false;
+            // Fix3 R2-5: the upload decoded from taken.bytes(), which dies at
+            // the end of this block, so init stored that address in the
+            // signature. Put the game's original source pointer back: the
+            // no-change early-out then compares the live game pointer, and no
+            // signature points at freed memory. An entry without one (never
+            // produced by the record path) drops the signature instead.
+            auto sigIt = sTextureSignatures.find(key);
+            if (sigIt != sTextureSignatures.end()) {
+                if (taken.sigImage != nullptr) {
+                    sigIt->second.image = taken.sigImage;
+                } else {
+                    sTextureSignatures.erase(sigIt);
+                }
+            }
+            it = sTextureCache.find(key);
+            if (it != sTextureCache.end()) ++sDeferredDrains;
+        }
     }
     if (it != sTextureCache.end()) {
         sActiveGLTextures[id] = it->second;
@@ -6733,6 +7291,12 @@ static void use_program_for_current_state() {
     printf("[PC GX] specialised TEV program #%zu: %u stages, %.1f ms%s\n",
            sTevPrograms.size() + 1, (unsigned)sNumTevStages, submit_clock_ms() - compileT0,
            program ? "" : " (FAILED)");
+    // Netplay M4 gap-fix lane S (issue #885): a burst of these (65 in ~16 s
+    // under load at a P2 stage start) blocks one session tick; between two
+    // programs the netplay keep-alive polls the network so the peer's
+    // disconnect timer keeps being fed. Weak: null in the default build, and
+    // inert outside a netplay session tick.
+    if (pc_netplay_load_keepalive != nullptr) pc_netplay_load_keepalive(pc_netplay_loadguard::kSiteShader);
     if (!program) {
         // One failure is treated as a permanent fallback: a configuration this
         // generator cannot express must not be retried for every draw.
@@ -7240,6 +7804,14 @@ static void vbo_ring_frame_begin() {
 // Draws whatever has accumulated. Safe to call at any time: a no-op when no
 // batch is open, which is what makes it cheap to place at every flush point.
 void pc_gfx_flush_batch(void) {
+    // M2b null GX: drop submissions without touching GL.
+    if (pc_netplay_present_null_active()) {
+        pc_netplay_present_note_attempt();
+        sBatchOpen = false;
+        sBatchPrims = 0;
+        sBatchVerts.clear();
+        return;
+    }
     if (!sBatchOpen || sBatchVerts.empty()) {
         sBatchOpen  = false;
         sBatchPrims = 0;
@@ -7882,6 +8454,16 @@ static void apply_draw_state(bool profilingSubmit, double stateT0) {
 }
 
 void pc_gfx_end(void) {
+    // M2b null GX: drop the primitive without touching GL. apply_draw_state
+    // below programs uniforms and binds programs on every state change, so
+    // without this every auth-pass material change would issue real GL.
+    if (pc_gfx_null_skip()) {
+        sVertexStream.clear();
+        sInPrimitive = false;
+        sHaveVertex = false;
+        sAttrStep = 0;
+        return;
+    }
     if (sInPrimitive && sHaveVertex) {
         sVertexStream.push_back(sCurVertex);
         sHaveVertex = false;
@@ -8501,6 +9083,12 @@ static void mesh_arena_reset() {
     ++sMeshResets;
     // Draws already queued may still read the arena: the next upload waits
     // on this fence before writing over them. Level loads can afford it.
+    // M2b fix2 (issue #879 B1): heap resets on section/movie transitions run
+    // in the authoritative pass, where no draws are queued (all submission
+    // is gated) and no GL may issue. The CPU invalidation above still runs
+    // so presentation cannot reuse freed display lists; only the fence is
+    // skipped.
+    if (pc_gfx_null_skip()) return;
     if (glFenceSync_ptr) {
         if (sMeshArenaResetFence && glDeleteSync_ptr) glDeleteSync_ptr(sMeshArenaResetFence);
         sMeshArenaResetFence = glFenceSync_ptr(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -8550,8 +9138,11 @@ static bool mesh_reads_dynamic_range(uintptr_t lo, uintptr_t hi) {
 }
 
 // Copies the built vertices into the arena and registers the mesh. Returns
-// false (and caches nothing) when the arena is full.
+// false (and caches nothing) when the arena is full. In the authoritative
+// pass uploads never happen: the presentation pass builds the cache when it
+// first draws the list.
 static bool mesh_upload(ResidentMesh& mesh, const std::vector<Vertex>& verts) {
+    if (pc_gfx_null_skip()) return false;
     const size_t bytes = verts.size() * sizeof(Vertex);
     if (bytes == 0 || sMeshArenaUsed + bytes > sMeshArenaCapacity) return false;
     if (sMeshArenaResetFence) {
@@ -8585,7 +9176,10 @@ static bool mesh_upload(ResidentMesh& mesh, const std::vector<Vertex>& verts) {
 // is flushed first (it was built for earlier state), then the state is
 // programmed exactly as pc_gfx_end would, and the mesh is drawn from the
 // arena. Skinned meshes use the palette; static ones the current matrix.
+// Never runs in the authoritative pass (entry display-list gate returns
+// first); this gate is defense in depth for direct callers.
 static void draw_resident_mesh(ResidentMesh& mesh) {
+    if (pc_gfx_null_skip()) return;
     const bool profiling = pc_tick_profiler_enabled();
     const double t0 = profiling ? submit_clock_ms() : 0.0;
     pc_gfx_flush_batch();
@@ -8616,6 +9210,12 @@ static void draw_resident_mesh(ResidentMesh& mesh) {
 }
 
 void pc_gfx_call_display_list(const void* list, u32 nbytes) {
+    // M2b fix2 (issue #879 B1): the authoritative pass issues no GL. The
+    // resident-mesh path below (draw_resident_mesh: uniforms/programs, VAO
+    // bind, glDrawArrays; mesh_upload: buffer binds/maps/sub-data) is real GL
+    // that the old gate list missed, so the whole display list is skipped
+    // here. The presentation pass parses and uploads/caches on first draw.
+    if (pc_gfx_null_skip()) return;
     // Two clock reads per display list (~1000 a frame): cheap enough, and it
     // is the one cost of renderall that nothing else was attributing.
     if (!pc_tick_profiler_enabled()) {
@@ -9069,6 +9669,7 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
 }
 
 void pc_gfx_copy_disp(void* dest, GXBool clear) {
+    if (pc_gfx_null_skip()) return;
     pc_gfx_note_gl_state_change();
     (void)dest;
     if (clear) {

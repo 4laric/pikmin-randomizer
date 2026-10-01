@@ -8,6 +8,7 @@
 #include "zen/TexAnim.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include "pc_onion_transfer_policy.h"
 #include <cstring>
 #include <cstdio>
 #endif
@@ -203,6 +204,7 @@ void zen::DrawContainer::start(zen::DrawContainer::containerType color, int p2, 
 		mSquadTotalCount       = p6;
 		mSquadTotalLimit       = p7;
 #if defined(PIKI_PC_PORT)
+		mPcLiveCounts = false;
 		mMessageMgr->setFieldLimit(mSquadTotalLimit);
 #endif
 		mFrameTimer            = 0.0f;
@@ -234,6 +236,31 @@ void zen::DrawContainer::setDispParam()
 	mSquadPikiNum     = mInitialSquadCount - mTransferDelta;
 	mDeltaPikiNum     = Abs(mTransferDelta);
 }
+
+#if defined(PIKI_PC_PORT)
+int zen::DrawContainer::revalidateTransfer(int requested) const
+{
+	return pc_onion_transfer::clamp(requested, {mInitialContainerCount, mContainerCapacity,
+	    mInitialSquadCount, mSquadCapacity, mSquadTotalCount, mSquadTotalLimit});
+}
+
+void zen::DrawContainer::refreshCounts(int stored, int containerCapacity, int squad, int squadCapacity, int field, int fieldLimit)
+{
+	mPcLiveCounts = true;
+	const int previousLimit = mSquadTotalLimit;
+	mInitialContainerCount = std::max(0, stored);
+	mContainerCapacity = std::max(0, containerCapacity);
+	mInitialSquadCount = std::max(0, squad);
+	mSquadCapacity = std::max(0, squadCapacity);
+	mSquadTotalCount = std::max(0, field);
+	mSquadTotalLimit = std::max(0, fieldLimit);
+	const int valid = revalidateTransfer(mTransferDelta);
+	if (valid != mTransferDelta) mTransferSpeed = 0.0f;
+	mTransferDelta = valid;
+	if (previousLimit != mSquadTotalLimit) mMessageMgr->setFieldLimit(mSquadTotalLimit);
+	setDispParam();
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -323,6 +350,25 @@ bool zen::DrawContainer::operationStatus()
 
 	mTransferDelta += RoundOff(mTransferSpeed);
 
+#if defined(PIKI_PC_PORT)
+	if (mPcLiveCounts) {
+		const int requested = mTransferDelta;
+		mTransferDelta = revalidateTransfer(requested);
+		if (mTransferDelta != requested) {
+			mTransferSpeed = 0.0f;
+			if (requested > 0) {
+				mMessageMgr->setMessage(mInitialSquadCount < requested ? MessageMgr::MSG_NotEnoughInSquad
+				    : MessageMgr::MSG_ContainerFull, 2.0f);
+			} else if (-std::int64_t(requested) > mInitialContainerCount) {
+				mMessageMgr->setMessage(MessageMgr::MSG_ContainerEmpty, 2.0f);
+			} else if (-std::int64_t(requested) > pc_onion_transfer::room(mSquadCapacity, mInitialSquadCount)) {
+				mMessageMgr->setMessage(MessageMgr::MSG_SquadCapacityFull, 2.0f);
+			} else {
+				mMessageMgr->setMessage(MessageMgr::MSG_SquadTotalFull, 2.0f);
+			}
+		}
+	} else
+#endif
 	if (mInitialSquadCount == 0 && mInitialContainerCount == 0) {
 		if (mTransferDelta) {
 			mMessageMgr->setMessage(MessageMgr::MSG_NothingToTransfer, 2.0f);

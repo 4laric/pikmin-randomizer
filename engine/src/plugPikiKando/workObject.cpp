@@ -15,6 +15,9 @@
 #include "gameflow.h"
 #include "jaudio/pikiinter.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT)
+#include "timing/pc_render_phase.h"
+#endif
 
 WorkObjectMgr* workObjectMgr;
 
@@ -1033,7 +1036,17 @@ void Bridge::refresh(Graphics& gfx)
 		mCollInfo->updateInfo(gfx, false);
 	}
 
+	// Netplay (#1037): _424 is the "force a platform update" countdown MapMgr::update reads through
+	// alwaysUpdatePlatform(). It counts render passes, so every presentation pass a peer draws (extra frames,
+	// stalls, loads) also ticked it down; a peer that had drawn more passes than the other before the first
+	// MapMgr::update never positioned the bridge's platform collision (bbox left at 32768), getMinY then
+	// ignored the deck on that peer only (Distant Spring: teki target y -57 vs -27, teki sub at tick ~985).
+	// Count it once per tick, in the authoritative pass; the single pass is unchanged.
+#if defined(PIKI_PC_PORT)
+	if (_424 && pc_render_is_authoritative()) {
+#else
 	if (_424) {
+#endif
 		_424--;
 	}
 }

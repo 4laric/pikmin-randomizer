@@ -11,9 +11,8 @@
 #include "pc_randomizer_campaign_catalog.h"
 #undef NDEBUG
 #include <cassert>
-// The engine-free probe links pc_randomizer.cpp without the P2 proxy module
-// (which needs engine headers); no proxy tier is staged here.
-int pc_p2_proxy_host(unsigned) { return -1; }
+// CMake links the real P2 proxy module, including its tier/sidecar checks.
+// Keep the probe on that production implementation rather than shadowing it.
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (!pc_randomizer_init(argc, argv)) {

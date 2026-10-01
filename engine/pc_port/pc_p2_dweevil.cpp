@@ -8,8 +8,10 @@
 // bounded 30 Hz clock, and proves the death/interruption drop fires exactly
 // once. Missing sidecar = inert; malformed sidecar = fail closed.
 #include "pc_p2_dweevil.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_dweevil_policy.h"
 #include "pc_bbft.h"
+#include "gameflow.h" // gsys->mFrameRate for the M1 det tick period
 #include <SDL.h>
 #include <cmath>
 #include <cstdio>
@@ -63,6 +65,9 @@ std::vector<Injection> injections;
 unsigned long behaviorTick = 0;
 float clockAccumulator = 0.0f;
 unsigned clockLast = 0;
+// M1 det fix: last logical tick that advanced the behavior clock below (0 =
+// unprimed; pc_netplay_tick() is 1-based inside tick bodies).
+unsigned lastDetTick = 0;
 
 Treasure* findTreasure(std::uint32_t id) {
     for (auto& treasure : treasures)
@@ -188,6 +193,7 @@ void pc_p2_dweevil_reset() {
     behaviorTick     = 0;
     clockAccumulator = 0.0f;
     clockLast        = 0;
+    lastDetTick      = 0;
 }
 
 void pc_p2_dweevil_setup() {
@@ -261,7 +267,20 @@ void pc_p2_dweevil_setup() {
 void pc_p2_dweevil_update() {
     if (units.empty() && treasures.empty()) return;
     const unsigned now = SDL_GetTicks();
-    clockAccumulator += static_cast<float>(now - clockLast) * 0.001f;
+    if (pc_netplay_deterministic()) {
+        // M1 det fix: tick-counted analogue of the wall clock. The wall code
+        // advances the shared behavior clock by wall time since the last
+        // call; here it advances by logical ticks since the last call, so
+        // every call in one tick advances it once and skipped ticks catch up
+        // (bounded below, as before). The wall anchor is still refreshed so
+        // leaving det mode never injects a jump.
+        const unsigned tickNow = pc_netplay_tick();
+        if (lastDetTick == 0) lastDetTick = tickNow;
+        clockAccumulator += float(tickNow - lastDetTick) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2);
+        lastDetTick = tickNow;
+    } else {
+        clockAccumulator += static_cast<float>(now - clockLast) * 0.001f;
+    }
     clockLast = now;
     int steps = 0;
     while (clockAccumulator >= kTickSeconds && steps < 4) {

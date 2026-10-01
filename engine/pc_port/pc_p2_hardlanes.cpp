@@ -50,6 +50,7 @@
 #include "Navi.h"
 #include "NaviMgr.h"
 #include "pc_p2_navi_select.h"
+#include "pc_crowd_handover.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -396,6 +397,8 @@ void fuefukiOwnershipWrite(void*, std::uint32_t id, std::uint32_t)
     Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
     if (it == sFuefukiPiki.end() || !navi || !it->second->isAlive()) return;
     Piki* piki = it->second;
+    // #1033: release any squad slot on the old captain's plate before the owner changes.
+    pc_crowd_handover::abandonSquadBeforeHandover(piki, navi);
     piki->mNavi = navi;
     piki->mFSM->transit(piki, PIKISTATE_LookAt);
 }

@@ -1,4 +1,7 @@
 #pragma once
+#include "netplay/pc_netplay_randstate.h"
+#include <cstddef>
+#include <cstdint>
 enum PcPikminStat { PC_PIKI_DAMAGE, PC_PIKI_MOVEMENT, PC_PIKI_ATTACK_RATE };
 bool pc_randomizer_color_stats();
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat);
@@ -14,6 +17,50 @@ void pc_randomizer_thelynk_squad(int color, int followers, bool gameplay);
 int pc_randomizer_thelynk_bonus(int kind);
 void pc_randomizer_thelynk_consume(int kind);
 void pc_randomizer_update();
+// Netplay M4 lane A external-state stream (issue #885). The sim-side apply
+// validates a received snapshot and applies exactly what pc_randomizer_update
+// would have applied from state.txt (repairs, unlocks, flarlic, checks, stat
+// tiers, benefits, emperor, deathLinks, ready). Monotonicity violations fail
+// closed, exactly like the file path. Returns false when the randomizer is
+// disabled (no-op); otherwise applies and returns true.
+bool pc_randomizer_apply_net_state(const pc_randstate::PcRandState& st);
+// Fills the sim-visible payload of the current randomizer state (gen left 0;
+// the caller stamps it). Returns false when disabled.
+bool pc_randomizer_get_net_state(pc_randstate::PcRandState* out);
+// Fix round 1 (M5): re-read state.txt on session activation and publish when
+// the content is new or nothing was ever published. Host + stream only;
+// no-op otherwise (client never reads the file after boot).
+// M4 lane B1: returns false only on the stream host when this forced poll
+// could not read and parse state.txt (the session then HOLDs from its first
+// input); true otherwise. Also reads the runner's session.json ledger.
+bool pc_randomizer_force_net_publish();
+// ---- Netplay M4 lane B1 (issue #885) ----
+// Confirmed-frame outbox flush: the host writes the queued external writes
+// (checks.txt, benefits-used.txt, emperor.txt, deaths.txt, the P2 delivery
+// ledger) with their historical format and durability; the client writes
+// mirror-events.txt lines instead. Called once per Advance by the session
+// and by the B2 save barrier before it writes. No-op outside outbox mode.
+void pc_randomizer_outbox_flush(uint32_t frame);
+// Host I/O side link liveness for the synchronized HOLD: state.txt readable,
+// parsed, ready=1 and rewritten within 3 s. Always true in launcher sessions
+// and when the randomizer is disabled.
+bool pc_randomizer_link_live();
+// Host RESUME snapshot: fresh state.txt read with a new generation. False
+// when state.txt cannot be read right now (retry later).
+bool pc_randomizer_resume_snapshot(pc_randstate::PcRandState* out);
+// Client: one kBulkMirrorLedger payload (RECEIVED lines, deathsBase).
+void pc_randomizer_mirror_ledger_receive(const uint8_t* data, size_t len, uint32_t frame);
+// B2 writer API for the client mirror (no-op on the host / outside netplay).
+// shaHex is the lowercase hex SHA-256 of the checkpoint (64 characters).
+void pc_randomizer_mirror_save_result(uint32_t frame, unsigned long long gen, const char* shaHex);
+void pc_randomizer_mirror_save_fail(uint32_t frame, unsigned long long gen);
+#if PIKI_NETPLAY_BUILD
+// TEST-ONLY (netplay builds): PIKMIN_NETPLAY_TEST_DEATHLINK_AS_ORDINARY=1.
+bool pc_randomizer_test_deathlink_as_ordinary();
+#endif
+// Canonical 64-bit hash of the sim-visible randomizer state for the M1 state
+// hash `rand` column. 0 when disabled.
+uint64_t pc_randomizer_hash();
 bool pc_randomizer_ready();
 bool pc_randomizer_has(const char* name);
 bool pc_randomizer_checked(const char* name);
@@ -123,6 +170,38 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 bool pc_randomizer_resumed();
 bool pc_randomizer_load_campaign(void* destination);
 void pc_randomizer_save_campaign(const void* source);
+// Netplay M4 lane B2 (issue #885). The day-end save barrier: active only in
+// a netplay session with the external-state stream on; then memoryCard.cpp
+// calls pc_randomizer_save_campaign_netplay (flush, local checkpoint, bulk
+// SAVE_RESULT exchange) and uses its return value, the host's outcome, as
+// !mDidSaveFail on both peers.
+bool pc_randomizer_netplay_save_barrier_active();
+bool pc_randomizer_save_campaign_netplay(const void* source, bool localCardOk);
+// B2 fix round 1: after the agreed save, memoryCard.cpp reports a rewrite of
+// this peer's game file (C12; false ends the session, exit 5) and the local
+// options write (C3; logged, never sim-visible). The session calls
+// pc_randomizer_netplay_barrier_abandoned just before a barrier exit 5/6
+// (C2: the client retracts its unconfirmed checkpoint), and the netplay
+// day reseed calls pc_randomizer_netplay_stage_start (C5: a resumed
+// session's START_STAGE line).
+void pc_randomizer_netplay_card_rewrite_result(bool ok);
+void pc_randomizer_netplay_options_result(bool ok);
+void pc_randomizer_netplay_barrier_abandoned();
+void pc_randomizer_netplay_stage_start(int day, int stage);
+// True in a netplay session with the external-state stream on (the outbox
+// mode), i.e. whenever save outcomes are agreed rather than local. Unlike
+// pc_randomizer_netplay_save_barrier_active it does not reference the
+// session's barrier symbol, so card code reachable from engine-only targets
+// can call it (fix round 1, C3: MemoryCard::didSaveFail).
+bool pc_randomizer_netplay_agreed_saves();
+// Newest valid checkpoint (loadCampaignCheckpoint rules) and the SHA-256 of
+// its file; gen 0 and zeros = none. False when the randomizer is disabled.
+bool pc_randomizer_checkpoint_info(uint64_t* gen, uint8_t sha[32]);
+// Absolute derived campaign directory ("" when disabled).
+const char* pc_randomizer_campaign_dir();
+// Joiner: re-reads the campaign directory after the transfer phase wrote the
+// host's files (same rules as a boot). True when a checkpoint is resumed.
+bool pc_randomizer_adopt_checkpoint();
 
 bool pc_randomizer_emperor_available();
 void pc_randomizer_emperor_defeated();

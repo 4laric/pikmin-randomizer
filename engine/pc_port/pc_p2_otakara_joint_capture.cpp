@@ -11,6 +11,10 @@
 #include "Node.h"
 #include "Shape.h"
 #include "teki.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#endif
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -49,6 +53,13 @@ void pc_p2_otakara_joint_capture_reset() {
 }
 
 void pc_p2_otakara_joint_capture_poll() {
+#if defined(PIKI_PC_PORT)
+    // M2b: diagnostic capture reads sim matrices; run authoritative-only so
+    // the presentation pass never logs camera-space joints or double-counts.
+    if (pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()) {
+        return;
+    }
+#endif
     if (!tekiMgr) return;
     ++sPollTick;
     int liveCarriers = 0;

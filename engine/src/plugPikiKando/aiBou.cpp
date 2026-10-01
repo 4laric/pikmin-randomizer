@@ -14,6 +14,14 @@ DEFINE_ERROR(18)
  */
 DEFINE_PRINT("Bou")
 
+#if defined(PIKI_PC_PORT)
+// Netplay M4 gap-fix K (#885): failure-path diagnostic. Weak-linked: strong-
+// defined by pc_port/netplay/pc_netplay_diag.cpp in netplay builds only. The
+// default build has no definition, the pointer is null, and the halt below
+// behaves exactly as before.
+__attribute__((weak)) void pc_netplay_diag_bad_action_target(const char* site, Piki* piki, Creature* target);
+#endif
+
 /**
  * @todo: Documentation
  */
@@ -33,6 +41,11 @@ void ActBou::init(Creature* creature)
 		mTargetStick = creature;
 	} else {
 		PRINT("TARGET IS %x : %d\n", creature, creature ? creature->mObjType : OBJTYPE_INVALID);
+#if defined(PIKI_PC_PORT)
+		if (pc_netplay_diag_bad_action_target != nullptr) {
+			pc_netplay_diag_bad_action_target("ActBou::init", mPiki, creature);
+		}
+#endif
 		ERROR("karl caught a cold !\n");
 	}
 

@@ -5,6 +5,7 @@
 // manager/heap lifetime and save/reward code are untouched. The decomp
 // collisionCallback no-op quirk is recorded, not "fixed".
 #include "pc_p2_king.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_actor_slots.h"
 #include "pc_p2_king_policy.h"
 #include "pc_p2_animation.h"
@@ -96,6 +97,9 @@ std::vector<Bomb> bombs;
 unsigned clockLast = 0;
 float clockAcc = 0;
 unsigned long behaviorTick = 0;
+// M1 det fix: last logical tick that advanced the behavior clock below (0 =
+// unprimed; pc_netplay_tick() is 1-based inside tick bodies).
+unsigned lastDetTick = 0;
 // Opt-in fixture-only injection (inactive without p2-king-inject.txt): force
 // one Emperor into WarCry at a behavior tick so the WarCry astonish and the
 // cross-Emperor manager contract can be exercised deterministically. Default
@@ -846,6 +850,7 @@ void pc_p2_king_reset() {
 	clockLast = 0;
 	clockAcc = 0;
 	behaviorTick = 0;
+	lastDetTick = 0;
 	injectWarCryId = 0;
 	injectWarCryTick = 0;
 	injectWarCryDone = false;
@@ -927,7 +932,20 @@ void pc_p2_king_setup() {
 void pc_p2_king_update() {
 	if (kings.empty() && bombs.empty()) return;
 	const unsigned now = SDL_GetTicks();
-	clockAcc += float(now - clockLast) * 0.001f;
+	if (pc_netplay_deterministic()) {
+		// M1 det fix: tick-counted analogue of the wall clock. The wall code
+		// advances the shared behavior clock by wall time since the last
+		// call; here it advances by logical ticks since the last call, so
+		// every call in one tick advances it once and skipped ticks catch up
+		// (bounded below, as before). The wall anchor is still refreshed so
+		// leaving det mode never injects a jump.
+		const unsigned tickNow = pc_netplay_tick();
+		if (lastDetTick == 0) lastDetTick = tickNow;
+		clockAcc += float(tickNow - lastDetTick) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2);
+		lastDetTick = tickNow;
+	} else {
+		clockAcc += float(now - clockLast) * 0.001f;
+	}
 	clockLast = now;
 	int steps = 0;
 	while (clockAcc >= Tick && steps < 4) { // bounded: never catch up more than 4 ticks

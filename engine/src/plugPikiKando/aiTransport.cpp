@@ -1095,6 +1095,10 @@ void ActTransport::decideGoal(Creature* cargo)
 	mGoal = itemMgr->getContainer(onyonColor);
 #endif
 	mPellet.mPtr->mTargetGoal = mGoal; // hmm.
+	// Permanent diagnostic (issue #1034): the Onion is chosen by the carriers' majority colour, never by the pellet's colour.
+	std::printf("[pellet] decide model=%s type=%d pcolor=%d carriers_b=%d r=%d y=%d options=%d -> onion=%d\n",
+	    pel->mConfig->mModelId.mStringID, int(pel->mConfig->mPelletType()), int(pel->mConfig->mPelletColor()), colorCounts[Blue], colorCounts[Red],
+	    colorCounts[Yellow], numOptions, onyonColor);
 
 	if (!mGoal) {
 		PRINT("SORRY *** goal(color%d) is required !!\n", onyonColor);

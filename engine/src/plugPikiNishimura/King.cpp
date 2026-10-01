@@ -2,6 +2,9 @@
 #include "DayMgr.h"
 #include "DebugLog.h"
 #include "Graphics.h"
+#if defined(PIKI_PC_PORT)
+#include "timing/pc_render_phase.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -122,8 +125,17 @@ void King::draw(Graphics& gfx)
 		centre.y += yDiff * 3.0f;
 	}
 
+#if defined(PIKI_PC_PORT)
+	// The light camera for the next frame's shadow pre-render is built from these two points, and
+	// the authoritative shadow call feeds KingBody's sim-visible joint cache through that camera.
+	// Presentation draws (their count differs between peers) must not move them.
+	if (pc_render_is_authoritative()) {
+#endif
 	mShadowCaster.mSourcePosition.set(centre.x + lightDirection.x, centre.y + 1000.0f, centre.z + lightDirection.z);
 	mShadowCaster.mTargetPosition.set(mSRT.t.x, mSRT.t.y + 50.0f, mSRT.t.z);
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
 	Matrix4f viewMatrix;
 	mWorldMtx.makeSRT(mSRT.s, mSRT.r, mSRT.t);

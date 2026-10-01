@@ -3092,7 +3092,19 @@ void Piki::changeMode(int newMode, Navi* navi)
 	case PikiMode::EnterMode:
 	{
 		mActiveAction->mCurrActionIdx = PikiAction::Enter;
+#if defined(PIKI_PC_PORT)
+		// Co-op (#885 gap-fix K): the day-end enter paths store the target
+		// Onion on one captain (enterFreePikmins: P1; Navi::enterAllPikis:
+		// the captain it is called on, for every captain's squad) and now
+		// pass that captain here. A Pikmin whistled by captain 2 has
+		// mNavi == captain 2, whose mGoalItem is unset (null -> "karl caught
+		// a cold !" in ActEnter::init) or an Onion of another colour. With
+		// one captain, or navi == nullptr (every other caller), this reads
+		// mNavi as before.
+		mActiveAction->mChildActions[mActiveAction->mCurrActionIdx].initialise((navi ? navi : mNavi)->mGoalItem);
+#else
 		mActiveAction->mChildActions[mActiveAction->mCurrActionIdx].initialise(mNavi->mGoalItem);
+#endif
 		break;
 	}
 	case PikiMode::ExitMode:

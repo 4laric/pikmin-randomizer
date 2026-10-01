@@ -16,6 +16,8 @@
 #include "zen/Math.h"
 #ifdef PIKI_PC_PORT
 #include "gl/pc_gfx.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
 #endif
 
 /**
@@ -1015,6 +1017,14 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		return;
 	}
 
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M8): joint/centre/dir stores below are sim state (the
+	// skip-presentation resim path must reproduce them); the presentation
+	// pass draws from the stored values. Effect-emit and movie-navi writes
+	// are sim too.
+	const bool m2bStoreCine = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative();
+#endif
+
 	f32 a       = 0.0f;
 	f32 b       = 0.0f;
 	bool check1 = false;
@@ -1025,6 +1035,8 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		if (p3) {
 			mAnimator.mAnimationCounter = *p3;
 		} else {
+			// Movie time advances in the authoritative pass only
+			// (Animator::animate early-returns off-phase).
 			mAnimator.animate(30.0f);
 		}
 		mAnimator.updateContext();
@@ -1054,15 +1066,28 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		mActiveActor->mModel->updateAnim(gfx, mtx, d, mActiveActor);
 		mActiveActor->mModel->mFrameCacher = prevCacher;
 
+#if defined(PIKI_PC_PORT)
+		if (m2bStoreCine) {
+#endif
 		mJointPositions[0].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[0]);
 		mJointPositions[1].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[1]);
+#if defined(PIKI_PC_PORT)
+		}
+#endif
 
 		if (check1) {
 			Vector3f pos(0.0f, 0.0f, 0.0f);
 			mActiveActor->mModel->calcJointWorldPos(gfx, 0, pos);
+#if defined(PIKI_PC_PORT)
+			// M2b: cutscene event keys are sim; presentation skips them.
+			if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 			checkEventKeys(a, b, pos);
+#if defined(PIKI_PC_PORT)
+			}
+#endif
 		}
 
 		Matrix4f animMtx = mActiveActor->mModel->getAnimMatrix(0);
@@ -1161,6 +1186,11 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 	mActiveActor->mModel->updateAnim(gfx, mtx, d, mActiveActor);
 	mActiveActor->mModel->mFrameCacher = prevCacher;
 
+#if defined(PIKI_PC_PORT)
+	// M2b (review M8): runs sim-side only; presentation draws from the
+	// authoritative stores and leaves every member below as the sim left it.
+	if (m2bStoreCine) {
+#endif
 	mCenterPosition.set(0.0f, 0.0f, 0.0f);
 	mActiveActor->mModel->calcJointWorldPos(gfx, 0, mCenterPosition);
 
@@ -1177,7 +1207,15 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		mRocketLightPosList[3].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 66, mRocketLightPosList[3]);
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
+#if defined(PIKI_PC_PORT)
+	// M2b (review M8): effect-emit writes are sim; presentation draws from
+	// the stored positions/dirs.
+	if (m2bStoreCine) {
+#endif
 	if (!mMeteorFlag) {
 		for (int i = 0; i < 9; i++) {
 			if (mEffectList[i]) {
@@ -1218,15 +1256,27 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		pcIntroAimUfoTrail(this);
 #endif
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
 	if (mFlags & CAF_MoveAiOnion) {
+#if defined(PIKI_PC_PORT)
+		if (m2bStoreCine) {
+#endif
 		mJointPositions[0].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 3, mJointPositions[0]);
 		mJointPositions[1].set(0.0f, -28.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 1, mJointPositions[1]);
+#if defined(PIKI_PC_PORT)
+		}
+#endif
 	}
 
 	if (mFlags & CAF_MoveFaller) {
+#if defined(PIKI_PC_PORT)
+		if (m2bStoreCine) {
+#endif
 		mJointPositions[0].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 9, mJointPositions[0]);
 		mJointPositions[1].set(0.0f, 0.0f, 0.0f);
@@ -1245,19 +1295,28 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		mActiveActor->mModel->calcJointWorldPos(gfx, 2, mJointPositions[7]);
 		mJointPositions[8].set(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 1, mJointPositions[8]);
+#if defined(PIKI_PC_PORT)
+		}
+#endif
 	}
 
 	if (check1) {
 		Vector3f pos(0.0f, 0.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 0, pos);
+#if defined(PIKI_PC_PORT)
+		if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 		checkEventKeys(a, b, pos);
+#if defined(PIKI_PC_PORT)
+		}
+#endif
 	}
 
 #if defined(PIKI_PC_PORT)
 	// Key 19 writes dummy (-25000) joints and then this frame's effect update
 	// runs. Recompute the UFO trail sockets so the opening burst emits on the
-	// ship instead of off-camera.
-	if (mMeteorFlag) {
+	// ship instead of off-camera. M2b (review M8): sim-side only.
+	if (mMeteorFlag && m2bStoreCine) {
 		mJointPositions[0].set(0.0f, 7.0f, 0.0f);
 		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[0]);
 		mJointPositions[1].set(-14.4f, 14.9f, 14.4f);
@@ -1277,7 +1336,15 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 			Vector3f pos(0.0f, 0.0f, 0.0f);
 			pos.multMatrix(mActiveActor->mModel->getAnimMatrix(0));
 			pos.multMatrix(gfx.mCamera->mInverseLookAtMtx);
+#if defined(PIKI_PC_PORT)
+			// M2b (review M8): the day-end position write is sim; the draw
+			// below is the presentation view.
+			if (m2bStoreCine) {
+#endif
 			naviMgr->getMovieNavi()->updateDayEnd(pos);
+#if defined(PIKI_PC_PORT)
+			}
+#endif
 			naviMgr->getMovieNavi()->demoDraw(gfx, nullptr);
 		}
 	} else {

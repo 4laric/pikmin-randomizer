@@ -1,5 +1,12 @@
 #include "UfoItem.h"
 #if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
+#endif
+#if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
 #include "pc_vs.h"
 #endif
@@ -990,7 +997,9 @@ void UfoItem::refresh(Graphics& gfx)
 	Vector3f pos = mSRT.t;
 	mWorldMtx.makeSRT(mSRT.s, mSRT.r, pos);
 
-	if (!gfx.mCamera->isPointVisible(mSRT.t, 200.0f)) {
+	// M2a netplay culling policy (issue #879): in deterministic mode the sim
+	// sees always-visible.
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, 200.0f))) {
 		enableAICulling();
 	} else {
 		disableAICulling();
@@ -1014,7 +1023,18 @@ void UfoItem::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	mAnimator.updateContext();
 	mShipModel->mShape->updateAnim(gfx, *mtx, nullptr, this);
 
-	if (gameflow.mMoviePlayer->mIsActive || aiCullable()) {
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// submits only what the real local frustum sees. Anchors below stay
+	// authoritative.
+	const bool m2bUfoSubmit = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative()
+	                       || gfx.mCamera->isPointVisible(mSRT.t, 200.0f);
+#endif
+	if (gameflow.mMoviePlayer->mIsActive || aiCullable()
+#if defined(PIKI_PC_PORT)
+	    && m2bUfoSubmit
+#endif
+	) {
 		mShipModel->mShape->drawshape(gfx, *gfx.mCamera, mAnimatedMaterialsList);
 		playerState->renderParts(gfx, mShipModel->mShape);
 	}
@@ -1022,6 +1042,12 @@ void UfoItem::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	Vector3f pos;
 	f32 cjwpret; // `BaseShape::calcJointWorldPos` return value is stored but never used.
 
+#if defined(PIKI_PC_PORT)
+	// M2b: effect anchors, spots and waypoint are authoritative-only;
+	// presentation draws from stored values.
+	const bool authUfo = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative();
+	if (authUfo) {
+#endif
 	pos.set(0.0f, 14.0f, 0.0f);
 	cjwpret         = mShipModel->mShape->calcJointWorldPos(gfx, 48, pos);
 	mPca2FxPosition = pos;
@@ -1076,4 +1102,7 @@ void UfoItem::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		PRINT("*** UFO ROUTE INDEX = %d (%.1f %.1f %.1f)\n", mWaypointID, goal.x, goal.y, goal.z);
 		mNeedPathfindRefresh = false;
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 }

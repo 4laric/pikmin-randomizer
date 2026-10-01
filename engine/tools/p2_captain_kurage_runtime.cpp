@@ -206,7 +206,7 @@ public:
 }
 int main(int argc,char** argv) {
     SDL_setenv("SDL_AUDIODRIVER","dummy",1); SDL_SetMainReady();
-    pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1"); pc_bbft_init(argc,argv);
+    pc_gpu_preference_apply(); SDL_setenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1", 1); pc_bbft_init(argc,argv);
     require(pc_pikipelago_room_preview(),"requires experimental room");
     if(!pc_window_init("Lane 12 captain/Kurage diagnostic",960,540)) return 3;
     pc_settings_init(); // persisted settings must precede fixture window policy

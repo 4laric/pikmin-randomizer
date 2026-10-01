@@ -1,6 +1,7 @@
 #include "pc_p2_purple_feedback.h"
 #include "pc_p2_purple.h"
 #include "pc_window.h"
+#include "netplay/pc_netplay_det.h"
 #include "Piki.h"
 #include "Navi.h"
 #include "NaviMgr.h"
@@ -22,6 +23,9 @@ std::map<const Piki*, Feedback> active;
 PcP2PurpleFeedbackStats stats;
 Uint32 lastPulse = 0;
 bool hasPulse = false;
+// M1 deterministic netplay: tick-counted throttle (5 ticks at 30 Hz covers
+// the 150 ms wall-clock rule). Written only in deterministic mode.
+unsigned detLastPulseTick = 0;
 
 // Native PCR adaptation of P2 BlackDown/BlackDrop. Particles contain copied
 // positions and this static callback only: no emitter can retain a dead Piki.
@@ -94,10 +98,23 @@ void pc_p2_purple_feedback_land(Piki* piki, bool enemy)
     Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
     const float dx = navi ? position.x - navi->mSRT.t.x : 10000.0f;
     const float dz = navi ? position.z - navi->mSRT.t.z : 10000.0f;
+    const bool detMode = pc_netplay_deterministic();
     const Uint32 now = SDL_GetTicks();
+    const unsigned tick = pc_netplay_tick();
     int rumbleResult = -2;
-    if (dx * dx + dz * dz <= 250.0f * 250.0f && (!hasPulse || now - lastPulse >= 150)) {
-        lastPulse = now;
+    // M1 deterministic netplay: throttle by tick counting with the same
+    // duration semantics (ceiling of 150 ms in ticks at the current tick
+    // rate: 5 at 30 Hz) instead of SDL_GetTicks.
+    const unsigned detWindow = static_cast<unsigned>(
+        std::ceil(0.150f / pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2)));
+    const bool throttleOk = detMode ? (!hasPulse || tick - detLastPulseTick >= detWindow)
+                                    : (!hasPulse || now - lastPulse >= 150);
+    if (dx * dx + dz * dz <= 250.0f * 250.0f && throttleOk) {
+        if (detMode) {
+            detLastPulseTick = tick;
+        } else {
+            lastPulse = now;
+        }
         hasPulse = true;
         if (cameraMgr) {
             cameraMgr->startVibrationEvent(PCAMVIB_PurpleImpact, position);

@@ -1,6 +1,9 @@
 #include "DebugLog.h"
 #include "Pcam/Camera.h"
 #include "Pcam/MotionEvents.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_sim_rng.h"
+#endif
 #include "sysNew.h"
 
 /**
@@ -119,15 +122,34 @@ void PcamRandomMoveEvent::update()
 {
 	PeveEvent::update();
 	NVector3f offset;
+	// M1 deterministic netplay: camera shake draws from the cosmetic stream.
+	// Each line below replaces one NMathF::rangeRandom(-1,1) draw, i.e.
+	// 2*r-1 for one rand(). M1 coupling (known gap): the offsets move the
+	// camera viewpoint/watchpoint, and the sim still derives its stick basis
+	// from controlCamera() until camera-yaw-as-input lands (report section
+	// 2b.4), so a cosmetic draw-count difference can feed back into movement.
+	// Cross-window-size determinism is NOT claimed in M1 for this reason.
+#if defined(PIKI_PC_PORT)
+	offset.x = pc_cosmetic_randf(2.0f) - 1.0f;
+	offset.y = pc_cosmetic_randf(2.0f) - 1.0f;
+	offset.z = pc_cosmetic_randf(2.0f) - 1.0f;
+#else
 	offset.x = NMathF::rangeRandom(-1.0f, 1.0f);
 	offset.y = NMathF::rangeRandom(-1.0f, 1.0f);
 	offset.z = NMathF::rangeRandom(-1.0f, 1.0f);
+#endif
 	offset.scale(mMoveScale);
 	mCamera->getViewpoint().add(offset);
 
+#if defined(PIKI_PC_PORT)
+	offset.x = pc_cosmetic_randf(2.0f) - 1.0f;
+	offset.y = pc_cosmetic_randf(2.0f) - 1.0f;
+	offset.z = pc_cosmetic_randf(2.0f) - 1.0f;
+#else
 	offset.x = NMathF::rangeRandom(-1.0f, 1.0f);
 	offset.y = NMathF::rangeRandom(-1.0f, 1.0f);
 	offset.z = NMathF::rangeRandom(-1.0f, 1.0f);
+#endif
 	offset.scale(mMoveScale);
 	mCamera->getWatchpoint().add(offset);
 }

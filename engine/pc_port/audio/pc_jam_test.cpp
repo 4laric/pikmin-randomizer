@@ -186,6 +186,36 @@ int main(int argc, char** argv) {
         if (soundNotes == 0 || soundPlayer.result() != PCJamResult::Ok) ++failures;
     }
     {
+        // Cinematic sound effects (issue #1030). pikise.jam names the demo track 0x1000F ("track 15") but opens it
+        // as root child 0; there is no child 15, so writing the cue ports there (as the stubs did) played nothing at
+        // all: no day-end march, no take-off. The track takes the cinematic id on port 0 and cues on port 2.
+        std::vector<u8> data;
+        archive.read(0, data);
+        PCJamPlayer player;
+        std::vector<PCJamEvent> events;
+        player.start(data, 0);
+        player.tick(events, 4096);
+        for (int tick = 0; tick < 3000; ++tick) player.tick(events, 4096);
+        if (player.writeChildPort(15, 0, 33)) {
+            std::printf("demo SE test: child 15 exists, the child numbering assumption changed\n");
+            ++failures;
+        }
+        // Day-end take-off (cinematic 33): cue 1 is the engine thrust, a run of bank 2 notes.
+        size_t notes = 0, wrongBank = 0;
+        if (!player.writeChildPort(0, 0, 33) || !player.writeChildPort(0, 2, 1)) ++failures;
+        for (int tick = 0; tick < 2000 && player.result() == PCJamResult::Ok; ++tick) {
+            player.tick(events, 4096);
+            for (const PCJamEvent& event : events) {
+                if (event.type != PCJamEventType::NoteOn) continue;
+                ++notes;
+                if (event.bank != 2) ++wrongBank;
+            }
+        }
+        std::printf("demo SE test: take-off cue 1: %zu notes, %zu outside bank 2, result=%u\n", notes, wrongBank,
+                    static_cast<unsigned>(player.result()));
+        if (notes < 8 || wrongBank != 0 || player.result() != PCJamResult::Ok) ++failures;
+    }
+    {
         // A child track inherits its parent's bank and program at creation,
         // and nothing in the sequence restates them, so anything that reads
         // the bank from somewhere other than the inherited value silently

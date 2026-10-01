@@ -31,6 +31,7 @@
 #include "PikiMgr.h"
 #if defined(PIKI_PC_PORT)
 #include "settings/pc_settings.h"
+#include "audio/pc_audio_source.h"
 #endif
 #include "PlayerState.h"
 #include "RumbleMgr.h"
@@ -1758,11 +1759,14 @@ PikiHangedState::PikiHangedState()
 /**
  * @brief Plays the "ready to throw" sound on animation loop.
  */
-void PikiHangedState::procAnimMsg(Piki*, MsgAnim* msg)
+void PikiHangedState::procAnimMsg(Piki* piki, MsgAnim* msg)
 {
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_LoopEnd:
 	{
+#if defined(PIKI_PC_PORT)
+		PcAudioSource audioSource(piki->mNavi ? piki->mNavi->mNaviID : -1); // issue #1030: the holding captain's sound
+#endif
 		SeSystem::playPlayerSe(SE_PIKI_FLYREADY);
 		break;
 	}
@@ -1826,6 +1830,9 @@ void PikiWaterHangedState::procAnimMsg(Piki* piki, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_LoopEnd:
 	{
+#if defined(PIKI_PC_PORT)
+		PcAudioSource audioSource(piki->mNavi ? piki->mNavi->mNaviID : -1); // issue #1030: the holding captain's sound
+#endif
 		SeSystem::playPlayerSe(SE_PIKI_FLYREADY);
 		break;
 	}

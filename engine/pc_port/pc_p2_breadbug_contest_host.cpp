@@ -7,13 +7,95 @@
 #include "pc_p2_cargo_contest.h"
 #include "pc_p2_delivery.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+// Netplay M4 lane B2 (issue #885): P2 receipt ledgers in a netplay session.
+// Strong-defined by pc_netplay_session.cpp in netplay builds only; null here in
+// the default build and in the engine-free tests, where the historical file
+// persistence runs unchanged.
+#if defined(__GNUC__)
+__attribute__((weak)) bool pc_netplay_session_active(void);
+__attribute__((weak)) bool pc_netplay_is_host(void);
+__attribute__((weak)) bool pc_netplay_randstate_stream_enabled(void);
+#endif
+
 namespace {
-std::unique_ptr<P2Receipt::FileReceiptPersistence> sPersistence;
+// 0 = no netplay session with the external-state stream (historical path),
+// 1 = netplay host, 2 = netplay client.
+int netplayRole()
+{
+#if defined(__GNUC__)
+	if (pc_netplay_session_active == nullptr || !pc_netplay_session_active()) return 0;
+	if (pc_netplay_randstate_stream_enabled == nullptr || !pc_netplay_randstate_stream_enabled()) return 0;
+	return (pc_netplay_is_host == nullptr || pc_netplay_is_host()) ? 1 : 2;
+#else
+	return 0;
+#endif
+}
+
+// In a session both peers open the same ledger bytes (the file travels with
+// the host's sidecar set, or is absent on both), and every grant is decided
+// in memory from them, identically on both peers. Only the host writes the
+// file; a host write failure is fatal (exit 2) instead of an Error result,
+// so no sim-visible branch can depend on host-only I/O. The client never
+// writes: its ledger lives in memory, per path for the whole process, so a
+// ledger closed at a stage boundary and reopened later reloads exactly what
+// the host's reopen reads back from its file.
+std::map<std::string, std::vector<P2Receipt::Key>>& clientLedgers()
+{
+	static std::map<std::string, std::vector<P2Receipt::Key>> ledgers;
+	return ledgers;
+}
+class NetplayReceiptPersistence : public P2Receipt::ReceiptPersistence {
+public:
+	NetplayReceiptPersistence(const std::string& path, bool client) : mFile(path), mPath(path), mClient(client) {}
+	bool load(std::vector<P2Receipt::Key>& out) override
+	{
+		if (!mClient) return mFile.load(out);
+		const auto it = clientLedgers().find(mPath);
+		if (it != clientLedgers().end()) {
+			out = it->second;
+			return true;
+		}
+		const bool ok = mFile.load(out); // the session-start bytes, identical to the host's
+		clientLedgers()[mPath] = out;
+		return ok;
+	}
+	void store(const std::vector<P2Receipt::Key>& keys) override
+	{
+		if (mClient) {
+			clientLedgers()[mPath] = keys;
+			return;
+		}
+		try {
+			mFile.store(keys);
+		} catch (...) {
+			std::fprintf(stderr, "[netplay] P2 receipt ledger %s: host write failed\n", mPath.c_str());
+			std::exit(2);
+		}
+	}
+
+private:
+	P2Receipt::FileReceiptPersistence mFile;
+	std::string mPath;
+	bool mClient;
+};
+
+std::unique_ptr<P2Receipt::ReceiptPersistence> makeReceiptPersistence(const std::string& path)
+{
+	const int role = netplayRole();
+	if (role == 0) return std::make_unique<P2Receipt::FileReceiptPersistence>(path);
+	return std::make_unique<NetplayReceiptPersistence>(path, role == 2);
+}
+} // namespace
+
+namespace {
+std::unique_ptr<P2Receipt::ReceiptPersistence> sPersistence;
 std::unique_ptr<P2Receipt::ReceiptLedger> sLedger;
 std::map<int, std::unique_ptr<P2CargoContest>> sContests;
 int sNextHandle = 1;
@@ -22,7 +104,7 @@ int sNextHandle = 1;
 bool pc_p2_breadbug_contest_open(const char* path)
 {
 	try {
-		sPersistence = std::make_unique<P2Receipt::FileReceiptPersistence>(
+		sPersistence = makeReceiptPersistence( // B2: netplay-aware
 		    path ? path : "p2-breadbug-contest-receipts.txt");
 		sLedger = std::make_unique<P2Receipt::ReceiptLedger>(*sPersistence);
 	} catch (...) {

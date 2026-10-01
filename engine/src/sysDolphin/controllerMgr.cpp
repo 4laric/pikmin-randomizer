@@ -26,6 +26,11 @@ DEFINE_PRINT("ControllerMgr");
 static PADStatus sControllerPad[PAD_MAX_CONTROLLERS];
 static u32 padChannels[PAD_CHANMAX] = { PAD_CHAN0_BIT, PAD_CHAN1_BIT, PAD_CHAN2_BIT, PAD_CHAN3_BIT };
 
+// Netplay harness accessor (issue #878): exposes the polled pads for input
+// record/replay. Read-only contract is by convention; the replay path writes
+// through it after PADRead on purpose.
+PADStatus* pc_netplay_pad_status(void) { return sControllerPad; }
+
 /**
  * @todo: Documentation
  */

@@ -13,6 +13,9 @@
 #include "types.h"
 #include <stddef.h>
 #include <stdlib.h>
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_sim_rng.h"
+#endif
 
 struct DGXGraphics;
 class BaseApp;
@@ -206,8 +209,25 @@ public:
 	static char* stringDup(immut char*);
 
 	// Inline functions
-	f32 getRand(f32 max) { return max * (rand() / f32(RAND_MAX)); }
-	f32 getHalfRand(f32 max) { return max * (rand() / f32(RAND_MAX) - 0.5f); }
+	// M1 deterministic netplay: the sim RNG stream. With the switch off
+	// pc_sim_rand() is rand(), so the call sequence is unchanged; with it on
+	// the stream is the per-day seeded in-exe LCG (see pc_sim_rng.h).
+	f32 getRand(f32 max)
+	{
+#if defined(PIKI_PC_PORT)
+		return max * (pc_sim_rand() / f32(RAND_MAX));
+#else
+		return max * (rand() / f32(RAND_MAX));
+#endif
+	}
+	f32 getHalfRand(f32 max)
+	{
+#if defined(PIKI_PC_PORT)
+		return max * (pc_sim_rand() / f32(RAND_MAX) - 0.5f);
+#else
+		return max * (rand() / f32(RAND_MAX) - 0.5f);
+#endif
+	}
 	f32 getFade() { return mCurrentFade; }
 	void setFade(f32 target, f32 rate = 3.0f)
 	{

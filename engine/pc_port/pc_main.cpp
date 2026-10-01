@@ -50,6 +50,20 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
 #include "pc_fatal_log.h"
 #include "pc_gpu_preference.h"
 #include "pc_dev_console.h"
+#include "netplay/pc_netplay_det.h"
+// Netplay M3 lockstep (issue #880): weak-linked argv capture. Strong-defined
+// by pc_port/netplay/pc_netplay_session.cpp in netplay builds only; null in
+// the default build, so no session TU is linked there.
+__attribute__((weak)) void pc_netplay_session_notify_argv(int argc, char** argv);
+#if PIKI_NETPLAY_BUILD
+// Netplay launch lane (issue #887): the one-command launcher's pre-init stage
+// and settings hook. PIKI_NETPLAY_BUILD is defined for the game exe of
+// netplay builds only, so the default exe has no reference to either.
+#include "netplay/pc_netplay_launch.h"
+#endif
+#include "netplay/pc_coop_switch.h"
+#include "netplay/pc_input_log.h"
+#include "netplay/pc_state_hash.h"
 #include "gl/pc_gfx.h"
 #include "gl/pc_texpack.h"
 #ifdef __ANDROID__
@@ -96,6 +110,24 @@ int main(int argc, char* argv[])
     // orderly exit leaves its own marker); see pc_fatal_log.h.
     pc_fatal_log_install();
 
+#if PIKI_NETPLAY_BUILD
+    // In-exe self-tests for ctest (settings adoption/persistence, input
+    // ownership); they need the game's own settings and window code.
+    if (argc >= 2 && std::strcmp(argv[1], "--netplay-launch-selftest") == 0)
+        return pc_netplay_launch_selftest(argc, argv);
+    // Netplay launch lane (issue #887, B1/B2/M1): the whole session setup is
+    // known before engine init on both sides (the host's bootstrap, the
+    // joiner's offer code), so it is resolved here, first: private run dir,
+    // run bootstrap (appended to argv as --randomizer-seed, the ordinary seed
+    // path), private save root, joiner seed, input device. Inert without a
+    // launcher switch (it then only validates --netplay-input).
+    pc_netplay_launch_preinit(&argc, &argv);
+#endif
+
+    // Deterministic netplay mode (M1): parses --netplay-deterministic and the
+    // PIKMIN_NETPLAY_* env vars. Must run before the game starts.
+    pc_netplay_det_init(argc, argv);
+
 #ifdef __ANDROID__
     // Logcat, carpeta del juego y ruta de guardado: antes de que nada abra un
     // fichero o escriba un mensaje. Sin carpeta no hay assets, y sin assets el
@@ -122,9 +154,23 @@ int main(int argc, char* argv[])
     if (argc == 2 && std::strcmp(argv[1], "--audio-self-test") == 0)
         return pc_jaudio_integration_test();
 #endif
+    // Netplay M3/M5a (issues #880 #887): stores argv for --netplay-host /
+    // --netplay-join / --netplay-ice-host / --netplay-ice-join /
+    // --randomizer-seed.
+    // Netplay M4 fix round 1 (M4): the session must see argv before
+    // pc_bbft_init runs pc_randomizer_init->update, so the boot-time poll
+    // already takes the stream-only path on the client (never reading
+    // state.txt) and the publish path on the host. Inert without a netplay
+    // switch (and a no-op null check in the default build).
+    if (pc_netplay_session_notify_argv != nullptr) pc_netplay_session_notify_argv(argc, argv);
     pc_bbft_init(argc, argv);
     // #942 dev console: inert unless PIKMIN_DEV_CONSOLE=1; refuses under netplay.
     pc_dev_console_init(argc, argv);
+    // Netplay harness switches (--input-record/--input-replay and friends).
+    // Env vars are read lazily on the first tick; argv wins when both name a
+    // path. No-ops unless those switches are set.
+    pc_input_log_notify_argv(argc, argv);
+    pc_state_hash_notify_argv(argc, argv);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--dump-texture-names") == 0)
             pc_gfx_set_dump_texture_names(1);
@@ -133,6 +179,12 @@ int main(int argc, char* argv[])
         if (std::strcmp(argv[i], "--texture-pack") == 0)
             pc_texpack_request_enable();
     }
+    // Netplay M0: direct-boot co-op switch (--coop / PIKMIN_COOP=1, with
+    // --coop-captains= / PIKMIN_COOP_CAPTAINS=). Arms pending co-op before
+    // any GameCoreSection is constructed; the randomizer direct-boot path
+    // never resets pending, so the switch wins there and stays on for
+    // every day of the run.
+    pc_coop_switch_apply(pc_coop_switch_parse(argc, argv));
     (void)argc;
     (void)argv;
 
@@ -160,6 +212,12 @@ int main(int argc, char* argv[])
     printf("[PC Port] Loading persisted settings...\n");
     fflush(stdout);
     pc_settings_init();
+#if PIKI_NETPLAY_BUILD
+    // Launch lane: settings session guard (both peers) and the joiner's
+    // session-only adoption of the host's sim settings, before anything
+    // reads a sim setting.
+    pc_netplay_launch_post_settings();
+#endif
     if (smallTestWindow) {
         pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
         pc_window_set_window_size(windowWidth, windowHeight);

@@ -15,6 +15,7 @@
 // reported unsupported here (the violet/ivory providers own them); the base Pom
 // is rejected and never bound. Without the file the module is inert.
 #include "pc_p2_candypop.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_pom_policy.h"
 #include "pc_bbft.h"
 #include "Boss.h"
@@ -61,6 +62,9 @@ std::vector<std::pair<std::uint32_t, int>> queenColours;
 unsigned clockLast   = 0;
 float clockAcc       = 0.0f;
 double behaviorSec   = 0.0;
+// M1 det fix: last logical tick that advanced the behavior clock below (0 =
+// unprimed; pc_netplay_tick() is 1-based inside tick bodies).
+unsigned lastDetTick = 0;
 
 [[noreturn]] void fail()
 {
@@ -197,6 +201,7 @@ void pc_p2_candypop_reset()
 	clockLast   = SDL_GetTicks();
 	clockAcc    = 0.0f;
 	behaviorSec = 0.0;
+	lastDetTick = 0;
 }
 
 void pc_p2_candypop_setup()
@@ -218,7 +223,20 @@ void pc_p2_candypop_tick()
 	if (clockLast == 0) {
 		clockLast = now;
 	}
-	clockAcc += float(now - clockLast) * 0.001f;
+	if (pc_netplay_deterministic()) {
+		// M1 det fix: tick-counted analogue of the wall clock. The wall code
+		// advances the shared behavior clock by wall time since the last
+		// call; here it advances by logical ticks since the last call, so
+		// every call in one tick advances it once and skipped ticks catch up
+		// (bounded below, as before). The wall anchor is still refreshed so
+		// leaving det mode never injects a jump.
+		const unsigned tickNow = pc_netplay_tick();
+		if (lastDetTick == 0) lastDetTick = tickNow;
+		clockAcc += float(tickNow - lastDetTick) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2);
+		lastDetTick = tickNow;
+	} else {
+		clockAcc += float(now - clockLast) * 0.001f;
+	}
 	clockLast = now;
 	int steps = 0;
 	while (clockAcc >= SimTick && steps < MaxCatchUpSteps) {

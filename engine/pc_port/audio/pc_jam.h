@@ -60,6 +60,9 @@ public:
     bool writeRootPort(u8 port, u16 value);
     bool setChildPaused(u8 child, bool paused);
     bool childPortReady(u8 child, u8 port) const;
+    // True while a value written to the child's port has not been read by its script yet (the original's
+    // Jam_CheckPortAppDirect on the port's "imported" flag, which a command queue waits on).
+    bool childPortPending(u8 child, u8 port) const;
     void setChildVolume(u8 child, float volume);
     PCJamResult result() const { return mResult; }
     u8 unsupportedOpcode() const { return mUnsupportedOpcode; }

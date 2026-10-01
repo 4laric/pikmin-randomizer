@@ -1,0 +1,282 @@
+// Netplay M5c lane C (issue #887): the session HUD and the end banner. See
+// pc_netplay_hud.h. Netplay builds only (PIKI_NETPLAY_BUILD); drawn from
+// VIWaitForRetrace once per presented frame, after the frame's sim work.
+//
+// Presentation only. It draws through the port's P2D overlay, whose panes,
+// font and plate textures pc_settings_p2d_init() allocated once at start-up,
+// so a HUD frame allocates nothing (the peers' heaps stay in step whether or
+// not a player shows the HUD). It reads the session's numbers
+// (pc_netplay_hud_info), the local keyboard state and the local pad's two
+// stick buttons, and writes nothing the simulation or the netplay input reads.
+//
+// Toggle: F4, or L3 + R3 together on the pad. Checked against the bindings:
+// no default keyboard action and no port hotkey uses F4 (F1 settings, F2
+// control mode, F3 photo mode, F5-F9 debug/VS; the default layout's keys are
+// Space, Shift, X, Y, Z, Enter, Q, E, arrows, WASD, TFGH, C, R, V), and F4 is
+// ignored while a player has bound it to an action. Every standard pad button
+// already has a default binding (A, B, X, Y, the shoulders, Start, the D-pad,
+// Back opens F1, L3 first person, R3 lock-on; Guide belongs to the OS), so
+// the pad toggle is the two-stick chord: first person and lock-on are
+// session-locked sim settings, off unless the host turned them on, so in a
+// default session the chord does nothing else. When either is on (or a
+// player bound another action to a stick button) the chord is ignored and
+// only F4 toggles (stick_buttons_in_use). A keyboard-only peer
+// (--netplay-input keyboard) ignores the chord, since pads need no focus and
+// the local two-window test gives the pad to the other window.
+
+#include "netplay/pc_netplay_hud.h"
+
+#include "netplay/pc_netplay_input_sel.h"
+#include "gl/pc_gfx.h"
+#include "settings/pc_glass_menu.h"
+#include "settings/pc_settings.h"
+#include "settings/pc_settings_p2d.h"
+#include "pc_window.h"
+
+#include "Colour.h"
+#include "Geometry.h"
+#include "Graphics.h"
+#include "Matrix4f.h"
+#include "system.h"
+
+#include <SDL2/SDL.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+
+namespace {
+
+bool sInit       = false;
+bool sVisible    = true;
+pc_netplay_hud::Toggle sKeyEdge;
+pc_netplay_hud::Toggle sPadEdge;
+// TEST knobs (hidden test runs only): PIKMIN_NETPLAY_TEST_HUD_TOGGLE_FRAME=<f>
+// toggles once at frame f (the toggle path in a scripted pair);
+// PIKMIN_NETPLAY_TEST_HUD_SHOT=<dir> writes <dir>/hud-f<frame>.bmp at
+// PIKMIN_NETPLAY_TEST_HUD_SHOT_FRAME (a comma list; default 900) and
+// <dir>/banner.bmp on the banner's 10th frame, through
+// pc_gfx_request_frame_shot (the one frame-capture writer, M5c integration).
+long long sTestToggleFrame = -1;
+bool sTestToggled          = false;
+std::string sShotDir;
+std::vector<long long> sShotFrames; // ascending; each captured once
+size_t sShotNext       = 0;
+int sBannerFrames      = 0;
+bool sShotBannerDone   = false;
+
+void init_once()
+{
+	if (sInit) return;
+	sInit = true;
+	const char* hud = std::getenv("PIKMIN_NETPLAY_HUD");
+	if (hud != nullptr && hud[0] == '0' && hud[1] == '\0') sVisible = false;
+	const char* bg = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
+	const bool hidden = bg != nullptr && std::strcmp(bg, "1") == 0;
+	if (hidden) {
+		if (const char* t = std::getenv("PIKMIN_NETPLAY_TEST_HUD_TOGGLE_FRAME")) sTestToggleFrame = std::atoll(t);
+		if (const char* d = std::getenv("PIKMIN_NETPLAY_TEST_HUD_SHOT")) sShotDir = d;
+		// A comma-separated list of frames (default 900).
+		const char* f = std::getenv("PIKMIN_NETPLAY_TEST_HUD_SHOT_FRAME");
+		std::string list = f != nullptr ? f : "900";
+		size_t at = 0;
+		while (at <= list.size()) {
+			size_t comma = list.find(',', at);
+			if (comma == std::string::npos) comma = list.size();
+			if (comma > at) sShotFrames.push_back(std::atoll(list.substr(at, comma - at).c_str()));
+			at = comma + 1;
+		}
+		std::sort(sShotFrames.begin(), sShotFrames.end());
+	}
+	printf("[netplay] hud: %s (F4 or L3+R3 toggles it)\n", sVisible ? "on" : "off");
+	fflush(stdout);
+}
+
+// Once, when the chord's state first differs from the default: say why only
+// F4 toggles now (first person or lock-on is on, or a stick button is bound).
+bool sChordNoteDone = false;
+void note_chord_state(bool inUse)
+{
+	if (sChordNoteDone || !inUse) return;
+	sChordNoteDone = true;
+	printf("[netplay] hud: L3+R3 does not toggle the HUD in this session (a stick button is in use: first person, "
+	       "lock-on or a binding); F4 does\n");
+	fflush(stdout);
+}
+
+bool f4_bound()
+{
+	for (int a = 0; a < PC_KEY_ACT_COUNT; ++a) {
+		if ((int)pc_window_get_key_binding(a) == (int)SDL_SCANCODE_F4) return true;
+	}
+	return false;
+}
+
+// Fix round 1 (review): whether a stick button (L3 or R3) does something in
+// the game, so the chord would fire it too: any pad action bound to it,
+// except first person and lock-on while those session-locked settings are
+// off (then those actions do nothing). The HUD then ignores the chord (F4
+// still works), as it ignores F4 while F4 is bound.
+bool stick_buttons_in_use()
+{
+	for (int a = 0; a < PC_KEY_ACT_COUNT; ++a) {
+		const int b = pc_window_get_gamepad_binding(a);
+		if (b != SDL_CONTROLLER_BUTTON_LEFTSTICK && b != SDL_CONTROLLER_BUTTON_RIGHTSTICK) continue;
+		if (a == PC_KEY_ACT_FIRSTPERSON && !pc_settings_get_first_person()) continue;
+		if (a == PC_KEY_ACT_LOCKON && !pc_settings_get_lock_on()) continue;
+		return true;
+	}
+	return false;
+}
+
+void set_visible(bool on, const char* why)
+{
+	sVisible = on;
+	printf("[netplay] hud: %s (%s)\n", on ? "on" : "off", why);
+	fflush(stdout);
+}
+
+void poll_toggle(const PcNetplayHudInfo& info)
+{
+	const Uint8* keys  = SDL_GetKeyboardState(nullptr);
+	const bool keyDown = keys != nullptr && keys[SDL_SCANCODE_F4] != 0 && !f4_bound();
+	bool chord         = false;
+	const bool sticksInUse = info.inputKind != pc_netplay_input_sel::kInputKeyboard && stick_buttons_in_use();
+	note_chord_state(sticksInUse);
+	if (info.inputKind != pc_netplay_input_sel::kInputKeyboard && !sticksInUse) {
+		SDL_GameController* ctl = pc_window_get_controller();
+		chord = ctl != nullptr && SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_LEFTSTICK) != 0
+		     && SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_RIGHTSTICK) != 0;
+	}
+	const bool keyEdge = sKeyEdge.update(keyDown);
+	const bool padEdge = sPadEdge.update(chord);
+	if (keyEdge || padEdge) set_visible(!sVisible, keyEdge ? "F4" : "L3+R3");
+	if (sTestToggleFrame >= 0 && !sTestToggled && (long long)info.frame >= sTestToggleFrame) {
+		sTestToggled = true;
+		set_visible(!sVisible, "test toggle");
+	}
+}
+
+Colour rgba(const uint8_t c[4]) { return Colour(c[0], c[1], c[2], c[3]); }
+
+// Word wrap to a pixel width at a font size.
+std::vector<std::string> wrap(const std::string& text, int maxW, int fontW)
+{
+	std::vector<std::string> out;
+	std::string line;
+	size_t i = 0;
+	while (i < text.size()) {
+		size_t j = text.find(' ', i);
+		if (j == std::string::npos) j = text.size();
+		const std::string word = text.substr(i, j - i);
+		const std::string cand = line.empty() ? word : line + " " + word;
+		if (!line.empty() && pc_settings_p2d_text_width(cand.c_str(), fontW) > maxW) {
+			out.push_back(line);
+			line = word;
+		} else {
+			line = cand;
+		}
+		i = j + 1;
+	}
+	if (!line.empty()) out.push_back(line);
+	return out;
+}
+
+void draw_box(const PcNetplayHudInfo& info, int W, int H)
+{
+	char l1[64], l2[64], l3[80];
+	pc_netplay_hud::format_lines(info.numbers, l1, sizeof l1, l2, sizeof l2, l3, sizeof l3);
+	uint8_t qc[4];
+	pc_netplay_hud::quality_rgba(pc_netplay_hud::classify(info.numbers.havePing, info.numbers.pingMs,
+	                                                      info.numbers.jitterMs, info.numbers.stalls10s),
+	                             qc);
+	// Compact: 9x13 body text, 10x14 title, inside the plate's 16-unit
+	// content margins (pc_settings_p2d_plate style 0) with room to spare.
+	const int fw = 9, fh = 13, pad = 16, lh = fh + 3;
+	int tw = pc_settings_p2d_text_width(l1, 10);
+	tw     = std::max(tw, pc_settings_p2d_text_width(l2, fw));
+	tw     = std::max(tw, pc_settings_p2d_text_width(l3, fw));
+	const int bw = tw + 2 * pad + 10;
+	const int bh = 3 * lh + 24;
+	const int x  = W - bw - 6;
+	// Right edge, just below the game's "day N" badge in the top-right corner
+	// (which ends about a fifth of the way down), clear of the sun meter.
+	const int y  = (int)(H * 0.235f);
+	pc_settings_p2d_plate(x, y, bw, bh, 0);
+	pc_settings_p2d_text(x + pad + 2, y + 10, l1, rgba(qc), 10, 14);
+	const Colour body(235, 235, 235, 255);
+	pc_settings_p2d_text(x + pad + 2, y + 10 + lh, l2, body, fw, fh);
+	pc_settings_p2d_text(x + pad + 2, y + 10 + 2 * lh, l3, body, fw, fh);
+}
+
+void draw_banner(const PcNetplayHudInfo& info, int W, int H)
+{
+	const int fw = 11, fh = 16, pad = 20;
+	const int bw = std::min(W - 32, 620);
+	const int textW = bw - 2 * pad;
+	std::vector<std::string> body;
+	for (int i = 0; i < info.bannerLines; ++i) {
+		for (const std::string& l : wrap(info.bannerLine[i], textW, fw)) body.push_back(l);
+	}
+	if (body.size() > 14) body.resize(14); // at most 374 units tall in all
+	char footer[96];
+	const int left = info.bannerLeftMs > 0 ? (int)(info.bannerLeftMs / 1000.0 + 0.999) : 0;
+	snprintf(footer, sizeof footer, "Closing in %d s - press any key or button to close now.", left);
+	const int lineH = fh + 4;
+	const int bh    = 16 + 24 + 8 + (int)body.size() * lineH + 10 + lineH + 16;
+	const int x     = (W - bw) / 2;
+	const int y     = std::max(8, (H - bh) / 2);
+	pc_settings_p2d_plate(x, y, bw, bh, 0);
+	const Colour title = info.bannerError ? Colour(255, 96, 80, 255) : Colour(255, 214, 90, 255);
+	pc_settings_p2d_text(x + pad, y + 16, info.bannerTitle, title, 14, 20);
+	int ty = y + 16 + 24 + 8;
+	const Colour text(238, 238, 238, 255);
+	for (const std::string& l : body) {
+		pc_settings_p2d_text(x + pad, ty, l.c_str(), text, fw, fh);
+		ty += lineH;
+	}
+	pc_settings_p2d_text(x + pad, ty + 10, footer, Colour(170, 180, 200, 255), 10, 15);
+}
+
+} // namespace
+
+bool pc_netplay_hud_visible(void) { return sVisible; }
+
+void pc_netplay_hud_draw(void)
+{
+	PcNetplayHudInfo info;
+	if (!pc_netplay_hud_info(&info)) return; // no netplay session: nothing, not even the toggle
+	init_once();
+	poll_toggle(info);
+	if (!info.banner) {
+		if (!info.running || !sVisible) return;
+		if (pc_settings_menu_open() || pc_glass_menu_active()) return;
+	}
+	if (gsys == nullptr || gsys->mDGXGfx == nullptr) return;
+	DGXGraphics* gfx = static_cast<DGXGraphics*>(gsys->mDGXGfx);
+	const int W = gfx->mScreenWidth;
+	const int H = gfx->mScreenHeight;
+	if (W <= 0 || H <= 0) return;
+	{
+		PcSettingsP2DFrame frame(W, H);
+		if (!pc_settings_p2d_active()) return;
+		Matrix4f ortho;
+		gfx->setOrthogonal(ortho.mMtx, RectArea(0, 0, W, H));
+		if (info.banner) draw_banner(info, W, H);
+		else draw_box(info, W, H);
+	}
+	if (sShotDir.empty()) return;
+	if (!info.banner && sShotNext < sShotFrames.size() && (long long)info.frame >= sShotFrames[sShotNext]) {
+		++sShotNext;
+		char path[1024];
+		snprintf(path, sizeof path, "%s/hud-f%llu.bmp", sShotDir.c_str(), (unsigned long long)info.frame);
+		pc_gfx_request_frame_shot(path);
+	}
+	if (info.banner && !sShotBannerDone && ++sBannerFrames >= 10) {
+		sShotBannerDone = true;
+		pc_gfx_request_frame_shot((sShotDir + "/banner.bmp").c_str());
+	}
+}

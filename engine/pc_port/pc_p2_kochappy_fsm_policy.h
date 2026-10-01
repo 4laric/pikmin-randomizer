@@ -68,13 +68,24 @@ inline bool positive(float value, float maximum)
 	return std::isfinite(value) && value > 0.0f && value <= maximum;
 }
 
-inline bool parseConfig(std::istream& in, Params& out)
+// Retail Kochappy differs from BlueKochappy only in health, movement and
+// Purple stun (the separately-owned Red stun module already supplies 10s).
+inline Params redDefaults()
+{
+ Params p;
+ p.health = 200.0f;
+ p.moveSpeed = 50.0f;
+ return p;
+}
+
+inline bool parseConfig(std::istream& in, Params& out,
+                        const char* expectedMagic = "P2_DWARF_ORANGE_FSM_1",
+                        Params params = Params())
 {
 	std::string magic;
-	if (!(in >> magic) || magic != "P2_DWARF_ORANGE_FSM_1") {
+	if (!(in >> magic) || magic != expectedMagic) {
 		return false;
 	}
-	Params params;
 	const unsigned keys = 0xFFF; // all twelve keys below
 	unsigned seen       = 0;
 	std::string key;

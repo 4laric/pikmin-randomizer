@@ -64,6 +64,15 @@ public:
 
 	void resetMatrixBuffer();
 	Matrix4f* getMatrices(int);
+#if defined(PIKI_PC_PORT)
+	// M2b two-pass presentation storage (issue #879): the presentation pass
+	// allocates pose matrices here so the sim pool (mMatrixBuffer) keeps the
+	// exact authoritative contents. BaseShape::updateAnim routes here when
+	// the render phase is not authoritative; the driver restores each
+	// shape's mAnimMatrices afterwards (see pc_netplay_present).
+	void resetPresentBuffer();
+	Matrix4f* getPresentMatrices(int);
+#endif
 	void resetCacheBuffer();
 	void cacheShape(BaseShape*, ShapeDynMaterials*);
 	void flushCachedShapes();
@@ -124,6 +133,12 @@ public:
 	Matrix4f* mMatrixBuffer;                  // _384
 	int mMaxMatrixCount;                      // _388
 	int mNextFreeMatrixIdx;                   // _38C
+#if defined(PIKI_PC_PORT)
+	// M2b presentation pool (same capacity as the sim pool, heap-owned).
+	Matrix4f* mPresentMatrixBuffer = nullptr;
+	int mPresentMatrixMax          = 0;
+	int mNextFreePresentMatrixIdx  = 0;
+#endif
 	CachedShape mShapeCache;                  // _390
 	CachedShape* mCachedShapes;               // _3A8
 	int mCachedShapeMax;                      // _3AC

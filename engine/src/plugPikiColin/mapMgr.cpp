@@ -1,6 +1,8 @@
 #include "MapMgr.h"
 #if defined(PIKI_PC_PORT)
 #include "gl/pc_gfx.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
 #endif
 
 #include "AIPerf.h"
@@ -434,6 +436,11 @@ void DynMapObject::refresh(Graphics& gfx)
 	mShapeObject->mModel->updateAnim(gfx, viewMtx, nullptr, this);
 	gsys->mTimer->stop("animation");
 
+#if defined(PIKI_PC_PORT)
+	// M2b: map-collision transforms are sim (world-space via SimCamera);
+	// presentation draws from the stored transforms.
+	if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 	// update sub-parts
 	for (int i = 0; i < mPlatObjCount; i++) {
 		MapObjectPart* part = mPlatObjects[i];
@@ -441,6 +448,9 @@ void DynMapObject::refresh(Graphics& gfx)
 		Matrix4f animMtx = mCollisionModel->getAnimMatrix(part->mJointIndex);
 		gfx.mCamera->mInverseLookAtMtx.multiplyTo(animMtx, part->mTransformMtx);
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
 	gfx.useMatrix(Matrix4f::ident, 0);
 
@@ -1726,6 +1736,10 @@ void MapMgr::postrefresh(Graphics& gfx)
 #endif
 
 	// handle fading and desaturating
+#if defined(PIKI_PC_PORT)
+	// M2b: fade levels are sim; presentation draws from stored levels.
+	if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 	if (mCurrFadeLevel < mTargetFadeLevel) {
 		mCurrFadeLevel += 2.0f * gsys->getFrameTime();
 		if (mCurrFadeLevel > mTargetFadeLevel) {
@@ -1749,6 +1763,9 @@ void MapMgr::postrefresh(Graphics& gfx)
 			mCurrDesaturationLevel = mTargetDesaturationLevel;
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
 	// draw any fading or desaturation that's happening
 	if (mCurrDesaturationLevel > 0.0f || mCurrFadeLevel > 0.0f) {

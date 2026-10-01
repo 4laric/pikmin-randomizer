@@ -1,0 +1,8 @@
+# Netplay M4 gap-fix K (issue #885): the Navi::enterAllPikis half of REG 4.
+# Grammar: pc_coop_policy.h. Captain 2 takes 10 of captain 1's squad while
+# the stage-start movie runs and still has it when the clock jumps to the
+# day's end hour (after the movie, co-op tick ~280 on foh-day2), so the
+# sunset whistle (Fue) runs enterAllPikis on captain 1 over both captains'
+# squads while captain 2 has never opened an Onion (its goal is null).
+20 SQUAD 2 10
+287 SUNSET
