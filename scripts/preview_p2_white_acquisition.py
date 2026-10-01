@@ -8,10 +8,10 @@ import struct
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.preview_pikmin2_room import generator, overlay, records
+from scripts.preview_pikmin2_room import generator, overlay, records, prototype_routes, replace_embedded_routes
 
 
-def prepare(assets, white, pod, output):
+def prepare(assets, white, pod, room, output):
     output.mkdir(parents=True, exist_ok=False)
     data=generator(assets)
     starts=[m.start() for m in re.finditer(b'    0.0v',data)]
@@ -28,7 +28,13 @@ def prepare(assets, white, pod, output):
     struct.pack_into('>6f',flower,48,-25,0,67,0,0,0);struct.pack_into('>I',flower,80,5|(1<<6));rows.append(bytes(flower))
     data=data[:20]+struct.pack('>I',len(rows))+b''.join(rows)
     empty=b'1.0v'+struct.pack('>4fI',-85,0,0,45,0)
-    overrides={'dataDir/stages/chal0/default.gen':data}
+    stage=(assets/'dataDir/stages/chal0.ini').read_bytes()
+    stage=re.sub(rb'(?m)^map_file[^\r\n]*',b'map_file courses/pikmin2room/room.mod',stage)
+    stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -85.0 0.0',stage)
+    routes=prototype_routes((room/'room.ini').read_bytes())
+    overrides={'dataDir/stages/chal0/default.gen':data,'dataDir/stages/chal0.ini':stage,
+               'dataDir/courses/pikmin2room/room.mod':replace_embedded_routes((room/'room.mod').read_bytes(),routes),
+               'dataDir/courses/pikmin2room/room.ini':routes}
     for file in (assets/'dataDir/stages/chal0').glob('*.gen'):overrides.setdefault('dataDir/stages/chal0/'+file.name,empty)
     for file in white.glob('*.mod'):overrides['dataDir/courses/pikmin2room/'+file.name]=file.read_bytes()
     for name in ('pod.mod','treasure.mod'):overrides['dataDir/courses/pikmin2room/'+name]=(pod/name).read_bytes()
@@ -36,13 +42,13 @@ def prepare(assets, white, pod, output):
     (output/'p2-white.txt').write_bytes((white/'p2-white.txt').read_bytes())
     (output/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
     state={'method':'scripted native controller acquisition, no identity/capture/callback injection','initial_pikmin':20,'ivory_uid':25,
-           'arena':'P1 practice map, no enemy generator','sources':{'white':str(white),'pod':str(pod),'assets':str(assets)},
-           'hashes':{str(p.relative_to(output)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [output/'p2-white.txt',output/'p2-pod.txt',output/'assets/dataDir/stages/chal0/default.gen']}}
+           'arena':'Imported room_4x4a_4_conc render and capped collision, no enemy generator','sources':{'white':str(white),'pod':str(pod),'assets':str(assets),'room':str(room)},
+           'hashes':{str(p.relative_to(output)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [output/'p2-white.txt',output/'p2-pod.txt',output/'assets/dataDir/stages/chal0/default.gen',output/'assets/dataDir/courses/pikmin2room/room.mod']}}
     (output/'staging.json').write_text(json.dumps(state,indent=2))
     return output
 
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--assets',type=Path,required=True);p.add_argument('--white',type=Path,required=True)
-    p.add_argument('--pod',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    a=p.parse_args();print(prepare(a.assets,a.white,a.pod,a.output))
+    p.add_argument('--pod',type=Path,required=True);p.add_argument('--room',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+    a=p.parse_args();print(prepare(a.assets,a.white,a.pod,a.room,a.output))
