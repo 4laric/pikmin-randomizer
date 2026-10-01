@@ -7,7 +7,32 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
-## Latest status: round07 natural acquisition and carry movement
+## Latest status: round08 diary failure and shared observer reuse
+
+Producer `974eddd75022064d8bd3c313facb99220a0b42d4` passed Windows36921912346:
+212 tests, eight hashes/no-work, actual merge
+`a6ca89407a4b477f3544fd48f83683a40a8d6b87`. Fixture SHA256
+`8b04a613b3bbf19e1a8cdc80183dfb60b45beafda49a121a3aec8cc20364abe2`.
+All seven fresh initialized guard08 cases PASS. Save08 acquires naturally38.615s,
+requests ordinary SDL sunset38.662s, stores stock1 and advances day3 at57.176s.
+It times out60.110s without a card. The rendered diary30 frame shows partial
+text, not a card prompt. Restore is UNTESTED. Immutable summary08 SHA256
+`11aae22dbde5b03220d85ece0c8f2886eb921c7d2488cbd32c59e9b7f880d999`.
+
+The accepted1130 reference needs about28s from day advance to card with its old
+single-B/held-A driver. New consumer `90fddebd7bb2a168c501309a5ac670dae1e60b23`
+reuses #1166's independently reviewed const diary observer subset from
+`bc5f35335d3515cfbca976e6b05d175ad8bc8b76`, with production ownership retained
+there. Purple sends SDL B only on RevealPage and A on AdvancePage, with neutral
+release edges; card/results fallback is A-only. No UI-state, clock, stock or
+checkpoint mutation. An uncommitted alternate observer prototype was abandoned,
+never pushed or runtime-tested. No CMake delta or owner fixture duplication.
+Three translation units pass syntax and the reused NDEBUG engine-free observer
+test passes. Exact Windows36924763852 and fresh09 runtime remain pending.
+Observer provenance09 SHA256
+`1cc8c53399eebd91da7c50c159f2115a43662261b5a04a68c713af73f946d1b7`.
+
+## Round07 natural acquisition and carry movement
 
 Producer `9983a687f67899df0e054df226d992eb30298374` passed Windows36916137829:
 212 tests, eight artifact hashes and no-work. Actual compiled merge
