@@ -178,3 +178,38 @@ The prepared Play.cmd/Reset.cmd under output/purple1071-manual-smoke remain
 DISABLED pending setup/reset and staged route validation. Staged identity,
 scripted gathering/withdrawal and cargo placement cannot establish native Purple
 acquisition, ordinary controls, campaign progression or save continuity.
+
+## Route obstruction diagnosis and candidate08
+
+On the same c142 fixture executable, Red06 passed in22.656s. A fresh staged06b
+run reached normal carrying, then remained near(-190.65,-29.72,2096.79), short
+of waypoint48(-192.13,-37.72,2075.10). Its last five two-second position samples
+span only0.23units despite requested velocity, one attached Purple and strength10.
+A fresh diagnostic noviolet06b omits only the appended Violet generator before
+boot, preserves original generator records/map/routes and the cargo origin, and
+travels past that position to final waypoint67. Its last five samples span88.78
+units. It still times out60.093s without uptake; this is obstruction diagnosis,
+not delivery acceptance. The first directory named noviolet06 had a preparation
+path error and actually retained the Violet; PREPARATION_FAILED.txt records that
+it is another unchanged baseline. Neither report is overwritten.
+
+Candidate062518de Windows CI36874336293 passed211tests, eight artifact hashes,
+and no-work dry run. Actual CI checkoutc1da70b6664666ec1b1e147ad58fbb2f94c59b88
+has the same treead630d5da81bedeaf1ad5dae78674f442a3092aa as the producer.
+FixtureSHA947b57b6088110145ba4ae2cca8e4f3a02ed207e81d37db76ee2118649dc1743.
+Guard07 exited86 in0.219s as expected. Natural07 acquired/moved but timed out at
+60.093s; staged07 waited for zero vertical velocity despite stable cargo XYZ.
+Manual-ready07 rejected the partial squad before native withdrawal completed.
+These failures remain preserved and do not certify the launcher.
+
+Candidate3c51b312760dc944fed92069a434ff2e00b4bb6f fixes the fixture's partial-squad
+wait and measures settled cargo with30 grounded, stable-XYZ observations rather
+than requiring gravity velocityY to vanish. It adds an explicit west197 origin
+(Red Onion -180x,+80z) beside the unchanged default east197 (+180x,+80z). Both
+start196.98units from the same Onion. Cargo is spawned only once; the Violet,
+original actors, map and route graph stay unchanged. A west result qualifies that
+route only, never the obstructed east route. The natural west test still requires
+native Violet conversion/pluck and all actual uptake/population/release oracles.
+Manual readiness/reset tests exercise native withdrawal through MANUAL_START;
+manual play uses west197 only after its own validation. No production placement
+or transport code was changed. Windows CI36876547819 and fresh08 runs are pending.
