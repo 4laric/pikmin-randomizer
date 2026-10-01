@@ -12,7 +12,7 @@ def fixture():
     # must all keep their original face IDs without inferring adjacency.
     return ([[0,0,0],[0,0,400],[400,0,0],[0,100,0],
              [2000,20,2000],[2000,20,2200],[2200,20,2000]],
-            [[0,1,2],[0,3,1],[4,5,6],[0,1,2]])
+            [[0,2,1],[0,3,1],[4,6,5],[0,2,1]])
 
 
 def test_binary_roundtrip_source_faces_and_conservative_cell_membership():
@@ -38,6 +38,8 @@ def test_binary_roundtrip_source_faces_and_conservative_cell_membership():
 
 def test_ground_parity_and_wall_preservation():
     vertices, triangles=fixture();grid=build_grid(vertices,triangles)
+    assert ground_height(vertices,triangles,50,200)==0
+    assert ground_height(vertices,triangles,2050,2050)==20
     for x,z in [(1,1),(50,200),(199,200),(300,300),(2050,2050),(1000,1000)]:
         local=[triangles[i] for i in query_faces(grid,x,z)]
         assert ground_height(vertices,local,x,z)==ground_height(vertices,triangles,x,z)
