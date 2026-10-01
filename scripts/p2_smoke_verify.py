@@ -51,9 +51,10 @@ def parse_log(text):
             continue
         seen.add(key)
         instances.append({'source_id': key[0], 'target': key[1], 'x': float(m.group(3)), 'z': float(m.group(4))})
-    ready = {}
+    ready, ready_counts = {}, {}
     for m in _READY.finditer(text):
         ready.setdefault(int(m.group(1)), (float(m.group(2)), float(m.group(3))))
+        ready_counts[int(m.group(1))] = ready_counts.get(int(m.group(1)), 0) + 1
     bound = {int(m.group(1)) for m in _BIND.finditer(text)} | set(ready)
     failures = []
     for line in text.splitlines():
@@ -61,7 +62,7 @@ def parse_log(text):
             gen = _GENERATOR.search(line)
             failures.append((line.strip(), int(gen.group(1)) if gen else None))
     return {'captain_start': captain, 'instances': instances, 'failures': failures,
-            'ready': ready, 'bound': bound}
+            'ready': ready, 'bound': bound, 'ready_counts': ready_counts}
 
 
 def evaluate(parsed, assignments, bosses_uids=(), max_distance=DEFAULT_MAX_DISTANCE):
@@ -86,6 +87,14 @@ def evaluate(parsed, assignments, bosses_uids=(), max_distance=DEFAULT_MAX_DISTA
             continue
         if uid not in bound:
             problems.append(f'slot {uid} (species {sid}) resolved but has no READY/BIND line: it did not spawn')
+            continue
+        # Placement unit (randomizer/p2_units.py): a species that comes in groups must
+        # be born as that many actors on its slot (Anode Beetle 28 = a linked pair).
+        from randomizer.p2_units import species_unit
+        have = parsed.get('ready_counts', {}).get(uid, 1)
+        if have < species_unit(sid):
+            problems.append(f'slot {uid} (species {sid}): expected {species_unit(sid)} actors (placement unit), '
+                            f'native.log has {have} READY lines')
             continue
         x, z = ready.get(uid, (inst['x'], inst['z']))
         dist = math.hypot(x - captain[0], z - captain[1]) if captain else None

@@ -601,7 +601,7 @@ def build(args):
     slots_by_uid = {int(s['uid']): s for s in document['slots']}
     summary = {
         'issue': 944, 'seed': args.seed, 'area': args.area, 'starting_area': starting_area,
-        'near_start': bool(args.near_start), 'p1_bulborb_slots': bool(getattr(args, 'p1_bulborb_slots', False)),
+        'units': {str(k): v for k, v in __import__('randomizer.p2_units', fromlist=['x']).units_for_layout(manifest.get('p2_layout')).items()}, 'near_start': bool(args.near_start), 'p1_bulborb_slots': bool(getattr(args, 'p1_bulborb_slots', False)),
         'landing': list(landing), 'captain_start_assumed': list(landing), 'max_first_day': max_day, 'env': {SMOKE_ENV: '1', **extra_env},
         'assignments': [
             {'uid': uid, 'label': slots_by_uid[uid]['label'], 'source_id': sid,
