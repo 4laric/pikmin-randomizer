@@ -1,0 +1,70 @@
+From 43aa85287ffcdfa7f30a5fe67dff82f9d20ecc18 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 06:05:44 -0400
+Subject: [PATCH 6/8] BigTreasure: stop each loop clip at its first authored
+ loop marker (#246)
+
+---
+ tools/p2_bigtreasure_runtime.cpp | 35 ++++++++++++++++++++++++++++----
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index 79429101..c570a2ad 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -821,21 +821,48 @@ private:
+     {
+         require(pc_p2_bigtreasure_visual_update(1.0f) >= 0, "motion update");
+         ++motionFrames;
+-        const bool done = motionClipLoop ? (motionFrames >= motionLoopFrames)
+-                                         : pc_p2_bigtreasure_visual_completed();
++        int count = 0;
++        const P2BigTreasureVisualEvent* log = pc_p2_bigtreasure_visual_events(&count);
++        // A loop's authored (type-1) marker is the fixed window: the retail
++        // player dispatches it once per wrap, so stop at the first one seen.
++        bool loopSeen = false;
++        if (motionClipLoop) {
++            for (int i = motionBase; i < count; ++i) {
++                if (log[i].type == 1) {
++                    loopSeen = true;
++                    break;
++                }
++            }
++        }
++        const bool done = motionClipLoop ? loopSeen : pc_p2_bigtreasure_visual_completed();
+         // Bounded safety net: one-shot clips complete inside their own length
+         // and loops stop at the first loop marker, both far under 240 frames.
+         if (!done && motionFrames < 240) {
+             return;
+         }
+-        int count = 0;
+-        const P2BigTreasureVisualEvent* log = pc_p2_bigtreasure_visual_events(&count);
++        count = 0;
++        log = pc_p2_bigtreasure_visual_events(&count);
+         require(std::strcmp(pc_p2_bigtreasure_visual_active_clip(), motionName) == 0,
+                 "motion active clip");
+         if (!motionClipLoop) {
+             require(pc_p2_bigtreasure_visual_completed(), "one-shot clip completes");
+         }
+         const int dispatched = count - motionBase;
++        if (dispatched != static_cast<int>(motionExpected.size())) {
++            std::printf("P2_BIGTREASURE_MOTION_EVENT_MISMATCH clip=%s dispatched=%d expected=%d "
++                        "frames=%d loop=%d window=%d\n",
++                        motionName, dispatched, static_cast<int>(motionExpected.size()),
++                        motionFrames, motionClipLoop ? 1 : 0, motionLoopFrames);
++            for (int i = 0; i < dispatched; ++i) {
++                const p2retail::Event want = i < static_cast<int>(motionExpected.size())
++                                                 ? motionExpected[i]
++                                                 : p2retail::Event{ -1, -1 };
++                std::printf("P2_BIGTREASURE_MOTION_EVENT_DETAIL i=%d got=%d/%d want=%d/%d\n", i,
++                            log[motionBase + i].frame, log[motionBase + i].type, want.frame,
++                            want.type);
++            }
++            std::fflush(stdout);
++        }
+         require(dispatched == static_cast<int>(motionExpected.size()),
+                 "motion authored event count");
+         for (int i = 0; i < dispatched; ++i) {
+-- 
+2.55.0.windows.3
+

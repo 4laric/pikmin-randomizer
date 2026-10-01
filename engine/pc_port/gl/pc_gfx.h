@@ -13,12 +13,26 @@ extern "C" {
 void pc_gfx_init(void);
 void pc_gfx_begin_frame(void);
 void pc_gfx_present(void);
+// Probe screenshot hook (#871, probe-only): called once per proxy key on its
+// first live draw. Env-gated inside pc_gfx.cpp (PIKMIN_P2_PROXY_SHOT); without
+// the env var this is a single disabled branch and zero behaviour change.
+void pc_gfx_proxy_shot_notify(const char* key);
+// Test-only: dump every third presented frame for the next `frames` frames (needs PIKMIN_FRAME_DUMP).
+void pc_gfx_frame_dump_burst(unsigned frames);
+// Same, but the frame is captured `frames` presented frames later (probe evidence that needs the
+// moment of an event rather than the default 30-frame delay).
+void pc_gfx_proxy_shot_notify_after(const char* key, int frames);
+// Probe-only: capture the next presented frame as <PIKMIN_P2_PROXY_SHOT>/<key>.bmp.
+void pc_gfx_proxy_shot_now(const char* key);
 void pc_gfx_perf_scope_begin(const char* name);
 void pc_gfx_perf_scope_end(void);
 
 // Internal 3D render resolution scale (multiplier on the native 640x480).
 // begin_frame picks the change up and resizes the internal framebuffer.
 void pc_gfx_set_render_scale(float scale);
+// Resolución base del render interno (0,0 = la del área de salida). Se encaja
+// en la relación de aspecto de salida y se multiplica por el render scale.
+void pc_gfx_set_render_resolution(int width, int height);
 float pc_gfx_get_render_scale(void);
 
 // Aspect ratio support.
@@ -26,6 +40,28 @@ float pc_gfx_get_render_scale(void);
 void pc_gfx_set_aspect_ratio_mode(int mode);
 int pc_gfx_get_aspect_ratio_mode(void);
 float pc_gfx_get_current_aspect_ratio(void);
+// Aspecto de la ventana sin el override de vista (pantalla partida).
+float pc_gfx_get_window_aspect_ratio(void);
+// Override del aspecto mientras se dibuja una vista parcial; 0 lo quita.
+void pc_gfx_set_view_aspect_override(float aspect);
+// Desplazamiento de la proyección perspectiva en NDC (pantalla partida
+// dinámica): la vista de cada mitad usa el frustum completo corrido para que
+// con blend 0 ambas mitades formen una sola imagen. (0,0) lo quita.
+void pc_gfx_set_proj_offset(float ndcX, float ndcY);
+// Iluminación por píxel (la misma ecuación GX, evaluada en el fragmento con
+// la normal interpolada) en lugar de por vértice. 0 = original.
+void pc_gfx_set_per_pixel_lighting(int enabled);
+// Mientras está a 1, lo que se dibuje no entra en el mapa de sombras
+// (cursor, marcadores, anillos: geometría sobre el suelo que no es un objeto).
+void pc_gfx_shadow_exclude(int on);
+void pc_gfx_get_proj_offset(float* ndcX, float* ndcY);
+// Sub-rectángulo normalizado (origen abajo-izquierda) del destino sobre el
+// que se mapea el espacio GX 640x480 (HUD por jugador en pantalla partida).
+void pc_gfx_set_view_subrect(float x0, float y0, float x1, float y1);
+// Tamaño virtual del HUD (0,0 = automático). Solo para la pantalla partida.
+void pc_gfx_set_hud_virtual_size(int w, int h);
+int  pc_gfx_get_hud_virtual_height(void);
+void pc_gfx_clear_view_subrect(void);
 
 // Menu 2D: uniform 640x480 inside the RT (pillarbox). World keeps the
 // stretched map. Viewport and scissor share map_gx_rect, so this flag
@@ -38,6 +74,9 @@ int pc_gfx_get_ui_43(void);
 // Used by the F1 overlay so the dim covers 16:9 even when leftover menu
 // scissors still describe a left-aligned 4:3 rect.
 void pc_gfx_dim_full_target(unsigned char alpha);
+// Desenfoca una región del render target dada en coordenadas GX (640x480 con
+// el mapeo de UI vigente). `passes` ida-y-vuelta a 1/8 (2-3 para un cristal).
+void pc_gfx_blur_gx_rect(int gxX, int gxY, int gxW, int gxH, int passes);
 
 // Field HUD: GX space is V=480*aspect by 480, mapped uniformly onto the RT.
 // Panes are translated in that space (left / centre / right). Not a stretch.
@@ -75,11 +114,31 @@ void pc_gfx_set_tex_coord_gen(GXTexCoordID coord, GXTexGenType type, GXTexGenSrc
 void pc_gfx_set_z_mode(GXBool compareEnable, GXCompare func, GXBool updateEnable);
 void pc_gfx_set_blend_mode(GXBlendMode type, GXBlendFactor srcFactor, GXBlendFactor dstFactor, GXLogicOp op);
 void pc_gfx_set_cull_mode(GXCullMode mode);
+
+// Snapshot of the fixed-function state a one-off draw (the HD model mod)
+// changes, so it can be put back exactly: the engine's material display
+// lists do not restate everything, so a leaked cull/blend/z mode showed up
+// on the next mesh drawn (a transparent Onion, a vanished helmet).
+struct PcGfxPipelineState {
+    GXBool zCompare; GXCompare zFunc; GXBool zUpdate;
+    GXBlendMode blendType; GXBlendFactor blendSrc, blendDst; GXLogicOp blendOp;
+    GXCullMode cull;
+};
+PcGfxPipelineState pc_gfx_get_pipeline_state(void);
+void pc_gfx_set_pipeline_state(const PcGfxPipelineState& state);
 void pc_gfx_set_color_update(GXBool updateEnable);
 void pc_gfx_set_alpha_update(GXBool updateEnable);
 void pc_gfx_set_alpha_compare(GXCompare comp0, u8 ref0, GXAlphaOp op, GXCompare comp1, u8 ref1);
 void pc_gfx_set_chan_ctrl(GXChannelID chan, GXBool enable, GXColorSrc ambSrc, GXColorSrc matSrc, u32 lightMask, GXDiffuseFn diffFn, GXAttnFn attnFn);
 void pc_gfx_set_chan_mat_color(GXChannelID chan, GXColor color);
+// Multiplicador global del colour de material (PLAN_COOP: tinte de P2).
+// Se aplica a cada GXSetChanMatColor mientras esté activo; 255 = sin cambio.
+void pc_gfx_set_mat_color_tint(GXColor tint);
+void pc_gfx_clear_mat_color_tint(void);
+// Multiplicador del color final de todo lo que dibuje el shader principal
+// (tinte del HUD de J2 en coop). (1,1,1) lo quita.
+void pc_gfx_set_out_tint(float r, float g, float b);
+void pc_gfx_clear_out_tint(void);
 void pc_gfx_set_chan_amb_color(GXChannelID chan, GXColor color);
 void pc_gfx_init_light_pos(void* ltObj, f32 x, f32 y, f32 z);
 void pc_gfx_init_light_dir(void* ltObj, f32 x, f32 y, f32 z);
@@ -88,6 +147,13 @@ void pc_gfx_init_light_attn(void* ltObj, f32 a0, f32 a1, f32 a2, f32 k0, f32 k1,
 void pc_gfx_init_light_attn_a(void* ltObj, f32 a0, f32 a1, f32 a2);
 void pc_gfx_init_light_attn_k(void* ltObj, f32 k0, f32 k1, f32 k2);
 void pc_gfx_init_specular_dir(void* ltObj, f32 x, f32 y, f32 z);
+// Specular instrumentation (renderer-owned): how many times the corrected
+// half-vector path ran and how many draws activated a GX_AF_SPEC COLOR1 channel.
+unsigned pc_gfx_specular_dir_calls(void);
+unsigned pc_gfx_specular_channel_draws(void);
+void pc_gfx_specular_family_scope(int active);
+unsigned pc_gfx_specular_family_draws(void);
+unsigned pc_gfx_specular_family_delta_last(void);
 void pc_gfx_load_light(void* ltObj, u32 lightMask);
 void pc_gfx_set_tev_order(GXTevStageID stage, GXTexCoordID coord, GXTexMapID map, GXChannelID chan);
 void pc_gfx_set_tev_op(GXTevStageID stage, GXTevMode mode);
@@ -107,11 +173,16 @@ void pc_gfx_set_tev_swap_mode_table(GXTevSwapSel table, GXTevColorChan red, GXTe
 // Texture Management
 void pc_gfx_init_tex_obj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap);
 
+/// Vuelca en texture_names.log el nombre tex1_* que Dolphin daría a cada
+/// textura subida (PLAN_TEXTURAS_HD fase 0). Lo activa --dump-texture-names.
+void pc_gfx_set_dump_texture_names(int enabled);
+
 /// A texture whose pixels are already RGBA, row by row, with no GameCube
 /// tiling. Nothing on the console could do this; it exists so the H4M player
 /// can hand over a finished picture instead of encoding one into a hardware
 /// format and unpicking it again with four TEV stages.
-void pc_gfx_init_tex_obj_rgba(GXTexObj* obj, void* rgba, u16 width, u16 height);
+void pc_gfx_init_tex_obj_rgba(GXTexObj* obj, void* rgba, u16 width, u16 height,
+                              GXTexWrapMode wrapS = GX_CLAMP, GXTexWrapMode wrapT = GX_CLAMP);
 void pc_gfx_init_tex_obj_ci(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITexFmt format,
                             GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap, u32 tlutName);
 void pc_gfx_init_tlut_obj(GXTlutObj* obj, void* lut, GXTlutFmt format, u16 numEntries);
@@ -136,6 +207,7 @@ void pc_gfx_push_f32(f32 val);
 void pc_gfx_position(f32 x, f32 y, f32 z);
 void pc_gfx_color(u8 r, u8 g, u8 b, u8 a);
 void pc_gfx_texcoord(f32 u, f32 v);
+void pc_gfx_normal(f32 x, f32 y, f32 z);
 void pc_gfx_end(void);
 void pc_gfx_call_display_list(const void* list, u32 nbytes);
 
@@ -193,6 +265,21 @@ void pc_gfx_set_anisotropy(int samples);
  */
 void pc_gfx_release_texture(void* gxTexObj);
 
+/// Resident-mesh cache (PLAN_RENDIMIENTO fase 1). The game flushes the CPU
+/// cache over any vertex data it rewrites, which is exactly when a mesh built
+/// from that data is stale; a heap reset means every mesh may be.
+void pc_gfx_invalidate_cpu_range(const void* addr, size_t bytes);
+void pc_gfx_invalidate_resident_meshes(void);
+/// Vertex storage the CPU rewrites every frame (P2 pose blending): drop any
+/// resident mesh built from it and never cache one that reads it again.
+void pc_gfx_mark_dynamic_vertex_range(const void* addr, size_t bytes);
+
+/// Toques sobre menús 2D: la pantalla anota su espacio de dibujo (ancho y
+/// alto de su P2DGrafContext) justo después de setPort(); un toque
+/// normalizado sobre la ventana se convierte a ese espacio.
+void pc_gfx_note_menu_tap_space(int graphWidth, int graphHeight);
+bool pc_gfx_menu_tap_to_graph(float nx, float ny, float* x, float* y);
+
 /// Live texture count, bytes held, peak bytes, and lifetime created/released.
 void pc_gfx_get_texture_stats(size_t* live, size_t* liveBytes, size_t* peakBytes,
                               size_t* created, size_t* released);
@@ -247,9 +334,32 @@ void pc_gfx_filesel_debug_note_ptcl(unsigned blendFactor, unsigned zMode, unsign
 // black while the centre is not — the failure, not the first N events.
 void pc_gfx_title_debug_probe(const char* tag);
 
+}
+// Fuera del bloque extern "C": devuelve una referencia a un tipo C++, y Clang
+// lo rechaza con enlace C (GCC sólo avisaba).
 class PcRenderPacketStore;
 PcRenderPacketStore& pc_gfx_get_packet_store();
-}
+
+// ── Capa de sprites en coordenadas de ventana ────────────────────────────────
+// Para la interfaz táctil (pc_port/touch): cuadrados con textura dibujados
+// directamente sobre el framebuffer de la ventana, después del blit del juego,
+// en píxeles de ventana con el origen arriba a la izquierda. No usa VBO ni
+// atributos: el vértice se construye en el shader.
+unsigned pc_gfx_overlay_texture_create(int width, int height, const unsigned char* rgba);
+void pc_gfx_overlay_texture_destroy(unsigned texture);
+// Prepara el estado GL (framebuffer 0, viewport de la ventana, blending).
+void pc_gfx_overlay_begin(void);
+// Dibuja `texture` en el rectángulo dado (píxeles de ventana, y hacia abajo),
+// multiplicada por el color y girada `angleRadians` sobre su centro.
+void pc_gfx_overlay_sprite(unsigned texture, float x, float y, float w, float h,
+                           float r, float g, float b, float a, float angleRadians);
+// Devuelve el estado GL al framebuffer nativo del juego.
+void pc_gfx_overlay_end(void);
+void pc_gfx_get_drawable_size(int* width, int* height);
+// Proyecta un punto en el espacio de dibujo actual del juego (matriz de
+// posición y proyección GX vigentes) a píxeles de ventana. Sirve para
+// colocar sprites de la capa sobre texto o paneles P2D. false si no se puede.
+bool pc_gfx_project_current(float x, float y, float z, float* winX, float* winY);
 #endif
 
 #endif // PC_GFX_H

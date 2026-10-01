@@ -1,0 +1,23 @@
+{
+  "schema": "p2-cave-observed-layout/1",
+  "source": "fixture",
+  "seed": 468001,
+  "cave": "forest_1",
+  "floor": 1,
+  "nodes": [
+    {"id": "seg_A", "kind": "segment", "segment_index": 0, "items": ["juji_key_fc"]},
+    {"id": "choke_water_0", "kind": "choke", "hazard": "water", "segment_index": 1},
+    {"id": "seg_B", "kind": "segment", "segment_index": 1},
+    {"id": "leaf_elec_0", "kind": "leaf", "hazard": "elec", "segment_index": 0, "items": ["treasure_elec"]},
+    {"id": "leaf_water_0", "kind": "leaf", "hazard": "water", "segment_index": 1, "items": ["treasure_water"]}
+  ],
+  "edges": [
+    ["seg_A", "choke_water_0"],
+    ["choke_water_0", "seg_B"],
+    ["seg_A", "seg_B"],
+    ["seg_A", "leaf_elec_0"],
+    ["seg_B", "leaf_water_0"]
+  ],
+  "entrance": "seg_A",
+  "hole": "seg_B"
+}

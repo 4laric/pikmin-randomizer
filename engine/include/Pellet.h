@@ -408,7 +408,7 @@ public:
 	u8 _558[0x4];                         // _558, unknown
 	PelletConfig* mConfig;                // _55C
 	f32 mMotionSpeed;                     // _560
-	int mSlotFlags[3];                    // _564
+	int mSlotFlags[4];                    // 128 physical slots; P2 Atlas declares 101.
 	u16 mCarrierCounter;                  // _570, carrying strength; attachment slots still count bodies
 	CollInfo* mPelletCollInfo;            // _574
 	SearchData mSearchData[4];            // _578
@@ -434,6 +434,13 @@ class PelletMgr : public MonoObjectMgr {
 	friend void PlayerState::UfoParts::initAnim(PelletShapeObject*); // Accesses `mUfoMotionTable`.
 
 public:
+#if defined(PIKI_PC_PORT)
+	/// Primera configuración de la lista (recorrer con mNext). Solo lectura.
+	PelletConfig* pcFirstConfig() { return static_cast<PelletConfig*>(mConfigList.mChild); }
+	/// #901 held ship part: build this pellet's shape on demand (a late
+	/// spawn of a PCT_LoadIfExists / un** part) and add it to the use list.
+	PelletShapeObject* pcEnsureShape(u32 pelletID);
+#endif
 	/**
 	 * @brief TODO
 	 */

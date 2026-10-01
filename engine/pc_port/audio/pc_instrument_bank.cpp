@@ -233,6 +233,10 @@ bool PCInstrumentBank::load(const char* bxPath) {
                 dest.percussion = true;
                 PCInstrumentOscillator envelope;
                 envelope.mode = 0;
+                // Curve 0x0E holds the CURRENT envelope value, which is 0 on a fresh
+                // attack, so a lone hold point mixed every percussion voice at gain 0
+                // (silent pluck/punch SEs). Reach full level first, then hold it.
+                envelope.attack.push_back({ 0, 0, 32767 });
                 envelope.attack.push_back({ 0x0E, 0, 32767 });
                 dest.oscillators.push_back(std::move(envelope));
                 if (!range(objectOffset, 0x408, size)) {

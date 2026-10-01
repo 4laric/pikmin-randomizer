@@ -3,6 +3,10 @@
 void pc_bbft_init(int argc, char** argv);
 bool pc_bbft_enabled();
 bool pc_bbft_hold();
+// Agent test-run policy: background never holds for focus; visible shows the window without activating it.
+bool pc_bbft_test_background();
+bool pc_bbft_test_visible();
+bool pc_bbft_focus_hold_policy(bool testBackgroundMode, bool foreground);
 void pc_bbft_update();
 void pc_bbft_warp();
 bool pc_bbft_forest_access();
@@ -24,3 +28,10 @@ bool pc_bbft_near_onion_site(int color, float x, float z, float radius);
 
 bool pc_bbft_shared_capabilities();
 bool pc_bbft_bomb_rocks();
+
+// Post-v0.1 isolated story-layout preview, never an AP session.
+int pc_pikipelago_challenge_level();
+
+bool pc_pikipelago_room_preview();
+const char* pc_pikipelago_surface_course();
+const char* pc_pikipelago_surface_stage();

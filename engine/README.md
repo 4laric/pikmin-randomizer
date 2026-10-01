@@ -1,20 +1,20 @@
-# Open Nectar — Pikmin Native PC Port
+# Open Nectar — Pikmin Native PC/Android Port
 
 <img width="2172" height="476" alt="opennectarlogo (1)" src="https://github.com/user-attachments/assets/71283101-1be5-4ca4-9b16-488320343cc8" />
 
-Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux and Windows**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
+Native, experimental, and open-source port of *Pikmin* (GameCube, 2001) for **Linux, Windows and Android**. Runs the game code directly on the host system and translates GX to OpenGL; does not use Dolphin or any emulator.
 
 This project builds upon the decompilation by [projectPiki/pikmin](https://github.com/projectPiki/pikmin) and adds a native PC port layer.
 
 ## Project Status
 
 **Functional:**
-- Native builds for Linux x86-64 and Windows x86-64, from the same source
+- Native builds for Linux x86-64 and Windows x86-64, Android from the same source
 - Most of the game playable from start to finish
 - 30, 60 or 120 FPS gameplay, selectable in-game
 - Full audio: the game's original JAudio engine, with a software DSP
 - TEV specialization for optimal performance
-- Controller, keyboard and mouse support
+- Controller, keyboard and mouse support, touch controls
 - **Both retail discs**: Pikmin USA Rev 1 and Pikmin Europe. The European disc
   carries five languages — English, French, German, Spanish and Italian — and
   the installer asks which one you want to play in
@@ -23,10 +23,15 @@ This project builds upon the decompilation by [projectPiki/pikmin](https://githu
   3D view culls to the same shape, so nothing pops in and out at the sides
 - Post-processing: antialiasing, restored fog, bloom, ambient occlusion, depth
   of field, texture filtering and colour grading — every one of them optional
+- Custom texture packs
+- **Local co-op**: Olimar and Louie, two controllers, split screen that can
+  merge into a single camera; Louie also playable in single player
+- HD character models from Pikmin 3 rips
+- Per-pixel lighting and real-time shadow maps (Off/Soft/Normal/Strong),
+  both optional
 
 **In development:**
 - Some minor graphical differences
-- Ports to other operating systems
 
 ## Play directly (without compiling)
 
@@ -77,7 +82,7 @@ Everything else — glibc, SDL2, audio libraries — travels inside the package,
 1. Extract `nectar-windows.zip` anywhere. There is no installer to run and
    nothing is written outside the folder you choose.
 2. Run `nectar-launcher.exe`.
-3. It asks for your Pikmin ISO or GCM, and then for a folder to install into.
+3. It asks for your Pikmin disc image, and then for a folder to install into.
    Any folder works.
 4. It verifies the image, extracts the assets and starts the game.
 
@@ -85,6 +90,27 @@ Installation takes a minute or two, most of it verifying that the disc image is
 intact and that every extracted file came out right. That check catches damaged
 copies and failing drives, which are the usual reason a game installs fine and
 then misbehaves later.
+
+ISO/GCM works without additional tools. For RVZ/WIA/GCZ, the launcher uses
+**DolphinTool.exe** on Windows or **dolphin-tool** on Linux from an existing
+[Dolphin installation](https://dolphin-emu.org/download/). It looks beside the
+launcher and on PATH, then offers a file picker if the tool was not found.
+Keep the tool with the rest of its Dolphin installation. It is not downloaded
+or included by Open Nectar.
+
+Conversion needs about **1.4 GiB extra free space in your system's temporary
+folder**. The source image is unchanged; a separate temporary ISO is verified,
+extracted, and removed when the attempt finishes. An interrupted conversion is
+never reused. Forced termination may leave a `nectar-disc-*` temporary folder;
+remove it only after the launcher and converter have stopped.
+
+The progress display identifies conversion, disc verification, extraction and
+finishing separately. If setup fails, **Back to setup** keeps your selections
+so you can correct the image, converter or destination. Temporary file locks
+at the final extraction step are retried for up to 2.5 seconds; persistent
+failures show the preserved extraction path instead of silently starting over.
+
+Once the game starts, **F1** opens graphics, controls and gameplay settings.
 
 **Playing afterwards**
 
@@ -104,6 +130,9 @@ nectar-launcher.exe --rom C:\path\to\Pikmin.iso --install-dir C:\Games\OpenNecta
 
 Add `--extract-only` to install without launching the game afterwards. This
 works over Remote Desktop and on machines with no desktop session.
+For a compressed image, add `--dolphin-tool C:\path\to\DolphinTool.exe` if
+the converter is not beside the launcher or on PATH. The same option accepts
+the path to `dolphin-tool` on Linux.
 
 **The console window is intentional**
 
@@ -133,11 +162,41 @@ To move the installation elsewhere, copy the folder. To remove it, delete it.
 | Closes instantly, no window | `SDL2.dll` is missing from the folder, or Windows blocked it |
 | "Could not initialize window/OpenGL" | Graphics drivers too old, or the generic Windows display driver |
 | Starts but finds no data | Run it from the installation folder, not from elsewhere |
-| The image is rejected | It must be Pikmin USA Rev 1 or Pikmin Europe, uncompressed. Convert RVZ/WIA/GCZ to ISO with `dolphin-tool` |
+| The image is rejected | It must be Pikmin USA Rev 1 or Pikmin Europe. RVZ/WIA/GCZ also needs the Dolphin converter; ISO/GCM does not |
+| Disc conversion fails | Check the temporary folder's free space and select the converter from a complete Dolphin installation, or use ISO/GCM |
+
+### Android
+
+**What you need**
+
+- Android 10 or newer on a 64-bit (arm64) device with OpenGL ES 3.0 — in
+  practice, any phone or tablet from 2019 on
+- About 1 GB free in internal storage
+- Your disc image in ISO/GCM. Compressed images (RVZ/WIA/GCZ) are not
+  supported on Android: convert them to ISO with Dolphin on a computer first
+
+**Installing**
+
+1. Download `open_nectar_<version>.apk` from [Releases](../../releases) and
+   open it on the device (from the browser's downloads or the Files app).
+   Android asks once to allow installs from that app.
+2. Open Nectar. The first screen asks for your disc image: pick it with the
+   system file picker from wherever it is (internal storage, SD card, USB).
+3. It verifies the image, extracts the assets into the app's private storage
+   and starts the game. From then on the app opens straight into the game.
+
+One APK carries both the USA Rev. 1 and European builds; the installer picks
+the one your disc needs. Touch controls are drawn on screen (every button
+the game mentions appears in the layout, and the **layout** button lets you
+move and resize them); Bluetooth and USB controllers work too. The
+**settings** button opens the same menu as F1 on desktop.
+
+To update, install the new APK over the old one — assets and saves stay.
+Uninstalling deletes them.
 
 ### Both platforms
 
-The launcher asks for your ISO/GCM, extracts the assets it needs and starts the
+The launcher asks for your disc image, extracts the assets it needs and starts the
 game. Your disc image is never copied or modified.
 
 Supported discs:
@@ -243,6 +302,28 @@ Or, for development directly against a checked-out asset tree in `./assets/`:
 ```sh
 ./build/bin/nectar
 ```
+
+### Android (APK)
+
+The Android project lives in `android/` and builds the game through the same
+root `CMakeLists.txt` (both disc versions, GLES, arm64 only). It needs Android
+Studio's JDK and SDK with NDK 28 and CMake 3.22; `android/local.properties`
+points at the SDK.
+
+```sh
+cd android
+JAVA_HOME=$HOME/Android/jdk ./gradlew assembleDebug   # debug-signed, for adb
+```
+
+A release APK is signed with the project key, which is kept outside the
+repository (see `packaging/android/README-firma.txt`). With the key in place:
+
+```sh
+./packaging/android/package-apk.sh
+```
+
+produces `packaging/android/out/open_nectar_<version>.apk`, its SHA-256 and
+the README that goes with it.
 
 ## Project structure
 
@@ -398,7 +479,11 @@ disc. It takes effect the next time you start the game.
 The port supports any SDL2-compatible controller:
 - Xbox, PlayStation, Nintendo Switch Pro
 - Generic controllers with automatic mapping
-- Customizable configuration from the F1 menu
+- Customizable configuration from the F1 menu (Controls > Gamepad Bindings). To
+  leave an action unbound, select it and press Delete (keyboard), X (gamepad) or
+  the "Clear binding" button (mouse and touch); Left/Right restores the default.
+  A remapped or cleared L/R no longer gets input from its analog trigger.
+- Pikmin colour to throw: D-pad left / right
 - Vibration supported where available
 
 ### Port value-added features
@@ -447,6 +532,7 @@ PIKMIN_PROJ_DEBUG=1          # One frame's projections, once a second
 PIKMIN_MENU_PILLARBOX=1      # Menus boxed in 4:3 instead of widescreen
 NECTAR_LANGUAGE=es           # Language (European disc), overrides the setting
 NECTAR_NO_PRIME=1            # Do not ask for the dedicated GPU
+NECTAR_PRIME_EGL=1           # Also pin EGL to NVIDIA (can fail on Wayland)
 ```
 
 The game binary also accepts `--audio-self-test`, which walks scenes, stages,

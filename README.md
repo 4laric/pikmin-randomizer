@@ -2,6 +2,10 @@
 
 Use **F1 > Mods > Disable Tutorials > On**, then **Save**, to skip informational hints including nectar/flower, bombs, capacity and carry routes. On by default in this fork; saved Off choices are respected. [Details and validation](docs/DISABLE_TUTORIALS.md).
 
+## Optional Whistle Pluck (#452)
+
+Enable **F1 → Mods → Whistle Pluck**, then return and select **Save**. Off by default. A whistle plucks nearby grounded sprouts with the native self-unbury animation; holding brings them up at least 80 ms apart, and releasing stops further plucks. Color, maturity and experimental Purple/White identity are preserved, with normal squad joining and population limits. See [behavior and verification](docs/WHISTLE_PLUCK.md). Requires the updated native executable; no seed or save migration. In new AP seeds it is also an item: while the seed carries a **Whistle Pluck** item, the ability unlocks when that item arrives and the Mods setting is ignored.
+
 # Pikipelago
 
 Experimental standalone and Archipelago randomizer for Pikmin 1, built on the Open Nectar PC port. It randomizes the starting area and color, Pikmin stats and enemies, and turns exploration, population milestones, bestiary deliveries and structure completion into checks; new seeds contain 30 Ship Repairs, 25 of which unlock the Emperor Bulblax finale that ends the game.
@@ -106,7 +110,10 @@ YAML options for the `Pikmin Randomizer` game. Defaults are those of the .apworl
 | `death_link_pikmin` | DeathLink unit: deaths per outgoing link and casualties per received link, 1 to 100. | `10` |
 | `bomb_trap_weight` | Filler weight for Bomb Ambush: five lit bomb rocks in a ring around Olimar, classified as a trap. 0 disables. | `0` |
 | `progg_trap_weight` | Filler weight for Smoky Progg Ambush: spawns one native Smoky Progg nearby, classified as a trap. 0 disables. | `0` |
-| `bomb_rock_weight` | Filler weight for Bomb Rock Delivery (3); Pikmin Delivery / Flower Shower weights are 2 / 1. 0 disables. | 1 |
+| `bomb_rock_weight` | Filler weight for Bomb Rock Delivery (3); Pikmin Delivery weight is 2. 0 disables. | 1 |
+| `progressive_day_length` | Progressive Day Length items in the pool (0–10). Each lengthens the playable day by `day_length_increment` percent of a normal day; a mid-day receipt slows the clock without moving it. Useful, not in logic. The smallest check set fits 8. | 0 |
+| `day_length_increment` | Percent of a normal day added per Progressive Day Length item (10–100, multiple of 5). | 25 |
+| `whistle_pluck_item` | Place one Whistle Pluck item. Once received, holding the whistle over buried sprouts plucks them one after another. Useful, not in logic; takes one filler slot. CLI: `--whistle-pluck-item`. | on |
 | `campaign_enemies` | Campaign-wide ground, frog, flying, small-enemy and aquatic pools with a Teki miniboss in Hope, Navel and Spring. Overrides the older enemy toggles. | false |
 | `enemy_shuffle` | Seeded compatible enemy-family swaps. | false |
 | `per_spawn_enemies` | Individual adult Bulborb/Bulbear assignments at 15 named points; overrides `enemy_shuffle`. | false |
@@ -130,7 +137,7 @@ Controls and quality-of-life additions:
 - Pikmin attacking a Pellet Posy wait for it to die and carry the dropped pellet.
 - A progress overlay shows current status, including whistle and movement percentages and each color's stats once its Onion is known.
 
-Reward items: Ship Repair (30 in the pool, 25 required), Onion unlocks for the other colors, area access items, Flarlic (+10 field capacity each, up to 100), Pikmin Delivery (10 leaf Pikmin to the smallest unlocked Onion), Flower Shower (five drinkable nectar drops near Olimar), Progressive Whistle Radius (two +25% steps), Progressive Olimar Speed (two +25% steps to movement and plucking), Bomb Rock Delivery (three loose bombs near a landing Onion), the optional Bomb Ambush (five lit bombs around Olimar) and Smoky Progg Ambush traps, and per-color stat upgrades. Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end.
+Reward items: Ship Repair (30 in the pool, 25 required), Onion unlocks for the other colors, area access items, Flarlic (+10 field capacity each, up to 100), Pikmin Delivery (10 leaf Pikmin to the smallest unlocked Onion), Progressive Red/Yellow/Blue Maturity (two steps each: every Pikmin of that color, on the field or in the Onion, grows to bud then flower; replaces Flower Shower in new seeds, which keep its item ID for older ones), optional Progressive Day Length, Whistle Pluck (unlocks plucking sprouts by holding the whistle; on by default in AP seeds), Progressive Whistle Radius (two +25% steps), Progressive Olimar Speed (two +25% steps to movement and plucking), Bomb Rock Delivery (three loose bombs near a landing Onion), the optional Bomb Ambush (five lit bombs around Olimar) and Smoky Progg Ambush traps, and per-color stat upgrades. Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end.
 
 Check categories: exploration (area access and Onion discovery), population milestones at 10/25/50/100 per color (field, stored and sprouts of that color), bestiary corpse deliveries to an Onion (Puffy Blowhog by defeat, Clamclamp by pearl; each species once), and with permanent checks the completion of individual walls, bridges and pushable boxes. Structure work uses each Pikmin's actual damage and attack rate, so stat upgrades speed it up.
 
@@ -191,3 +198,17 @@ For AP, correct the server/password and use **Reconnect** to keep the current ga
 ### Finding settings and understanding speed
 
 Press **F1** while playing for game settings (graphics, audio and controls); **F8** opens the tracker. The launcher shows unusual starting-color stats before launch. In the bundled example seed, Red Pikmin start with 50% movement and 25% damage: those are randomized seed rules, not an overall game-speed setting. **New solo run** uses standard starting stats.
+
+
+### Faithful to Prerelease trap
+
+Set `prerelease_trap_weight: 1` (0–10, default 0) in YAML for new seeds, or pass `--prerelease-trap-weight 1` to the seed CLI. This optional filler trap replaces every active geyser and Candypop Bud in the loaded area with temporary, no-drop Beady Long Legs for 60 seconds of active gameplay. Pauses and cutscenes freeze the timer. Original fixtures return on expiry, saving, or day end, even if a temporary spider was killed. Receipts wait for an eligible area and an empty bud; additional traps queue. It does not change checks or progression requirements. Requires APWorld 0.31.0 and the matching native build.
+
+## Experimental Pikmin 2 room (outside v0.1)
+
+See [the room preview guide](docs/PIKMIN2_ROOM_PREVIEW.md) for the isolated content-conversion prototype and local-disc workflow. It runs one converted cave room in Open Nectar and does not add caves to AP seeds.
+
+The experiment now includes [Research Pod economy](docs/PIKMIN2_RESEARCH_POD.md) and an opt-in [Purple Pikmin preview](docs/PIKMIN2_PURPLE_PREVIEW.md), with Violet conversion and a heavy treasure. These disposable previews do not yet support cave descent, ship storage or squad saves.
+
+
+P2 review: [implementation fan-out and current fixtures](docs/PIKMIN2_IMPLEMENTATION_FANOUT.md); [integrated family evidence](docs/PIKMIN2_INTEGRATION_422.md).

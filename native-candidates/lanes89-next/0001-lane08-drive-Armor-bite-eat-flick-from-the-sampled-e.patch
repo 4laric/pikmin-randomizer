@@ -1,0 +1,557 @@
+From c2ce921680e43f3c1705ce23e5e8bad0a1685bee Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:18:42 -0400
+Subject: [PATCH 1/5] lane08: drive Armor bite/eat/flick from the sampled event
+ clock (#431, #165)
+
+---
+ pc_port/pc_p2_armor.cpp        |  83 ++++++++------
+ pc_port/pc_p2_armor_events.h   | 147 ++++++++++++++++++++++++
+ tools/test_p2_armor_events.cpp | 203 +++++++++++++++++++++++++++++++++
+ 3 files changed, 398 insertions(+), 35 deletions(-)
+ create mode 100644 pc_port/pc_p2_armor_events.h
+ create mode 100644 tools/test_p2_armor_events.cpp
+
+diff --git a/pc_port/pc_p2_armor.cpp b/pc_port/pc_p2_armor.cpp
+index 8ea0e1e9..3845d750 100644
+--- a/pc_port/pc_p2_armor.cpp
++++ b/pc_port/pc_p2_armor.cpp
+@@ -8,15 +8,19 @@
+ //
+ // Port adaptations (recorded, not retail-faithful):
+ //   * The P2 mouth-slot swallow is resolved on the P1 host as an explicit
+-//     capture within the source attack sweep radius at the attack2 motion-frame
+-//     window (17<frame<27), then a single InteractKill at the source eat event.
+-//     Exactly-once per bite.
++//     capture within the source attack sweep radius at the attack2 source
++//     damage event (frame 18), then a single InteractKill at the source eat
++//     event (frame 60); flick fires on the flick source event (frame 39).
++//     Timing is delivered by the authoritative sampled clock (#431), so the
++//     effects fire exactly once across skipped frames, pause, interruption and
++//     actor-address reuse. Exactly-once per bite.
+ //   * The source `damageCallBack` part-id rule (`dmg1`/bittered) is not
+ //     representable on the P1 host; damage is accepted while surfaced.
+ //   * View angle is a full hemisphere (fp13 absent from the Armor general block);
+ //     turn rate and flick radius are documented port adaptations.
+ // No other lane's module is modified; every hook is a no-op for unregistered actors.
+ #include "pc_p2_armor.h"
++#include "pc_p2_armor_events.h"
+ #include "teki.h"
+ #include "Interactions.h"
+ #include "Piki.h"
+@@ -83,6 +87,7 @@ struct Clip {
+     float duration = 1.0f;
+     bool loop = false;
+     std::vector<std::pair<int, int>> events;
++    p2sampled::Clip sampled;
+ };
+ 
+ struct Armor {
+@@ -91,7 +96,7 @@ struct Armor {
+     float heading = 0.0f;
+     Vector3f home;
+     Piki* captured = nullptr;
+-    std::set<int> firedEvents;
++    p2armorevents::Receiver events;
+     std::string clip = "appear";
+     float phase = 0.0f;
+     bool biteLogged = false;
+@@ -181,9 +186,14 @@ void doFlick(BTeki* a, Armor& s) {
+ void enter(Armor& s, State state, const char* clip) {
+     s.state = state;
+     s.stateTime = 0.0f;
+-    s.firedEvents.clear();
+     s.biteLogged = false;
+     if (clip) s.clip = clip;
++    auto it = clips.find(s.clip);
++    if (it != clips.end()) {
++        s.events.start(it->second.sampled, it->second.name);
++    } else {
++        s.events.cancel();
++    }
+ }
+ void walkTo(BTeki* a, Armor& s, const Vector3f& target, float dt) {
+     const Vector3f pos = a->getPosition();
+@@ -204,7 +214,6 @@ void stop(BTeki* a) {
+     a->mVelocity.x = 0.0f;
+     a->mVelocity.z = 0.0f;
+ }
+-float motionFrame(const Armor& s) { return s.stateTime * 30.0f; }
+ 
+ void setPhase(Armor& s) {
+     if (s.state == ARMOR_STAY) { s.phase = 0.0f; return; }
+@@ -282,6 +291,11 @@ void pc_p2_armor_setup() {
+                         clip.name = name;
+                         clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
+                         clip.loop = (name == "move");
++                        p2armorevents::Row row;
++                        row.name = name;
++                        row.sourceFrames = frames > 0 ? int(frames) : 0;
++                        row.poseCount = poses;
++                        row.loop = clip.loop;
+                         if (events != "-") {
+                             size_t start = 0;
+                             while (start < events.size()) {
+@@ -289,13 +303,16 @@ void pc_p2_armor_setup() {
+                                 const std::string pair = events.substr(start, comma - start);
+                                 const size_t colon = pair.find(':');
+                                 if (colon != std::string::npos) {
+-                                    clip.events.emplace_back(std::atoi(pair.substr(0, colon).c_str()),
+-                                                             std::atoi(pair.substr(colon + 1).c_str()));
++                                    const int eventFrame = std::atoi(pair.substr(0, colon).c_str());
++                                    const std::string key = pair.substr(colon + 1);
++                                    clip.events.emplace_back(eventFrame, std::atoi(key.c_str()));
++                                    row.events.push_back(p2sampled::Event{eventFrame, key});
+                                 }
+                                 if (comma == std::string::npos) break;
+                                 start = comma + 1;
+                             }
+                         }
++                        clip.sampled = p2armorevents::makeClip(row);
+                         clips[name] = clip;
+                     }
+                 } else {
+@@ -331,6 +348,7 @@ void pc_p2_armor_setup() {
+             std::abort();
+         }
+         Armor& s = actors[static_cast<PelletView*>(actor)];
++        s = Armor();  // reject stale clock/capture state on actor-address reuse
+         s.home = actor->getPosition();
+         s.heading = actor->getDirection();
+         actor->mHealth = LIFE;
+@@ -419,13 +437,15 @@ void pc_p2_armor_update(BTeki* actor) {
+     }
+     case ARMOR_ATTACK2: {
+         stop(actor);
+-        const float frame = motionFrame(s);
+-        if (frame > 17.0f && frame < 27.0f && !s.captured) {
+-            Piki* piki = nearestPiki(pos, ATTACK_RANGE);
+-            if (piki) {
+-                s.captured = piki;
+-                std::printf("P2_ARMOR_BITE generator=%u frame=%.1f pikmin=1\n", generator, frame);
+-                std::fflush(stdout);
++        for (const p2armorevents::Dispatched& event : s.events.advance(dt)) {
++            if (event.action == p2armorevents::Action::Bite && !s.captured) {
++                Piki* piki = nearestPiki(pos, ATTACK_RANGE);
++                if (piki) {
++                    s.captured = piki;
++                    std::printf("P2_ARMOR_BITE generator=%u frame=%d pikmin=1\n",
++                                generator, event.frame);
++                    std::fflush(stdout);
++                }
+             }
+         }
+         if (s.stateTime >= clipDuration("attack2")) {
+@@ -441,19 +461,14 @@ void pc_p2_armor_update(BTeki* actor) {
+     }
+     case ARMOR_EAT: {
+         stop(actor);
+-        auto clip = clips.find("eat");
+-        if (clip != clips.end()) {
+-            for (const auto& event : clip->second.events) {
+-                if (event.second == 2 && !s.firedEvents.count(event.first)
+-                        && s.stateTime >= event.first / 30.0f) {
+-                    s.firedEvents.insert(event.first);
+-                    if (s.captured && s.captured->isAlive()) {
+-                        s.captured->stimulate(InteractKill(actor, 0));
+-                        std::printf("P2_ARMOR_EAT generator=%u pikmin=1\n", generator);
+-                        std::fflush(stdout);
+-                    }
+-                    s.captured = nullptr;
++        for (const p2armorevents::Dispatched& event : s.events.advance(dt)) {
++            if (event.action == p2armorevents::Action::Eat) {
++                if (s.captured && s.captured->isAlive()) {
++                    s.captured->stimulate(InteractKill(actor, 0));
++                    std::printf("P2_ARMOR_EAT generator=%u pikmin=1\n", generator);
++                    std::fflush(stdout);
+                 }
++                s.captured = nullptr;
+             }
+         }
+         if (s.stateTime >= clipDuration("eat")) {
+@@ -465,14 +480,12 @@ void pc_p2_armor_update(BTeki* actor) {
+     }
+     case ARMOR_FLICK: {
+         stop(actor);
+-        auto clip = clips.find("flick");
+-        const int flickFrame = (clip != clips.end() && !clip->second.events.empty())
+-                                   ? clip->second.events.front().first : 14;
+-        if (!s.firedEvents.count(flickFrame) && s.stateTime >= flickFrame / 30.0f) {
+-            s.firedEvents.insert(flickFrame);
+-            doFlick(actor, s);
+-            std::printf("P2_ARMOR_FLICK generator=%u frame=%d\n", generator, flickFrame);
+-            std::fflush(stdout);
++        for (const p2armorevents::Dispatched& event : s.events.advance(dt)) {
++            if (event.action == p2armorevents::Action::Flick) {
++                doFlick(actor, s);
++                std::printf("P2_ARMOR_FLICK generator=%u frame=%d\n", generator, event.frame);
++                std::fflush(stdout);
++            }
+         }
+         if (s.stateTime >= clipDuration("flick")) {
+             std::printf("P2_ARMOR_STATE generator=%u state=move\n", generator);
+diff --git a/pc_port/pc_p2_armor_events.h b/pc_port/pc_p2_armor_events.h
+new file mode 100644
+index 00000000..1645ff92
+--- /dev/null
++++ b/pc_port/pc_p2_armor_events.h
+@@ -0,0 +1,147 @@
++#pragma once
++// Lane-08 reference consumer: drive the Cloaking Burrow-nit (Armor, EnemyID 15)
++// gameplay effects from the authoritative #431 sampled-animation clock instead
++// of a per-state wall-time counter. See docs/PIKMIN2_SAMPLED_CLOCK_EVENTS.md and
++// docs/PIKMIN2_ARMOR_EVENT_CLOCK.md.
++//
++// The source `enemyanimmgr.txt` records frame events with a type: 0/1 are
++// visual loop bounds and 2 is the damage/drop event (see
++// docs/PIKMIN2_GROUND_INVERTEBRATE_ASSETS.md:73). Armor authors exactly one
++// type-2 event in each of attack2 (frame 18), eat (frame 60) and flick
++// (frame 39), which this receiver maps to the family's bite, eat-kill and
++// flick actions. Timing comes only from crossed events, never the displayed
++// pose, so skipped frames, pause, interruption and actor recycling cannot
++// duplicate or drop the effect.
++#include "pc_p2_sampled_clock.h"
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++namespace p2armorevents {
++
++// One authored p2-ground-bank.txt clip row: source length, uniform pose count,
++// loop flag and the "frame:type" events. The bank is count-only, so the clock
++// keeps uniform sampling and Clock::poseIndex() reproduces the legacy selector.
++struct Row {
++    std::string name;
++    int sourceFrames = 0;
++    int poseCount = 0;
++    bool loop = false;
++    std::vector<p2sampled::Event> events;
++};
++
++inline p2sampled::Clip makeClip(const Row& row) {
++    p2sampled::Clip clip;
++    clip.poses.name = row.name;
++    clip.poses.count = row.poseCount > 0 ? row.poseCount : 1;
++    int duration = row.sourceFrames;
++    if (duration < 2) {
++        duration = row.poseCount >= 2 ? row.poseCount : 2;
++    }
++    clip.poses.duration = duration;
++    clip.events = row.events;
++    clip.loopBegin = 0.0;
++    clip.loopEnd = row.loop ? double(duration) : -1.0;
++    return clip;
++}
++
++// Gameplay roles carried by a source type-2 animation event.
++enum class Action { None, Bite, Eat, Flick };
++
++inline Action actionFor(const std::string& clip, const std::string& key) {
++    if (key != "2") {
++        return Action::None;
++    }
++    if (clip == "attack2") {
++        return Action::Bite;
++    }
++    if (clip == "eat") {
++        return Action::Eat;
++    }
++    if (clip == "flick") {
++        return Action::Flick;
++    }
++    return Action::None;
++}
++
++struct Dispatched {
++    Action action = Action::None;
++    int frame = 0;
++    std::uint64_t cycle = 0;
++};
++
++// One actor's authoritative clock. start() on a clip change bumps the clock
++// generation, cancelling the previous clip's outstanding events; advance()
++// returns every crossed gameplay action exactly once per crossing.
++class Receiver {
++public:
++    bool start(const p2sampled::Clip& clip, const std::string& clipName) {
++        clip_ = clipName;
++        active_ = clock_.start(clip);
++        return active_;
++    }
++
++    void cancel() {
++        active_ = false;
++        clip_.clear();
++        clock_.cancel();
++    }
++
++    bool active() const { return active_; }
++    const std::string& clip() const { return clip_; }
++    std::uint64_t generation() const { return clock_.generation(); }
++    double frame() const { return clock_.frame(); }
++    void pause(bool paused) { clock_.pause(paused); }
++
++    // Advance by `dtSeconds` of simulation time at `fps` source frames/second.
++    // Non-positive deltas and paused clocks consume nothing. A budget rejection
++    // (too many wraps in one call) deactivates the clock rather than emitting a
++    // partial event set.
++    std::vector<Dispatched> advance(double dtSeconds, double fps = 30.0) {
++        std::vector<Dispatched> out;
++        if (!active_ || !(dtSeconds > 0.0) || !(fps > 0.0)) {
++            return out;
++        }
++        p2sampled::Batch batch = clock_.advance(dtSeconds * fps);
++        if (!batch) {
++            active_ = false;
++            return out;
++        }
++        for (const p2sampled::Occurrence& event : batch.events) {
++            const Action action = actionFor(clip_, event.key);
++            if (action != Action::None) {
++                Dispatched dispatched;
++                dispatched.action = action;
++                dispatched.frame = event.frame;
++                dispatched.cycle = event.cycle;
++                out.push_back(dispatched);
++            }
++        }
++        return out;
++    }
++
++private:
++    p2sampled::Clock clock_;
++    std::string clip_;
++    bool active_ = false;
++};
++
++// Build the source Armor event table used by the arena bank. Kept here so the
++// native consumer and its standalone probe share one authoritative definition.
++inline std::vector<Row> armorRows() {
++    return {
++        {"dead", 125, 2, false, {{17, "2"}}},
++        {"appear", 60, 2, false, {{15, "2"}, {30, "2"}, {45, "2"}}},
++        {"dive", 40, 2, false, {{15, "2"}}},
++        {"move", 20, 2, true, {{0, "0"}, {19, "1"}}},
++        {"attack1", 20, 2, false, {{15, "2"}}},
++        {"attack2", 40, 2, false, {{12, "0"}, {14, "1"}, {18, "2"}, {22, "3"}}},
++        {"eat", 65, 2, false, {{60, "2"}}},
++        {"flick", 60, 2, false, {{39, "2"}}},
++        {"attack_fail", 10, 2, false, {}},
++        {"carry", 40, 2, false, {{10, "0"}, {29, "1"}}},
++    };
++}
++
++}  // namespace p2armorevents
+diff --git a/tools/test_p2_armor_events.cpp b/tools/test_p2_armor_events.cpp
+new file mode 100644
+index 00000000..35de5e1f
+--- /dev/null
++++ b/tools/test_p2_armor_events.cpp
+@@ -0,0 +1,203 @@
++// Standalone probe for the lane-08 Armor event-clock migration (#431).
++//
++// Build: g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_armor_events.cpp -o p2_armor_events.exe
++//
++// Proves that the Cloaking Burrow-nit (Armor) bite / eat-kill / flick effects are
++// delivered from the authoritative sampled-animation clock exactly once across
++// steady stepping, skipped frames, clip loops, pause, mid-clip interruption and
++// actor-address reuse. No engine, GL or arena is required.
++#include "../pc_port/pc_p2_armor_events.h"
++
++#include <cstdio>
++#include <map>
++#include <string>
++#include <vector>
++
++namespace {
++
++int failures = 0;
++
++bool check(bool ok, const char* what) {
++    if (!ok) {
++        std::fprintf(stderr, "FAIL %s\n", what);
++        ++failures;
++    }
++    return ok;
++}
++
++using p2armorevents::Action;
++using p2armorevents::Dispatched;
++using p2armorevents::Receiver;
++
++std::map<std::string, p2sampled::Clip> armorBank() {
++    std::map<std::string, p2sampled::Clip> bank;
++    for (const p2armorevents::Row& row : p2armorevents::armorRows()) {
++        p2sampled::Clip clip = p2armorevents::makeClip(row);
++        if (!clip.valid()) {
++            std::fprintf(stderr, "FAIL invalid armor clip: %s\n", row.name.c_str());
++            ++failures;
++        }
++        bank[row.name] = clip;
++    }
++    return bank;
++}
++
++std::size_t count(const std::vector<Dispatched>& out, Action action) {
++    std::size_t n = 0;
++    for (const Dispatched& event : out) {
++        if (event.action == action) {
++            ++n;
++        }
++    }
++    return n;
++}
++
++std::vector<Dispatched> step(Receiver& receiver, double frames, double fps = 30.0) {
++    return receiver.advance(frames / fps, fps);
++}
++
++// Steady one-frame stepping must deliver the bite once at the source frame.
++void testSteadyBite() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("attack2"), "attack2"), "attack2 start");
++
++    std::vector<Dispatched> all;
++    for (int frame = 0; frame < 40; ++frame) {
++        for (const Dispatched& event : step(receiver, 1.0)) {
++            all.push_back(event);
++        }
++    }
++    check(count(all, Action::Bite) == 1, "steady: exactly one bite");
++    check(!all.empty() && all.front().frame == 18, "steady: bite at source frame 18");
++    check(receiver.generation() == 1, "steady: single generation");
++}
++
++// A frame skip that jumps straight past the bite frame must not lose it.
++void testFrameSkip() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("attack2"), "attack2"), "skip attack2 start");
++
++    std::vector<Dispatched> out = step(receiver, 1.0);
++    check(count(out, Action::Bite) == 0, "skip: no bite before the event frame");
++    out = step(receiver, 39.0);  // one 39-frame jump from frame 1 past frame 18
++    check(count(out, Action::Bite) == 1, "skip: bite delivered once across a large jump");
++    check(!out.empty() && out.front().frame == 18, "skip: reported source frame 18");
++}
++
++// Eat-kill after a skipped attack2 must still be exactly once.
++void testEatExactlyOnce() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("eat"), "eat"), "eat start");
++    std::vector<Dispatched> out = step(receiver, 200.0);
++    check(count(out, Action::Eat) == 1, "eat: once across a huge skip");
++    check(!out.empty() && out.front().frame == 60, "eat: source frame 60");
++    out = step(receiver, 200.0);
++    check(count(out, Action::Eat) == 0, "eat: one-shot does not refire");
++}
++
++// A looping clip fires its event once per cycle across continuous stepping.
++void testLoopCycle() {
++    p2armorevents::Row row;
++    row.name = "attack2";
++    row.sourceFrames = 10;
++    row.poseCount = 2;
++    row.loop = true;
++    row.events = {{4, "2"}};
++    Receiver receiver;
++    check(receiver.start(p2armorevents::makeClip(row), "attack2"), "loop start");
++
++    std::size_t fired = 0;
++    for (int cycle = 0; cycle < 5; ++cycle) {
++        fired += count(step(receiver, 10.0), Action::Bite);
++    }
++    check(fired == 5, "loop: one event per cycle over five cycles");
++
++    // Wrap with a single large advance: 30 frames == 3 cycles -> 3 events.
++    Receiver jumping;
++    check(jumping.start(p2armorevents::makeClip(row), "attack2"), "loop jump start");
++    check(count(step(jumping, 30.0), Action::Bite) == 3,
++          "loop: one event per wrap across a skipped-cycles advance");
++}
++
++// Pause freezes the clock and must not accumulate catch-up.
++void testPause() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("flick"), "flick"), "pause flick start");
++    receiver.pause(true);
++    std::vector<Dispatched> out = step(receiver, 120.0);
++    check(out.empty(), "pause: no event while paused");
++    check(receiver.frame() == 0.0, "pause: clock frame holds");
++    receiver.pause(false);
++    out = step(receiver, 39.0);
++    check(count(out, Action::Flick) == 1, "pause: flick fires once after resume");
++}
++
++// Interrupting attack2 before its event discards the pending bite; the new clip
++// fires its own event, and restarting attack2 fires a fresh single bite.
++void testInterruption() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("attack2"), "attack2"), "interrupt attack2 start");
++    check(count(step(receiver, 6.0), Action::Bite) == 0, "interrupt: no early bite");
++
++    check(receiver.start(bank.at("eat"), "eat"), "interrupt into eat");
++    std::vector<Dispatched> out = step(receiver, 65.0);
++    check(count(out, Action::Bite) == 0, "interrupt: pending bite discarded");
++    check(count(out, Action::Eat) == 1, "interrupt: eat delivered once");
++
++    Receiver restarted;
++    check(restarted.start(bank.at("attack2"), "attack2"), "re-enter attack2");
++    check(count(step(restarted, 40.0), Action::Bite) == 1, "interrupt: new attack bites once");
++}
++
++// Reusing a receiver for a recycled actor address must not replay old events.
++void testAddressReuse() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("attack2"), "attack2"), "reuse first start");
++    const std::uint64_t first = receiver.generation();
++    check(count(step(receiver, 40.0), Action::Bite) == 1, "reuse first bite");
++
++    // Recycled actor: start() again (same address) with no forget in between.
++    check(receiver.start(bank.at("attack2"), "attack2"), "reuse second start");
++    check(receiver.generation() > first, "reuse: generation advanced");
++    check(count(step(receiver, 15.0), Action::Bite) == 0, "reuse: no stale bite replay");
++    check(count(step(receiver, 25.0), Action::Bite) == 1, "reuse: fresh bite once");
++}
++
++// Visual loop-bound events (types 0/1/3) never map to gameplay actions.
++void testVisualEventsIgnored() {
++    const auto bank = armorBank();
++    Receiver receiver;
++    check(receiver.start(bank.at("move"), "move"), "move start");
++    std::vector<Dispatched> out;
++    for (int i = 0; i < 10; ++i) {
++        for (const Dispatched& event : step(receiver, 4.0)) {
++            out.push_back(event);
++        }
++    }
++    check(out.empty(), "visual-only loop emits no gameplay action");
++}
++
++}  // namespace
++
++int main() {
++    testSteadyBite();
++    testFrameSkip();
++    testEatExactlyOnce();
++    testLoopCycle();
++    testPause();
++    testInterruption();
++    testAddressReuse();
++    testVisualEventsIgnored();
++    if (failures == 0) {
++        std::printf("PASS p2_armor_events\n");
++        return 0;
++    }
++    std::fprintf(stderr, "FAIL p2_armor_events: %d failures\n", failures);
++    return 1;
++}
+-- 
+2.55.0.windows.3
+

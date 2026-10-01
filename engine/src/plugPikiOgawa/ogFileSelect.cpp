@@ -1,4 +1,5 @@
 #include "zen/ogFileSelect.h"
+#include <algorithm>
 #include "DebugLog.h"
 #include "Graphics.h"
 #include "P2D/Graph.h"
@@ -18,6 +19,10 @@
 #include "P2D/Pane.h"
 #include "settings/pc_settings.h"
 #include "pc_gfx.h"
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
+#include "Dolphin/pad.h"
+#endif
 
 static f32 filesel_fx_x(int slot, P2DPane* pane)
 {
@@ -56,7 +61,7 @@ public:
 protected:
 	virtual void drawSelf(int x, int y, immut Matrix4f* view)
 	{
-		if (!pc_permadeath_slot(mSlot)) {
+		if (!pc_permadeath_slot(mSlot) && !pc_hardmode_slot(mSlot)) {
 			return;
 		}
 		P2DPicture::drawSelf(x, y, view);
@@ -69,7 +74,12 @@ protected:
 		P2DPrint print(&mFont, 0, 0, Colour(255, 255, 255, getAlpha()), Colour(255, 230, 180, getAlpha()));
 		print.setFontSize(15, 24);
 		print.locate(x, y);
-		print.printReturn("PERMADEATH", getWidth(), getHeight(), TBOXHBIND_Center, TBOXVBIND_Center, 0, 0);
+		const char* label = "HARD";
+		if (pc_permadeath_slot(mSlot) && pc_hardmode_slot(mSlot))
+			label = "HARD + PERMA";
+		else if (pc_permadeath_slot(mSlot))
+			label = "PERMADEATH";
+		print.printReturn(label, getWidth(), getHeight(), TBOXHBIND_Center, TBOXVBIND_Center, 0, 0);
 	}
 
 private:
@@ -162,10 +172,15 @@ void zen::ogScrFileSelectMgr::MovePaneXY()
 			}
 		}
 	} else {
-		if (x0 < 650) {
+#if defined(PIKI_PC_PORT)
+		const int outX = 650 + pc_gfx_menu_shift_center(); // sale por el borde ancho
+#else
+		const int outX = 650;
+#endif
+		if (x0 < outX) {
 			x0 += 40;
 		}
-		if (x1 < 650) {
+		if (x1 < outX) {
 			x1 += 20;
 		}
 	}
@@ -1128,7 +1143,17 @@ void zen::ogScrFileSelectMgr::OperateSelect(Controller* controller)
 
 	if (controller->keyClick(KBBTN_A)) {
 		SeSystem::playSysSe(ogEnumFix(SYSSE_DECIDE1, JACSYS_Decide1));
+#if defined(PIKI_PC_PORT)
+		// Slot vacío: sigue el prompt de partida nueva encima de esta misma
+		// pantalla. Se mantiene la animación del icono (sube con estela) pero
+		// sin el círculo que se expande ni el fundido a negro del final.
+		mPcKeepScreenOnExit = mCardInfo[mCurrSlotIdx].mSaveStatus != PlayState::ReadyToSave;
+		if (!mPcKeepScreenOnExit) {
+			KetteiEffectStart();
+		}
+#else
 		KetteiEffectStart();
+#endif
 		if (mSaveMode) {
 			mSelectState                 = ExitRequested;
 			mSelectionConfirmEffectTimer = 0.0f;
@@ -1282,6 +1307,9 @@ zen::ogScrFileSelectMgr::returnStatusFlag zen::ogScrFileSelectMgr::update(Contro
 	if (mSelectState == Inactive) {
 		return mSelectState;
 	}
+#if PIKI_PC_TOUCH
+	pc_touch_claim_game_menu();
+#endif
 
 	cardInfo = mCardInfo[mCurrSlotIdx];
 	mFxMgr->update();
@@ -1400,6 +1428,14 @@ zen::ogScrFileSelectMgr::returnStatusFlag zen::ogScrFileSelectMgr::update(Contro
 		mIconEmptyPanes[mCurrSlotIdx]->setScale(scale);
 
 		if (mMainInteractTimer > 1.0f) {
+#if defined(PIKI_PC_PORT)
+			if (mPcKeepScreenOnExit) {
+				mSelectionConfirmEffectOnyon->finish();
+				mSelectionConfirmEffectPikminGroup->finish();
+				mSelectState = mCurrSlotIdx == 0 ? SelectionA : mCurrSlotIdx == 1 ? SelectionB : SelectionC;
+				return mSelectState;
+			}
+#endif
 			BeginFadeOut();
 			mSelectionConfirmEffectOnyon->finish();
 			mSelectionConfirmEffectPikminGroup->finish();
@@ -1409,6 +1445,46 @@ zen::ogScrFileSelectMgr::returnStatusFlag zen::ogScrFileSelectMgr::update(Contro
 	}
 
 	if (mMainInteractTimer > 1.0f) {
+#if PIKI_PC_TOUCH
+		if (mOperation == Normal) {
+			float touchX = 0.0f, touchY = 0.0f;
+			if (pc_touch_take_game_menu_tap(&touchX, &touchY)) {
+				const float menuX = touchX * float(pc_gfx_menu_virt_width());
+				const float menuY = touchY * 480.0f;
+				for (int i = 0; i < 3; ++i) {
+					// Los paneles raíz de los tres BLO cubren toda la pantalla. La
+					// tarjeta real es la envolvente de sus iconos, que sí es única.
+					P2DPane* panes[4] = { mIconOnyonPanes[i], mIconPikminPanes[i],
+					                         mIconNewPanes[i], mIconEmptyPanes[i] };
+					int minX = 32767, minY = 32767, maxX = -32768, maxY = -32768;
+					for (P2DPane* pane : panes) {
+						if (!pane) continue;
+						const PUTRect& bounds = pane->getGlobalBounds();
+						minX = std::min(minX, int(bounds.mMinX));
+						minY = std::min(minY, int(bounds.mMinY));
+						maxX = std::max(maxX, int(bounds.mMaxX));
+						maxY = std::max(maxY, int(bounds.mMaxY));
+					}
+					constexpr float marginX = 36.0f;
+					constexpr float marginY = 28.0f;
+					const bool hit = menuX >= minX - marginX && menuX <= maxX + marginX
+					              && menuY >= minY - marginY && menuY <= maxY + marginY;
+					if (hit) {
+						// Primer toque: seleccionar la tarjeta; segundo toque
+						// sobre la misma: entrar (como mover y pulsar A).
+						if (mCurrSlotIdx != i) {
+							SeSystem::playSysSe(ogEnumFix(SYSSE_MOVE1, JACSYS_Move1));
+							mCurrSlotIdx = i;
+							setDataNumber(i);
+						} else {
+							pc_touch_queue_game_button(PAD_BUTTON_A);
+						}
+						break;
+					}
+				}
+			}
+		}
+#endif
 		switch (mOperation) {
 		case Normal:
 		{
@@ -1436,6 +1512,22 @@ zen::ogScrFileSelectMgr::returnStatusFlag zen::ogScrFileSelectMgr::update(Contro
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+void zen::ogScrFileSelectMgr::drawFxOnly(Graphics& gfx)
+{
+	pc_gfx_begin_menu_2d();
+	const int virtW = pc_gfx_menu_virt_width();
+	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+	pc_gfx_apply_menu_clip_43();
+	mFxMgr->draw(gfx);
+	gfx.setFog(false);
+	GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+	pc_gfx_set_menu_clip_43(0);
+	pc_gfx_set_scissor(0, 0, (u32)virtW, 480);
+}
+#endif
+
 void zen::ogScrFileSelectMgr::draw(Graphics& gfx)
 {
 	if (mSelectState == Inactive) {
@@ -1449,9 +1541,7 @@ void zen::ogScrFileSelectMgr::draw(Graphics& gfx)
 	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
 	perspGraph.setPort();
 
-	// data_b is drawn (and clipped) by ogFileChkSel. Slots, chrome and 2D FX
-	// stay in the original 640×480 so they do not paint the side bars.
-	pc_gfx_set_menu_clip_43(1);
+	// data_b is drawn by ogFileChkSel. Full width (issue #46): no 4:3 clip.
 	pc_gfx_apply_menu_clip_43();
 
 	for (int i = 0; i < 3; i++) {

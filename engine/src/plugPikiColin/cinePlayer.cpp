@@ -33,6 +33,31 @@ DEFINE_PRINT("CinePlayer")
 /// Pointer buffer for storing backup animations during cutscenes (max 256).
 static AnimContext* bcs[0x100];
 
+#if defined(PIKI_PC_PORT)
+static void pcIntroAimUfoTrail(ActorInstance* actor)
+{
+	Vector3f trailDir = -actor->mActorWorldDir;
+	f32 dirLen2       = trailDir.x * trailDir.x + trailDir.y * trailDir.y + trailDir.z * trailDir.z;
+	if (dirLen2 < 0.01f) {
+		// demo01 flies +Z; PCR NJ3 emit is (0,-1,0) and draws a extra downward jet.
+		trailDir.set(0.0f, 0.0f, -1.0f);
+	}
+	for (int i = 0; i < 7; i++) {
+		if (actor->mEffectList[i]) {
+			actor->mEffectList[i]->setEmitDir(trailDir);
+		}
+	}
+	for (int i = 0; i < 4; i++) {
+		if (actor->mEffectGrid[i][0]) {
+			actor->mEffectGrid[i][0]->setEmitDir(trailDir);
+		}
+		if (actor->mEffectGrid[i][1]) {
+			actor->mEffectGrid[i][1]->setEmitDir(trailDir);
+		}
+	}
+}
+#endif
+
 /**
  * @todo: Documentation
  * @note UNUSED Size: 0000A0
@@ -658,8 +683,8 @@ void ActorInstance::initInstance()
 		}
 	}
 
-	if (mFlags & CAF_MoveDayEndNavi && naviMgr && naviMgr->getNavi()) {
-		naviMgr->getNavi()->startDayEnd();
+	if (mFlags & CAF_MoveDayEndNavi && naviMgr && naviMgr->getMovieNavi()) {
+		naviMgr->getMovieNavi()->startDayEnd();
 	}
 
 	if (!mIsLeaf) {
@@ -1189,6 +1214,9 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 				mEffectList[i]->setEmitDir(-mActorWorldDir);
 			}
 		}
+#if defined(PIKI_PC_PORT)
+		pcIntroAimUfoTrail(this);
+#endif
 	}
 
 	if (mFlags & CAF_MoveAiOnion) {
@@ -1225,13 +1253,32 @@ void ActorInstance::refresh(immut Matrix4f& mtx, Graphics& gfx, f32* p3)
 		checkEventKeys(a, b, pos);
 	}
 
+#if defined(PIKI_PC_PORT)
+	// Key 19 writes dummy (-25000) joints and then this frame's effect update
+	// runs. Recompute the UFO trail sockets so the opening burst emits on the
+	// ship instead of off-camera.
+	if (mMeteorFlag) {
+		mJointPositions[0].set(0.0f, 7.0f, 0.0f);
+		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[0]);
+		mJointPositions[1].set(-14.4f, 14.9f, 14.4f);
+		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[1]);
+		mJointPositions[2].set(-14.4f, 14.9f, -14.4f);
+		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[2]);
+		mJointPositions[3].set(14.4f, 14.9f, 14.4f);
+		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[3]);
+		mJointPositions[4].set(14.4f, 14.9f, -14.4f);
+		mActiveActor->mModel->calcJointWorldPos(gfx, 0, mJointPositions[4]);
+		pcIntroAimUfoTrail(this);
+	}
+#endif
+
 	if (mFlags & (CAF_MoveDayEndNavi | CAF_MoveAiNavi)) {
-		if (naviMgr && naviMgr->getNavi()) {
+		if (naviMgr && naviMgr->getMovieNavi()) {
 			Vector3f pos(0.0f, 0.0f, 0.0f);
 			pos.multMatrix(mActiveActor->mModel->getAnimMatrix(0));
 			pos.multMatrix(gfx.mCamera->mInverseLookAtMtx);
-			naviMgr->getNavi()->updateDayEnd(pos);
-			naviMgr->getNavi()->demoDraw(gfx, nullptr);
+			naviMgr->getMovieNavi()->updateDayEnd(pos);
+			naviMgr->getMovieNavi()->demoDraw(gfx, nullptr);
 		}
 	} else {
 		u32 flags = mActiveActor->mModel->mShapeFlags;

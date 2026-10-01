@@ -48,6 +48,12 @@ void TekiNakata::makeTekiParameters(TekiMgr* mgr)
 	mgr->mTekiParams[TEKI_Swallob] = new TaiBlackSwallowParameters();
 	mgr->mTekiParams[TEKI_Frow]    = new TaiBlackFrogParameters();
 	mgr->mTekiParams[TEKI_Namazu]  = new TaiCatfishParameters();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-30 captor anchor: a registered PC-only identity that reuses the
+	// retail Chappy parameters. Default registration is inert (nothing spawns
+	// TEKI_P2Demon unless a generator emits it); no retail type is changed.
+	mgr->mTekiParams[TEKI_P2Demon] = new TaiChappyParameters();
+#endif
 }
 
 /**
@@ -173,4 +179,12 @@ void TekiNakata::makeTekis(TekiMgr* mgr)
 		mgr->mStrategyTable->setStrategy(TEKI_Namazu, new TaiChappyStrategy(param));
 		mgr->mTekiSoundTables[TEKI_Namazu] = new TaiCatfishSoundTable();
 	}
+
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if (mgr->isUsingType(TEKI_P2Demon)) {
+		TekiParameters* param = mgr->mTekiParams[TEKI_P2Demon];
+		mgr->mStrategyTable->setStrategy(TEKI_P2Demon, new TaiChappyStrategy(param));
+		mgr->mTekiSoundTables[TEKI_P2Demon] = new TaiChappySoundTable();
+	}
+#endif
 }

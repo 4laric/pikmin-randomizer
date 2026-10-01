@@ -2,6 +2,34 @@
 
 Release notes moved from the former README, newest first. Content is preserved as written at the time; see [README.md](README.md) for current player instructions.
 
+## v0.32.0-playtest.1
+
+AP world 0.32.0. New seeds are required: seeds from 0.31.0 do not match the new item set. Existing item IDs are unchanged.
+
+**New in seeds**
+- **Progressive Red/Yellow/Blue Maturity** (two steps each, bud then flower) replaces Flower Shower in new seeds (#903).
+- **Progressive Day Length** is optional: `progressive_day_length` 0–10, each step adding `day_length_increment` percent of a day (#903).
+- **Whistle Pluck item.** It is on by default (`whistle_pluck_item`). Once received, holding the whistle over buried sprouts plucks them one after another (#907).
+
+**New in game (F1 menu)**
+- **Better Pathfinding** now also gives Pikmin shortest routes, lets squad Pikmin find a way round walls to Olimar, and still restarts stalled carriers (#900).
+- **Whistle Pluck** is available as a Mods setting outside Archipelago seeds.
+- **Disable Tutorials** (on by default) hides six informational hint popups. Story, part and ending text still show.
+- **From Open Nectar 0.8.5–0.9:**
+  - Genuine GameCube memory cards can be read.
+  - Gyro aiming.
+  - Tabbed settings with help text.
+  - Blues Only In Water, Idle Pikmin Counter, Olimar/Enemy Health, Infinite Day, Free Camera, Lock-On and more options.
+  - Local split-screen co-op and a 1-vs-1 "Parts Race" versus mode.
+  - New cheats: Invincible Pikmin, Unlock All Zones, No Day Limit, All Onions.
+  - Cheats and co-op are outside the randomizer's logic.
+
+**Off unless switched on**
+- Pikmin 2 enemies stay off unless the AP option `p2_enemy_randomizer` is enabled.
+- Online netplay is not in this build.
+
+Engine snapshot: native `597d8f92`; see ENGINE_SOURCE.md.
+
 ## Launcher window, disc images and DeathLink (v0.31)
 
 Play.cmd opens a launcher window that takes a seed and either an extracted assets folder or a Pikmin disc image. ISO/GCM images are extracted with the engine's own installer; RVZ/WIA images are decoded first by a standard-library decoder (Zstandard via Python 3.14, LZMA/LZMA2, bzip2) that reproduces Dolphin's packed junk generator, verified byte-exact against a reference ISO. Release packages bundle a Python runtime and the MinGW runtime DLLs. DeathLink in Pikmin units and Universal Tracker support arrived in the same series (see DEVELOPMENT.md).

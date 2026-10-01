@@ -1,0 +1,79 @@
+From a54f4af24286e264b1baf00ca80509f7ec6814ac Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:33:56 -0400
+Subject: [PATCH] Lane 19 (#221): family Pod receipt for the Mamuta carcass
+
+The preview Pod only credits Chappy corpses: pc_p2_preview_rebind_corpses keys
+TEKI_Chappy actors and pc_p2_preview_deliver aborts on an unregistered pellet,
+while the lane arena is staged cargo-free (no Pod at all). So a Mamuta carcass
+could never reach a reward endpoint.
+
+Add pc_p2_mamuta_receipt(PelletView*, unsigned& generator) (bound Mamuta actor ->
+generator) and route it in pc_p2_preview_deliver before the corpse-registry
+fallback, crediting receipt corpse:<prefix>mamuta:<generator> with the configured
+corpseValue. This mirrors the existing sheargrub family receipt and changes no
+other cargo/reward path.
+
+Build evidence: private Ninja Release/MinGW JAudio-ON build
+output/native-mamuta-pod-build; pikmin_pc links bin/nectar.exe sha256
+6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D; ninja -n ->
+no work to do. No runtime GL transport run claimed (the lane arena still needs a
+cargo-enabled staging variant with a Pod + treasure).
+---
+ pc_port/pc_p2_mamuta.cpp  | 7 +++++++
+ pc_port/pc_p2_mamuta.h    | 6 +++++-
+ pc_port/pc_p2_preview.cpp | 3 +++
+ 3 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_mamuta.cpp b/pc_port/pc_p2_mamuta.cpp
+index e324f1a3..89bee2dc 100644
+--- a/pc_port/pc_p2_mamuta.cpp
++++ b/pc_port/pc_p2_mamuta.cpp
+@@ -45,6 +45,13 @@ Shape* load(const char* clip) {
+ }
+ void pc_p2_mamuta_reset() { actors.clear(); logged.clear(); for (auto& s: shapes) s=nullptr; bytesTotal=0; pc_p2_mamuta_rules_reset(); }
+ bool pc_p2_mamuta_is_bound(BTeki* actor) { return actors.find(actor) != actors.end(); }
++bool pc_p2_mamuta_receipt(PelletView* view, unsigned& generator) {
++    if (!view) return false;
++    auto it = actors.find(static_cast<BTeki*>(view));
++    if (it == actors.end()) return false;
++    generator = it->second;
++    return true;
++}
+ void pc_p2_mamuta_forget(BTeki* actor) {
+     actors.erase(actor);
+     for (int k=0; k<3; ++k) logged.erase({actor,k});
+diff --git a/pc_port/pc_p2_mamuta.h b/pc_port/pc_p2_mamuta.h
+index 6a1eeaab..2e149707 100644
+--- a/pc_port/pc_p2_mamuta.h
++++ b/pc_port/pc_p2_mamuta.h
+@@ -1,7 +1,11 @@
+ #pragma once
+-struct BTeki; struct Graphics; struct Matrix4f;
++struct BTeki; struct Graphics; struct Matrix4f; struct PelletView;
+ void pc_p2_mamuta_setup();
+ void pc_p2_mamuta_reset();
+ void pc_p2_mamuta_forget(BTeki*);
+ bool pc_p2_mamuta_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
+ bool pc_p2_mamuta_is_bound(BTeki*);
++// Family corpse receipt for the preview Pod: resolves a Mamuta carcass pellet
++// (the bound actor's own PelletView) to its generator so the Pod can credit it.
++// Returns false for any pellet not owned by a bound Mamuta.
++bool pc_p2_mamuta_receipt(PelletView*, unsigned& generator);
+diff --git a/pc_port/pc_p2_preview.cpp b/pc_port/pc_p2_preview.cpp
+index a0e9b839..877c976e 100644
+--- a/pc_port/pc_p2_preview.cpp
++++ b/pc_port/pc_p2_preview.cpp
+@@ -264,6 +264,9 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
+         else if(unsigned generator=0;pc_p2_sheargrub_receipt(pellet->mPelletView,generator,value)) {
+             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"uji:"+std::to_string(generator);
+         }
++        else if(unsigned generator=0;pc_p2_mamuta_receipt(pellet->mPelletView,generator)) {
++            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"mamuta:"+std::to_string(generator);value=corpseValue;
++        }
+         else {
+             auto found=corpses.find(pellet->mPelletView);
+             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
+-- 
+2.55.0.windows.3
+

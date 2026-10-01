@@ -743,17 +743,29 @@ void MoviePlayer::requestSkip()
     // Day-end/final results own their looping movie backgrounds. Start must
     // not finish them; the result UI will issue the normal completion command.
     if (gameflow.mGameInterface && !gameflow.mGameInterface->movieSkipAllowed()) return;
+    // Phase-one day-end movies reuse the gameplay Teki heap. Completing them
+    // early can expose retained actors before the results flow takes ownership.
+    // Intro, gameplay and phase-zero day-end movies keep their normal skip path.
+    for (MovieInfo* info = static_cast<MovieInfo*>(mPlayInfoList.mChild); info;
+         info = static_cast<MovieInfo*>(info->mNext)) {
+        for (int stage = 0; stage < STAGE_COUNT; ++stage) {
+            if (info->mMovieIndex == movie32table[stage] || info->mMovieIndex == movie56table[stage]) return;
+        }
+    }
     bool requested = false;
     for (MovieInfo* info = static_cast<MovieInfo*>(mPlayInfoList.mChild); info;
          info = static_cast<MovieInfo*>(info->mNext)) {
         if (info->mPlayer) { info->mPlayer->requestSkip(); requested = true; }
     }
+#if PIKI_USE_JAUDIO
     if (requested) Jac_NoteDemoSkipped();
+#endif
 }
 
 void MoviePlayer::skipScene(int sceneSkipFlag)
 {
-#if defined(PIKI_PC_PORT)
+#if defined(PIKI_PC_PORT) && PIKI_USE_JAUDIO
+	// Only the native JAudio engine tracks demo skips; the default build links without it.
 	if (sceneSkipFlag == SCENESKIP_Skip || sceneSkipFlag == SCENESKIP_SkipAll) {
 		Jac_NoteDemoSkipped();
 	}

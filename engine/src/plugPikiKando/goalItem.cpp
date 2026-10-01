@@ -1,8 +1,14 @@
+#include "pc_p2_ship.h"
 #include "pc_randomizer.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "GoalItem.h"
 #include "FlowController.h"
 #include "teki.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
 #include "BaseInf.h"
 #include "CreatureCollPart.h"
 #include "DebugLog.h"
@@ -354,9 +360,32 @@ void GoalItem::suckMe(Pellet* item)
         && config->mPelletColor() == -1 && flowCont.mCurrentStage) {
         for (int type = 0; type < TEKI_TypeCount; ++type) {
             if (config->mModelId.mId == static_cast<u32>(TekiMgr::getTypeId(type))) {
-                pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID,
-                    !gameflow.mIsChallengeMode && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
-                    && !gameflow.mMoviePlayer->mIsActive);
+                const bool gameplay = !gameflow.mIsChallengeMode && !gameflow.mPauseAll
+                    && !gameflow.mIsUIOverlayActive && !gameflow.mMoviePlayer->mIsActive;
+                // Capture provenance before delivery consumes its single-use
+                // binding. Dead Teki no longer have mGenerator, so use the
+                // retained PelletView association as the primary identity.
+                const bool sourceBound = item->mPelletView
+                    && (pc_randomizer_p2_source_for(item->mPelletView) != 0
+                        || pc_p2_campaign_source(static_cast<BTeki*>(item->mPelletView)) != 0);
+                // Lane 06: a bound P2 corpse grants its own ordinary receipt identity;
+                // it must never ALSO credit the P1-proxy bestiary check. The delivery
+                // call returns true only when it handled a bound P2 source.
+                const bool deliveredP2 = item->mPelletView
+                    && pc_randomizer_p2_corpse_delivered(item->mPelletView, type,
+                        flowCont.mCurrentStage->mStageID, gameplay);
+                if (!deliveredP2) {
+                    // Legacy seeds retain blanket suppression. Resolved seeds
+                    // permit surviving P1 corpses, but a P2 delivery failure
+                    // must never fall through and credit its P1 host species.
+                    if (pc_randomizer_p2_bridge() && item->mPelletView
+                        && (!pc_randomizer_resolved_checks() || sourceBound)) {
+                        std::printf("[Pikmin Randomizer] P2_P1_CHECK_SUPPRESSED host_type=%d stage=%d\n",
+                            type, flowCont.mCurrentStage->mStageID);
+                    } else {
+                        pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID, gameplay);
+                    }
+                }
                 break;
             }
         }
@@ -387,6 +416,7 @@ void GoalItem::suckMe(Pellet* item)
  */
 void GoalItem::enterGoal(Piki* piki)
 {
+    if (pc_p2_ship_special(piki)) { pc_p2_ship_deposit(piki); return; }
 	int old = mItemAnimator.mMotionIdx;
 	playEventSound(this, SE_PIKI_GOHOME);
 	pikiInfMgr.incPiki(piki);
@@ -440,11 +470,22 @@ Piki* GoalItem::exitPiki()
 	}
 
 	Navi* navi = naviMgr->getNavi();
+#if defined(PIKI_PC_PORT)
+	// VS: salen hacia el capitán dueño de la cebolla.
+	if (pc_vs_active() && mPcOwner >= 0 && naviMgr->getNavi(mPcOwner)) navi = naviMgr->getNavi(mPcOwner);
+#endif
 	piki->init(navi);
 	piki->resetPosition(legColl->mCentre);
 
 	// always pull the highest stage pikmin out first
 	int happa;
+#if defined(PIKI_PC_PORT)
+	// VS: cada cebolla tiene su propio almacén; el recuento global mezcla a
+	// los dos jugadores.
+	if (pc_vs_active()) {
+		happa = mHeldPikis[Flower] > 0 ? Flower : (mHeldPikis[Bud] > 0 ? Bud : Leaf);
+	} else
+#endif
 	if (pikiInfMgr.mPikiCounts[mOnionColour][Flower] > 0) {
 		happa = Flower;
 	} else if (pikiInfMgr.mPikiCounts[mOnionColour][Bud] > 0) {
@@ -454,6 +495,9 @@ Piki* GoalItem::exitPiki()
 	}
 	piki->setFlower(happa);
 	piki->initColor(mOnionColour);
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) piki->mPlayerId = mPcOwner;
+#endif
 	pikiInfMgr.decPiki(piki);
 	piki->mSRT.s.set(1.0f, 1.0f, 1.0f);
 	piki->mFSM->transit(piki, PIKISTATE_Normal);
@@ -819,8 +863,9 @@ void GoalItem::refresh(Graphics& gfx)
 	mAnimatedMaterials.animate(&rate);
 	mItemShapeObject->mShape->updateAnim(gfx, mtx1, nullptr, this);
 	if (aiCullable()) {
-		mItemShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
+        if(!pc_p2_preview_draw_pod(this,gfx,mtx1))mItemShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 	}
+    if(pc_p2_preview_is_pod(this))mSpotModelEff->mIsVisible=false;
 	mCollInfo->updateInfo(gfx, false);
 
 	for (int i = 0; i < 3; i++) {

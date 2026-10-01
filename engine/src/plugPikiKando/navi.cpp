@@ -1,10 +1,51 @@
+#include "pc_p2_mamuta_rules.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_bridge.h"
+#include "pc_p2_demon_anchor.h"
+#endif
+#include "pc_p2_purple.h"
+#include "pc_p2_purple_impact.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
+#include "pc_p2_species.h"
+#include "pc_p2_bulbmin.h"
+#include "pc_p2_umimushi.h"
 #include "Navi.h"
 #include "pc_randomizer.h"
 #include <cstdlib>
 #if defined(PIKI_PC_PORT)
 #include "GameStat.h"
+#include "pc_permadeath.h"
+#include "pc_coop.h"
+#include "pc_p2_captain_switch_policy.h"
+#include "pc_p2_captain.h"
 #include "pc_window.h"
+#include "pc_gyro.h"
 #include "settings/pc_settings.h"
+#include "mods/pc_hd_models.h"
+#include "gl/pc_gfx.h"
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
+#endif
+static f32 pcNaviHurt(f32 damage)
+{
+	// Mod "Olimar Health". Scaling incoming damage rather than his health
+	// keeps the life gauge and the "below a quarter" warnings honest, since
+	// both read the health prop as the maximum.
+	const int pct = pc_settings_get_navi_health_pct();
+	if (pct < 0) {
+		return 0.0f; // Infinite
+	}
+	if (pct != 100 && pct > 0) {
+		damage = damage * 100.0f / f32(pct);
+	}
+	return pc_hardmode_navi_damage(damage);
+}
+
+#else
+static f32 pcNaviHurt(f32 damage) { return damage; }
 #endif
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -136,6 +177,7 @@ void Navi::startMovie(bool doStopEffects)
 	if (doStopEffects) {
 		mNaviLightEfx->stop();
 		mNaviLightGlowEfx->stop();
+		mCursorTrailEfx->stop();
 	}
 
 	if (state != NAVISTATE_DemoInf && state != NAVISTATE_Starting) {
@@ -385,13 +427,25 @@ void Navi::startDamageEffect()
 	}
 
 	if (mHealth <= 1.0f) {
-		gameflow.mGameInterface->message(MOVIECMD_SetPauseAllowed, FALSE);
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		// Cooperativo: si el otro sigue vivo, el mundo no se pausa (solo caído).
+		if (pcIsLastNaviStanding(this))
+#endif
+		{
+			gameflow.mGameInterface->message(MOVIECMD_SetPauseAllowed, FALSE);
+			// Lane 12 (#130): also gated on the P2 second-captain partner.
+			pauseForDownIfLast();
+		}
 
 	} else if (!gameflow.mMoviePlayer->mIsActive && mHealth <= 0.25f * NAVI_PARM(mHealth)
 	           && !playerState->mDemoFlags.isFlag(DEMOFLAG_OlimarLowHealth)) {
 		playerState->mDemoFlags.setFlagOnly(DEMOFLAG_OlimarLowHealth);
 		gameflow.mGameInterface->message(MOVIECMD_TextDemo, zen::ogScrTutorialMgr::TUT_APunchUFO);
+	}
+
+	// P2 FallMeck: the feedback already fired on the ground-impact frame.
+	if (pc_demon_drop_silent_damage()) {
+		return;
 	}
 
 	zen::particleGenerator* ptclGenA = effectMgr->create(EffectMgr::EFF_Navi_DamageA, part->mCentre, nullptr, nullptr);
@@ -412,9 +466,31 @@ void Navi::startDamageEffect()
 	int vibTypes[2] = { 0, 1 };
 	f32 randIdx     = gsys->getRand(1.0f);
 	// int vib         = vibTypes[int(2.0f * randIdx * 0.9999999f)];
+#if defined(PIKI_PC_PORT)
+	// Daño propio: solo tiembla la cámara del Olimar golpeado.
+	pcCameraMgrForNavi(mNaviID)->startVibrationEvent(vibTypes[int(2.0f * randIdx * 0.9999999f)], mSRT.t, false);
+#else
 	cameraMgr->startVibrationEvent(vibTypes[int(2.0f * randIdx * 0.9999999f)], mSRT.t);
+#endif
 
 	SeSystem::playPlayerSe(SE_DAMAGED);
+}
+
+/**
+ * @todo: Documentation
+ */
+void Navi::pauseForDownIfLast()
+{
+	// Lane 12 (#130): a downed captain holds the game only when no living
+	// partner remains (source mDeadNavis != 2). The damage receivers call this
+	// before the death is recorded in the roster, so the check uses the direct
+	// partner (getOtherNavi) rather than getAliveOrima(), which would still
+	// report the dying captain as alive. Single-captain play always pauses.
+	Navi* partner = naviMgr ? naviMgr->getOtherNavi(this) : nullptr;
+	const bool partnerAlive = partner && partner->isAlive() && partner->mHealth > 1.0f;
+	if (!partnerAlive) {
+		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+	}
 }
 
 /**
@@ -426,8 +502,19 @@ void Navi::finishDamage()
 	mStateMachine->restart(this);
 
 	if (mHealth <= 1.0f) {
+#if defined(PIKI_PC_PORT)
+		const bool lastStanding = pcIsLastNaviStanding(this);
 		mStateMachine->transit(this, NAVISTATE_Dead);
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		if (lastStanding) GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#else
+		mStateMachine->transit(this, NAVISTATE_Dead);
+		// Lane 12 (#130): a downed captain with a living partner must not pause
+		// or finish the stage (source mDeadNavis != 2). NaviDeadState::init takes
+		// the survivor branch in that case; gate finishDamage's own pause the same
+		// way so a survivor keeps playing. Single-captain play is unchanged (the
+		// sole captain going down still pauses into game over).
+		pauseForDownIfLast();
+#endif
 	} else {
 		if (!gameflow.mMoviePlayer->mIsActive && mHealth <= 0.25f * NAVI_PARM(mHealth)
 		    && !playerState->mDemoFlags.isFlag(DEMOFLAG_OlimarLowHealth)) {
@@ -466,7 +553,8 @@ Navi::Navi(CreatureProp* props, int naviID)
 	mRippleEffect     = new RippleEffect();
 	mNaviLightEfx     = new PermanentEffect();
 	mNaviLightGlowEfx = new PermanentEffect();
-	_77C              = new PermanentEffect();
+	mCursorTrailEfx   = new PermanentEffect();
+	mCursorTrailLastPos.set(0.0f, 0.0f, 0.0f);
 	_780              = new PermanentEffect();
 	mSlimeEffect      = new SlimeEffect();
 	memStat->end("naviEff");
@@ -505,7 +593,12 @@ Navi::Navi(CreatureProp* props, int naviID)
 	mVelocity.set(0.0f, 0.0f, 0.0f);
 	mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	_268        = 0.0f;
-	mKontroller = new Kontroller(naviID + 1);
+	// Lane 12 (#130): the PC port has a single live pad (controller port 0). The
+	// change from the source's Kontroller(naviID + 1) to Kontroller(1) affects
+	// slot 1 only: slot 0 already mapped to port 1, while a second captain would
+	// otherwise request a nonexistent port 2. Source P2 maps each Navi to its own
+	// pad; that input split is not ported.
+	mKontroller = new Kontroller(1);
 	mSize       = 20.0f;
 
 	memStat->start("naviStateM");
@@ -570,6 +663,7 @@ void Navi::rideUfo()
 	mIsRidingUfo = true;
 	mNaviLightEfx->kill();
 	mNaviLightGlowEfx->kill();
+	mCursorTrailEfx->kill();
 }
 
 /**
@@ -577,6 +671,10 @@ void Navi::rideUfo()
  */
 void Navi::reset()
 {
+#if defined(PIKI_PC_PORT)
+	pc_demon_reset(this);
+	pc_demon_drop_reset(this);
+#endif
 	mDamageEfxA = mDamageEfxB = mDamageEfxC = nullptr;
 	mSelectedShipPart                       = nullptr;
 	mHeadYawOffsetRel                       = 0.0f;
@@ -623,6 +721,14 @@ void Navi::reset()
 	mNextThrowPiki   = nullptr;
 	mNaviLightEfx->changeEffect(EffectMgr::EFF_Navi_Light);
 	mNaviLightGlowEfx->changeEffect(EffectMgr::EFF_Navi_LightGlow);
+#if defined(PIKI_PC_PORT)
+	applyPlayerLightTint();
+#endif
+	// Estela del cursor: el mismo resplandor que deja la antena, emitido
+	// solo mientras el cursor se mueve.
+	mCursorTrailEfx->changeEffect(EffectMgr::EFF_Navi_LightGlow);
+	mCursorTrailEfx->scaleSize(kCursorTrailScale);
+	mCursorTrailEfx->setEmitting(false);
 }
 
 /**
@@ -659,16 +765,46 @@ f32 Navi::getiMass()
  * simply taking the nearest Pikmin. Driven by the mouse wheel.
  */
 static int sPreferredThrowColor = -1;
+// Cooperativo: el segundo Olimar no tiene rueda, pero sí cruceta (issue #43).
+static int sPreferredThrowColorP2 = -1;
 
 /// The colour the wheel currently points at, or -1 for the original behaviour.
 /// Read by the grab selection in naviState.cpp, which picks the Pikmin that is
 /// actually thrown.
 int pc_preferred_throw_color() { return sPreferredThrowColor; }
+// Cooperativo: true si ningún otro Olimar sigue en pie (salud > 1 y no muerto).
+bool pcIsLastNaviStanding(Navi* navi)
+{
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+		Navi* other = naviMgr->getNavi(ni);
+		if (other && other != navi && other->mHealth > 1.0f && other->getCurrState()->getID() != NAVISTATE_Dead) {
+			return false;
+		}
+	}
+	return true;
+}
+
+// In the opt-in single-player pair, mouse/keyboard/global actions follow the
+// active captain, just like the shared pad. Co-op keeps device assignments.
+static bool pcCaptainOwnsInput(Navi* navi, int deviceOwner)
+{
+	const bool pair = pc_p2_captain::single_player_switch_enabled();
+	Navi* active = pair ? naviMgr->getActiveNavi() : nullptr;
+	return navi && p2_captain_input_owner(pair, navi->mNaviID,
+	    active ? active->mNaviID : -1, deviceOwner);
+}
+
+int pc_preferred_throw_color_for(Navi* navi)
+{
+	if (!navi) return -1;
+	if (pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner())) return sPreferredThrowColor;
+	return sPreferredThrowColorP2;
+}
 
 // Selection classes retain the three color IDs; bomb yellows are class 3.
 int pc_throw_selection_class(Piki* piki)
 {
-    return piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor;
+    return pc_p2_is_white(piki)?PikiColorCount+2:(pc_p2_is_purple(piki)?PikiColorCount+1:(piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor));
 }
 
 static bool pcSquadHasColor(Navi* navi, int selection)
@@ -690,44 +826,71 @@ static bool pcSquadHasColor(Navi* navi, int selection)
  * any of them. A preference whose colour ran out snaps to one that exists,
  * otherwise the wheel would appear stuck on an empty colour.
  */
-static void pcUpdatePreferredThrowColor(Navi* navi)
+static bool pcUpdatePreferredThrowColor(Navi* navi)
 {
-	if (pc_settings_get_mouse_wheel_action() != 0 && sPreferredThrowColor < 0) {
-		return;
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(navi, 0)) return false;
+	const bool keyboardOwner = pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner());
+	int& preferred = keyboardOwner ? sPreferredThrowColor : sPreferredThrowColorP2;
+
+	// Tocar el icono del HUD cuenta como una muesca, y funciona aunque la
+	// rueda esté asignada al zoom: en pantalla táctil no hay rueda.
+	int touchSteps = 0;
+#if PIKI_PC_TOUCH
+	if (keyboardOwner) touchSteps = pc_touch_take_color_taps();
+#endif
+	// Cruceta izquierda/derecha como en Pikmin 2 (issue #43): vale para
+	// mando y teclado, con o sin A pulsado. Abajo sigue siendo el original.
+	int padSteps = 0;
+	// P2 fork: D-pad left/right colour stepping is owned by pc_cycle_throw_color()
+	// (naviState), which also covers the purple/white/bomb selection classes.
+	// Reading the same keyClick edge here too would step twice per press.
+
+	const bool wheelOn = keyboardOwner && pc_settings_get_mouse_wheel_action() == 0;
+	if (!wheelOn && touchSteps == 0 && padSteps == 0 && preferred < 0) {
+		return false;
 	}
 
-	int present[PikiColorCount + 1];
+	int present[PikiColorCount + 3];
 	int presentCount = 0;
-	for (int color = 0; color < PikiColorCount + 1; color++) {
+	for (int color = 0; color < PikiColorCount + 3; color++) {
 		if (pcSquadHasColor(navi, color)) {
 			present[presentCount++] = color;
 		}
 	}
 	if (presentCount == 0) {
-		sPreferredThrowColor = -1;
-		return;
+		preferred = -1;
+		return false;
 	}
 
 	// Where the current preference sits among the colours on hand.
 	int index = 0;
 	for (int i = 0; i < presentCount; i++) {
-		if (present[i] == sPreferredThrowColor) {
+		if (present[i] == preferred) {
 			index = i;
 			break;
 		}
 	}
 
-	const int steps = pc_settings_get_mouse_wheel_action() == 0 ? pc_window_take_wheel_steps() : 0;
+	int steps = touchSteps + padSteps;
+	if (wheelOn) {
+		steps += pc_window_take_wheel_steps();
+	}
 	if (steps != 0) {
 		index = ((index + steps) % presentCount + presentCount) % presentCount;
 	}
-	const int previous = sPreferredThrowColor;
-	sPreferredThrowColor = present[index];
-	if (previous != sPreferredThrowColor && getenv("PIKMIN_WHEEL_TRACE") != nullptr) {
+	const int previous = preferred;
+	preferred          = present[index];
+	if (previous != preferred && getenv("PIKMIN_WHEEL_TRACE") != nullptr) {
 		fprintf(stderr, "[WHEEL] preferred colour -> %d (in squad=%d)\n",
-		        sPreferredThrowColor, presentCount);
+		        preferred, presentCount);
 		fflush(stderr);
 	}
+	return padSteps != 0 && previous != preferred;
+}
+
+bool pc_navi_step_throw_color(Navi* navi)
+{
+	return pcUpdatePreferredThrowColor(navi);
 }
 
 Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
@@ -735,8 +898,9 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 	const int direction = int(navi->mKontroller->keyClick(KBBTN_DPAD_RIGHT))
 	                    - int(navi->mKontroller->keyClick(KBBTN_DPAD_LEFT));
 	if (!direction || !current) return nullptr;
-	for (int step = 1; step < PikiColorCount + 1; ++step) {
-		const int color = (pc_throw_selection_class(current) + direction * step + PikiColorCount + 1) % (PikiColorCount + 1);
+	const int classes=PikiColorCount+3;
+    for (int step = 1; step < classes; ++step) {
+		const int color = (pc_throw_selection_class(current) + direction * step + classes) % classes;
 		Piki* nearest = nullptr;
 		f32 distance = 200.0f;
 		Iterator squad(navi->mPlateMgr);
@@ -748,7 +912,8 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 			if (candidateDistance < distance) { nearest = piki; distance = candidateDistance; }
 		}
 		if (nearest) {
-			sPreferredThrowColor = color;
+			// Co-op: the second captain keeps its own preference (upstream #43).
+			(pcCaptainOwnsInput(navi, pc_window_get_keyboard_owner()) ? sPreferredThrowColor : sPreferredThrowColorP2) = color;
 			navi->mNextThrowPiki = nearest;
 			return nearest;
 		}
@@ -950,8 +1115,206 @@ void Navi::postUpdate(int unused, f32 deltaTime)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Mod "Lock-On": fija el enemigo más cercano al cursor.
+ *
+ * El objetivo se valida cada frame recorriendo tekiMgr, en vez de guardar un
+ * puntero y confiar en él: un enemigo puede morir y desaparecer entre frames.
+ */
+void Navi::pcUpdateLockOn()
+{
+	// Global press queues must only be consumed by the selected local captain.
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(this, 0)) {
+		mPcLockTarget = nullptr;
+		return;
+	}
+	// Se consume siempre, esté activo el mod o no, para que una pulsación no
+	// quede encolada y salte sola al activarlo.
+	const bool lockPressed   = pc_window_take_lockon_press();
+	const bool chargePressed = pc_window_take_swarm_press();
+
+	static const bool kDebug = getenv("NECTAR_LOCKON_DEBUG") != nullptr;
+	if (kDebug && lockPressed) {
+		fprintf(stderr, "[lock-on] tecla leida  mod=%d naviID=%d tekiMgr=%p cursor=(%.1f %.1f %.1f)\n",
+		        pc_settings_get_lock_on(), mNaviID, (void*)tekiMgr, mCursorWorldPos.x, mCursorWorldPos.y, mCursorWorldPos.z);
+		fflush(stderr);
+	}
+
+	if (!pc_settings_get_lock_on() || !tekiMgr || !pcCaptainOwnsInput(this, 0)) {
+		mPcLockTarget = nullptr;
+		pc_settings_note_lock_on(0);
+		return;
+	}
+
+	if (mPcLockTarget) {
+		bool stillValid = false;
+		Iterator iter(tekiMgr);
+		CI_LOOP(iter)
+		{
+			Creature* teki = *iter;
+			if (teki == mPcLockTarget) {
+				// Se suelta si muere, si deja de verse, o si el capitán se
+				// aleja: el doble del alcance del cursor, así que la distancia
+				// va con la escala del juego y no con un número inventado.
+				Vector3f away  = teki->mSRT.t - mSRT.t;
+				away.y         = 0.0f;
+				const f32 keep = NAVI_PARM(mCursorMaxRadius) * 2.0f;
+				stillValid     = teki->isAlive() && teki->isVisible() && away.length() < keep;
+				break;
+			}
+		}
+		if (!stillValid) {
+			mPcLockTarget = nullptr;
+		}
+	}
+
+	if (lockPressed) {
+		if (mPcLockTarget) {
+			mPcLockTarget = nullptr; // segunda pulsación suelta el objetivo
+		} else {
+			// El alcance sale del tamaño del propio enemigo, no de un radio
+			// fijo: con uno fijo se enganchaba al bicho más cercano al cursor
+			// aunque estuvieses apuntando a campo abierto.
+			Creature* best = nullptr;
+			f32 bestDist   = 0.0f;
+			Iterator iter(tekiMgr);
+			CI_LOOP(iter)
+			{
+				Creature* teki = *iter;
+				if (!teki->isTeki() || !teki->isAlive() || !teki->isVisible()) {
+					continue;
+				}
+				if (pc_p2_breadbug_teki_untargetable(teki, "navi_lock_on")) {
+					continue; // #898
+				}
+				Vector3f sep = teki->mSRT.t - mCursorWorldPos;
+				f32 dist     = speedy_sqrtf(sep.x * sep.x + sep.z * sep.z);
+				f32 reach    = teki->getSize() + 12.0f;
+				if (dist > reach) {
+					continue;
+				}
+				if (!best || dist < bestDist) {
+					best     = teki;
+					bestDist = dist;
+				}
+			}
+			mPcLockTarget = best;
+			if (kDebug) {
+				fprintf(stderr, "[lock-on] objetivo=%p dist=%.1f\n", (void*)best, bestDist);
+				fflush(stderr);
+			}
+		}
+	}
+
+	pc_settings_note_lock_on(mPcLockTarget != nullptr);
+
+	if (mPcLockTarget && chargePressed && pc_settings_get_charge()) {
+		Iterator iterPiki(pikiMgr);
+		CI_LOOP(iterPiki)
+		{
+			Piki* piki = static_cast<Piki*>(*iterPiki);
+			if (piki->mNavi != this || !piki->isAlive()) {
+				continue;
+			}
+			// Solo los que están en formación: los que ya trabajan siguen a lo suyo.
+			if (piki->mActiveAction->mCurrActionIdx != PikiAction::Crowd) {
+				continue;
+			}
+			piki->pcChargeAt(mPcLockTarget);
+		}
+	}
+}
+#endif
+
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Clava el cursor en el objetivo fijado.
+ *
+ * mCursorPosition es un desplazamiento respecto al capitán, y de él salen el
+ * anillo, la estela y el destino del lanzamiento, así que fijarlo aquí deja
+ * todo eso pegado al enemigo sin tocar el dibujo.
+ */
+void Navi::pcPinCursorToLock()
+{
+	if (!mPcLockTarget) {
+		pcPinCursorFirstPerson();
+		return;
+	}
+	Vector3f offset = mPcLockTarget->mSRT.t - mSRT.t;
+	offset.y        = 0.0f;
+	// #995: a Bloyster's only stickable part is the raised tail bulb, so the lock-on aims the arc there
+	// instead of at the feet (no-op for every other target).
+	{
+		f32 lockX, lockZ;
+		const f32 throwHeight = NAVI_PARM(mThrowMinHeight)
+		                      + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
+		if (pc_p2_umimushi_lock_aim(mPcLockTarget, mSRT.t.x, mSRT.t.z, throwHeight, AICONST.mGravity(),
+		                            0.5f * NAVI_PARM(mThrowFlightTime), lockX, lockZ)) {
+			mCursorPosition       = Vector3f(lockX, 0.0f, lockZ);
+			mCursorTargetPosition = mCursorPosition;
+			mCursorNaviDist       = mCursorPosition.length();
+			return;
+		}
+	}
+	// Objetivo en vuelo (#215, snitchbug): el lanzamiento alcanza su cúspide a
+	// mitad de camino del cursor y pasa por el XZ del cursor ya de bajada, así
+	// que clavado sobre el bicho el Pikmin le pasa por debajo. Con el cursor al
+	// doble de distancia la cúspide cae sobre el objetivo (pc_p2_demon_anchor.h).
+	offset = offset * p2demonanchor::lockPinScale(mPcLockTarget->isFlying() != 0);
+	mCursorPosition       = offset;
+	mCursorTargetPosition = offset;
+	mCursorNaviDist       = offset.length();
+}
+#endif
+
+/**
+ * @brief Mod "First Person": deja el cursor a distancia fija delante de la vista.
+ *
+ * Sin cabeceo libre no hay nada que trazar contra el suelo -- el rayo cortaría
+ * siempre a la misma distancia --, así que el cursor se coloca directamente a
+ * una distancia fija en la dirección en la que se mira. Se apunta girando. La
+ * altura la resuelve luego el propio juego, que pega el cursor al terreno.
+ *
+ * La distancia no la limita el tiro: `throwPiki` divide la distancia al cursor
+ * entre un tiempo de vuelo fijo, así que el Pikmin cae en el cursor esté donde
+ * esté. El tope es el mismo que en tercera persona, para no apuntar a sitios
+ * que la cámara no enseña.
+ */
+void Navi::pcPinCursorFirstPerson()
+{
+	if (pc_p2_captain::single_player_switch_enabled() && !pcCaptainOwnsInput(this, 0)) return;
+	if (!pc_first_person_active()) {
+		return;
+	}
+	Camera* cam = controlCamera();
+	if (!cam) {
+		return;
+	}
+
+	// mFocus solo se rellena en cooperativo; la matriz de vista está siempre
+	// al día. Su fila 2 es (ojo - objetivo) normalizado: hacia atrás.
+	Vector3f fwd(-cam->mLookAtMtx.mMtx[2][0], 0.0f, -cam->mLookAtMtx.mMtx[2][2]);
+	const f32 len = speedy_sqrtf(fwd.x * fwd.x + fwd.z * fwd.z);
+	if (len < 0.0001f) {
+		return;
+	}
+	fwd.x /= len;
+	fwd.z /= len;
+
+	const f32 reach = NAVI_PARM(mCursorMaxRadius) * 0.8f;
+	Vector3f offset(fwd.x * reach, 0.0f, fwd.z * reach);
+
+	mCursorPosition       = offset;
+	mCursorTargetPosition = offset;
+	mCursorNaviDist       = reach;
+}
+
 void Navi::update()
 {
+#if defined(PIKI_PC_PORT)
+	pcUpdateLockOn();
+#endif
 	if (!mGroundTriangle) {
 		f32 maxY = mapMgr->getMaxY(mSRT.t.x, mSRT.t.z, true);
 		if (maxY > mSRT.t.y) {
@@ -976,8 +1339,13 @@ void Navi::update()
 				mIsPlucking       = false;
 				mFastPluckKeyTaps = 0;
 				BUGPRINT("< camera FINISH MOTION");
-				cameraMgr->mCamera->finishMotion();
-				cameraMgr->mCamera->mControlsEnabled = true;
+#if defined(PIKI_PC_PORT)
+				PcamCameraManager* naviCam = pcCameraMgrForNavi(mNaviID);
+#else
+				PcamCameraManager* naviCam = cameraMgr;
+#endif
+				naviCam->mCamera->finishMotion();
+				naviCam->mCamera->mControlsEnabled = true;
 				mNoPluckTimer                        = 0;
 			}
 		}
@@ -1028,6 +1396,12 @@ void Navi::update()
 	// Apply after updateWalkAnimation resets the base rate each frame.
 	// Only release/recovery accelerates; held aim and charge stay unchanged.
 	if (mStateMachine->getCurrID(this) == NAVISTATE_Throw) actionSpeed = 1.5f;
+	// Mod "Throw Speed". Se aplica aquí y no al fijar mMotionSpeed: la
+	// animación de andar lo repone a 30 en cada frame en que Olimar no camina.
+	const int pcUpperMotion = mNaviAnimMgr.getUpperAnimator().getCurrentMotionIndex();
+	if (pcUpperMotion == PIKIANIM_Throw || pcUpperMotion == PIKIANIM_ThrowWait) {
+		actionSpeed *= pc_settings_get_throw_speed_scale();
+	}
 #endif
 	mNaviAnimMgr.updateAnimation(mMotionSpeed * actionSpeed);
 
@@ -1049,9 +1423,20 @@ void Navi::update()
 	}
 #endif
 
-	mKontroller->update();
+	// Only the opt-in single-player pair shares a pad. Clear the inactive
+	// captain's previous input; skipped polling alone leaves stale controls.
+	// Co-op/VS retain their per-player polling.
+	if (!pc_p2_captain::single_player_switch_enabled() || naviMgr->getActiveNavi() == this) {
+		mKontroller->update();
+	} else {
+		p2_captain_neutral_input(*mKontroller);
+	}
 	mWalkAnimPrevDir = mFaceDirection;
 	Creature::update();
+#if defined(PIKI_PC_PORT)
+	pc_demon_drop_post_physics(this);
+	pc_demon_follow_mouth(this);
+#endif
 
 	mapMgr->updatePos(mSRT.t.x, mSRT.t.z);
 
@@ -1176,12 +1561,24 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		}
 #endif
 
-		if ((piki->mNavi == this || piki->mNavi == nullptr) && !piki->isKinoko() && piki->isAlive() && !piki->isBuried()
+#if defined(PIKI_PC_PORT)
+		// Cooperativo: un pikmin solo pertenece a un Olimar mientras está en su
+		// pelotón. Fuera de él (trabajando, libre) cualquiera puede silbarlo.
+		bool callable = piki->mNavi == this || piki->mNavi == nullptr || piki->mMode != PikiMode::FormationMode;
+		// VS: solo se silban los propios y los que aún no tienen dueño.
+		if (pc_vs_active() && piki->mPlayerId >= 0 && piki->mPlayerId != mNaviID) callable = false;
+		// #245: an Antenna Beetle ActTeki follower ignores the whistle while its
+		// beetle lives (InteractFue::actPiki returns false unless Panic).
+		if (pc_p2_fuefuki_follower_blocks_recruit(piki)) callable = false;
+#else
+		const bool callable = piki->mNavi == this || piki->mNavi == nullptr;
+#endif
+		if (callable && !piki->isKinoko() && piki->isAlive() && !piki->isBuried()
 		    && (piki->mMode != PikiMode::FormationMode || piki->getState() == PIKISTATE_Emotion) && piki->mIsCallable
 		    && state != PIKISTATE_Nukare && state != PIKISTATE_Swallowed && state != PIKISTATE_Drown && state != PIKISTATE_Absorb
 		    && state != PIKISTATE_LookAt && state != PIKISTATE_Pressed && dist < radius) {
 			if (!piki->isDamaged() && state != PIKISTATE_Flick && state != PIKISTATE_GrowUp) {
-				if (piki->isFired() && piki->mColor != Red) {
+				if (piki->isFired() && !pc_p2_has_red_immunity(piki)) {
 					piki->endFire();
 				}
 
@@ -1199,6 +1596,23 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 					C_SAI(bomb)->procMsg(bomb, &msg);
 				}
 
+#if defined(PIKI_PC_PORT)
+				// Mod "Instant Whistle Response": lo que hacen el inicio y el
+				// final de LookAt (aviso, soltarse, pasar a formación) sin la
+				// espera aleatoria ni la animación de girarse a mirar.
+				pc_p2_fuefuki_note_whistle(piki, this);
+				if (pc_settings_get_instant_whistle()) {
+					SeSystem::playPlayerSe(SE_PIKI_CALLED);
+					seSystem->playPikiSound(SEF_PIKI_CALLED, piki->mSRT.t);
+					piki->endStickObject();
+					piki->endStick();
+					piki->changeMode(PikiMode::FormationMode, this);
+					if (piki->getState() != PIKISTATE_Normal) {
+						piki->mFSM->transit(piki, PIKISTATE_Normal);
+					}
+					continue;
+				}
+#endif
 				piki->mFSM->transit(piki, PIKISTATE_LookAt);
 			} else {
 				piki->mNavi             = this;
@@ -1218,6 +1632,15 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		}
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-11 Bulbmin: a captain whistle converts wild dependents in place and
+	// hands them to the bound captain table. Inert unless opted in. The `via`
+	// label proves the real Navi::callPikis path is on the P2_BULBMIN_WHISTLE log.
+	if (pc_p2_bulbmin_active()) {
+		pc_p2_bulbmin_call_pikis(this, radius, "navi_callPikis");
+	}
+#endif
+
 	Iterator iterSprout(itemMgr->getPikiHeadMgr());
 	CI_LOOP(iterSprout)
 	{
@@ -1230,6 +1653,10 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 				continue;
 			}
 
+			// VS: los brotes del rival no se pueden arrancar.
+			if (pc_vs_active() && sprout->mPcOwner >= 0 && sprout->mPcOwner != mNaviID) {
+				continue;
+			}
 			if (sprout->canPullout() && sproutDist < radius) {
 				// Why would you put an `ERROR` here?  Just don't enable it??
 				TERNARY_BUILD_MATCHING(ERROR, PRINT)("cursor nuki!\n");
@@ -1240,6 +1667,9 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 				if (piki) {
 					piki->init(this);
 					piki->initColor(sprout->mSeedColor);
+                    if(sprout->mP2Purple)pc_p2_make_purple(piki);
+                    if(sprout->mP2White)pc_p2_make_white(piki);
+					if (pc_vs_active() && sprout->mPcOwner >= 0) piki->mPlayerId = sprout->mPcOwner;
 					piki->setFlower(sprout->mFlowerStage);
 					piki->resetPosition(sprout->mSRT.t);
 					piki->mFSM->transit(piki, PIKISTATE_AutoNuki);
@@ -1354,17 +1784,20 @@ void Navi::releasePikis()
 		return;
 	}
 
-	Vector3f colorCoMs[PikiColorCount + 1]; // each color + bomb-carriers
-	int colorCounts[PikiColorCount + 1];    // each color + bomb-carriers
-	f32 colorSizes[PikiColorCount + 1];     // each color + bomb-carriers
+	Vector3f colorCoMs[PikiColorCount + 2]; // each color + bomb-carriers
+	int colorCounts[PikiColorCount + 2];    // each color + bomb-carriers
+	f32 colorSizes[PikiColorCount + 2];     // each color + bomb-carriers
 	int colorIdx1;
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		colorCoMs[colorIdx1].set(0.0f, 0.0f, 0.0f);
 		colorCounts[colorIdx1] = 0;
 	}
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+    if(pc_p2_purples_enabled()) {
+        for(int i=0;i<pikiCount;++i){int color=pc_throw_selection_class(pikiList[i]);++colorCounts[color];colorCoMs[color].add(pikiList[i]->mSRT.t);}
+    } else {
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		for (pikiIdx = 0; pikiIdx < pikiCount; pikiIdx++) {
 			if (colorIdx1 == Blue || colorIdx1 == Red) {
 				if (pikiList[pikiIdx]->mColor == colorIdx1) {
@@ -1385,7 +1818,9 @@ void Navi::releasePikis()
 		}
 	}
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+    }
+
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		if (colorCounts[colorIdx1] > 0) {
 			colorCoMs[colorIdx1].multiply(1.0f / colorCounts[colorIdx1]);
 			colorSizes[colorIdx1] = (2.5f * pikiList[0]->getSize()) * sqrtf(colorCounts[colorIdx1]);
@@ -1395,7 +1830,7 @@ void Navi::releasePikis()
 	const f32 maxSepDist = 18.0f;  // 100% CONFIRMED CONST MEME!
 	
 	 // They made a new loop variable for some reason.
-	for (int colorIdx2 = 0; colorIdx2 < PikiColorCount + 1; colorIdx2++) {
+	for (int colorIdx2 = 0; colorIdx2 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx2++) {
 		if (colorCounts[colorIdx2] > 0) {
 			Vector3f sepNaviGroup = colorCoMs[colorIdx2] - mSRT.t;
 			f32 normaliseResult   = sepNaviGroup.normalise();
@@ -1408,7 +1843,7 @@ void Navi::releasePikis()
 			}
 		}
 
-		for (int nextColor = colorIdx2 + 1; nextColor < PikiColorCount + 1; nextColor++) {
+		for (int nextColor = colorIdx2 + 1; nextColor < PikiColorCount + 1 + int(pc_p2_purples_enabled()); nextColor++) {
 			if (colorCounts[colorIdx2] > 0 && colorCounts[nextColor] > 0) {
 				Vector3f colorColorSep = colorCoMs[colorIdx2] - colorCoMs[nextColor];
 				f32 normaliseResult    = colorColorSep.normalise();
@@ -1427,7 +1862,7 @@ void Navi::releasePikis()
 
 	for (pikiIdx = 0; pikiIdx < pikiCount; pikiIdx++) {
 		pikiList[pikiIdx]->changeMode(PikiMode::FreeMode, this);
-		int color = pikiList[pikiIdx]->mColor;
+        int color = pc_p2_purples_enabled()?pc_throw_selection_class(pikiList[pikiIdx]):pikiList[pikiIdx]->mColor;
 		if (pikiList[pikiIdx]->hasBomb()) {
 			color = PikiColorCount;
 		}
@@ -1445,6 +1880,15 @@ void Navi::releasePikis()
  */
 void Navi::doAI()
 {
+	if (pc_demon_bound(this)) {
+		// P2 Sarai samples a directional down edge once per state update. The
+		// existing Kontroller click edge supplies that cadence; the bridge only
+		// consumes the engine RNG when its six-input source window permits it.
+		const bool directional = mKontroller->keyClick(KBBTN_DPAD_LEFT) || mKontroller->keyClick(KBBTN_DPAD_RIGHT)
+		                       || mKontroller->keyClick(KBBTN_DPAD_UP) || mKontroller->keyClick(KBBTN_DPAD_DOWN);
+		pc_demon_escape_tick(this, directional, [](void*) { return gsys->getRand(1.0f); }, nullptr);
+		return;
+	}
 	if (gameflow.mDemoFlags & CinePlayerFlags::NaviNoAI) {
 		return;
 	}
@@ -1584,6 +2028,18 @@ bool Navi::procActionButton()
 			f32 sproutDist         = sqrtf(sproutNaviSep.x * sproutNaviSep.x + sproutNaviSep.z * sproutNaviSep.z);
 			f32 heightDiff         = absF(sproutNaviSep.y);
 			if (sprout->canPullout() && sproutDist < minDist && heightDiff < 25.0f) {
+#if defined(PIKI_PC_PORT)
+				// Cooperativo: si el otro Olimar ya va a por este brote, se salta
+				// (si no, los dos lo arrancan y sale un pikmin duplicado).
+				bool claimed = false;
+				for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+					Navi* other = naviMgr->getNavi(ni);
+					if (other && other != this && other->mSproutToPluck == sprout) claimed = true;
+				}
+				if (claimed) continue;
+				// VS: los brotes del rival no se pueden arrancar.
+				if (pc_vs_active() && sprout->mPcOwner >= 0 && sprout->mPcOwner != mNaviID) continue;
+#endif
 				minDist       = sproutDist;
 				closestSprout = sprout;
 			}
@@ -1614,6 +2070,9 @@ bool Navi::procActionButton()
 		if (piki) {
 			piki->init(this);
 			piki->initColor(closestSprout->mSeedColor);
+            if(closestSprout->mP2Purple)pc_p2_make_purple(piki);
+            if(closestSprout->mP2White)pc_p2_make_white(piki);
+			if (pc_vs_active() && closestSprout->mPcOwner >= 0) piki->mPlayerId = closestSprout->mPcOwner;
 			piki->setFlower(closestSprout->mFlowerStage);
 			piki->resetPosition(closestSprout->mSRT.t);
 			piki->changeMode(PikiMode::FreeMode, this);
@@ -1675,6 +2134,9 @@ void Navi::jumpCallback()
  */
 bool Navi::isAtari()
 {
+	if (pc_demon_suppress_atari(this)) {
+		return false;
+	}
 	int state = mStateMachine->getCurrID(this);
 	return state != NAVISTATE_Pressed && state != NAVISTATE_Bury && state != NAVISTATE_Container;
 }
@@ -1709,22 +2171,29 @@ void Navi::bounceCallback()
 void Navi::letPikiWork()
 {
 	Iterator iter(mPlateMgr);
-	// this sure is one way to get the first piki in mPlateMgr
-	iter.first();
-	Piki* piki = static_cast<Piki*>(*iter);
-	if (piki) {
-		if (mCollidedWorkObj->mObjType == OBJTYPE_WorkObject) {
-			WorkObject* obj = static_cast<WorkObject*>(mCollidedWorkObj);
-			if (obj->isBridge()) {
-				Bridge* bridge = static_cast<Bridge*>(obj);
-				Vector3f zVec(bridge->getBridgeZVec());
-				zVec.multiply(-1.0f);
-				piki->checkBridgeWall(obj, zVec);
-				return;
+		// this sure is one way to get the first piki in mPlateMgr
+		iter.first();
+		Piki* piki = static_cast<Piki*>(*iter);
+		if (piki) {
+			if (mCollidedWorkObj->mObjType == OBJTYPE_WorkObject) {
+				WorkObject* obj = static_cast<WorkObject*>(mCollidedWorkObj);
+				if (obj->isBridge()) {
+					Bridge* bridge = static_cast<Bridge*>(obj);
+					Vector3f zVec(bridge->getBridgeZVec());
+					zVec.multiply(-1.0f);
+					piki->checkBridgeWall(obj, zVec);
+					return;
+				}
 			}
-		}
-		CollPart* part;
-		if (mCollidedWorkObj->isSluice()) {
+			// part must always hold a sane value: it is handed to CollEvent and
+		// then to the Piki, so leaving it uninitialised when the collided work
+		// object is not a sluice would read garbage on the next callback.  It
+		// also stays null when the object claims to be a sluice but has no
+		// collision parts installed yet, which is exactly the state of the dead
+		// creature a blue Piki has just picked up: letPikiWork ran before the
+		// corpse was fully set up.
+		CollPart* part = nullptr;
+		if (mCollidedWorkObj->isSluice() && mCollidedWorkObj->mCollInfo) {
 			part = mCollidedWorkObj->mCollInfo->getSphere('gate');
 		}
 
@@ -1902,7 +2371,8 @@ void Navi::makeVelocity(bool isSunset)
 	} else {
 		mMainStick.set(0.0f, 0.0f, 0.0f);
 	}
-	f32 angle                   = NMathF::atan2(mNaviCamera->mViewXAxis.z, mNaviCamera->mViewXAxis.x);
+	Camera* ctrlCam             = controlCamera();
+	f32 angle                   = NMathF::atan2(ctrlCam->mViewXAxis.z, ctrlCam->mViewXAxis.x);
 	NAxisAngle4f NRef axisAngle = NAxisAngle4f(NVector3f(0.0f, 1.0f, 0.0f), angle);
 	NTransform3D NRef transform = NTransform3D();
 	transform.inputAxisAngle(axisAngle);
@@ -1932,6 +2402,9 @@ void Navi::makeVelocity(bool isSunset)
 #if defined(PIKI_PC_PORT)
             mTargetVelocity = mTargetVelocity * pc_randomizer_captain_movement_multiplier();
 #endif
+#if defined(PIKI_PC_PORT)
+			mTargetVelocity = mTargetVelocity * pc_settings_get_navi_speed_scale(); // cheat "Olimar Speed"
+#endif
 
 			if (mGroundTriangle) {
 				// ?? this does nothing.
@@ -1952,7 +2425,26 @@ void Navi::makeVelocity(bool isSunset)
 
 	// Use virtual cursor (mouse) in PC mouse modes, otherwise use movement stick
 	#ifdef PIKI_PC_PORT
-	if (pc_window_get_control_mode() == PC_CONTROL_MOUSE_CURSOR) {
+	// El ratón y el cursor virtual van con el jugador que tiene el teclado;
+	// el otro usa siempre el modo clásico.
+	const bool mouseIsMine = pcCaptainOwnsInput(this, pc_window_get_keyboard_owner());
+	// "Gyro Recenter": el cursor vuelve delante del capitán, en la dirección
+	// de la cámara, para corregir la deriva acumulada del giroscopio.
+	if (mouseIsMine && pc_gyro_take_recenter_cursor()) {
+		Vector3f fwd(-ctrlCam->mLookAtMtx.mMtx[2][0], 0.0f, -ctrlCam->mLookAtMtx.mMtx[2][2]);
+		const f32 len = speedy_sqrtf(fwd.x * fwd.x + fwd.z * fwd.z);
+		if (len > 0.0001f) {
+			const f32 reach = NAVI_PARM(mCursorMaxRadius) * 0.5f;
+			mCursorPosition.set(fwd.x / len * reach, 0.0f, fwd.z / len * reach);
+			mCursorTargetPosition = mCursorPosition;
+			mCursorNaviDist       = reach;
+		}
+		pc_window_clear_mouse_cursor_delta();
+	}
+	if (mouseIsMine
+	    && (pc_window_get_control_mode() == PC_CONTROL_MOUSE_CURSOR
+	        || pc_window_get_mouse_cursor_delta_x() != 0.0f
+	        || pc_window_get_mouse_cursor_delta_y() != 0.0f)) {
 		// Direct mouse delta mode: use raw deltas, no normalization or frame time scaling
 		// SDL already provides distance since last poll
 		static const float kMouseCursorWorldScale = 0.5f; // Convert SDL counts to world units
@@ -1964,10 +2456,10 @@ void Navi::makeVelocity(bool isSunset)
 		// mCursorPosition is a world-space offset from Olimar.  SDL deltas are
 		// screen-space, so fixed world X/Z axes make the cursor rotate or invert
 		// as the camera turns.  Project the camera basis onto the ground instead.
-		Vector3f screenRight(mNaviCamera->mViewXAxis.x, 0.0f, mNaviCamera->mViewXAxis.z);
+		Vector3f screenRight(ctrlCam->mViewXAxis.x, 0.0f, ctrlCam->mViewXAxis.z);
 		// SDL Y grows downwards, whereas the gameplay cursor's positive screen
 		// vertical direction is camera-forward on the ground plane.
-		Vector3f screenDown(-mNaviCamera->mViewZAxis.x, 0.0f, -mNaviCamera->mViewZAxis.z);
+		Vector3f screenDown(-ctrlCam->mViewZAxis.x, 0.0f, -ctrlCam->mViewZAxis.z);
 		if (screenRight.length() > 0.0001f) {
 			screenRight.normalise();
 		}
@@ -1990,6 +2482,7 @@ void Navi::makeVelocity(bool isSunset)
 		f32 dist              = targetPos.length();
 		mCursorNaviDist       = dist;
 		mCursorTargetPosition = targetPos;
+		pcPinCursorToLock();
 
 		// For cursor-facing logic: use delta magnitude (activity-based)
 		f32 moveStickMag = stickMag;
@@ -2004,8 +2497,14 @@ void Navi::makeVelocity(bool isSunset)
 			check = true;
 		}
 
-		// Cursor-facing logic: when cursor is moving but movement stick is small
-		if ((check || (!check && cursorStickMag > NAVI_PARM(mNeutralStickThreshold))) && cursorStickMag <= NAVI_PARM(mCursorMoveStickThreshold)) {
+		// GC uses one stick for run and cursor. A small deflection stops
+		// Olimar so he can turn toward the cursor. Mouse mode splits those:
+		// WASD is the stick, the mouse is the cursor. Treating a small mouse
+		// delta as that "look" band zeroed velocity while the player was
+		// still holding WASD (issue #17).
+		const bool moving = moveStickMag > NAVI_PARM(mNeutralStickThreshold);
+		if (!moving && (check || cursorStickMag > NAVI_PARM(mNeutralStickThreshold))
+		    && cursorStickMag <= NAVI_PARM(mCursorMoveStickThreshold)) {
 			mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 			Vector3f cursorPos(mCursorPosition);
 			mFaceDirection += 0.2f * angDist(roundAng(atan2f(cursorPos.x, cursorPos.z)), mFaceDirection);
@@ -2022,7 +2521,7 @@ void Navi::makeVelocity(bool isSunset)
 		// this hides many developer sins i am sure.
 		STACK_PAD_VAR(5);
 		return;
-	} else if (pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
+	} else if (mouseIsMine && pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
 		// Fallback for other non-classic modes (if any): use virtual cursor
 		NVector3f cursorStickVec(
 			pc_window_get_virtual_cursor_x() / 127.0f,
@@ -2053,6 +2552,9 @@ void Navi::makeVelocity(bool isSunset)
 	f32 dist              = targetPos.length();
 	mCursorNaviDist       = dist;
 	mCursorTargetPosition = targetPos;
+#if defined(PIKI_PC_PORT)
+	pcPinCursorToLock();
+#endif
 
 	// Use movement stick magnitude for movement-related checks
 	f32 moveStickMag = stickMag;
@@ -2060,7 +2562,7 @@ void Navi::makeVelocity(bool isSunset)
 	// For cursor-facing logic, use virtual cursor in mouse modes
 	#ifdef PIKI_PC_PORT
 	f32 cursorStickMag = moveStickMag;
-	if (pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
+	if (pcCaptainOwnsInput(this, pc_window_get_keyboard_owner()) && pc_window_get_control_mode() != PC_CONTROL_CLASSIC) {
 		cursorStickMag = sqrtf(
 			(pc_window_get_virtual_cursor_x() / 127.0f) * (pc_window_get_virtual_cursor_x() / 127.0f) +
 			(pc_window_get_virtual_cursor_y() / 127.0f) * (pc_window_get_virtual_cursor_y() / 127.0f)
@@ -2105,7 +2607,8 @@ void Navi::makeVelocity(bool isSunset)
  */
 void Navi::makeCStick(bool isSunset)
 {
-	f32 cameraYaw               = NMathF::atan2(mNaviCamera->mViewXAxis.z, mNaviCamera->mViewXAxis.x);
+	Camera* ctrlCam             = controlCamera();
+	f32 cameraYaw               = NMathF::atan2(ctrlCam->mViewXAxis.z, ctrlCam->mViewXAxis.x);
 	NAxisAngle4f NRef axisAngle = NAxisAngle4f(NVector3f(0.0f, 1.0f, 0.0f), cameraYaw);
 
 	NTransform3D NRef transform = NTransform3D();
@@ -2116,6 +2619,28 @@ void Navi::makeCStick(bool isSunset)
 	if (isSunset) {
 		cStickInput.set(0.0f, 0.0f, 0.0f);
 	}
+
+#if defined(PIKI_PC_PORT)
+	// Swarm button (issue #29): with the C-stick idle, steer the squad at the
+	// cursor. The input is expressed in camera space here and rotated into
+	// the world below, so the world-space direction is rotated back first.
+	// Con el Charge activo el botón de swarm pasa a lanzar la carga contra el
+	// objetivo fijado, así que aquí deja de dirigir al pelotón.
+	const bool swarmIsCharge = pc_settings_get_charge() != 0;
+	const bool swarmHeld = pc_p2_captain::single_player_switch_enabled()
+	    ? (pcCaptainOwnsInput(this, 0) && pc_window_swarm_held())
+	    : (mNaviID == 0 ? pc_window_swarm_held() : pc_window_swarm_held_p2());
+	if (!isSunset && !swarmIsCharge && swarmHeld && cStickInput.length() < 0.05f) {
+		NVector3f toCursor(mCursorWorldPos.x - mSRT.t.x, 0.0f, mCursorWorldPos.z - mSRT.t.z);
+		if (toCursor.length() > 1.0f) {
+			toCursor.normalise();
+			NTransform3D NRef back = NTransform3D();
+			back.inputAxisAngle(NAxisAngle4f(NVector3f(0.0f, 1.0f, 0.0f), -cameraYaw));
+			back.transform(toCursor);
+			cStickInput.set(toCursor.x, 0.0f, toCursor.z);
+		}
+	}
+#endif
 
 	reviseController(cStickInput);
 
@@ -2248,6 +2773,11 @@ void Navi::makeCStick(bool isSunset)
  */
 void Navi::refresh(Graphics& gfx)
 {
+	// Lane 12 (#130): the second captain now draws like the first. It shares
+	// slot 0's fully-initialised PikiShapeObject (see
+	// NaviMgr::ensureSecondNaviShapeObject), so the fresh-shape crash in the
+	// draw/demoDraw tail is gone. Single-captain play is unchanged (only slot 0
+	// exists); with the live gate on, both captains render at their own mSRT.
 	draw(gfx);
 	if (!movieMode()) {
 		if (gsys->mToggleColls) {
@@ -2255,7 +2785,14 @@ void Navi::refresh(Graphics& gfx)
 		}
 
 		Matrix4f viewMtx;
-		mPlateMgr->render(gfx);
+		// Lane 12 (#130): a second Navi is birthed in the GameCoreSection
+		// constructor but init()/reset() (which allocates mPlateMgr) runs later in
+		// finalSetup, so the setup draw can reach refresh() with mPlateMgr still
+		// null. Guard it (and see demoDraw's light guards) so the second captain
+		// can render before reset without a null deref.
+		if (mPlateMgr) {
+			mPlateMgr->render(gfx);
+		}
 
 		// these aren't used for anything in the DLL either, lol.
 		f32 unusedVal  = sinf(mFaceDirection);
@@ -2303,6 +2840,31 @@ void Navi::refresh(Graphics& gfx)
 		mWorldMtx = orientMatrix;
 		mWorldMtx.setTranslation(mCursorWorldPos);
 
+		// Estela: emite mientras el cursor se desplaza; quieto, deja de emitir
+		// y las partículas que quedan se desvanecen solas.
+		{
+			const bool cursorShown = mIsCursorVisible && getCurrState()->getID() != NAVISTATE_DemoSunset;
+			Vector3f trailPos(mCursorWorldPos.x, mCursorWorldPos.y + 2.0f, mCursorWorldPos.z);
+			Vector3f moved = trailPos - mCursorTrailLastPos;
+			const bool moving = cursorShown && moved.length() > 0.5f;
+			if (moving) {
+				mCursorTrailEfx->updatePos(trailPos);
+				mCursorTrailEfx->restart();
+			}
+			// Del color del anillo del cursor sobre el suelo (magenta).
+			// Olimar magenta; Louie azul; con tinte de J2, el color del tinte.
+			Colour trailColour(235, 70, 235, 255);
+			if (pcHasTint()) {
+				GXColor t = pcTint();
+				trailColour.set(t.r, t.g, t.b, 255);
+			} else if (pcCaptain() == PC_CAPTAIN_LOUIE) {
+				trailColour.set(60, 130, 255, 255);
+			}
+			mCursorTrailEfx->setTint(trailColour);
+			mCursorTrailEfx->setEmitting(moving);
+			if (cursorShown) mCursorTrailLastPos = trailPos;
+		}
+
 		if (mIsCursorVisible && getCurrState()->getID() != NAVISTATE_DemoSunset) {
 			gfx.useMatrix(Matrix4f::ident, 0);
 			gfx.mCamera->mLookAtMtx.multiplyTo(mWorldMtx, viewMtx);
@@ -2310,7 +2872,24 @@ void Navi::refresh(Graphics& gfx)
 			gfx.useMatrix(viewMtx, 0);
 
 			mAnimatedMaterials.updateContext();
+#if defined(PIKI_PC_PORT)
+			// El cursor y su marcador no proyectan sombra (shadow map).
+			pc_gfx_shadow_exclude(1);
+			// Coop: el anillo de J2 en azul (el original es magenta, así que
+			// el tinte apaga rojo y verde).
+			// Sobre el magenta original: azul (Louie, u Olimar/Olimar J2) o
+			// rojo (Louie/Louie J2).
+			const bool cursorTinted = pcHasTint() || pcCaptain() == PC_CAPTAIN_LOUIE;
+			if (cursorTinted) {
+				GXColor cursorTint = pcTint();
+				const bool red     = pcHasTint() && cursorTint.r > cursorTint.b;
+				pc_gfx_set_mat_color_tint(red ? GXColor { 255, 60, 40, 255 } : GXColor { 40, 110, 255, 255 });
+			}
+#endif
 			GlobalShape::cursorShape->drawshape(gfx, *gfx.mCamera, nullptr);
+#if defined(PIKI_PC_PORT)
+			if (cursorTinted) pc_gfx_clear_mat_color_tint();
+#endif
 
 			Colour markerColour;
 			if (mNextThrowPiki) {
@@ -2323,6 +2902,9 @@ void Navi::refresh(Graphics& gfx)
 			GlobalShape::markerShape2->mMaterialList->colour()    = markerColour;
 			GlobalShape::markerShape2->drawshape(gfx, *gfx.mCamera, nullptr);
 			gfx.setLighting(isLighting, nullptr);
+#if defined(PIKI_PC_PORT)
+			pc_gfx_shadow_exclude(0);
+#endif
 		}
 	}
 }
@@ -2330,11 +2912,144 @@ void Navi::refresh(Graphics& gfx)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+int Navi::pcCaptain() { return pc_coop_captain(mNaviID); }
+
+bool Navi::pcHasTint() { return mNaviID == 1 && pc_coop_p2_tinted(); }
+
+GXColor Navi::pcTint()
+{
+	GXColor c = { 255, 255, 255, 255 };
+	if (pcHasTint()) pc_coop_p2_tint(&c.r, &c.g, &c.b);
+	return c;
+}
+
+// Luz de la antena: Olimar roja (original), Louie azul. Con tinte de J2
+// (mismo capitán los dos) la luz toma el color del tinte.
+void Navi::applyPlayerLightTint()
+{
+	Colour light(255, 255, 255, 255);
+	bool tinted = false;
+	if (pcHasTint()) {
+		GXColor t = pcTint();
+		light.set(t.r, t.g, t.b, 255);
+		tinted = true;
+	} else if (pcCaptain() == PC_CAPTAIN_LOUIE) {
+		light.set(80, 140, 255, 255);
+		tinted = true;
+	} else if (pc_captain_piki_color(pcCaptain()) >= 0) {
+		light.set(90, 255, 110, 255); // capitán Pikmin: la hoja brilla verde
+		tinted = true;
+	}
+	if (!tinted) return;
+	if (mNaviLightEfx) mNaviLightEfx->setTint(light);
+	if (mNaviLightGlowEfx) mNaviLightGlowEfx->setTint(light);
+}
+
+// Capitán Pikmin. Pikmin y capitanes comparten la tabla de movimientos
+// (PikiNaviAnim), así que el Pikmin reproduce la misma animación y el mismo
+// fotograma que Olimar. Solo cambia el aspecto: el esqueleto de Olimar se
+// sigue animando (colisiones, antena, mano del lanzamiento).
+static void pcSyncPikiAnimator(PaniPikiAnimator& dst, PaniPikiAnimator& src, AnimMgr* mgr)
+{
+	int anim = src.mAnimInfo ? src.mCurrentAnimID : -1;
+	if (anim < 0 || anim >= mgr->countAnims()) {
+		// El Pikmin no tiene esa animación: sigue con la suya, o espera.
+		if (dst.mAnimInfo) return;
+		anim = PaniPikiAnimMgr::getMotionTable()->getMotion(PIKIANIM_Wait)->mAnimID;
+	}
+	if (!dst.mAnimInfo || dst.mCurrentAnimID != anim) {
+		dst.startAnim(src.mAnimInfo ? src.mPlayState : ANIMSTATE_Loop, anim, 0, 8);
+	}
+	if (src.mAnimInfo && src.mCurrentAnimID == anim) {
+		const f32 last = f32(dst.mAnimInfo->mData->mTotalFrameCount) - 1.0f;
+		f32 t          = src.mAnimationCounter;
+		dst.mAnimationCounter = t < 0.0f ? 0.0f : (t > last ? last : t);
+	}
+}
+
+bool Navi::pcDrawAsPikmin(Graphics& gfx)
+{
+	const int color = pc_captain_piki_color(pcCaptain());
+	if (color < 0) return false;
+
+	PikiShapeObject* obj = PikiShapeObject::create(color);
+	if (mPcPikiAnimColor != color) {
+		mPcPikiAnimMgr.init(obj->mAnimMgr, &obj->mAnimatorB, &obj->mAnimatorA, naviMgr->mMotionTable);
+		mPcPikiAnimColor = color;
+	}
+	pcSyncPikiAnimator(mPcPikiAnimMgr.getUpperAnimator(), mNaviAnimMgr.getUpperAnimator(), obj->mAnimMgr);
+	pcSyncPikiAnimator(mPcPikiAnimMgr.getLowerAnimator(), mNaviAnimMgr.getLowerAnimator(), obj->mAnimMgr);
+	// El modelo es compartido por todos los Pikmin de ese color: como hace
+	// ViewPiki, se vuelca el estado propio justo antes de animar y dibujar.
+	mPcPikiAnimMgr.changeContext(&obj->mAnimatorB, &obj->mAnimatorA);
+	mPcPikiAnimMgr.updateContext();
+
+	// Misma pose que Olimar, a tamaño de Pikmin.
+	Matrix4f world = mWorldMtx;
+	const f32 k    = mSRT.s.x > 0.0f ? pikiMgr->mPikiParms->mPikiParms.mPikiDisplayScale() / mSRT.s.x : 1.0f;
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			world.mMtx[i][j] *= k;
+		}
+	}
+	Matrix4f view;
+	gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
+	obj->mShape->updateAnim(gfx, view, nullptr, this);
+
+	// La textura original es gris y la pinta el color del Pikmin.
+	obj->mShape->mMaterialList->setColour(Piki::pikiColors[color]);
+	static const PcHdModelId kHdPiki[PikiColorCount] = { PC_HD_MODEL_PIKI_BLUE, PC_HD_MODEL_PIKI_RED, PC_HD_MODEL_PIKI_YELLOW };
+	if (!pc_hd_model_draw_skinned(gfx, obj->mShape, kHdPiki[color], pcTint())) {
+		obj->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
+	}
+
+	// Hoja, siempre hoja (no capullo ni flor).
+	gfx.useMatrix(obj->mShape->getAnimMatrix(6), 0);
+	const GXColor white = { 255, 255, 255, 255 };
+	if (!pc_hd_model_draw_rigid(gfx, obj->mShape->getAnimMatrix(6), PC_HD_MODEL_HAPPA_LEAF, white) && pikiMgr->mLeafModel[Leaf]) {
+		pikiMgr->mLeafModel[Leaf]->drawshape(gfx, *gfx.mCamera, nullptr);
+	}
+
+	Vector3f tip(6.0f, 0.0f, 0.0f);
+	obj->mShape->calcJointWorldPos(gfx, 6, tip);
+	mPcPikiLeafTip = tip;
+	return true;
+}
+#endif
+
 void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 {
 	mShadowCaster.mSourcePosition.set(mSRT.t.x + 75.0f, mSRT.t.y + 100.0f, mSRT.t.z + 25.0f);
 	mShadowCaster.mTargetPosition.set(mSRT.t.x, mSRT.t.y + 10.0f, mSRT.t.z);
-	mNaviShapeObject->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
+#if defined(PIKI_PC_PORT)
+	// Cooperativo: capitán (Olimar HD/original o Louie) y tinte de
+	// distinción de J2 cuando ambos llevan el mismo.
+	const bool tinted    = pcHasTint();
+	const GXColor hdTint = pcTint();
+	if (tinted) pc_gfx_set_mat_color_tint(hdTint);
+	// Louie: primero el pack HD de Pikmin 3, si no el de Pikmin 2; Olimar HD o el original.
+	// Mod "First Person": la cámara está dentro de la cabeza del capitán, así
+	// que dibujarlo llena la pantalla con su nuca. Solo se oculta el que
+	// controla el jugador; en cooperativo el otro se sigue viendo. Se salta
+	// solo el dibujado: la animación y updateInfo siguen corriendo, y de ahí
+	// salen las esferas de colisión (sin ellas no se abre la cebolla).
+	bool drawn = pcCaptainOwnsInput(this, 0) && pc_first_person_active();
+	if (drawn) {
+	} else if (pcDrawAsPikmin(gfx)) {
+		drawn = true;
+	} else if (pcCaptain() == PC_CAPTAIN_LOUIE) {
+		drawn = pc_hd_model_draw_skinned(gfx, mNaviShapeObject->mShape, PC_HD_MODEL_LOUIE_HD, hdTint)
+		     || pc_hd_model_draw_skinned(gfx, mNaviShapeObject->mShape, PC_HD_MODEL_LOUIE, hdTint);
+	} else {
+		drawn = pc_hd_model_draw_skinned(gfx, mNaviShapeObject->mShape, PC_HD_MODEL_OLIMAR, hdTint);
+	}
+	if (!drawn)
+#endif
+		mNaviShapeObject->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
+#if defined(PIKI_PC_PORT)
+	if (tinted) pc_gfx_clear_mat_color_tint();
+#endif
 	mCollInfo->updateInfo(gfx, false);
 	CollPart* antenna = mCollInfo->getSphere('ante');
 	if (antenna) {
@@ -2345,8 +3060,18 @@ void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		// of dereferencing a missing collision part during the transition.
 		mNaviLightPosition.set(mSRT.t.x, mSRT.t.y + 10.0f, mSRT.t.z);
 	}
-	mNaviLightEfx->updatePos(mNaviLightPosition);
-	mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+#if defined(PIKI_PC_PORT)
+	// Capitán Pikmin: la luz sale de la punta de la hoja, no de la antena.
+	if (pc_captain_piki_color(pcCaptain()) >= 0 && !(pcCaptainOwnsInput(this, 0) && pc_first_person_active())) {
+		mNaviLightPosition = mPcPikiLeafTip;
+	}
+#endif
+	if (mNaviLightEfx) {
+		mNaviLightEfx->updatePos(mNaviLightPosition);
+	}
+	if (mNaviLightGlowEfx) {
+		mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+	}
 }
 
 /**
@@ -2363,6 +3088,11 @@ void Navi::draw(Graphics& gfx)
 		mSRT.s.set(scale, scale, scale);
 	}
 
+#if defined(PIKI_PC_PORT)
+    if (pc_demon_capture_matrix(this, mWorldMtx)) {
+        // Preserve full source joint basis instead of rebuilding upright SRT.
+    } else
+#endif
 	if (mRope) {
 		mWorldMtx = mConstrainedMoveMtx;
 		mWorldMtx.setTranslation(mSRT.t.x, mSRT.t.y, mSRT.t.z);
@@ -2415,18 +3145,18 @@ void Navi::renderCircle(Graphics& gfx)
 	switch (mWhistleCircleMode) {
 	case 0:
 	{
-		rad = NAVI_PARM(mWhistleMinRadius) + mWhistleRadiusFrac * (NAVI_PARM(mWhistleMaxRadius) - NAVI_PARM(mWhistleMinRadius));
+		rad = NAVI_PARM(mWhistleMinRadius) + mWhistleRadiusFrac * (NAVI_WHISTLE_MAX_RADIUS(this) - NAVI_PARM(mWhistleMinRadius));
 		break;
 	}
 	case 1:
 	{
 		tmp = (mWhistleTimer / NAVI_PARM(mWhistleExpandTime));
-		rad = NAVI_PARM(mWhistleMinRadius) + tmp * (NAVI_PARM(mWhistleMaxRadius) - NAVI_PARM(mWhistleMinRadius));
+		rad = NAVI_PARM(mWhistleMinRadius) + tmp * (NAVI_WHISTLE_MAX_RADIUS(this) - NAVI_PARM(mWhistleMinRadius));
 		break;
 	}
 	default:
 	{
-		rad = NAVI_PARM(mWhistleMinRadius) + mWhistleRadiusFrac * (NAVI_PARM(mWhistleMaxRadius) - NAVI_PARM(mWhistleMinRadius));
+		rad = NAVI_PARM(mWhistleMinRadius) + mWhistleRadiusFrac * (NAVI_WHISTLE_MAX_RADIUS(this) - NAVI_PARM(mWhistleMinRadius));
 		break;
 	}
 	}
@@ -2515,18 +3245,26 @@ bool InteractGeyzer::actNavi(Navi* navi) immut
  */
 bool InteractBury::actNavi(Navi* navi) immut
 {
+	int mamuta = pc_p2_mamuta_bury_navi(mOwner, navi);
+	if (mamuta >= 0) {
+		return mamuta > 0;
+	}
+
 	NaviState* state = navi->mStateMachine->getNaviState(navi);
 	if (state->invincible(navi)) {
 		return false;
 	}
 
 	navi->mStateMachine->transit(navi, NAVISTATE_Bury);
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= mDamage;
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->startDamageEffect();
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		navi->mStateMachine->transit(navi, NAVISTATE_Dead);
 	}
 
@@ -2545,6 +3283,36 @@ bool InteractWind::actNavi(Navi* navi) immut
 
 	navi->mVelocity       = mVelocity;
 	navi->mTargetVelocity = mVelocity;
+	return true;
+}
+
+/**
+ * @todo: Documentation
+ *
+ * P2 electric Navi receiver (#408). Source `InteractDenki::actNavi`
+ * (native/pikmin2-research/src/plugProjectKandoU/interactNavi.cpp:85) flicks
+ * the captain with the source force/direction unless Olimar has the Dream
+ * Material. The port has no Dream Material gate, so this mirrors the existing
+ * `InteractFire::actNavi`/`InteractBubble::actNavi` flick behavior.
+ *
+ * `__attribute__((used))` keeps it in the link until a denki emitter exists.
+ */
+__attribute__((used)) bool InteractDenki::actNavi(Navi* navi) immut
+{
+	if (navi->mStateMachine->getNaviState(navi)->invincible(navi)) {
+		return false;
+	}
+
+	navi->mHealth -= mDamage;
+	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
+	navi->startDamageEffect();
+	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
+	SeSystem::playPlayerSe(SE_FIRED);
+	if (navi->mHealth <= 1.0f) {
+		navi->pauseForDownIfLast();
+	}
+	navi->mFlickIntensity = 2.0f;
+	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
 	return true;
 }
 
@@ -2570,16 +3338,19 @@ bool InteractSuck::actNavi(Navi* navi) immut
 	}
 
 	BUGPRINT("invicible check false");
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	BUGPRINT("life = %.1f", navi->mHealth);
 
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
-	rumbleMgr->start(RUMBLE_Unk15, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk15, navi->mNaviID, nullptr);
 	BUGPRINT("lgauge");
 	navi->startDamageEffect();
 	BUGPRINT("dmg eff");
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		navi->mStateMachine->transit(navi, NAVISTATE_Dead);
 		BUGPRINT("navi dead");
 	}
@@ -2601,12 +3372,17 @@ bool InteractAttack::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	if (!pc_demon_drop_silent_damage()) {
+		rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
+		SeSystem::playPlayerSe(SE_DAMAGED);
+	}
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		PRINT("ATTACK DEAD ******\n");
 	} else {
 		navi->startMotion(PaniMotionInfo(PIKIANIM_Damage, navi), PaniMotionInfo(PIKIANIM_Damage));
@@ -2630,12 +3406,15 @@ bool InteractPress::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= mDamage;
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		PRINT("PRESS DEAD ******\n");
 	}
 
@@ -2658,12 +3437,15 @@ bool InteractSwallow::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= 10.0f;
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
+	navi->mHealth -= pcNaviHurt(10.0f);
 	SeSystem::playPlayerSe(SE_DAMAGED);
 	navi->startDamageEffect();
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		PRINT("SWALLOW DEAD ******\n");
 	} else {
 		navi->startMotion(PaniMotionInfo(PIKIANIM_Damage, navi), PaniMotionInfo(PIKIANIM_Damage));
@@ -2687,14 +3469,17 @@ bool InteractBomb::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
 	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->startDamageEffect();
 	navi->mFlickIntensity = 100.0f;
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		PRINT("BOMB DEAD ******\n");
 	}
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2726,18 +3511,21 @@ bool InteractFlick::actNavi(Navi* navi) immut
 	}
 
 	if (mDamage > 0.0f) {
-		rumbleMgr->start(RUMBLE_Unk10, 0, nullptr);
+		rumbleMgr->start(RUMBLE_Unk10, navi->mNaviID, nullptr);
 		navi->startDamageEffect();
 	} else {
-		rumbleMgr->start(RUMBLE_Unk10, 0, nullptr);
+		rumbleMgr->start(RUMBLE_Unk10, navi->mNaviID, nullptr);
 	}
 
 	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mFlickIntensity = mIntensity;
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 		PRINT("FLICK DEAD ******\n");
 	}
 
@@ -2756,13 +3544,16 @@ bool InteractBubble::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
 	SeSystem::playPlayerSe(SE_FIRED);
 	navi->startDamageEffect();
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 	}
 	navi->mFlickIntensity = 2.0f;
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2778,13 +3569,16 @@ bool InteractFire::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->startDamageEffect();
-	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk1, navi->mNaviID, nullptr);
 	SeSystem::playPlayerSe(SE_FIRED);
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+#if defined(PIKI_PC_PORT)
+		if (pcIsLastNaviStanding(navi))
+#endif
+		navi->pauseForDownIfLast();
 	}
 	navi->mFlickIntensity = 2.0f;
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2820,7 +3614,7 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 {
 	f32 unused = mFaceDirection + PI;
 	piki->mActiveAction->abandon(nullptr);
-	rumbleMgr->start(RUMBLE_Unk2, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk2, mNaviID, nullptr);
 	piki->mSRT.t         = mSRT.t + Vector3f(0.0f, 10.0f, 0.0f);
 	Vector3f throwDir    = pos - piki->mSRT.t;
 	f32 throwDist        = speedy_sqrtf(SQUARE(throwDir.x) + SQUARE(throwDir.z));
@@ -2836,14 +3630,26 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 		            + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
 	}
 
+    if(pc_p2_is_purple(piki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
 
 	piki->mVelocity.set(hSpeed * sinf(throwAngle), vSpeed, hSpeed * cosf(throwAngle));
 
-	piki->mVelocity       = piki->mVelocity + mVelocity;
+	// El lanzamiento hereda el impulso del capitán, que con él en marcha
+	// desvía al Pikmin hacia donde se mueve. Con un objetivo fijado eso
+	// contradice el sentido del Lock-On: el tiro va al enemigo y punto.
+#if defined(PIKI_PC_PORT)
+	if (!mPcLockTarget) {
+		piki->mVelocity = piki->mVelocity + mVelocity;
+	}
+#else
+	piki->mVelocity = piki->mVelocity + mVelocity;
+#endif
 	piki->mTargetVelocity = piki->mVelocity;
 	piki->mVolatileVelocity.set(0.0f, 0.0f, 0.0f);
+	pc_p2_purple_impact_arm(piki);
+	pc_p2_purple_flight_arm(piki);
 }
 
 /**
@@ -2878,6 +3684,7 @@ void Navi::throwLocus(immut Vector3f& pos)
 		            + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
 	}
 
+    if(pc_p2_is_purple(mNextThrowPiki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
 

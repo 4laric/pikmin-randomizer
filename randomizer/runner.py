@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ from .netplay_mirror import (
     render_mirror_state,
     run_dir_for,
 )
+from .enemy_catalog import bootstrap as bootstrap_enemy_checks
 from .seed import fingerprint
 from .stats import bootstrap_stats
 from .enemy_slots import bootstrap_slots, verify_source_assets
@@ -31,7 +33,10 @@ from .session import Session, SessionLock, atomic_write
 
 
 class NativeRun:
-    def __init__(self, session):
+    def __init__(self, session, purple_campaign=False):
+        if purple_campaign and not session.manifest.get("p2_layout"):
+            raise ValueError("Purple campaign requires a P2 enemy seed")
+        self.purple_campaign = bool(purple_campaign)
         self.session = session
         self.token = secrets.token_hex(32)
         self.directory = session.directory / "runs" / self.token
@@ -42,7 +47,7 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + "END\n")
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + bootstrap_enemy_checks(session.manifest) + ("PURPLE 1\n" if self.purple_campaign else "") + ("CAPTAINS 2\n" if session.manifest.get("p2_second_captain") else "") + "END\n")
         self.seen = 0
         self.deaths_seen = 0
         self.handshaken = False
@@ -189,6 +194,34 @@ async def ap_connect(session, server, password, ready):
                     goal_sent = True
 
 
+def describe_native_exit(log_path, tail_bytes=65536):
+    """Say why the native process ended, from what it left in native.log.
+
+    The native exe writes a "[PC Port Fatal] ..." line for every death it can
+    observe (unhandled exception, abort, terminate, console close) and an
+    "orderly process exit" line when the CRT exit chain runs. A log that ends
+    with neither was terminated from outside: taskkill /F, Stop-Process and
+    Popen.terminate() all report exit code 1, and no process can log its own
+    TerminateProcess. (Exes built before the markers existed also look like
+    this.)
+    """
+    try:
+        with open(log_path, 'rb') as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - tail_bytes))
+            lines = handle.read().decode('utf-8', 'replace').splitlines()
+    except OSError:
+        return 'native.log unreadable'
+    fatal = [line for line in lines if line.startswith('[PC Port Fatal]')]
+    if fatal:
+        return 'native reported: ' + fatal[-1]
+    if any('orderly process exit' in line for line in lines):
+        return 'the game exited on its own through its normal exit path'
+    return ('no fatal message and no orderly-exit marker: the process was most likely terminated '
+            'from outside (taskkill /F, Stop-Process or another tool report exit code 1), '
+            'or this exe predates the exit markers')
+
+
 async def serve(session, run, process=None, server=None, password=None, updates=None):
     ready = [session.manifest["mode"] == "solo"]
     task = None
@@ -263,16 +296,93 @@ async def serve(session, run, process=None, server=None, password=None, updates=
                 await asyncio.gather(task, return_exceptions=True)
 
 
-def launch(manifest, session_dir, exe=None, assets=None, server=None):
+def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
+           family_install=None, family_source=None, family_actors=None,
+           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
     with SessionLock(session_dir):
-        return _launch(manifest, session_dir, exe, assets, server)
+        return _launch(manifest, session_dir, exe, assets, server, content_manifest,
+                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion)
 
 
-def _launch(manifest, session_dir, exe=None, assets=None, server=None):
+def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
+            family_install=None, family_source=None, family_actors=None,
+            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
+    staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
+    if len(staged_paths) > 1:
+        raise ValueError("--content-manifest, --family-install and --p2-content own the private asset tree; use exactly one")
+    if exe and manifest.get("p2_layout") and content_manifest is None and p2_content is None:
+        raise ValueError("P2 native launch requires --content-manifest or --p2-content "
+                         "covering the seed identities; unstaged P2 seeds cannot launch")
+    if purple_bank is not None and (assets is None or not (Path(assets) / 'dataDir/stages').is_dir()):
+        raise ValueError('Purple campaign requires --assets with dataDir/stages')
+    if (manifest.get("p2_purple_campaign") and purple_bank is None
+            and not os.environ.get("PIKMIN_DEV_CONSOLE")):
+        # A seed that binds Purple-only species (seed.P2_REQUIRES_PURPLE) is not
+        # winnable without the Violet supply, so it never launches without it.
+        raise ValueError("this seed was generated with --p2-purple-campaign; "
+                         "run it with --purple-bank and --purple-motion")
+    from .purple_campaign import bind_campaign_mode
+    bind_campaign_mode(Path(session_dir), manifest, purple_bank, purple_motion)
     session = Session(manifest, session_dir)
-    run = NativeRun(session)
+    run = NativeRun(session, purple_campaign=purple_bank is not None)
+    if family_install is not None:
+        # Consume a family-owned installer into the run's private model destination.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        if family_source is None:
+            raise ValueError("--family-install requires --family-source")
+        from experimental.pikmin2_family_install import install_family
+        receipt = install_family(family_install, Path(family_source), run.directory,
+                                 list(family_actors or []), retail_assets=Path(assets))
+        print(f"PIKMIN_FAMILY_INSTALLED: {family_install} {receipt}", flush=True)
+    if content_manifest is not None:
+        # Build the run's private native asset tree with the session content applied,
+        # so native asset lookup reads the content. Staging runs before any native
+        # process starts; a missing/wrong source or uncovered identity raises and
+        # nothing launches, and the receipt records the seed's P2 identities.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        from experimental.pikmin2_staging import stage_session_content
+        identities = [binding["source_id"]
+                      for binding in session.manifest.get("p2_layout", {}).get("bindings", [])]
+        receipt = stage_session_content(content_manifest, run.directory / "assets",
+                                        required_identities=identities, retail_assets=Path(assets))
+        print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']} identities={receipt['identities']}", flush=True)
+    if p2_content is not None:
+        # Identity-to-runtime binding: stage each p2_layout binding's family content
+        # keyed by source id / enum name, so a generated session launches without
+        # per-family manual sidecar copying. Runs before any native process, so an
+        # unknown identity, missing/wrong source or missing actor binding raises and
+        # nothing launches.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        layout = manifest.get("p2_layout")
+        if not layout:
+            raise ValueError("--p2-content requires a seed with a p2_layout (generate with --p2-enemies)")
+        from experimental.pikmin2_family_install import install_layout
+        from experimental.pikmin2_staging import StagingError
+        cache_dir = session.directory / "p2-content-cache"
+        try:
+            receipt = install_layout(run.directory, layout, Path(p2_content),
+                                     actor_bindings=p2_actors, retail_assets=Path(assets),
+                                     cache_dir=cache_dir)
+        except Exception:
+            # Any install failure (wrong source / uncovered identity / bad binding /
+            # adapter ValueError or RuntimeError) must leave no run tree behind:
+            # NativeRun already seeded bootstrap.txt/state.txt and a partial tree
+            # would be replayed as an incomplete stage on the next launch.
+            shutil.rmtree(run.directory, ignore_errors=True)
+            raise
+        print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)
+        from .p2_units import stage_units
+        staged_units = stage_units(run.directory, layout)
+        if staged_units:
+            print(f"PIKMIN_P2_UNITS: {staged_units}", flush=True)
+    if purple_bank is not None:
+        from .purple_campaign import stage_campaign
+        stage_campaign(run.directory, assets, purple_bank, purple_motion, manifest)
     process = None
     overlay = None
     log = None
@@ -281,16 +391,22 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
-        # Windows directory junction, only into the new private runtime directory.
-        target = run.directory / "assets"
-        import _winapi
-        _winapi.CreateJunction(str(Path(assets).resolve()), str(target.resolve()))
+        if content_manifest is None and family_install is None and p2_content is None and purple_bank is None:
+            # Windows directory junction, only into the new private runtime directory.
+            import _winapi
+            _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
+        startup_show = 1  # SW_SHOWNORMAL
+        if env.get("PIKMIN_RANDOMIZER_TEST_BACKGROUND") == "1":
+            # Agent/test launch inherited from a driver: never hold for focus; watch only if the owner opted in.
+            from .test_run import apply_test_run_env
+            apply_test_run_env(env)
+            startup_show = 4  # SW_SHOWNOACTIVATE: a watched window must not take focus
         log = (run.directory / "native.log").open("w", encoding="utf-8")
         startup = subprocess.STARTUPINFO()
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startup.wShowWindow = 1  # Win32 SW_SHOWNORMAL; not exported by subprocess.
+        startup.wShowWindow = startup_show  # Win32 SW_*; not exported by subprocess.
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
             cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
         overlay_manifest = run.directory / 'overlay-manifest.json'
@@ -316,7 +432,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
                 overlay.wait(timeout=5)
             log.close()
     if process and process.returncode:
-        raise RuntimeError(f"native process exited {process.returncode}; see {run.directory / 'native.log'}")
+        log_path = run.directory / 'native.log'
+        raise RuntimeError(f"native process exited {process.returncode} ({describe_native_exit(log_path)}); see {log_path}")
 
 
 class NetplayClientRun:

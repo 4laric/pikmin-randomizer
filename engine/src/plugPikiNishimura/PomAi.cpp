@@ -1,3 +1,6 @@
+#include "pc_p2_candypop.h"
+#include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
 #include "Interactions.h"
@@ -69,6 +72,19 @@ void PomAi::initAI(Pom* pom)
 	               + NsMathI::getRand(NsLibMath<int>::abs(C_POM_PARM(mPom, mMaxCycles) - C_POM_PARM(mPom, mMinCycles) + 1));
 	mCurrentDeform = 0.0f;
 	mDeformAmount  = 0.0f;
+    if(pc_p2_violet(mPom)) {
+        mMaxSeedCount=5; // Violet counts non-Purple inputs; same-color slots refund.
+    }
+    if(int candypopBudget=pc_p2_candypop_budget(mPom)) {
+        // Lane-23 real-engine colour bud: source ip01 budget, fp01 close wait,
+        // any-colour entry, and own-colour refund handled in createPikiHead.
+        PomProp* props=static_cast<PomProp*>(mPom->mProps);
+        props->mPomProps.mMaxPikiPerCycle.mValue=candypopBudget;
+        props->mPomProps.mCloseWaitTime.mValue=1.f;
+        props->mPomProps.mOpenOnInteractionOnly.mValue=0;
+        props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
+        mMaxSeedCount=candypopBudget;
+    }
 }
 
 /**
@@ -164,7 +180,7 @@ void PomAi::keyFinished()
 		effectMgr->create(EffectMgr::EFF_Teki_DeathWaveS, mPom->mSRT.t, nullptr, nullptr);
 
 		playSound(0);
-		mPom->createPellet(mPom->mSRT.t, 150.0f, true);
+		if(!pc_p2_violet(mPom))mPom->createPellet(mPom->mSRT.t, 150.0f, true);
 	}
 
 	mPom->setMotionFinish(1);
@@ -295,7 +311,7 @@ int PomAi::killStickPiki()
 		Creature* stuck = *iter;
 		if (stuck && stuck->isAlive() && stuck->mObjType == OBJTYPE_Piki) {
 			Piki* piki = static_cast<Piki*>(*iter);
-			if (C_POM_PARM(mPom, mDoKillSameColorPiki) && piki->mColor == mPom->mColor) {
+			if (!pc_p2_violet(mPom) && C_POM_PARM(mPom, mDoKillSameColorPiki) && piki->mColor == mPom->mColor) {
 				piki->kill(false);
 			} else {
 				piki->setEraseKill();
@@ -315,8 +331,18 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    // Lane-23 real-engine colour Candypop takes precedence when this Pom is a
+    // sidecar-bound BluePom/RedPom/YellowPom; returns -1 for every other Pom.
+    int candypopUsed=pc_p2_convert_candypop(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(candypopUsed>=0){mReleasedSeedCount+=candypopUsed;playSound(3);return;}
+    // The source-authored Pom cycle count owns capacity; White does not copy
+    // the preview's former fixed Violet allowance.
+    int whiteConverted=pc_p2_convert_ivory(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(whiteConverted>=0){mReleasedSeedCount+=whiteConverted;playSound(3);return;}
+    int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
+    if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
 	int seedCount = killStickPiki();
-	Navi* player  = naviMgr->getNavi();
+	Navi* player  = naviMgr->getNearestNavi(mPom->mSRT.t);
 	f32 baseAngle = atan2f(mPom->mSRT.t.x - player->mSRT.t.x, mPom->mSRT.t.z - player->mSRT.t.z);
 
 	f32 spreadAngle = PI * (C_POM_PARM(mPom, mDischargeAngle) / 360.0f);
@@ -435,7 +461,7 @@ bool PomAi::isMotionFinishTransit()
  */
 bool PomAi::deadTransit()
 {
-	return (mReleasedSeedCount >= mMaxSeedCount) ? true : false;
+	return mReleasedSeedCount >= (pc_p2_violet(mPom) ? 5 : mMaxSeedCount);
 }
 
 /**
@@ -466,13 +492,14 @@ bool PomAi::petalShakeTransit()
  */
 bool PomAi::petalCloseTransit()
 {
-	f32 closeWait = C_POM_PARM(mPom, mCloseWaitTime);
+	f32 closeWait = pc_p2_violet(mPom) ? 5.0f : C_POM_PARM(mPom, mCloseWaitTime);
+    const int capacity = pc_p2_violet(mPom) ? 5 : C_POM_PARM(mPom, mMaxPikiPerCycle);
 #if defined(PIKI_PC_PORT)
 	// Retail waits 30 seconds; keep short/custom and disabled timers intact.
 	if (closeWait > 5.0f) closeWait = 5.0f;
 #endif
-	if (C_POM_PARM(mPom, mMaxPikiPerCycle) != 0) {
-		if (mPrevStickPikiCount >= C_POM_PARM(mPom, mMaxPikiPerCycle)) {
+	if (capacity != 0) {
+		if (mPrevStickPikiCount >= capacity) {
 			return true;
 		}
 		if (closeWait > 0.0f && mPom->getWalkTimer() > closeWait) {
@@ -498,7 +525,7 @@ bool PomAi::dischargeTransit()
 		Creature* stuck = *iter;
 		if (stuck->isAlive() && stuck->mObjType == OBJTYPE_Piki) {
 			Piki* stuckPiki = static_cast<Piki*>(*iter);
-			if (!C_POM_PARM(mPom, mDoKillSameColorPiki) || stuckPiki->mColor != mPom->mColor) {
+			if (pc_p2_violet(mPom) || !C_POM_PARM(mPom, mDoKillSameColorPiki) || stuckPiki->mColor != mPom->mColor) {
 				return true;
 			}
 		}

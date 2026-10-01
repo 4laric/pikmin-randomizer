@@ -1,0 +1,199 @@
+From 7f86733dee442b7ae071b7a5221ab3a102362195 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 05:57:34 -0400
+Subject: [PATCH 4/8] BigTreasure: stage and assert the full 29-clip motion set
+ in the real-GL fixture (#246)
+
+---
+ pc_port/pc_p2_bigtreasure_visual.cpp |  9 ++++
+ pc_port/pc_p2_bigtreasure_visual.h   |  5 ++
+ tools/p2_bigtreasure_runtime.cpp     | 76 +++++++++++++++++++++-------
+ tools/p2_bigtreasure_runtime_run.py  | 14 +++++
+ 4 files changed, 87 insertions(+), 17 deletions(-)
+
+diff --git a/pc_port/pc_p2_bigtreasure_visual.cpp b/pc_port/pc_p2_bigtreasure_visual.cpp
+index 3dcd1d75..a57ea680 100644
+--- a/pc_port/pc_p2_bigtreasure_visual.cpp
++++ b/pc_port/pc_p2_bigtreasure_visual.cpp
+@@ -329,6 +329,15 @@ const char* pc_p2_bigtreasure_visual_clip_name(int index)
+     return sVisual.clips[index].name.c_str();
+ }
+ 
++const p2retail::Motion* pc_p2_bigtreasure_visual_clip_motion(const char* name)
++{
++    if (!sVisual.ready || !name) {
++        return nullptr;
++    }
++    const ClipBank* clip = findClip(name);
++    return clip ? clip->motion : nullptr;
++}
++
+ int pc_p2_bigtreasure_visual_pose_index()
+ {
+     if (!sVisual.active) {
+diff --git a/pc_port/pc_p2_bigtreasure_visual.h b/pc_port/pc_p2_bigtreasure_visual.h
+index 72d3e475..81062202 100644
+--- a/pc_port/pc_p2_bigtreasure_visual.h
++++ b/pc_port/pc_p2_bigtreasure_visual.h
+@@ -50,6 +50,11 @@ const char* pc_p2_bigtreasure_visual_active_clip();
+ int pc_p2_bigtreasure_visual_clip_count();
+ const char* pc_p2_bigtreasure_visual_clip_name(int index);
+ 
++// Additive (#246 motion staging): the authored retail motion (duration and key
++// events) behind a staged clip, so a host can assert each clip dispatches its
++// authored events. Returns nullptr for an unknown clip or a non-ready bank.
++const p2retail::Motion* pc_p2_bigtreasure_visual_clip_motion(const char* name);
++
+ int pc_p2_bigtreasure_visual_pose_index();
+ bool pc_p2_bigtreasure_visual_completed();
+ int pc_p2_bigtreasure_visual_pellet_count();  // converted pellets drawn
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index c691fa58..79429101 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -112,6 +112,10 @@ class BigTreasureApp final : public PlugPikiApp {
+     int motionEvents = 0;
+     int motionBase = 0;
+     int motionFrames = 0;
++    const char* motionName = nullptr;
++    std::vector<p2retail::Event> motionExpected;
++    bool motionClipLoop = false;
++    int motionLoopFrames = 0;
+     bool setup = false, wait1Captured = false, deadCaptured = false;
+     float ground = 0.0f;
+     P2BigTreasureMapTrace trace;
+@@ -760,9 +764,12 @@ private:
+ 
+     // Additive (#246 motion staging): after wait1/dead, replay every other
+     // clip staged in the generated profile through the vendored retail event
+-    // player. The clip list comes from the stage subset, so widening the stage
+-    // widens playback without touching this fixture; the dispatch log is the
+-    // same bounded event bank wait1/dead already use.
++    // player and assert each one dispatches its authored key events. The clip
++    // list comes from the stage subset, so widening the stage widens playback
++    // without touching this fixture; the dispatch log is the same bounded event
++    // bank wait1/dead already use. One-shot clips run to the implicit type-1000
++    // completion; loops run exactly to their first authored (type-1) loop
++    // marker, which is the fixed window retail wraps on.
+     void startMotion()
+     {
+         motionIndex = 0;
+@@ -784,10 +791,28 @@ private:
+             if (!name || std::strcmp(name, "wait1") == 0 || std::strcmp(name, "dead") == 0) {
+                 continue;
+             }
+-            if (pc_p2_bigtreasure_visual_clip(name)) {
+-                motionFrames = 0;
+-                return true;
++            if (!pc_p2_bigtreasure_visual_clip(name)) {
++                continue;
++            }
++            const p2retail::Motion* motion = pc_p2_bigtreasure_visual_clip_motion(name);
++            require(motion != nullptr, "motion clip table entry");
++            motionName = name;
++            motionExpected.clear();
++            motionClipLoop = false;
++            motionLoopFrames = 0;
++            for (const p2retail::Event& event : motion->events) {
++                motionExpected.push_back(event);
++                if (event.type == 1) {
++                    motionClipLoop = true;
++                    motionLoopFrames = event.frame + 1;
++                    break;
++                }
+             }
++            if (!motionClipLoop) {
++                motionExpected.push_back(p2retail::Event{ motion->duration, 1000 });
++            }
++            motionFrames = 0;
++            return true;
+         }
+         return false;
+     }
+@@ -796,17 +821,33 @@ private:
+     {
+         require(pc_p2_bigtreasure_visual_update(1.0f) >= 0, "motion update");
+         ++motionFrames;
+-        // Looping clips (0/1 loop markers) never report completion, so bound
+-        // each clip at one source length before advancing to the next.
+-        if (!pc_p2_bigtreasure_visual_completed() && motionFrames < 240) {
++        const bool done = motionClipLoop ? (motionFrames >= motionLoopFrames)
++                                         : pc_p2_bigtreasure_visual_completed();
++        // Bounded safety net: one-shot clips complete inside their own length
++        // and loops stop at the first loop marker, both far under 240 frames.
++        if (!done && motionFrames < 240) {
+             return;
+         }
+         int count = 0;
+-        pc_p2_bigtreasure_visual_events(&count);
+-        const int pose = pc_p2_bigtreasure_visual_pose_index();
+-        if (pose > 0 || count > motionBase) {
+-            ++motionClips;
++        const P2BigTreasureVisualEvent* log = pc_p2_bigtreasure_visual_events(&count);
++        require(std::strcmp(pc_p2_bigtreasure_visual_active_clip(), motionName) == 0,
++                "motion active clip");
++        if (!motionClipLoop) {
++            require(pc_p2_bigtreasure_visual_completed(), "one-shot clip completes");
+         }
++        const int dispatched = count - motionBase;
++        require(dispatched == static_cast<int>(motionExpected.size()),
++                "motion authored event count");
++        for (int i = 0; i < dispatched; ++i) {
++            require(std::strcmp(log[motionBase + i].clip, motionName) == 0,
++                    "motion authored event clip");
++            require(log[motionBase + i].frame == motionExpected[i].frame
++                        && log[motionBase + i].type == motionExpected[i].type,
++                    "motion authored event order");
++        }
++        motionEvents += dispatched;
++        ++motionClips;
++        motionBase = count;
+         if (!beginMotionClip()) {
+             finishMotion();
+         }
+@@ -814,12 +855,13 @@ private:
+ 
+     void finishMotion()
+     {
+-        int count = 0;
+-        pc_p2_bigtreasure_visual_events(&count);
+-        motionEvents = count - motionBase;
+-        require(motionClips >= 3, "motion clip advances");
++        require(motionClips >= 16, "full motion clip advances");
++        require(motionClips == pc_p2_bigtreasure_visual_clip_count() - 2,
++                "every staged clip advanced");
+         std::printf("P2_BIGTREASURE_MOTION_PASS clips=%d events=%d\n", motionClips,
+                     motionEvents);
++        std::printf("P2_BIGTREASURE_MOTION_FULL_PASS clips=%d events=%d advanced=%d\n",
++                    motionClips, motionEvents, motionClips);
+         phase = 5;
+     }
+ };
+diff --git a/tools/p2_bigtreasure_runtime_run.py b/tools/p2_bigtreasure_runtime_run.py
+index 03ce7d36..ad2ea648 100644
+--- a/tools/p2_bigtreasure_runtime_run.py
++++ b/tools/p2_bigtreasure_runtime_run.py
+@@ -139,6 +139,20 @@ def verify_log(text):
+         errors.append("missing extra-clip motion playback marker")
+     elif int(motion.group(1)) < 3:
+         errors.append(f"motion playback advanced fewer than 3 staged clips: {motion.groups()}")
++    motion_full = re.search(r"^P2_BIGTREASURE_MOTION_FULL_PASS\s+clips=(\d+)\s+events=(\d+)\s+"
++                            r"advanced=(\d+)\s*$", text, flags=re.MULTILINE)
++    if not motion_full:
++        errors.append("missing full motion staging marker")
++    else:
++        clips, events, advanced = map(int, motion_full.groups())
++        if clips < 16:
++            errors.append(f"full motion staging covered fewer than 16 clips: {motion_full.groups()}")
++        if advanced != clips:
++            errors.append(f"full motion staging did not advance every staged clip: "
++                          f"{motion_full.groups()}")
++        if events < clips:
++            errors.append(f"full motion staging dispatched fewer events than clips: "
++                          f"{motion_full.groups()}")
+     if "PASS BIGTREASURE_RUNTIME" not in text:
+         errors.append("missing runtime PASS marker")
+     return errors
+-- 
+2.55.0.windows.3
+

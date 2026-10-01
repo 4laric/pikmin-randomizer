@@ -1,0 +1,5 @@
+FROG_SPECULAR_WINDOW w=960 h=540 flags=SHOWN centered=1
+FROG_SPECULAR_READY materials=1 control=0x93
+FROG_SPECULAR_SQUAD pikmin=20 navi=1
+FROG_SPECULAR_RENDER viewport_w=640 viewport_h=360 control=0x93 specular_dir_calls=123 specular_channel_draws=11976 specular_draw_delta=1 replay_equal=1
+PASS FROG_SPECULAR_RENDER

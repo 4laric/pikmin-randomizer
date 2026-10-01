@@ -1,0 +1,77 @@
+From a75734d97a0ffa8160bb0e312e5bbde4d41bbd56 Mon Sep 17 00:00:00 2001
+From: Codex <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 03:13:57 -0400
+Subject: [PATCH] pc_p2_long_legs_fsm: bound Man-at-Legs shells to the
+ in-flight pool of 10 (#173, #312)
+
+---
+ pc_port/pc_p2_long_legs_fsm.cpp |  4 ++--
+ pc_port/pc_p2_long_legs_fsm.h   |  1 +
+ tools/p2_long_legs_fsm_test.cpp | 24 ++++++++++++++++++++++++
+ 3 files changed, 27 insertions(+), 2 deletions(-)
+
+diff --git a/pc_port/pc_p2_long_legs_fsm.cpp b/pc_port/pc_p2_long_legs_fsm.cpp
+index bb931c6c..c947706f 100644
+--- a/pc_port/pc_p2_long_legs_fsm.cpp
++++ b/pc_port/pc_p2_long_legs_fsm.cpp
+@@ -218,8 +218,8 @@ void P2LongLegsFsm::update(const P2LongLegsFsmInput& input, P2LongLegsFsmOutput&
+             if (mBurstTimer >= mParms.burstOnSeconds) {
+                 mBurstOn = false;
+                 mBurstTimer = 0.0f;
+-            } else if (input.shotLoop) {
+-                output.fireShell = true; // one shell per attack loop, from the muzzle
++            } else if (input.shotLoop && input.shellsInFlight < mParms.shellPool) {
++                output.fireShell = true; // one shell per loop, bounded by the source pool of 10
+             }
+         } else if (mBurstTimer >= mParms.burstOffSeconds) {
+             mBurstOn = true;
+diff --git a/pc_port/pc_p2_long_legs_fsm.h b/pc_port/pc_p2_long_legs_fsm.h
+index 168c087b..b0a091db 100644
+--- a/pc_port/pc_p2_long_legs_fsm.h
++++ b/pc_port/pc_p2_long_legs_fsm.h
+@@ -84,6 +84,7 @@ struct P2LongLegsFsmInput {
+     float ikMoveRatio = 1.0f;        // IK leg move ratio for the crush gate
+     bool footDescendingOrPlanting = false; // a foot is descending/planting
+     bool shotLoop = false;           // Attack animation loop boundary (fire one)
++    int shellsInFlight = 0;          // host shell-pool occupancy (mSearchAngle pool of 10)
+     float roll = 0.0f;               // host uniform [0,1) for duration selection
+ };
+ 
+diff --git a/tools/p2_long_legs_fsm_test.cpp b/tools/p2_long_legs_fsm_test.cpp
+index 911c3ff7..9702ccdb 100644
+--- a/tools/p2_long_legs_fsm_test.cpp
++++ b/tools/p2_long_legs_fsm_test.cpp
+@@ -199,6 +199,30 @@ int main()
+         assert(out.entered && fsm.state() == S::Wait);
+     }
+ 
++    // Shell pool: the source caps ten shells in flight; a full pool suppresses
++    // the loop-boundary request even while the burst is on.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Houdai));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out); // Land
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        in.animEnd = false;
++        in.pikminAccumulating = true; fsm.update(in, out); // Flick
++        in.pikminAccumulating = false;
++        in.animEnd = true; fsm.update(in, out); // Flick END -> Shot
++        assert(fsm.state() == S::Shot);
++        in.animEnd = false;
++        in.shotLoop = true;
++        in.shellsInFlight = 10;
++        fsm.update(in, out);
++        assert(!out.fireShell); // pool full
++        in.shellsInFlight = 9;
++        fsm.update(in, out);
++        assert(out.fireShell); // one slot free
++    }
++
+     // Houdai Shot also opens from Wait when the burst cooldown reaches the
+     // reused mSearchHeight (50 s), and taking damage resets that cooldown.
+     {
+-- 
+2.55.0.windows.3
+

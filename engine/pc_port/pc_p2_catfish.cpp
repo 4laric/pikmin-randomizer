@@ -1,0 +1,793 @@
+// Catfish (Water Dumple, EnemyID 26) source behavior on the P1 TEKI_Namazu
+// placement vehicle. Catfish has no dedicated state file: Catfish.cpp forwards
+// onInit/birth to the shared KochappyBase FSM (KochappyBase.cpp and
+// kochappyState.cpp). This port implements that inherited source FSM:
+//   Wait 0 -> Turn 2 -> Walk 3 -> Attack 4 -> Flick 5,
+//   TurnToHome 6 -> GoHome 7, Dead 1.
+// Attack is driven by the source animation key events: the bite event runs
+// attackNavi + eatPikmin (or the Eat motion) and the later event runs
+// swallowPikmin. Source revision 632af93787b9c95b63f0c13be32b161375ce3a96;
+// retail parms from experimental/pikmin2_aquatic_assets.py (GPVE01 rev 0).
+//
+// Port adaptations (recorded, not retail-faithful):
+//   * The P2 two-slot mouth (kamu1/kamu2, Catfish.cpp:83) is not representable
+//     on the P1 host. The P2 ingest is resolved as an explicit nearest-first
+//     capture of up to two Pikmin inside the source attack sweep at the banked
+//     attack bite animation event (attack frame 17, event 2), then exactly one
+//     InteractKill per captured Pikmin at the banked swallow event (attack frame
+//     75, event 3). The same Pikmin is never captured twice and each captured
+//     Pikmin is consumed once (pc_p2_catfish_residual_policy.h). Mirrors the
+//     Armor port.
+//   * StateAttack KEYEVENT_2 also runs the source attackNavi (general fp22=50
+//     hit radius, fp23=15 deg hit angle, fp24=10 damage) against the active
+//     Navi, and the banked swallow applies the source proper fp02=300 poison to
+//     the eater for each consumed White Pikmin while preserving the normal
+//     InteractKill death/corpse.
+//   * Catfish ships no waitact1 clip (the KochappyBase Turn motion), so the Turn
+//     state reuses wait1. The Eat motion (waitact2) is not entered because the
+//     bite and swallow both live in the single attack clip.
+//   * Target detection accepts the nearest Navi or Pikmin; the source view angle
+//     is treated as a full hemisphere because the Catfish general block does not
+//     override it. The attack sweep angle is a P1-host ~45 deg; turn rate and the
+//     flick latch radius are P1-host values. The flick knockback/damage/range use
+//     the source general fp17/fp18/fp19 defaults (300/0/120).
+// Every hook is a no-op for unregistered actors; no other lane's module is
+// modified.
+#include "pc_p2_catfish.h"
+#include "pc_p2_catfish_events.h"
+#include "pc_p2_catfish_residual_policy.h"
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
+#include "pc_p2_white.h"
+#include "pc_p2_sfx.h"
+#include "teki.h"
+#include "Interactions.h"
+#include "Piki.h"
+#include "PikiMgr.h"
+#include "Navi.h"
+#include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
+#include "Generator.h"
+#include "gameflow.h"
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace {
+enum State {
+    CATFISH_INVALID = -1,
+    CATFISH_WAIT = 0,
+    CATFISH_DEAD = 1,
+    CATFISH_TURN = 2,
+    CATFISH_WALK = 3,
+    CATFISH_ATTACK = 4,
+    CATFISH_FLICK = 5,
+    CATFISH_TURNTOHOME = 6,
+    CATFISH_GOHOME = 7,
+};
+
+const char* stateName(State s) {
+    switch (s) {
+    case CATFISH_WAIT: return "wait";
+    case CATFISH_DEAD: return "dead";
+    case CATFISH_TURN: return "turn";
+    case CATFISH_WALK: return "walk";
+    case CATFISH_ATTACK: return "attack";
+    case CATFISH_FLICK: return "flick";
+    case CATFISH_TURNTOHOME: return "turntohome";
+    case CATFISH_GOHOME: return "gohome";
+    default: return "null";
+    }
+}
+
+// Source enemyparm.txt values (aquatic manifest general + KochappyBase proper).
+constexpr float LIFE = 200.0f;          // general fp00
+constexpr float MOVE_SPEED = 60.0f;     // general fp06
+constexpr float TERRITORY = 280.0f;     // general fp09
+constexpr float HOME_RADIUS = 80.0f;    // general fp10
+constexpr float SIGHT = 200.0f;         // general fp12
+constexpr float ATTACK_RANGE = p2catfish::kAttackHitRadius; // general fp20/fp22
+constexpr float ATTACK_ANGLE = 0.785398f; // port adaptation ~45 deg
+constexpr float ABSENT_MINDED = 2.0f;   // proper fp01
+constexpr float TURN_RATE = 2.5f;       // port adaptation
+constexpr float FLICK_RADIUS = 25.0f;   // port latch radius (source isStartFlick)
+constexpr float PI_F = 3.14159265f;
+
+struct Clip {
+    std::string name;
+    float duration = 1.0f;
+    bool loop = false;
+    p2sampled::Clip sampled;
+};
+
+struct Catfish {
+    State state = CATFISH_WAIT;
+    float stateTime = 0.0f;
+    float heading = 0.0f;
+    Vector3f home;
+    Vector3f wanderTarget;
+    bool wanderValid = false;
+    // Source two-slot mouth (kamu1/kamu2). The P1 host has no mouth geometry,
+    // so each slot holds the Pikmin captured inside the attack sweep until the
+    // banked swallow event. `consumed` makes the kill/poison exactly-once.
+    Piki* slots[p2catfish::kMouthSlots] = {nullptr, nullptr};
+    std::set<Piki*> consumed;
+    p2catfishevents::Receiver events;
+    std::string clip = "wait1";
+    float phase = 0.0f;
+    unsigned rng = 1;
+    bool deadLogged = false;
+    bool escaped = false;  // host death funnel ran (pcEscapeNow): corpse pellet exists
+    int sfxState = -1;     // last state a P1-approximation SFX was requested for
+    float logTimer = 0.0f;
+};
+
+std::map<PelletView*, Catfish> actors;
+std::map<std::string, Clip> clips;
+// Diagnostic natural-death registrations (actor -> generator) for the
+// Catfish corpse marker named by #641/#652. This map is local to this
+// translation unit and has no reader other than the emission guard below:
+// NO shared Pod dispatch or receipt bridge consumes it yet, and it grants no
+// reward, writes no ledger and changes no save. Keyed on the actor so a
+// forgotten/recreated actor cannot double-report; cleared on forget
+// (per-actor) and reset (whole registry).
+std::map<BTeki*, unsigned> corpses;
+bool ready = false;
+
+float wrapPi(float a) {
+    while (a > PI_F) a -= 2.0f * PI_F;
+    while (a < -PI_F) a += 2.0f * PI_F;
+    return a;
+}
+float distXZ(const Vector3f& a, const Vector3f& b) {
+    const float dx = a.x - b.x, dz = a.z - b.z;
+    return std::sqrt(dx * dx + dz * dz);
+}
+float clipDuration(const std::string& name) {
+    auto it = clips.find(name);
+    return it == clips.end() ? 1.0f : it->second.duration;
+}
+bool clipLoops(const std::string& name) {
+    auto it = clips.find(name);
+    return it != clips.end() && it->second.loop;
+}
+unsigned nextRand(Catfish& s) {
+    s.rng = s.rng * 1664525u + 1013904223u;
+    return s.rng >> 8;
+}
+float rand01(Catfish& s) { return float(nextRand(s) & 0xffff) / 65535.0f; }
+
+Creature* nearestTarget(const Vector3f& pos) {
+    Creature* best = nullptr;
+    float bestSq = SIGHT * SIGHT;
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
+            const Vector3f p = n->getPosition();
+            const float dx = p.x - pos.x, dz = p.z - pos.z;
+            const float d = dx * dx + dz * dz;
+            if (d < bestSq) { bestSq = d; best = n; }
+        }
+    }
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const Vector3f q = p->getPosition();
+            const float dx = q.x - pos.x, dz = q.z - pos.z;
+            const float d = dx * dx + dz * dz;
+            if (d < bestSq) { bestSq = d; best = p; }
+        }
+    }
+    return best;
+}
+Piki* nearestPiki(const Vector3f& pos, float radius) {
+    Piki* best = nullptr;
+    float bestSq = radius * radius;
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const Vector3f q = p->getPosition();
+            const float dx = q.x - pos.x, dz = q.z - pos.z;
+            const float d = dx * dx + dz * dz;
+            if (d < bestSq) { bestSq = d; best = p; }
+        }
+    }
+    return best;
+}
+int slotIndexOf(const Catfish& s, const Piki* p) {
+    for (int i = 0; i < p2catfish::kMouthSlots; ++i)
+        if (s.slots[i] == p) return i;
+    return -1;
+}
+int freeSlot(const Catfish& s) {
+    for (int i = 0; i < p2catfish::kMouthSlots; ++i)
+        if (!s.slots[i]) return i;
+    return -1;
+}
+bool shouldFlick(BTeki* a) {
+    return nearestPiki(a->getPosition(), FLICK_RADIUS) != nullptr;
+}
+// StateFlick KEYEVENT_2: flickStickPikmin + flickNearbyPikmin + flickNearbyNavi
+// with the source general fp17/fp18/fp19 values and FLICK_BACKWARDS_ANGLE. The
+// P1 host has no mouth joints, so the two captured slots stand in for the source
+// stick-to-mouth list and are flicked exactly once.
+int doFlick(BTeki* a, Catfish& s) {
+    const Vector3f pos = a->getPosition();
+    int hit = 0;
+    std::vector<Creature*> mouths;
+    for (Creature* c = a->mStickListHead; c; c = c->mNextSticker) {
+        if (c->isStickToMouth()) mouths.push_back(c);
+    }
+    for (int i = 0; i < p2catfish::kMouthSlots; ++i) {
+        Piki* p = s.slots[i];
+        if (!p) continue;
+        bool found = false;
+        for (Creature* c : mouths)
+            if (c == p) { found = true; break; }
+        if (!found) mouths.push_back(p);
+    }
+    for (Creature* c : mouths) {
+        if (c->isAlive()
+                && c->stimulate(InteractFlick(a, p2catfish::kFlickKnockback,
+                                              p2catfish::kFlickDamage,
+                                              FLICK_BACKWARDS_ANGLE))) {
+            ++hit;
+        }
+    }
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            bool already = false;
+            for (Creature* c : mouths)
+                if (c == p) { already = true; break; }
+            if (already || !p2catfish::inFlickRange(distXZ(p->getPosition(), pos))) continue;
+            if (p->stimulate(InteractFlick(a, p2catfish::kFlickKnockback,
+                                           p2catfish::kFlickDamage,
+                                           FLICK_BACKWARDS_ANGLE))) {
+                ++hit;
+            }
+        }
+    }
+    for (Navi* navi : pc_p2_navis()) {
+        if (navi->isAlive() && p2catfish::inFlickRange(distXZ(navi->getPosition(), pos))) {
+            if (navi->stimulate(InteractFlick(a, p2catfish::kFlickKnockback,
+                                              p2catfish::kFlickDamage,
+                                              FLICK_BACKWARDS_ANGLE))) {
+                ++hit;
+            }
+        }
+    }
+    return hit;
+}
+void stop(BTeki* a) {
+    a->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+    a->mVelocity.x = 0.0f;
+    a->mVelocity.z = 0.0f;
+}
+void setRandTarget(Catfish& s, const Vector3f& pos) {
+    const float radius = 0.5f * (TERRITORY - HOME_RADIUS) * rand01(s) + HOME_RADIUS;
+    const float angle = 2.0f * PI_F * rand01(s);
+    s.wanderTarget.x = radius * std::sin(angle) + s.home.x;
+    s.wanderTarget.y = s.home.y;
+    s.wanderTarget.z = radius * std::cos(angle) + s.home.z;
+    s.wanderValid = true;
+    (void)pos;
+}
+// Rotate toward a point; returns the residual angle to the target after the turn.
+float turnTo(BTeki* a, Catfish& s, const Vector3f& target, float dt) {
+    const Vector3f pos = a->getPosition();
+    const float desired = std::atan2(target.x - pos.x, target.z - pos.z);
+    const float maxTurn = TURN_RATE * dt;
+    float diff = wrapPi(desired - s.heading);
+    if (diff > maxTurn) diff = maxTurn;
+    if (diff < -maxTurn) diff = -maxTurn;
+    s.heading = wrapPi(s.heading + diff);
+    a->setDirection(s.heading);
+    return wrapPi(desired - s.heading);
+}
+void walkTo(BTeki* a, Catfish& s, const Vector3f& target, float dt) {
+    turnTo(a, s, target, dt);
+    const Vector3f drive(std::sin(s.heading) * MOVE_SPEED, 0.0f,
+                         std::cos(s.heading) * MOVE_SPEED);
+    a->inputDrive(drive);
+    a->mVelocity.set(drive);
+}
+float targetAngle(const Catfish& s, const Vector3f& pos, const Vector3f& target) {
+    return std::fabs(wrapPi(std::atan2(target.x - pos.x, target.z - pos.z) - s.heading));
+}
+void setPhase(Catfish& s) {
+    const float duration = clipDuration(s.clip);
+    const float len = duration > 0.0f ? duration : 1.0f;
+    if (clipLoops(s.clip)) {
+        s.phase = s.stateTime / len;
+        s.phase -= std::floor(s.phase);
+    } else {
+        s.phase = s.stateTime / len;
+        if (s.phase > 1.0f) s.phase = 1.0f;
+    }
+}
+void transition(Catfish& s, State state, const char* clip, unsigned generator) {
+    s.state = state;
+    s.stateTime = 0.0f;
+    for (int i = 0; i < p2catfish::kMouthSlots; ++i) s.slots[i] = nullptr;
+    s.consumed.clear();
+    if (clip) s.clip = clip;
+    // Start the sampled clock for the entered clip, or cancel it when the clip
+    // has no authored gameplay events. A start() bumps the clock generation,
+    // discarding the previous clip's outstanding events.
+    auto it = clips.find(s.clip);
+    if (it != clips.end()) {
+        s.events.start(it->second.sampled, it->second.name);
+    } else {
+        s.events.cancel();
+    }
+    std::printf("P2_CATFISH_STATE generator=%u state=%s\n", generator, stateName(state));
+    std::fflush(stdout);
+}
+
+// Source StateAttack KEYEVENT_2: attackNavi + eatPikmin. The P1 host resolves
+// eatPikmin as a two-slot nearest-first capture inside the source attack sweep;
+// the captured Pikmin are consumed exactly once at the banked swallow event.
+void biteEvent(BTeki* actor, Catfish& s, unsigned generator, int frame) {
+    const Vector3f pos = actor->getPosition();
+    for (Navi* navi : pc_p2_navis()) {
+        if (!navi->isAlive()) continue;
+        const Vector3f np = navi->getPosition();
+        if (p2catfish::attackNaviHits(distXZ(np, pos), targetAngle(s, pos, np))) {
+            navi->stimulate(InteractAttack(actor, nullptr, p2catfish::kAttackDamage, false));
+            std::printf("P2_CATFISH_ATTACK_NAVI generator=%u frame=%d damage=%.1f\n",
+                        generator, frame, p2catfish::kAttackDamage);
+            std::fflush(stdout);
+        }
+    }
+    std::vector<Piki*> picks;
+    std::vector<p2catfish::Candidate> candidates;
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const Vector3f q = p->getPosition();
+            const float distance = distXZ(q, pos);
+            const bool eligible = distance < ATTACK_RANGE
+                    && targetAngle(s, pos, q) < ATTACK_ANGLE;
+            candidates.push_back({distance, eligible, slotIndexOf(s, p) >= 0});
+            picks.push_back(p);
+        }
+    }
+    int chosen[p2catfish::kMouthSlots] = {-1, -1};
+    const int count = p2catfish::selectMouthCaptures(candidates.data(), int(candidates.size()),
+                                                     chosen);
+    for (int i = 0; i < count; ++i) {
+        const int slot = freeSlot(s);
+        if (slot < 0) break;
+        s.slots[slot] = picks[chosen[i]];
+        std::printf("P2_CATFISH_BITE generator=%u frame=%d pikmin=1 slot=%d\n",
+                    generator, frame, slot);
+    }
+    std::fflush(stdout);
+}
+
+// Source StateAttack KEYEVENT_3: swallowPikmin. Each captured Pikmin is killed
+// exactly once; a swallowed White additionally poisons the eater with proper
+// fp02 (KochappyBase.h:106) while keeping the normal death/corpse.
+void swallowEvent(BTeki* actor, Catfish& s, unsigned generator) {
+    for (int slot = 0; slot < p2catfish::kMouthSlots; ++slot) {
+        Piki* p = s.slots[slot];
+        s.slots[slot] = nullptr;
+        if (!p) continue;
+        const bool white = pc_p2_is_white(p);
+        const bool already = !s.consumed.insert(p).second;
+        const p2catfish::SwallowResult result = p2catfish::swallowResult(white, already);
+        if (!result.kill || !p->isAlive()) continue;
+        p->stimulate(InteractKill(actor, 0));
+        std::printf("P2_CATFISH_EAT generator=%u pikmin=1 slot=%d\n", generator, slot);
+        if (result.poison && result.poisonDamage > 0.0f) {
+            actor->mHealth -= result.poisonDamage;
+            std::printf("P2_CATFISH_POISON generator=%u source_id=26 pikmin=white "
+                        "damage=%.1f health=%.1f\n",
+                        generator, result.poisonDamage, actor->mHealth);
+        }
+    }
+    std::fflush(stdout);
+}
+
+// Source StateAttack events: event 2 = bite (attackNavi + eatPikmin), event 3 =
+// swallowPikmin. Delivered by the sampled clock (p2catfishevents::Receiver) via
+// p2catfishevents::actionFor, which maps attack:2 -> Bite and attack:3 -> Swallow.
+bool attackable(const Catfish& s, const Vector3f& pos, Creature* target) {
+    if (!target) return false;
+    const Vector3f tp = target->getPosition();
+    return distXZ(tp, pos) < ATTACK_RANGE && targetAngle(s, pos, tp) < ATTACK_ANGLE;
+}
+}
+
+void pc_p2_catfish_reset() {
+    actors.clear();
+    clips.clear();
+    corpses.clear();
+    ready = false;
+}
+
+void pc_p2_catfish_forget(BTeki* actor) {
+    actors.erase(static_cast<PelletView*>(actor));
+    corpses.erase(actor);
+}
+
+float pc_p2_catfish_param_f(const BTeki* actor, int idx, float fallback) {
+    if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
+    if (idx == TPF_Life) return LIFE;
+    if (idx == TPF_LifeRecoverRate) return 0.0f;
+    switch (idx) {
+    case TPF_VisibleRange:
+    case TPF_VisibleAngle:
+    case TPF_AttackableRange:
+    case TPF_AttackableAngle:
+    case TPF_AttackRange:
+    case TPF_AttackHitRange:
+    case TPF_AttackPower:
+    case TPF_DangerTerritoryRange:
+    case TPF_SafetyTerritoryRange:
+        return 0.0f;
+    default:
+        return fallback;
+    }
+}
+
+bool pc_p2_catfish_suppress_ai(const BTeki* actor) {
+    return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
+}
+
+bool pc_p2_catfish_clip(const BTeki* actor, const char*& name, float& phase) {
+    if (!ready) return false;
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    if (it == actors.end()) return false;
+    name = it->second.clip.c_str();
+    phase = it->second.phase;
+    return true;
+}
+
+void pc_p2_catfish_setup() {
+    pc_p2_catfish_reset();
+    if (!tekiMgr) return;
+
+    // Clip durations and source key-event frames from the validated aquatic bank.
+    std::ifstream bank("p2-aquatic-bank.txt");
+    if (bank) {
+        std::string token;
+        if (bank >> token && token == "P2_AQUATIC_BANK_1") {
+            while (bank >> token) {
+                if (token == "species") {
+                    std::string species, id;
+                    bank >> species >> id;
+                } else if (token == "clip") {
+                    std::string species, name, frames, events, marker, poses, status;
+                    bank >> species >> name >> frames >> events >> marker >> poses >> status;
+                    if (species == "Catfish") {
+                        Clip clip;
+                        clip.name = name;
+                        const double sourceFrames = std::atof(frames.c_str());
+                        clip.duration = sourceFrames > 0.0 ? float(sourceFrames) / 30.0f : 1.0f;
+                        clip.loop = (name == "wait1" || name == "move1");
+                        p2catfishevents::Row row;
+                        row.name = name;
+                        row.sourceFrames = sourceFrames > 0.0 ? int(sourceFrames) : 0;
+                        row.poseCount = std::atoi(poses.c_str());
+                        row.loop = clip.loop;
+                        if (events != "-") {
+                            size_t start = 0;
+                            while (start < events.size()) {
+                                const size_t comma = events.find(',', start);
+                                const std::string pair = events.substr(start, comma - start);
+                                const size_t colon = pair.find(':');
+                                if (colon != std::string::npos) {
+                                    const int eventFrame = std::atoi(pair.substr(0, colon).c_str());
+                                    const std::string key = pair.substr(colon + 1);
+                                    row.events.push_back(p2sampled::Event{eventFrame, key});
+                                }
+                                if (comma == std::string::npos) break;
+                                start = comma + 1;
+                            }
+                        }
+                        clip.sampled = p2catfishevents::makeClip(row);
+                        clips[name] = clip;
+                    }
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    std::ifstream in("p2-aquatic-actors.txt");
+    if (!in) return;
+    std::string header;
+    int count = 0;
+    if (!(in >> header >> count) || header != "P2_AQUATIC_ACTORS_1" || count < 1) return;
+    std::map<unsigned, std::string> wanted;
+    for (int i = 0; i < count; ++i) {
+        unsigned long long generator = 0;
+        std::string species;
+        if (!(in >> generator >> species)) return;
+        if (species == "Catfish") wanted[unsigned(generator)] = species;
+    }
+    if (pc_randomizer_p2_bridge()) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(26)) wanted[id] = "Catfish";
+    }
+    if (wanted.empty()) return;
+
+    std::set<unsigned> found;
+    Iterator it(tekiMgr);
+    CI_LOOP(it) {
+        Teki* actor = static_cast<Teki*>(*it);
+        if (!actor || !actor->mGenerator) continue;
+        auto match = wanted.find(pc_p2_campaign_token(actor));
+        if (match == wanted.end()) continue;
+        if (actor->mTekiType != TEKI_Namazu) {
+            std::printf("P2_CATFISH_ERROR native_type generator=%u\n", pc_p2_campaign_token(actor));
+            std::fflush(stdout);
+            if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Catfish", "actor_type_mismatch")) return;
+            std::abort();
+        }
+        Catfish& s = actors[static_cast<PelletView*>(actor)];
+        s = Catfish();  // reject stale clock/capture state on actor-address reuse
+        s.home = actor->getPosition();
+        s.heading = actor->getDirection();
+        s.wanderTarget = s.home;
+        s.rng = (pc_p2_campaign_token(actor) * 2654435761u) | 1u;
+        actor->mHealth = LIFE;
+        // The initial wait1 clip has no authored gameplay events; start its clock
+        // so later state transitions build on a live cursor (Hana/Armor seam).
+        auto wait = clips.find("wait1");
+        if (wait != clips.end()) s.events.start(wait->second.sampled, wait->second.name);
+        else s.events.cancel();
+        // Ordinary-delivery bridge (lane 06 contract): bind source 26 to this
+        // live actor so GoalItem::suckMe can grant onion:p2:26 exactly once.
+        // Single-use: consumed on delivery and cleared on forget/recycle.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 26,
+                                     pc_p2_campaign_token(actor));
+        std::printf("P2_CATFISH_DELIVERY_BIND generator=%u source_id=26\n",
+                    pc_p2_campaign_token(actor));
+        std::printf("P2_CATFISH_BIND generator=%u source_id=26 visual_only=0\n",
+                    pc_p2_campaign_token(actor));
+        const Vector3f pos = actor->getPosition();
+        std::printf("P2_ENEMY_READY species=Catfish native_family=Namazu generator=%u "
+                    "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
+                    "source_FSM=implemented attack=animation_event water=absent\n",
+                    pc_p2_campaign_token(actor), pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        std::printf("P2_CATFISH_RESIDUAL generator=%u slots=%d attack_damage=%.1f "
+                    "poison_damage=%.1f flick_events=25,47\n",
+                    pc_p2_campaign_token(actor), p2catfish::kMouthSlots,
+                    p2catfish::kAttackDamage, p2catfish::kPoisonDamage);
+        std::fflush(stdout);
+        found.insert(pc_p2_campaign_token(actor));
+    }
+    if (found.size() != wanted.size()) {
+        std::printf("P2_CATFISH_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
+        std::fflush(stdout);
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Catfish", "actor_roster_incomplete")) return;
+        std::abort();
+    }
+    ready = true;
+}
+
+void pc_p2_catfish_update(BTeki* actor) {
+    if (!ready) return;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end()) return;
+    Catfish& s = it->second;
+    float dt = gsys->getFrameTime();
+    if (dt <= 0.0f) return;
+    // Clamp a pathological single-frame hitch (e.g. a debugger pause) so one
+    // tick cannot cause a giant simulation step, but still advance the sampled
+    // clock by the clamped delta instead of dropping the whole update: dropping
+    // it would discard crossed animation events and break exactly-once timing.
+    if (dt > 0.5f) dt = 0.5f;
+    const Vector3f pos = actor->getPosition();
+    const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+
+    // Host-AI suppression drain (rev6-misc5 Finding 1): the P1 TAI reaction
+    // path (TaiDamagingAction) normally applies stored damage through
+    // makeDamaged(), but BTeki::doAI is suppressed for registered actors, so
+    // the source FSM applies pending damage itself. Mirrors
+    // pc_p2_frog_suppress_ai (pc_p2_frog.cpp).
+    if (actor->mStoredDamage > 0.0f) {
+        actor->makeDamaged();
+        if (actor->mHealth > 0.0f) {
+            std::printf("P2_CATFISH_DAMAGE generator=%u source_id=26 health=%.1f\n", generator, actor->mHealth);
+            std::fflush(stdout);
+            pc_p2_sfx(26, generator, p2sfx::Event::Damage, actor);
+        }
+    }
+
+    if (actor->mHealth <= 0.0f && s.state != CATFISH_DEAD) {
+        if (!s.deadLogged) {
+            std::printf("P2_CATFISH_DEAD generator=%u source_id=26 health=0\n", generator);
+            std::fflush(stdout);
+            s.deadLogged = true;
+            // Diagnostic death-registration marker (#641/#652): exactly one
+            // emission per natural death, beside the CATFISH_DEAD transition.
+            // It records the marker namespace only; the shared Pod receipt
+            // bridge and the natural receiver observation remain separate
+            // open work. Guarded by generator != 0 (staged actors always carry
+            // one) and by the corpses set (address reuse cannot double-report);
+            // no marker fires off this path.
+            if (generator != 0u && corpses.find(actor) == corpses.end()) {
+                corpses[actor] = generator;
+                std::printf("P2_CATFISH_CORPSE_READY generator=%u source_id=26 receipt=corpse:catfish:%u\n",
+                            generator, generator);
+                std::fflush(stdout);
+            }
+        }
+        transition(s, CATFISH_DEAD, "dead", generator);
+    }
+
+    s.stateTime += dt;
+    // P1-approximation SFX (pc_p2_sfx_policy.h). Output-only: no sim state.
+    if (s.sfxState != int(s.state)) {
+        s.sfxState = int(s.state);
+        if (s.state == CATFISH_ATTACK) pc_p2_sfx(26, generator, p2sfx::Event::Attack, actor);
+        else if (s.state == CATFISH_FLICK) pc_p2_sfx(26, generator, p2sfx::Event::Flick, actor);
+        else if (s.state == CATFISH_DEAD) pc_p2_sfx(26, generator, p2sfx::Event::Dead, actor);
+    }
+    if (s.state == CATFISH_WALK || s.state == CATFISH_GOHOME) pc_p2_sfx_stride(26, generator, actor, 60.0f);
+    switch (s.state) {
+    case CATFISH_WAIT: {
+        stop(actor);
+        if (shouldFlick(actor)) { transition(s, CATFISH_FLICK, "flick", generator); break; }
+        Creature* target = nearestTarget(pos);
+        if (target) {
+            const Vector3f tp = target->getPosition();
+            if (attackable(s, pos, target)) transition(s, CATFISH_ATTACK, "attack", generator);
+            else if (targetAngle(s, pos, tp) < 0.1f) transition(s, CATFISH_WALK, "move1", generator);
+            else transition(s, CATFISH_TURN, "wait1", generator);
+        } else if (s.stateTime > ABSENT_MINDED) {
+            setRandTarget(s, pos);
+            transition(s, CATFISH_WALK, "move1", generator);
+        }
+        break;
+    }
+    case CATFISH_TURN: {
+        stop(actor);
+        if (shouldFlick(actor)) { transition(s, CATFISH_FLICK, "flick", generator); break; }
+        Creature* target = nearestTarget(pos);
+        if (!target) {
+            if (s.stateTime > ABSENT_MINDED) transition(s, CATFISH_TURNTOHOME, "wait1", generator);
+            break;
+        }
+        const Vector3f tp = target->getPosition();
+        if (attackable(s, pos, target)) { transition(s, CATFISH_ATTACK, "attack", generator); break; }
+        turnTo(actor, s, tp, dt);
+        if (targetAngle(s, pos, tp) < 0.1f) transition(s, CATFISH_WALK, "move1", generator);
+        break;
+    }
+    case CATFISH_WALK: {
+        Creature* target = nearestTarget(pos);
+        if (target) {
+            const Vector3f tp = target->getPosition();
+            if (attackable(s, pos, target)) { transition(s, CATFISH_ATTACK, "attack", generator); break; }
+            walkTo(actor, s, tp, dt);
+        } else {
+            if (!s.wanderValid || distXZ(s.wanderTarget, pos) < 20.0f) setRandTarget(s, pos);
+            walkTo(actor, s, s.wanderTarget, dt);
+        }
+        if (distXZ(pos, s.home) > TERRITORY) {
+            transition(s, CATFISH_TURNTOHOME, "wait1", generator);
+        } else if (shouldFlick(actor)) {
+            transition(s, CATFISH_FLICK, "flick", generator);
+        }
+        break;
+    }
+    case CATFISH_ATTACK: {
+        stop(actor);
+        // Source StateAttack KEYEVENT_2/KEYEVENT_3 (bite capture + attackNavi,
+        // then swallow kill + White poison) are delivered by the sampled clock
+        // exactly once per crossing, in source frame order.
+        for (const p2catfishevents::Dispatched& event : s.events.advance(dt)) {
+            if (event.action == p2catfishevents::Action::Bite) {
+                biteEvent(actor, s, generator, event.frame);
+            } else if (event.action == p2catfishevents::Action::Swallow) {
+                swallowEvent(actor, s, generator);
+            }
+        }
+        if (s.stateTime >= clipDuration("attack")) {
+            for (int i = 0; i < p2catfish::kMouthSlots; ++i) s.slots[i] = nullptr;
+            Creature* target = nearestTarget(pos);
+            if (target && attackable(s, pos, target)) {
+                transition(s, CATFISH_ATTACK, "attack", generator);
+            } else if (target) {
+                transition(s, CATFISH_TURN, "wait1", generator);
+            } else {
+                transition(s, CATFISH_TURNTOHOME, "wait1", generator);
+            }
+        }
+        break;
+    }
+    case CATFISH_FLICK: {
+        stop(actor);
+        // Source StateFlick KEYEVENT_2 (knockback) and KEYEVENT_3 (reset
+        // non-stone) are delivered by the sampled clock exactly once.
+        for (const p2catfishevents::Dispatched& event : s.events.advance(dt)) {
+            if (event.action == p2catfishevents::Action::Flick) {
+                const int hit = doFlick(actor, s);
+                std::printf("P2_CATFISH_FLICK generator=%u frame=%d event=knockback hit=%d\n",
+                            generator, event.frame, hit);
+                std::fflush(stdout);
+            } else if (event.action == p2catfishevents::Action::FlickRestore) {
+                std::printf("P2_CATFISH_FLICK generator=%u frame=%d event=restore\n",
+                            generator, event.frame);
+                std::fflush(stdout);
+            }
+        }
+        if (s.stateTime >= clipDuration("flick")) {
+            Creature* target = nearestTarget(pos);
+            transition(s, target ? CATFISH_TURN : CATFISH_WAIT, "wait1", generator);
+        }
+        break;
+    }
+    case CATFISH_TURNTOHOME: {
+        stop(actor);
+        if (distXZ(pos, s.home) < HOME_RADIUS) {
+            transition(s, CATFISH_WAIT, "wait1", generator);
+            break;
+        }
+        Creature* target = nearestTarget(pos);
+        if (target && attackable(s, pos, target)) {
+            transition(s, CATFISH_ATTACK, "attack", generator);
+            break;
+        }
+        turnTo(actor, s, s.home, dt);
+        if (targetAngle(s, pos, s.home) < 0.1f) transition(s, CATFISH_GOHOME, "move1", generator);
+        break;
+    }
+    case CATFISH_GOHOME: {
+        if (distXZ(pos, s.home) < HOME_RADIUS) {
+            transition(s, CATFISH_WAIT, "wait1", generator);
+            break;
+        }
+        walkTo(actor, s, s.home, dt);
+        break;
+    }
+    case CATFISH_DEAD:
+        stop(actor);
+        // The host doAI that normally calls die()+dieSoon() is suppressed, so
+        // die() alone (mDeadState=1, no corpse pellet) left nothing to carry
+        // (wave 3 mechanics probe: killed=1 carried=0). pcEscapeNow() is the
+        // full funnel (Armor/Groink/Breadbug pattern).
+        if (!s.escaped && s.stateTime >= clipDuration("dead")) {
+            s.escaped = true;
+            actor->pcEscapeNow();
+        }
+        break;
+    default:
+        break;
+    }
+    setPhase(s);
+    s.logTimer += dt;
+    if (s.logTimer >= 1.0f) {
+        s.logTimer = 0.0f;
+        const Vector3f now = actor->getPosition();
+        std::printf("P2_CATFISH_POS generator=%u state=%s clip=%s phase=%.2f "
+                    "x=%.2f y=%.2f z=%.2f\n",
+                    generator, stateName(s.state), s.clip.c_str(), s.phase,
+                    now.x, now.y, now.z);
+        std::fflush(stdout);
+    }
+}

@@ -149,6 +149,9 @@ public:
 	u16 mOnionColour;                     // _428
 	s16 mWaypointIdx;                     // _42A
 	u32 mHeldPikis[3];                    // _42C, contains counts for leaf/bud/flower
+#if defined(PIKI_PC_PORT)
+	int mPcOwner = -1; ///< VS: jugador dueño de esta cebolla (-1 fuera de VS)
+#endif
 	ItemShapeObject* _438[3];             // _438
 	// The GameCube layout stored three (fulcrum, rope) pairs in six adjacent
 	// 32-bit slots and accessed them by casting the first slot to GoalLeg*.  A

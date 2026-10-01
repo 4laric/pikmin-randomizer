@@ -1,7 +1,12 @@
+#include "pc_p2_ship_store.h"
+#include "pc_p2_campaign_policy.h"
+#include "pc_p2_proxy.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
 #include "pc_randomizer_campaign_catalog.h"
+#include "pc_randomizer_p2_roster.h"
+#include "pc_p2_delivery_host.h"
 #include <unordered_map>
 #include <cstdint>
 #include <cmath>
@@ -15,6 +20,7 @@
 #include <string>
 #include <set>
 #include <tuple>
+#include <vector>
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -31,17 +37,43 @@ unsigned enemyMask = 0;
 bool compactPopulation = false;
 bool minibossEnemies = false;
 bool slotEnemies = false, campaignEnemies = false;
+// P2 enemy bridge: a versioned roster revision with target->source_id bindings.
+// Lane 02 enforces admission; the native side only validates identity and revision.
+bool p2EnemyBridge = false;
+bool p2ProxyTier = false;
+std::unordered_map<std::string, unsigned> p2Bindings;
+// Versioned manifest-owned native journal order. Empty for all historical seeds.
+std::vector<std::string> resolvedCheckNames, legacyCheckNames;
+std::unordered_map<unsigned, unsigned> p2CheckIndices;
+std::unordered_map<unsigned, std::set<std::pair<unsigned, int>>> p2CheckSources;
 unsigned campaignAssignments[72] = {};
 bool groupEnemies = false;
 unsigned groupAssignments[12] = {};
 unsigned adultAssignments[15] = {};
 std::unordered_map<const void*, unsigned> generatorIds;
+// Lane 06: live P2-bound Teki -> source_id / generator uid, captured at bind time.
+// Single-use: consumed by pc_randomizer_p2_corpse_delivered and cleared by
+// pc_randomizer_p2_forget_source so a recycled Teki address can never inherit it.
+std::unordered_map<const void*, unsigned> p2TekiSources;
+std::unordered_map<const void*, unsigned> p2TekiGeneratorUids;
+// The randomizer's one ordinary delivery ledger (campaign directory), opened once.
+P2DeliveryHostHandle p2DeliveryHost = nullptr;
+// bot-v2 gap 1: in-memory copy of granted Onion corpse receipts this process,
+// so the TEST-ONLY autoplay bot can sense its own receipt without touching
+// the ledger (read-only query via pc_randomizer_p2_receipt_seen).
+std::set<unsigned> p2ReceiptGenerators;
 unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
 bool benefitItems = false, bombDeliveries = false, combinedCaptain = false, bombTraps = false, proggTraps = false, prereleaseTraps = false;
 unsigned benefits[9] = {}, consumedBenefits[7] = {};
+// Level-style rewards: never consumed, only raised by newer state.
+bool maturityItems = false;
+unsigned maturity[3] = {};
+unsigned dayLengthItems = 0, dayLengthStep = 0, dayLength = 0;
+// Whistle Pluck item: the seed carries it, and once received it stays on.
+bool whistlePluckItem = false, whistlePluck = false;
 // DeathLink: the first state value read is the baseline, so links received while
 // the game was closed never replay. Pending links are bounded; each applies once.
 unsigned deathLinkUnit = 0, deathLinksSeen = 0, deathLinksPending = 0, deathsReported = 0;
@@ -52,6 +84,8 @@ std::filesystem::path benefitJournal, campaignDirectory;
 std::string campaignBlock;
 unsigned long long campaignGeneration = 0;
 bool campaignResumed = false;
+bool purpleCampaign = false;
+bool secondCaptain = false;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
@@ -88,7 +122,10 @@ void loadCampaignCheckpoint() {
     unsigned used[7] = {};
     bool valid = bool(meta >> magic >> savedFingerprint >> generation);
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) valid = valid && bool(meta >> used[i]) && used[i] <= checkCount;
-    if (!valid || !(meta >> hash) || magic != (prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    p2ship::Store restoredShip;
+    if (purpleCampaign) valid = valid && restoredShip.read(meta) && restoredShip.counts[1][0] == 0
+        && restoredShip.counts[1][1] == 0 && restoredShip.counts[1][2] == 0;
+    if (!valid || !(meta >> hash) || magic != (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != campaignGeneration || (meta >> extra))
         fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
     campaignBlock.resize(32768);
@@ -97,8 +134,15 @@ void loadCampaignCheckpoint() {
         || checkpointHash(header.substr(0, header.rfind(' ')) + "\n" + campaignBlock) != hash)
         fail("campaign checkpoint is damaged; preserve campaign files for recovery");
     for (int i=0; i<7; ++i) consumedBenefits[i] = used[i];
+    p2ship::stock = restoredShip;
     campaignResumed = true;
 }
+// Upper bound on ENEMY_P2 bindings per seed. Bindings live in a std::map, so
+// this is a parser sanity limit, not a table size; it must cover every
+// ordinary campaign generator (72), the holder slots and the boss arenas the
+// root placement document can bind (#948). Root mirrors it in
+// experimental/pikmin2_seed_bridge.py (P2_MAX_BINDINGS).
+static const unsigned kP2MaxBindings = 256;
 bool hex64(const std::string& s) {
     return s.size() == 64 && s.find_first_not_of("0123456789abcdef") == std::string::npos;
 }
@@ -107,7 +151,7 @@ void expect(std::istream& in, const char* expected) {
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
 const char* baseCheckName(unsigned i) { return compactPopulation ? (permanentChecks ? randomizerCompactPermanentNames[i] : randomizerCompactCollectionNames[i]) : colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
-const char* checkName(unsigned i) {
+const char* legacyCheckName(unsigned i) {
     if (!noSticks) return baseCheckName(i);
     unsigned source = 0;
     for (;;) {
@@ -115,6 +159,9 @@ const char* checkName(unsigned i) {
         if (std::strstr(name, "Climbing Stick")) continue;
         if (i-- == 0) return name;
     }
+}
+const char* checkName(unsigned i) {
+    return resolvedCheckNames.empty() ? legacyCheckName(i) : resolvedCheckNames.at(i).c_str();
 }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
@@ -134,6 +181,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (!bootstrap) return false;
     if (bbft) fail("standalone and BBFT modes cannot be combined");
+    p2ProxyTier = false;
     std::ifstream input(bootstrap);
     if (!input) fail("cannot open standalone bootstrap");
     expect(input, "PIKMIN_RANDOMIZER");
@@ -229,9 +277,86 @@ bool pc_randomizer_init(int argc, char** argv) {
         prereleaseTraps = ((mode - 1) & 16) != 0;
         input >> end;
     }
+    if (end == "MATURITY") {
+        unsigned version;
+        if (!benefitItems || !(input >> version) || version != 1) fail("invalid maturity mode");
+        maturityItems = true;
+        input >> end;
+    }
+    if (end == "DAY_LENGTH") {
+        if (!benefitItems || !(input >> dayLengthItems >> dayLengthStep) || dayLengthItems < 1 || dayLengthItems > 10
+            || dayLengthStep < 10 || dayLengthStep > 100 || dayLengthStep % 5) fail("invalid day length mode");
+        input >> end;
+    }
+    if (end == "WHISTLE_PLUCK") {
+        unsigned version;
+        if (!benefitItems || !(input >> version) || version != 1) fail("invalid whistle pluck mode");
+        whistlePluckItem = true;
+        input >> end;
+    }
     if (end == "DEATHLINK") {
         if (schema != 9 || !(input >> deathLinkUnit) || deathLinkUnit < 1 || deathLinkUnit > 100) fail("invalid DeathLink unit");
         input >> end;
+    }
+    if (end == "ENEMY_P2") {
+        unsigned protocol, count; std::string revision;
+        if (schema != 9 || enemyMask || slotEnemies || campaignEnemies || groupEnemies)
+            fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (!(input >> protocol >> revision >> count) || protocol != 1
+            || revision != randomizerP2RosterRevision || count == 0 || count > kP2MaxBindings)
+            fail("incompatible P2 enemy roster or protocol version");
+        for (unsigned i = 0; i < count; ++i) {
+            std::string target; unsigned sourceId;
+            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
+                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
+                fail("invalid P2 enemy binding");
+        }
+        p2EnemyBridge = true;
+        p2ProxyTier = false;
+        input >> end;
+        if (end == "P2_PROXY_TIER") {
+            unsigned tier = 0;
+            if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
+            p2ProxyTier = true;
+            input >> end;
+        }
+        if (end == "ENEMY_CHECKS") {
+            unsigned version, count;
+            if (!(input >> version >> count) || version != 1 || count == 0 || count > checkCount + 102)
+                fail("invalid resolved enemy check catalog");
+            for (unsigned i = 0; i < checkCount; ++i) legacyCheckNames.emplace_back(legacyCheckName(i));
+            std::set<unsigned> retained;
+            for (unsigned i = 0; i < count; ++i) {
+                std::string kind; unsigned value;
+                if (!(input >> kind >> value)) fail("truncated resolved enemy check catalog");
+                if (kind == "L") {
+                    if (value >= legacyCheckNames.size() || !retained.insert(value).second)
+                        fail("invalid resolved legacy check index");
+                    resolvedCheckNames.push_back(legacyCheckNames[value]);
+                } else if (kind == "P") {
+                    unsigned sources;
+                    if (!pc_randomizer_p2_bound(value) || value == 9 || value == 10 || value == 11 || value == 16
+                        || !p2CheckIndices.emplace(value, i).second || !(input >> sources)
+                        || sources == 0 || sources > kP2MaxBindings)
+                        fail("invalid resolved P2 check identity");
+                    for (unsigned j = 0; j < sources; ++j) {
+                        unsigned uid; int stage;
+                        if (!(input >> uid >> stage) || !uid || stage < 0 || stage > 4
+                            || !p2CheckSources[value].insert({uid, stage}).second)
+                            fail("invalid resolved P2 check source");
+                    }
+                    resolvedCheckNames.push_back("P2:" + std::to_string(value));
+                } else fail("unknown resolved enemy check kind");
+            }
+            // Only bestiary locations may be removed from the legacy catalog.
+            // Parts, population and permanent checks keep their original identity.
+            for (unsigned i = 0; i < legacyCheckNames.size(); ++i)
+                if (legacyCheckNames[i].find("Bestiary:") != 0 && !retained.count(i))
+                    fail("resolved catalog omits non-enemy check");
+            checkCount = count;
+            input >> end;
+        }
+        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
@@ -290,6 +415,19 @@ bool pc_randomizer_init(int argc, char** argv) {
         groupEnemies = true;
         input >> end;
     }
+    if (end == "PURPLE") {
+        unsigned version;
+        if (!p2EnemyBridge || !(input >> version) || version != 1) fail("Purple requires P2 campaign bridge version 1");
+        purpleCampaign = true;
+        input >> end;
+    }
+    if (end == "CAPTAINS") {
+        std::string count;
+        if (!p2EnemyBridge || !(input >> count) || count != "2")
+            fail("two captains require P2 campaign bridge and count 2");
+        secondCaptain = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -325,12 +463,19 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (bombTraps) hello << " bomb-ambush-v1";
     if (proggTraps) hello << " progg-ambush-v1";
     if (prereleaseTraps) hello << " prerelease-trap-v1";
+    if (maturityItems) hello << " progressive-maturity-v1";
+    if (dayLengthItems) hello << " progressive-day-length-v1";
+    if (whistlePluckItem) hello << " whistle-pluck-item-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
     if (campaignEnemies) hello << " enemy-campaign-v1";
     if (minibossEnemies) hello << " miniboss-slots-v1";
     if (emperorGoal) hello << " emperor-goal-v1";
     if (deathLinkUnit) hello << " death-link-v1";
+    if (p2EnemyBridge) hello << " p2-enemy-bridge-v1";
+    if (p2ProxyTier) hello << " p2-proxy-tier-v1";
+    if (!resolvedCheckNames.empty()) hello << " resolved-enemy-checks-v1";
+    if (secondCaptain) hello << " p2-second-captain-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -389,6 +534,25 @@ void pc_randomizer_update() {
                 fail("invalid or retracted benefit receipt");
         parsed = bool(input >> end);
     }
+    unsigned newMaturity[3] = {};
+    if (maturityItems) {
+        if (!parsed || end != "MATURITY") fail("missing maturity state");
+        for (int c = 0; c < 3; ++c)
+            if (!(input >> newMaturity[c]) || newMaturity[c] > 2 || newMaturity[c] < maturity[c]) fail("invalid or retracted maturity");
+        parsed = bool(input >> end);
+    }
+    unsigned newDayLength = 0;
+    if (dayLengthItems) {
+        if (!parsed || end != "DAYLENGTH" || !(input >> newDayLength) || newDayLength > dayLengthItems || newDayLength < dayLength)
+            fail("invalid or retracted day length");
+        parsed = bool(input >> end);
+    }
+    unsigned newWhistlePluck = 0;
+    if (whistlePluckItem) {
+        if (!parsed || end != "WHISTLEPLUCK" || !(input >> newWhistlePluck) || newWhistlePluck > 1 || (whistlePluck && !newWhistlePluck))
+            fail("invalid or retracted whistle pluck");
+        parsed = bool(input >> end);
+    }
     unsigned newEmperor = 0;
     if (emperorGoal) {
         if (!parsed || end != "EMPEROR" || !(input >> newEmperor) || newEmperor > 1 || (newEmperor && newRepairs < 25)) fail("invalid Emperor state");
@@ -413,6 +577,14 @@ void pc_randomizer_update() {
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
     for (int kind = 0; kind < 9; ++kind) benefits[kind] = newBenefits[kind];
+    for (int c = 0; c < 3; ++c) {
+        if (maturity[c] != newMaturity[c]) std::printf("[Pikmin Randomizer] MATURITY color=%d tier=%u\n", c, newMaturity[c]);
+        maturity[c] = newMaturity[c];
+    }
+    if (dayLength != newDayLength) std::printf("[Pikmin Randomizer] DAY_LENGTH count=%u percent=%u\n", newDayLength, 100 + dayLengthStep * newDayLength);
+    dayLength = newDayLength;
+    if (!whistlePluck && newWhistlePluck) std::printf("[Pikmin Randomizer] WHISTLE_PLUCK received\n");
+    whistlePluck = newWhistlePluck != 0;
     emperorDefeated = emperorDefeated || newEmperor != 0;
     if (deathLinkUnit) {
         if (!deathLinkBaseline) { deathLinksSeen = newDeathLinks; deathLinkBaseline = true; }
@@ -437,6 +609,16 @@ void pc_randomizer_update() {
 }
 
 bool pc_randomizer_prerelease_traps() { return enabled && prereleaseTraps; }
+int pc_randomizer_maturity(int color) {
+    return enabled && maturityItems && color >= 0 && color < 3 ? int(maturity[color]) : 0;
+}
+int pc_randomizer_whistle_pluck() {
+    if (!enabled || !whistlePluckItem) return -1;
+    return whistlePluck ? 1 : 0;
+}
+float pc_randomizer_day_length_multiplier() {
+    return enabled && dayLengthItems ? 1.0f + 0.01f * float(dayLengthStep * dayLength) : 1.0f;
+}
 bool pc_randomizer_progg_traps() { return enabled && proggTraps; }
 bool pc_randomizer_benefit_pending(PcBenefit kind) {
     return enabled && benefitItems && ready && ((kind >= 0 && kind < 3) || (kind == PC_BENEFIT_BOMBS && bombDeliveries) || (kind == PC_BENEFIT_BOMB_TRAP && bombTraps) || (kind == PC_BENEFIT_PROGG && proggTraps) || (kind == PC_BENEFIT_PRERELEASE && prereleaseTraps)) && benefits[kind] > consumedBenefits[consumedIndex(kind)];
@@ -468,27 +650,199 @@ int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
 bool pc_randomizer_spawn_slots() { return enabled && (slotEnemies || campaignEnemies); }
 bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
+bool pc_randomizer_p2_bridge() { return p2EnemyBridge; }
+bool pc_randomizer_p2_proxy_tier() { return p2EnemyBridge && p2ProxyTier; }
+unsigned pc_randomizer_p2_source(const char* target) {
+    if (!p2EnemyBridge || !target) return 0;
+    const auto it = p2Bindings.find(target);
+    return it == p2Bindings.end() ? 0 : it->second;
+}
+unsigned pc_randomizer_p2_binding_count() {
+    return p2EnemyBridge ? static_cast<unsigned>(p2Bindings.size()) : 0;
+}
+bool pc_randomizer_p2_bound(unsigned source_id) {
+    if (!p2EnemyBridge || !source_id) return false;
+    for (const auto& binding : p2Bindings) if (binding.second == source_id) return true;
+    return false;
+}
+void pc_randomizer_p2_bind_source(const void* tekiview, unsigned sourceId, unsigned generatorUid) {
+    if (!tekiview || !sourceId) return;
+    if (!randomizerP2IsBindable(sourceId)) {
+        std::printf("[Pikmin Randomizer] P2_DELIVERY_BIND_REJECTED source=%u\n", sourceId);
+        return;
+    }
+    p2TekiSources[tekiview] = sourceId;
+    p2TekiGeneratorUids[tekiview] = generatorUid;
+}
+unsigned pc_randomizer_p2_source_for(const void* tekiview) {
+    const auto it = p2TekiSources.find(tekiview);
+    return it == p2TekiSources.end() ? 0 : it->second;
+}
+unsigned pc_randomizer_p2_generator_for(const void* tekiview) {
+    const auto it = p2TekiGeneratorUids.find(tekiview);
+    return it == p2TekiGeneratorUids.end() ? 0 : it->second;
+}
+void pc_randomizer_p2_forget_source(const void* tekiview) {
+    if (!tekiview) return;
+    p2TekiSources.erase(tekiview);
+    p2TekiGeneratorUids.erase(tekiview);
+}
+void pc_randomizer_p2_delivery_reset() {
+    if (p2DeliveryHost) {
+        pc_p2_delivery_host_close(p2DeliveryHost);
+        p2DeliveryHost = nullptr;
+    }
+    p2ReceiptGenerators.clear();
+}
+bool pc_randomizer_p2_receipt_seen(unsigned generatorUid)
+{
+    return generatorUid != 0 && p2ReceiptGenerators.count(generatorUid) != 0;
+}
+bool pc_randomizer_resolved_checks() { return !resolvedCheckNames.empty(); }
+bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay) {
+    if (!enabled || !ready || !gameplay || !tekiview) return false;
+    const unsigned sourceId = pc_randomizer_p2_source_for(tekiview);
+    if (!sourceId) return false;
+    const unsigned generatorUid = pc_randomizer_p2_generator_for(tekiview);
+    if (!generatorUid) {
+        std::printf("[Pikmin Randomizer] P2_ORDINARY_DELIVERY SKIP source=%u no_generator_uid\n", sourceId);
+        pc_randomizer_p2_forget_source(tekiview);
+        return false;
+    }
+    if (!resolvedCheckNames.empty() && p2CheckIndices.count(sourceId)) {
+        if (!p2CheckSources[sourceId].count({generatorUid, stage}))
+            fail("P2 delivery differs from resolved source catalog");
+        // Persist the AP event before the secondary receipt ledger. A runner or
+        // game crash between the two writes cannot lose an earned AP check.
+        pc_randomizer_check(resolvedCheckNames[p2CheckIndices[sourceId]].c_str());
+    }
+    // Open the durable ordinary receipt ledger once per process, at a path stable
+    // across a save + process restart (the session campaign directory).
+    if (!p2DeliveryHost) {
+        const std::filesystem::path path = campaignDirectory.empty()
+            ? directory / "p2-delivery-receipts.txt"
+            : campaignDirectory / "p2-delivery-receipts.txt";
+        p2DeliveryHost = pc_p2_delivery_host_open(path.string().c_str());
+        if (!p2DeliveryHost) {
+            std::printf("[Pikmin Randomizer] P2_ORDINARY_DELIVERY host open failed\n");
+            pc_randomizer_p2_forget_source(tekiview);
+            return false;
+        }
+    }
+    // `fingerprint` is the seed-manifest-level identity, stable across process
+    // restarts of the same seed; `token` is the run-instance identity fallback.
+    const std::string& seed = fingerprint.empty() ? token : fingerprint;
+    const P2DeliveryHostResult result = pc_p2_delivery_host_deliver(p2DeliveryHost, seed.c_str(), sourceId, type, stage, generatorUid, "corpse");
+    std::printf("[Pikmin Randomizer] P2_ORDINARY_P2_RECEIPT seed=%s id=onion:p2:%u:%d generator=%u new=%d\n",
+        seed.c_str(), sourceId, stage, generatorUid, int(result == P2DeliveryHostResult::Granted));
+    if (result == P2DeliveryHostResult::Granted || result == P2DeliveryHostResult::Duplicate) {
+        p2ReceiptGenerators.insert(generatorUid);
+    }
+    // Single-use: consume the binding so the address can be safely recycled.
+    pc_randomizer_p2_forget_source(tekiview);
+    return true;
+}
+unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id) {
+    if (!p2EnemyBridge || !generator_id) return 0;
+    char target[24];
+    std::snprintf(target, sizeof(target), "%lu", generator_id);
+    return pc_randomizer_p2_source(target);
+}
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
     return it == generatorIds.end() ? 0 : it->second;
 }
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid) {
     if (!uid) { generatorIds.erase(generator); return; }
-    if (!pc_randomizer_spawn_slots()) return;
+    // Populate under the P2 enemy bridge too: ENEMY_P2 forbids the P1 slot
+    // layouts, so pc_randomizer_spawn_slots() is false and generatorIds would
+    // otherwise stay empty (the seed bindings key on the spawn-slot uid).
+    if (!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) return;
     for (const auto& row : randomizerSpawnSlots) if (row.uid == uid) {
         generatorIds[generator] = uid; return;
     }
     fail("unknown saved generator ID");
 }
-void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset) {
+void pc_randomizer_dev_set_generator_id(const void* generator, unsigned uid) {
+    if (!generator || !uid) return;
+    generatorIds[generator] = uid;
+}
+unsigned pc_randomizer_placement_slot_uid(unsigned sourceId70) {
+    // Lane-04 catalog join: generator _70 -> placement slot uid (crc32), read
+    // from the staged p2-placement-slots.txt sidecar. Only consulted under the
+    // P2 bridge for room-course generators absent from randomizerSpawnSlots.
+    static std::unordered_map<unsigned, unsigned> slotBy70;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        std::ifstream sidecar("p2-placement-slots.txt");
+        if (sidecar) {
+            std::string magic;
+            if ((sidecar >> magic) && magic == "P2_PLACEMENT_SLOTS_1") {
+                unsigned generator = 0, slot = 0;
+                while (sidecar >> generator >> slot) slotBy70[generator] = slot;
+            }
+        }
+    }
+    const auto it = slotBy70.find(sourceId70);
+    return it == slotBy70.end() ? 0 : it->second;
+}
+
+void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset, unsigned sourceId70) {
     pc_randomizer_set_generator_id(generator, 0);
-    if (!pc_randomizer_spawn_slots() || !file) return;
+    if ((!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) || !file) return;
     for (const auto& row : randomizerSpawnSlots)
         if (row.stage == stage && row.offset == offset && !std::strcmp(row.file, file)) {
             pc_randomizer_set_generator_id(generator, row.uid); return;
         }
+    if (pc_randomizer_p2_bridge() && sourceId70) {
+        const unsigned uid = pc_randomizer_placement_slot_uid(sourceId70);
+        if (uid) pc_randomizer_set_generator_id(generator, uid);
+    }
+}
+
+bool pc_randomizer_p2_room_bootstrap(const char* path) {
+    // Feed the room preview the seed's ENEMY_P2 bindings without a full session:
+    // a full session sets `enabled` (which holds/freezes the preview) but the
+    // bridge only needs p2Bindings + p2EnemyBridge to resolve room generators.
+    std::ifstream input(path);
+    std::string word;
+    while (input >> word) {
+        if (word != "ENEMY_P2") continue;
+        unsigned protocol, count; std::string revision;
+        if (!(input >> protocol >> revision >> count) || protocol != 1
+            || revision != randomizerP2RosterRevision || count == 0 || count > kP2MaxBindings)
+            fail("incompatible P2 enemy roster or protocol version");
+        for (unsigned i = 0; i < count; ++i) {
+            std::string target; unsigned sourceId;
+            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
+                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
+                fail("invalid P2 enemy binding");
+        }
+        // Finding 4: skip the optional P2_PROXY_TIER pair the same way as the
+        // full-session reader so a tier seed's bootstrap parses here too. The
+        // room preview never takes the campaign tier; the flag is left alone.
+        std::string tierWord;
+        if (input >> tierWord) {
+            if (tierWord == "P2_PROXY_TIER") {
+                unsigned tier = 0;
+                if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
+            }
+        }
+        p2EnemyBridge = true;
+        return true;
+    }
+    return false;
 }
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
+    if (pc_randomizer_p2_bridge()) {
+        const unsigned source = pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(generator));
+        if (protectedSpawn || p2campaign::hasStaticHost(source))
+            return p2campaign::hostType(source, original, protectedSpawn);
+        const int proxy = pc_p2_proxy_host(source);
+        if (proxy >= 0) return proxy;
+        return original;
+    }
     if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);
     if (campaignEnemies) {
         const unsigned uid = pc_randomizer_generator_id(generator);
@@ -598,6 +952,10 @@ void pc_randomizer_check(const char* name) {
     if (slot < 0) {
         // Main Engine is the synthetic tutorial completion, not a standalone check.
         if (name && !std::strcmp(name, "Pikmin: Main Engine")) return;
+        if (!resolvedCheckNames.empty() && name && std::strstr(name, "Bestiary:") == name) {
+            for (const auto& original : legacyCheckNames)
+                if (original == name) return; // a removed P1 species has no AP location
+        }
         fail("unknown native collection identity");
     }
     if (checks.count(unsigned(slot))) return;
@@ -617,13 +975,48 @@ void pc_randomizer_check(const char* name) {
 
 bool pc_randomizer_expanded() { return enabled && schema >= 2; }
 bool pc_randomizer_color_stats() { return enabled && (configuredStats || progressiveStats); }
+namespace {
+// bot-v4 power mode (TEST-ONLY): PIKMIN_RANDOMIZER_AUTOPLAY_POWER scales Pikmin
+// attack power through the EXISTING color-multiplier lever. Off by default and
+// ONLY meaningful when the autoplay gate is already on; inert in normal play
+// (autoplay gate closed => normal 1.0x path, no matter what POWER is set to).
+// A numeric POWER value configures the multiplier, otherwise x10.
+bool autoplayPowerOn()
+{
+    const char* gate = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY");
+    if (!gate || !gate[0] || !std::strcmp(gate, "0")) return false;
+    const char* v = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY_POWER");
+    return v && v[0] && std::strcmp(v, "0") != 0;
+}
+float autoplayPowerDamageMult() {
+    if (!autoplayPowerOn()) return 1.0f;
+    const char* v = std::getenv("PIKMIN_RANDOMIZER_AUTOPLAY_POWER");
+    char* end = nullptr;
+    const double d = std::strtod(v, &end);
+    if (end && end != v && *end == 0 && d > 0.0 && d < 1000000.0) return float(d);
+    return 10.0f;
+}
+}
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat) {
+    if (stat == PC_PIKI_DAMAGE) {
+        const float power = autoplayPowerDamageMult();
+        if (power != 1.0f) return power;
+    }
     return pc_randomizer_color_stats() && color >= 0 && color < 3 && stat >= 0 && stat < 3 ? colorStats[color][stat] / 100.0f : 1.0f;
 }
 int pc_randomizer_carry_strength(int color) {
     return pc_randomizer_color_stats() && color >= 0 && color < 3 ? colorStats[color][3] : 1;
 }
-int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100; }
+int pc_randomizer_field_capacity()
+{
+    // bot-v4b power mode (TEST-ONLY): the campaign field cap is 10xFlarlic
+    // (20-40 at campaign start), which binds the withdraw menu (DrawContainer
+    // squad caps), the Onion exit queue, and the birth pool below the power
+    // squad. Lift to 100 while power mode is on (BOTH gates, same as the
+    // damage lever); inert otherwise, so probe asserts on 20 still hold.
+    if (autoplayPowerOn()) return 100;
+    return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100;
+}
 namespace {
 bool accessibleStage(int stage) {
     return (stage == 0 && pc_randomizer_has("Pikmin: Impact Site Access")) || (stage == 1 && pc_randomizer_has("Pikmin: Forest of Hope Access")) || (stage == 2 && pc_randomizer_has("Pikmin: Forest Navel Access"))
@@ -668,7 +1061,7 @@ void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
         return;
     }
     for (int i = 0; i < 9; ++i)
-        if (totalPikmin >= randomizerTotalPopulation[i]) pc_randomizer_check(checkName(30 + i));
+        if (totalPikmin >= randomizerTotalPopulation[i]) pc_randomizer_check(legacyCheckName(30 + i));
 }
 void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay) {
     if (!pc_randomizer_collection_checks() || !gameplay || !ready || !accessibleStage(stage)) return;
@@ -712,6 +1105,8 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 }
 
 // Immutable generations keep the last committed day intact if a write is interrupted.
+bool pc_randomizer_purple_campaign() { return enabled && purpleCampaign; }
+bool pc_randomizer_second_captain() { return enabled && secondCaptain; }
 bool pc_randomizer_resumed() { return enabled && campaignResumed; }
 bool pc_randomizer_load_campaign(void* destination) {
     if (!pc_randomizer_resumed()) return false;
@@ -723,8 +1118,9 @@ void pc_randomizer_save_campaign(const void* source) {
     std::filesystem::create_directories(campaignDirectory);
     const auto generation = campaignGeneration + 1;
     std::ostringstream meta;
-    meta << (prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
+    if (purpleCampaign) p2ship::stock.write(meta);
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
     std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;

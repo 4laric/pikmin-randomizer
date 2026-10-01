@@ -19,9 +19,10 @@ DEFINE_ERROR(29)
  */
 DEFINE_PRINT("particleGenerator")
 
-static u8 lpsPos[48] ATTRIBUTE_ALIGN(32) = {
-	255, 231, 0, 25, 0,   0,   0, 25, 0, 25, 0, 0,  0, 25, 255, 231, 0, 0,  255, 231, 255, 231, 0,   0,
-	0,   0,   0, 25, 255, 231, 0, 0,  0, 25, 0, 25, 0, 0,  255, 231, 0, 25, 0,   0,   255, 231, 255, 231,
+// GC stored these as big-endian s16 bytes. The PC GX array reader uses host
+// endian, so keep the ±25 unit quad in native s16.
+static s16 lpsPos[24] ATTRIBUTE_ALIGN(32) = {
+	-25, 25, 0, 25, 25, 0, 25, -25, 0, -25, -25, 0, 0, 25, -25, 0, 25, 25, 0, -25, 25, 0, -25, -25,
 };
 
 static u8 lpsCoord[8] ATTRIBUTE_ALIGN(32) = {
@@ -115,6 +116,33 @@ static inline void readDDF_Colour(Colour* outColour, u8*& data, u32 size)
 /**
  * @todo: Documentation
  */
+// PC: el tono del tinte con el brillo (componente máxima) de la partícula.
+void zen::particleGenerator::applyTint(Colour& col)
+{
+	if (!mHasTint) return;
+	int bright = col.r;
+	if (col.g > bright) bright = col.g;
+	if (col.b > bright) bright = col.b;
+	col.r = u8((int(mTint.r) * bright) / 255);
+	col.g = u8((int(mTint.g) * bright) / 255);
+	col.b = u8((int(mTint.b) * bright) / 255);
+}
+
+// PC: con tinte, la textura pasa a intensidad (canal rojo replicado) para que
+// una textura de color fijo (p.ej. el brillo rojo de la antena) tome el
+// color del tinte en vez de multiplicarse con él.
+void zen::particleGenerator::beginTintTexSwap()
+{
+	if (!mHasTint) return;
+	GXSetTevSwapModeTable(GX_TEV_SWAP0, GX_CH_RED, GX_CH_RED, GX_CH_RED, GX_CH_ALPHA);
+}
+
+void zen::particleGenerator::endTintTexSwap()
+{
+	if (!mHasTint) return;
+	GXSetTevSwapModeTable(GX_TEV_SWAP0, GX_CH_RED, GX_CH_GREEN, GX_CH_BLUE, GX_CH_ALPHA);
+}
+
 void zen::particleGenerator::init(u8* data, Texture* tex1, Texture* tex2, immut Vector3f& pos, zen::particleMdlManager* mdlMgr,
                                   zen::CallBack1<zen::particleGenerator*>* cb1,
                                   zen::CallBack2<zen::particleGenerator*, zen::particleMdl*>* cb2)
@@ -1007,6 +1035,7 @@ void zen::particleGenerator::drawPtclBillboard(Graphics& gfx)
 #endif
 
 	if (gfx.initParticle(false)) {
+		beginTintTexSwap();
 		zenList* origin = mPtclMdlListManager.getOrigin();
 		zenList* list   = mPtclMdlListManager.getTopList();
 		while (list != origin) {
@@ -1015,12 +1044,16 @@ void zen::particleGenerator::drawPtclBillboard(Graphics& gfx)
 
 			Colour col(ptcl->mPrimaryColor.r, ptcl->mPrimaryColor.g, ptcl->mPrimaryColor.b,
 			           RoundOff(ptcl->mPrimaryColor.a * ptcl->mAlphaFactor));
-			gfx.setPrimEnv(&col, &ptcl->mEnvColor);
+			applyTint(col);
+			Colour env(ptcl->mEnvColor);
+			applyTint(env);
+			gfx.setPrimEnv(&col, &env);
 			gfx.drawRotParticle(*gfx.mCamera, ptcl->mLocalPosition + ptcl->mGlobalPosition, -ptcl->mRotAngle,
 			                    ptcl->mSize * ptcl->mScaleFactor * 25.0f);
 
 			list = next;
 		}
+		endTintTexSwap();
 	}
 }
 
@@ -1032,6 +1065,15 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 #if PIKI_USE_DGX
 	gfx.setBlendMode(mBlendFactor, mZMode, mAnimData.mBlendMode);
 	GXSetCullMode(GX_CULL_NONE);
+#if defined(PIKI_PC_PORT)
+	// Indexed FIFO ribbons never reached the GL backend. Submit world-space
+	// camera-facing quads with the same matrix path as billboards.
+	if (!gfx.initParticle(false)) {
+		return;
+	}
+	gfx.useMatrix(gfx.mCamera->mLookAtMtx, 0);
+	beginTintTexSwap();
+#else
 	GXClearVtxDesc();
 	GXSetVtxDesc(GX_VA_PNMTXIDX, GX_DIRECT);
 	GXSetVtxDesc(GX_VA_POS, GX_INDEX8);
@@ -1048,6 +1090,7 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 	GXSetNumTevStages(1);
 	GXSetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR_NULL);
 	GXSetTexCoordGen2(GX_TEXCOORD0, GX_TG_MTX3X4, GX_TG_TEX0, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+#endif
 	Vector3f vec1;
 	STACK_PAD_VAR(3);
 	Matrix4f mtx1; // 0x104
@@ -1070,11 +1113,20 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 		particleMdl* ptcl = (particleMdl*)list;
 
 		col.set(ptcl->mPrimaryColor.r, ptcl->mPrimaryColor.g, ptcl->mPrimaryColor.b, RoundOff(ptcl->mPrimaryColor.a * ptcl->mAlphaFactor));
-		gfx.setPrimEnv(&col, &ptcl->mEnvColor);
+		applyTint(col);
+		Colour env(ptcl->mEnvColor);
+		applyTint(env);
+		gfx.setPrimEnv(&col, &env);
 
 		MTXIdentity(mtx2);
 
 		f32 a  = ptcl->mSize * ptcl->mScaleFactor;
+#if defined(PIKI_PC_PORT)
+		// Scale-in/out hits 0 and a zero basis turns the ±25 quad into a sliver.
+		if (a < 0.0001f) {
+			continue;
+		}
+#endif
 		cosVal = cosShort(ptcl->mRotAngle);
 		sinVal = sinShort(ptcl->mRotAngle);
 		(this->*mRotAxisCallBack)(mtx3, sinVal, cosVal);
@@ -1105,6 +1157,100 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 		if (len != 0.0f) {
 			f32 v = a * mLengthScale; // f27
 			vec1.normalize();
+#if defined(PIKI_PC_PORT)
+			{
+				// Misma base que el original (abajo), pero aplicada en CPU a
+				// un quad en espacio mundo: el camino indexado del FIFO no
+				// llega al backend GL. Se conserva la normal orientada, así
+				// las ondas en el agua (normal hacia arriba) quedan planas;
+				// la versión anterior encaraba siempre a cámara y las ponía
+				// de pie.
+				Vector3f worldPos = ptcl->mLocalPosition + ptcl->mGlobalPosition;
+				vec2.cross(vec1, ptcl->mOrientedNormal);
+				f32 width2 = vec2.x * vec2.x + vec2.y * vec2.y + vec2.z * vec2.z;
+				if (width2 < 1.0e-8f) {
+					if (pc_render_is_authoritative()) {
+						ptcl->mAgeTimer = ptcl->mLifeTime;
+						ptcl->mAge      = ptcl->mLifeTime;
+					}
+					continue;
+				}
+				vec2.normalize();
+				if (mOrientedDrawConfig.mFlipNormal) {
+					vec3 = ptcl->mOrientedNormal;
+					vec1.cross(vec3, vec2);
+					vec1.normalize();
+				} else {
+					vec3.cross(vec2, vec1);
+					vec3.normalize();
+				}
+				if (pc_render_is_authoritative()) {
+					ptcl->mOrientedNormal = vec3;
+				}
+				// Dos usos legítimos y contrarios: las ondas del agua quieren
+				// el plano orientado (normal hacia arriba, vistas desde
+				// arriba: quedan planas), y los rayos del portal de la intro
+				// quieren encarar a la cámara (con la normal orientada quedan
+				// de canto y la rotación de mtx3 los convierte en radios
+				// finos: fue el primer fallo del portal). El criterio es
+				// geométrico: si el plano orientado queda de canto respecto
+				// a la línea de vista, se encara a cámara con el ancho
+				// perpendicular a la velocidad y sin rotación (la versión
+				// que arregló el portal la primera vez).
+				Vector3f toCam  = gfx.mCamera->mPosition - worldPos;
+				f32 toCamLen2   = toCam.x * toCam.x + toCam.y * toCam.y + toCam.z * toCam.z;
+				bool faceCamera = false;
+				if (toCamLen2 > 1.0e-8f) {
+					Vector3f viewDir = toCam;
+					viewDir.normalize();
+					const f32 facing = vec3.x * viewDir.x + vec3.y * viewDir.y + vec3.z * viewDir.z;
+					// Estrecho a propósito: de lejos el agua se mira casi
+					// rasante y sus ondas deben seguir planas (0,3 las ponía
+					// de pie a distancia).
+					faceCamera       = facing > -0.1f && facing < 0.1f;
+				}
+				const f32 sx[4] = { -1.0f, 1.0f, 1.0f, -1.0f };
+				const f32 sy[4] = { 1.0f, 1.0f, -1.0f, -1.0f };
+				const f32 tu[4] = { 0.0f, 1.0f, 1.0f, 0.0f };
+				const f32 tv[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+				if (faceCamera) {
+					Vector3f axisW;
+					axisW.cross(toCam, vec1);
+					f32 w2 = axisW.x * axisW.x + axisW.y * axisW.y + axisW.z * axisW.z;
+					if (w2 < 1.0e-8f) {
+						axisW = gfx.mCamera->mViewXAxis;
+					} else {
+						axisW.normalize();
+					}
+					const f32 hx = 25.0f * a;
+					const f32 hy = 25.0f * v;
+					const f32 py = 25.0f * mPivotOffsetY;
+					GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+					for (int vi = 0; vi < 4; vi++) {
+						Vector3f p = worldPos + axisW * (sx[vi] * hx) + vec1 * (sy[vi] * hy + py);
+						GXPosition3f32(p.x, p.y, p.z);
+						GXTexCoord2f32(tu[vi], tv[vi]);
+					}
+					GXEnd();
+					continue;
+				}
+				// Quad ±25 en la base orientada (vec2*a, vec1*v) con el
+				// pivote de mtx3 pero sin su rotación: rotar el quad antes
+				// de la escala anisótropa (a frente a v) convierte cada
+				// partícula en un radio fino girado, y una onda circular no
+				// cambia al girar.
+				GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+				for (int vi = 0; vi < 4; vi++) {
+					const f32 lx = sx[vi] * 25.0f;
+					const f32 ly = sy[vi] * 25.0f + mtx3[1][3];
+					Vector3f p = worldPos + vec2 * (lx * a) + vec1 * (ly * v);
+					GXPosition3f32(p.x, p.y, p.z);
+					GXTexCoord2f32(tu[vi], tv[vi]);
+				}
+				GXEnd();
+				continue;
+			}
+#endif
 
 			vec2.cross(vec1, ptcl->mOrientedNormal);
 
@@ -1162,14 +1308,46 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 #if defined(PIKI_PC_PORT)
 			}
 #endif
-			continue;
+				continue;
 		}
 
 		MTXConcat(mtx2, mtx3, mtx2);
 		MTXConcat(mtx1.mMtx, mtx2, mtx1.mMtx);
 
 		GXLoadPosMtxImm(mtx1.mMtx, 0);
-
+#if defined(PIKI_PC_PORT)
+		GXSetCurrentMtx(0);
+		if (mOrientedDrawConfig.mIsDoubleSided) {
+			GXBegin(GX_QUADS, GX_VTXFMT0, 8);
+			GXPosition3f32(-25.0f, 25.0f, 0.0f);
+			GXTexCoord2f32(0.0f, 0.0f);
+			GXPosition3f32(25.0f, 25.0f, 0.0f);
+			GXTexCoord2f32(1.0f, 0.0f);
+			GXPosition3f32(25.0f, -25.0f, 0.0f);
+			GXTexCoord2f32(1.0f, 1.0f);
+			GXPosition3f32(-25.0f, -25.0f, 0.0f);
+			GXTexCoord2f32(0.0f, 1.0f);
+			GXPosition3f32(0.0f, 25.0f, -25.0f);
+			GXTexCoord2f32(0.0f, 0.0f);
+			GXPosition3f32(0.0f, 25.0f, 25.0f);
+			GXTexCoord2f32(1.0f, 0.0f);
+			GXPosition3f32(0.0f, -25.0f, 25.0f);
+			GXTexCoord2f32(1.0f, 1.0f);
+			GXPosition3f32(0.0f, -25.0f, -25.0f);
+			GXTexCoord2f32(0.0f, 1.0f);
+		} else {
+			GXBegin(GX_QUADS, GX_VTXFMT0, 4);
+			GXPosition3f32(-25.0f, 25.0f, 0.0f);
+			GXTexCoord2f32(0.0f, 0.0f);
+			GXPosition3f32(25.0f, 25.0f, 0.0f);
+			GXTexCoord2f32(1.0f, 0.0f);
+			GXPosition3f32(25.0f, -25.0f, 0.0f);
+			GXTexCoord2f32(1.0f, 1.0f);
+			GXPosition3f32(-25.0f, -25.0f, 0.0f);
+			GXTexCoord2f32(0.0f, 1.0f);
+		}
+		GXEnd();
+#else
 		if (mOrientedDrawConfig.mIsDoubleSided) {
 			GXBegin(GX_QUADS, GX_VTXFMT0, 8);
 			GXTexCoord2u8(0, 0);
@@ -1193,7 +1371,11 @@ void zen::particleGenerator::drawPtclOriented(Graphics& gfx)
 			GXTexCoord2u8(2, 0);
 			GXTexCoord2u8(3, 3);
 		}
+#endif
 	}
+#if defined(PIKI_PC_PORT)
+	endTintTexSwap();
+#endif
 #else
 	drawPtclBillboard(gfx);
 #endif
@@ -1360,7 +1542,9 @@ void zen::particleGenerator::drawPtclChildren(Graphics& gfx)
 		particleChildMdl* child = (particleChildMdl*)list;
 		next                    = list->mNext;
 
-		gfx.setPrimEnv(&child->mPrimaryColor, &child->mPrimaryColor);
+		Colour childCol(child->mPrimaryColor);
+		applyTint(childCol);
+		gfx.setPrimEnv(&childCol, &childCol);
 		gfx.drawParticle(*gfx.mCamera, child->mLocalPosition + child->mGlobalPosition, 25.0f * child->mSize);
 
 		list = next;

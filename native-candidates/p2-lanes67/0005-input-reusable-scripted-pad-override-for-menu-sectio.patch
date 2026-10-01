@@ -1,0 +1,160 @@
+From 800026e17082f38078616a037db925669df3d645 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 11:35:31 -0400
+Subject: [PATCH 5/5] input: reusable scripted-pad override for menu/section
+ fixtures (#397)
+
+Add pc_port/pc_p2_input_script.{h,cpp}: a fixture sets a virtual pad per player
+port and ControllerMgr::updateController() uses it instead of the physical pad
+while active. Default-off and inert in production (returns false with no script
+set). This lets a fixture drive ANY menu/section - results, map select, title -
+without reaching into section internals, and enabled the lane-07 in-process
+new-scene reload (MapSelect -> fresh gameplay area).
+---
+ CMakeLists.txt                   |  1 +
+ pc_port/pc_p2_input_script.cpp   | 58 ++++++++++++++++++++++++++++++++
+ pc_port/pc_p2_input_script.h     | 19 +++++++++++
+ src/sysDolphin/controllerMgr.cpp | 17 ++++++++++
+ 4 files changed, 95 insertions(+)
+ create mode 100644 pc_port/pc_p2_input_script.cpp
+ create mode 100644 pc_port/pc_p2_input_script.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 304e5c3b..78a1407b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -170,6 +170,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_preview.cpp
+     pc_port/pc_p2_economy.cpp
+     pc_port/pc_p2_teki_lifetime.cpp
++    pc_port/pc_p2_input_script.cpp
+     pc_port/pc_p2_purple.cpp
+     pc_port/pc_p2_purple_impact.cpp
+     pc_port/pc_p2_kochappy_stun.cpp
+diff --git a/pc_port/pc_p2_input_script.cpp b/pc_port/pc_p2_input_script.cpp
+new file mode 100644
+index 00000000..9b7f7675
+--- /dev/null
++++ b/pc_port/pc_p2_input_script.cpp
+@@ -0,0 +1,58 @@
++#include "pc_p2_input_script.h"
++
++namespace {
++struct ScriptPad {
++	bool active = false;
++	unsigned buttons = 0;
++	signed char stickX = 0;
++	signed char stickY = 0;
++};
++ScriptPad sScriptPad[4];
++} // namespace
++
++void pc_p2_input_script_set(unsigned playerNum, unsigned buttons, int stickX, int stickY)
++{
++	if (playerNum < 1 || playerNum > 4) {
++		return;
++	}
++	ScriptPad& pad = sScriptPad[playerNum - 1];
++	pad.active = true;
++	pad.buttons = buttons;
++	pad.stickX = static_cast<signed char>(stickX);
++	pad.stickY = static_cast<signed char>(stickY);
++}
++
++void pc_p2_input_script_clear(unsigned playerNum)
++{
++	if (playerNum >= 1 && playerNum <= 4) {
++		sScriptPad[playerNum - 1] = ScriptPad{};
++	}
++}
++
++void pc_p2_input_script_clear_all()
++{
++	for (ScriptPad& pad : sScriptPad) {
++		pad = ScriptPad{};
++	}
++}
++
++bool pc_p2_input_script_override(unsigned playerNum, unsigned* buttons, signed char* stickX, signed char* stickY)
++{
++	if (playerNum < 1 || playerNum > 4) {
++		return false;
++	}
++	const ScriptPad& pad = sScriptPad[playerNum - 1];
++	if (!pad.active) {
++		return false;
++	}
++	if (buttons) {
++		*buttons = pad.buttons;
++	}
++	if (stickX) {
++		*stickX = pad.stickX;
++	}
++	if (stickY) {
++		*stickY = pad.stickY;
++	}
++	return true;
++}
+diff --git a/pc_port/pc_p2_input_script.h b/pc_port/pc_p2_input_script.h
+new file mode 100644
+index 00000000..bf3b156e
+--- /dev/null
++++ b/pc_port/pc_p2_input_script.h
+@@ -0,0 +1,19 @@
++#pragma once
++
++// Reusable scripted-pad input for private fixtures (menus, section transitions).
++//
++// A fixture sets the virtual pad state it wants for a player port; the core
++// ControllerMgr uses it instead of the physical pad while active. This lets a
++// fixture drive ANY menu/section (results, map select, title) without reaching
++// into section internals. Inert in production: with no script set,
++// pc_p2_input_script_override() returns false and the physical pad is used.
++//
++// Shared-semantics note (#186): this is an additive, default-off input test
++// hook. Only fixtures call pc_p2_input_script_set().
++void pc_p2_input_script_set(unsigned playerNum, unsigned buttons, int stickX = 0, int stickY = 0);
++void pc_p2_input_script_clear(unsigned playerNum);
++void pc_p2_input_script_clear_all();
++
++// Returns true and fills the virtual pad when a script is active for this 1-based
++// player port. Returns false when the physical pad should be used.
++bool pc_p2_input_script_override(unsigned playerNum, unsigned* buttons, signed char* stickX, signed char* stickY);
+diff --git a/src/sysDolphin/controllerMgr.cpp b/src/sysDolphin/controllerMgr.cpp
+index c2c01c3a..c749800c 100644
+--- a/src/sysDolphin/controllerMgr.cpp
++++ b/src/sysDolphin/controllerMgr.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include "DebugLog.h"
+ #include "Dolphin/pad.h"
++#include "pc_p2_input_script.h"
+ 
+ /**
+  * @todo: Documentation
+@@ -58,6 +59,22 @@ void ControllerMgr::init()
+  */
+ void ControllerMgr::updateController(Controller* controller)
+ {
++	// Private fixtures may script the virtual pad to drive menus/sections.
++	unsigned scripted;
++	signed char scriptedX, scriptedY;
++	if (pc_p2_input_script_override(controller->mPlayerNum, &scripted, &scriptedX, &scriptedY)) {
++		controller->mMainStickX = scriptedX;
++		controller->mMainStickY = scriptedY;
++		controller->mSubStickX  = 0;
++		controller->mSubStickY  = 0;
++		controller->mAnalogA    = 0;
++		controller->mAnalogB    = 0;
++		controller->mTriggerL   = 0;
++		controller->mTriggerR   = 0;
++		controller->updateCont(scripted);
++		return;
++	}
++
+ 	// import stick values from controller
+ 	controller->mMainStickX = sControllerPad[controller->mPlayerNum - 1].stickX;
+ 	controller->mMainStickY = sControllerPad[controller->mPlayerNum - 1].stickY;
+-- 
+2.55.0.windows.3
+

@@ -1,4 +1,5 @@
 #include "PelletState.h"
+#include "pc_p2_preview.h"
 #include "DebugLog.h"
 #include "FlowController.h"
 #include "GoalItem.h"
@@ -8,6 +9,9 @@
 #include "Pellet.h"
 #include "PlayerState.h"
 #include "Stickers.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
 #include "Suckable.h"
 #include "UfoItem.h"
 #include "UtEffect.h"
@@ -245,6 +249,12 @@ void PelletGoalState::init(Pellet* pelt)
 	mTargetIsShip = false;
 	if (pelt->mTargetGoal->mObjType == OBJTYPE_Ufo) {
 		mTargetIsShip = true;
+#if defined(PIKI_PC_PORT)
+		// VS: la pieza solo puntúa; nada de escenas de la historia (motor,
+		// "pieza recuperada", despegue).
+		if (pc_vs_active()) {
+		} else
+#endif
 		if (!playerState->mDemoFlags.isFlag(DEMOFLAG_CollectEngine)) {
 			// we're collecting the main engine (first part!) - trigger the cutscene
 			gameflow.mShipTextPartID = UFO_NOPART;
@@ -263,6 +273,9 @@ void PelletGoalState::init(Pellet* pelt)
 			PRINT("suicomi movie :- type = %d : info = %d\n", gameflow.mShipTextType, gameflow.mShipTextPartID);
 			gameflow.mGameInterface->movie(DEMOID_CollectPart, 0, pelt, &pelt->mSRT.t, &pelt->mSRT.r, CAF_AllVisibleMask, true);
 		}
+#if defined(PIKI_PC_PORT)
+		if (!pc_vs_active())
+#endif
 		playerState->preloadHenkaMovie();
 
 	} else if (flowCont.mCurrentStage->mStageID == STAGE_Practice) {
@@ -344,7 +357,9 @@ void PelletGoalState::exec(Pellet* pelt)
 	mSuckSpeed += gsys->getFrameTime() * 720.0f;
 
 	if (mSuckProgress >= 1.0f) {
-		if (pelt->mConfig->mPelletType() == PELTYPE_UfoPart) {
+		if (pc_p2_preview_deliver(pelt)) {
+			// Private treasure receipt; no Onion seeds or ship repair side effects.
+		} else if (pelt->mConfig->mPelletType() == PELTYPE_UfoPart) {
 			pelt->mTargetGoal->finishSuck(pelt);
 		} else {
 			pelt->mTargetGoal->suckMe(pelt);

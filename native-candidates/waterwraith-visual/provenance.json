@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith/Tyre two-species visual module, host seam and real-GL runtime fixture",
+  "kind": "integration-ready",
+  "native": {
+    "base": "07f173aed35a09e9d1537cb6298f29cca86ded9d",
+    "base_subject": "integration: header-only sampled clock/event contract (#437 batch E)",
+    "base_branch": "opencode/p2-lane01-hardlanes",
+    "head": "5d38a9184644f53f080dfbce317cd7ac518e5f9d",
+    "local_branch": "opencode/p2-lane31-integ",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Based on the lane-01 reconciled native line. The policy module was cherry-picked from the lane-31 policy branch (baa3c4db). Native origin and upstream were not pushed."
+  },
+  "commits": [
+    "d1c15ff18e53c5674ee011ba01cf50a6166e41a8",
+    "a2156640a4a8dc92ebd2d26ad7e59988729b51ce",
+    "f52745225169c39f5b8b4db43fde2636e28f5ffd",
+    "5d38a9184644f53f080dfbce317cd7ac518e5f9d"
+  ],
+  "files": [
+    "pc_port/pc_p2_waterwraith.h",
+    "pc_port/pc_p2_waterwraith.cpp",
+    "pc_port/pc_p2_waterwraith_visual.h",
+    "pc_port/pc_p2_waterwraith_visual.cpp",
+    "pc_port/pc_p2_waterwraith_host.h",
+    "pc_port/pc_p2_waterwraith_host.cpp",
+    "tools/p2_waterwraith_test.cpp",
+    "tools/p2_waterwraith_runtime.cpp",
+    "tools/p2_waterwraith_runtime_run.py",
+    "CMakeLists.txt"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-visual/waterwraith-visual-full.patch",
+      "size": 52250,
+      "sha256": "d22594418efa6638e9239385eab0ef38d437ad8f0ef81230f8f36d33f398a230"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-visual/patches/0001-Waterwraith-two-species-sampled-pose-visual-module-r.patch",
+        "sha256": "65154ab233be4a308f179cc31c1c82ca9b202a83fac8c328fe10f711146f70b4"
+      },
+      {
+        "path": "native-candidates/waterwraith-visual/patches/0002-Waterwraith-host-seam-binding-rigor-to-the-visual-fi.patch",
+        "sha256": "bb12a22c89c11f1ec8b167d3bc42d9bf5d68b2341c4e91b700ac71f23aaca66e"
+      },
+      {
+        "path": "native-candidates/waterwraith-visual/patches/0003-Waterwraith-BlackMan-Tyre-dependent-roller-ownership.patch",
+        "sha256": "acaaa76598f849c59f1371e349f98d1508b893e1b80fdbee995732dd249b0707"
+      },
+      {
+        "path": "native-candidates/waterwraith-visual/patches/0004-Waterwraith-add-policy-TU-to-the-shared-target-175.patch",
+        "sha256": "981a3a12dae6d427a46c7a4b8bf8ac0e1501601927dc0a8fd0d8133f90d87812"
+      }
+    ]
+  },
+  "root_stage_builder": {
+    "branch": "opencode/p2-lane31-root",
+    "modules": ["experimental/pikmin2_waterwraith_stage.py", "tests/test_pikmin2_waterwraith_stage.py"],
+    "note": "The visual module consumes the P2_WATERWRAITH_VISUAL_1 profile this builder writes."
+  },
+  "runtime": {
+    "private_build": "output/native-lane31-integ-build",
+    "configuration": "Ninja, Release, PIKMIN_NATIVE_JAUDIO=ON, PIKMIN_NATIVE_OPTIMIZE=OFF, PIKMIN_RANDOMIZER_TEST_HOOKS=OFF",
+    "production_executable_sha256": "c580fa59375d46c9c1d904bf36ee00d9ff6f97a4d367bbae678b261d5b2b88b6",
+    "ninja_dry_run": "ninja: no work to do.",
+    "previous_fixture": {
+      "dir": "output/lane31-waterwraith-fixture-01",
+      "sha256": "8c77f276baea13f4ade69df77bb477fa06a52289b49ee9b37b73ce33db809bc0"
+    },
+    "fixture_dir": "output/lane31-waterwraith-fixture-02",
+    "fixture_executable_sha256": "940bcdaaaeb005123d59a5c5b74b41a1f950e4c24a2ad80648c378e46523e8f0",
+    "run_dir": "output/lane31-waterwraith-runtime-02/f11baf5861c247ec82916ec29f50452c",
+    "status": "passed",
+    "markers": [
+      "P2_WATERWRAITH_VISUAL_READY species=2 clips=16",
+      "P2_WATERWRAITH_WINDOW size=960x540 pos=373,263",
+      "P2_WATERWRAITH_VISUAL_PLAY BlackMan=kagebozu_walk Tyre=tyre_move",
+      "P2_WATERWRAITH_VISUAL_DRAW species=1",
+      "P2_WATERWRAITH_HOST_PASS ticks=90 distance=240.000 roll=43.4059 phase=Move",
+      "PASS WATERWRAITH_RUNTIME"
+    ],
+    "captures": ["waterwraith-visual.ppm"]
+  },
+  "requested_of_lane_01": [
+    "cherry-pick the four commits 07f173ae..5d38a918 (or apply the full patch) onto the maintained reconciliation line. The only shared-file edit is the additive CMakeLists.txt TU lines for the three Waterwraith modules."
+  ],
+  "limitations": [
+    "Display slice plus host-driven policy binding: baked sampled poses with approximate materials, no skeletal playback and no retail event execution.",
+    "Locomotion is a host-driven straight route, not the retained-assembly walk code; no source actor/AI, receivers or gameplay.",
+    "Tyre roll is shown as a rotation applied by the fixture from the policy roll angle; the roller's own steering/joint assembly remains unported."
+  ]
+}

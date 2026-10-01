@@ -52,10 +52,47 @@ enum {
     PC_KEY_ACT_CSTICK_DOWN  = 17,
     PC_KEY_ACT_CSTICK_LEFT  = 18,
     PC_KEY_ACT_CSTICK_RIGHT = 19,
+    // Swarm (issue #29): while held the squad is pushed toward the cursor,
+    // like Down on the Wii D-pad. Appended so saved key_N indices stay valid.
+    PC_KEY_ACT_SWARM        = 20,
+    // Lock-On y Charge (mods de Pikmin 3). Añadidos al final para que los
+    // key_N ya guardados sigan apuntando a la misma acción.
+    PC_KEY_ACT_LOCKON       = 21,
+    PC_KEY_ACT_FIRSTPERSON  = 22,
+    PC_KEY_ACT_GYRO_RECENTER = 23,
     PC_KEY_ACT_COUNT
 };
 void pc_window_set_key_binding(int action, SDL_Scancode scancode);
 SDL_Scancode pc_window_get_key_binding(int action);
+
+// Mouse buttons are bindable like keys (issue #42): they ride in the keyboard
+// binding table as pseudo-scancodes past SDL_NUM_SCANCODES, so
+// PC_BIND_MOUSE_BASE + SDL_BUTTON_X1 is "Mouse 4". Anything that indexes
+// SDL_GetKeyboardState() with a binding must go through pc_window_binding_held.
+#define PC_BIND_MOUSE_BASE  SDL_NUM_SCANCODES
+#define PC_BIND_MOUSE_LAST  (PC_BIND_MOUSE_BASE + 8)
+static inline bool pc_bind_is_mouse(int binding) { return binding >= PC_BIND_MOUSE_BASE && binding <= PC_BIND_MOUSE_LAST; }
+static inline bool pc_bind_is_valid(int binding) { return binding >= 0 && binding <= PC_BIND_MOUSE_LAST; }
+// A keyboard/mouse binding of SDL_SCANCODE_UNKNOWN is "unbound": no key ever
+// reports it, so the action simply never fires. Clearing a binding stores it.
+#define PC_BIND_UNBOUND SDL_SCANCODE_UNKNOWN
+// Whether the swarm binding (keyboard, mouse or gamepad) is held right now.
+bool pc_window_swarm_held(void);
+bool pc_window_swarm_held_p2(void);
+/// Flanco de subida: true una sola vez por pulsación, y se consume al leerlo.
+bool pc_window_take_lockon_press(void);
+/// Flanco del botón de swarm: con el Charge activo es el que lanza la carga.
+bool pc_window_take_swarm_press(void);
+/// Inyecta la pulsación desde la capa táctil, que no pasa por los bindings.
+void pc_window_request_lockon_press(void);
+void pc_window_request_firstperson_press(void);
+void pc_window_request_charge_press(void);
+// Name for either kind of binding ("Mouse 4", "Space", ...).
+const char* pc_window_binding_name(int binding);
+// Whether a binding is currently held, given the keyboard and mouse state.
+bool pc_window_binding_held(int binding, const Uint8* keys, Uint32 mouseButtons);
+// Mouse buttons pressed since the previous call (SDL_BUTTON mask); for capture.
+Uint32 pc_window_take_mouse_pressed(void);
 const char* pc_window_get_key_action_name(int action);
 void pc_window_reset_key_bindings(void);
 bool pc_window_load_key_bindings(const char* path);
@@ -67,10 +104,18 @@ extern const SDL_Scancode kDefaultKeyBindings[PC_KEY_ACT_COUNT];
 // Default gamepad button bindings (SDL_GameControllerButton).
 extern const int kDefaultGamepadBindings[PC_KEY_ACT_COUNT];
 
-// Gamepad button remapping.
+// Gamepad remapping. Values are SDL_GameControllerButton, -1 for default,
+// PC_GP_UNBOUND for "cleared on purpose", or PC_GP_AXIS_BIND + axis*2 +
+// (positive?1:0) for analog axes / triggers.
+#define PC_GP_AXIS_BIND 1000
+#define PC_GP_DEFAULT   (-1)
+#define PC_GP_UNBOUND   (-2)
 void pc_window_set_gamepad_binding(int action, int button);
 int pc_window_get_gamepad_binding(int action);
 const char* pc_window_get_gamepad_button_name(int button);
+int pc_window_gamepad_first_held_binding(SDL_GameController* controller);
+bool pc_window_gamepad_bind_held(SDL_GameController* controller, int bind);
+bool pc_window_gamepad_any_held(SDL_GameController* controller);
 void pc_window_set_stick_dead_zone(int deadZone);
 int pc_window_get_stick_dead_zone(void);
 void pc_window_set_stick_invert(int flags);
@@ -80,6 +125,24 @@ int pc_window_get_cstick_invert(void);
 
 // Access to controller for menu navigation.
 SDL_GameController* pc_window_get_controller(void);
+// Segundo mando físico (P2 en cooperativo); nullptr si no hay.
+SDL_GameController* pc_window_get_controller_p2(void);
+
+// Asignación de dispositivos por jugador (PLAN_COOP). Sin asignación explícita
+// P1 = teclado + primer mando y P2 = segundo mando.
+#define PC_INPUT_DEV_NONE     0
+#define PC_INPUT_DEV_KEYBOARD 1
+#define PC_INPUT_DEV_GAMEPAD  2
+int  pc_window_num_gamepads(void);
+void pc_window_input_reset_assignment(void);
+void pc_window_input_assign(int player, int kind, int gamepadId);
+int  pc_window_input_get_assignment(int player, int* gamepadId);
+// Jugador (0/1) que tiene el teclado; el ratón va con él.
+int  pc_window_get_keyboard_owner(void);
+const char* pc_window_gamepad_name(int gamepadId);
+// Última pulsación de tecla (no Esc) o botón de mando desde la última consulta.
+bool pc_window_take_button_press(int* kind, int* gamepadId);
+void pc_window_discard_button_presses(void);
 
 // Last device that produced game input. Tutorial text uses this so the
 // prompts match the F1 bindings the player is actually using.
@@ -89,10 +152,15 @@ bool pc_window_last_input_is_gamepad(void);
 // Keyboard vs gamepad follows pc_window_last_input_is_gamepad(). In mouse
 // cursor mode, A/B/Z also list the matching mouse button.
 void pc_window_message_control_label(char tag, char* buf, unsigned bufSize);
+// Cooperativo: jugador (0/1) al que van dirigidos los textos de tutorial;
+// con asignación explícita de dispositivos la etiqueta usa el suyo en vez
+// del último dispositivo usado. -1 = sin preferencia.
+void pc_window_set_prompt_player(int player);
 
 void pc_window_set_display_mode(int mode);        // PC_WINDOW_FULLSCREEN_*
 int  pc_window_get_display_mode(void);
 void pc_window_set_window_size(int w, int h);     // windowed resolution
+void pc_window_center(void);                      // recenter on the current display
 // Index of the display the window currently sits on, for enumerating that
 // monitor's video modes. Returns 0 when there is no window yet.
 int  pc_window_get_display_index(void);
@@ -122,6 +190,19 @@ extern "C" s8 pc_window_get_virtual_cursor_y(void);
 extern "C" float pc_window_get_mouse_cursor_delta_x(void);
 extern "C" float pc_window_get_mouse_cursor_delta_y(void);
 extern "C" void pc_window_clear_mouse_cursor_delta(void);
+extern "C" void pc_window_add_cursor_delta(float dx, float dy);
+// Resolution-independent camera zoom requested by a touch pinch. Positive
+// pulls the camera back; negative brings it closer.
+extern "C" void pc_window_add_touch_zoom(float delta);
+extern "C" float pc_window_take_touch_zoom(void);
+extern "C" void pc_window_add_camera_drag(float normalizedDx);
+extern "C" float pc_window_take_camera_drag(void);
+/// Arrastre de cámara por jugador: el joystick derecho de cada mando va a
+/// su jugador; ratón y táctil, a J1.
+extern "C" void pc_window_add_camera_drag_player(int player, float normalizedDx);
+extern "C" float pc_window_take_camera_drag_player(int player);
+extern "C" void pc_window_add_camera_pitch(float normalizedDy);
+extern "C" float pc_window_take_camera_pitch(void);
 
 #ifdef __cplusplus
 }

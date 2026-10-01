@@ -585,6 +585,12 @@ Enabled seeds preload TEKI_Dororo before TekiMgr::startStage on every area. The 
 
 
 Validation: Release game/probe build; 102 Python tests + 8 subtests; compiled Progg receipt modes 9–16 with duplicate receipts, save/reload, unsaved rollback and retraction rejection; legacy bomb/captain/consumable and obstacle probes; 30 packaged AP fills across all five areas, including trap classification and default-off checks; CLI smoke generation. Live fixtures on Impact, Forest, Navel, Spring and Trial verified preloading, pause deferral, one spawned actor, emergence and native movement (189–365 units observed). Forest held a second receipt for 32 active seconds while the first Progg remained alive, beyond the 30-second cooldown. Fixture-only tutorial suppression and captain health preservation allow unattended observation; production gameplay retains both normal tutorial UI and damage.
+
+## Temporary prerelease trap (#96)
+
+APWorld 0.31.0 adds `prerelease_trap_weight` (0–10, disabled by default). Native benefit mode bit 16 and `prerelease-trap-v1` negotiate the ninth benefit counter and seventh consumable counter; campaign metadata version 5 is used only for enabled seeds. Legacy modes remain unchanged. BossMgr reserves extra spiders per area, parks original Pom/Geyzer nodes, and restores the same actors after 60 active seconds or before save/day-end/teardown. Empty areas and occupied buds defer activation. Temporary spiders have no generator or rewards.
+
+Validation: Release native/probe build; 104 pytest tests and 8 subtests; all modes 17–32 receipt/reconnect/checkpoint/retraction tests; legacy benefits and Progg persistence probes; 30 packaged AP restrictive fills. Real-engine fixture exercises paused receipt, paused timer and full 60-second expiry/restoration. Run `scripts/test_prerelease_native.py` against `tools/preview_prerelease.cpp` built by `tools/verify_prerelease_windows.py`. Manual gameplay coverage of killing temporary spiders, occupied buds and saving during the effect remains useful before release.
 ## DeathLink, player README and portable launcher (#27, #92, #93)
 
 DeathLink (`death_link: true`, `death_link_pikmin: 1..100`, CLI `--death-link --death-link-pikmin N`) adds manifest keys `death_link`/`death_link_pikmin`, capability `death-link-v1`, bootstrap line `DEATHLINK N` after BENEFITS, and state field `DEATHLINK <received count>` after EMPEROR. The native adapter treats the first state value as its baseline, bounds queued links to three and applies one per frame in the active-gameplay block of `GameCoreSection::updateAI`: up to N living field Pikmin (not entering/exiting Onions, mushrooms, or already dying/drowning/burning/swallowed) are switched to FreeMode and sent through `PIKISTATE_Dying`. Induced Pikmin are marked so their `Piki::kill` does not count. Ordinary deaths are journaled at the vanilla `GameStat::deadPikis` increment as a running per-run count in `deaths.txt`; the runner credits the difference into `session.json` (`pikmin_deaths`, `death_links_received`). The AP client connects with the DeathLink tag, sends one Bounce per full unit reached while connected (links accumulated offline are skipped on connect), ignores its own echoes and Bounces from its own slot, and counts foreign links for the native state. Sunset losses use the vanilla victim counter and do not count. Extinction recovery (#6) is unchanged.
@@ -618,3 +624,21 @@ Bundled runtime validated (#93): package_release.py --python-install with the py
 ## RVZ/WIA disc images (#93)
 
 launcher/rvz.py decodes Dolphin RVZ (and WIA) GameCube images to ISO with the standard library: header/disc struct parsing, compressed raw-data and group tables, per-group decompression (none, bzip2, LZMA, LZMA2, Zstandard through compression.zstd on 3.14 or the zstandard package), zero groups, the 0x80-offset rounding of the first raw-data entry, and RVZ packing with the lagged Fibonacci junk generator ported from Dolphin's LaggedFibonacciGenerator (CC0), including the shift-by-18 state fold and the per-run forward by disc offset mod 0x8000. Wii partitions and PURGE are rejected. discimage.extract_image decodes RVZ/WIA to a temporary ISO in game-data, hands it to nectar-launcher, then deletes it. Validation: tests/test_rvz.py (generator determinism/forward, packed literal+junk runs, synthetic uncompressed image round trip incl. zero group and packed group), scripts/test_rvz_convert.py decoded the real Pikmin USA Rev 1 RVZ (zstd level 19, 128 KiB chunks, 11139 groups) in 22 s to a byte-identical SHA-256 of the original ISO, and the console launcher launched the game from the RVZ into a fresh APPDATA. Under a system Python 3.12 the launcher reports that Zstandard images need the bundled runtime.
+
+
+## Optional Whistle Pluck (#452)
+
+Native a95040b6 adds an off-by-default F1 Mods option, persisted as whistlePluck.
+The actual Gather state plucks the nearest eligible sprout immediately, then
+at least 80 ms apart while held. Native AutoNuki owns animation/effects and
+formation completion. Sprout identity/maturity and population accounting are
+preserved, including experimental Purple and White. Failed allocation retains
+the sprout. No randomizer item, receipt or campaign-save schema was added.
+
+Private/maintained Release builds and no-work dry runs passed. Three fresh
+960x540 centered fixtures with 20 starting Reds passed disabled input, safety
+and range gates, population-limit conversion/failure, stagger, release, native
+animation completion, formation, species/maturity and constant population.
+Compiled whistle-tap regression and nine Python tests passed. Audio was dummy;
+manual controller/menu feel and full campaign acceptance remain untested.
+Detailed hashes and adoption evidence: docs/WHISTLE_PLUCK.md and #452.

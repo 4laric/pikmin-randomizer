@@ -1,0 +1,112 @@
+From 0a4aedb3f87aabcc9621c4a5715bc5371079b085 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 02:36:58 -0400
+Subject: [PATCH 5/5] BigTreasure: full four-weapon knock-off progression in
+ the real-GL fixture (#246)
+
+---
+ tools/p2_bigtreasure_runtime.cpp    | 60 ++++++++++++++++++++++-------
+ tools/p2_bigtreasure_runtime_run.py | 12 +++---
+ 2 files changed, 53 insertions(+), 19 deletions(-)
+
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index e9dd4c48..78f3c688 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -378,22 +378,56 @@ private:
+         in = P2BigTreasureFsmHostInput{};
+         in.keyEvent2 = true;
+         fsmHost.tick(seam, in, out);
+-        const int chosen = fsmHost.chosenWeapon();
+-        require(chosen == P2BTWEAPON_Elec && seam.director.pools.isStarted(chosen),
++        require(fsmHost.chosenWeapon() == P2BTWEAPON_Elec
++                    && seam.director.pools.isStarted(fsmHost.chosenWeapon()),
+                 "fsmhost attack start");
+ 
+-        in = P2BigTreasureFsmHostInput{};
+-        in.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
+-        in.damageWeapon = chosen;
+-        fsmHost.tick(seam, in, out);
+-        require(out.damageResult == P2BTDMG_Weapon, "fsmhost damage routing");
+-        require(out.knockedOff == 1 && seam.ownership.weaponCount() == P2BTWEAPON_Count - 1,
+-                "fsmhost knock-off");
+-        require(fsmHost.phase() == P2BT_PreAttack && fsmHost.chosenWeapon() != chosen,
+-                "fsmhost phase transition");
+-        std::printf("P2_BIGTREASURE_FSMHOST_PASS ticks=1 knockoffs=%llu weapons=%d phase=%s\n",
++        // Full four-weapon knock-off sequence: each weapon is damaged to zero
++        // on the real map, the roller drops, and the policy re-picks (or drops
++        // to DropItem when the last one goes). This is the weapon-count phase
++        // progression the audit calls the real per-weapon escalation.
++        int transitions = 0;
++        for (int remaining = P2BTWEAPON_Count; remaining >= 1; --remaining) {
++            const int weapon = fsmHost.chosenWeapon();
++            require(weapon >= 0 && seam.ownership.isWeaponAttached(weapon),
++                    "fsmhost chosen weapon attached");
++            P2BigTreasureFsmHostInput damage;
++            damage.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++            damage.damageWeapon = weapon;
++            fsmHost.tick(seam, damage, out);
++            require(out.damageResult == P2BTDMG_Weapon, "fsmhost damage routing");
++            require(out.knockedOff == 1 && seam.ownership.weaponCount() == remaining - 1,
++                    "fsmhost knock-off sequence");
++            require(!seam.ownership.isWeaponAttached(weapon), "fsmhost weapon released");
++            if (remaining > 1) {
++                require(fsmHost.phase() == P2BT_PreAttack, "fsmhost re-pick phase");
++                P2BigTreasureFsmHostInput advance;
++                advance.animEnd = true;
++                fsmHost.tick(seam, advance, out);
++                require(fsmHost.phase() == P2BT_Attack, "fsmhost attack after re-pick");
++                P2BigTreasureFsmHostInput restart;
++                restart.keyEvent2 = true;
++                fsmHost.tick(seam, restart, out);
++                require(fsmHost.chosenWeapon() != weapon
++                            && seam.director.pools.isStarted(fsmHost.chosenWeapon()),
++                        "fsmhost next attack started");
++            }
++            ++transitions;
++        }
++        require(transitions == P2BTWEAPON_Count, "fsmhost transition count");
++        require(seam.ownership.isBodyExposed(), "fsmhost body exposed");
++        require(fsmHost.phase() == P2BT_DropItem, "fsmhost DropItem with no weapons");
++
++        // With every weapon gone the body is damageable and routes to boss HP.
++        P2BigTreasureFsmHostInput body;
++        body.damage = 250.0f;
++        body.damageWeapon = -1;
++        fsmHost.tick(seam, body, out);
++        require(out.damageResult == P2BTDMG_Body && out.liveWeapons == 0, "fsmhost body damage");
++        std::printf("P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=%llu weapons=%d phase=%s "
++                    "transitions=%d\n",
+                     (unsigned long long)fsmHost.knockOffs(), seam.ownership.weaponCount(),
+-                    P2BigTreasureFsm::stateName(fsmHost.phase()));
++                    P2BigTreasureFsm::stateName(fsmHost.phase()), transitions);
+     }
+ 
+     void startVisual()
+diff --git a/tools/p2_bigtreasure_runtime_run.py b/tools/p2_bigtreasure_runtime_run.py
+index 95d85630..ed9e0053 100644
+--- a/tools/p2_bigtreasure_runtime_run.py
++++ b/tools/p2_bigtreasure_runtime_run.py
+@@ -97,13 +97,13 @@ def verify_log(text):
+     if not re.search(r"^P2_BIGTREASURE_WINDOW\s+size=960x540\s+pos=-?\d+,-?\d+\s*$", text,
+                      flags=re.MULTILINE):
+         errors.append("missing 960x540 window marker")
+-    fsmhost = re.search(r"^P2_BIGTREASURE_FSMHOST_PASS\s+ticks=(\d+)\s+knockoffs=(\d+)\s+"
+-                        r"weapons=(\d+)\s+phase=(\w+)\s*$", text, flags=re.MULTILINE)
++    fsmhost = re.search(r"^P2_BIGTREASURE_FSMHOST_FULL_PASS\s+knockoffs=(\d+)\s+weapons=(\d+)\s+"
++                        r"phase=(\w+)\s+transitions=(\d+)\s*$", text, flags=re.MULTILINE)
+     if not fsmhost:
+-        errors.append("missing fsmhost PASS marker")
+-    elif (int(fsmhost.group(2)) != 1 or int(fsmhost.group(3)) != 3
+-          or fsmhost.group(4) != "PreAttack"):
+-        errors.append(f"fsmhost knock-off phase transition not observed: {fsmhost.groups()}")
++        errors.append("missing fsmhost FULL PASS marker")
++    elif (int(fsmhost.group(1)) != 4 or int(fsmhost.group(2)) != 0
++          or fsmhost.group(3) != "DropItem" or int(fsmhost.group(4)) != 4):
++        errors.append(f"fsmhost four-weapon phase progression not observed: {fsmhost.groups()}")
+     visual = re.search(r"^P2_BIGTREASURE_VISUAL_READY\s+clips=(\d+)\s+pellets=(\d+)\s+"
+                        r"pellet_debug=(\d+)\s*$", text, flags=re.MULTILINE)
+     if not visual:
+-- 
+2.55.0.windows.3
+

@@ -315,6 +315,9 @@ bool TaiTracingAction::act(Teki& teki)
 		return false;
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if(pc_p2_snow_chase(&teki,target->getPosition()))return false;
+#endif
 	teki.moveToward(target->getPosition(), mTraceSpeed);
 	return false;
 }

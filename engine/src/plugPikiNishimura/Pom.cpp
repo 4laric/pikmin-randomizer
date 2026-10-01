@@ -1,3 +1,5 @@
+#include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "Pom.h"
 #include "Collision.h"
 #include "DebugLog.h"
@@ -6,6 +8,7 @@
 #include "Piki.h"
 #include "Shape.h"
 #include "sysNew.h"
+#include <vector>
 
 /**
  * @todo: Documentation
@@ -127,7 +130,19 @@ void Pom::drawShape(Graphics& gfx)
 {
 	if (isAlive()) {
 		gfx.useMatrix(Matrix4f::ident, 0);
-		mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
+        // Materials are shared by all flowers: tint only this draw and restore.
+        const bool ivory=pc_p2_ivory(this), violet=pc_p2_violet(this);
+        std::vector<Colour> saved;
+        Shape* shape=mShapeObject->mShape;
+        if(ivory || violet) {
+            saved.resize(shape->mMaterialCount);
+            for(int i=0;i<shape->mMaterialCount;++i) {
+                shape->mMaterialList[i].getColour(saved[i]);
+                shape->mMaterialList[i].setColour(ivory?Colour(235,235,215,255):Colour(130,50,190,255));
+            }
+        }
+        shape->drawshape(gfx,*gfx.mCamera,(ivory||violet)?nullptr:&mAnimatedMaterials);
+        for(int i=0;i<int(saved.size());++i)shape->mMaterialList[i].setColour(saved[i]);
 	}
 
 #if defined(DEVELOP) || defined(WIN32)

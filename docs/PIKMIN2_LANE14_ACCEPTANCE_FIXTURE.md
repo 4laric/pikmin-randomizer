@@ -1,0 +1,121 @@
+# Lane-14 acceptance fixture descriptor
+
+Tracking: lane 14, issue [#165](https://github.com/4laric/pikmin-randomizer/issues/165);
+coordination [#186](https://github.com/4laric/pikmin-randomizer/issues/186);
+placement facts [#440](https://github.com/4laric/pikmin-randomizer/issues/440).
+Implementation owner: Codex through shared `4laric`. This is a run plan for the
+lane-14 natural-combat/reward/re-entry acceptance, not an acceptance report.
+
+Machine-readable companion: `docs/p2_lane14_acceptance_fixture.json`
+(`schema: p2-lane14-acceptance-fixture-v1`), checked by
+`tests/test_p2_lane14_acceptance_fixture.py`.
+
+## Build and slot provenance
+
+| Field | Value |
+|---|---|
+| Native branch / commit | `opencode/p2-lane14-native` @ `2432ce99da4dbcb8b819319d16a84a244cf17be0` (based on `codex/p2-sweep437`) |
+| Native worktree / build | `output/native-lane14` / `output/native-lane14-build` |
+| Executable | `output/native-lane14-build/bin/nectar.exe` (target `pikmin_pc`, `OUTPUT_NAME nectar`) |
+| Executable SHA-256 / size | `D67E7A91B9929F412F1D9DDFA145833D3CB278845BE0142E17A84EB74B262C8A` / 7,647,651 bytes |
+| Flags | Ninja, gcc 16.2.0, `Release`, `PIKMIN_NATIVE_JAUDIO=ON`, `PIKMIN_ENABLE_IPO=ON`, `PIKMIN_GAME_VERSION=VERSION_GPIE01_01`, `PIKMIN_NATIVE_OPTIMIZE=OFF`, `PIKMIN_RANDOMIZER_TEST_HOOKS=OFF`; `ninja -n` → no work |
+| GL slot | reserved (queued) in #186; **run only after lane 01 releases** |
+
+All runners set `PIKMIN_P2_ROOM_WINDOW=960x540` and prepend the MinGW bin dir.
+Adopt the current starting-Pikmin overlay by regenerating the arena into a fresh
+lane-owned output directory (below); do not reuse another lane's run dir.
+
+## Inputs
+
+```powershell
+$laneP1   = 'C:/Users/alari/bbft/dist/cohesion/pikmin/assets'
+$laneP2   = 'C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso'
+$laneOut  = 'output/lane14-accept'
+$laneExe  = 'output/native-lane14-build/bin/nectar.exe'
+$laneBank = 'output/lane14-accept/assets'
+```
+
+Regenerate the converted ground bank fresh (private, ignored). A previously
+validated bank exists at `output/p2-lane-verify/ground` as a fallback only:
+
+```powershell
+py -3.12 -m experimental.pikmin2_ground_inverts_assets --iso "$laneP2" --output "$laneBank" --pose-limit 3
+```
+
+## Natural-behavior runs (no injection)
+
+These use the plain private `nectar.exe`; the markers come from the native
+`pc_p2_*` modules. Each run stages the ground arena, then is time-bounded by the
+harness (the actor keeps running; `timed_out` is expected).
+
+| Run | Identity (ID) | Module | Seconds | Expected PASS marker |
+|---|---|---|---|---|
+| `sokkuri` | Sokkuri (79) | `experimental.pikmin2_sokkuri_behavior` | 25 | behavior checks in `P2_SOKKURI_*` |
+| `armor` | Armor (15) | `experimental.pikmin2_armor_behavior` | 30 | `P2_ARMOR_STATE/BITE/EAT` checks |
+| `elecbug` | ElecBug (28) | `experimental.pikmin2_elecbug_behavior` | 30 | `P2_ELECBUG_*` checks |
+| `elecbug_pair` | ElecBug (28) | `experimental.pikmin2_elecbug_pair_behavior` | 40 | `P2_ELECBUG_PAIR_*` |
+| `imomushi` | Imomushi (65) | `experimental.pikmin2_imomushi_behavior` | 30 | `P2_IMOMUSHI_*` checks |
+| `tamago` | TamagoMushi (68) | `experimental.pikmin2_tamago_behavior` | 30 | `P2_TAMAGO_*` checks |
+| `tamago_group` | TamagoMushi (68) | `experimental.pikmin2_tamago_group_behavior` | 30 | `P2_TAMAGO_GROUP_*` |
+| `hana` | Hana (84) | `experimental.pikmin2_hana_behavior` | 30 | `P2_HANA_*` checks |
+| `hana_residual` | Hana (84) | `experimental.pikmin2_hana_residual_behavior` | 30 | `P2_HANA_*` residual checks |
+
+Command template:
+
+```powershell
+py -3.12 -m experimental.<module> run --assets "$laneP1" --imported "$laneBank" --output "$laneOut/<run>" --exe "$laneExe" --seconds <n>
+```
+
+## Instrumented runs
+
+These need a private replacement-main `fixture.exe` built against the same
+native worktree/build, then run instead of `nectar.exe`.
+
+Build (once per fixture, after the native build is fresh):
+
+```powershell
+py -3.12 -m experimental.pikmin2_ground_combat_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/combat-fixture --head 2432ce99da4dbcb8b819319d16a84a244cf17be0
+py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/lifecycle-fixture --head 2432ce99da4dbcb8b819319d16a84a244cf17be0
+```
+
+| Run | Identity (ID) | Module | Seconds | Kind | Notes |
+|---|---|---|---|---|---|
+| `elecbug_immunity` | ElecBug (28) | `experimental.pikmin2_elecbug_immunity_behavior` | 90 | **natural** emitter -> immunity/lethal | lane 10/11 electric path; own `build` |
+| `ground_combat` | Sokkuri (79) + Armor (15) | `experimental.pikmin2_ground_combat_behavior` | 180 | **natural** combat | redeploys the live squad in FreeMode; never writes health; fails `no_natural_damage` if the host damage path rejects Pikmin attacks |
+| `lifecycle` | Sokkuri (79) + Armor (15) | `experimental.pikmin2_ground_lifecycle_behavior` | 150 | **injected** death | `P2_LIFECYCLE_INJECT ... not_natural_combat=1`; corpse/cleanup/re-entry |
+
+## Gate mapping (expected, to be recorded after the run)
+
+| Gate | Natural run coverage | Status in this plan |
+|---|---|---|
+| A Identity/content | all behavior runs | expected PASS (`P2_*_BIND ... source_id`) |
+| B Declared behavior (experimental P1-derived) | Sokkuri, Armor, ElecBug, Imomushi, TamagoMushi, Hana | natural FSM observed; deviations recorded per module |
+| C Combat/receivers | ElecBug emitter+immunity; Sokkuri flick; Armor bite; `ground_combat` natural lethal path | natural for ElecBug/flick/bite; **natural lethal combat pending `ground_combat`** |
+| D Death/drop/transport | `ground_combat` natural corpse + lifecycle corpse | natural corpse pending `ground_combat`; carry/reward untested |
+| E Lifetime | `ground_combat` natural cleanup/re-entry + lifecycle | natural pending; not full scene/heap teardown |
+| F Persistence | none | **untested** here; #397 owns reward/restart |
+| G Product/mixed scene | none | **untested** here |
+
+## Remaining gap the run will not close
+
+`ground_combat` now drives a **natural** fight (no health writes), so gates C/D
+can be claimed natural for Sokkuri/Armor if it passes. Two limits remain:
+
+- If the host damage path rejects Pikmin attacks, `ground_combat` fails
+  `no_natural_damage`; that is the finding to act on (connect the host damage
+  receiver), not a result to paper over with the injected lifecycle run.
+- **Reward/delivery/receipt** is owned by the lifecycle/reward lane (#397) and
+  the Onion/AP endpoint, not this arena (cargo-free, no Pod).
+
+Record the natural result and any failure on the same row as the injected
+diagnostic; do not promote an injected PASS to natural.
+
+## Release procedure (after lane 01 releases the slot)
+
+1. Confirm no concurrent GL run and that #186 shows the slot released.
+2. Build the instrumented fixtures; run the natural-behavior set
+   sequentially, then the instrumented set.
+3. Record: root/native pins, exe SHA-256, per-run output dir, `native.log` hash,
+   natural vs injected, and gates A-G.
+4. Post the release comment in #186 with the measured results and remaining
+   dependencies, and link the evidence from #165.

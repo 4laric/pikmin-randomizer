@@ -1,0 +1,33 @@
+{
+  "lane": "20",
+  "issues": ["169", "406", "410", "411", "412", "413", "424", "425", "427"],
+  "native_branch": "opencode/p2-projectiles-integration",
+  "native_base": "104d6dfa",
+  "native_head": "be8037af5e1d50dcd0d96333d48761cf52e27f84",
+  "native_pushed": false,
+  "native_worktree": "output/native-projectiles-integration",
+  "patch_series": ["0001-Lane-20-169-406-private-proxy-receiver-for-projectil.patch"],
+  "build": {
+    "dir": "output/native-projectiles-integration-build",
+    "target": "pikmin_pc",
+    "config": "PIKMIN_NATIVE_JAUDIO=ON",
+    "exe_sha256": "68B70E2EC41A9543C159BFFF7557E7C677AEFE809C46CEF91EF410FB03919AFC",
+    "ninja_dry_run": "ninja: no work to do."
+  },
+  "standalone_test": {
+    "source": "tools/p2_projectile_receiver_test.cpp",
+    "exe": "output/p2_projectile_receiver_test.exe",
+    "exe_sha256": "7AD5DB8EE97E3393B6C95AEB53284E0B2F9594BF9D94FCB089B34BB20E269C2D",
+    "compile": "g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port ...",
+    "exit": 0
+  },
+  "runtime": {
+    "run_dir": "output/p2-projectiles-receiver-01",
+    "log_sha256": "14CCB48912E9C0C8ABD845436E12A8B54EBE74AD2DCDA1D1476454932DD80FED",
+    "config_sha256": "A84EA999F3A8B480FA2743490E3BF65BBBBF539A03E7CAFA4D1B481F74164ED5",
+    "config_row": "receiver any 20",
+    "window": "960x540",
+    "receiver_hits": 2,
+    "receiver_deaths": 1
+  }
+}

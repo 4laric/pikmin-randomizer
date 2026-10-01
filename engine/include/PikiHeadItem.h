@@ -73,8 +73,14 @@ struct PikiHeadItem : public ItemCreature {
 	int mFlowerStage;               // _3D0
 	Vector3f mGlowEffectPos;        // _3D4
 	GoalItem* mParentOnion;         // _3E0
+#if defined(PIKI_PC_PORT)
+	int mPcOwner = -1; ///< VS: jugador dueño del brote (el de la cebolla que lo escupió)
+#endif
 	PermanentEffect mSparkleEffect; // _3E4
 	RippleEffect* mRippleEfx;       // _3F4
+    bool mP2Purple = false; // Experimental species metadata; not legacy seed color.
+    bool mP2White = false;
+    bool mP2Bulbmin = false;
 };
 
 /**

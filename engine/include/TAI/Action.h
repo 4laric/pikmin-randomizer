@@ -192,6 +192,7 @@ struct TaiStrategy : public TekiStrategy {
 	virtual void eventPerformed(immut TekiEvent& event); // _10
 
 	void init(int, int);
+	bool transit(Teki&, int);
 
 	void setState(int idx, TaiState* state) { mStateList[idx] = state; }
 

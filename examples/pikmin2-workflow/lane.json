@@ -1,0 +1,29 @@
+{
+  "lane": "species-receivers",
+  "owner": "Codex through shared account 4laric",
+  "worker_id": "ACTUAL_STABLE_WORKER_ID",
+  "task_id": "ACTUAL_TASK_ID",
+  "issue": 0,
+  "scope": "REPLACE_WITH_ASSIGNED_CHILD_ISSUE_SCOPE",
+  "target_level": "P2 mechanics",
+  "milestone": "two-species-acceptance",
+  "closes_gates": ["attacks_receivers"],
+  "next_action": "REPLACE_WITH_NEXT_CONCRETE_ACTION",
+  "owned_files": ["native/pc_port/REPLACE_WITH_OWNED_FILE.cpp"],
+  "acceptance": ["REPLACE_WITH_EXACT_ISSUE_ACCEPTANCE_CRITERION"],
+  "pid": 0,
+  "root": {
+    "base": "FULL_ROOT_BASE_COMMIT",
+    "commits": ["FULL_ROOT_HEAD_COMMIT"],
+    "head": "FULL_ROOT_HEAD_COMMIT",
+    "dirty": "RECORD_PORCELAIN_STATUS_OR_EMPTY_STRING_IF_CLEAN",
+    "worktree": "output/REPLACE_ROOT_WORKTREE"
+  },
+  "native": {
+    "base": "FULL_NATIVE_BASE_COMMIT",
+    "commits": ["FULL_NATIVE_HEAD_COMMIT"],
+    "head": "FULL_NATIVE_HEAD_COMMIT",
+    "dirty": "RECORD_PORCELAIN_STATUS_OR_EMPTY_STRING_IF_CLEAN",
+    "worktree": "output/REPLACE_NATIVE_WORKTREE"
+  }
+}

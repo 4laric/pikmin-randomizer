@@ -1,0 +1,3291 @@
+From d4fe5f98813acdb57f10a1a0a1f7d8c07ead67b2 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 12:54:22 -0400
+Subject: [PATCH 1/2] Lane 21 (#208): compile the Groink
+ policy/arena/target/volley stack into pikmin_pc
+
+---
+ CMakeLists.txt                     |  37 +++
+ pc_port/pc_p2_groink.cpp           | 173 ++++++++++++
+ pc_port/pc_p2_groink_arena.cpp     | 286 ++++++++++++++++++++
+ pc_port/pc_p2_groink_arena.h       |  24 ++
+ pc_port/pc_p2_groink_attack.cpp    |  86 ++++++
+ pc_port/pc_p2_groink_attack.h      |  58 +++++
+ pc_port/pc_p2_groink_clock.h       |  44 ++++
+ pc_port/pc_p2_groink_events.h      |  40 +++
+ pc_port/pc_p2_groink_map_trace.cpp |  59 +++++
+ pc_port/pc_p2_groink_map_trace.h   |  34 +++
+ pc_port/pc_p2_groink_target.cpp    |  57 ++++
+ pc_port/pc_p2_groink_target.h      |  46 ++++
+ pc_port/pc_p2_groink_volley.cpp    |  83 ++++++
+ pc_port/pc_p2_groink_volley.h      |  44 ++++
+ tools/P2_GROINK_ATTACK.md          |  95 +++++++
+ tools/P2_GROINK_HIT.md             |  53 ++++
+ tools/P2_GROINK_LIVE_TARGET.md     |  48 ++++
+ tools/P2_GROINK_RECEIVER_AUDIT.md  |  39 +++
+ tools/P2_GROINK_TARGET.md          |  71 +++++
+ tools/P2_GROINK_VOLLEY.md          | 130 +++++++++
+ tools/p2_groink_arena_test.cpp     | 128 +++++++++
+ tools/p2_groink_attack_test.cpp    |  67 +++++
+ tools/p2_groink_clock_test.cpp     |  53 ++++
+ tools/p2_groink_events_test.cpp    |  54 ++++
+ tools/p2_groink_hit_test.cpp       |  31 +++
+ tools/p2_groink_runtime.cpp        | 138 ++++++++++
+ tools/p2_groink_target_runtime.cpp | 405 +++++++++++++++++++++++++++++
+ tools/p2_groink_target_test.cpp    |  41 +++
+ tools/p2_groink_test.cpp           | 104 ++++++++
+ tools/p2_groink_volley_run.py      | 190 ++++++++++++++
+ tools/p2_groink_volley_runtime.cpp | 201 ++++++++++++++
+ tools/p2_groink_volley_test.cpp    |  96 +++++++
+ 32 files changed, 3015 insertions(+)
+ create mode 100644 pc_port/pc_p2_groink.cpp
+ create mode 100644 pc_port/pc_p2_groink_arena.cpp
+ create mode 100644 pc_port/pc_p2_groink_arena.h
+ create mode 100644 pc_port/pc_p2_groink_attack.cpp
+ create mode 100644 pc_port/pc_p2_groink_attack.h
+ create mode 100644 pc_port/pc_p2_groink_clock.h
+ create mode 100644 pc_port/pc_p2_groink_events.h
+ create mode 100644 pc_port/pc_p2_groink_map_trace.cpp
+ create mode 100644 pc_port/pc_p2_groink_map_trace.h
+ create mode 100644 pc_port/pc_p2_groink_target.cpp
+ create mode 100644 pc_port/pc_p2_groink_target.h
+ create mode 100644 pc_port/pc_p2_groink_volley.cpp
+ create mode 100644 pc_port/pc_p2_groink_volley.h
+ create mode 100644 tools/P2_GROINK_ATTACK.md
+ create mode 100644 tools/P2_GROINK_HIT.md
+ create mode 100644 tools/P2_GROINK_LIVE_TARGET.md
+ create mode 100644 tools/P2_GROINK_RECEIVER_AUDIT.md
+ create mode 100644 tools/P2_GROINK_TARGET.md
+ create mode 100644 tools/P2_GROINK_VOLLEY.md
+ create mode 100644 tools/p2_groink_arena_test.cpp
+ create mode 100644 tools/p2_groink_attack_test.cpp
+ create mode 100644 tools/p2_groink_clock_test.cpp
+ create mode 100644 tools/p2_groink_events_test.cpp
+ create mode 100644 tools/p2_groink_hit_test.cpp
+ create mode 100644 tools/p2_groink_runtime.cpp
+ create mode 100644 tools/p2_groink_target_runtime.cpp
+ create mode 100644 tools/p2_groink_target_test.cpp
+ create mode 100644 tools/p2_groink_test.cpp
+ create mode 100644 tools/p2_groink_volley_run.py
+ create mode 100644 tools/p2_groink_volley_runtime.cpp
+ create mode 100644 tools/p2_groink_volley_test.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b2d42cbd..bdafbd30 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -243,6 +243,12 @@ pc_port/pc_p2_kabuto_binding.cpp
+ pc_port/pc_p2_projectile_host.cpp
+     pc_port/pc_p2_rock_hazard.cpp
+     pc_port/pc_p2_projectile_receiver.cpp
++    pc_port/pc_p2_groink.cpp
++    pc_port/pc_p2_groink_arena.cpp
++    pc_port/pc_p2_groink_attack.cpp
++    pc_port/pc_p2_groink_map_trace.cpp
++    pc_port/pc_p2_groink_target.cpp
++    pc_port/pc_p2_groink_volley.cpp
+     pc_port/pc_p2_groink_hit.cpp
+     pc_port/pc_p2_groink_strike.cpp
+     pc_port/pc_p2_projectiles.cpp
+@@ -1044,3 +1050,34 @@ foreach(policy IN ITEMS bigtreasure_ordinary bigtreasure_animclock bigtreasure_n
+     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+     add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
+ endforeach()
++
++# Groink submitted policy dependencies; the arena/map-trace runtime fixture
++# stays a private build_pikmin2_fixture.py product, not a CTest.
++add_executable(p2_groink_test tools/p2_groink_test.cpp pc_port/pc_p2_groink.cpp)
++target_include_directories(p2_groink_test PRIVATE pc_port)
++target_compile_options(p2_groink_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_test COMMAND p2_groink_test)
++add_executable(p2_groink_attack_test tools/p2_groink_attack_test.cpp pc_port/pc_p2_groink_attack.cpp pc_port/pc_p2_groink.cpp)
++target_include_directories(p2_groink_attack_test PRIVATE pc_port)
++target_compile_options(p2_groink_attack_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_attack_test COMMAND p2_groink_attack_test)
++add_executable(p2_groink_clock_test tools/p2_groink_clock_test.cpp)
++target_include_directories(p2_groink_clock_test PRIVATE pc_port)
++target_compile_options(p2_groink_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_clock_test COMMAND p2_groink_clock_test)
++add_executable(p2_groink_events_test tools/p2_groink_events_test.cpp pc_port/pc_p2_groink_attack.cpp pc_port/pc_p2_groink.cpp)
++target_include_directories(p2_groink_events_test PRIVATE pc_port)
++target_compile_options(p2_groink_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_events_test COMMAND p2_groink_events_test)
++add_executable(p2_groink_target_test tools/p2_groink_target_test.cpp pc_port/pc_p2_groink_target.cpp)
++target_include_directories(p2_groink_target_test PRIVATE pc_port)
++target_compile_options(p2_groink_target_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_target_test COMMAND p2_groink_target_test)
++add_executable(p2_groink_volley_test tools/p2_groink_volley_test.cpp pc_port/pc_p2_groink_volley.cpp pc_port/pc_p2_groink.cpp)
++target_include_directories(p2_groink_volley_test PRIVATE pc_port)
++target_compile_options(p2_groink_volley_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_volley_test COMMAND p2_groink_volley_test)
++add_executable(p2_groink_hit_test tools/p2_groink_hit_test.cpp pc_port/pc_p2_groink_hit.cpp)
++target_include_directories(p2_groink_hit_test PRIVATE pc_port)
++target_compile_options(p2_groink_hit_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_groink_hit_test COMMAND p2_groink_hit_test)
+diff --git a/pc_port/pc_p2_groink.cpp b/pc_port/pc_p2_groink.cpp
+new file mode 100644
+index 00000000..83efe3bf
+--- /dev/null
++++ b/pc_port/pc_p2_groink.cpp
+@@ -0,0 +1,173 @@
++#include "pc_p2_groink.h"
++
++#include <algorithm>
++
++namespace {
++bool finite(float value) { return std::isfinite(value); }
++bool finite(const P2GroinkVec3& value)
++{
++    return finite(value.x) && finite(value.y) && finite(value.z);
++}
++P2GroinkVec3 add(P2GroinkVec3 a, P2GroinkVec3 b)
++{
++    return { a.x + b.x, a.y + b.y, a.z + b.z };
++}
++P2GroinkVec3 scale(P2GroinkVec3 value, float factor)
++{
++    return { value.x * factor, value.y * factor, value.z * factor };
++}
++float length(P2GroinkVec3 value)
++{
++    return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
++}
++bool normalise(P2GroinkVec3& value)
++{
++    const float magnitude = length(value);
++    if (!finite(magnitude) || magnitude <= 0.0f) return false;
++    value = scale(value, 1.0f / magnitude);
++    return finite(value);
++}
++float wrap(float angle)
++{
++    constexpr float tau = 6.2831853071795864769f;
++    angle = std::fmod(angle, tau);
++    return angle < 0.0f ? angle + tau : angle;
++}
++// Source sysMath.cpp: angDist(a, b) = roundAng(a-b), then maps [pi, tau) negative.
++float angDist(float first, float second)
++{
++    constexpr float pi = 3.14159265358979323846f;
++    constexpr float tau = 6.2831853071795864769f;
++    float distance = wrap(first - second);
++    return distance >= pi ? -wrap(tau - distance) : distance;
++}
++}
++
++P2GroinkMuzzle p2_groink_rotate_vertical(const P2GroinkMuzzle& muzzle, float angle, bool& valid)
++{
++    valid = false;
++    if (!finite(muzzle.column0) || !finite(muzzle.column1) || !finite(muzzle.column2)
++        || !finite(muzzle.column3) || !finite(angle)) return {};
++    P2GroinkVec3 x = muzzle.column0, y = muzzle.column1, z = muzzle.column2;
++    const float xScale = length(x), yScale = length(y), zScale = length(z);
++    if (!finite(xScale) || !finite(yScale) || !finite(zScale) || xScale <= 0.0f
++        || yScale <= 0.0f || zScale <= 0.0f) return {};
++    x = scale(x, 1.0f / xScale);
++    y = scale(y, 1.0f / yScale);
++    z = scale(z, 1.0f / zScale);
++    const float cosine = std::cos(angle), sine = std::sin(angle);
++    // M * Rz: local right-concatenation, matching PSMTXConcat(head, rot, head).
++    const P2GroinkVec3 newX = add(scale(x, cosine), scale(y, sine));
++    const P2GroinkVec3 newY = add(scale(x, -sine), scale(y, cosine));
++    P2GroinkMuzzle result{ scale(newX, xScale), scale(newY, yScale), scale(z, zScale), muzzle.column3 };
++    valid = finite(result.column0) && finite(result.column1) && finite(result.column2);
++    return valid ? result : P2GroinkMuzzle{};
++}
++
++P2GroinkAim P2GroinkPolicy::aim(const P2GroinkVec3& muzzlePosition,
++                                 const P2GroinkVec3& targetPosition,
++                                 float searchDistance, float attackRadius,
++                                 float delta, float angle)
++{
++    P2GroinkAim result;
++    if (!finite(muzzlePosition) || !finite(targetPosition) || !finite(searchDistance)
++        || !finite(attackRadius) || !finite(delta) || !finite(angle)
++        || searchDistance <= 0.0f || attackRadius < 0.0f
++        || std::fabs(delta - kSourceDelta) > 0.000001f) return result;
++
++    const float dx = muzzlePosition.x - targetPosition.x;
++    const float dz = muzzlePosition.z - targetPosition.z;
++    float distance = std::sqrt(dx * dx + dz * dz) - 50.0f;
++    if (distance < 1.0f) distance = 1.0f;
++
++    float value = 250.0f;
++    const float searchLimit = searchDistance / 2.0f;
++    if (searchLimit > 0.0f && distance < searchLimit) {
++        const float ratio = distance / searchLimit;
++        value = value * ratio + (1.0f - ratio);
++        if (distance < attackRadius) distance *= 0.1f;
++    }
++    const float b = (value / delta) / 20.0f;
++    const float horizontal = (0.45f * distance) / (b / 20.0f) / delta;
++    const float speed = std::sqrt(horizontal * horizontal + b * b);
++    // JMAAtan2Radian is atan2(y, x): the source supplies (horizontal, b).
++    // The equation and argument order match its 1024-entry LUT; std::atan2
++    // intentionally supplies a host numerical approximation, not that LUT.
++    const float targetAngle = 1.5707963267948966192f - std::atan2(horizontal, b);
++    const float error = angDist(angle, targetAngle);
++    const float absoluteError = std::fabs(error);
++    angle = absoluteError > 0.1f ? angle - 0.1f * (error / absoluteError) : angle - error;
++
++    result.valid = finite(distance) && finite(value) && finite(b) && finite(horizontal)
++        && finite(angle) && finite(speed) && finite(targetAngle);
++    result.locked = result.valid && absoluteError < 0.01f;
++    result.angle = wrap(angle);
++    result.targetAngle = wrap(targetAngle);
++    result.shellSpeed = speed;
++    return result;
++}
++
++bool P2GroinkPolicy::emit(const P2GroinkMuzzle& muzzle, float shellSpeed,
++                          const P2GroinkVec3& spreadUnit)
++{
++    if (mShell.active || !finite(muzzle.column0) || !finite(muzzle.column3)
++        || !finite(shellSpeed) || shellSpeed < 0.0f || !finite(spreadUnit)
++        || spreadUnit.x < 0.0f || spreadUnit.x > 1.0f || spreadUnit.y < 0.0f
++        || spreadUnit.y > 1.0f || spreadUnit.z < 0.0f || spreadUnit.z > 1.0f) return false;
++
++    P2GroinkVec3 direction = muzzle.column0;
++    if (!normalise(direction)) return false;
++    const P2GroinkVec3 position = add(muzzle.column3, scale(direction, 25.0f));
++    if (!finite(position)) return false;
++    direction.x += 0.2f * spreadUnit.x - 0.1f;
++    direction.y += 0.2f * spreadUnit.y - 0.1f;
++    direction.z += 0.2f * spreadUnit.z - 0.1f;
++    if (!normalise(direction)) return false;
++    const P2GroinkVec3 velocity = scale(direction, shellSpeed);
++    if (!finite(velocity)) return false;
++    mShell = { true, true, position, velocity };
++    return true;
++}
++
++bool P2GroinkPolicy::update(const P2GroinkVec3& ownerPosition, float delta,
++                            P2GroinkTraceFn trace, void* traceContext)
++{
++    if (!mShell.active) return false;
++    const P2GroinkVec3 sourcePosition = mShell.position;
++    auto terminal = [&](P2GroinkTerminalReason reason) {
++        mLastTerminalStep = { reason != P2GroinkTerminalReason::Invalid, reason,
++            { sourcePosition.x, sourcePosition.y - 10.0f, sourcePosition.z },
++            { mShell.position.x, mShell.position.y - 10.0f, mShell.position.z } };
++        recycle();
++        return true;
++    };
++    if (!finite(ownerPosition) || !finite(delta) || std::fabs(delta - kSourceDelta) > 0.000001f
++        || !finite(mShell.position) || !finite(mShell.velocity)) {
++        return terminal(P2GroinkTerminalReason::Invalid);
++    }
++    P2GroinkTraceResult traced;
++    bool collided = false;
++    P2GroinkTerminalReason collisionReason = P2GroinkTerminalReason::None;
++    if (trace && trace(traceContext, mShell.position, mShell.velocity, delta, kShellRadius, traced)) {
++        if (!finite(traced.position) || !finite(traced.velocity)) return terminal(P2GroinkTerminalReason::Invalid);
++        mShell.position = traced.position;
++        mShell.velocity = traced.velocity;
++        collided = traced.floor || traced.wall;
++        if (collided) {
++            if (!traced.hasGroundY || !finite(traced.groundY)) return terminal(P2GroinkTerminalReason::Invalid);
++            if (mShell.position.y - traced.groundY < 20.0f) mShell.position.y = traced.groundY + 10.0f;
++            collisionReason = traced.floor ? P2GroinkTerminalReason::Floor : P2GroinkTerminalReason::Wall;
++        }
++    } else {
++        mShell.position = add(mShell.position, scale(mShell.velocity, delta));
++    }
++    mShell.velocity.y -= 20.0f;
++    if (!finite(mShell.position) || !finite(mShell.velocity)) return terminal(P2GroinkTerminalReason::Invalid);
++    if (collided) return terminal(collisionReason);
++    if (std::fabs(ownerPosition.x - mShell.position.x) > 1000.0f
++        || std::fabs(ownerPosition.y - mShell.position.y) > 1000.0f
++        || std::fabs(ownerPosition.z - mShell.position.z) > 1000.0f) {
++        return terminal(P2GroinkTerminalReason::OutOfRange);
++    }
++    return false;
++}
+diff --git a/pc_port/pc_p2_groink_arena.cpp b/pc_port/pc_p2_groink_arena.cpp
+new file mode 100644
+index 00000000..fb9f433f
+--- /dev/null
++++ b/pc_port/pc_p2_groink_arena.cpp
+@@ -0,0 +1,286 @@
++#include "pc_p2_groink_arena.h"
++
++#include "pc_p2_animation.h"
++#include "Camera.h"
++#include "Graphics.h"
++#include "Shape.h"
++#include "Texture.h"
++#include "gameflow.h"
++#include "sysNew.h"
++#include "system.h"
++
++#include <cmath>
++#include <cstdio>
++#include <fstream>
++#include <sstream>
++#include <string>
++#include <vector>
++
++namespace {
++constexpr float kPi = 3.14159265358979323846f;
++constexpr float kCoordinateLimit = 100000.0f;
++constexpr float kParameterLimit = 1000.0f;
++constexpr char kModelName[] = "groink_attack.mod";
++constexpr char kModelPath[] = "courses/pikmin2room/groink_attack.mod";
++
++struct ArenaState {
++    Shape* shape = nullptr; // Cached by gameflow; this module never owns it.
++    P2GroinkPolicy policy;
++    P2GroinkVec3 owner;
++    P2GroinkVec3 target;
++    P2GroinkMuzzle localMuzzle;
++    float ownerYaw = 0.0f;
++    float searchDistance = 0.0f;
++    float attackRadius = 0.0f;
++    float aimAngle = 0.0f;
++    bool ready = false;
++    bool drew = false;
++};
++
++ArenaState sArena;
++
++bool finite(float value) { return std::isfinite(value); }
++bool finite(P2GroinkVec3 value)
++{
++    return finite(value.x) && finite(value.y) && finite(value.z);
++}
++bool bounded(P2GroinkVec3 value)
++{
++    return finite(value) && std::fabs(value.x) <= kCoordinateLimit
++        && std::fabs(value.y) <= kCoordinateLimit && std::fabs(value.z) <= kCoordinateLimit;
++}
++bool exhausted(std::istringstream& line)
++{
++    std::string extra;
++    return !(line >> extra);
++}
++bool parseHeader(const std::string& text, const char* first, const char* second)
++{
++    std::istringstream line(text);
++    std::string actualFirst, actualSecond;
++    return (line >> actualFirst >> actualSecond) && actualFirst == first && actualSecond == second
++        && exhausted(line);
++}
++bool nextLine(std::ifstream& input, std::string& line)
++{
++    if (!std::getline(input, line)) return false;
++    if (!line.empty() && line.back() == '\r') line.pop_back();
++    return true;
++}
++bool parseProfile(const char* profilePath, ArenaState& parsed)
++{
++    if (!profilePath || !*profilePath) return false;
++    std::ifstream input(profilePath);
++    if (!input) return false;
++    input.seekg(0, std::ios::end);
++    if (input.tellg() < 0 || input.tellg() > 4096) return false;
++    input.seekg(0);
++
++    std::string line;
++    if (!nextLine(input, line) || line != "P2_GROINK_ARENA_1") return false;
++    if (!nextLine(input, line) || !parseHeader(line, "model", kModelName)) return false;
++
++    {
++        std::istringstream values;
++        if (!nextLine(input, line)) return false;
++        values.str(line);
++        std::string key;
++        if (!(values >> key >> parsed.searchDistance >> parsed.attackRadius) || key != "params"
++            || !exhausted(values)) return false;
++    }
++    {
++        std::istringstream values;
++        if (!nextLine(input, line)) return false;
++        values.str(line);
++        std::string key;
++        if (!(values >> key >> parsed.owner.x >> parsed.owner.y >> parsed.owner.z >> parsed.ownerYaw)
++            || key != "owner" || !exhausted(values)) return false;
++    }
++    {
++        std::istringstream values;
++        if (!nextLine(input, line)) return false;
++        values.str(line);
++        std::string key;
++        if (!(values >> key >> parsed.target.x >> parsed.target.y >> parsed.target.z) || key != "target"
++            || !exhausted(values)) return false;
++    }
++    {
++        float values[12];
++        std::istringstream source;
++        if (!nextLine(input, line)) return false;
++        source.str(line);
++        std::string key;
++        if (!(source >> key) || key != "muzzle") return false;
++        for (float& value : values) if (!(source >> value)) return false;
++        if (!exhausted(source)) return false;
++        parsed.localMuzzle = {
++            { values[0], values[4], values[8] }, { values[1], values[5], values[9] },
++            { values[2], values[6], values[10] }, { values[3], values[7], values[11] }
++        };
++    }
++    if (nextLine(input, line)) return false;
++
++    return bounded(parsed.owner) && bounded(parsed.target) && finite(parsed.ownerYaw)
++        && std::fabs(parsed.ownerYaw) <= 2.0f * kPi && finite(parsed.searchDistance)
++        && parsed.searchDistance > 0.0f && parsed.searchDistance <= kParameterLimit
++        && finite(parsed.attackRadius) && parsed.attackRadius >= 0.0f
++        && parsed.attackRadius <= kParameterLimit && bounded(parsed.localMuzzle.column0)
++        && bounded(parsed.localMuzzle.column1) && bounded(parsed.localMuzzle.column2)
++        && bounded(parsed.localMuzzle.column3);
++}
++
++Shape* loadModel()
++{
++    const std::string assetPath = std::string("assets/dataDir/") + kModelPath;
++    std::ifstream input(assetPath, std::ios::binary | std::ios::ate);
++    if (!input) return nullptr;
++    const std::streamoff size = input.tellg();
++    if (size <= 0 || size > 16 * 1024 * 1024) return nullptr;
++    input.seekg(0);
++    std::vector<unsigned char> data(static_cast<size_t>(size));
++    std::vector<unsigned char> resources;
++    if (!input.read(reinterpret_cast<char*>(data.data()), size)
++        || !p2animation::resources(data, resources)) return nullptr;
++
++    const int previousHeap = gsys->setHeap(SYSHEAP_App);
++    Shape* shape = gameflow.loadShape(kModelPath, true);
++    if (shape) {
++        for (int index = 0; index < shape->mTexAttrCount; ++index) {
++            if (shape->mTexAttrList[index].mTexture) shape->mTexAttrList[index].mTexture->attach();
++        }
++    }
++    gsys->setHeap(previousHeap);
++    return shape;
++}
++
++P2GroinkMuzzle worldMuzzle(const ArenaState& state, bool& valid)
++{
++    valid = false;
++    const float cosine = std::cos(state.ownerYaw);
++    const float sine = std::sin(state.ownerYaw);
++    if (!finite(cosine) || !finite(sine)) return {};
++    const auto rotate = [cosine, sine](P2GroinkVec3 local) {
++        return P2GroinkVec3{ cosine * local.x + sine * local.z, local.y,
++                             -sine * local.x + cosine * local.z };
++    };
++    P2GroinkMuzzle world = { rotate(state.localMuzzle.column0), rotate(state.localMuzzle.column1),
++                             rotate(state.localMuzzle.column2), rotate(state.localMuzzle.column3) };
++    world.column3.x += state.owner.x;
++    world.column3.y += state.owner.y;
++    world.column3.z += state.owner.z;
++    valid = finite(world.column0) && finite(world.column1) && finite(world.column2)
++        && bounded(world.column3);
++    return valid ? world : P2GroinkMuzzle{};
++}
++
++struct TraceBridge {
++    P2GroinkTraceFn trace = nullptr;
++    void* context = nullptr;
++    bool failed = false;
++};
++
++bool requiredTrace(void* context, const P2GroinkVec3& position, const P2GroinkVec3& velocity,
++                   float delta, float radius, P2GroinkTraceResult& result)
++{
++    TraceBridge& bridge = *static_cast<TraceBridge*>(context);
++    if (!bridge.trace(bridge.context, position, velocity, delta, radius, result)) {
++        bridge.failed = true;
++        return false;
++    }
++    return true;
++}
++}
++
++void pc_p2_groink_arena_reset()
++{
++    // Shape is retained in gameflow's cache. Clearing the pointer is enough.
++    sArena = ArenaState{};
++}
++
++bool pc_p2_groink_arena_setup(const char* profilePath)
++{
++    pc_p2_groink_arena_reset();
++    ArenaState parsed;
++    if (!parseProfile(profilePath, parsed)) {
++        std::fputs("P2_GROINK_ARENA invalid profile\n", stderr);
++        return false;
++    }
++    bool validMuzzle = false;
++    P2GroinkMuzzle muzzle = worldMuzzle(parsed, validMuzzle);
++    p2_groink_rotate_vertical(muzzle, 0.0f, validMuzzle);
++    if (!validMuzzle) {
++        std::fputs("P2_GROINK_ARENA invalid muzzle\n", stderr);
++        return false;
++    }
++    parsed.shape = loadModel();
++    if (!parsed.shape) {
++        std::fputs("P2_GROINK_ARENA invalid model groink_attack.mod\n", stderr);
++        return false;
++    }
++    parsed.ready = true;
++    sArena = parsed;
++    std::printf("P2_GROINK_ARENA_READY model=groink_attack.mod visual_muzzle_alignment=unvalidated "
++                "shellmarker=debug fixed_heading=owner_yaw_only no_ai=1 no_damage=1\n");
++    return true;
++}
++
++bool pc_p2_groink_arena_update(float sourceDelta, bool fireEvent4,
++                                P2GroinkTraceFn trace, void* context)
++{
++    if (!sArena.ready || !trace || !finite(sourceDelta)
++        || std::fabs(sourceDelta - P2GroinkPolicy::kSourceDelta) > 0.000001f) return false;
++
++    bool validMuzzle = false;
++    P2GroinkMuzzle muzzle = worldMuzzle(sArena, validMuzzle);
++    if (!validMuzzle) return false;
++    P2GroinkAim aim = P2GroinkPolicy::aim(muzzle.column3, sArena.target, sArena.searchDistance,
++                                          sArena.attackRadius, sourceDelta, sArena.aimAngle);
++    if (!aim.valid) return false;
++    sArena.aimAngle = aim.angle;
++    muzzle = worldMuzzle(sArena, validMuzzle);
++    if (!validMuzzle) return false;
++    muzzle = p2_groink_rotate_vertical(muzzle, sArena.aimAngle, validMuzzle);
++    if (!validMuzzle) return false;
++
++    // Fixture policy has no FSM: the host supplies the source event-4 edge.
++    bool commandAccepted = true;
++    if (fireEvent4 && aim.locked && !sArena.policy.shell().active) {
++        commandAccepted = sArena.policy.emit(muzzle, aim.shellSpeed, { 0.5f, 0.5f, 0.5f });
++    }
++    sArena.policy.clearTerminalStep();
++    TraceBridge bridge{ trace, context };
++    sArena.policy.update(sArena.owner, sourceDelta, requiredTrace, &bridge);
++    if (bridge.failed) {
++        // An arena has no MapMgr fallback. Do not retain a shell advanced by
++        // P2GroinkPolicy's deliberately generic no-trace fallback.
++        sArena.policy.recycle();
++        return false;
++    }
++    return commandAccepted
++        && sArena.policy.lastTerminalStep().reason != P2GroinkTerminalReason::Invalid;
++}
++
++void pc_p2_groink_arena_draw(Graphics& gfx)
++{
++    if (!sArena.ready || !sArena.shape || !gfx.mCamera) return;
++    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov,
++                       gfx.mCamera->mAspectRatio, gfx.mCamera->mNear, gfx.mCamera->mFar, 1.0f);
++    gfx.useMaterial(nullptr);
++    gfx.setDepth(true);
++    Matrix4f world, view;
++    world.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, sArena.ownerYaw, 0.0f),
++                  Vector3f(sArena.owner.x, sArena.owner.y, sArena.owner.z));
++    gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
++    sArena.shape->updateAnim(gfx, view, nullptr, nullptr);
++    sArena.shape->drawshape(gfx, *gfx.mCamera, nullptr);
++
++    const P2GroinkShell& shell = sArena.policy.shell();
++    if (shell.active) {
++        const Vector3f position(shell.position.x, shell.position.y, shell.position.z);
++        gfx.drawSphere(position, P2GroinkPolicy::kShellRadius, gfx.mCamera->mLookAtMtx);
++    }
++    if (!sArena.drew) {
++        std::puts("P2_GROINK_ARENA_DRAW baked_attack_frame25 shellmarker=debug");
++        sArena.drew = true;
++    }
++}
+diff --git a/pc_port/pc_p2_groink_arena.h b/pc_port/pc_p2_groink_arena.h
+new file mode 100644
+index 00000000..fcf91482
+--- /dev/null
++++ b/pc_port/pc_p2_groink_arena.h
+@@ -0,0 +1,24 @@
++#pragma once
++
++#include "pc_p2_groink.h"
++
++class Graphics;
++
++// Loads one stationary, host-driven Groink arena from P2_GROINK_ARENA_1.
++// The profile contains the fixed groink_attack.mod name, retail aim parameters,
++// owner/target positions, and an authored 3x4 muzzle matrix. There is no actor,
++// AI, damage receiver, MapMgr, sound, or effect integration in this module.
++bool pc_p2_groink_arena_setup(const char* profilePath);
++void pc_p2_groink_arena_reset();
++
++// Processes exactly one source 30 Hz update. A non-null trace callback is
++// required: it receives the radius-10 shell trace and owns map collision. The
++// explicit fireEvent4 can emit the one policy shell only once the source aim
++// calculation is locked. Returns false if the arena is unavailable, input is
++// invalid, or no trace callback was supplied.
++bool pc_p2_groink_arena_update(float sourceDelta, bool fireEvent4,
++                               P2GroinkTraceFn trace, void* context);
++
++// Draws the baked frame-25 attack model at its stationary owner transform and
++// a simple debug sphere for an active policy shell.
++void pc_p2_groink_arena_draw(Graphics& gfx);
+diff --git a/pc_port/pc_p2_groink_attack.cpp b/pc_port/pc_p2_groink_attack.cpp
+new file mode 100644
+index 00000000..66d79648
+--- /dev/null
++++ b/pc_port/pc_p2_groink_attack.cpp
+@@ -0,0 +1,86 @@
++#include "pc_p2_groink_attack.h"
++
++P2GroinkAttackCommands P2GroinkAttack::step(const P2GroinkAttackInput& in, float delta) {
++    P2GroinkAttackCommands out;
++    if (!mActive) return out;
++    if (!in.activeTick) { out.valid = true; return out; }
++    if (!std::isfinite(delta) || std::fabs(delta-P2GroinkPolicy::kSourceDelta)>1e-6f
++        || !std::isfinite(in.health)
++        || unsigned(in.event)>unsigned(P2GroinkAttackEvent::End)) return out;
++    out.valid = true;
++    auto add = [&](P2GroinkAttackCommand command) { out.items[out.count++] = command; };
++    bool stopped = in.motionStopped;
++    bool finishing = in.motionFinishing;
++    // Source has two identical lock+positive-wait branches for aiming/return.
++    if (stopped && in.gunLocked && mWait>0) {
++        mWait = 0; stopped = false; add(P2GroinkAttackCommand::ResumeMotion);
++    }
++    if (in.gunRotating) add(P2GroinkAttackCommand::RefreshTarget);
++    mWait += delta;
++    if (in.health<=0 || in.flick) {
++        if (stopped) { stopped = false; add(P2GroinkAttackCommand::ResumeMotion); }
++        finishing = true; add(P2GroinkAttackCommand::FinishMotion);
++    }
++    switch (in.event) {
++    case P2GroinkAttackEvent::Charge:
++        mWait = 0;
++        add(P2GroinkAttackCommand::StopMotion);
++        add(P2GroinkAttackCommand::StartAim);
++        add(P2GroinkAttackCommand::StartCharge);
++        break;
++    case P2GroinkAttackEvent::Smoke:
++        add(P2GroinkAttackCommand::LargeSmoke);
++        add(P2GroinkAttackCommand::FinishCharge);
++        break;
++    case P2GroinkAttackEvent::Fire:
++        // Keep source OR: a living flick-interrupted actor may still emit.
++        if (!finishing || !(in.health<=0)) add(P2GroinkAttackCommand::EmitVolley);
++        break;
++    case P2GroinkAttackEvent::Return:
++        mWait = 0;
++        add(P2GroinkAttackCommand::StopMotion);
++        add(P2GroinkAttackCommand::ReturnGun);
++        break;
++    case P2GroinkAttackEvent::End:
++        add(in.health<=0 ? P2GroinkAttackCommand::ExitDead : in.flick
++            ? P2GroinkAttackCommand::ExitFlick : P2GroinkAttackCommand::ResolveNextState);
++        mActive = false;
++        break;
++    case P2GroinkAttackEvent::None: break;
++    }
++    return out;
++}
++
++bool P2GroinkGunRotation::returnStep(float angle, float& next, bool& done) {
++    if (!std::isfinite(angle)) return false;
++    constexpr float tau = 6.2831853071795864769f;
++    // Reachable source angles lie within a single turn. Do not silently wrap
++    // malformed host values into an apparently valid gun pose.
++    if (angle < -tau || angle > tau) return false;
++    float target = 0;
++    if (target>=angle) {
++        if (tau-(target-angle)<target-angle) target-=tau;
++    } else if (tau-(angle-target)<angle-target) target+=tau;
++    next = std::fabs(angle-target)<0.025f ? target : angle<target ? angle+0.025f : angle-0.025f;
++    done = std::fabs(next-target)<0.01f;
++    return true;
++}
++
++bool P2GroinkGunRotation::update(const P2GroinkVec3& muzzle, const P2GroinkVec3& target,
++                                float search, float radius, float delta) {
++    if (!std::isfinite(delta) || std::fabs(delta-P2GroinkPolicy::kSourceDelta)>1e-6f) return false;
++    if (!mRotating) return true;
++    if (mFinished) {
++        float next; bool done;
++        if (!returnStep(mAngle,next,done)) return false;
++        mAngle = next;
++        if (done) { mRotating = false; mLocked = true; }
++    } else {
++        const auto result = P2GroinkPolicy::aim(muzzle,target,search,radius,delta,mAngle);
++        if (!result.valid) return false;
++        mAngle = result.angle; mSpeed = result.shellSpeed;
++        // Source lock is latched until start/finish, not cleared by a new target.
++        if (result.locked) mLocked = true;
++    }
++    return true;
++}
+diff --git a/pc_port/pc_p2_groink_attack.h b/pc_port/pc_p2_groink_attack.h
+new file mode 100644
+index 00000000..1ae632c7
+--- /dev/null
++++ b/pc_port/pc_p2_groink_attack.h
+@@ -0,0 +1,58 @@
++#pragma once
++#include <pc_p2_groink.h>
++#include <array>
++#include <cstddef>
++
++// Host supplies animation-event edges, never a held event or render frame.
++enum class P2GroinkAttackEvent { None, Charge, Smoke, Fire, Return, End };
++enum class P2GroinkAttackCommand {
++    ResumeMotion, RefreshTarget, FinishMotion, StopMotion, StartAim, StartCharge,
++    LargeSmoke, FinishCharge, EmitVolley, ReturnGun, ExitDead, ExitFlick, ResolveNextState
++};
++struct P2GroinkAttackInput {
++    bool activeTick = true;
++    bool motionStopped = false;
++    bool motionFinishing = false;
++    bool gunRotating = false;
++    bool gunLocked = false;
++    bool flick = false;
++    float health = 1;
++    P2GroinkAttackEvent event = P2GroinkAttackEvent::None;
++};
++struct P2GroinkAttackCommands {
++    bool valid = false;
++    std::array<P2GroinkAttackCommand, 12> items{};
++    std::size_t count = 0;
++};
++
++// Source StateAttack subset. The host owns motion state/advancement and must
++// execute returned commands IN ORDER. begin follows host attack initialization.
++class P2GroinkAttack {
++public:
++    void begin() { mWait = 0; mActive = true; }
++    void reset() { mWait = 0; mActive = false; }
++    float waitTime() const { return mWait; }
++    P2GroinkAttackCommands step(const P2GroinkAttackInput&, float delta);
++private:
++    float mWait = 0;
++    bool mActive = false;
++};
++
++// Gun manager rotation state, separate from motion events and projectile pool.
++class P2GroinkGunRotation {
++public:
++    void start() { *this = {}; mRotating = true; }
++    void finish() { mLocked = false; mFinished = true; }
++    void reset() { *this = {}; }
++    bool update(const P2GroinkVec3& muzzle, const P2GroinkVec3& target,
++                float search, float radius, float delta);
++    static bool returnStep(float angle, float& next, bool& done);
++    bool rotating() const { return mRotating; }
++    bool locked() const { return mLocked; }
++    bool finished() const { return mFinished; }
++    float angle() const { return mAngle; }
++    float speed() const { return mSpeed; }
++private:
++    bool mRotating = false, mLocked = false, mFinished = false;
++    float mAngle = 0, mSpeed = 0;
++};
+diff --git a/pc_port/pc_p2_groink_clock.h b/pc_port/pc_p2_groink_clock.h
+new file mode 100644
+index 00000000..a51c4f53
+--- /dev/null
++++ b/pc_port/pc_p2_groink_clock.h
+@@ -0,0 +1,44 @@
++#pragma once
++
++#include <cmath>
++
++// Bounded source-clock adapter for the isolated Groink policy. It samples no
++// wall clock: the owning integration supplies elapsed seconds and runs its
++// source update exactly once for every returned tick. Explicit fire events are
++// deliberately outside this helper, so the owner can retain a pending event
++// until one of those source ticks consumes it.
++class P2GroinkSourceClock {
++public:
++    static constexpr double kSourceDelta = 1.0 / 30.0;
++    static constexpr int kMaximumTicks = 4;
++
++    void reset() { mDebt = 0.0; }
++
++    // Inactive, invalid, negative, and long-gap input discard all debt. A
++    // long gap cannot turn into a later burst. Normal accumulation preserves
++    // only the fractional remainder after a source tick.
++    int step(double elapsedSeconds, bool active)
++    {
++        if (!active || !std::isfinite(elapsedSeconds) || elapsedSeconds < 0.0
++            || elapsedSeconds >= 0.25) {
++            reset();
++            return 0;
++        }
++
++        mDebt += elapsedSeconds;
++        if (!std::isfinite(mDebt)) {
++            reset();
++            return 0;
++        }
++        const int ticks = static_cast<int>(mDebt / kSourceDelta);
++        if (ticks > kMaximumTicks) {
++            reset();
++            return kMaximumTicks;
++        }
++        mDebt -= static_cast<double>(ticks) * kSourceDelta;
++        return ticks;
++    }
++
++private:
++    double mDebt = 0.0;
++};
+diff --git a/pc_port/pc_p2_groink_events.h b/pc_port/pc_p2_groink_events.h
+new file mode 100644
+index 00000000..7df985ee
+--- /dev/null
++++ b/pc_port/pc_p2_groink_events.h
+@@ -0,0 +1,40 @@
++#pragma once
++#include "pc_p2_groink_attack.h"
++
++// Restricted non-looping attack cursor. This is event timing, not skinning.
++// Actual GPVE01 attack1.bca is 44 frames, with events2/3/4/5 at11/22/25/32.
++class P2GroinkAttackCursor {
++public:
++    struct Clip { int frames; std::array<int,4> keys; };
++    struct Step { bool valid = false; P2GroinkAttackEvent event = P2GroinkAttackEvent::None; };
++    bool start(const Clip& clip) {
++        if (clip.frames<2 || clip.frames>10000) return false;
++        int previous=-1;
++        for (int key:clip.keys) { if (key<=previous || key>=clip.frames-1) return false; previous=key; }
++        mClip=clip; mFrame=0; mNext=0; mCompleted=false; mReady=true; return true;
++    }
++    void reset() { *this={}; }
++    // Caller uses source animation speed * source delta; zero means stopped.
++    // A bounded increment prevents unbounded catch-up. For several crossed
++    // keys, retain the last event just like EnemyBase::onKeyEvent's single slot.
++    Step animate(float increment) {
++        if (!mReady || !std::isfinite(increment) || increment<0 || increment>4) return {};
++        Step out; out.valid=true;
++        mFrame+=increment;
++        constexpr P2GroinkAttackEvent types[]{P2GroinkAttackEvent::Charge,P2GroinkAttackEvent::Smoke,
++            P2GroinkAttackEvent::Fire,P2GroinkAttackEvent::Return};
++        while(mNext<4 && mClip.keys[mNext]<int(mFrame)) out.event=types[mNext++];
++        if (mFrame>=mClip.frames) {
++            mFrame=float(mClip.frames-1);
++            if (!mCompleted) { mCompleted=true; out.event=P2GroinkAttackEvent::End; }
++        }
++        return out;
++    }
++    float frame() const { return mFrame; }
++    bool completed() const { return mCompleted; }
++private:
++    Clip mClip{};
++    float mFrame=0;
++    std::size_t mNext=0;
++    bool mCompleted=false, mReady=false;
++};
+diff --git a/pc_port/pc_p2_groink_map_trace.cpp b/pc_port/pc_p2_groink_map_trace.cpp
+new file mode 100644
+index 00000000..8aa5280c
+--- /dev/null
++++ b/pc_port/pc_p2_groink_map_trace.cpp
+@@ -0,0 +1,59 @@
++#include "pc_p2_groink_map_trace.h"
++#include "MapMgr.h"
++#include <cmath>
++
++namespace {
++bool boundedTraceVector(const P2GroinkVec3& value) {
++    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z)
++        && std::fabs(value.x) <= 100000.f && std::fabs(value.y) <= 100000.f
++        && std::fabs(value.z) <= 100000.f;
++}
++}
++
++void P2GroinkTraceProxy::clear() {
++    wall = false;
++    mGroundTriangle = nullptr;
++    mCollisionOccurred = 0;
++    mHasCollChangedVelocity = 0;
++    mCurrCollisionModel = nullptr;
++    mCollPlatform = nullptr;
++    mCollNormal = nullptr;
++    mPikiPlatformTriangle = nullptr;
++}
++
++void P2GroinkMapTrace::reset(MapMgr* map) {
++    mMap = map;
++    mProxy.clear();
++    mCalls = mFloors = mWalls = 0;
++}
++
++bool P2GroinkMapTrace::trace(void* context, const P2GroinkVec3& center,
++    const P2GroinkVec3& velocity, float delta, float radius, P2GroinkTraceResult& result) {
++    if (!context || !boundedTraceVector(center) || !boundedTraceVector(velocity)
++        || !std::isfinite(delta) || std::fabs(delta-P2GroinkPolicy::kSourceDelta)>1e-6f
++        || radius != P2GroinkPolicy::kShellRadius) return false;
++    auto& state = *static_cast<P2GroinkMapTrace*>(context);
++    if (!state.mMap || !state.mMap->mMapModel) return false;
++    state.mProxy.clear();
++    // P1 accepts a sphere BASE, adding the radius before collision and
++    // subtracting it afterward. The P2 shell policy stores its CENTER.
++    MoveTrace movement(Vector3f(center.x, center.y-radius, center.z),
++                       Vector3f(velocity.x, velocity.y, velocity.z), radius, true);
++    state.mMap->traceMove(&state.mProxy, movement, delta);
++    ++state.mCalls;
++    P2GroinkTraceResult next;
++    next.position = {movement.mPosition.x, movement.mPosition.y+radius, movement.mPosition.z};
++    next.velocity = {movement.mVelocity.x, movement.mVelocity.y, movement.mVelocity.z};
++    next.floor = state.mProxy.mGroundTriangle != nullptr;
++    next.wall = state.mProxy.wall;
++    if (!boundedTraceVector(next.position) || !boundedTraceVector(next.velocity)) return false;
++    if (next.floor || next.wall) {
++        next.groundY = state.mMap->getMinY(next.position.x, next.position.z, false);
++        if (!std::isfinite(next.groundY)) return false;
++        next.hasGroundY = true;
++    }
++    state.mFloors += next.floor;
++    state.mWalls += next.wall;
++    result = next;
++    return true;
++}
+diff --git a/pc_port/pc_p2_groink_map_trace.h b/pc_port/pc_p2_groink_map_trace.h
+new file mode 100644
+index 00000000..c68bae1c
+--- /dev/null
++++ b/pc_port/pc_p2_groink_map_trace.h
+@@ -0,0 +1,34 @@
++#pragma once
++#include "pc_p2_groink.h"
++#include "Creature.h"
++#include <cstdint>
++
++class MapMgr;
++
++// Standalone collision recorder; never registered with an actor manager.
++// The owner creature's collision fields must not be reused for shell tracing.
++class P2GroinkTraceProxy : public Creature {
++public:
++    P2GroinkTraceProxy() : Creature(nullptr) { clear(); }
++    void clear();
++    void refresh(Graphics&) override {}
++    void wallCallback(immut Plane&, DynCollObject*) override { wall = true; }
++    bool wall = false;
++protected:
++    void doKill() override {}
++};
++
++class P2GroinkMapTrace {
++public:
++    void reset(MapMgr* map);
++    static bool trace(void* context, const P2GroinkVec3& center,
++        const P2GroinkVec3& velocity, float delta, float radius,
++        P2GroinkTraceResult& result);
++    std::uint64_t calls() const { return mCalls; }
++    std::uint64_t floors() const { return mFloors; }
++    std::uint64_t walls() const { return mWalls; }
++private:
++    MapMgr* mMap = nullptr;
++    P2GroinkTraceProxy mProxy;
++    std::uint64_t mCalls = 0, mFloors = 0, mWalls = 0;
++};
+diff --git a/pc_port/pc_p2_groink_target.cpp b/pc_port/pc_p2_groink_target.cpp
+new file mode 100644
+index 00000000..812e0601
+--- /dev/null
++++ b/pc_port/pc_p2_groink_target.cpp
+@@ -0,0 +1,57 @@
++#include "pc_p2_groink_target.h"
++
++namespace {
++constexpr float pi = 3.14159265358979323846f;
++bool bounded(float x) { return std::isfinite(x)&&std::fabs(x)<=1.0e6f; }
++bool bounded(P2GroinkVec3 v) { return bounded(v.x)&&bounded(v.y)&&bounded(v.z); }
++bool angle(float x) { return std::isfinite(x)&&std::fabs(x)<=2*pi; }
++}
++
++P2GroinkTargetResult p2_groink_select_target(const P2GroinkTargetQuery& q,
++    const P2GroinkTargetCandidate* candidates, std::size_t count) {
++    P2GroinkTargetResult out;
++    const float norm=q.direction.x*q.direction.x+q.direction.z*q.direction.z;
++    if (!bounded(q.muzzle)||!bounded(q.direction)||q.direction.y!=0||
++        std::fabs(norm-1)>0.001f||!bounded(q.searchDistance)||q.searchDistance<0||
++        count>4096||(count&&!candidates)) return out;
++    // Reject a malformed snapshot atomically, including later candidates.
++    for (std::size_t i=0;i<count;++i) if (!bounded(candidates[i].position)) return out;
++    out.valid=true;
++    for (std::size_t i=0;i<count;++i) {
++        const auto& c=candidates[i];
++        if (!c.alive||!(c.captain||c.pikmin)) continue;
++        const P2GroinkVec3 p{c.position.x-q.muzzle.x,c.position.y-q.muzzle.y,c.position.z-q.muzzle.z};
++        const float lateral=-q.direction.z*p.x+q.direction.x*p.z;
++        const float forward=q.direction.x*p.x+q.direction.z*p.z;
++        if (std::fabs(p.y)<200&&std::fabs(lateral)<25&&forward>1&&forward<q.searchDistance) {
++            out.found=true; out.index=i; out.position=c.position; return out;
++        }
++    }
++    return out;
++}
++
++P2GroinkAttackEndResult p2_groink_attack_end(const P2GroinkAttackEndInput& in) {
++    P2GroinkAttackEndResult out;
++    if (!bounded(in.health)||!std::isfinite(in.homeDistanceSquared)||in.homeDistanceSquared<0||
++        in.homeDistanceSquared>4.0e12f||!bounded(in.territoryRadius)||in.territoryRadius<0||
++        !bounded(in.homeRadius)||in.homeRadius<0||!angle(in.homeAngle)||!angle(in.pathAngle)||
++        !angle(in.searchedAngle)||!bounded(in.maxAttackAngleDegrees)||in.maxAttackAngleDegrees<0) return out;
++    out.valid=true;
++    const auto home=std::fabs(in.homeAngle)<=pi/4 ? P2GroinkNextState::WalkHome : P2GroinkNextState::TurnHome;
++    if (in.health<=0) out.state=P2GroinkNextState::Dead;
++    else if (in.flick) out.state=P2GroinkNextState::Flick;
++    else if (in.homeDistanceSquared>in.territoryRadius*in.territoryRadius) out.state=home;
++    else {
++        out.useAttackableQuery=true;
++        if (in.attackable) out.state=P2GroinkNextState::Attack;
++        else {
++            out.useSearchedQuery=true;
++            if (in.searchedTarget) out.state=std::fabs(in.searchedAngle)<=in.maxAttackAngleDegrees*(pi/180)
++                ? P2GroinkNextState::Walk : P2GroinkNextState::Turn;
++            else if (in.homeDistanceSquared<in.homeRadius*in.homeRadius)
++                out.state=std::fabs(in.pathAngle)<=pi/4 ? P2GroinkNextState::WalkPath : P2GroinkNextState::TurnPath;
++            else out.state=home;
++        }
++    }
++    return out;
++}
+diff --git a/pc_port/pc_p2_groink_target.h b/pc_port/pc_p2_groink_target.h
+new file mode 100644
+index 00000000..d99a2175
+--- /dev/null
++++ b/pc_port/pc_p2_groink_target.h
+@@ -0,0 +1,46 @@
++#pragma once
++#include <pc_p2_groink.h>
++#include <cstddef>
++
++struct P2GroinkTargetCandidate {
++    P2GroinkVec3 position;
++    bool alive = true;
++    bool captain = false; // Source isNavi(): Navi/captain.
++    bool pikmin = false; // Actual isPikmin(), not every isPiki().
++};
++struct P2GroinkTargetQuery {
++    P2GroinkVec3 muzzle;
++    P2GroinkVec3 direction; // Source getDirection(faceDir); horizontal unit vector.
++    float searchDistance = 0;
++};
++struct P2GroinkTargetResult {
++    bool valid = false;
++    bool found = false;
++    std::size_t index = 0;
++    P2GroinkVec3 position;
++};
++// Candidates must already be filtered by the host source-compatible cell query
++// and retain its iteration order. No pointer or target registration is retained.
++P2GroinkTargetResult p2_groink_select_target(const P2GroinkTargetQuery& query,
++    const P2GroinkTargetCandidate* candidates, std::size_t count);
++
++enum class P2GroinkNextState { None, Dead, Flick, WalkHome, TurnHome, Attack,
++                             Walk, Turn, WalkPath, TurnPath };
++struct P2GroinkAttackEndInput {
++    float health = 1;
++    bool flick = false;
++    float homeDistanceSquared = 0; // XZ only.
++    float territoryRadius = 0, homeRadius = 0;
++    float homeAngle = 0, pathAngle = 0, searchedAngle = 0; // getAngDist radians.
++    float maxAttackAngleDegrees = 0;
++    bool attackable = false;
++    bool searchedTarget = false;
++};
++struct P2GroinkAttackEndResult {
++    bool valid = false;
++    P2GroinkNextState state = P2GroinkNextState::None;
++    // Commit query side effects only for the queries reached by source order.
++    bool useAttackableQuery = false;
++    bool useSearchedQuery = false;
++};
++P2GroinkAttackEndResult p2_groink_attack_end(const P2GroinkAttackEndInput& input);
+diff --git a/pc_port/pc_p2_groink_volley.cpp b/pc_port/pc_p2_groink_volley.cpp
+new file mode 100644
+index 00000000..b52df321
+--- /dev/null
++++ b/pc_port/pc_p2_groink_volley.cpp
+@@ -0,0 +1,83 @@
++#include "pc_p2_groink_volley.h"
++#include <algorithm>
++
++namespace {
++struct RequiredTrace {
++    P2GroinkTraceFn function;
++    void* context;
++    bool failed = false;
++    static bool call(void* raw, const P2GroinkVec3& position, const P2GroinkVec3& velocity,
++                     float delta, float radius, P2GroinkTraceResult& result) {
++        auto& self = *static_cast<RequiredTrace*>(raw);
++        if (self.function(self.context, position, velocity, delta, radius, result)) return true;
++        self.failed = true;
++        // Make the underlying policy record an invalid terminal at its original
++        // position; do not invoke its optional no-map integration fallback.
++        result.position = {NAN, NAN, NAN};
++        return true;
++    }
++};
++}
++
++void P2GroinkVolley::reset() {
++    mNodes = {};
++    mPrimary = {};
++    mActive = {};
++    mTerminals = {};
++    mActiveCount = mTerminalCount = 0;
++    mInactiveCount = kCapacity;
++    for (std::size_t i = 0; i < kCapacity; ++i) mInactive[i] = i;
++}
++
++P2GroinkVolley::Emission P2GroinkVolley::emit(const P2GroinkMuzzle& muzzle, float speed,
++    const std::array<P2GroinkVec3, kVolleySize>& samples) {
++    const std::size_t count = std::min(kVolleySize, mInactiveCount);
++    std::array<P2GroinkPolicy, kVolleySize> prepared;
++    for (std::size_t i = 0; i < count; ++i)
++        if (!prepared[i].emit(muzzle, speed, samples[i])) return {};
++    for (std::size_t i = 0; i < count; ++i) {
++        const std::size_t slot = mInactive[i];
++        mNodes[slot] = prepared[i];
++        mPrimary[slot] = i == 0;
++        mActive[mActiveCount++] = slot;
++    }
++    for (std::size_t i = count; i < mInactiveCount; ++i) mInactive[i-count] = mInactive[i];
++    mInactiveCount -= count;
++    return {true, count};
++}
++
++bool P2GroinkVolley::update(const P2GroinkVec3& owner, float delta,
++                           P2GroinkTraceFn trace, void* context) {
++    if (!trace || !std::isfinite(delta) || std::fabs(delta-P2GroinkPolicy::kSourceDelta) > 1e-6f
++        || !std::isfinite(owner.x) || !std::isfinite(owner.y) || !std::isfinite(owner.z)) return false;
++    mTerminals = {};
++    mTerminalCount = 0;
++    std::size_t survivors = 0;
++    bool valid = true;
++    const auto previous = mActive;
++    const std::size_t count = mActiveCount;
++    for (std::size_t i = 0; i < count; ++i) {
++        const std::size_t slot = previous[i];
++        auto& node = mNodes[slot];
++        node.clearTerminalStep();
++        RequiredTrace required{trace, context};
++        node.update(owner, delta, RequiredTrace::call, &required);
++        if (!node.shell().active) {
++            const auto terminal = node.lastTerminalStep();
++            mTerminals[mTerminalCount++] = {slot, mPrimary[slot], terminal};
++            mInactive[mInactiveCount++] = slot;
++            valid = valid && !required.failed && terminal.reason != P2GroinkTerminalReason::Invalid;
++        } else {
++            mActive[survivors++] = slot;
++        }
++    }
++    mActiveCount = survivors;
++    return valid;
++}
++
++P2GroinkShell P2GroinkVolley::shell(std::size_t slot) const {
++    if (slot >= kCapacity) return {};
++    auto result = mNodes[slot].shell();
++    result.primary = mPrimary[slot];
++    return result;
++}
+diff --git a/pc_port/pc_p2_groink_volley.h b/pc_port/pc_p2_groink_volley.h
+new file mode 100644
+index 00000000..853d8f77
+--- /dev/null
++++ b/pc_port/pc_p2_groink_volley.h
+@@ -0,0 +1,44 @@
++#pragma once
++
++#include <pc_p2_groink.h>
++#include <array>
++#include <cstddef>
++
++// Source MiniHoudaiShotGunMgr subset: three simultaneous shells, six reusable
++// nodes, FIFO active/inactive lists. No attack FSM, RNG, effects or receivers.
++class P2GroinkVolley {
++public:
++    static constexpr std::size_t kCapacity = 6;
++    static constexpr std::size_t kVolleySize = 3;
++    struct Emission { bool valid = false; std::size_t count = 0; };
++    struct Terminal {
++        std::size_t slot = 0;
++        bool primary = false;
++        P2GroinkTerminalStep step;
++    };
++
++    P2GroinkVolley() { reset(); }
++    void reset();
++    // Samples represent source random inputs in emission order. Only samples
++    // for available nodes are consumed. Invalid attempted input rejects the
++    // whole command without changing pool state (host validation contract).
++    Emission emit(const P2GroinkMuzzle&, float speed,
++                  const std::array<P2GroinkVec3, kVolleySize>& samples);
++    // Host must provide a real trace; a refused trace recycles that shell with
++    // an Invalid terminal, never silently advances through terrain. Invalid
++    // tick/owner/null callback rejects before mutation. Call only on source ticks.
++    bool update(const P2GroinkVec3& owner, float delta, P2GroinkTraceFn, void*);
++    std::size_t activeCount() const { return mActiveCount; }
++    P2GroinkShell shell(std::size_t slot) const;
++    // Read after each update, before the next one. Emission does not erase a
++    // previous tick's terminal receipts, even when its slots are reused.
++    std::size_t terminalCount() const { return mTerminalCount; }
++    const std::array<Terminal, kCapacity>& terminals() const { return mTerminals; }
++
++private:
++    std::array<P2GroinkPolicy, kCapacity> mNodes{};
++    std::array<bool, kCapacity> mPrimary{};
++    std::array<std::size_t, kCapacity> mActive{}, mInactive{};
++    std::array<Terminal, kCapacity> mTerminals{};
++    std::size_t mActiveCount = 0, mInactiveCount = 0, mTerminalCount = 0;
++};
+diff --git a/tools/P2_GROINK_ATTACK.md b/tools/P2_GROINK_ATTACK.md
+new file mode 100644
+index 00000000..6b21dee7
+--- /dev/null
++++ b/tools/P2_GROINK_ATTACK.md
+@@ -0,0 +1,95 @@
++# Groink attack-controller slice (#204)
++
++Base: delivered volley-runtime `71721c42`. No shared native hooks, animation
++player, renderer or actor registry changes. The new attack and gun rotation
++policies compile independently with the existing aim policy.
++
++Source: projectPiki/pikmin2 revision
++`632af93787b9c95b63f0c13be32b161375ce3a96`;
++`MiniHoudaiState.cpp:267-380`, `MiniHoudaiShotGun.cpp:1286-1303,1732-1743,1976-1993`.
++`enemyBase.cpp:2380,3191` confirms finishMotion immediately sets the animator
++flag queried by isFinishMotion, including before the same update's fire event.
++
++`P2GroinkAttack::begin` resets the attack wait timer. Host initialization still
++owns next-state/health-gauge resets, target velocity, excitement and starting
++the source attack clip. Each authoritative source tick supplies current motion,
++gun and health/flick observations and at most one animation-event edge:
++
++| Local event | Source event | Commands |
++| --- | --- | --- |
++| Charge | KEYEVENT_2 | Stop motion, start aim, start charge |
++| Smoke | KEYEVENT_3 | Large smoke, finish charge |
++| Fire | KEYEVENT_4 | Emit volley under exact source OR guard |
++| Return | KEYEVENT_5 | Stop motion, start gun return |
++| End | KEYEVENT_END | Dead, Flick or host next-state resolution |
++
++Commands are an ordered list: the host must preserve resume/refresh/finish/event
++ordering, including when an interruption and animation edge share a tick. A
++living actor requesting finish because of flick still emits at Fire; a dead
++actor is suppressed. END gives death priority over flick. Active pause returns
++no commands and preserves the timer; invalid active inputs reject immutably.
++The host must not consume animation edges while paused or resend held events.
++END deactivates this policy until the host enters Attack again.
++
++`P2GroinkGunRotation` owns start/finish/lock flags, angle and speed. Start clears
++angle/speed/lock; finish clears lock while retaining active rotation. Aim lock
++latches until start/finish. Return uses the source wrapped-zero target and
++0.025-radian step, checking the resulting error strictly below 0.01. Completion
++clears rotation and sets lock. Call its update at the source manager boundary,
++not from drawing. The host must still establish full actor/animation update
++ordering before claiming cycle timing parity.
++
++Validation: MinGW C++17 with `-Wall -Wextra -Werror`,
++`tools/p2_groink_attack_test.cpp` plus `pc_p2_groink_attack.cpp` and
++`pc_p2_groink.cpp`; executable reports `p2_groink_attack_test PASS`.
++Tests cover exact command order, zero-wait pause, aim/return resume, living
++finish/fire versus dead suppression, death/flick END precedence, pause/reset,
++invalid input immutability, lock latching, return wrap and post-step thresholds.
++Independent source review found no mismatch within this declared scope.
++
++This is executable source-policy evidence, not animation playback or natural
++combat. Next step is a source-event driver using the extracted attack clip,
++with pause-aware frame advancement, wired to these commands and the tested
++volley pool in an isolated runtime fixture. Confirm original update order,
++event delivery and interruption timing before wiring it. Do not substitute a
++fixed injected fire tick for that acceptance. World-dependent END transitions,
++target ownership, damage receivers, death/corpse/revival, material fidelity and
++full scene lifecycle remain open. Groink remains first in the AFK queue.
++
++## Source-event runtime successor (3726aced)
++
++The nonloop attack cursor uses the extracted retail attack1.bca contract:
++44 frames; event pairs (11,2), (22,3), (25,4), (32,5). The clip SHA256 is
++98fab1f17599653447a783377b7ea03b89b907a1cf481d147793c06f6c8015c8.
++It preserves the source strict key-frame comparison, last-event latch and
++one-shot END. Paused animation advances by zero. Event-cursor and composed
++cycle tests pass, including previous-tick event consumption.
++
++Normal living enemy-manager ordering was checked against enemyMgrBase.cpp,
++enemyBase.cpp and MiniHoudai.cpp: existing shells update, FSM consumes the
++previous animation latch, gun rotation updates, then animation produces the
++next latch. This establishes the normal fixture path, not every movie or
++culling path.
++
++Private fixture groink-attack-runtime-fixture-01 built successfully against
++stable native 756515d5. Two fresh sessions passed on 2026-09-13:
++
++- Floor: groink-attack-runtime-sessions/22f0b3a0133a4c68b138f5e036cf9153;
++  six floor impacts, 246 map traces, two primary shells.
++- Wall: groink-attack-runtime-sessions/9d69d953fd9844b9bafaadca0dfab76f;
++  six wall impacts, 58 map traces, two primary shells.
++
++Both fired three shells at ticks 41 and 150, each at cursor frame 26, and
++completed cycles at ticks 110 and 219. Both logged
++P2_GROINK_ATTACK_CYCLES_PASS cycles=2 fire_frame=26 previous_tick_latch=1.
++The generic volley runner verified collision receipts and reset; these extra
++attack markers were checked separately in stdout.log. Each verification.json
++records executable, source-build provenance, asset and capture hashes.
++
++Reproduce using tools/p2_groink_volley_run.py with the attack fixture and the
++existing floor/wall stages described in P2_GROINK_VOLLEY.md. This replaces
++injected fire ticks with the cursor/controller handshake. The stationary host
++explicitly re-enters Attack after END; world-dependent target transitions are
++still pending. Rendering remains a baked frame-25 model with debug shells:
++this does not establish animated muzzle alignment, material fidelity, six
++visually distinct shells, damage, corpse/revival or full scene lifecycle.
+diff --git a/tools/P2_GROINK_HIT.md b/tools/P2_GROINK_HIT.md
+new file mode 100644
+index 00000000..36409fc0
+--- /dev/null
++++ b/tools/P2_GROINK_HIT.md
+@@ -0,0 +1,53 @@
++# Groink shell interaction policy (#205)
++
++Codex hard lane; base a32709de, successor to the source-event runtime.
++Source: projectPiki/pikmin2 632af93787b9c95b63f0c13be32b161375ce3a96,
++MiniHoudaiShotGun.cpp:148-247 and include/Vector3.h normalise specialization.
++
++The pure classifier returns at most one Bomb/Wind command per supplied living
++candidate. It preserves the strict swept-prism boundaries, unconditional
++terminal suppression for geometry-qualified candidates, source species rules,
++owner exclusion for enemies, damage values and knockback vectors. Zero sweep
++length suppresses all interactions. A vertical sweep retains the source zero
++cross-product basis; it is deliberately not replaced with a capsule.
++
++Host contract:
++
++- Supply shell-step start/end after movement and terminal ground correction,
++  already shifted down 10 units. Apply on moving steps, including the final
++  step before recycling. Terminal includes owner-range expiration, not only
++  floor/wall collision; invalid trace failure must never become a blast.
++- Enumerate source-compatible cell candidates with sphere center at the sweep
++  midpoint and radius sweep length plus terminalRadius (source attackHitAngle).
++  The classifier does not perform this broad phase. Its vertical-degeneracy
++  test intentionally bypasses candidate selection and is not world-hit proof.
++- Map Captain, actual Pikmin, other Piki, Enemy and Other explicitly. Supply
++  alive status, owner identity and enemy cell radius from current valid actors.
++- Dispatch returned commands through appropriate receivers while preserving
++  owner attribution. Do not treat classification as accepted damage. Pointer
++  lifetime, rejection, immunity, repeated hits and cleanup belong to the host.
++
++Finite inputs are bounded to absolute 1e6; radii, damage and cell radius must
++be nonnegative. Zero radii preserve the source strict comparisons. Invalid
++input returns valid=false with no command.
++These are adapter limits, not additional claims about retail parameter ranges.
++Float sqrt/normalization is a portable approximation of the original math.
++
++Validation command (MinGW bin on PATH):
++
++```
++g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_hit_test.cpp pc_port/pc_p2_groink_hit.cpp -o ../groink-hit-test-01/test.exe
++```
++
++Tests cover strict prism/radial boundaries, species and owner filtering,
++terminal suppression, zero-motion and zero-normalization cases, wind falloff,
++fixed enemy damage, centerline knockback and nonfinite rejection. This is
++synthetic source-policy evidence only. Live receiver damage, autonomous
++targeting, death/corpse/revival and lifecycle remain open.
++
++Next bounded target slice: MiniHoudai.cpp:492-530 chooses the first qualifying
++cell candidate in a strict muzzle-relative corridor (vertical <200, lateral
++<25, forward >1 and <searchDistance). Preserve source cell ordering; do not
++substitute nearest distance. Attack END transitions additionally require home,
++territory, searched target and path snapshots. The nearest-target helper's
++candidate tie order is unresolved in the current source checkout.
+diff --git a/tools/P2_GROINK_LIVE_TARGET.md b/tools/P2_GROINK_LIVE_TARGET.md
+new file mode 100644
+index 00000000..fcbdcd37
+--- /dev/null
++++ b/tools/P2_GROINK_LIVE_TARGET.md
+@@ -0,0 +1,48 @@
++# Groink private live-target fixture (#208)
++
++Base 77f63eac. Ordered implementation c39fde6f, bb8b0413. The new fixture
++reads current Navi position/alive state and passes it through the corridor
++and END policies. It starts Attack on acquisition, repeats only after a
++successful fresh END query, and selects WalkPath after a controlled loss.
++
++Private build groink-target-runtime-fixture-02 passed source/input freshness
++checks against stable native-groink-policy 756515d5. Reproduce from this
++worktree with MinGW bin on PATH:
++
++```
++py -3.12 ../p2-groink-prototype/scripts/build_pikmin2_fixture.py --build ../native-groink-policy/build-groink-runtime --source ../native-groink-policy --fixture tools/p2_groink_target_runtime.cpp --output ../NEW_FIXTURE --expected-native-head 756515d57088f7ea7241c451e2e5b968bf9c7c6d
++py -3.12 tools/p2_groink_volley_run.py --root-worktree ../p2-groink-prototype --assets C:/Users/alari/pikmin-local/game/assets --room ../pikmin2-room105 --stage ../groink-arena-stage-02 --fixture ../NEW_FIXTURE --output ../groink-target-runtime-sessions --expected-contact floor
++```
++
++Passed session on 2026-09-13:
++groink-target-runtime-sessions/353fb2136cda410e899acf06f12aa7a8.
++verification.json records hashes for the executable, provenance, model,
++profile, room, logs and captures. Generic runner checks six distinct terminal
++slots, two primary shells, reset and captures. Additional stdout markers were
++checked separately:
++
++- Query tick 0: living Navi (0,0,100), found.
++- Fires tick 42 and 156, both source cursor frame 26.
++- END tick 115: target still found, state Attack.
++- After second fire: injected relocation to (100,0,100).
++- END tick 229: target absent, state WalkPath.
++- Six floor impacts, 96 traces, two acquisitions; LIVE_TARGET_PASS.
++
++First fixture run 7f5df94292734e6f89d1cd40ea642d7a failed its repeat assertion:
++the unpinned captain had moved to (42.943,0,132.845) and correctly failed the
++strict lateral corridor test. bb8b0413 pins test placement every idle call;
++the original failed run remains preserved and is not acceptance evidence.
++
++Limits: only one Navi candidate, point-sphere broadphase approximation,
++stationary zero-yaw owner, pinned placement and injected relocation. There
++is no searched-target success branch in this fixture. WalkPath is selected
++but not executed. The model is still baked frame 25; inspected flight capture
++shows the actor and captain but does not resolve the debug shells. Materials,
++animated muzzle alignment and full projectile visibility remain unvalidated.
++This is live actor snapshot evidence, not natural pursuit or combat.
++
++Independent source review confirmed phase order and decision wiring. No
++shared hooks/build/export were changed. Next receiver work must account for
++P1/P2 interaction differences documented in P2_GROINK_RECEIVER_AUDIT.md;
++do not treat similarly named Bomb/Wind classes as equivalent. Death/corpse/
++revival and scene lifecycle remain open.
+diff --git a/tools/P2_GROINK_RECEIVER_AUDIT.md b/tools/P2_GROINK_RECEIVER_AUDIT.md
+new file mode 100644
+index 00000000..a714b3d8
+--- /dev/null
++++ b/tools/P2_GROINK_RECEIVER_AUDIT.md
+@@ -0,0 +1,39 @@
++# Groink live receiver compatibility audit
++
++Read-only audit for #205/#208. P2 source revision
++632af93787b9c95b63f0c13be32b161375ce3a96; P1 baseline native 756515d5.
++No receiver implementation or accepted live damage is claimed here.
++
++P2 InteractBomb takes (owner, damage, Vector3f*) and inherits its impulse from
++InteractWind (include/Game/Interaction.h:569). P1 InteractBomb instead takes
++(owner, damage, CollPart*) (include/Interactions.h:100). A direct substitution
++cannot carry the source impulse.
++
++P1 receiver differences:
++
++- Piki Bomb (src/plugPikiKando/interactBattle.cpp:33) subtracts damage and
++  enters Flick with fixed intensity 180, deriving direction from owner and
++  target positions. P2 uses the provided vector and its Blow state argument.
++- Navi Bomb (src/plugPikiKando/navi.cpp:2695) subtracts damage and uses Flick
++  intensity 100; it cannot receive the desired direction. P2 NaviFlickArg
++  carries the vector and damage.
++- Teki Bomb (src/plugPikiNakata/tekiinteraction.cpp:39) multiplies damage by
++  TPF_BombDamageRate before InteractAttack; this differs from P2 bombCallBack
++  and does not establish that a requested 100 reaches the target unchanged.
++- P1 Wind does accept a velocity vector and copies it to target velocity
++  fields (interactBattle.cpp:218 and navi.cpp:2554). It nevertheless has
++  different rejection states and immunity semantics, including Piki stuck
++  handling and the P2 Purple/Repugnant Appendage distinctions.
++
++Next receiver bridge must accept exact policy command, target kind, owner,
++damage and impulse. Either implement dedicated typed receiver/state handling
++or explicitly label a P1 compatibility approximation. Calling P1 Bomb then
++Wind is not proven equivalent: first dispatch changes target state and can
++alter second-dispatch eligibility. Do not overwrite velocity blindly after
++a rejected hit. Record requested and accepted interactions separately, with
++health/state/velocity before and after. Test immunity, repeated hits, owner
++identity and teardown before natural-combat acceptance.
++
++Terminal Wind can use InteractWind(owner, computedImpulse, 0, nullptr) only
++as an explicitly scoped P1 behavior approximation. Retain the classifier's
++source species/owner filtering; generic stimulate does not provide it.
+diff --git a/tools/P2_GROINK_TARGET.md b/tools/P2_GROINK_TARGET.md
+new file mode 100644
+index 00000000..2d721e1f
+--- /dev/null
++++ b/tools/P2_GROINK_TARGET.md
+@@ -0,0 +1,71 @@
++# Groink target and attack-END snapshot policy (#206)
++
++Codex hard lane, based on 69ad3b05. Source revision
++632af93787b9c95b63f0c13be32b161375ce3a96, MiniHoudai.cpp:447-456,492-530
++and MiniHoudaiState.cpp:336-398. These new modules have no shared hooks,
++actor pointers, target registrations or locomotion implementation.
++
++The corridor selector returns the first qualifying cell candidate, preserving
++iterator order rather than sorting by distance. Candidates must be living
++captains or actual Pikmin. Relative to the shotgun origin, vertical separation
++must be strictly below 200, lateral separation strictly below 25, and forward
++projection strictly greater than 1 and below searchDistance. No result means
++preserve the old stored target position, not clear it.
++
++The host must first enumerate the source-compatible cell sphere centered at
++body position + direction * (searchDistance/2), radius 0.75*searchDistance,
++with source iteration order. The selector does not replace this broad phase.
++Supply the horizontal source getDirection(faceDir) vector; tolerance 0.001
++on squared unit length accommodates source trig approximations without
++renormalizing supplied values. Tests that directly supply candidates establish
++narrow-phase behavior, not live spatial-query parity.
++
++Attack END chooses in this exact order:
++
++1. Nonpositive health -> Dead; flick -> Flick.
++2. XZ squared distance strictly beyond territory radius squared -> home.
++3. Successful fresh corridor query -> Attack.
++4. Successful searched-target query -> Walk/Turn at inclusive max attack angle.
++5. Strictly inside home radius -> WalkPath/TurnPath.
++6. Otherwise -> WalkHome/TurnHome.
++
++Home/path walking includes the exact 45-degree boundary. The host supplies
++getAngDist results in radians, while maxAttackAngle remains source degrees.
++This avoids silently replacing the source atan lookup and wrapping behavior.
++Source getAngDist ignores Y and computes angDist(target angle, face direction).
++
++Queries in the snapshot must be side-effect-free until the decision is valid:
++commit mTargetPosition only when useAttackableQuery AND attackable, using the
++selector's found position. Reset mHealthGaugeTimer only when useSearchedQuery
++AND searchedTarget. A failed search preserves both fields; searched target
++does not itself overwrite mTargetPosition in Attack END. Earlier branches
++must not perform later-query side effects. Receiver/target lifetime remains
++host-owned. The source nearest helper prefers a Pikmin result over a captain
++result; exact underlying candidate tie ordering is not established here.
++
++Adapter validation rejects nonfinite or out-of-budget snapshots atomically,
++even if an invalid later field would not be read by the source branch. Vector
++components/radii/health/degrees are bounded to absolute 1e6, squared home
++distance to 4e12, and angle separations to absolute 2*pi. Counts are bounded
++to 4096; null is accepted only for zero candidates. These are host API limits,
++not retail gameplay constraints. Default result with valid=false has no effect.
++
++Validation (MinGW bin on PATH):
++
++```
++g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_target_test.cpp pc_port/pc_p2_groink_target.cpp -o ../groink-target-test-01/test.exe
++```
++
++Executable reports p2_groink_target_test PASS. Independent source review
++found no semantic mismatch within this snapshot contract. Tests exercise first-candidate
++selection, species/alive filtering, translated/rotated corridors, strict
++position boundaries, atomic malformed input, transition precedence, query
++side-effect gating, and inclusive angle/exclusive radius boundaries.
++
++Next runtime slice should replace the stationary fixture's forced re-entry
++with live host candidate snapshots and these decisions, preserving the
++shell/FSM/gun/animation phase order established in P2_GROINK_ATTACK.md.
++Exiting to a returned movement state is not executing that movement state.
++Natural pursuit, receiver damage, animated muzzle alignment, death/corpse/
++revival and full scene teardown remain open. Groink is not yet a playable
++completed enemy and retains priority in the AFK hard queue.
+diff --git a/tools/P2_GROINK_VOLLEY.md b/tools/P2_GROINK_VOLLEY.md
+new file mode 100644
+index 00000000..0ce7af16
+--- /dev/null
++++ b/tools/P2_GROINK_VOLLEY.md
+@@ -0,0 +1,130 @@
++# Groink volley policy (#199, parent #169)
++
++This successor to native `756515d5` leaves the existing single-shell arena and
++its runtime evidence unchanged. It adds `pc_p2_groink_volley.h/.cpp` and a focused
++test; no shared hooks or CMake target changes are installed.
++
++Source: projectPiki/pikmin2 revision
++`632af93787b9c95b63f0c13be32b161375ce3a96`, read-only local research checkout.
++`MiniHoudaiShotGun.cpp` constructor allocates six nodes; `emitShotGun` attempts
++three simultaneous emissions, skips unavailable nodes, marks emission zero as
++primary, and perturbs each direction axis by a random value in [-0.1, 0.1].
++`doUpdateCommon` visits active nodes in list order and appends completed nodes
++to the inactive list. `sysCommonU/node.cpp::CNode::add` appends, not prepends.
++
++The new pool preserves those capacity/order rules while reusing the tested
++single-shell integration, gravity and terminal sweep. Host-provided samples
++are normalized random values in [0,1]; this does not reproduce the source RNG
++sequence. Only available-node samples are used. Invalid attempted emission
++inputs reject atomically, which is an explicit host validation rule rather
++than source behavior for malformed inputs.
++
++The host supplies an already transformed/aimed muzzle and speed. Call `emit`
++once at the source attack event 4, not once every rendered frame or throughout
++the event's duration. This pool does not determine aim lock or advance the
++attack animation. Source `StateAttack` pauses at event 2 for aiming, emits at
++event 4, and pauses at event 5 for return rotation; those FSM transitions are
++still a separate task.
++
++Call `update` once per authoritative 30 Hz tick, using the existing bounded
++clock and a real terrain callback such as `P2GroinkMapTrace::trace`. A null
++callback or invalid timestep/owner rejects without mutation. A refused trace
++recycles only that shell with an invalid terminal and continues visiting other
++active nodes; it never uses the single-shell policy's optional straight-line
++fallback. The host should surface an update failure rather than call it a hit.
++
++After each update, consume `terminalCount()` entries from `terminals()` before
++the next tick. Each receipt retains its slot, primary designation and final
++y-minus-ten sweep even if a subsequent emission reuses that slot. Slot numbers
++are storage identities, not durable actor IDs. Reset the pool and source clock
++on scene teardown. The host owns timing, receivers, effects and pointer lifetime.
++
++Validation (MinGW, C++17, `-Wall -Wextra -Werror`):
++
++```powershell
++g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_volley_test.cpp pc_port/pc_p2_groink.cpp pc_port/pc_p2_groink_volley.cpp -o <private-output>/test.exe
++```
++
++The test executes overlapping volleys, full/partial capacity, source list order,
++spread/primary flags, simultaneous impacts, reuse without erased terminal
++metadata, invalid input, trace failure, reset and 60 Hz host-to-30 Hz driving.
++Its traces are synthetic. This is compiled/executed policy evidence, not a
++three-shell native rendering or natural combat test. Previous live single-shell
++floor/wall evidence does not establish those new acceptance levels.
++
++Next integration request: compile this new translation unit and replace the
++arena's single policy with the pool; draw all active slots and retain/consume
++each terminal receipt. Validate a visible three-shell volley and two overlapping
++volleys through the real map before adding receivers. Damage, source particles,
++full attack FSM, revival, tracking and material fidelity remain unfinished.
++
++## Live volley fixture milestone
++
++`tools/p2_groink_volley_runtime.cpp` is a private replacement App entry point.
++It retains the stable arena loader/draw and real MapMgr adapter, includes the
++pool implementation in its single fixture translation unit, and deliberately
++injects two fire commands at source ticks 40 and 44 after aim lock. This is not
++an attack FSM or natural target acquisition. The inherited native build is
++`756515d5`; fixture dependencies are snapshotted by the Python repository's
++`scripts/build_pikmin2_fixture.py`. No shared CMake/hooks were changed.
++
++Executed fixture `output/groink-volley-runtime-fixture-04`:
++
++| Placement | Actual emitted-shell evidence |
++| --- | --- |
++| Owner 0,0,0; target 0,0,250 | Six floor impacts, 246 trace calls, final tick 85 |
++| Owner 200,0,230; target 200,0,480 | Six wall impacts, 58 trace calls, final tick 55 |
++
++Both report six distinct slots, two primary shells, zero remaining active shells,
++successful pool reset/re-emission, exit zero and `PASS GROINK_VOLLEY_RUNTIME`.
++Preceding direct floor/free-space/wall probes have their counters reset before
++emission and are not counted as shell evidence. The reset check is pool-local,
++not full scene/heap teardown. The standalone pool test also passes after the
++configured-include-root adjustment.
++
++The fresh-run helper `tools/p2_groink_volley_run.py` verifies executable
++provenance, stages private overlays, checks receipts, bounds runtime and writes
++`verification.json` with input/output hashes. Example (prepend MinGW bin to PATH):
++
++```powershell
++py -3.12 tools/p2_groink_volley_run.py --root-worktree <Python-worktree> --assets <local-assets> --room <converted-room> --stage <Groink-stage> --fixture <fixture-output> --output <private-runs> --expected-contact floor
++```
++
++Private evidence under `output/groink-volley-runtime-sessions`:
++floor `5932c1abb0a64fa0bbfa3dc7e075dd3b`, wall
++`f2f2cf5361d74c1dbe25dc9170f89332`. Each contains verification, stdout/stderr
++and captures. Readback now flushes pending renderer batches. Visual inspection
++confirms Groink and overlapping colored diagnostic shell markers, but the
++captures do not clearly resolve all six shells simultaneously; that visual
++acceptance remains open. The later spread capture does not establish shell
++visibility. These debug markers are not source projectile effects. Material
++accuracy and animated muzzle alignment also remain unvalidated.
++
++## Next bounded work: source attack-state contract
++
++Read-only audit of `MiniHoudaiState.cpp:267-380` and
++`MiniHoudaiShotGun.cpp:1286-1303,1732-1743,1976-1993` establishes:
++
++- Attack init clears wait/health-gauge timers and target velocity, then starts
++  the attack animation. Event 2 clears the wait timer, stops motion and starts
++  aiming/charge. Event 3 ends charge and produces smoke.
++- Stopped motion resumes only with lock-on and a positive wait timer. This is
++  required in both the aiming and finished-rotation branches; finish alone
++  does not resume motion. The timer increments after that check each update.
++- Event 4 uses the exact source guard `!isFinishMotion() || !(health <= 0)`.
++  Do not replace this OR with AND. Health/flick handling resumes stopped motion
++  and requests finish before processing animation events.
++- Event 5 clears the timer, stops motion and marks rotation finished, clearing
++  lock-on but retaining active rotation. Return rotation chooses the wrapped
++  equivalent of zero, steps by at most 0.025 radians and tests the resulting
++  error against 0.01. Completion clears rotation and sets lock-on again.
++- END resolves death first, then flick, territory/home, another attack, or
++  target/path locomotion. The latter branches require actor/target ownership
++  and must not be invented by a stationary fixture.
++
++Next heartbeat should claim a bounded attack-controller child issue under #169,
++translate pause/resume and rotation/event semantics with source-timed tests,
++then connect it to the pool in the private fixture. Keep source animation-event
++advancement separate from fixed-clock render count. The visual six-shell gate,
++natural targeting/combat, receivers, corpse/revival and full scene lifecycle
++remain open; Groink is not implemented yet.
+diff --git a/tools/p2_groink_arena_test.cpp b/tools/p2_groink_arena_test.cpp
+new file mode 100644
+index 00000000..44f0803c
+--- /dev/null
++++ b/tools/p2_groink_arena_test.cpp
+@@ -0,0 +1,128 @@
++#include "../pc_port/pc_p2_groink_arena.cpp"
++
++#include <cstdio>
++#include <cstring>
++#include <fstream>
++#include <string>
++
++namespace {
++bool writeProfile(const char* path, const char* text)
++{
++    std::ofstream output(path, std::ios::binary);
++    return static_cast<bool>(output << text);
++}
++bool goodTrace(void*, const P2GroinkVec3& position, const P2GroinkVec3& velocity,
++               float delta, float radius, P2GroinkTraceResult& result)
++{
++    if (radius != P2GroinkPolicy::kShellRadius) return false;
++    result.position = { position.x + velocity.x * delta, position.y + velocity.y * delta,
++                        position.z + velocity.z * delta };
++    result.velocity = velocity;
++    return true;
++}
++bool failedTrace(void*, const P2GroinkVec3&, const P2GroinkVec3&, float, float,
++                 P2GroinkTraceResult&)
++{
++    return false;
++}
++bool invalidTrace(void*, const P2GroinkVec3&, const P2GroinkVec3&, float, float,
++                  P2GroinkTraceResult& result)
++{
++    result.position = { INFINITY, 0.0f, 0.0f };
++    result.velocity = {};
++    return true;
++}
++bool check(bool condition, const char* label)
++{
++    if (condition) return true;
++    std::fprintf(stderr, "FAIL %s\n", label);
++    return false;
++}
++bool lockAndFire()
++{
++    for (int frame = 0; frame < 40; ++frame) {
++        if (!pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, frame == 39,
++                                       goodTrace, nullptr)) return false;
++    }
++    return sArena.policy.shell().active;
++}
++}
++
++int main(int argc, char** argv)
++{
++    if (argc != 3) {
++        std::fputs("usage: p2_groink_arena_test <staged-profile> <new-scratch-profile>\n", stderr);
++        return 2;
++    }
++    const char* stagedProfile = argv[1];
++    const char* scratchProfile = argv[2];
++    std::ifstream existing(scratchProfile, std::ios::binary);
++    if (existing) {
++        std::fputs("refusing to overwrite scratch profile\n", stderr);
++        return 2;
++    }
++    const char* valid =
++        "P2_GROINK_ARENA_1\n"
++        "model groink_attack.mod\n"
++        "params 250 15\n"
++        "owner 0 0 0 0\n"
++        "target 0 0 250\n"
++        "muzzle 0 2 0 0 0 0 3 0 0.5 0 0 0\n";
++    bool ok = writeProfile(scratchProfile, valid);
++    ArenaState parsed;
++    ok &= check(parseProfile(scratchProfile, parsed), "generated profile parses");
++    ok &= check(parsed.searchDistance == 250.0f && parsed.attackRadius == 15.0f,
++                "profile parameters");
++    ArenaState staged;
++    ok &= check(parseProfile(stagedProfile, staged), "stage profile parses");
++    ok &= writeProfile(scratchProfile, "P2_GROINK_ARENA_1\nmodel groink_attack.mod\nparams 0 15\nowner 0 0 0 0\n"
++                       "target 0 0 250\nmuzzle 0 2 0 0 0 0 3 0 0.5 0 0 0\n");
++    ArenaState invalid;
++    ok &= check(!parseProfile(scratchProfile, invalid), "zero search distance rejected");
++    ok &= writeProfile(scratchProfile, "P2_GROINK_ARENA_1\r\nmodel groink_attack.mod\r\nparams 250 15\r\n"
++                       "owner 0 0 0 0\r\ntarget 0 0 250\r\nmuzzle 0 0 0 0 0 0 3 0 0.5 0 0 0\r\n");
++    ok &= check(parseProfile(scratchProfile, invalid), "CRLF profile parses before setup validation");
++    bool validMuzzle = false;
++    P2GroinkMuzzle degenerate = worldMuzzle(invalid, validMuzzle);
++    p2_groink_rotate_vertical(degenerate, 0.0f, validMuzzle);
++    ok &= check(!validMuzzle, "degenerate muzzle rejected by setup validation");
++    ok &= writeProfile(scratchProfile, (std::string(valid) + "unexpected\n").c_str());
++    ok &= check(!parseProfile(scratchProfile, invalid), "trailing profile data rejected");
++    const std::string oversized(4097, 'x');
++    ok &= writeProfile(scratchProfile, oversized.c_str());
++    ok &= check(!parseProfile(scratchProfile, invalid), "oversized profile rejected");
++
++    ok &= writeProfile(scratchProfile, valid);
++    ok &= check(parseProfile(scratchProfile, sArena), "simulation profile parses");
++    sArena.ready = true;
++    ok &= check(lockAndFire(), "locked event four emits shell");
++    const P2GroinkVec3 before = sArena.policy.shell().position;
++    ok &= check(pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, true, goodTrace, nullptr),
++                "active event four still updates");
++    const P2GroinkVec3 after = sArena.policy.shell().position;
++    ok &= check(before.x != after.x || before.y != after.y || before.z != after.z,
++                "active shell moved");
++    const P2GroinkVec3 unchanged = sArena.policy.shell().position;
++    ok &= check(!pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, false, nullptr, nullptr),
++                "null trace refused");
++    ok &= check(sArena.policy.shell().position.x == unchanged.x
++                && sArena.policy.shell().position.y == unchanged.y
++                && sArena.policy.shell().position.z == unchanged.z, "null trace no mutation");
++    ok &= check(!pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, false, failedTrace, nullptr),
++                "trace failure rejected");
++    ok &= check(!sArena.policy.shell().active, "trace failure recycled shell");
++
++    sArena = ArenaState{};
++    ok &= check(parseProfile(scratchProfile, sArena), "invalid-terminal profile parses");
++    sArena.ready = true;
++    ok &= check(lockAndFire(), "invalid-terminal shell emits");
++    ok &= check(!pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, false, invalidTrace, nullptr),
++                "invalid trace terminal propagated");
++    ok &= check(!sArena.policy.shell().active, "invalid trace terminal recycled shell");
++    pc_p2_groink_arena_reset();
++    ok &= check(!pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, false, goodTrace, nullptr),
++                "reset clears arena state");
++    std::remove(scratchProfile);
++    if (ok) std::puts("p2_groink_arena_test PASS");
++    return ok ? 0 : 1;
++}
+diff --git a/tools/p2_groink_attack_test.cpp b/tools/p2_groink_attack_test.cpp
+new file mode 100644
+index 00000000..d820f5e5
+--- /dev/null
++++ b/tools/p2_groink_attack_test.cpp
+@@ -0,0 +1,67 @@
++#include "pc_p2_groink_attack.h"
++#include <cstdio>
++#include <cstdlib>
++#include <initializer_list>
++
++using C = P2GroinkAttackCommand;
++using E = P2GroinkAttackEvent;
++constexpr float dt = P2GroinkPolicy::kSourceDelta;
++void check(bool v, const char* text) { if (!v) { std::fprintf(stderr,"FAIL %s\n",text); std::exit(1); } }
++void expect(const P2GroinkAttackCommands& out, std::initializer_list<C> commands) {
++    check(out.valid && out.count==commands.size(),"command count");
++    unsigned i=0; for (auto c:commands) check(out.items[i++]==c,"command ordering");
++}
++int main() {
++    P2GroinkAttack attack;
++    P2GroinkAttackInput in;
++    check(!attack.step(in,dt).valid,"begin required"); attack.begin();
++    in.event=E::Charge;
++    expect(attack.step(in,dt),{C::StopMotion,C::StartAim,C::StartCharge});
++    check(attack.waitTime()==0,"charge clears wait");
++    in.event=E::None; in.motionStopped=true; in.gunLocked=true; in.gunRotating=true;
++    expect(attack.step(in,dt),{C::RefreshTarget}); // zero wait delays resume
++    expect(attack.step(in,dt),{C::ResumeMotion,C::RefreshTarget});
++    in.motionStopped=false; in.gunRotating=false; in.event=E::Smoke;
++    expect(attack.step(in,dt),{C::LargeSmoke,C::FinishCharge});
++    in.event=E::Fire; expect(attack.step(in,dt),{C::EmitVolley});
++    in.motionFinishing=true; expect(attack.step(in,dt),{C::EmitVolley});
++    in.flick=true; expect(attack.step(in,dt),{C::FinishMotion,C::EmitVolley});
++    in.health=0; expect(attack.step(in,dt),{C::FinishMotion});
++    in.event=E::End; expect(attack.step(in,dt),{C::FinishMotion,C::ExitDead});
++    check(!attack.step(in,dt).valid,"end deactivates controller");
++    attack.begin(); in={}; in.motionStopped=true; in.flick=true; in.event=E::End;
++    expect(attack.step(in,dt),{C::ResumeMotion,C::FinishMotion,C::ExitFlick});
++    attack.begin(); in={}; in.event=E::End;
++    expect(attack.step(in,dt),{C::ResolveNextState});
++    attack.begin(); in={}; in.event=E::Return;
++    expect(attack.step(in,dt),{C::StopMotion,C::ReturnGun});
++    in.event=E::None; in.motionStopped=true; in.gunRotating=true;
++    expect(attack.step(in,dt),{C::RefreshTarget});
++    in.gunRotating=false; in.gunLocked=true;
++    expect(attack.step(in,dt),{C::ResumeMotion});
++    const float wait=attack.waitTime(); in.activeTick=false; in.event=E::Fire;
++    expect(attack.step(in,dt),{}); check(attack.waitTime()==wait,"paused timer and event unchanged");
++    in.activeTick=true;
++    check(!attack.step(in,0.1f).valid && attack.waitTime()==wait,"invalid delta immutable");
++    in.health=NAN; check(!attack.step(in,dt).valid && attack.waitTime()==wait,"invalid health immutable");
++    attack.reset(); check(!attack.step({},dt).valid,"reset inactive");
++
++    P2GroinkGunRotation gun; gun.start();
++    check(gun.rotating() && !gun.locked() && !gun.finished() && gun.angle()==0,"start flags");
++    for (int i=0;i<30;++i) check(gun.update({0,40,0},{0,0,250},250,15,dt),"aim update");
++    check(gun.locked() && gun.speed()>0,"aim acquired lock");
++    check(gun.update({0,40,0},{0,0,70},250,15,dt) && gun.locked(),"source lock latches during retarget");
++    gun.finish(); check(gun.rotating() && !gun.locked() && gun.finished(),"finish retains rotation");
++    int count=0;
++    while(gun.rotating() && count++<300) check(gun.update({}, {},0,0,dt),"return needs no target");
++    check(count<300 && gun.locked() && gun.finished(),"return unlocks animation");
++    gun.start(); check(!gun.locked() && !gun.finished() && gun.speed()==0,"second cycle clean");
++    float next=123; bool done=false;
++    check(P2GroinkGunRotation::returnStep(0.034f,next,done) && done && std::fabs(next-0.009f)<1e-6f,"post-step return threshold");
++    check(P2GroinkGunRotation::returnStep(6.27f,next,done) && done && next>6.28f,"wrapped positive return");
++    check(P2GroinkGunRotation::returnStep(-6.27f,next,done) && done && next<-6.28f,"wrapped negative return");
++    next=123; done=false;
++    check(!P2GroinkGunRotation::returnStep(NAN,next,done) && next==123 && !done,"invalid return immutable");
++    check(!gun.update({}, {},250,15,0.1f) && gun.angle()==0,"invalid gun tick immutable");
++    std::puts("p2_groink_attack_test PASS");
++}
+diff --git a/tools/p2_groink_clock_test.cpp b/tools/p2_groink_clock_test.cpp
+new file mode 100644
+index 00000000..38f48d07
+--- /dev/null
++++ b/tools/p2_groink_clock_test.cpp
+@@ -0,0 +1,53 @@
++#include "../pc_port/pc_p2_groink_clock.h"
++
++#include <cmath>
++#include <cstdio>
++#include <limits>
++
++namespace {
++bool check(bool value, const char* label)
++{
++    if (value) return true;
++    std::fprintf(stderr, "FAIL %s\n", label);
++    return false;
++}
++
++bool rate(double frameSeconds, int frames, const char* label)
++{
++    P2GroinkSourceClock clock;
++    int ticks = 0;
++    for (int frame = 0; frame < frames; ++frame) ticks += clock.step(frameSeconds, true);
++    return check(ticks == 30, label);
++}
++}
++
++int main()
++{
++    bool ok = true;
++    ok &= rate(1.0 / 60.0, 60, "60 Hz produces 30 source ticks");
++    ok &= rate(1.0 / 120.0, 120, "120 Hz produces 30 source ticks");
++    ok &= rate(1.0 / 30.0, 30, "30 Hz produces 30 source ticks");
++
++    P2GroinkSourceClock clock;
++    ok &= check(clock.step(0.20, true) == P2GroinkSourceClock::kMaximumTicks,
++                "sub-gap stall caps ticks");
++    ok &= check(clock.step(0.0, true) == 0, "capped stall debt discarded");
++    ok &= check(clock.step(1.0 / 30.0, true) == 1, "no later capped burst");
++    ok &= check(clock.step(0.25, true) == 0, "large gap drops debt");
++    ok &= check(clock.step(1.0 / 30.0, true) == 1, "large gap leaves no debt");
++
++    clock.step(1.0 / 60.0, true);
++    ok &= check(clock.step(1.0 / 60.0, false) == 0, "pause resets debt");
++    ok &= check(clock.step(1.0 / 60.0, true) == 0, "resume has no paused debt");
++    ok &= check(clock.step(-0.01, true) == 0, "negative elapsed resets debt");
++    ok &= check(clock.step(std::numeric_limits<double>::infinity(), true) == 0,
++                "infinite elapsed resets debt");
++    ok &= check(clock.step(std::numeric_limits<double>::quiet_NaN(), true) == 0,
++                "NaN elapsed resets debt");
++    clock.step(1.0 / 60.0, true);
++    clock.reset();
++    ok &= check(clock.step(1.0 / 60.0, true) == 0, "explicit reset clears stage debt");
++
++    if (ok) std::puts("p2_groink_clock_test PASS");
++    return ok ? 0 : 1;
++}
+diff --git a/tools/p2_groink_events_test.cpp b/tools/p2_groink_events_test.cpp
+new file mode 100644
+index 00000000..2508555b
+--- /dev/null
++++ b/tools/p2_groink_events_test.cpp
+@@ -0,0 +1,54 @@
++#include "pc_p2_groink_events.h"
++#include <cstdio>
++#include <cstdlib>
++void check(bool value,const char* text) { if(!value) { std::fprintf(stderr,"FAIL %s\n",text); std::exit(1); } }
++using E=P2GroinkAttackEvent;
++int main() {
++    P2GroinkAttackCursor cursor;
++    check(cursor.start({44,{11,22,25,32}}),"retail attack metadata");
++    for(int i=1;i<=11;++i) check(cursor.animate(1).event==E::None,"no event on key boundary");
++    check(cursor.animate(0).event==E::None && cursor.frame()==11,"stop at key does not fire");
++    check(cursor.animate(0.5f).event==E::None,"integer crossing required");
++    check(cursor.animate(0.5f).event==E::Charge,"frame12 charge");
++    for(int i=0;i<50;++i) check(cursor.animate(0).event==E::None && cursor.frame()==12,"no held event during aim pause");
++    for(int i=13;i<=22;++i) check(cursor.animate(1).event==E::None,"no early smoke");
++    check(cursor.animate(1).event==E::Smoke,"frame23 smoke");
++    check(cursor.animate(1).event==E::None && cursor.animate(1).event==E::None,"no early fire");
++    check(cursor.animate(1).event==E::Fire,"frame26 fire");
++    for(int i=27;i<=32;++i) check(cursor.animate(1).event==E::None,"no early return");
++    check(cursor.animate(1).event==E::Return,"frame33 return");
++    check(cursor.animate(0).event==E::None,"return pause consumes no edge");
++    for(int i=34;i<44;++i) check(cursor.animate(1).event==E::None,"no early end");
++    check(cursor.animate(1).event==E::End && cursor.frame()==43,"END clamps display frame");
++    for(int i=0;i<10;++i) check(cursor.animate(1).event==E::None,"END once");
++    const float old=cursor.frame();
++    check(!cursor.animate(NAN).valid && cursor.frame()==old,"invalid increment immutable");
++    check(!cursor.start({44,{11,11,25,32}}) && cursor.completed(),"invalid clip preserves state");
++    cursor.reset(); check(!cursor.animate(1).valid,"reset requires start");
++    check(cursor.start({10,{1,2,3,5}}),"bounded dense keys");
++    check(cursor.animate(4).event==E::Fire,"last callback wins as source single slot");
++
++    // Normal enemy-manager ordering: FSM consumes the previous animation latch,
++    // gun rotation follows FSM, and animation generates next tick's latch.
++    cursor.start({44,{11,22,25,32}}); P2GroinkAttack attack; attack.begin();
++    P2GroinkGunRotation gun; bool stopped=false; int fires=0,ends=0,pauses=0;
++    E pending=E::None;
++    for(int tick=0;tick<250 && !ends;++tick) {
++        P2GroinkAttackInput input; input.motionStopped=stopped; input.gunRotating=gun.rotating();
++        input.gunLocked=gun.locked(); input.event=pending;
++        auto commands=attack.step(input,P2GroinkPolicy::kSourceDelta); check(commands.valid,"composed attack tick");
++        for(std::size_t i=0;i<commands.count;++i) switch(commands.items[i]) {
++            case P2GroinkAttackCommand::StopMotion: stopped=true; ++pauses; break;
++            case P2GroinkAttackCommand::ResumeMotion: stopped=false; break;
++            case P2GroinkAttackCommand::StartAim: gun.start(); break;
++            case P2GroinkAttackCommand::ReturnGun: gun.finish(); break;
++            case P2GroinkAttackCommand::EmitVolley: ++fires; check(cursor.frame()==26,"fire follows animation not tick"); break;
++            case P2GroinkAttackCommand::ResolveNextState: ++ends; break;
++            default: break;
++        }
++        check(gun.update({0,40,0},{0,0,250},250,15,P2GroinkPolicy::kSourceDelta),"composed rotation");
++        pending=cursor.animate(stopped?0:1).event;
++    }
++    check(fires==1 && pauses==2 && ends==1,"one cycle with both waits");
++    std::puts("p2_groink_events_test PASS");
++}
+diff --git a/tools/p2_groink_hit_test.cpp b/tools/p2_groink_hit_test.cpp
+new file mode 100644
+index 00000000..2ba5b2d4
+--- /dev/null
++++ b/tools/p2_groink_hit_test.cpp
+@@ -0,0 +1,31 @@
++#include "pc_p2_groink_hit.h"
++#include <cassert>
++#include <cstdio>
++#include <limits>
++int main() {
++    P2GroinkHitInput in{{0,0,0},{0,0,10},2,10,25,false};
++    P2GroinkHitCandidate c{{1,0,5},P2GroinkCandidateKind::Pikmin,true,false,4};
++    auto hit=[&] { return p2_groink_classify_hit(in,c); };
++    auto h=hit(); assert(h.valid&&h.insideSweep&&h.kind==P2GroinkHitKind::Bomb&&h.damage==25&&h.impulse.x==150&&h.impulse.y==100);
++    c.kind=P2GroinkCandidateKind::Captain; assert(hit().impulse.y==0);
++    c.kind=P2GroinkCandidateKind::Enemy; assert(hit().damage==100); c.owner=true; assert(hit().kind==P2GroinkHitKind::None); c.owner=false;
++    c.kind=P2GroinkCandidateKind::OtherPiki; in.terminal=true; assert(hit().insideSweep&&hit().kind==P2GroinkHitKind::None);
++    c.position={2,0,10}; h=hit(); assert(!h.insideSweep&&h.kind==P2GroinkHitKind::Wind&&h.impulse.x==135&&h.impulse.y==135);
++    c.position={10,0,10}; assert(hit().kind==P2GroinkHitKind::None);
++    c.kind=P2GroinkCandidateKind::Enemy; c.position={4,0,10}; assert(hit().kind==P2GroinkHitKind::None);
++    c.position.x=3; assert(hit().kind==P2GroinkHitKind::Bomb); in.terminal=false; assert(hit().kind==P2GroinkHitKind::None);
++    c.kind=P2GroinkCandidateKind::Pikmin; c.position={0,0,-2}; assert(!hit().insideSweep);
++    c.position.z=12; assert(!hit().insideSweep); c.position.z=11; assert(hit().insideSweep);
++    c.position={0,2,5}; assert(!hit().insideSweep); c.position.y=1; assert(hit().insideSweep);
++    c.position={0,0,5}; h=hit(); assert(h.impulse.x==0&&h.impulse.z==0&&h.impulse.y==100);
++    in.terminal=true; c.position={0,3,10}; h=hit(); assert(h.kind==P2GroinkHitKind::Wind&&h.impulse.x==0&&h.impulse.z==0&&h.impulse.y==127.5f);
++    c.kind=P2GroinkCandidateKind::Captain; h=hit(); assert(h.kind==P2GroinkHitKind::Wind&&h.impulse.y==0);
++    in.radius=0; in.terminalRadius=0; h=hit(); assert(h.valid&&!h.insideSweep&&h.kind==P2GroinkHitKind::None);
++    in.terminalRadius=10; assert(hit().kind==P2GroinkHitKind::Wind);
++    in.radius=2;
++    c.alive=false; assert(hit().kind==P2GroinkHitKind::None); c.alive=true;
++    in.end=in.start; in.terminal=true; assert(hit().kind==P2GroinkHitKind::None);
++    in.end={0,10,0}; c.position={999,5,999}; assert(hit().insideSweep); // Source zero cross-product basis, not a capsule.
++    in.damage=std::numeric_limits<float>::quiet_NaN(); assert(!hit().valid);
++    puts("p2_groink_hit_test PASS");
++}
+diff --git a/tools/p2_groink_runtime.cpp b/tools/p2_groink_runtime.cpp
+new file mode 100644
+index 00000000..b24f8e53
+--- /dev/null
++++ b/tools/p2_groink_runtime.cpp
+@@ -0,0 +1,138 @@
++// Private real-GL Groink arena fixture. This file is compiled by the isolated
++// fixture build only; it is not part of the game target.
++#include <SDL2/SDL.h>
++#include <GL/gl.h>
++#include "gl/pc_opengl.h"
++#include "App.h"
++#include "Node.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "MoviePlayer.h"
++#include "Shape.h"
++#include "system.h"
++#include "pc_bbft.h"
++#include "pc_gpu_preference.h"
++#include "pc_window.h"
++#include "pc_p2_preview.h"
++#include "pc_p2_groink_arena.h"
++#include "pc_p2_groink_map_trace.h"
++#include "pc_p2_groink_clock.h"
++#include "settings/pc_settings.h"
++#include "settings/pc_settings_p2d.h"
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <vector>
++
++namespace {
++void require(bool value, const char* message) {
++    if (!value) { std::printf("FAIL GROINK_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
++}
++
++void capture(const char* path) {
++    auto bind = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
++    require(bind != nullptr, "framebuffer entry point unavailable");
++    GLint previous = 0; glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous); bind(GL_FRAMEBUFFER, 0);
++    int w = 0, h = 0; SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
++    std::vector<unsigned char> pixels(size_t(w) * size_t(h) * 3);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadBuffer(GL_BACK);
++    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data()); bind(GL_FRAMEBUFFER, previous);
++    require(glGetError() == GL_NO_ERROR, "capture GL error");
++    bool nonblack = false; for (unsigned char v : pixels) nonblack |= v > 8;
++    require(nonblack, "empty capture");
++    FILE* f = std::fopen(path, "wb"); require(f != nullptr, "capture file");
++    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
++    for (int y = h - 1; y >= 0; --y) std::fwrite(pixels.data() + size_t(y) * w * 3, 1, size_t(w) * 3, f);
++    std::fclose(f);
++}
++
++struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
++
++class GroinkApp final : public PlugPikiApp {
++    int frames = 0, sourceTicks = 0;
++    bool setup = false, probes = false, fired = false, flightCapture = false, flightCaptured = false, terminalCapture = false;
++    P2GroinkMapTrace trace;
++    P2GroinkSourceClock clock;
++    WallProbe wall;
++public:
++    int idle() override {
++        int result = PlugPikiApp::idle();
++        require(++frames < 1800, "timeout");
++        if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
++            clock.reset(); gameflow.mMoviePlayer->requestSkip(); return result;
++        }
++        if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) { clock.reset(); return result; }
++        Navi* n = naviMgr->getNavi();
++        if (!setup) {
++            n->resetPosition(Vector3f(0, 0, -250)); n->mFaceDirection = 0; n->mSRT.r.set(0, 0, 0);
++            trace.reset(mapMgr);
++            require(pc_p2_groink_arena_setup("p2-groink-arena.txt"), "arena setup"); setup = true;
++        }
++        if (!probes) { runProbes(); probes = true; std::puts("P2_GROINK_MAP_PROBES_PASS"); trace.reset(mapMgr); }
++        // The source clock is independent of presentation count; a pause drops debt.
++        const int ticks = clock.step(gsys->getFrameTime(), true);
++        for (int i = 0; i < ticks; ++i) {
++            ++sourceTicks;
++            bool fire = !fired && sourceTicks >= 40; fired |= fire;
++            require(pc_p2_groink_arena_update(P2GroinkPolicy::kSourceDelta, fire, P2GroinkMapTrace::trace, &trace), "arena update");
++            if (fire) std::printf("P2_GROINK_FIRE source_tick=%d traces=%llu\n",sourceTicks,(unsigned long long)trace.calls());
++        }
++        if (trace.calls() >= 3 && !flightCaptured) flightCapture = true;
++        if ((trace.floors() || trace.walls()) && fired) terminalCapture = true;
++        return result;
++    }
++    void draw(Graphics& gfx) override {
++        PlugPikiApp::draw(gfx);
++        if (!setup) return;
++        pc_p2_groink_arena_draw(gfx);
++        if (flightCapture) { capture("groink-weighted-flight.ppm"); flightCapture = false; flightCaptured = true; }
++        if (terminalCapture) {
++            require(flightCaptured,"no flight capture");
++            capture("groink-weighted-terminal.ppm");
++            std::printf("P2_GROINK_FLIGHT_PASS ticks=%d traces=%llu floors=%llu walls=%llu\n",sourceTicks,(unsigned long long)trace.calls(),(unsigned long long)trace.floors(),(unsigned long long)trace.walls());
++            std::puts("PASS GROINK_RUNTIME"); std::fflush(stdout); std::_Exit(0);
++        }
++    }
++private:
++    void runProbes() {
++        require(mapMgr && mapMgr->mMapModel, "map unavailable");
++        float ground = mapMgr->getMinY(0, 0, false); require(std::isfinite(ground), "center ground unavailable");
++        P2GroinkTraceResult result{};
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 15, 0}, {0, -300, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "center trace");
++        std::printf("P2_GROINK_FLOOR_PROBE ground=%.6f center=%.6f floor=%d\n",ground,result.position.y,result.floor);
++        require(result.floor && std::fabs(result.position.y - (ground + 10)) < 0.25f, "center floor conversion");
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 100, 0}, {0, 0, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "free trace");
++        require(!result.floor && !result.wall, "free center collision");
++        Shape* model = mapMgr->mMapModel;
++        for (int i = 0; i < model->mTriCount && !wall.valid; ++i) {
++            const CollTriInfo& tri = model->mTriList[i];
++            const Vector3f& a = model->mVertexList[tri.mVertexIndices[0]];
++            const Vector3f& b = model->mVertexList[tri.mVertexIndices[1]];
++            const Vector3f& c = model->mVertexList[tri.mVertexIndices[2]];
++            Vector3f center((a.x + b.x + c.x) / 3.0f,
++                            (a.y + b.y + c.y) / 3.0f,
++                            (a.z + b.z + c.z) / 3.0f);
++            const Vector3f normal = tri.mTriangle.mNormal;
++            float mapGround = mapMgr->getMinY(center.x, center.z, false);
++            if (std::fabs(normal.y) < 0.05f && center.y > mapGround + 15) {
++                wall = {true, {center.x + normal.x * 15, center.y + normal.y * 15, center.z + normal.z * 15},
++                        {-normal.x * 300, -normal.y * 300, -normal.z * 300}};
++            }
++        }
++        require(wall.valid, "no wall probe candidate");
++        require(P2GroinkMapTrace::trace(&trace, wall.center, wall.velocity, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "wall trace");
++        require(result.wall, "wall probe did not hit");
++    }
++};
++}
++
++int main(int argc, char** argv) {
++    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
++    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
++    require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
++    require(pc_window_init("Groink weighted runtime fixture", 960, 720), "window init");
++    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
++    gsys->run(new GroinkApp()); return 0;
++}
+diff --git a/tools/p2_groink_target_runtime.cpp b/tools/p2_groink_target_runtime.cpp
+new file mode 100644
+index 00000000..f912dca8
+--- /dev/null
++++ b/tools/p2_groink_target_runtime.cpp
+@@ -0,0 +1,405 @@
++// Private real-GL Groink arena fixture. This file is compiled by the isolated
++// fixture build only; it is not part of the game target.
++#include <SDL2/SDL.h>
++#include <GL/gl.h>
++#include "gl/pc_opengl.h"
++#include "gl/pc_gfx.h"
++#include "App.h"
++#include "Node.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "MoviePlayer.h"
++#include "Shape.h"
++#include "Camera.h"
++#include "system.h"
++#include "pc_bbft.h"
++#include "pc_gpu_preference.h"
++#include "pc_window.h"
++#include "pc_p2_preview.h"
++#include "pc_p2_groink_arena.h"
++#include "pc_p2_groink_map_trace.h"
++#include "pc_p2_groink_clock.h"
++#include "settings/pc_settings.h"
++#include "settings/pc_settings_p2d.h"
++#include <cmath>
++#include <cstdio>
++#include <cstdint>
++#include <cstdlib>
++#include <vector>
++#include <fstream>
++#include <sstream>
++// The Groink policy, arena, map-trace, attack, target, volley, hit, strike and
++// projectile-receiver implementations are compiled into pikmin_pc and resolved
++// from the linked product objects; this fixture only includes their headers.
++#include "../pc_port/pc_p2_groink_volley.h"
++#include "../pc_port/pc_p2_groink_attack.h"
++#include "../pc_port/pc_p2_groink_events.h"
++#include "../pc_port/pc_p2_groink_target.h"
++#include "../pc_port/pc_p2_groink_strike.h"
++
++namespace {
++void require(bool value, const char* message) {
++    if (!value) { std::printf("FAIL GROINK_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
++}
++
++void capture(const char* path) {
++    pc_gfx_flush_batch();
++    auto bind = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
++    require(bind != nullptr, "framebuffer entry point unavailable");
++    GLint previous = 0; glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous); bind(GL_FRAMEBUFFER, 0);
++    int w = 0, h = 0; SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
++    std::vector<unsigned char> pixels(size_t(w) * size_t(h) * 3);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadBuffer(GL_BACK);
++    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data()); bind(GL_FRAMEBUFFER, previous);
++    require(glGetError() == GL_NO_ERROR, "capture GL error");
++    bool nonblack = false; for (unsigned char v : pixels) nonblack |= v > 8;
++    require(nonblack, "empty capture");
++    FILE* f = std::fopen(path, "wb"); require(f != nullptr, "capture file");
++    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
++    for (int y = h - 1; y >= 0; --y) std::fwrite(pixels.data() + size_t(y) * w * 3, 1, size_t(w) * 3, f);
++    std::fclose(f);
++}
++
++struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
++
++// Per-tick snapshot of an active shell before volley.update, so the moving
++// segment (previous -> current) can be classified after the update.
++struct ActiveShellSnapshot { std::size_t slot = 0; P2GroinkVec3 position; };
++
++// Source MiniHoudai parameters for the shell sweep. The profile's attack radius
++// is 15; the terminal falloff radius is the source attack hit angle (65). The
++// proxy health is deliberately small so repeated terminal strikes reach zero.
++constexpr float kShellDamage = 10.0f;
++constexpr float kShellTerminalRadius = 65.0f;
++constexpr float kProxyHealth = 25.0f;
++
++class GroinkAttackApp final : public PlugPikiApp {
++    int frames = 0, sourceTicks = 0;
++    bool setup = false, probes = false, fired = false, flightCapture = false, flightCaptured = false, terminalCapture = false;
++    P2GroinkMapTrace trace;
++    P2GroinkSourceClock clock;
++    WallProbe wall;
++    P2GroinkVolley volley;
++    P2GroinkAttack attack;
++    P2GroinkGunRotation gun;
++    P2GroinkAttackCursor cursor;
++    P2GroinkAttackEvent pending = P2GroinkAttackEvent::None;
++    bool stopped = false;
++    unsigned cycles = 0;
++    bool relocated = false, exited = false;
++    unsigned acquisitions = 0;
++    P2GroinkMuzzle muzzle;
++    P2GroinkVec3 owner, target;
++    float search = 0, radius = 0, angle = 0;
++    unsigned emitted = 0, impacts = 0, primaryImpacts = 0;
++    P2ProjectileReceiverRegistry proxy;
++    unsigned receiverHits = 0, receiverDeaths = 0;
++    bool receiverHealthDecreased = false, strikePlacementPrinted = false;
++    float lastReceiverHealth = kProxyHealth;
++    // Dedups one shell against one candidate across its whole flight; moving and
++    // terminal steps share it so a duplicate position cannot apply twice.
++    P2GroinkStrikeTracker flightTracker;
++    unsigned flightSteps = 0, flightHits = 0, flightWind = 0;
++    const std::array<P2GroinkVec3,3> spread{{{0.5f,0.5f,0.5f},{0,0.5f,0},{1,0.5f,1}}};
++public:
++    int idle() override {
++        int result = PlugPikiApp::idle();
++        require(++frames < 1800, "timeout");
++        if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
++            clock.reset(); gameflow.mMoviePlayer->requestSkip(); return result;
++        }
++        if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) { clock.reset(); return result; }
++        Navi* n = naviMgr->getNavi();
++        if (!setup) {
++            n->resetPosition(Vector3f(0, 0, 100)); n->mFaceDirection = 0; n->mSRT.r.set(0, 0, 0);
++            trace.reset(mapMgr);
++            require(pc_p2_groink_arena_setup("p2-groink-arena.txt"), "arena setup"); loadProfile();
++            require(proxy.addAny(kProxyHealth), "proxy receiver");
++            require(owner.x==0 && owner.z==0,"target fixture requires center floor stage");
++            auto selected=queryNavi();
++            require(selected.found,"initial live Navi acquisition");
++            target=selected.position; ++acquisitions; beginAttack(); setup = true;
++        }
++        if (!probes) { runProbes(); probes = true; std::puts("P2_GROINK_MAP_PROBES_PASS"); trace.reset(mapMgr); }
++        // Controlled placement: ordinary captain movement/collision can leave
++        // the narrow corridor before END. Pin only this private test actor.
++        n->resetPosition(Vector3f(relocated?100.0f:0.0f,0,100));
++        // The source clock is independent of presentation count; a pause drops debt.
++        const int ticks = clock.step(gsys->getFrameTime(), true);
++        for (int i = 0; i < ticks; ++i) {
++            ++sourceTicks;
++            require(sourceTicks < 600, "attack cycles did not finish");
++            // Snapshot active shells before the update so each survivor's
++            // previous -> current position forms the moving sweep segment. The
++            // policy does not record per-step segments itself.
++            ActiveShellSnapshot movingSnapshot[P2GroinkVolley::kCapacity];
++            std::size_t movingCount = 0;
++            for (std::size_t s=0;s<P2GroinkVolley::kCapacity;++s) {
++                const P2GroinkShell shell = volley.shell(s);
++                if (shell.active) { movingSnapshot[movingCount].slot=s; movingSnapshot[movingCount].position=shell.position; ++movingCount; }
++            }
++            // Living/common update moves existing shells before FSM emissions.
++            require(volley.update(owner,P2GroinkPolicy::kSourceDelta,P2GroinkMapTrace::trace,&trace), "volley update");
++            // In-flight creature-hit processing: classify each surviving shell's
++            // moving segment against the live Navi, deduped per (slot, token).
++            if (movingCount > 0) {
++                const Vector3f naviState = n->getPosition();
++                const P2GroinkHitCandidate movingCandidate{{naviState.x,naviState.y,naviState.z},
++                    P2GroinkCandidateKind::Captain,n->isAlive(),false,radius};
++                const std::uint64_t token = reinterpret_cast<std::uint64_t>(n);
++                for (std::size_t s=0;s<movingCount;++s) {
++                    const P2GroinkShell current = volley.shell(movingSnapshot[s].slot);
++                    if (!current.active) continue; // terminal path owns this shell now
++                    ++flightSteps;
++                    P2GroinkStrikeInput flight;
++                    flight.hit.start = movingSnapshot[s].position;
++                    flight.hit.end = current.position;
++                    flight.hit.radius = radius; flight.hit.terminalRadius = radius;
++                    flight.hit.damage = kShellDamage; flight.hit.terminal = false;
++                    flight.targetToken = token; flight.attributedToken = token;
++                    recordStrike(movingSnapshot[s].slot, flight, movingCandidate, true);
++                }
++            }
++            for (std::size_t j=0;j<volley.terminalCount();++j) {
++                const auto& hit = volley.terminals()[j];
++                require(hit.step.valid && (hit.step.reason == P2GroinkTerminalReason::Floor || hit.step.reason == P2GroinkTerminalReason::Wall), "non-terrain terminal");
++                ++impacts; primaryImpacts += hit.primary;
++                std::printf("P2_GROINK_VOLLEY_IMPACT tick=%d slot=%u primary=%d reason=%d xyz=%.3f,%.3f,%.3f\n",sourceTicks,unsigned(hit.slot),hit.primary,int(hit.step.reason),hit.step.end.x,hit.step.end.y,hit.step.end.z);
++                // Fixture-pinned placement: this is a placement fixture, not
++                // natural pursuit. The live Navi is temporarily put on the
++                // retained terminal sweep so the receiver bridge is actually
++                // exercised; the canonical targeting pin is restored after.
++                const P2GroinkVec3 mid{(hit.step.start.x+hit.step.end.x)*0.5f,
++                                       (hit.step.start.y+hit.step.end.y)*0.5f,
++                                       (hit.step.start.z+hit.step.end.z)*0.5f};
++                n->resetPosition(Vector3f(mid.x,mid.y,mid.z));
++                if (!strikePlacementPrinted) {
++                    std::puts("P2_GROINK_STRIKE_PLACEMENT fixture_pinned=1 reason=terminal_sweep_midpoint");
++                    strikePlacementPrinted = true;
++                }
++                const Vector3f naviPos = n->getPosition();
++                const P2GroinkHitCandidate candidate{{naviPos.x,naviPos.y,naviPos.z},
++                    P2GroinkCandidateKind::Captain,n->isAlive(),false,radius};
++                P2GroinkStrikeInput strike;
++                strike.hit.start = hit.step.start; strike.hit.end = hit.step.end;
++                strike.hit.radius = radius; strike.hit.terminalRadius = kShellTerminalRadius;
++                strike.hit.damage = kShellDamage; strike.hit.terminal = true;
++                const std::uint64_t token = reinterpret_cast<std::uint64_t>(n);
++                strike.targetToken = token; strike.attributedToken = token;
++                recordStrike(hit.slot, strike, candidate, false);
++                // This shell has recycled; forget its flight so a reused pool
++                // slot begins a fresh dedup history.
++                flightTracker.clearSlot(hit.slot);
++                n->resetPosition(Vector3f(relocated?100.0f:0.0f,0,100));
++            }
++            if (cycles < 2) {
++                P2GroinkAttackInput input;
++                input.motionStopped = stopped; input.gunRotating = gun.rotating();
++                input.gunLocked = gun.locked(); input.event = pending;
++                auto commands = attack.step(input,P2GroinkPolicy::kSourceDelta);
++                require(commands.valid,"attack commands");
++                for (std::size_t j=0;j<commands.count;++j) {
++                    using C = P2GroinkAttackCommand;
++                    switch(commands.items[j]) {
++                    case C::ResumeMotion: stopped=false; break;
++                    case C::StopMotion: stopped=true; break;
++                    case C::StartAim: gun.start(); break;
++                    case C::ReturnGun: gun.finish(); break;
++                    case C::EmitVolley: {
++                        bool valid=false;
++                        auto rotated=p2_groink_rotate_vertical(muzzle,gun.angle(),valid);
++                        require(valid && gun.locked() && cursor.frame()==26,"source fire event boundary");
++                        auto receipt=volley.emit(rotated,gun.speed(),spread);
++                        require(receipt.valid && receipt.count==3,"event-driven volley");
++                        emitted+=3; fired=true;
++                        std::printf("P2_GROINK_ATTACK_FIRE tick=%d frame=%.1f cycle=%u emitted=%u\n",sourceTicks,cursor.frame(),cycles,emitted);
++                        break;
++                    }
++                    case C::ResolveNextState:
++                        ++cycles;
++                        std::printf("P2_GROINK_ATTACK_END tick=%d cycles=%u\n",sourceTicks,cycles);
++                        {
++                            auto selected=queryNavi();
++                            P2GroinkAttackEndInput end;
++                            end.territoryRadius=100; end.homeRadius=10;
++                            end.maxAttackAngleDegrees=45; end.attackable=selected.found;
++                            // Fixture owner is at home, path faces forward, no searched
++                            // target fallback. This does not execute locomotion.
++                            auto decision=p2_groink_attack_end(end);
++                            require(decision.valid && decision.useAttackableQuery,"END query decision");
++                            std::printf("P2_GROINK_TARGET_END cycle=%u found=%d state=%d\n",cycles,selected.found,int(decision.state));
++                            if(cycles==1) {
++                                require(decision.state==P2GroinkNextState::Attack,"live target must repeat Attack");
++                                target=selected.position; ++acquisitions; beginAttack();
++                            } else {
++                                require(relocated && decision.state==P2GroinkNextState::WalkPath,"lost target must select path");
++                                exited=true; // Preserve stored target on failed query.
++                            }
++                        }
++                        break;
++                    default: break; // effects/target acquisition remain host boundaries
++                    }
++                }
++                require(gun.update(muzzle.column3,target,search,radius,P2GroinkPolicy::kSourceDelta),"gun manager update");
++                auto step=cursor.animate(stopped?0:1);
++                require(step.valid,"attack animation cursor");
++                pending=step.event;
++            }
++            if(emitted==6 && !relocated) {
++                // Deliberate test intervention after the second fire event.
++                // Subsequent query reads the actual live Navi transform.
++                n->resetPosition(Vector3f(100,0,100)); relocated=true;
++                std::puts("P2_GROINK_TARGET_RELOCATED x=100 z=100 injected=1");
++            }
++        }
++        if (emitted >= 3 && volley.activeCount() >= 3 && !flightCaptured) flightCapture = true;
++        if (impacts == 6 && cycles == 2) terminalCapture = true;
++        return result;
++    }
++    void draw(Graphics& gfx) override {
++        PlugPikiApp::draw(gfx);
++        if (!setup) return;
++        pc_p2_groink_arena_draw(gfx);
++        require(gfx.mCamera != nullptr, "camera");
++        for (std::size_t i=0;i<P2GroinkVolley::kCapacity;++i) {
++            const auto shell = volley.shell(i);
++            const Colour colors[]{Colour(255,0,0,255),Colour(0,255,0,255),Colour(0,80,255,255),
++                                  Colour(255,0,255,255),Colour(255,200,0,255),Colour(0,255,255,255)};
++            gfx.setColour(colors[i],true);
++            if (shell.active) gfx.drawSphere(Vector3f(shell.position.x,shell.position.y,shell.position.z),10,gfx.mCamera->mLookAtMtx);
++        }
++        if (flightCapture) { capture("groink-volley-flight.ppm"); flightCapture = false; flightCaptured = true; }
++        if (sourceTicks == 60 && volley.activeCount() == 6) capture("groink-volley-spread.ppm");
++        if (terminalCapture) {
++            require(flightCaptured,"no flight capture");
++            capture("groink-volley-terminal.ppm");
++            std::printf("P2_GROINK_FLIGHT_PASS ticks=%d traces=%llu floors=%llu walls=%llu\n",sourceTicks,(unsigned long long)trace.calls(),(unsigned long long)trace.floors(),(unsigned long long)trace.walls());
++            require(primaryImpacts == 2 && volley.activeCount() == 0, "terminal accounting");
++            volley.reset(); clock.reset(); flightTracker.reset();
++            require(volley.activeCount() == 0 && volley.terminalCount() == 0, "pool reset");
++            require(volley.emit(muzzle,100,spread).count == 3, "pool reuse after reset"); volley.reset();
++            std::printf("P2_GROINK_VOLLEY_PASS emitted=%u impacts=%u primary=%u reset=1\n",emitted,impacts,primaryImpacts);
++            std::puts("P2_GROINK_ATTACK_CYCLES_PASS cycles=2 fire_frame=26 previous_tick_latch=1");
++            require(acquisitions==2 && exited,"target acquisition/exit accounting");
++            std::puts("P2_GROINK_LIVE_TARGET_PASS acquisitions=2 repeat=1 exit_path=1 single_navi_roster=1 relocation_injected=1 placement_pinned=1");
++            require(receiverHits > 0,"no classified receiver strike");
++            require(receiverHealthDecreased,"proxy health did not decrease after a Bomb strike");
++            require(receiverDeaths == 1,"proxy died marker did not fire exactly once");
++            require(flightSteps > 0,"in-flight moving sweep did not execute");
++            std::printf("P2_GROINK_FLIGHT_SWEEP_PASS steps=%u hits=%u wind=%u\n",flightSteps,flightHits,flightWind);
++            std::printf("P2_GROINK_STRIKE_PASS hits=%u deaths=%u health_start=%.3f health_end=%.3f placement=fixture_pinned\n",
++                receiverHits,receiverDeaths,kProxyHealth,lastReceiverHealth);
++            std::puts("PASS GROINK_VOLLEY_RUNTIME"); std::fflush(stdout); std::_Exit(0);
++        }
++    }
++private:
++    // Classify, dedup per (slot, token), then apply. The bridge stays pure; the
++    // tracker is the only mutable state. Moving and terminal steps share it so a
++    // duplicate position can never apply twice; recycle via flightTracker.clearSlot.
++    void recordStrike(std::size_t slot, const P2GroinkStrikeInput& strike,
++                      const P2GroinkHitCandidate& candidate, bool flight) {
++        const P2GroinkHitCommand command = p2_groink_classify_hit(strike.hit, candidate);
++        if (command.kind == P2GroinkHitKind::None) return;
++        if (!flightTracker.firstHit(slot, strike.targetToken)) return;
++        const P2GroinkStrikeResult receipt = p2_groink_apply_strike(proxy, strike, candidate);
++        const unsigned long long token = (unsigned long long)strike.targetToken;
++        const char* kind = command.kind == P2GroinkHitKind::Bomb ? "Bomb" : "Wind";
++        if (flight) {
++            ++flightHits;
++            if (command.kind == P2GroinkHitKind::Wind) ++flightWind;
++            std::printf("P2_GROINK_FLIGHT_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
++                token, kind, receipt.damage, receipt.health);
++            if (command.kind == P2GroinkHitKind::Wind) {
++                std::printf("P2_GROINK_FLIGHT_IMPULSE token=%llu ix=%.3f iy=%.3f iz=%.3f\n",
++                    token, receipt.impulse.x, receipt.impulse.y, receipt.impulse.z);
++            }
++        } else {
++            ++receiverHits;
++            std::printf("P2_GROINK_RECEIVER_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
++                token, kind, receipt.damage, receipt.health);
++        }
++        if (receipt.applied && receipt.health < lastReceiverHealth) receiverHealthDecreased = true;
++        lastReceiverHealth = receipt.health;
++        if (receipt.died) {
++            ++receiverDeaths;
++            std::printf("P2_GROINK_RECEIVER_DEAD token=%llu\n", token);
++        }
++    }
++
++    P2GroinkTargetResult queryNavi() {
++        Navi* n=naviMgr->getNavi(); require(n!=nullptr,"live Navi missing");
++        const Vector3f pos=n->getPosition();
++        P2GroinkTargetCandidate c{{pos.x,pos.y,pos.z},n->isAlive(),true,false};
++        // The fixed roster is one current Navi. Sphere filtering here is a
++        // point approximation, not P2 CellIterator parity.
++        const float dx=pos.x-owner.x, dy=pos.y-owner.y, dz=pos.z-owner.z-search*0.5f;
++        const bool inSphere=dx*dx+dy*dy+dz*dz<=(search*0.75f)*(search*0.75f);
++        auto selected=p2_groink_select_target({muzzle.column3,{0,0,1},search},inSphere?&c:nullptr,inSphere?1:0);
++        require(selected.valid,"live target snapshot");
++        std::printf("P2_GROINK_TARGET_QUERY tick=%d alive=%d xyz=%.3f,%.3f,%.3f found=%d\n",sourceTicks,c.alive,pos.x,pos.y,pos.z,selected.found);
++        return selected;
++    }
++    void beginAttack() {
++        require(cursor.start({44,{11,22,25,32}}),"retail attack event profile");
++        attack.begin(); stopped=false; pending=P2GroinkAttackEvent::None;
++    }
++    void loadProfile() {
++        // Arena setup has already validated bounds, file size and model. This
++        // fixture supports yaw zero only; production owner tracking is separate.
++        std::ifstream in("p2-groink-arena.txt"); std::string line, key;
++        std::getline(in,line); std::getline(in,line);
++        in >> key >> search >> radius;
++        require(key == "params", "profile params");
++        float yaw = 0;
++        in >> key >> owner.x >> owner.y >> owner.z >> yaw;
++        require(key == "owner" && yaw == 0, "fixture requires zero owner yaw");
++        in >> key >> target.x >> target.y >> target.z;
++        require(key == "target", "profile target");
++        float m[12]; in >> key;
++        for (float& v:m) in >> v;
++        require(bool(in) && key == "muzzle", "profile muzzle");
++        muzzle = {{m[0],m[4],m[8]},{m[1],m[5],m[9]},{m[2],m[6],m[10]},
++                  {m[3]+owner.x,m[7]+owner.y,m[11]+owner.z}};
++    }
++    void runProbes() {
++        require(mapMgr && mapMgr->mMapModel, "map unavailable");
++        float ground = mapMgr->getMinY(0, 0, false); require(std::isfinite(ground), "center ground unavailable");
++        P2GroinkTraceResult result{};
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 15, 0}, {0, -300, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "center trace");
++        std::printf("P2_GROINK_FLOOR_PROBE ground=%.6f center=%.6f floor=%d\n",ground,result.position.y,result.floor);
++        require(result.floor && std::fabs(result.position.y - (ground + 10)) < 0.25f, "center floor conversion");
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 100, 0}, {0, 0, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "free trace");
++        require(!result.floor && !result.wall, "free center collision");
++        Shape* model = mapMgr->mMapModel;
++        for (int i = 0; i < model->mTriCount && !wall.valid; ++i) {
++            const CollTriInfo& tri = model->mTriList[i];
++            const Vector3f& a = model->mVertexList[tri.mVertexIndices[0]];
++            const Vector3f& b = model->mVertexList[tri.mVertexIndices[1]];
++            const Vector3f& c = model->mVertexList[tri.mVertexIndices[2]];
++            Vector3f center((a.x + b.x + c.x) / 3.0f,
++                            (a.y + b.y + c.y) / 3.0f,
++                            (a.z + b.z + c.z) / 3.0f);
++            const Vector3f normal = tri.mTriangle.mNormal;
++            float mapGround = mapMgr->getMinY(center.x, center.z, false);
++            if (std::fabs(normal.y) < 0.05f && center.y > mapGround + 15) {
++                wall = {true, {center.x + normal.x * 15, center.y + normal.y * 15, center.z + normal.z * 15},
++                        {-normal.x * 300, -normal.y * 300, -normal.z * 300}};
++            }
++        }
++        require(wall.valid, "no wall probe candidate");
++        require(P2GroinkMapTrace::trace(&trace, wall.center, wall.velocity, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "wall trace");
++        require(result.wall, "wall probe did not hit");
++    }
++};
++}
++
++int main(int argc, char** argv) {
++    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
++    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
++    require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
++    require(pc_window_init("Groink attack-event runtime fixture", 960, 720), "window init");
++    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
++    gsys->run(new GroinkAttackApp()); return 0;
++}
+diff --git a/tools/p2_groink_target_test.cpp b/tools/p2_groink_target_test.cpp
+new file mode 100644
+index 00000000..f30cdbd3
+--- /dev/null
++++ b/tools/p2_groink_target_test.cpp
+@@ -0,0 +1,41 @@
++#include "pc_p2_groink_target.h"
++#include <cassert>
++#include <cstdio>
++#include <limits>
++#include <initializer_list>
++int main() {
++    P2GroinkTargetQuery q{{10,20,30},{0,0,1},250};
++    P2GroinkTargetCandidate c[]={{{10,20,200},true,true,false},{{10,20,40},true,false,true}};
++    auto pick=[&]{return p2_groink_select_target(q,c,2);};
++    assert(pick().found&&pick().index==0); // First cell candidate, not nearest.
++    c[0].alive=false; assert(pick().index==1); c[0].alive=true;
++    c[0].captain=false; assert(pick().index==1); c[0].captain=true;
++    for (auto p : {P2GroinkVec3{35,20,100},{10,220,100},{10,20,31},{10,20,280}}) {
++        c[0].position=p; assert(pick().index==1);
++    }
++    c[0].position={34,219,279}; assert(pick().index==0);
++    q.direction={1,0,0}; c[0].position={100,20,30}; assert(pick().found&&pick().index==0);
++    c[1].position.x=std::numeric_limits<float>::quiet_NaN(); assert(!pick().valid);
++    assert(p2_groink_select_target(q,nullptr,0).valid);
++    assert(!p2_groink_select_target(q,nullptr,1).valid);
++    P2GroinkAttackEndInput in; in.territoryRadius=100; in.homeRadius=10; in.maxAttackAngleDegrees=45;
++    auto end=[&]{return p2_groink_attack_end(in);};
++    using S=P2GroinkNextState;
++    in.health=0; in.flick=true; in.attackable=true;
++    assert(end().state==S::Dead&&!end().useAttackableQuery);
++    in.health=1; assert(end().state==S::Flick); in.flick=false;
++    in.homeDistanceSquared=10001; assert(end().state==S::WalkHome&&!end().useAttackableQuery);
++    in.homeAngle=1; assert(end().state==S::TurnHome);
++    in.homeDistanceSquared=10000; assert(end().state==S::Attack&&end().useAttackableQuery&&!end().useSearchedQuery);
++    in.attackable=false; in.searchedTarget=true; in.searchedAngle=0;
++    assert(end().state==S::Walk&&end().useSearchedQuery); in.searchedAngle=1; assert(end().state==S::Turn);
++    in.searchedAngle=in.maxAttackAngleDegrees*(3.14159265358979323846f/180); assert(end().state==S::Walk);
++    in.searchedAngle=std::nextafter(in.searchedAngle,2.0f); assert(end().state==S::Turn);
++    in.searchedTarget=false; in.homeDistanceSquared=99; assert(end().state==S::WalkPath);
++    in.pathAngle=1; assert(end().state==S::TurnPath);
++    in.homeDistanceSquared=100; assert(end().state==S::TurnHome);
++    in.homeAngle=3.14159265358979323846f/4; assert(end().state==S::WalkHome);
++    in.homeAngle=std::nextafter(in.homeAngle,2.0f); assert(end().state==S::TurnHome);
++    in.homeDistanceSquared=-1; assert(!end().valid&&end().state==S::None);
++    puts("p2_groink_target_test PASS");
++}
+diff --git a/tools/p2_groink_test.cpp b/tools/p2_groink_test.cpp
+new file mode 100644
+index 00000000..e25144d1
+--- /dev/null
++++ b/tools/p2_groink_test.cpp
+@@ -0,0 +1,104 @@
++#include "pc_p2_groink.h"
++
++#include <cassert>
++#include <cmath>
++#include <limits>
++
++namespace {
++bool near(float actual, float expected, float epsilon = 0.0001f)
++{
++    return std::fabs(actual - expected) <= epsilon;
++}
++struct Trace {
++    int calls = 0;
++    float radius = 0.0f;
++    bool floor = false;
++    bool wall = false;
++};
++bool trace(void* opaque, const P2GroinkVec3& position, const P2GroinkVec3& velocity,
++           float delta, float radius, P2GroinkTraceResult& result)
++{
++    Trace& state = *static_cast<Trace*>(opaque);
++    ++state.calls; state.radius = radius;
++    result.position = { position.x + velocity.x * delta, position.y + velocity.y * delta,
++                        position.z + velocity.z * delta };
++    result.velocity = velocity;
++    result.floor = state.floor;
++    result.wall = state.wall;
++    result.groundY = 7.0f;
++    result.hasGroundY = true;
++    return true;
++}
++}
++
++int main()
++{
++    const P2GroinkVec3 muzzle{ 0.0f, 100.0f, 0.0f };
++    const P2GroinkVec3 target{ 0.0f, 100.0f, 250.0f };
++    const auto aim = P2GroinkPolicy::aim(muzzle, target, 400.0f, 70.0f,
++                                         P2GroinkPolicy::kSourceDelta, 0.0f);
++    assert(aim.valid && aim.shellSpeed > 0.0f && std::isfinite(aim.targetAngle));
++    assert(near(aim.shellSpeed, 401.69765f) && near(aim.targetAngle, 1.2041587f));
++    const auto nearAim = P2GroinkPolicy::aim(muzzle, { 0.0f, 100.0f, 150.0f }, 400.0f, 70.0f,
++                                             P2GroinkPolicy::kSourceDelta, 0.0f);
++    assert(nearAim.valid && near(nearAim.shellSpeed, 236.66255f) && near(nearAim.targetAngle, 0.9197273f));
++    const auto locked = P2GroinkPolicy::aim(muzzle, target, 400.0f, 70.0f,
++                                            P2GroinkPolicy::kSourceDelta, aim.targetAngle);
++    assert(locked.valid && locked.locked && near(locked.angle, locked.targetAngle));
++    // `angDist` chooses the shortest wrap direction at the seam.
++    const auto seam = P2GroinkPolicy::aim(muzzle, target, 400.0f, 70.0f,
++                                          P2GroinkPolicy::kSourceDelta, 6.27f);
++    assert(seam.valid && seam.angle >= 0.0f && seam.angle < 6.28319f);
++    assert(!P2GroinkPolicy::aim(muzzle, target, 400.0f, 70.0f, 1.0f / 60.0f, 0.0f).valid);
++    assert(!P2GroinkPolicy::aim({ std::numeric_limits<float>::quiet_NaN(), 0, 0 }, target,
++                                 400, 70, P2GroinkPolicy::kSourceDelta, 0).valid);
++    assert(!P2GroinkPolicy::aim(muzzle, target, 0, 70, P2GroinkPolicy::kSourceDelta, 0).valid);
++
++    P2GroinkPolicy policy;
++    const P2GroinkMuzzle joint{ { 2.0f, 0.0f, 0.0f }, { 0.0f, 3.0f, 0.0f },
++                                 { 0.0f, 0.0f, 4.0f }, { 10.0f, 20.0f, 30.0f } };
++    bool rotatedValid = false;
++    const auto rotated = p2_groink_rotate_vertical(joint, 1.57079632679f, rotatedValid);
++    assert(rotatedValid && near(rotated.column0.y, 2.0f) && near(rotated.column1.x, -3.0f)
++           && near(rotated.column2.z, 4.0f) && near(rotated.column3.x, 10.0f));
++    assert(policy.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    assert(near(policy.shell().position.x, 35.0f) && near(policy.shell().position.y, 20.0f));
++    assert(near(policy.shell().velocity.x, 90.0f));
++    assert(!policy.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f })); // one-shell policy
++    Trace state;
++    assert(!policy.update({ 0, 0, 0 }, P2GroinkPolicy::kSourceDelta, trace, &state));
++    assert(state.calls == 1 && near(state.radius, 10.0f));
++    assert(near(policy.shell().velocity.y, -20.0f)); // source update decrement, not delta-scaled
++    state.floor = true;
++    assert(policy.update({ 0, 0, 0 }, P2GroinkPolicy::kSourceDelta, trace, &state));
++    assert(!policy.shell().active);
++    assert(policy.lastTerminalStep().reason == P2GroinkTerminalReason::Floor
++           && near(policy.lastTerminalStep().end.y, 7.0f));
++
++    P2GroinkPolicy exactRange;
++    assert(exactRange.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    assert(!exactRange.update({ -962.0f, 0, 0 }, P2GroinkPolicy::kSourceDelta, nullptr, nullptr));
++    assert(exactRange.shell().active); // (35 + 3) - -962 is exactly 1000.
++    P2GroinkPolicy overRange;
++    assert(overRange.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    assert(overRange.update({ -962.01f, 0, 0 }, P2GroinkPolicy::kSourceDelta, nullptr, nullptr));
++    assert(overRange.lastTerminalStep().reason == P2GroinkTerminalReason::OutOfRange);
++    P2GroinkPolicy wall;
++    assert(wall.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    state.floor = false; state.wall = true;
++    assert(wall.update({ 0, 0, 0 }, P2GroinkPolicy::kSourceDelta, trace, &state));
++    assert(wall.lastTerminalStep().reason == P2GroinkTerminalReason::Wall);
++    const P2GroinkShell before = policy.shell();
++    assert(!policy.emit(joint, 90.0f, { 1.1f, 0.5f, 0.5f }));
++    assert(policy.shell().active == before.active && near(policy.shell().position.x, before.position.x));
++    P2GroinkPolicy overflow;
++    auto hugeBasis = joint;
++    hugeBasis.column0.x = std::numeric_limits<float>::max();
++    assert(!overflow.emit(hugeBasis, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    assert(!overflow.emit(joint, std::numeric_limits<float>::infinity(), { 0.5f, 0.5f, 0.5f }));
++    assert(overflow.emit(joint, 90.0f, { 0.5f, 0.5f, 0.5f }));
++    assert(overflow.update({}, 1.0f / 60.0f, nullptr, nullptr));
++    assert(!overflow.lastTerminalStep().valid);
++    assert(overflow.lastTerminalStep().reason == P2GroinkTerminalReason::Invalid);
++    return 0;
++}
+diff --git a/tools/p2_groink_volley_run.py b/tools/p2_groink_volley_run.py
+new file mode 100644
+index 00000000..451146bc
+--- /dev/null
++++ b/tools/p2_groink_volley_run.py
+@@ -0,0 +1,190 @@
++"""Run and verify the private six-shell Groink fixture in a fresh room overlay."""
++
++import argparse
++import hashlib
++import importlib.util
++import json
++import os
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import traceback
++import uuid
++
++
++def sha256(path):
++    digest = hashlib.sha256()
++    with path.open("rb") as source:
++        for chunk in iter(lambda: source.read(1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def file_record(path):
++    return {"path": str(path), "sha256": sha256(path), "size": path.stat().st_size}
++
++
++def load_preview_prepare(root):
++    source = root / "scripts" / "preview_pikmin2_room.py"
++    if not source.is_file():
++        raise ValueError(f"missing preview helper: {source}")
++    spec = importlib.util.spec_from_file_location("p2_preview_overlay", source)
++    module = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module.prepare
++
++
++def fixture_provenance(fixture):
++    provenance_path = fixture / "provenance.json"
++    executable = fixture / "fixture.exe"
++    if not provenance_path.is_file() or not executable.is_file():
++        raise ValueError("fixture must contain provenance.json and fixture.exe")
++    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
++    if provenance.get("status") != "built":
++        raise ValueError("fixture provenance is not built")
++    artifacts = provenance.get("artifacts", {})
++    record = next((value for name, value in artifacts.items()
++                   if Path(name).name.lower() == "fixture.exe"), None)
++    if not isinstance(record, dict) or not isinstance(record.get("sha256"), str):
++        raise ValueError("fixture provenance has no fixture.exe hash")
++    actual = sha256(executable)
++    if actual != record["sha256"]:
++        raise ValueError("fixture.exe hash differs from built provenance")
++    return provenance_path, provenance, executable, actual
++
++
++def copy_new(source, target):
++    if not source.is_file():
++        raise ValueError(f"missing staged input: {source}")
++    if target.exists():
++        raise ValueError(f"refusing to replace existing target: {target}")
++    target.parent.mkdir(parents=True, exist_ok=True)
++    shutil.copyfile(source, target)
++
++
++def verify_log(text, expected_contact):
++    receipts = re.findall(
++        r"^P2_GROINK_VOLLEY_IMPACT\s+tick=\d+\s+slot=(\d+)\s+primary=(\d+)\s+"
++        r"reason=(\d+)\s+xyz=", text, flags=re.MULTILINE)
++    errors = []
++    if "PASS GROINK_VOLLEY_RUNTIME" not in text:
++        errors.append("missing runtime PASS marker")
++    if len(receipts) != 6:
++        errors.append(f"expected 6 terminal receipts, got {len(receipts)}")
++    slots = [int(slot) for slot, _, _ in receipts]
++    primary = [int(value) for _, value, _ in receipts]
++    reasons = [int(reason) for _, _, reason in receipts]
++    if set(slots) != set(range(6)) or len(set(slots)) != 6:
++        errors.append(f"terminal slots were not distinct 0..5: {slots}")
++    if sum(primary) != 2:
++        errors.append(f"expected two primary receipts, got {sum(primary)}")
++    if any(value not in (0, 1) for value in primary) or any(reason not in (1, 2) for reason in reasons):
++        errors.append("invalid primary flag or non-terrain terminal")
++    # P2GroinkTerminalReason is None=0, Floor=1, Wall=2, OutOfRange=3, Invalid=4.
++    expected_reason = {"floor": 1, "wall": 2}[expected_contact]
++    if expected_reason not in reasons:
++        errors.append(f"expected at least one {expected_contact} terminal, got reasons {reasons}")
++    pass_match = re.search(r"^P2_GROINK_VOLLEY_PASS\s+emitted=(\d+)\s+impacts=(\d+)\s+"
++                           r"primary=(\d+)\s+reset=(\d+)\s*$", text, flags=re.MULTILINE)
++    if not pass_match:
++        errors.append("missing volley accounting/reset marker")
++    elif tuple(map(int, pass_match.groups())) != (6, 6, 2, 1):
++        errors.append(f"unexpected volley accounting: {pass_match.groups()}")
++    return {"receipts": [{"slot": slot, "primary": value, "reason": reason}
++                          for slot, value, reason in receipts],
++            "errors": errors}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--root-worktree", type=Path, required=True,
++                        help="Python repository containing scripts/preview_pikmin2_room.py")
++    parser.add_argument("--assets", type=Path, required=True)
++    parser.add_argument("--room", type=Path, required=True,
++                        help="Converted room directory accepted by preview.prepare")
++    parser.add_argument("--stage", type=Path, required=True,
++                        help="Groink stage containing p2-groink-arena.txt and assets")
++    parser.add_argument("--fixture", type=Path, required=True,
++                        help="Built fixture directory containing fixture.exe and provenance.json")
++    parser.add_argument("--output", type=Path, required=True,
++                        help="Parent directory for the fresh run overlay")
++    parser.add_argument("--expected-contact", choices=("floor", "wall"), required=True)
++    args = parser.parse_args()
++
++    record = {"schema": 1, "arguments": {key: str(value) if isinstance(value, Path) else value
++              for key, value in vars(args).items()}, "status": "failed", "errors": []}
++    run = None
++    try:
++        root = args.root_worktree.resolve()
++        assets, room, stage, fixture, output = (args.assets.resolve(), args.room.resolve(),
++                                                 args.stage.resolve(), args.fixture.resolve(),
++                                                 args.output.resolve())
++        provenance_path, provenance, executable, executable_hash = fixture_provenance(fixture)
++        prepare = load_preview_prepare(root)
++        run = prepare(assets, room, output)
++        record["run"] = str(run)
++        profile_source = stage / "p2-groink-arena.txt"
++        model_source = stage / "assets" / "dataDir" / "courses" / "pikmin2room" / "groink_attack.mod"
++        profile_target = run / "p2-groink-arena.txt"
++        model_target = run / "assets" / "dataDir" / "courses" / "pikmin2room" / "groink_attack.mod"
++        copy_new(model_source, model_target)
++        copy_new(profile_source, profile_target)
++        record["fixture"] = {"provenance": file_record(provenance_path),
++                             "provenance_status": provenance.get("status"),
++                             "executable": {"path": str(executable), "sha256": executable_hash}}
++        record["inputs"] = {"profile": file_record(profile_target), "model": file_record(model_target)}
++        for name in ("room.mod", "room.ini", "treasure.mod"):
++            record["inputs"][name] = file_record(room / name)
++        record["inputs"]["preview_helper"] = file_record(root / "scripts/preview_pikmin2_room.py")
++        command = [str(executable), "--experimental-pikmin2-room"]
++        record["command"] = command
++        # Inherit the caller's PATH and all other environment values unchanged.
++        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=75,
++                                text=True, encoding="utf-8", errors="replace",
++                                capture_output=True)
++        (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
++        (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
++        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 75,
++                                "stdout": file_record(run / "stdout.log"),
++                                "stderr": file_record(run / "stderr.log")}
++        verification = verify_log(result.stdout + "\n" + result.stderr, args.expected_contact)
++        record["verification"] = verification
++        captures = {}
++        for name in ("groink-volley-flight.ppm", "groink-volley-terminal.ppm"):
++            path = run / name
++            if not path.is_file():
++                verification["errors"].append(f"missing capture: {name}")
++            else:
++                captures[name] = file_record(path)
++        record["captures"] = captures
++        spread = run / "groink-volley-spread.ppm"
++        if spread.is_file():
++            captures[spread.name] = file_record(spread)
++        if result.returncode != 0:
++            verification["errors"].append(f"fixture exit code {result.returncode}")
++        record["errors"].extend(verification["errors"])
++        if not verification["errors"]:
++            record["status"] = "passed"
++    except subprocess.TimeoutExpired as error:
++        record["errors"].append("fixture timed out after 75 seconds")
++        if run is not None:
++            for name, value in (("stdout.log", error.stdout), ("stderr.log", error.stderr)):
++                if isinstance(value, bytes):
++                    value = value.decode("utf-8", errors="replace")
++                (run / name).write_text(value or "", encoding="utf-8")
++    except Exception as error:
++        record["errors"].append(str(error))
++        record["traceback"] = traceback.format_exc()
++    finally:
++        destination = (run if run is not None else args.output.resolve() / ("failed-" + uuid.uuid4().hex)) / "verification.json"
++        destination.parent.mkdir(parents=True, exist_ok=True)
++        destination.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
++        print(destination)
++    if record["status"] != "passed":
++        raise SystemExit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tools/p2_groink_volley_runtime.cpp b/tools/p2_groink_volley_runtime.cpp
+new file mode 100644
+index 00000000..6520b3c8
+--- /dev/null
++++ b/tools/p2_groink_volley_runtime.cpp
+@@ -0,0 +1,201 @@
++// Private real-GL Groink arena fixture. This file is compiled by the isolated
++// fixture build only; it is not part of the game target.
++#include <SDL2/SDL.h>
++#include <GL/gl.h>
++#include "gl/pc_opengl.h"
++#include "gl/pc_gfx.h"
++#include "App.h"
++#include "Node.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "MoviePlayer.h"
++#include "Shape.h"
++#include "Camera.h"
++#include "system.h"
++#include "pc_bbft.h"
++#include "pc_gpu_preference.h"
++#include "pc_window.h"
++#include "pc_p2_preview.h"
++#include "pc_p2_groink_arena.h"
++#include "pc_p2_groink_map_trace.h"
++#include "pc_p2_groink_clock.h"
++#include "settings/pc_settings.h"
++#include "settings/pc_settings_p2d.h"
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <vector>
++#include <fstream>
++#include <sstream>
++// Private one-TU fixture build snapshots this implementation as a dependency.
++#include "../pc_port/pc_p2_groink_volley.cpp"
++
++namespace {
++void require(bool value, const char* message) {
++    if (!value) { std::printf("FAIL GROINK_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
++}
++
++void capture(const char* path) {
++    pc_gfx_flush_batch();
++    auto bind = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
++    require(bind != nullptr, "framebuffer entry point unavailable");
++    GLint previous = 0; glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous); bind(GL_FRAMEBUFFER, 0);
++    int w = 0, h = 0; SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
++    std::vector<unsigned char> pixels(size_t(w) * size_t(h) * 3);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadBuffer(GL_BACK);
++    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data()); bind(GL_FRAMEBUFFER, previous);
++    require(glGetError() == GL_NO_ERROR, "capture GL error");
++    bool nonblack = false; for (unsigned char v : pixels) nonblack |= v > 8;
++    require(nonblack, "empty capture");
++    FILE* f = std::fopen(path, "wb"); require(f != nullptr, "capture file");
++    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
++    for (int y = h - 1; y >= 0; --y) std::fwrite(pixels.data() + size_t(y) * w * 3, 1, size_t(w) * 3, f);
++    std::fclose(f);
++}
++
++struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
++
++class GroinkVolleyApp final : public PlugPikiApp {
++    int frames = 0, sourceTicks = 0;
++    bool setup = false, probes = false, fired = false, flightCapture = false, flightCaptured = false, terminalCapture = false;
++    P2GroinkMapTrace trace;
++    P2GroinkSourceClock clock;
++    WallProbe wall;
++    P2GroinkVolley volley;
++    P2GroinkMuzzle muzzle;
++    P2GroinkVec3 owner, target;
++    float search = 0, radius = 0, angle = 0;
++    unsigned emitted = 0, impacts = 0, primaryImpacts = 0;
++    const std::array<P2GroinkVec3,3> spread{{{0.5f,0.5f,0.5f},{0,0.5f,0},{1,0.5f,1}}};
++public:
++    int idle() override {
++        int result = PlugPikiApp::idle();
++        require(++frames < 1800, "timeout");
++        if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
++            clock.reset(); gameflow.mMoviePlayer->requestSkip(); return result;
++        }
++        if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) { clock.reset(); return result; }
++        Navi* n = naviMgr->getNavi();
++        if (!setup) {
++            n->resetPosition(Vector3f(0, 0, 100)); n->mFaceDirection = 0; n->mSRT.r.set(0, 0, 0);
++            trace.reset(mapMgr);
++            require(pc_p2_groink_arena_setup("p2-groink-arena.txt"), "arena setup"); loadProfile(); setup = true;
++        }
++        if (!probes) { runProbes(); probes = true; std::puts("P2_GROINK_MAP_PROBES_PASS"); trace.reset(mapMgr); }
++        // The source clock is independent of presentation count; a pause drops debt.
++        const int ticks = clock.step(gsys->getFrameTime(), true);
++        for (int i = 0; i < ticks; ++i) {
++            ++sourceTicks;
++            require(sourceTicks < 200, "volley did not finish on terrain");
++            auto aim = P2GroinkPolicy::aim(muzzle.column3,target,search,radius,P2GroinkPolicy::kSourceDelta,angle);
++            require(aim.valid, "volley aim"); angle = aim.angle;
++            if (sourceTicks == 40 || sourceTicks == 44) {
++                require(aim.locked, "injected fire before aim lock");
++                bool valid = false;
++                auto rotated = p2_groink_rotate_vertical(muzzle,angle,valid);
++                require(valid, "muzzle rotation");
++                auto receipt = volley.emit(rotated,aim.shellSpeed,spread);
++                require(receipt.valid && receipt.count == 3, "three-shell emission");
++                emitted += unsigned(receipt.count); fired = true;
++                require(volley.activeCount() == emitted, "expected overlapping volleys");
++                std::printf("P2_GROINK_VOLLEY_FIRE tick=%d emitted=%u active=%u\n",sourceTicks,emitted,unsigned(volley.activeCount()));
++            }
++            require(volley.update(owner,P2GroinkPolicy::kSourceDelta,P2GroinkMapTrace::trace,&trace), "volley update");
++            for (std::size_t j=0;j<volley.terminalCount();++j) {
++                const auto& hit = volley.terminals()[j];
++                require(hit.step.valid && (hit.step.reason == P2GroinkTerminalReason::Floor || hit.step.reason == P2GroinkTerminalReason::Wall), "non-terrain terminal");
++                ++impacts; primaryImpacts += hit.primary;
++                std::printf("P2_GROINK_VOLLEY_IMPACT tick=%d slot=%u primary=%d reason=%d xyz=%.3f,%.3f,%.3f\n",sourceTicks,unsigned(hit.slot),hit.primary,int(hit.step.reason),hit.step.end.x,hit.step.end.y,hit.step.end.z);
++            }
++        }
++        if (emitted == 6 && volley.activeCount() == 6 && !flightCaptured) flightCapture = true;
++        if (impacts == 6) terminalCapture = true;
++        return result;
++    }
++    void draw(Graphics& gfx) override {
++        PlugPikiApp::draw(gfx);
++        if (!setup) return;
++        pc_p2_groink_arena_draw(gfx);
++        require(gfx.mCamera != nullptr, "camera");
++        for (std::size_t i=0;i<P2GroinkVolley::kCapacity;++i) {
++            const auto shell = volley.shell(i);
++            const Colour colors[]{Colour(255,0,0,255),Colour(0,255,0,255),Colour(0,80,255,255),
++                                  Colour(255,0,255,255),Colour(255,200,0,255),Colour(0,255,255,255)};
++            gfx.setColour(colors[i],true);
++            if (shell.active) gfx.drawSphere(Vector3f(shell.position.x,shell.position.y,shell.position.z),10,gfx.mCamera->mLookAtMtx);
++        }
++        if (flightCapture) { capture("groink-volley-flight.ppm"); flightCapture = false; flightCaptured = true; }
++        if (sourceTicks == 60 && volley.activeCount() == 6) capture("groink-volley-spread.ppm");
++        if (terminalCapture) {
++            require(flightCaptured,"no flight capture");
++            capture("groink-volley-terminal.ppm");
++            std::printf("P2_GROINK_FLIGHT_PASS ticks=%d traces=%llu floors=%llu walls=%llu\n",sourceTicks,(unsigned long long)trace.calls(),(unsigned long long)trace.floors(),(unsigned long long)trace.walls());
++            require(primaryImpacts == 2 && volley.activeCount() == 0, "terminal accounting");
++            volley.reset(); clock.reset();
++            require(volley.activeCount() == 0 && volley.terminalCount() == 0, "pool reset");
++            require(volley.emit(muzzle,100,spread).count == 3, "pool reuse after reset"); volley.reset();
++            std::printf("P2_GROINK_VOLLEY_PASS emitted=%u impacts=%u primary=%u reset=1\n",emitted,impacts,primaryImpacts);
++            std::puts("PASS GROINK_VOLLEY_RUNTIME"); std::fflush(stdout); std::_Exit(0);
++        }
++    }
++private:
++    void loadProfile() {
++        // Arena setup has already validated bounds, file size and model. This
++        // fixture supports yaw zero only; production owner tracking is separate.
++        std::ifstream in("p2-groink-arena.txt"); std::string line, key;
++        std::getline(in,line); std::getline(in,line);
++        in >> key >> search >> radius;
++        require(key == "params", "profile params");
++        float yaw = 0;
++        in >> key >> owner.x >> owner.y >> owner.z >> yaw;
++        require(key == "owner" && yaw == 0, "fixture requires zero owner yaw");
++        in >> key >> target.x >> target.y >> target.z;
++        require(key == "target", "profile target");
++        float m[12]; in >> key;
++        for (float& v:m) in >> v;
++        require(bool(in) && key == "muzzle", "profile muzzle");
++        muzzle = {{m[0],m[4],m[8]},{m[1],m[5],m[9]},{m[2],m[6],m[10]},
++                  {m[3]+owner.x,m[7]+owner.y,m[11]+owner.z}};
++    }
++    void runProbes() {
++        require(mapMgr && mapMgr->mMapModel, "map unavailable");
++        float ground = mapMgr->getMinY(0, 0, false); require(std::isfinite(ground), "center ground unavailable");
++        P2GroinkTraceResult result{};
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 15, 0}, {0, -300, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "center trace");
++        std::printf("P2_GROINK_FLOOR_PROBE ground=%.6f center=%.6f floor=%d\n",ground,result.position.y,result.floor);
++        require(result.floor && std::fabs(result.position.y - (ground + 10)) < 0.25f, "center floor conversion");
++        require(P2GroinkMapTrace::trace(&trace, {0, ground + 100, 0}, {0, 0, 0}, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "free trace");
++        require(!result.floor && !result.wall, "free center collision");
++        Shape* model = mapMgr->mMapModel;
++        for (int i = 0; i < model->mTriCount && !wall.valid; ++i) {
++            const CollTriInfo& tri = model->mTriList[i];
++            const Vector3f& a = model->mVertexList[tri.mVertexIndices[0]];
++            const Vector3f& b = model->mVertexList[tri.mVertexIndices[1]];
++            const Vector3f& c = model->mVertexList[tri.mVertexIndices[2]];
++            Vector3f center((a.x + b.x + c.x) / 3.0f,
++                            (a.y + b.y + c.y) / 3.0f,
++                            (a.z + b.z + c.z) / 3.0f);
++            const Vector3f normal = tri.mTriangle.mNormal;
++            float mapGround = mapMgr->getMinY(center.x, center.z, false);
++            if (std::fabs(normal.y) < 0.05f && center.y > mapGround + 15) {
++                wall = {true, {center.x + normal.x * 15, center.y + normal.y * 15, center.z + normal.z * 15},
++                        {-normal.x * 300, -normal.y * 300, -normal.z * 300}};
++            }
++        }
++        require(wall.valid, "no wall probe candidate");
++        require(P2GroinkMapTrace::trace(&trace, wall.center, wall.velocity, P2GroinkPolicy::kSourceDelta, P2GroinkPolicy::kShellRadius, result), "wall trace");
++        require(result.wall, "wall probe did not hit");
++    }
++};
++}
++
++int main(int argc, char** argv) {
++    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
++    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
++    require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
++    require(pc_window_init("Groink volley runtime fixture", 960, 720), "window init");
++    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
++    gsys->run(new GroinkVolleyApp()); return 0;
++}
+diff --git a/tools/p2_groink_volley_test.cpp b/tools/p2_groink_volley_test.cpp
+new file mode 100644
+index 00000000..d00feeab
+--- /dev/null
++++ b/tools/p2_groink_volley_test.cpp
+@@ -0,0 +1,96 @@
++#include "pc_p2_groink_volley.h"
++#include "pc_p2_groink_clock.h"
++#include <cstdio>
++#include <cstdlib>
++#include <limits>
++
++namespace {
++void check(bool value, const char* message) {
++    if (!value) { std::fprintf(stderr, "FAIL %s\n", message); std::exit(1); }
++}
++constexpr float dt = P2GroinkPolicy::kSourceDelta;
++const P2GroinkMuzzle muzzle{{1,0,0},{0,1,0},{0,0,1},{0,40,0}};
++const std::array<P2GroinkVec3,3> samples{{{0.5f,0.5f,0.5f},{0,0.5f,0},{1,0.5f,1}}};
++struct Trace {
++    unsigned calls = 0, hitMask = 0, rejectMask = 0;
++    static bool run(void* raw, const P2GroinkVec3& p, const P2GroinkVec3& v,
++                    float delta, float radius, P2GroinkTraceResult& result) {
++        auto& t = *static_cast<Trace*>(raw);
++        check(delta == dt && radius == 10, "source step and sphere");
++        const unsigned bit = 1u << t.calls++;
++        if (t.rejectMask & bit) return false;
++        result = {};
++        result.position = {p.x+v.x*delta,p.y+v.y*delta,p.z+v.z*delta};
++        result.velocity = v;
++        if (t.hitMask & bit) {
++            result.floor = true;
++            result.hasGroundY = true;
++            result.groundY = 0;
++            result.position.y = 10;
++        }
++        return true;
++    }
++};
++bool invalidVelocity(void*, const P2GroinkVec3& p, const P2GroinkVec3&, float, float,
++                     P2GroinkTraceResult& result) {
++    result = {};
++    result.position = p;
++    result.velocity.x = std::numeric_limits<float>::infinity();
++    return true;
++}
++}
++
++int main() {
++    P2GroinkVolley pool;
++    check(pool.emit(muzzle,100,samples).count == 3, "first three shells");
++    check(pool.shell(0).primary && !pool.shell(1).primary && !pool.shell(2).primary, "one primary per volley");
++    check(pool.shell(0).position.x == 25 && pool.shell(2).position.x == 25, "shared pre-spread muzzle origin");
++    check(pool.shell(1).velocity.z < 0 && pool.shell(2).velocity.z > 0, "independent spread");
++    check(pool.emit(muzzle,100,samples).count == 3 && pool.activeCount() == 6, "overlapping volleys");
++    check(pool.shell(3).primary && !pool.shell(4).primary, "second primary");
++    auto full = pool.emit(muzzle,100,samples);
++    check(full.valid && full.count == 0 && pool.activeCount() == 6, "pool exhaustion drops emission");
++    Trace partial{0, (1u<<1)|(1u<<4), 0};
++    check(pool.update({},dt,Trace::run,&partial) && partial.calls == 6, "each original node advances once");
++    check(pool.activeCount() == 4 && pool.terminalCount() == 2, "independent terminals");
++    check(pool.terminals()[0].slot == 1 && pool.terminals()[1].slot == 4, "source list terminal order");
++    check(pool.terminals()[0].step.valid && pool.terminals()[0].step.end.y == 0, "retained final y-minus-ten sweep");
++    check(pool.emit(muzzle,100,samples).count == 2, "partial capacity is not all-or-nothing");
++    check(pool.shell(1).primary && !pool.shell(4).primary, "reused primary assignment");
++    check(pool.terminalCount() == 2 && !pool.terminals()[0].primary, "reuse preserves prior terminal metadata");
++    Trace all{0,63,0};
++    check(pool.update({},dt,Trace::run,&all) && pool.terminalCount() == 6 && pool.activeCount() == 0, "simultaneous six terminal receipts");
++    const std::size_t order[]{0,2,3,5,1,4};
++    for (unsigned i=0;i<6;++i) check(pool.terminals()[i].slot == order[i], "FIFO active traversal after reuse");
++    pool.reset();
++    auto bad = samples; bad[1].x = std::numeric_limits<float>::quiet_NaN();
++    check(!pool.emit(muzzle,100,bad).valid && pool.activeCount() == 0, "invalid spread rejects atomically");
++    check(!pool.emit(muzzle,-1,samples).valid, "negative speed rejected");
++    auto degenerate = muzzle; degenerate.column0 = {};
++    check(!pool.emit(degenerate,100,samples).valid, "zero emission axis rejected");
++    pool.emit(muzzle,100,samples);
++    const auto before = pool.shell(0);
++    check(!pool.update({},dt,nullptr,nullptr) && !pool.update({},0.1f,Trace::run,nullptr), "invalid tick rejected before callback");
++    check(pool.shell(0).position.x == before.position.x && pool.activeCount() == 3, "rejected tick immutable");
++    Trace refused{0,0,1};
++    check(!pool.update({},dt,Trace::run,&refused) && refused.calls == 3, "failed trace does not skip other shells");
++    check(pool.activeCount() == 2 && pool.terminalCount() == 1, "failed shell recycled");
++    check(!pool.terminals()[0].step.valid && pool.terminals()[0].step.reason == P2GroinkTerminalReason::Invalid, "failed trace has no invented valid sweep");
++    check(pool.terminals()[0].step.start.x == pool.terminals()[0].step.end.x, "failed trace does not move through terrain");
++    check(!pool.update({},dt,invalidVelocity,nullptr) && pool.activeCount() == 0
++          && pool.terminalCount() == 2, "malformed successful trace recycles each affected shell");
++    check(!pool.terminals()[0].step.valid && !pool.terminals()[1].step.valid, "nonfinite velocity cannot become valid damage sweep");
++    pool.reset();
++    check(pool.activeCount() == 0 && pool.terminalCount() == 0, "scene reset");
++    pool.emit(muzzle,100,samples);
++    P2GroinkSourceClock clock;
++    Trace free;
++    for (int i=0;i<60;++i)
++        for (int ticks=clock.step(1.0/60.0,true);ticks>0;--ticks) {
++            free.calls=0;
++            check(pool.update({},dt,Trace::run,&free) && free.calls==3, "60 Hz host drives all three at 30 Hz");
++        }
++    check(std::fabs(pool.shell(0).position.x-125) < 0.001f, "one second source movement");
++    check(clock.step(0.2,false)==0 && clock.step(0,true)==0, "pause adds no volley steps");
++    std::puts("p2_groink_volley_test PASS");
++}
+-- 
+2.55.0.windows.3
+

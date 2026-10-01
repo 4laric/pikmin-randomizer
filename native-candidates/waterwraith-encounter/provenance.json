@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith roller attacks, Purple vulnerability receiver and cleanup",
+  "kind": "integration-ready",
+  "native": {
+    "base": "a4526e6a5cb96d1d89e8687fcdd777845de9aa92",
+    "base_branch": "opencode/p2-lane31-register",
+    "head": "5e42ba1d1ef8a0eb46755265ce0eadd84e615025",
+    "local_branch": "opencode/p2-lane31-encounter",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Adds the family combat consumer on top of the register seam. No pc_p2_hardlanes hook change (the register hook from a4526e6a already calls the seam). Native origin/upstream not pushed."
+  },
+  "commits": ["5e42ba1d1ef8a0eb46755265ce0eadd84e615025"],
+  "files": [
+    "pc_port/pc_p2_waterwraith_attack_policy.h",
+    "pc_port/pc_p2_waterwraith_encounter.h",
+    "pc_port/pc_p2_waterwraith_encounter.cpp",
+    "pc_port/pc_p2_waterwraith_register.h",
+    "pc_port/pc_p2_waterwraith_register.cpp",
+    "tools/p2_waterwraith_attack_policy_test.cpp",
+    "tools/p2_waterwraith_encounter_runtime.cpp",
+    "tools/p2_waterwraith_encounter_runtime_run.py",
+    "CMakeLists.txt"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-encounter/waterwraith-encounter-full.patch",
+      "size": 44742,
+      "sha256": "4d4cdaee6a0743025d50e652566531ab01ae26ad022f2ce67be15b2bd878bb83"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-encounter/patches/0001-Waterwraith-roller-attacks-Purple-vulnerability-rece.patch",
+        "sha256": "49e4c738a3cfab751d4c7be875b126fc1232eaf951b0c5422008f3439dc44a33"
+      }
+    ]
+  },
+  "shared_hooks_for_lane_01": [
+    "CMakeLists.txt: add pc_port/pc_p2_waterwraith_encounter.cpp to the pikmin_pc sources.",
+    "pc_p2_waterwraith_register.cpp: register reset also resets the encounter consumer; per-source-tick encounter_step before actor.tick.",
+    "pc_p2_waterwraith_register.h: added read-only accessors (wraith/roller position, attached, tyre/body health) for fixtures.",
+    "No new pc_p2_hardlanes hook hunk; the a4526e6a register hook is reused."
+  ],
+  "standalone_fixture": {
+    "executable": "output/lane31-encounter-standalone-01/p2_waterwraith_attack_policy_test.exe",
+    "sha256": "4195a9f8119fdfeb3a14be38400d2e196ddf2e0cca0db86706c8e38f0b14a33b",
+    "build": "g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_waterwraith_attack_policy_test.cpp",
+    "result": "PASS WATERWRAITH_ATTACK_POLICY (8 groups, exit 0), warning-clean"
+  },
+  "runtime": {
+    "private_build": "output/native-lane31-register-build",
+    "production_executable_sha256": "e7a20925c7c8281cca359c2fc7359c207764d280169fd2ea97919103b8c581b9",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane31-waterwraith-encounter-fixture-05",
+    "fixture_executable_sha256": "ace285f3a8b51a3788814f2422a148c5fab660f45dab92e8e1bc425d25cc5d73",
+    "run_dir": "output/lane31-waterwraith-encounter-runtime-06/c05e29fb3ac641019a59212ebc9f53e8",
+    "status": "passed",
+    "markers": [
+      "P2_WATERWRAITH_ENCOUNTER_WINDOW size=960x540",
+      "P2_WATERWRAITH_ENCOUNTER_READY",
+      "P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=20 damage=0.0",
+      "P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP",
+      "P2_WATERWRAITH_STUN tick=43 rollerHealth=1800.0",
+      "P2_WATERWRAITH_ROLLER_ZERO tick=53",
+      "P2_WATERWRAITH_TYRE_REMOVED tick=56",
+      "P2_WATERWRAITH_ENCOUNTER_REENTRY ready=1 attached=1",
+      "P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=39 crushes=20 damage=2340.0 zeroed=1 child_removed=1",
+      "PASS WATERWRAITH_ENCOUNTER_RUNTIME"
+    ],
+    "captures": ["waterwraith-encounter.ppm sha256=9749616c70b075cd5c6645d3f7796a9f9748af1821c8269195457187cfc1ad09"]
+  },
+  "limitations": [
+    "The roller crush uses InteractFlick with the resident captain as the acting owner: the source attribution creature is not present on this host actor (the retained-assembly Waterwraith attack callback is out of scope). Tyre fp24 damage 10 and the radii are lane adaptations.",
+    "The host death script (dismount -> tyre_getoff -> child removal) and the body Dead key sequence are driven by the encounter inputs; the retained-assembly pathfinder is still not ported.",
+    "Purple Pikmin are real squad members converted with pc_p2_make_purple from the staged P2_PURPLE_1 profile (impact disabled); the fixture positions them near the actor. This is a live-squad arena, not a natural cave encounter.",
+    "The treasure released on Dead KEYEVENT_5 is logged only; the durable reward/Onion path is lane 06."
+  ]
+}

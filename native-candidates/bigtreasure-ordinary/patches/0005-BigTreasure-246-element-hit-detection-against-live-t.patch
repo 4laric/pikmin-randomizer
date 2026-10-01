@@ -1,0 +1,263 @@
+From 639499bd5a28fb6c73a3fadbdd2933e4fc60440e Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 10:11:11 -0400
+Subject: [PATCH 5/5] BigTreasure #246: element hit detection against live
+ targets
+
+---
+ pc_port/pc_p2_bigtreasure_attacks.cpp  |  5 +++
+ pc_port/pc_p2_bigtreasure_attacks.h    |  1 +
+ pc_port/pc_p2_bigtreasure_elements.cpp | 57 ++++++++++++++++++++++++++
+ pc_port/pc_p2_bigtreasure_elements.h   |  7 ++++
+ pc_port/pc_p2_hardlanes.cpp            | 34 +++++++++++++++
+ tools/p2_bigtreasure_elements_test.cpp | 32 +++++++++++++++
+ 6 files changed, 136 insertions(+)
+
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.cpp b/pc_port/pc_p2_bigtreasure_attacks.cpp
+index b4f6f46c..83d46f48 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.cpp
++++ b/pc_port/pc_p2_bigtreasure_attacks.cpp
+@@ -188,6 +188,11 @@ float P2BigTreasureGasPolicy::armAngle(int arm) const
+     return (arm >= 0 && arm < mParams.armNum) ? mArmAngles[arm] : 0.0f;
+ }
+ 
++float P2BigTreasureGasPolicy::nodeRatio(int index) const
++{
++    return (index >= 0 && index < mNodeCount) ? mRatios[index] : 0.0f;
++}
++
+ int P2BigTreasureGasPolicy::tick(float delta, bool bittered)
+ {
+     int recycled = 0;
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.h b/pc_port/pc_p2_bigtreasure_attacks.h
+index 4b195283..c8ce2a9e 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.h
++++ b/pc_port/pc_p2_bigtreasure_attacks.h
+@@ -137,6 +137,7 @@ public:
+     bool isStarted() const { return mStarted; }
+     int nodeCount() const { return mNodeCount; }
+     float armAngle(int arm) const;
++    float nodeRatio(int index) const; // source node extent ratio (BTA :1315+)
+     bool isClockwise() const { return mClockwise; }
+ 
+     // `bittered` freezes arm rotation (BTA :1440-1457).
+diff --git a/pc_port/pc_p2_bigtreasure_elements.cpp b/pc_port/pc_p2_bigtreasure_elements.cpp
+index 693787bb..0d82572c 100644
+--- a/pc_port/pc_p2_bigtreasure_elements.cpp
++++ b/pc_port/pc_p2_bigtreasure_elements.cpp
+@@ -22,6 +22,7 @@ bool P2BigTreasureElementRuntime::start(int weapon, const P2BigTreasureVec3& ori
+     case P2BTWEAPON_Fire:
+         return mFire.start(p2_bigtreasure_fire_params(weaponHealth));
+     case P2BTWEAPON_Gas:
++        mGasArms = p2_bigtreasure_gas_params(weaponHealth, damagedPick).armNum;
+         return mGas.start(p2_bigtreasure_gas_params(weaponHealth, damagedPick), 0.0f, true);
+     case P2BTWEAPON_Water:
+         return mWater.start(p2_bigtreasure_water_params(weaponHealth));
+@@ -69,6 +70,7 @@ void P2BigTreasureElementRuntime::reset()
+     mWeapon = -1;
+     mGround = 0.0f;
+     mOrigin = P2BigTreasureVec3{};
++    mGasArms = 3;
+     mPrevNodes = 0;
+ }
+ 
+@@ -117,3 +119,58 @@ void P2BigTreasureElementRuntime::tick(float delta, const P2BigTreasureElementHo
+     }
+     mPrevNodes = out.nodes;
+ }
++
++bool P2BigTreasureElementRuntime::queryHit(const P2BigTreasureVec3& target, int* outIndex) const
++{
++    if (outIndex) {
++        *outIndex = -1;
++    }
++    switch (mWeapon) {
++    case P2BTWEAPON_Fire: {
++        const P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
++        const P2BigTreasureVec3 dir{ 0.0f, 0.0f, 1.0f };
++        for (int i = 0; i < P2BigTreasureFirePolicy::kCapacity; ++i) {
++            if (mFire.nodeRatio(i) <= 0.0f) continue;
++            if (mFire.nodeHit(i, emit, dir, target)) {
++                if (outIndex) *outIndex = i;
++                return true;
++            }
++        }
++        return false;
++    }
++    case P2BTWEAPON_Gas: {
++        const P2BigTreasureVec3 emit{ mOrigin.x, mGround + 60.0f, mOrigin.z };
++        const float ratio = mGas.nodeRatio(0);
++        for (int arm = 0; arm < mGasArms; ++arm) {
++            if (mGas.nodeHit(emit, arm, ratio, target)) {
++                if (outIndex) *outIndex = arm;
++                return true;
++            }
++        }
++        return false;
++    }
++    case P2BTWEAPON_Water:
++        for (int i = 0; i < P2BigTreasureWaterPolicy::kCapacity; ++i) {
++            if (!mWater.node(i).active) continue;
++            if (mWater.nodeHit(i, target, false)) {
++                if (outIndex) *outIndex = i;
++                return true;
++            }
++        }
++        return false;
++    case P2BTWEAPON_Elec:
++        for (int i = 0; i < P2BigTreasureElecPolicy::kCapacity; ++i) {
++            const P2BigTreasureElecNode& node = mElec.node(i);
++            if (!node.active || !node.visible || node.connected < 0) continue;
++            const P2BigTreasureElecNode& partner = mElec.node(node.connected);
++            if (!partner.active) continue;
++            if (P2BigTreasureElecPolicy::chainHit(node.position, partner.position, target)) {
++                if (outIndex) *outIndex = i;
++                return true;
++            }
++        }
++        return false;
++    default:
++        return false;
++    }
++}
+diff --git a/pc_port/pc_p2_bigtreasure_elements.h b/pc_port/pc_p2_bigtreasure_elements.h
+index 859d18a1..ef6da418 100644
+--- a/pc_port/pc_p2_bigtreasure_elements.h
++++ b/pc_port/pc_p2_bigtreasure_elements.h
+@@ -48,10 +48,17 @@ public:
+     void tick(float delta, const P2BigTreasureElementHost& host,
+               P2BigTreasureElementStats& out);
+ 
++    // Detection only: true when the running element's source hit geometry
++    // registers on `target`. Applying damage is the lane-10 receiver's job;
++    // this lets an ordinary-update consumer observe that an emitted node
++    // intersects a live target. `outIndex` receives the node/arm index.
++    bool queryHit(const P2BigTreasureVec3& target, int* outIndex = nullptr) const;
++
+ private:
+     int mWeapon = -1;
+     float mGround = 0.0f;
+     P2BigTreasureVec3 mOrigin{};
++    int mGasArms = 3;
+     P2BigTreasureFirePolicy mFire;
+     P2BigTreasureGasPolicy mGas;
+     P2BigTreasureWaterPolicy mWater;
+diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
+index a5438a02..6d559f1b 100644
+--- a/pc_port/pc_p2_hardlanes.cpp
++++ b/pc_port/pc_p2_hardlanes.cpp
+@@ -188,6 +188,7 @@ P2BigTreasureAnimClock sBigTreasureClock;
+ P2BigTreasureElementRuntime sBigTreasureElements;
+ P2BigTreasureMapTrace sBigTreasureTrace;
+ bool sBigTreasureAttackLogged = false;
++bool sBigTreasureHitLogged = false;
+ bool sBigTreasureReady = false;
+ bool sBigTreasureVisualReady = false;
+ float sBigTreasureGround = 0.0f;
+@@ -244,6 +245,7 @@ void pc_p2_hardlanes_reset()
+     sBigTreasureClock.reset();
+     sBigTreasureElements.defeat();
+     sBigTreasureAttackLogged = false;
++    sBigTreasureHitLogged = false;
+     pc_p2_bigtreasure_visual_reset();
+     sBigTreasureReady = false;
+     sBigTreasureVisualReady = false;
+@@ -409,6 +411,7 @@ void pc_p2_hardlanes_update()
+                             weapon, origin, sBigTreasureGround,
+                             sBigTreasure.ownership.weaponHealth(weapon), 0.25f, 0.25f)) {
+                         sBigTreasureAttackLogged = false;
++                        sBigTreasureHitLogged = false;
+                         std::printf("P2_BIGTREASURE_ATTACK_START weapon=%s\n",
+                                     bigTreasureWeaponName(weapon));
+                     }
+@@ -429,6 +432,37 @@ void pc_p2_hardlanes_update()
+                                     bigTreasureWeaponName(sBigTreasureElements.activeWeapon()),
+                                     elementStats.nodes);
+                     }
++                    // Detection only: report once when the running element's
++                    // source hit geometry intersects a live Navi/Pikmin. Damage
++                    // application is the lane-10 receiver.
++                    if (!sBigTreasureHitLogged && elementStats.nodes > 0) {
++                        bool hit = false;
++                        Navi* liveNavi = naviMgr ? naviMgr->getNavi() : nullptr;
++                        if (liveNavi
++                            && sBigTreasureElements.queryHit(P2BigTreasureVec3{
++                                   liveNavi->mSRT.t.x, liveNavi->mSRT.t.y,
++                                   liveNavi->mSRT.t.z })) {
++                            hit = true;
++                        }
++                        if (!hit) {
++                            Iterator pikiIt(pikiMgr);
++                            CI_LOOP(pikiIt) {
++                                Piki* piki = static_cast<Piki*>(*pikiIt);
++                                if (!piki || !piki->isAlive()) continue;
++                                if (sBigTreasureElements.queryHit(P2BigTreasureVec3{
++                                        piki->mSRT.t.x, piki->mSRT.t.y, piki->mSRT.t.z })) {
++                                    hit = true;
++                                    break;
++                                }
++                            }
++                        }
++                        if (hit) {
++                            sBigTreasureHitLogged = true;
++                            std::printf("P2_BIGTREASURE_ATTACK_HIT weapon=%s target=live\n",
++                                        bigTreasureWeaponName(
++                                            sBigTreasureElements.activeWeapon()));
++                        }
++                    }
+                 }
+             }
+             if (sBigTreasureVisualReady) {
+diff --git a/tools/p2_bigtreasure_elements_test.cpp b/tools/p2_bigtreasure_elements_test.cpp
+index dae416ed..2d934c99 100644
+--- a/tools/p2_bigtreasure_elements_test.cpp
++++ b/tools/p2_bigtreasure_elements_test.cpp
+@@ -118,6 +118,37 @@ void testInvalidAndEmpty()
+     assert(stats.nodes == 0 && stats.emits == 0);
+     std::puts("PASS elements_invalid");
+ }
++void testQueryHit()
++{
++    P2BigTreasureElementRuntime runtime;
++    P2BigTreasureElementHost h = host();
++    P2BigTreasureElementStats stats;
++
++    // Inactive runtime never reports a hit.
++    assert(!runtime.queryHit(P2BigTreasureVec3{ 0, 0, 0 }));
++
++    // Water: after the first emitted bubble, the emit anchor is inside the
++    // in-flight radius.
++    assert(runtime.start(P2BTWEAPON_Water, P2BigTreasureVec3{ 0, 0, 0 }, 0.0f,
++                         P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f, 0.25f));
++    int emitted = 0;
++    for (int i = 0; i < 40 && emitted == 0; ++i) {
++        runtime.tick(kDt, h, stats);
++        emitted = stats.nodes;
++    }
++    assert(emitted > 0);
++    int index = -1;
++    assert(runtime.queryHit(P2BigTreasureVec3{ 0, 100, 0 }, &index));
++    assert(index >= 0);
++    runtime.defeat();
++
++    // Elec chain geometry (source chainHit): a point on the segment registers.
++    const P2BigTreasureVec3 a{ 0, 0, 0 };
++    const P2BigTreasureVec3 b{ 0, 0, 40 };
++    assert(P2BigTreasureElecPolicy::chainHit(a, b, P2BigTreasureVec3{ 0, 0, 20 }));
++    assert(!P2BigTreasureElecPolicy::chainHit(a, b, P2BigTreasureVec3{ 50, 0, 20 }));
++    std::puts("PASS elements_query_hit");
++}
+ } // namespace
+ 
+ int main()
+@@ -126,6 +157,7 @@ int main()
+     testWaterGroundHit();
+     testElecBounce();
+     testInvalidAndEmpty();
++    testQueryHit();
+     std::puts("PASS BIGTREASURE_ELEMENTS");
+     return 0;
+ }
+-- 
+2.55.0.windows.3
+

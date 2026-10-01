@@ -1,0 +1,68 @@
+"""Roster rfix (#871): bare --p2-enemies fails clean, playable path works.
+
+38 admitted identities exceed the 35-slot committed target set, so
+``randomizer generate --p2-enemies`` without ``--p2-species`` fails closed in
+the bridge. The CLI must report that as a clean actionable error (exit 2),
+never an uncaught traceback. Fails on the pre-fix ``__main__`` (the
+SeedBridgeError propagates instead of SystemExit).
+"""
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+
+def run_main(monkeypatch, capsys, argv):
+    from randomizer import __main__ as cli
+
+    monkeypatch.setattr(sys, "argv", argv)
+    try:
+        cli.main()
+    except SystemExit as exc:
+        out = capsys.readouterr()
+        return exc.code, out
+    return 0, capsys.readouterr()
+
+
+def test_bare_p2_enemies_succeeds(monkeypatch, capsys, tmp_path):
+    # #888: roster admission equals the pool, so the bare flag no longer
+    # fails closed on admitted-but-unplaceable identities.
+    out_file = tmp_path / "seed.json"
+    code, out = run_main(
+        monkeypatch, capsys,
+        ["randomizer", "generate", "--seed", "x", "--p2-enemies",
+         "--output", str(out_file)])
+    assert code == 0
+    assert "Traceback" not in out.err
+    assert out_file.exists()
+
+
+def test_playable_product_path_succeeds(monkeypatch, capsys, tmp_path):
+    out_file = tmp_path / "seed.json"
+    code, _ = run_main(
+        monkeypatch, capsys,
+        ["randomizer", "generate", "--seed", "rfix-check", "--p2-enemies",
+         "--p2-species", "playable", "--output", str(out_file)])
+    assert code == 0
+    manifest = json.loads(out_file.read_text(encoding="utf-8"))
+    # #948: every ordinary campaign generator (72) plus one boss-arena binding
+    # each for the Crawbster (#899), the Titan Dweevil (#246), the Emperor
+    # Bulblax (#289), the Empress Bulblax (#256) and Man-at-Legs (#1012), plus the
+    # #901 held-part holder slot (Puffy Blowhog uf02).
+    held = manifest["p2_layout"]["held_parts"]["placed"]
+    assert [row["target"] for row in held] == ["613834665"]
+    assert len(manifest["p2_layout"]["bindings"]) == 72 + 5 + len(held)
+    assert sorted(row["source_id"] for row in manifest["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 66, 73, 94]
+    # #958: the Giant Breadbug needs no Purple; --p2-purple-campaign stays a generic opt-in.
+    purple_file = tmp_path / "purple.json"
+    code, _ = run_main(
+        monkeypatch, capsys,
+        ["randomizer", "generate", "--seed", "rfix-check", "--p2-enemies", "--p2-purple-campaign",
+         "--p2-species", "playable", "--output", str(purple_file)])
+    assert code == 0
+    purple = json.loads(purple_file.read_text(encoding="utf-8"))
+    assert purple["p2_purple_campaign"] is True
+    assert len(purple["p2_layout"]["bindings"]) == 72 + 5 + len(held)
+    assert sorted(row["source_id"] for row in purple["p2_layout"]["boss_arenas"]["placed"]) == [30, 53, 66, 73, 94]  # 40 has no arena receipt: ordinary slots only

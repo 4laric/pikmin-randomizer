@@ -25,6 +25,7 @@ public:
 		Tex6       = (1 << 9),  // 0x00200 - Texture coordinates 6
 		Tex7       = (1 << 10), // 0x00400 - Texture coordinates 7
 		VtxNBT     = (1 << 16), // 0x10000 - Vertex normal, binormal, and tangent vectors (replaces typical vertex normals)
+		Billboard  = (1 << 17), // 0x20000 - Opt-in camera-facing billboard; geometry is pivot-centred (J3D shape matrix type 1)
 	} END_ENUM_TYPE;
 
 	Mesh()
