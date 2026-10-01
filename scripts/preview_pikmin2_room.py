@@ -93,10 +93,16 @@ def ensure_pikmin_squad(assets,data):
 
 def overlay(source,dest,overrides):
     """Only ancestor directories of replacements are writable; shared files never edited."""
-    import _winapi
+    if __package__:
+        from .fixture_platform import is_windows, copy_private_tree
+    else:
+        from fixture_platform import is_windows, copy_private_tree
     key='dataDir/stages/chal0/default.gen'
     if key in overrides and (source/'dataDir/stages').is_dir():
         overrides=dict(overrides);overrides[key]=ensure_pikmin_squad(source,overrides[key])
+    if not is_windows():
+        return copy_private_tree(source,dest,overrides)
+    import _winapi
     dest.mkdir(parents=True,exist_ok=False)
     names={p.name for p in source.iterdir()}|{k.split('/')[0] for k in overrides}
     for name in sorted(names):

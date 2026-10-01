@@ -1,5 +1,34 @@
 # Current combined captain SDL save/reload (#1130)
 
+For current CI-packaged regression runs (#1157), pass `--runtime-dir` pointing
+to the verified fixture artifact directory containing its matching MinGW DLLs
+and `SDL2.dll`. The runner records these hashes and passes that directory to the
+bounded launcher. Omitting the option retains the local MinGW default; mixing
+CI executable-local DLLs with a different local toolchain is rejected before
+launch. `--prepare-only` stages inputs and records provenance without running
+the game. The historical results below remain pinned to their original builds.
+
+The #1157 portability update adopts the unchanged #1174 platform helpers.
+Windows retains the packaged DLL preflight and its existing metadata. Linux
+omits `--runtime-dir` and records ELF, loader and shared-library evidence from
+the staged native run directory, so relative loader paths use the correct cwd.
+The pinned common launcher repeats that probe and requires controller admission
+before spawning. Both platforms pass the canonical root and private session
+context to that launcher; failed admission produces no gameplay acceptance.
+
+Local Windows validation passed 12 tests, with four Linux-only tests skipped.
+Mocked runner tests cover staging-before-probe, the exact probe cwd, launcher
+context and denial before reading a nonexistent native log. Actual Linux ELF,
+process-group and controller/runtime qualification remains pending. No build,
+remote dispatch or game launch is part of this portability validation; the
+runner upgrade hold remains in effect. Save, population, reward, captain and
+60-second acceptance oracles are unchanged.
+
+When linked with `PIKMIN_NETPLAY_BUILD=ON`, this fixture still runs an offline
+two-captain session. Its replacement main does not execute production netplay
+startup, and the runner clears inherited `PIKMIN_`, `P2_` and `COOP_` settings.
+Record the linked profile without treating this as online co-op validation.
+
 Codex through shared account 4laric. This bounded consumer uses the accepted
 combined native `2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b` and root
 `22a2a5bc6718b809c4a29cf68d85d32a3659f68a` production foundation. Its only native
