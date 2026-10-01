@@ -24,11 +24,11 @@ def bind_campaign_mode(session, manifest, bank, motion):
     if not manifest.get('p2_layout'):
         raise ValueError('Purple campaign requires a P2 enemy seed')
     models, sidecars = bank_files(bank, motion)
-    expected = {'version': 1, 'files': {name: hashlib.sha256(value).hexdigest()
+    expected = {'version': 2, 'combat': 'adult-direct-v2', 'files': {name: hashlib.sha256(value).hexdigest()
                                       for name, value in {**models, **sidecars}.items()}}
     if marker.exists():
         if json.loads(marker.read_text(encoding='utf-8')) != expected:
-            raise ValueError('Purple campaign banks differ from this session')
+            raise ValueError('Purple campaign banks or combat version differ; start a fresh session')
     else:
         if (session / 'runs').exists() and any((session / 'runs').iterdir()):
             raise ValueError('Purple opt-in requires a fresh session')
@@ -134,12 +134,48 @@ def bank_files(bank, motion):
     return models, sidecars
 
 
+def combat_profile(manifest):
+    """Bind audited species to the seed's stable spawn-slot UID, not host type.
+
+    Native resolves only live actors against its ENEMY_P2 mapping, so future
+    stages and already defeated generators need not exist at setup time.
+    """
+    layout = manifest.get('p2_layout')
+    if not isinstance(layout, dict) or not isinstance(layout.get('bindings'), list):
+        raise ValueError('Purple combat requires P2 identity bindings')
+    # Red Dwarf remains unqualified for ordinary campaign combat.
+    supported = {2: 'Chappy'}
+    bindings = {}
+    seen = set()
+    for row in layout['bindings']:
+        uid_text = row.get('target')
+        source = row.get('source_id')
+        if not isinstance(uid_text, str) or not uid_text.isascii() or not uid_text.isdecimal():
+            raise ValueError('Invalid Purple combat target UID')
+        uid = int(uid_text)
+        if not 0 < uid <= 0xffffffff or str(uid) != uid_text or uid in seen:
+            raise ValueError('Duplicate or invalid Purple combat target UID')
+        seen.add(uid)
+        if type(source) is not int:
+            raise ValueError('Invalid Purple combat species')
+        if source in supported:
+            if row.get('enum_name') != supported[source]:
+                raise ValueError('Purple combat species identity mismatch')
+            bindings[uid] = source
+    if len(bindings) > 1024:
+        raise ValueError('Too many Purple combat bindings')
+    rows = [f'{uid} {source}' for uid, source in sorted(bindings.items())]
+    return ('P2_PURPLE_DIRECT_2\nbindings ' + str(len(rows)) + '\n' +
+            ''.join(row + '\n' for row in rows)).encode('ascii')
+
+
 def stage_campaign(run, assets, bank, motion, manifest):
     """Layer over already staged P2 content without writing through a junction."""
     if not manifest.get('p2_layout'):
         raise ValueError('Purple campaign requires a P2 enemy seed')
     run, assets = Path(run).resolve(), Path(assets).resolve()
     models, sidecars = bank_files(bank, motion)
+    sidecars['p2-purple-direct.txt'] = combat_profile(manifest)
     stage = START_AREAS[manifest['profile']][0]
     folder = STAGES[stage]
     base = run / 'assets'
