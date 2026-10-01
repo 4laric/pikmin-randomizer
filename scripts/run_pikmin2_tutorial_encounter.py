@@ -147,7 +147,8 @@ def main(argv=None):
                         run, args.seconds, env, [marker] if marker else [])
         text = (run / "native.log").read_text(encoding="utf8", errors="replace")
         report = {"raw": raw, "inputs_sha256": digest(run / "smoke-inputs.json"),
-                  "gameplay_pass": args.mode == "positive" and raw["exit_code"] == 0 and marker in text,
+                  "gameplay_pass": args.mode == "positive" and not raw["timed_out"]
+                  and not raw["captain_down"] and raw["exit_code"] == 0 and marker in text,
                   "log_sha256": digest(run / "native.log"), "human_judgment": "unrecorded"}
         (run / "smoke-assessment.json").write_text(json.dumps(report, indent=2), encoding="utf8")
         print(json.dumps({"run": str(run), **report}, indent=2))
