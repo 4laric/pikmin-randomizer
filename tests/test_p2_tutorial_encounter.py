@@ -1,6 +1,7 @@
 import json
+import struct
 import pytest
-from scripts.stage_pikmin2_tutorial_encounter import source_selection, ENEMY_POSITION, ONION_POSITION
+from scripts.stage_pikmin2_tutorial_encounter import source_selection, positioned, ENEMY_POSITION, ONION_POSITION
 
 
 def source_fixture(tmp_path):
@@ -45,3 +46,16 @@ def test_refuse_source_relocation(tmp_path):
     (bundle/"surface-generators.json").write_text(json.dumps(inventory),encoding="utf8")
     with pytest.raises(ValueError,match="placement changed"):
         source_selection(bundle,5)
+
+
+@pytest.mark.parametrize("uid, disk", [(0x50323101, b"\x01\x31\x32\x50"),
+                                      (0x50324F01, b"\x01\x4f\x32\x50")])
+def test_native_fourcc_identity_boundary(uid, disk):
+    row = positioned(b"    0.0v" + bytes(100), uid, ENEMY_POSITION, "original encounter")
+    assert row[8:12] == disk
+    # native src/sysCommon/stream.cpp Stream::readInt reads BE; generator.cpp
+    # readID then bswap32s that integer. Model both distinct boundaries.
+    stream_int = struct.unpack_from(">I", row, 8)[0]
+    native_generator_id = int.from_bytes(stream_int.to_bytes(4, "little"), "big")
+    assert native_generator_id == uid
+    assert struct.unpack_from(">3f", row, 48) == pytest.approx(ENEMY_POSITION)

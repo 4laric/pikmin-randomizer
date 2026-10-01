@@ -48,7 +48,9 @@ def positioned(row, uid, position, label):
     result = bytearray(row)
     if result[:8] != b"    0.0v" or len(result) < 81:
         raise ValueError("Unsupported native generator template")
-    struct.pack_into(">I", result, 8, uid)
+    # Generator::_70 shares the fourcc readID boundary: native readID swaps
+    # Stream::readInt, so identity bytes use little endian, unlike positions.
+    struct.pack_into("<I", result, 8, uid)
     result[16:48] = label.encode("ascii").ljust(32, b"\0")
     struct.pack_into(">6f", result, 48, *position, 0, 0, 0)
     return result
