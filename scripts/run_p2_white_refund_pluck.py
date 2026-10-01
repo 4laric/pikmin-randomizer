@@ -31,5 +31,6 @@ def main():
  elif a.mode in ('refund','full'):checks['captain_safe']=not result.get('captain_down')
  report=dict(mode=a.mode,passed=all(checks.values()),checks=checks,raw_result=result,full_campaign_accepted=False,outputs={f.name:sha(f) for f in run.iterdir() if f.is_file()})
  (run/'assessment.json').write_text(json.dumps(report,indent=2));print(json.dumps(dict(run=str(run),assessment=report),indent=2))
+ if a.mode=='manual' and result.get('exit_code')==77: return 77
  return 0 if report['passed'] else 1
 if __name__=='__main__':raise SystemExit(main())
