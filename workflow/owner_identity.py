@@ -96,6 +96,10 @@ def execution(reg, state, receipt):
                     for row in state.get('control', {}).get('terminal_recoveries', {}).values()),
             'Lane terminal recovery in flight')
     delivery = state.get('throughput', {})
+    for collection in ('jobs', 'assignments'):
+        require(not any((row.get('lane') == lane['lane'] or row.get('worker_id') == lane['worker_id']) and
+                        row.get('status') not in ('completed', 'cancelled', 'superseded')
+                        for row in delivery.get(collection, {}).values()), 'Lane or worker has queued pool execution')
     require(not any(row.get('producer') == lane['lane'] and row.get('current')
                     for row in delivery.get('candidates', {}).values()), 'Lane has current delivery candidate')
     require(not any(row.get('lane') == lane['lane'] or row.get('producer') == lane['lane']

@@ -140,6 +140,15 @@ class OwnerIdentityTests(unittest.TestCase):
                     s['actions'] = {}; s['lanes']['owner'].pop('session_pending', None)
                 self.receipt['lane'] = self.reg.snapshot()['lanes']['owner']; self.save()
 
+    def test_queued_and_open_pool_work_refuses_without_launch(self):
+        for collection in ('jobs', 'assignments'):
+            for status in ('queued', 'assigned', 'dispatched', 'recovered', 'unknown'):
+                with self.subTest(collection=collection, status=status):
+                    with self.reg.transaction() as s:
+                        s['throughput'] = {collection: {'job': dict(lane='owner', worker_id='worker', status=status)}}
+                    self.rejected('queued pool execution')
+
+
     def test_whole_lane_cas(self):
         with self.reg.transaction() as s:
             s['lanes']['owner']['task_id'] = 'other-task'
