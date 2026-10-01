@@ -24,6 +24,7 @@
 #include "timers.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_bbft.h"
+#include "pc_p2_surface_topology.h"
 #include "pc_p2_cargo_ground.h"
 #endif
 
@@ -1101,6 +1102,9 @@ struct MapLightMgr {
  */
 MapMgr::MapMgr(Controller* controller)
 {
+#if defined(PIKI_PC_PORT)
+	pc_p2_surface_topology_reset();
+#endif
 	mController = controller;
 
 	// zero-out fade and desaturation
@@ -1219,6 +1223,9 @@ void MapMgr::initShape()
 
 	// set up collisions (with grid size of 64)
 	mMapModel->createCollisions(MAP_GRID_SIZE);
+#if defined(PIKI_PC_PORT)
+	pc_p2_surface_topology_init(mMapModel);
+#endif
 	mMapBounds.expandBound(mMapModel->mCourseExtents);
 
 	// set up physics

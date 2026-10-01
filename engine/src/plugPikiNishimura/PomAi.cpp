@@ -180,7 +180,7 @@ void PomAi::keyFinished()
 		effectMgr->create(EffectMgr::EFF_Teki_DeathWaveS, mPom->mSRT.t, nullptr, nullptr);
 
 		playSound(0);
-		if(!pc_p2_violet(mPom))mPom->createPellet(mPom->mSRT.t, 150.0f, true);
+		if(!pc_p2_violet(mPom) && !pc_p2_ivory(mPom))mPom->createPellet(mPom->mSRT.t, 150.0f, true);
 	}
 
 	mPom->setMotionFinish(1);
@@ -335,9 +335,9 @@ void PomAi::createPikiHead()
     // sidecar-bound BluePom/RedPom/YellowPom; returns -1 for every other Pom.
     int candypopUsed=pc_p2_convert_candypop(mPom,mMaxSeedCount-mReleasedSeedCount);
     if(candypopUsed>=0){mReleasedSeedCount+=candypopUsed;playSound(3);return;}
-    // The source-authored Pom cycle count owns capacity; White does not copy
-    // the preview's former fixed Violet allowance.
-    int whiteConverted=pc_p2_convert_ivory(mPom,mMaxSeedCount-mReleasedSeedCount);
+    // Retail Pom ProperParms ip01=5 counts non-refunded lifetime slots.
+    // Binding is queried here: Generator attaches mGenerator after Pom::init.
+    int whiteConverted=pc_p2_convert_ivory(mPom,5-mReleasedSeedCount);
     if(whiteConverted>=0){mReleasedSeedCount+=whiteConverted;playSound(3);return;}
     int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
     if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
@@ -461,7 +461,7 @@ bool PomAi::isMotionFinishTransit()
  */
 bool PomAi::deadTransit()
 {
-	return mReleasedSeedCount >= (pc_p2_violet(mPom) ? 5 : mMaxSeedCount);
+	return mReleasedSeedCount >= ((pc_p2_violet(mPom) || pc_p2_ivory(mPom)) ? 5 : mMaxSeedCount);
 }
 
 /**
@@ -492,8 +492,8 @@ bool PomAi::petalShakeTransit()
  */
 bool PomAi::petalCloseTransit()
 {
-	f32 closeWait = pc_p2_violet(mPom) ? 5.0f : C_POM_PARM(mPom, mCloseWaitTime);
-    const int capacity = pc_p2_violet(mPom) ? 5 : C_POM_PARM(mPom, mMaxPikiPerCycle);
+	f32 closeWait = pc_p2_ivory(mPom) ? 1.0f : (pc_p2_violet(mPom) ? 5.0f : C_POM_PARM(mPom, mCloseWaitTime));
+    const int capacity = (pc_p2_violet(mPom) || pc_p2_ivory(mPom)) ? 5 : C_POM_PARM(mPom, mMaxPikiPerCycle);
 #if defined(PIKI_PC_PORT)
 	// Retail waits 30 seconds; keep short/custom and disabled timers intact.
 	if (closeWait > 5.0f) closeWait = 5.0f;
@@ -525,7 +525,7 @@ bool PomAi::dischargeTransit()
 		Creature* stuck = *iter;
 		if (stuck->isAlive() && stuck->mObjType == OBJTYPE_Piki) {
 			Piki* stuckPiki = static_cast<Piki*>(*iter);
-			if (pc_p2_violet(mPom) || !C_POM_PARM(mPom, mDoKillSameColorPiki) || stuckPiki->mColor != mPom->mColor) {
+			if (pc_p2_violet(mPom) || pc_p2_ivory(mPom) || !C_POM_PARM(mPom, mDoKillSameColorPiki) || stuckPiki->mColor != mPom->mColor) {
 				return true;
 			}
 		}
