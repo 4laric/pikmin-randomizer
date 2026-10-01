@@ -166,7 +166,7 @@ def artifact_preflight(exe, directory, native_sha):
         raise ValueError("CI compiled tree identity absent")
     declared = {}
     for line in hashes_path.read_text(encoding="ascii").splitlines():
-        match = re.fullmatch(r"([0-9a-f]{64})  (?:\./)?([^/\\]+)", line)
+        match = re.fullmatch(r"([0-9a-f]{64}) [ *](?:\./)?([^/\\]+)", line)
         if not match or match[2] in declared:
             raise ValueError("CI hash manifest malformed/duplicate")
         declared[match[2]] = match[1]

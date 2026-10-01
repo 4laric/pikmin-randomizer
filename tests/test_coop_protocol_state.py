@@ -193,6 +193,14 @@ class PairedArtifactSafetyTests(unittest.TestCase):
    hashes=''.join(hashlib.sha256((d/name).read_bytes()).hexdigest()+'  ./'+name+'\n' for name in names)
    (d/'sha256.txt').write_text(hashes,encoding='ascii')
    self.assertEqual(set(m.artifact_preflight(exe,d,pin)['files']),set(names))
+   # MSYS2 real CI sha256sum uses the standard binary marker, unlike Linux text mode.
+   binary=hashes.replace('  ./',' *./')
+   (d/'sha256.txt').write_text(binary,encoding='ascii')
+   self.assertEqual(set(m.artifact_preflight(exe,d,pin)['files']),set(names))
+   for invalid in [hashes.replace('  ./',' +./'),binary+binary.splitlines()[0]+'\n']:
+    (d/'sha256.txt').write_text(invalid,encoding='ascii')
+    with self.assertRaises(ValueError):m.artifact_preflight(exe,d,pin)
+   (d/'sha256.txt').write_text(hashes,encoding='ascii')
    for altered in [info.replace('netplay=ON','netplay=OFF'),info.replace(pin,'c'*40),info.replace('guard_sha256 ee2','guard_sha256 ff2'),info+'profile netplay=ON\n']:
     (d/'BUILD_INFO.txt').write_text(altered,encoding='utf-8')
     with self.assertRaises(ValueError):m.artifact_preflight(exe,d,pin)
