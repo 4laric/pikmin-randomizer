@@ -10,6 +10,8 @@ from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, A
 def main():
     parser = argparse.ArgumentParser(description="Pikmin Randomizer: standalone identity-placement milestone")
     sub = parser.add_subparsers(dest="command", required=True)
+    crosswalk = sub.add_parser("naming-crosswalk", help="Export TheLynk ship-part naming aliases without changing seeds")
+    crosswalk.add_argument("--output", type=Path)
     gen = sub.add_parser("generate")
     gen.add_argument("--goal", choices=("repairs", "emperor_bulblax"), default="emperor_bulblax")
     gen.add_argument("--seed", required=True)
@@ -50,6 +52,16 @@ def main():
     enemy_spoiler.add_argument('manifest', type=Path)
     enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
+    if args.command == "naming-crosswalk":
+        from .compatibility import naming_crosswalk
+        text = json.dumps(naming_crosswalk(), indent=2) + "\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("x", encoding="utf-8") as file:
+                file.write(text)
+        else:
+            print(text, end="")
+        return
     if args.command == "generate":
         manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, prerelease_trap_weight=args.prerelease_trap_weight, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.prerelease_trap_weight or args.goal == "emperor_bulblax"))
         args.output.parent.mkdir(parents=True, exist_ok=True)
