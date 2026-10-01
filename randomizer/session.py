@@ -80,6 +80,8 @@ def validate_session_data(manifest, data):
     for key in ("pikmin_deaths", "death_links_received"):
         if key in data and (type(data[key]) is not int or data[key] < 0):
             raise ValueError("invalid death link state")
+    if data.get("death_links_received", 0) > (1 << 32) - 1:
+        raise ValueError("DeathLink inventory exceeds uint32")
     return True
 
 

@@ -90,6 +90,7 @@ MAX_FRAME = 2 ** 32 - 1
 MAX_ITEM_ID = 2 ** 31 - 1
 MAX_RECEIVE_INDEX = 10_000_000
 MAX_TOTAL = 1_000_000
+MAX_DEATHLINK_TOTAL = (1 << 32) - 1
 MAX_GEN = 2 ** 64 - 1
 DIGEST_LEN = 64
 
@@ -154,7 +155,7 @@ def parse_mirror_line(line):
     if tag in ("DEATHS", "DEATHLINK"):
         if len(rest) != 1:
             _fail(tag + " takes one argument")
-        return (frame, tag, (_uint(rest[0], "total", MAX_TOTAL),))
+        return (frame, tag, (_uint(rest[0], "total", MAX_DEATHLINK_TOTAL if tag == "DEATHLINK" else MAX_TOTAL),))
     if tag == "RECEIVED":
         if len(rest) != 2:
             _fail("RECEIVED takes two arguments")

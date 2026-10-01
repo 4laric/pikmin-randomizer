@@ -8,6 +8,7 @@ from randomizer.thelynk import TheLynkSession, PART_ITEMS, BONUSES
 from randomizer.runner import NetplayClientRun, NativeRun, native_bootstrap
 from randomizer.seed import generate
 from randomizer.session import Session
+from randomizer.netplay_mirror import parse_mirror_line
 
 
 def patch():
@@ -68,3 +69,28 @@ class ProtocolConsumers(unittest.TestCase):
                 NativeRun.attach(session,run_dir)
             with self.assertRaisesRegex(ValueError,"changed"):
                 NetplayClientRun(manifest,session.directory,text,native_directory=run_dir)
+
+    def test_deathlink_uint32_boundary_and_atomic_batch(self):
+        manifest=generate("protocol-deathlink", "ap", death_link=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            host=Session(manifest, Path(tmp)/"host")
+            token=secrets.token_hex(32)
+            client=NetplayClientRun(manifest, Path(tmp)/"client", native_bootstrap(host,token))
+            from test_netplay_mirror import write_hello
+            write_hello(manifest,client)
+            events=client.directory/"mirror-events.txt"
+            events.write_text("FRAME 1 DEATHLINK 4294967295\n",encoding="ascii",newline="\n")
+            self.assertEqual(client.poll(),(1,0))
+            self.assertEqual(client.mirror.load()["death_links_received"],(1<<32)-1)
+            before=(client.directory/"mirror.json").read_bytes()
+            with events.open("a",encoding="ascii",newline="\n") as f: f.write("FRAME 2 DEATHLINK 4294967296\n")
+            with self.assertRaises(ValueError): client.poll()
+            self.assertEqual((client.directory/"mirror.json").read_bytes(),before)
+            events.write_text("FRAME 1 DEATHLINK 4294967295\nFRAME 2 DEATHLINK 4294967294\n",encoding="ascii",newline="\n")
+            with self.assertRaises(ValueError): client.poll()
+            self.assertEqual((client.directory/"mirror.json").read_bytes(),before)
+            self.assertEqual(parse_mirror_line("FRAME 3 DEATHLINK 16909060")[2],(16909060,))
+            with self.assertRaises(ValueError): parse_mirror_line("FRAME 3 DEATHS 1000001")
+            invalid=json.loads(before);invalid["death_links_received"]=1<<32
+            with self.assertRaises(ValueError): client.mirror.save(invalid)
+            self.assertEqual((client.directory/"mirror.json").read_bytes(),before)
