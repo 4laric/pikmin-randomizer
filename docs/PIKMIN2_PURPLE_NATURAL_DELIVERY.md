@@ -7,7 +7,39 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
-## Latest status: round06 identifies the native cursor-only band
+## Latest status: round07 natural acquisition and carry movement
+
+Producer `9983a687f67899df0e054df226d992eb30298374` passed Windows36916137829:
+212 tests, eight artifact hashes and no-work. Actual compiled merge
+`950dc7e58be232e1effb336f000f6eff07e52ea1`, tree
+`562502080e52b487d18345165f3f1cd352eb3cd4`; fixture matches producer.
+Executable SHA256 `f7c175dbde1bb87cbb4efe3362cc6ca923d653e2f75ad98f766f49389101d8d0`.
+All seven initialized guard07 cases PASS, including pause/movie, with the
+20-Red starting squad, centered960x540 and same-frame raw86/no positive PASS.
+
+The cursor-band fix clears the approach stall. East07 plucks the original sprout,
+verifies natural Purple acquisition at37.653s, attaches at40.888s and moves cargo
+at42.657s. West07 acquires at39.724s, attaches at45.108s and moves at46.398s.
+Both remain delivery FAIL: East times out60.188s and West60.109s before Onion
+uptake/reward. Scripted native throw and transport assignment remain disclosed;
+these are not full player-controls acceptance. Original Violet, sprout and cargo
+placement, native collision, speed and carry routes are unchanged.
+
+Fresh ordinary save07 acquires at31.964s and requests the real SDL sunset menu
+at31.996s. Native sunset stores one Purple, advances day2 to day3 at50.531s,
+and enters diary/results input. It times out60.110s without a committed card.
+The actual NativeRun handshake passes with no poll errors. Save remains FAIL;
+fresh restore is UNTESTED because there is no real checkpoint to restore. No
+forced clock, stock helper or saved-byte injection was used.
+
+Immutable evidence: `output/purple1128-runtime-summary07.json`, SHA256
+`93e61e8b94c7ad096558c0b15ac22be98a062ec6e4fb1d87f118e32cab148a64`.
+Next work is ordinary diary/results/card completion within60s, genuine fresh
+restore and withdrawal, then phased original-route delivery. Ordinary combat,
+withdrawal UI and full campaign acceptance remain open. No source admission or
+maintained export is implied; all older failure receipts remain unchanged.
+
+## Round06 identifies the native cursor-only band
 
 Producer `7172a2d9586ffae60629816d0accfde75bfe245e` passed Windows36914100082:
 212 tests, eight hashes and no-work; actual compiled merge
