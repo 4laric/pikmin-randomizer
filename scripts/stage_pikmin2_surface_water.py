@@ -45,6 +45,13 @@ def prepare(assets, bundle, identity, output, species_probe=False):
                     struct.pack_into('>3f', data, offset+48, 220, 56.0442, 995+i*10)
                 struct.pack_into('>i', data, offset+92, 0 if i==1 else 1)
         path.write_bytes(data)
+    inputs = run / 'full-surface-inputs.json'
+    terrain_record = json.loads(inputs.read_text())
+    terrain_record['files'] = {name: hashlib.sha256((run/'assets'/name).read_bytes()).hexdigest()
+                               for name in terrain_record['files']}
+    terrain_record.update(native_water_consumer=True, captain_start_xz=[220,1000],
+                          species_probe=species_probe, water_record='surface-water-inputs.json')
+    inputs.write_text(json.dumps(terrain_record, indent=2)+'\n')
     record = dict(schema=1, receipt_identity=identity, static_source_boxes=3,
                   native_water_consumer=True, dynamic_lowering=False,
                   native_body_convention='P1 feet position and collision radius',
@@ -52,6 +59,11 @@ def prepare(assets, bundle, identity, output, species_probe=False):
                   species_probe=species_probe,
                   species_probe_staging='19 Reds/1 Blue; 18 free dry-bank Reds, two shoreline followers' if species_probe else None,
                   water_sha256=hashlib.sha256(water).hexdigest(),
+                  source_waterbox_sha256=hashlib.sha256((bundle/'texts/waterbox.txt').read_bytes()).hexdigest(),
+                  source_volume_inventory_sha256=hashlib.sha256((bundle/'surface-water.json').read_bytes()).hexdigest(),
+                  stage_sha256=hashlib.sha256(stage.read_bytes()).hexdigest(),
+                  generators_sha256={name: hashlib.sha256((run/'assets/dataDir/stages/p2_tutorial'/name).read_bytes()).hexdigest()
+                                     for name in ('default.gen','init.gen','plants.gen','day.gen')},
                   terrain_sha256=hashlib.sha256(target.with_suffix('.mod').read_bytes()).hexdigest(),
                   retail_generators=False, water_rendering=False, playable_level_admission=False)
     (run / 'surface-water-inputs.json').write_text(json.dumps(record, indent=2)+'\n')
