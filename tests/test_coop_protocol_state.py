@@ -76,7 +76,7 @@ class ProtocolConsumers(unittest.TestCase):
             host=Session(manifest, Path(tmp)/"host")
             token=secrets.token_hex(32)
             client=NetplayClientRun(manifest, Path(tmp)/"client", native_bootstrap(host,token))
-            from test_netplay_mirror import write_hello
+            from tests.test_netplay_mirror import write_hello
             write_hello(manifest,client)
             events=client.directory/"mirror-events.txt"
             events.write_text("FRAME 1 DEATHLINK 4294967295\n",encoding="ascii",newline="\n")
@@ -112,3 +112,58 @@ class ProtocolConsumers(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,"complete host manifest"):
                     NetplayClientRun(manifest,target,text)
                 self.assertFalse(target.exists())
+
+
+class PairedHarnessSafetyTests(unittest.TestCase):
+    @staticmethod
+    def harness():
+        import importlib.util
+        path = Path(__file__).resolve().parents[1] / "scripts/run_coop_state_protocol_acceptance.py"
+        spec = importlib.util.spec_from_file_location("paired_harness", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_sdl_command_atomic_refusal_preserves_previous_file(self):
+        from unittest.mock import patch as mock_patch
+        module = self.harness()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "command.txt"
+            command = module.SdlCommand(path)
+            self.assertTrue(command.publish(1, (-32768, 32767, 0, 0)))
+            previous = path.read_bytes()
+            self.assertEqual(previous, b"SDL1 1 1 -32768 32767 0 0 END\n")
+            for buttons, axes in [(1 << 21, (0, 0, 0, 0)), (-1, (0, 0, 0, 0)),
+                                   (0, (32768, 0, 0, 0)), (0, (0, 0, 0))]:
+                with self.assertRaises(ValueError): command.publish(buttons, axes)
+                self.assertEqual(path.read_bytes(), previous)
+            with mock_patch.object(module.os, "replace", side_effect=PermissionError):
+                self.assertFalse(command.publish())
+            self.assertEqual(path.read_bytes(), previous)
+            self.assertFalse(path.with_suffix(".pending").exists())
+            self.assertTrue(command.publish())
+            self.assertEqual(path.read_bytes(), b"SDL1 3 0 0 0 0 0 END\n")
+
+    def test_deadline_covers_preinit_and_refuses_extended_limit(self):
+        from unittest.mock import patch as mock_patch
+        module = self.harness()
+        for seconds in (0, -1, 60.001):
+            with self.assertRaises(ValueError): module.Deadline(seconds)
+        with mock_patch.object(module.time, "monotonic", side_effect=[100, 159.99, 160]):
+            deadline = module.Deadline(60)
+            deadline.check()
+            with self.assertRaises(TimeoutError): deadline.check()
+
+    def test_cleanup_signals_only_registered_owned_children(self):
+        module = self.harness()
+        class Child:
+            def __init__(self, exited=False): self.exited=exited; self.signals=[]
+            def poll(self): return 0 if self.exited else None
+            def terminate(self): self.signals.append("terminate"); self.exited=True
+            def wait(self, timeout): return 0
+        alive, exited, unrelated = Child(), Child(True), Child()
+        owned = module.OwnedChildren(); owned.children = [alive, exited]
+        owned.close()
+        self.assertEqual(alive.signals, ["terminate"])
+        self.assertEqual(exited.signals, [])
+        self.assertEqual(unrelated.signals, [])
