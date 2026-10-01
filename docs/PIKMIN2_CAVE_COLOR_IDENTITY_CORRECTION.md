@@ -49,7 +49,35 @@ fresh staging with no injected entry checkpoint, and assesses native Red ID 1
 before input, thrown color 1, saved species 1 and restored species 1. Actor
 positions, species and states are never changed by fixture input.
 
-Fresh runtime verification is pending. No corrected Red acquisition PASS is
-claimed by this source correction alone. Manual pluck, mixed full-squad hazard
-crossing, exit UI, second procedural floor descent and campaign continuity
-remain outside this slice.
+Fresh runtime verification passed in `output/cave-red-identity/`:
+
+| Run | Observed native result |
+| --- | --- |
+| `run-supply-02` | Ordinary fresh entry: Red ID 1 count 20, Yellow ID 2 count 0, Blue ID 0 count 0. Five actual bud accepts with thrown color 1, five Blue sprouts, mixed recall/west-side movement, actual checkpoint exit 42 in 41.188 seconds. Transfer contains 15 species 1 / 5 species 0; bud usage 5. |
+| `run-restore-02` | Actual transfer restores native 15 Red / 5 Blue, exact bud state and empty receipt ledger; exit 0 in 3.766 seconds. |
+| `run-negative-02` | Forced captain-down guard, raw exit 86 in 0.954 seconds with no success marker. |
+
+All runs used fresh arenas, the current overlay, a centered 960x540 window,
+background SDL controller events and 60-second wall-clock supervision. Native
+source pin `961244675a8ad1cd4e5c7bb0fb5f2bfb815d69fe` is clean on base
+`2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b`. Private build directory:
+`output/native-cave-red-identity-1125-build`; production SHA-256
+`100d07a7376e3dd56616878c991695e8f27c1c3655c326379252f8004fe96664`;
+replacement-main fixture SHA-256
+`0f78d27e421b5e71e03e0201a91f928a0953ff57baec4a03d35d9ca2a8bd8aae`.
+Production build and no-work dry run passed; fixture provenance is retained.
+Eight bounded cave Python tests pass. Source checks distinguish generator
+formation state from color. Reassessment rejects the historical supply/restore
+logs under the corrected Red criterion without changing them.
+
+Preserved `run-supply-01` exited 42 after native acquisition but the runner's
+post-check failed because fresh stage supplies no receipt sidecar. The runner
+now initializes an empty ledger as ordinary supervision does; a new run verifies
+the corrected path. This failed assessment is not silently converted to PASS.
+
+The initial squad is the ordinary staged baseline, not natural population
+acquisition. Input uses an SDL virtual controller; production bud auto-pluck
+remains enabled, exit confirmation is bypassed, and only the captain crosses to
+the exit while the mixed squad stays west. Manual pluck, mixed full-squad hazard
+crossing, exit UI, second procedural floor descent, full supervisor recovery and
+campaign continuity remain outside this slice.
