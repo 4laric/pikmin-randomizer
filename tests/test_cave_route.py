@@ -148,4 +148,91 @@ class RouteTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'input changed'):self.route.recover()
 
 
+class WfgRouteTests(unittest.TestCase):
+    def setUp(self):
+        from randomizer.cave_journey import create_wfg_route
+        from experimental.pikmin2_cave_lane41_generator import _seed_uint64
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.journey=create_wfg_route('1161')
+        self.placements={i:dict(cave=spec['descriptor']['table']['cave_id'],
+            floor=spec['descriptor']['table']['floor'],seed=_seed_uint64(spec['descriptor']['table']['seed']),
+            items=[dict(slot_id='item:'+t['slot_id']+':0',host=t['slot_id'],item=t['treasure_id'])
+                   for t in spec['descriptor']['table']['treasures']]) for i,spec in enumerate(self.journey['floors'])}
+        self.route=cave_route.Route(self.temp.name,self.journey,self.placements,'source')
+        self.state=self.route.initialize(dict(position=[0.,0.,0.],health=1.,squad=[[1,0]]*20))
+
+    def boundary(self,state,name,squad):
+        run=self.route.directory/'runs'/name;run.mkdir(parents=True)
+        (run/'input.txt').write_text('synthetic policy evidence only')
+        if state['phase']=='surface':
+            token='a'*32;name='p2-cave-surface-transfer.txt'
+            text=f'P2_CAVE_ROUTE_TRANSFER_2 {token} 0 0 0 .75 {len(squad)} '
+        else:
+            index=self.route.phase_indices[state['phase']];manifest=self.route.manifests[index]
+            token=fingerprint(manifest)[:32];name='p2-cave-transfer.txt'
+            text=f"P2_CAVE_TRANSFER_2 {token} {manifest['table']['floor']} .5 {len(squad)} "
+            (run/'p2-cave-bud-transfer.txt').write_text(zero_buds(manifest).replace('bud:1 0','bud:1 5'))
+        self.route.begin(run,state,token,['input.txt'])
+        (run/name).write_text(text+' '.join(str(v) for row in squad for v in row))
+        return run
+
+    def test_four_phase_cycle_keeps_actual_party_and_white_evidence(self):
+        state=self.state;party=[[1,0]]*20;evidence=None
+        for name,phase in [('enter','acquisition'),('acquire','floor1'),('descend','floor2'),('exit','surface')]:
+            if name=='acquire':party=[[3,2],[4,1],[1,0]]
+            if name=='exit':party=[[3,2],[1,0]]
+            self.boundary(state,name,party);state,changed=self.route.recover()
+            self.assertTrue(changed);self.assertEqual(state['phase'],phase)
+            target=state['surface'] if phase=='surface' else state['entry']
+            self.assertEqual(target['squad'],party);self.assertEqual(target['wire_schema'],2)
+            if name=='acquire':evidence=state['wfg_white_boundary'];self.assertIsNotNone(evidence)
+            if evidence:self.assertEqual(state['wfg_white_boundary'],evidence)
+            self.assertEqual(self.route.recover(),(state,False))
+        self.assertEqual((state['revision'],state['visit']),(4,1))
+        self.boundary(state,'reenter',party);state,_=self.route.recover()
+        self.assertEqual((state['phase'],state['revision'],state['visit']),('acquisition',5,2))
+        self.assertEqual(state['entry']['squad'],party)
+        run=self.boundary(state,'later-carry-only',party)
+        (run/'p2-cave-bud-transfer.txt').write_text(zero_buds(self.route.manifests[0]))
+        state,_=self.route.recover();self.assertEqual(state['wfg_white_boundary'],evidence)
+        (Path(evidence['run'])/'p2-cave-bud-transfer.txt').write_text('tampered')
+        with self.assertRaisesRegex(ValueError,'White boundary changed'):self.route.load()
+
+    def test_no_white_is_valid_boundary_without_acquisition_evidence(self):
+        self.boundary(self.state,'enter',[[1,0]]*20);state,_=self.route.recover()
+        self.boundary(state,'leave',[[1,2]]*19);state,_=self.route.recover()
+        self.assertIsNone(state['wfg_white_boundary'])
+        self.assertEqual(state['entry']['squad'],[[1,2]]*19)
+
+    def test_incoming_white_without_spent_white_bud_is_carry_only(self):
+        self.boundary(self.state,'enter',[[4,1],[1,0]]);state,_=self.route.recover()
+        run=self.boundary(state,'carry-through',[[4,1],[1,0]])
+        (run/'p2-cave-bud-transfer.txt').write_text(zero_buds(self.route.manifests[0]))
+        state,changed=self.route.recover()
+        self.assertTrue(changed);self.assertIsNone(state['wfg_white_boundary'])
+        self.assertEqual(state['entry']['squad'],[[4,1],[1,0]])
+        import hashlib
+        state['wfg_white_boundary']=dict(run=str(run),
+            sha256=hashlib.sha256((run/'p2-cave-transfer.txt').read_bytes()).hexdigest(),
+            buds_sha256=hashlib.sha256((run/'p2-cave-bud-transfer.txt').read_bytes()).hexdigest())
+        self.route.state_path.write_text(json.dumps(state))
+        with self.assertRaisesRegex(ValueError,'lacks White acquisition'):self.route.load()
+
+    def test_acquisition_commit_recovers_once_and_uses_actual_floor(self):
+        self.boundary(self.state,'enter',[[1,0]]*20);state,_=self.route.recover()
+        self.boundary(state,'acquire',[[4,2],[3,1]])
+        real=cave_route.atomic_write
+        def crash(path,text):
+            real(path,text)
+            if path==self.route.state_path:raise OSError('after durable write')
+        with patch.object(cave_route,'atomic_write',side_effect=crash):
+            with self.assertRaises(OSError):self.route.recover()
+        state,changed=self.route.recover();self.assertFalse(changed)
+        self.assertEqual((state['phase'],state['revision']),('floor1',2))
+        self.assertEqual(state['entry']['squad'],[[4,2],[3,1]])
+        bad=dict(self.placements);bad[0]=dict(bad[0],floor=0)
+        with self.assertRaisesRegex(ValueError,'placement identity'):
+            cave_route.Route(self.temp.name,self.journey,bad,'source')
+
+
 if __name__=='__main__':unittest.main()

@@ -35,12 +35,26 @@ class Route:
     def __init__(self,directory,journey,placements,content_identity):
         self.directory=Path(directory).resolve();self.journey=journey
         self.identity=hashlib.sha256(encoded(dict(journey=identity(journey),content=content_identity)).encode()).hexdigest()
-        self.manifests={n:journey['floors'][n-1]['descriptor'] for n in (1,2)}
+        self.container_schema=2 if journey['schema']=='p2-cave-journey/2' else 1
+        self.phases=('surface','acquisition','floor1','floor2') if self.container_schema==2 else ('surface','floor1','floor2')
+        self.phase_indices={phase:i for i,phase in enumerate(self.phases[1:],0 if self.container_schema==2 else 1)}
+        self.manifests={n:spec['descriptor'] for n,spec in zip(self.phase_indices.values(),journey['floors'])}
         self.placements=placements
-        # Reuse the delivered journey's strict seed/floor/item identity checks.
-        from randomizer.cave_journey import Session
-        Session(self.directory,journey,placements)
+        from experimental.pikmin2_cave_lane41_generator import _seed_uint64
+        if set(placements)!=set(self.manifests):raise ValueError('route placement phases differ')
+        for n,manifest in self.manifests.items():
+            table=manifest['table'];placement=placements[n]
+            expected={(f"item:{t['slot_id']}:0",t['slot_id'],t['treasure_id']) for t in table['treasures']}
+            actual={(v['slot_id'],v['host'],v['item']) for v in placement['items']}
+            if (placement['floor']!=table['floor'] or placement['cave']!=table['cave_id']
+                or placement['seed']!=_seed_uint64(table['seed']) or actual!=expected
+                or len(placement['items'])!=len(expected)):raise ValueError('floor placement identity differs from route')
         self.state_path=self.directory/'route-state.json';self.pending_path=self.directory/'route-pending.json'
+
+    def entry_for(self,index,squad,health,wire_schema=None):
+        if index not in self.manifests:raise ValueError('unknown route phase index')
+        if self.container_schema==2 and index==0:wire_schema=2
+        return initial_entry(self.manifests[index],squad,health,wire_schema)
 
     def ledger_path(self,floor):return self.directory/f'route-floor-{floor}-receipts.txt'
 
@@ -62,9 +76,10 @@ class Route:
         if self.pending_path.exists() or any(self.directory.glob('route-floor-*-receipts.txt')):
             raise ValueError('missing route state; refusing party/receipt reset')
         self.validate_surface(surface)
-        for n in (1,2):atomic_write(self.ledger_path(n),'P2_RECEIPTS_1\n')
-        state=dict(schema=1,identity=self.identity,phase='surface',revision=0,visit=0,
+        for n in self.manifests:atomic_write(self.ledger_path(n),'P2_RECEIPTS_1\n')
+        state=dict(schema=self.container_schema,identity=self.identity,phase='surface',revision=0,visit=0,
                    surface=copy.deepcopy(surface),entry=None,last_boundary=None)
+        if self.container_schema==2:state['wfg_white_boundary']=None
         atomic_write(self.state_path,encoded(state)+'\n');return self.load()
 
     @staticmethod
@@ -79,18 +94,23 @@ class Route:
 
     def load(self):
         state=read_json(self.state_path)
-        if (set(state)!={'schema','identity','phase','revision','visit','surface','entry','last_boundary'}
-            or state['schema']!=1 or state['identity']!=self.identity
-            or state['phase'] not in ('surface','floor1','floor2')
+        if (set(state)!=({'schema','identity','phase','revision','visit','surface','entry','last_boundary'} | ({'wfg_white_boundary'} if self.container_schema==2 else set()))
+            or type(state['schema']) is not int or state['schema']!=self.container_schema or state['identity']!=self.identity
+            or state['phase'] not in self.phases
             or type(state['visit']) is not int or state['visit']<0
             or type(state['revision']) is not int or state['revision']<0):raise ValueError('foreign route state')
-        expected=state['visit']*3+{'surface':0,'floor1':-2,'floor2':-1}[state['phase']]
+        expected=state['visit']*len(self.phases)+(0 if state['phase']=='surface' else self.phases.index(state['phase'])-len(self.phases))
         if state['revision']!=expected:raise ValueError('route revision differs from phase')
-        self.validate_surface(state['surface']);self.ledger(1);self.ledger(2)
+        self.validate_surface(state['surface'])
+        for n in self.manifests:self.ledger(n)
+        if self.container_schema==2:
+            if state['revision']<2 and state['wfg_white_boundary'] is not None:
+                raise ValueError('WFG evidence predates acquisition boundary')
+            self.validate_white_boundary(state['wfg_white_boundary'])
         if state['phase']=='surface':
             if state['entry'] is not None:raise ValueError('surface has cave entry')
         else:
-            n=int(state['phase'][-1]);entry=state['entry']
+            n=self.phase_indices[state['phase']];entry=state['entry']
             if type(entry) is not dict or entry.get('fingerprint')!=fingerprint(self.manifests[n]):raise ValueError('foreign cave entry')
             wire_schema(entry)
         if state['revision']==0:
@@ -98,20 +118,43 @@ class Route:
         else:
             b=state['last_boundary'];run=Path(b['run']).resolve()
             if not self.valid_run(run):raise ValueError('foreign saved boundary')
-            name='p2-cave-surface-transfer.txt' if state['phase']=='floor1' else 'p2-cave-transfer.txt'
+            name='p2-cave-surface-transfer.txt' if state['phase']==self.phases[1] else 'p2-cave-transfer.txt'
             source=run/name
             if hashlib.sha256(source.read_bytes()).hexdigest()!=b['sha256']:raise ValueError('saved boundary changed')
-            if state['phase']=='floor1':
+            if state['phase']==self.phases[1]:
                 original=surface_transfer(source.read_text(),source.read_text().split()[1])
-                if state['surface']!=original or state['entry']!=initial_entry(self.manifests[1],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved surface boundary')
+                if state['surface']!=original or state['entry']!=self.entry_for(self.phase_indices[self.phases[1]],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved surface boundary')
             else:
                 from scripts.play_pikmin2_cave import checkpoint
-                n=1 if state['phase']=='floor2' else 2
+                previous=self.phases[self.phases.index(state['phase'])-1] if state['phase']!='surface' else self.phases[-1]
+                n=self.phase_indices[previous]
                 original=checkpoint(source.read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),self.ledger(n),self.manifests[n],self.placements[n])
-                if state['phase']=='floor2':
-                    if state['entry']!=initial_entry(self.manifests[2],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved floor boundary')
+                if state['phase']!='surface':
+                    if state['entry']!=self.entry_for(self.phase_indices[state['phase']],original['squad'],original['health'],original.get('wire_schema')):raise ValueError('entry differs from saved floor boundary')
                 elif state['surface']!=self.surface_from_floor(original,state['surface']['position']):raise ValueError('surface differs from terminal boundary')
         return state
+
+    def white_acquired(self,saved):
+        # checkpoint() already validates the complete budget wire against the
+        # acquisition descriptor. Living White alone could be incoming carry.
+        words=saved['buds'].split()
+        used={words[i]:int(words[i+1]) for i in range(5,len(words),2)}
+        slots=[bud['slot_id'] for bud in self.manifests[0]['table']['buds'] if bud['species']=='white']
+        return any(species==4 for species,maturity in saved['squad']) and any(used[slot]>0 for slot in slots)
+
+    def validate_white_boundary(self,boundary):
+        if boundary is None:return
+        if type(boundary) is not dict or set(boundary)!={'run','sha256','buds_sha256'}:
+            raise ValueError('invalid WFG White boundary evidence')
+        run=Path(boundary['run']).resolve()
+        if not self.valid_run(run):raise ValueError('foreign WFG White boundary')
+        source=run/'p2-cave-transfer.txt';buds=run/'p2-cave-bud-transfer.txt'
+        if (hashlib.sha256(source.read_bytes()).hexdigest()!=boundary['sha256']
+            or hashlib.sha256(buds.read_bytes()).hexdigest()!=boundary['buds_sha256']):
+            raise ValueError('WFG White boundary changed')
+        from scripts.play_pikmin2_cave import checkpoint
+        saved=checkpoint(source.read_text(),buds.read_text(),self.ledger(0),self.manifests[0],self.placements[0])
+        if not self.white_acquired(saved):raise ValueError('WFG boundary lacks White acquisition evidence')
 
     def begin(self,run,state,token,inputs):
         if self.pending_path.exists():raise ValueError('unresolved route launch')
@@ -124,7 +167,7 @@ class Route:
             path=(run/name).resolve()
             if not path.is_relative_to(run) or not path.is_file():raise ValueError('foreign pending input')
             hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
-        atomic_write(self.pending_path,encoded(dict(schema=1,identity=self.identity,phase=state['phase'],revision=state['revision'],token=token,run=str(run),inputs=hashes))+'\n')
+        atomic_write(self.pending_path,encoded(dict(schema=self.container_schema,identity=self.identity,phase=state['phase'],revision=state['revision'],token=token,run=str(run),inputs=hashes))+'\n')
 
     def valid_run(self,run):
         runs=(self.directory/'runs').resolve()
@@ -144,7 +187,7 @@ class Route:
         state=self.load()
         if not self.pending_path.exists():return state,False
         pending=read_json(self.pending_path);run=Path(pending['run']).resolve()
-        if (pending.get('identity')!=self.identity or pending.get('schema')!=1
+        if (pending.get('identity')!=self.identity or pending.get('schema')!=self.container_schema
             or not self.valid_run(run)):raise ValueError('foreign pending route')
         if any(Path(p).resolve() in (run,run/'nectar.exe') for p in live_paths):raise ValueError('route child still live')
         for name,digest in pending['inputs'].items():
@@ -160,12 +203,17 @@ class Route:
         next_state=copy.deepcopy(state)
         if state['phase']=='surface':
             surface=surface_transfer(source.read_text(),pending['token'])
-            next_state.update(phase='floor1',visit=state['visit']+1,surface=surface,
-                              entry=initial_entry(self.manifests[1],surface['squad'],surface['health'],surface.get('wire_schema')))
+            next_state.update(phase=self.phases[1],visit=state['visit']+1,surface=surface,
+                              entry=self.entry_for(self.phase_indices[self.phases[1]],surface['squad'],surface['health'],surface.get('wire_schema')))
         else:
             from scripts.play_pikmin2_cave import checkpoint
-            n=int(state['phase'][-1]);saved=checkpoint(source.read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),self.ledger(n),self.manifests[n],self.placements[n])
-            if n==1:next_state.update(phase='floor2',entry=initial_entry(self.manifests[2],saved['squad'],saved['health'],saved.get('wire_schema')))
+            n=self.phase_indices[state['phase']];saved=checkpoint(source.read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),self.ledger(n),self.manifests[n],self.placements[n])
+            if state['phase']=='acquisition' and self.white_acquired(saved):
+                next_state['wfg_white_boundary']=dict(run=str(run),sha256=boundary,
+                    buds_sha256=hashlib.sha256((run/'p2-cave-bud-transfer.txt').read_bytes()).hexdigest())
+            if state['phase']!=self.phases[-1]:
+                phase=self.phases[self.phases.index(state['phase'])+1]
+                next_state.update(phase=phase,entry=self.entry_for(self.phase_indices[phase],saved['squad'],saved['health'],saved.get('wire_schema')))
             else:
                 surface=self.surface_from_floor(saved,state['surface']['position'])
                 next_state.update(phase='surface',surface=surface,entry=None)

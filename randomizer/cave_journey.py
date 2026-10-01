@@ -8,6 +8,7 @@ from randomizer.cave_floor import create_journey_floor, fingerprint, atomic_writ
 from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 
 POLICY = 'forest1-two-floor-journey-v1'
+WFG_ROUTE_POLICY = 'wfg-pw-acquisition-route-v1'
 
 
 def read_json(path):
@@ -32,9 +33,17 @@ def create(seed, slot='Player1'):
 
 
 def validate(journey):
-    if type(journey) is not dict or encoded(journey) != encoded(create(journey.get('seed'), journey.get('slot'))):
+    factory = create_wfg_route if type(journey) is dict and journey.get('schema') == 'p2-cave-journey/2' else create
+    if type(journey) is not dict or encoded(journey) != encoded(factory(journey.get('seed'), journey.get('slot'))):
         raise ValueError('foreign or malformed journey')
     return journey
+
+
+def create_wfg_route(seed, slot='Player1'):
+    from randomizer.cave_floor import create_wfg_acquisition
+    return dict(schema='p2-cave-journey/2', policy=WFG_ROUTE_POLICY, seed=seed, slot=slot,
+                floors=[dict(descriptor=create_wfg_acquisition(seed,slot),salt=0)]
+                + create(seed,slot)['floors'])
 
 
 def identity(journey):
@@ -65,6 +74,8 @@ class Session:
     def __init__(self, directory, journey, placements):
         self.directory = Path(directory).resolve()
         self.journey = validate(journey)
+        if self.journey['schema'] != 'p2-cave-journey/1':
+            raise ValueError('WFG acquisition requires Route container2, not Session')
         self.fingerprint = identity(journey)
         self.placements = placements
         self.manifests = {n: journey['floors'][n-1]['descriptor'] for n in (1, 2)}

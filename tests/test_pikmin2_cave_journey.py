@@ -48,6 +48,18 @@ class JourneyTests(unittest.TestCase):
         p = self.session.placements[1]; item = p['items'][0]
         atomic_write(self.session.ledger_path(1),f"P2_RECEIPTS_1\n{p['seed']} treasure:forest_1:f1:{item['slot_id']} {item['host']} cave_treasure\n")
 
+    def test_wfg_factory_is_separate_and_session_refuses_it(self):
+        from randomizer.cave_journey import create_wfg_route, validate
+        journey=create_wfg_route('1127')
+        self.assertEqual(journey['floors'][1:],self.journey['floors'])
+        self.assertEqual([f['salt'] for f in journey['floors']],[0,0,1])
+        self.assertEqual([(f['descriptor']['table']['cave_id'],f['descriptor']['table']['floor']) for f in journey['floors']],
+                         [('forest_2',1),('forest_1',1),('forest_1',2)])
+        self.assertEqual(validate(journey),journey)
+        with self.assertRaisesRegex(ValueError,'not Session'):Session(self.tmp.name,journey,{})
+        bad=copy.deepcopy(journey);bad['floors'][0]['salt']=1
+        with self.assertRaises(ValueError):validate(bad)
+
     def test_legacy_identity_and_new_floor_namespaces(self):
         self.assertEqual(fingerprint(legacy('930')), 'f4ac3b78b6ff81adbe0aad75398e35af9f89a49ad326a4bfaef646bf7078f54c')
         self.assertEqual(create('1127'),self.journey)
