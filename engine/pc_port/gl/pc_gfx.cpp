@@ -32,6 +32,7 @@
 
 #include "../timing/pc_render_packet.h"
 #include "pc_tev_shader.h"
+#include "pc_tev_order.h"
 #include "pc_gx_lighting_glsl.h"
 #include "pc_postprocess.h"
 #include "pc_texpack.h"
@@ -4363,6 +4364,20 @@ static bool proxyShotActive() {
     return sProxyShotEnabled;
 }
 
+static unsigned sFrameDumpBurst = 0;
+void pc_gfx_frame_dump_burst(unsigned frames) { sFrameDumpBurst = frames; }
+void pc_gfx_proxy_shot_notify_after(const char* key, int frames) {
+    if (!proxyShotActive()) return;
+    if (!key || *key == '\0') return;
+    const std::string k(key);
+    if (sProxyShotDone.count(k) != 0) return;
+    sProxyShotDone.insert(k);
+    ProxyShotPending pending;
+    pending.key = k;
+    pending.frame = sProxyShotFrame + uint64_t(frames > 1 ? frames : 1);
+    sProxyShotPending.push_back(pending);
+}
+
 void pc_gfx_proxy_shot_notify(const char* key) {
     if (!proxyShotActive()) return;
     if (!key || *key == '\0') return;
@@ -4374,6 +4389,14 @@ void pc_gfx_proxy_shot_notify(const char* key) {
     ProxyShotPending pending;
     pending.key = k;
     pending.frame = sProxyShotFrame + 30;
+    sProxyShotPending.push_back(pending);
+}
+
+void pc_gfx_proxy_shot_now(const char* key) {
+    if (!proxyShotActive() || !key || *key == '\0') return;
+    ProxyShotPending pending;
+    pending.key = key;
+    pending.frame = sProxyShotFrame + 1;
     sProxyShotPending.push_back(pending);
 }
 
@@ -4491,14 +4514,45 @@ void pc_gfx_present(void) {
     shadow_frame_reset();
     // PIKMIN_FRAME_DUMP=<dir>: the finished frame as PPM every 15 frames, for
     // looking at a scene where no screenshot tool reaches (Wayland, adb-less).
+    // PIKMIN_FRAME_DUMP_EVERY=<n> changes the interval (1 = every frame, for
+    // motion evidence such as #895 pose interpolation); PIKMIN_FRAME_DUMP_FROM
+    // and PIKMIN_FRAME_DUMP_TO bound the dumped frame numbers.
     if (const char* dumpDir = std::getenv("PIKMIN_FRAME_DUMP")) {
         static unsigned dumpFrame = 0;
-        if (++dumpFrame % 15 == 0 && sRenderWidth > 0 && sRenderHeight > 0) {
+        static const unsigned dumpEvery = [] {
+            const char* raw = std::getenv("PIKMIN_FRAME_DUMP_EVERY");
+            const long v = raw ? std::strtol(raw, nullptr, 10) : 15;
+            return unsigned(v >= 1 && v <= 3600 ? v : 15);
+        }();
+        static const unsigned dumpFrom = [] {
+            const char* raw = std::getenv("PIKMIN_FRAME_DUMP_FROM");
+            const long v = raw ? std::strtol(raw, nullptr, 10) : 0;
+            return unsigned(v > 0 ? v : 0);
+        }();
+        static const unsigned dumpTo = [] {
+            const char* raw = std::getenv("PIKMIN_FRAME_DUMP_TO");
+            const long v = raw ? std::strtol(raw, nullptr, 10) : 0;
+            return v > 0 ? unsigned(v) : ~0u;
+        }();
+        ++dumpFrame;
+        // pc_gfx_frame_dump_burst(): a gameplay marker asks for the next frames (test-only,
+        // effective only while PIKMIN_FRAME_DUMP is set), so an attack effect can be captured
+        // without dumping every frame of the session.
+        bool burstDump = false;
+        if (sFrameDumpBurst > 0) {
+            --sFrameDumpBurst;
+            burstDump = (sFrameDumpBurst % 3u) == 0u;
+        }
+        if ((burstDump || (dumpFrame % dumpEvery == 0 && dumpFrame >= dumpFrom && dumpFrame <= dumpTo)) && sRenderWidth > 0
+                && sRenderHeight > 0) {
             std::vector<unsigned char> rgba(size_t(sRenderWidth) * sRenderHeight * 4);
             glBindFramebuffer_ptr(GL_READ_FRAMEBUFFER, sourceFramebuffer);
             glReadPixels(0, 0, sRenderWidth, sRenderHeight, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
             char path[512];
             snprintf(path, sizeof path, "%s/frame_%05u.ppm", dumpDir, dumpFrame);
+            // Marks the dump in the log stream so evidence tooling can pair a
+            // frame with the gameplay lines around it (e.g. target distance).
+            if (dumpEvery < 15) std::printf("PIKMIN_FRAME_DUMP frame=%u\n", dumpFrame);
             if (FILE* f = fopen(path, "wb")) {
                 fprintf(f, "P6\n%d %d\n255\n", sRenderWidth, sRenderHeight);
                 for (int y = sRenderHeight - 1; y >= 0; --y) {
@@ -4506,6 +4560,10 @@ void pc_gfx_present(void) {
                     for (int x = 0; x < sRenderWidth; ++x) fwrite(row + x * 4, 1, 3, f);
                 }
                 fclose(f);
+                // Log correlation for eye checks: the marker stream around this
+                // line is what the dumped frame shows (env-gated diagnostic).
+                std::printf("FRAME_DUMP frame=%05u %dx%d\n", dumpFrame, sRenderWidth, sRenderHeight);
+                std::fflush(stdout);
             }
         }
     }
@@ -5086,7 +5144,9 @@ void pc_gfx_set_tev_order(GXTevStageID stage, GXTexCoordID coord, GXTexMapID map
     state_touched();
     if (stage >= GX_TEVSTAGE0 && stage < GX_MAXTEVSTAGE) {
         sTevStages[stage].texMap = map;
-        sTevStages[stage].texCoord = coord;
+        // GXSetTevOrder turns GX_TEXCOORD_NULL into TEXCOORD0 and keeps the texture
+        // enabled for a valid map (see pc_tev_order.h); the raw 0xFF used to be clamped to 3.
+        sTevStages[stage].texCoord = GXTexCoordID(pc_tev_order_texcoord(int(coord)));
         sTevStages[stage].textureEnabled = map >= GX_TEXMAP0 && map < GX_MAX_TEXMAP;
         if (chan == GX_COLOR_NULL || chan == GX_COLOR_ZERO) sTevStages[stage].rasChannel = -1;
         else if (chan == GX_COLOR1 || chan == GX_ALPHA1 || chan == GX_COLOR1A1) sTevStages[stage].rasChannel = 1;
@@ -8447,8 +8507,11 @@ static void mesh_arena_reset() {
     }
 }
 
+static std::vector<std::pair<uintptr_t, uintptr_t>> sDynamicVertexRanges;
+
 void pc_gfx_invalidate_resident_meshes(void) {
     if (!sResidentMeshes.empty()) mesh_arena_reset();
+    sDynamicVertexRanges.clear(); // heap reset: the blend shapes die with it
 }
 
 void pc_gfx_invalidate_cpu_range(const void* addr, size_t bytes) {
@@ -8461,6 +8524,29 @@ void pc_gfx_invalidate_cpu_range(const void* addr, size_t bytes) {
         else ++it;
     }
     // Arena space of dropped meshes is only reclaimed by a full reset.
+}
+
+// CPU-rewritten vertex storage (P2 pose blending rewrites a private shape's
+// vertex/normal arrays every frame). A mesh reading any of these ranges is
+// never made resident: caching it would freeze the first blended pose, and
+// rebuilding it every frame would exhaust the arena. Cleared with the arena.
+
+void pc_gfx_mark_dynamic_vertex_range(const void* addr, size_t bytes) {
+    if (!addr || bytes == 0) return;
+    const uintptr_t lo = uintptr_t(addr), hi = lo + bytes;
+    for (const auto& r : sDynamicVertexRanges)
+        if (r.first == lo && r.second == hi) {
+            pc_gfx_invalidate_cpu_range(addr, bytes);
+            return;
+        }
+    sDynamicVertexRanges.emplace_back(lo, hi);
+    pc_gfx_invalidate_cpu_range(addr, bytes);
+}
+
+static bool mesh_reads_dynamic_range(uintptr_t lo, uintptr_t hi) {
+    for (const auto& r : sDynamicVertexRanges)
+        if (r.first < hi && lo < r.second) return true;
+    return false;
 }
 
 // Copies the built vertices into the arena and registers the mesh. Returns
@@ -8968,6 +9054,8 @@ static void pc_gfx_call_display_list_impl(const void* list, u32 nbytes) {
         }
     }
     flushPendingStrip();
+    if (building && !sMeshBuild.empty() && mesh_reads_dynamic_range(mesh.lo, mesh.hi))
+        building = false;
     if (building && !sMeshBuild.empty()) {
         mesh.paletteSlots = meshMaxSlot + 1;
         const double uploadT0 = submit_clock_ms();

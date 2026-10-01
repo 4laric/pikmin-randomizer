@@ -18,6 +18,18 @@ struct P2BigTreasureElementHost {
     P2BigTreasureGroundFn ground = nullptr; // water bubble impact sample
 };
 
+// Optional per-tick aim for a campaign actor (#246 OWN): the emit joint and
+// facing-relative fire direction, and the water shot target
+// (getWaterTargetCreature). Unset keeps the fixed-placement preview geometry
+// (boss base origin, fire along +Z, water toward +Z at 200).
+struct P2BigTreasureElementAim {
+    bool set = false;
+    P2BigTreasureVec3 emit;      // element emit joint (world)
+    P2BigTreasureVec3 direction; // fire emit direction (unit, world)
+    bool haveWaterTarget = false;
+    P2BigTreasureVec3 waterTarget;
+};
+
 struct P2BigTreasureElementStats {
     int nodes = 0;      // currently active nodes for the running element
     int emits = 0;      // nodes spawned this tick
@@ -41,8 +53,22 @@ public:
     void defeat();
     void reset();
 
+    // Campaign aim (see P2BigTreasureElementAim); call before tick/queryHit.
+    void setAim(const P2BigTreasureElementAim& aim) { mAim = aim; }
+    const P2BigTreasureElementAim& aim() const { return mAim; }
+
     bool active() const { return mWeapon >= 0; }
     int activeWeapon() const { return mWeapon; }
+
+    // Read-only policy state for the visual-only attack effects
+    // (pc_p2_bigtreasure_fx.h); nothing here can change a simulation result.
+    const P2BigTreasureFirePolicy& firePolicy() const { return mFire; }
+    const P2BigTreasureGasPolicy& gasPolicy() const { return mGas; }
+    const P2BigTreasureWaterPolicy& waterPolicy() const { return mWater; }
+    const P2BigTreasureElecPolicy& elecPolicy() const { return mElec; }
+    int gasArms() const { return mGasArms; }
+    const P2BigTreasureVec3& origin() const { return mOrigin; }
+    float groundHeight() const { return mGround; }
 
     // One 30 Hz source tick for the running element.
     void tick(float delta, const P2BigTreasureElementHost& host,
@@ -64,4 +90,5 @@ private:
     P2BigTreasureWaterPolicy mWater;
     P2BigTreasureElecPolicy mElec;
     int mPrevNodes = 0;
+    P2BigTreasureElementAim mAim;
 };

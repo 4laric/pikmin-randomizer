@@ -5,6 +5,9 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+// The engine-free test links pc_randomizer.cpp without the P2 proxy module
+// (which needs engine headers); no proxy tier is staged here.
+int pc_p2_proxy_host(unsigned) { return -1; }
 static int ready, held, foreground = 1, access, warps, updates, checks, regions, pikminAccess, skipTutorial, progression, blue, yellow, shared, tunic, bombs;
 extern "C" {
 void bbft_transport_init(const char* game, void (*)(void), void (*)(char*)) { assert(!std::strcmp(game, "pikmin")); }
@@ -30,6 +33,17 @@ void bbft_check(const char*) { ++checks; }
 void bbft_logf(const char*, ...) {}
 }
 int main(int argc, char**) {
+    assert(pc_bbft_focus_hold_policy(false, false) && !pc_bbft_focus_hold_policy(false, true));
+    assert(!pc_bbft_focus_hold_policy(true, false) && !pc_bbft_focus_hold_policy(true, true));
+    _putenv_s("PIKMIN_RANDOMIZER_TEST_VISIBLE", "1");
+    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "");
+    assert(!pc_bbft_test_background() && !pc_bbft_test_visible());
+    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
+    assert(pc_bbft_test_background() && pc_bbft_test_visible());
+    // Without background, visibility never applies (a WATCH_RUNS file may legitimately exist on the host).
+    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "");
+    assert(!pc_bbft_test_visible());
+    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "");
     const bool backgroundTest = argc > 1;
     if (backgroundTest) _putenv_s("PIKMIN_BBFT_TEST_BACKGROUND", "1");
     assert(!pc_bbft_enabled() && !pc_bbft_hold() && pc_bbft_forest_access());

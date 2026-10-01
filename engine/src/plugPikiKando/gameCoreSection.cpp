@@ -1,4 +1,5 @@
 #include "pc_p2_ship.h"
+#include "pc_dev_console.h"
 #include "pc_p2_ship_store.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_motion.h"
@@ -9,6 +10,8 @@
 #include "pc_p2_onikurage_teki.h"
 #include "pc_p2_bombsarai_teki.h"
 #include "pc_p2_groink_teki.h"
+#include "pc_p2_breadbug_teki.h"
+#include "pc_p2_bigtreasure_teki.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_queen_teki.h"
 #if defined(PIKI_PC_PORT)
@@ -52,6 +55,7 @@
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
 #include "pc_p2_kabuto_fsm.h"
+#include "pc_p2_dangomushi.h"
 #include "pc_p2_long_legs.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
@@ -67,6 +71,7 @@
 #include "settings/pc_settings.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_photo_mode.h"
+#include "pc_p2_skewer_cam.h"
 #include "pc_coop.h"
 #include "mods/pc_vs_arena.h"
 #include "pc_vs.h"
@@ -1707,6 +1712,8 @@ void GameCoreSection::initStage()
 	memStat->start("teki");
 	int oldT = gsys->setHeap(SYSHEAP_Teki);
 	if (pc_randomizer_progg_traps()) tekiMgr->mUsingType[TEKI_Dororo] = true;
+	// #942 dev console: load the P1 host vehicles of every dev-bound species.
+	pc_dev_console_reserve_host_types();
 	tekiMgr->startStage();
 	gsys->setHeap(oldT);
 	memStat->end("teki");
@@ -2000,6 +2007,8 @@ void GameCoreSection::finalSetup()
 	pc_p2_onikurage_teki_setup();
 	pc_p2_bombsarai_teki_setup();
 	pc_p2_groink_teki_setup();
+	pc_p2_breadbug_teki_setup();
+	pc_p2_bigtreasure_teki_setup();
 	pc_p2_king_teki_setup();
 	pc_p2_queen_teki_setup();
 	pc_p2_demon_manager_setup();
@@ -2450,6 +2459,10 @@ void GameCoreSection::update()
 	pcDebugKeys();
 	pcVsMarkKey();
 #endif
+#if defined(PIKI_PC_PORT)
+	// #942 dev console: runs queued/script commands on the gameplay thread.
+	pc_dev_console_update();
+#endif
 	if (!gameflow.mMoviePlayer->mIsActive && !mDoneSundownWarn && gameflow.mWorldClock.mTimeOfDay >= gameflow.mParameters->mNightWarning()
 	    && (flowCont.mGameEndFlag != GAMEEND_PikminExtinction || flowCont.mGameEndFlag != GAMEEND_NaviDown)) {
 		if (playerState->inDayEnd()) {
@@ -2473,7 +2486,9 @@ void GameCoreSection::update()
 	}
 	pc_p2_hardlanes_update();
 	pc_p2_projectiles_update();
+	pc_p2_queen_teki_frame();
 	pc_p2_kabuto_fsm_update_stones();
+	pc_p2_bombsarai_teki_update_bombs();
 	pc_p2_long_legs_update_all();
 
 	if (GameStat::allPikis == 0 && (!pc_randomizer_purple_campaign() || p2ship::stock.total() == 0) && GameStat::maxPikis > 0) {
@@ -3015,9 +3030,10 @@ void GameCoreSection::updateAI()
     pc_p2_cave_tick();
     pc_p2_giant_breadbug_actor_tick();
     pc_p2_breadbug_actor_tick();
+    Navi* shipNavi = naviMgr ? naviMgr->getActiveNavi() : nullptr;
     const bool shipActive = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
-        && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && mNavi && mNavi->mHealth > 0.0f;
-    pc_p2_ship_tick(naviMgr ? naviMgr->getActiveNavi() : nullptr, shipActive);
+        && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && shipNavi && shipNavi->mHealth > 1.0f;
+    pc_p2_ship_tick(shipNavi, shipActive);
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
@@ -3706,6 +3722,23 @@ void GameCoreSection::updateAI()
 		}
 	}
 
+	// TEST-ONLY (PIKMIN_P2_SKEWER_CAM, #1020): frame a held Pikmin up close for photo evidence.
+	static f32 sSkewerFocus = 0.0f;
+	bool skewerCam          = false;
+	{
+		f32 e[3], l[3];
+		PcamCamera* pcam = cameraMgr ? cameraMgr->mCamera : nullptr;
+		if (pcam && pc_p2_skewer_cam_pose(e, l, &sSkewerFocus)) {
+			Vector3f eye(e[0], e[1], e[2]);
+			Vector3f look(l[0], l[1], l[2]);
+			pcam->inputViewpoint(eye);
+			pcam->inputWatchpoint(look);
+			pcam->makeMatrix();
+			pcam->makeCamera();
+			skewerCam = true;
+		}
+	}
+
 	// Where depth of field focuses: on the captain, every frame.
 	//
 	// The distance handed over is measured along the camera's forward axis,
@@ -3742,7 +3775,7 @@ void GameCoreSection::updateAI()
 		// A captain behind the camera gives a negative projection, which is not
 		// a focus distance at all. Zero stands the effect down for the frame
 		// rather than blurring the whole screen around a nonsense plane.
-		pc_gfx_set_dof_focus(focus > 0.0f ? focus : 0.0f);
+		pc_gfx_set_dof_focus(skewerCam ? sSkewerFocus : (focus > 0.0f ? focus : 0.0f));
 	}
 #endif
 
@@ -4323,12 +4356,15 @@ void GameCoreSection::draw(Graphics& gfx)
 	}
 	pc_p2_cave_draw_transition(gfx);
 	pc_p2_breadbug_visual_draw(gfx);
+	pc_p2_breadbug_teki_draw_nests(gfx);
 	pc_p2_giant_breadbug_visual_draw(gfx);
 	pc_p2_bulblax_visual_draw(gfx);
 	pc_p2_queen_draw(gfx);
 	pc_p2_king_draw(gfx);
 	pc_p2_tank_draw_water(gfx);
 	pc_p2_kabuto_fsm_draw_stones(gfx);
+	pc_p2_bombsarai_teki_draw_bombs(gfx);
+	pc_p2_dangomushi_draw_rain(gfx);
 }
 
 /**
@@ -4360,6 +4396,7 @@ void GameCoreSection::draw1D(Graphics& gfx)
 		}
 		if (tekiMgr && !hideTeki()) {
 			tekiMgr->refresh2d(gfx);
+			pc_p2_bombsarai_teki_draw_bomb_gauges(gfx); // #1027 Dirigibug bomb life gauges
 		}
 	}
 	naviMgr->refresh2d(gfx);

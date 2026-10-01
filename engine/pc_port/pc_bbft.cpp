@@ -9,7 +9,11 @@
 #include <cstdio>
 #include <chrono>
 #include <string>
+#include <vector>
+#include <filesystem>
+#include <system_error>
 #ifdef _WIN32
+#include <windows.h>
 #include "bbft/bbft_transport.h"
 #endif
 static bool enabled = false;
@@ -104,6 +108,34 @@ void p2_challenge_content_set_hook(P2ChallengeContentHook hook) {
     sChallengeContentHook = hook;
 }
 static bool testBackground = false;
+static bool envFlag(const char* name) { const char* v = std::getenv(name); return v && !std::strcmp(v, "1"); }
+bool pc_bbft_test_background() { return envFlag("PIKMIN_RANDOMIZER_TEST_BACKGROUND"); }
+// Owner opt-in to watch agent runs: output/workflow/WATCH_RUNS in any ancestor of the cwd or exe
+// (private worktrees/builds live under the shared root's output/), or PIKMIN_WATCH_RUNS=1.
+static bool watchRunsRequested() {
+    static int cached = -1;
+    if (cached >= 0) return cached != 0;
+    cached = envFlag("PIKMIN_WATCH_RUNS") ? 1 : 0;
+    if (cached) return true;
+    std::error_code ec;
+    std::vector<std::filesystem::path> starts;
+    starts.push_back(std::filesystem::current_path(ec));
+#ifdef _WIN32
+    char exe[MAX_PATH] = {0};
+    if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) starts.push_back(std::filesystem::path(exe).parent_path());
+#endif
+    for (auto p : starts)
+        for (; !p.empty(); p = p.parent_path()) {
+            if (std::filesystem::exists(p / "output" / "workflow" / "WATCH_RUNS", ec)) { cached = 1; return true; }
+            if (p == p.parent_path()) break;
+        }
+    return false;
+}
+// Visible only makes sense with background: a shown window that never holds for focus.
+bool pc_bbft_test_visible() {
+    return pc_bbft_test_background() && (envFlag("PIKMIN_RANDOMIZER_TEST_VISIBLE") || watchRunsRequested());
+}
+bool pc_bbft_focus_hold_policy(bool testBackgroundMode, bool foreground) { return !testBackgroundMode && !foreground; }
 void pc_bbft_milestone(const char* text) {
     if (!enabled) return;
     std::printf("[BBFT] %s\n", text);
@@ -166,7 +198,14 @@ void pc_bbft_init(int argc, char** argv) {
         }
         return;
     }
-    if (pc_randomizer_init(argc, argv)) { enabled = true; return; }
+    if (pc_randomizer_init(argc, argv)) {
+        enabled = true;
+        char mode[96];
+        std::snprintf(mode, sizeof mode, "TEST_RUN_MODE background=%d visible=%d focus_hold=%d",
+            pc_bbft_test_background() ? 1 : 0, pc_bbft_test_visible() ? 1 : 0, pc_bbft_test_background() ? 0 : 1);
+        pc_bbft_milestone(mode);
+        return;
+    }
 #ifdef _WIN32
     const char* port = std::getenv("BBFT_PORT");
     for (int i = 1; i < argc; ++i) {
@@ -280,8 +319,22 @@ void pc_bbft_update() {
 bool pc_bbft_hold() {
     if (pc_randomizer_enabled()) {
 #ifdef _WIN32
-        const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
-        return !pc_randomizer_ready() || (!(background && !std::strcmp(background, "1")) && !bbft_is_foreground());
+        static bool stalling = false;
+        static std::chrono::steady_clock::time_point stallStart, lastReport;
+        const bool focusHold = pc_bbft_focus_hold_policy(pc_bbft_test_background(), bbft_is_foreground());
+        if (!focusHold) stalling = false;
+        else {
+            const auto now = std::chrono::steady_clock::now();
+            if (!stalling) { stalling = true; stallStart = lastReport = now; }
+            else if (now - lastReport >= std::chrono::seconds(10)) {
+                lastReport = now;
+                char msg[64];
+                std::snprintf(msg, sizeof msg, "FOCUS_HOLD stalled seconds=%lld",
+                    (long long)std::chrono::duration_cast<std::chrono::seconds>(now - stallStart).count());
+                pc_bbft_milestone(msg);
+            }
+        }
+        return !pc_randomizer_ready() || focusHold;
 #else
         return !pc_randomizer_ready();
 #endif

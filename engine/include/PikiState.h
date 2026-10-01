@@ -292,6 +292,11 @@ protected:
 	f32 mChangeDirectionTimer; // _14
 	f32 mMoveDirection;        // _18
 	f32 mSpeedRatio;           // _1C
+	// #245: PIKIPANIC_Panic (astonish) flavour for Antenna Beetle followers
+	// whose owner died (aiTeki.cpp ActTeki::exec): KIZUKU, then panic-run,
+	// then back to the ordinary walking state when the timer ends. Non-lethal.
+	bool mAstonish;            // PC
+	int mAstonishSubState;     // PC: 0 drama wait, 1 kizuku, 2 run
 };
 
 /**

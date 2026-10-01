@@ -3,6 +3,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <filesystem>
+#include <fstream>
 
 namespace {
 struct ReceiptHost {
@@ -32,6 +34,9 @@ P2ReceiptHostHandle pc_p2_receipt_host_open(const char* path)
 		return nullptr;
 	}
 	const std::string key(path);
+    std::error_code readError;
+    const bool present = std::filesystem::exists(key, readError);
+    if (readError || (present && !std::ifstream(key).good())) return nullptr;
 	const auto existing = receiptHosts.find(key);
 	if (existing != receiptHosts.end()) {
 		return existing->second.get();
@@ -113,4 +118,14 @@ bool pc_p2_receipt_host_atomic_write(const char* path, const char* data)
 #else
 	return std::rename(temporary.c_str(), path) == 0;
 #endif
+}
+
+int pc_p2_receipt_host_has(P2ReceiptHostHandle handle, const char* seed,
+    const char* reward, const char* slotOrActor, const char* encounter)
+{
+    ReceiptHost* host = receiptHostByHandle(handle);
+    if (!host || !seed || !reward || !slotOrActor || !encounter) return -1;
+    try {
+        return host->ledger->has(seed, reward, slotOrActor, encounter) ? 1 : 0;
+    } catch (...) { return -1; }
 }

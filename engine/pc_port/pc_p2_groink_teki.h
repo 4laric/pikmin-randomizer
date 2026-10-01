@@ -4,6 +4,9 @@ class PelletView;
 class Generator;
 class Graphics;
 class Matrix4f;
+class Piki;
+class Creature;
+class CollPart;
 // Family sidecar binding the parked P2GroinkCarcass policy to a live generated
 // Groink host actor (MiniHoudai 78 / FminiHoudai 97).  Binding is read from
 // p2-groink-teki.txt at finalSetup; the carcass lifecycle is then driven once
@@ -11,6 +14,9 @@ class Matrix4f;
 // ActivateGauge / DeactivateGauge host commands act on the real pellet and
 // life gauge.  All emissions are logged as P2_GROINK_CARCASS_* markers.
 void pc_p2_groink_teki_setup();
+// Dev console (#942): bind one late-spawned seed-78/97 actor in bridge mode
+// (loads the staged parms/bank on first use). True when bound (or already bound).
+bool pc_p2_groink_teki_bind_dynamic(BTeki*);
 void pc_p2_groink_teki_reset();
 void pc_p2_groink_teki_forget(BTeki*);
 void pc_p2_groink_teki_tick(BTeki*);
@@ -53,3 +59,14 @@ bool pc_p2_groink_teki_suppress_ai(const BTeki* teki);
 // MiniHoudai pose bank driven by the source FSM animation (corpse: carcass
 // clip). False (host model draws) when no bank is staged or unbound.
 bool pc_p2_groink_teki_draw(BTeki* teki, Graphics& gfx, const Matrix4f& view, bool corpse = false);
+// #892 armour cover: a Pikmin touched `part` of a bound campaign Groink while trying to
+// latch (thrown landing or a jump attack). `site` names the caller. Part `body` (st__)
+// takes the latch; the touch-only parts (cov1..cov3 face cover, asiL/asiR, coll) do not:
+// the Pikmin bounces and no damage follows. Logs P2_GROINK_ARMOR_BLOCK / _HIT. Observer
+// only: the engine's own CollPart::isStickable decides the latch. No-op for unbound actors.
+void pc_p2_groink_teki_piki_contact(BTeki* teki, Piki* piki, CollPart* part, const char* site);
+// Armour verdict counts for the actor (probe for runtime fixtures/bots).
+void pc_p2_groink_teki_armor_counts(const BTeki* teki, int& blocks, int& hits);
+// #892: damage rule for a hit from `owner` on a bound campaign Groink (InteractAttack::actTeki).
+// Returns -1 when the rule does not apply (host path unchanged), 0 to refuse, else the scale.
+float pc_p2_groink_teki_damage_rate(BTeki* teki, Creature* owner, CollPart* part);

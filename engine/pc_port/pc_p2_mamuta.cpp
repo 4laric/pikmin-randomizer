@@ -8,6 +8,7 @@
 #include "pc_p2_mamuta_policy.h"
 #include "pc_p2_mamuta_rules.h"
 #include "pc_p2_animation.h"
+#include "pc_p2_pose_family.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Generator.h"
@@ -22,6 +23,7 @@
 #include <fstream>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 static_assert(TEKI_Miurin == 24 && TekiMotion::Dead == 0 && TekiMotion::Wait1 == 2
               && TekiMotion::WaitAct1 == 4 && TekiMotion::Move1 == 6 && TekiMotion::Attack == 8
               && TekiMotion::Flick == 9 && TekiMotion::Type1 == 10 && TekiMotion::Type5 == 14,
@@ -40,6 +42,9 @@ std::vector<int> eventFrames[kClips];
 std::map<BTeki*, unsigned> actors;
 std::set<std::pair<BTeki*, int>> logged;
 size_t bytesTotal = 0;
+p2poseload::Shared poseShared;                 // #895 compact loader state
+p2posefamily::Bank poseBank("MAMUTA");         // #895 lerp + crossfade
+p2posefamily::Actors poseVis;
 void fail() { std::fputs("P2_MAMUTA invalid profile\n", stderr); std::abort(); }
 Shape* loadOne(const std::string& name) {
     std::ifstream file("assets/dataDir/courses/pikmin2room/" + name, std::ios::binary | std::ios::ate);
@@ -59,18 +64,28 @@ int clipIndex(const std::string& name) {
     for (int k=0; k<kClips; ++k) if (name == names[k]) return k;
     return -1;
 }
-// Load `miulin_<clip>_00.mod`..`_NN.mod` as a time-sampled bank. A single-pose
-// legacy install still loads as a one-frame bank.
+// Load `miulin_<clip>_00.mod`..`_NN.mod` as a time-sampled bank through the
+// compact loader (#895: a few Shapes per clip plus decoded vectors, so dense
+// banks fit the resident budget; the Shapes stay the nearest-pose fallback).
+// The pose count comes from the manifest when present, else from the files
+// on disk. A single-pose legacy install still loads as a one-frame bank.
 void loadBank(int k) {
     const std::string base = std::string("miulin_") + names[k];
-    for (int i = 0; i < kMaxPoses; ++i) {
-        char suffix[16];
-        std::snprintf(suffix, sizeof(suffix), "_%02d.mod", i);
-        Shape* pose = loadOne(base + suffix);
-        if (!pose) break;
-        banks[k].push_back(pose);
+    int count = int(sampleFrames[k].size());
+    if (!count) {
+        while (count < kMaxPoses && std::ifstream(p2poseload::stemPath(true, base, count), std::ios::binary)) ++count;
     }
-    if (!banks[k].empty()) { animated[k] = banks[k].size() > 1; return; }
+    if (count > 0) {
+        std::string error;
+        const int duration = sourceFrames[k] > 0 ? sourceFrames[k] : count;
+        if (!p2posefamily::loadFamilyClip(poseBank, names[k], base, count, duration, sampleFrames[k], poseShared,
+                                          bytesTotal, banks[k], error)) {
+            std::fprintf(stderr, "P2_MAMUTA_BANK_INVALID clip=%s reason=%s\n", names[k], error.c_str());
+            fail();
+        }
+        animated[k] = banks[k].size() > 1;
+        return;
+    }
     Shape* pose = loadOne(base + ".mod");
     if (!pose) fail();
     banks[k].push_back(pose);
@@ -109,6 +124,7 @@ void loadManifest() {
 }
 void pc_p2_mamuta_reset() {
     actors.clear(); logged.clear();
+    poseShared = p2poseload::Shared(); poseBank.reset(); poseVis.clear();
     for (int k=0; k<kClips; ++k) {
         banks[k].clear(); animated[k]=false; sourceFrames[k]=0;
         sampleFrames[k].clear(); eventFrames[k].clear();
@@ -124,7 +140,7 @@ bool pc_p2_mamuta_receipt(PelletView* view, unsigned& generator) {
     return true;
 }
 void pc_p2_mamuta_forget(BTeki* actor) {
-    actors.erase(actor);
+    actors.erase(actor); poseVis.forget(actor);
     for (int k=0; k<kClips; ++k) logged.erase({actor,k});
 }
 void pc_p2_mamuta_setup() {
@@ -147,10 +163,30 @@ void pc_p2_mamuta_setup() {
         Teki* actor=static_cast<Teki*>(*it);
         if (!actor || !actor->mGenerator || !wanted.count(pc_p2_campaign_token(actor))) continue;
         unsigned id=pc_p2_campaign_token(actor);
-        if (actor->mTekiType!=TEKI_Miurin || !found.insert(id).second) fail();
+        if (actor->mTekiType!=TEKI_Miurin) {
+            // #948: wrong vehicle (protected slot, pack generator, proxy
+            // override). Refuse this actor with a reason; never abort a campaign.
+            if (!pc_randomizer_p2_bridge()) fail();
+            std::printf("P2_MAMUTA_UNBOUND generator=%u source_id=54 type=%d reason=host_type_mismatch\n", id, int(actor->mTekiType));
+            std::fflush(stdout);
+            continue;
+        }
+        if (!found.insert(id).second) {
+            if (!pc_randomizer_p2_bridge()) fail();
+            std::printf("P2_MAMUTA_UNBOUND generator=%u source_id=54 reason=duplicate_generator\n", id);
+            std::fflush(stdout);
+            continue;
+        }
         actors.emplace(actor,id);
     }
-    if (found!=wanted) fail();
+    if (found!=wanted) {
+        if (!pc_randomizer_p2_bridge()) fail();
+        // Campaign actors span areas/days; a bound id with no live actor
+        // here is expected. Report it and bind the ones that are present.
+        std::printf("P2_MAMUTA_MISSING source_id=54 wanted=%zu found=%zu\n", wanted.size(), found.size());
+        std::fflush(stdout);
+        if (found.empty()) return;
+    }
     pc_p2_mamuta_rules_setup();
     loadManifest();
     for (int k=0; k<kClips; ++k) loadBank(k);
@@ -204,6 +240,18 @@ bool pc_p2_mamuta_draw(BTeki* actor, Graphics& gfx, const Matrix4f& view, bool c
         }
     }
     Shape* shape = banks[k][index];
+    if (animated[k] && poses > 1) {
+        // #895: lerp + crossfade into a private Shape; nearest pose stays the fallback.
+        const int frames = actor->mTekiAnimator->getFrameCount();
+        const float counter = actor->mTekiAnimator->getCounter();
+        float phase = frames > 1 && std::isfinite(counter) ? counter / float(frames - 1) : 0.0f;
+        phase = phase < 0.0f ? 0.0f : (phase > 1.0f ? 1.0f : phase);
+        const p2posefamily::Clip* clip = poseBank.clip(names[k]);
+        if (clip) {
+            const float frame = corpse ? float(clip->duration - 1) : phase * float(clip->duration - 1);
+            if (Shape* smooth = poseVis.draw(actor, poseBank, names[k], frame, entry->second)) shape = smooth;
+        }
+    }
     shape->updateAnim(gfx,view,nullptr,actor);
     shape->drawshape(gfx,*gfx.mCamera,nullptr);
     if (logged.insert({actor,k}).second)

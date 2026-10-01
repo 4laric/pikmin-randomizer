@@ -550,7 +550,14 @@ void applyBlast(BTeki* t, Binding& b, const P2BombSaraiBlastEvent& event)
         const float hpBefore = receiver->mHealth;
         const int stateBefore = isPiki ? static_cast<Piki*>(receiver)->getState() : -1;
         const bool aliveBefore = receiver->isAlive();
-        InteractBomb bomb(owner, event.naviPikiDamage, nullptr);
+        // P2 InteractBomb::actPiki (interactPiki.cpp:304-326) blows every Pikmin
+        // into a lethal PIKISTATE_Blow; the P1 equivalent is its own bomb-rock
+        // Pikmin damage (PikiMgr mBombDamagePiki, retail 765 > Pikmin health),
+        // as in the OWN path. Captains keep fp24 (naviPikiDamage).
+        const float pikiDamage = (pikiMgr && pikiMgr->mPikiParms)
+                                     ? pikiMgr->mPikiParms->mPikiParms.mBombDamagePiki()
+                                     : 765.0f;
+        InteractBomb bomb(owner, isPiki ? pikiDamage : event.naviPikiDamage, nullptr);
         const bool applied = receiver->stimulate(bomb);
         const float hpAfter = receiver->mHealth;
         const int stateAfter = isPiki ? static_cast<Piki*>(receiver)->getState() : -1;
@@ -578,6 +585,9 @@ void applyBlast(BTeki* t, Binding& b, const P2BombSaraiBlastEvent& event)
 void pc_p2_bombsarai_teki_setup()
 {
     pc_p2_bombsarai_teki_reset();
+    // Campaign (bridge) sessions bind every source-58 actor through the OWN
+    // port; the single-carrier sidecar below is the room-preview fixture only.
+    if (pc_p2_bombsarai_own_setup()) return;
     if (!pc_pikipelago_room_preview()) return;
     std::ifstream in("p2-bombsarai-teki.txt");
     if (!in) return; // inert without the sidecar
@@ -652,6 +662,7 @@ void maybeReentry(BTeki* t)
 
 void pc_p2_bombsarai_teki_tick(BTeki* t)
 {
+    if (pc_p2_bombsarai_own_tick(t)) return;
     maybeReentry(t);
     // Once the Pod receipt has credited the carcass, stop the free roam so the
     // survivors do not pick up leftover number pellets (dead-Pikmin `pr01`
@@ -818,6 +829,7 @@ void pc_p2_bombsarai_teki_tick(BTeki* t)
 void pc_p2_bombsarai_teki_forget(BTeki* t)
 {
     if (!t) return;
+    pc_p2_bombsarai_own_forget(t);
     const int boundBefore = (int)sBound.size();
     const int corpseBefore = (int)sCorpses.size();
     unsigned generator = 0;
@@ -840,6 +852,7 @@ void pc_p2_bombsarai_teki_reset()
 {
     const int boundBefore = (int)sBound.size();
     const int corpseBefore = (int)sCorpses.size();
+    pc_p2_bombsarai_own_reset();
     restoreCarryConfig();
     sBound.clear();
     sCorpses.clear();

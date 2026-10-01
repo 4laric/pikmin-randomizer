@@ -41,6 +41,13 @@ def main(ap, archive):
             return setup_multiworld(world.PikminRandomizerWorld, seed=1818, options=options)
         ordinary = make({})
         assert 'p2_layout' not in ordinary.worlds[1].manifest()
+        assert ordinary.worlds[1].manifest() == make({'p2_second_captain': False}).worlds[1].manifest()
+        try:
+            make({'p2_second_captain': True})
+        except ValueError as error:
+            assert 'p2_second_captain requires p2_enemies' in str(error)
+        else:
+            raise AssertionError('Second captain without P2 enemy bridge was accepted')
         for doc in ({'schema': 'invalid'},
                     dict(synthetic, profiles=[dict(p, accepted_gates=[]) for p in synthetic['profiles']])):
             try:
@@ -52,6 +59,29 @@ def main(ap, archive):
         from pikmin_randomizer.core.seed import PLAYABLE_P2_SPECIES
         playable = make({'p2_enemy_randomizer': True}).worlds[1].manifest()  # default pool: playable
         assert {b['source_id'] for b in playable['p2_layout']['bindings']} == set(PLAYABLE_P2_SPECIES)
+        assert playable == make({'p2_enemy_randomizer': True, 'p2_second_captain': False}).worlds[1].manifest()
+        captain_options = {'p2_enemy_randomizer': True, 'p2_second_captain': True}
+        captains = make(captain_options)
+        captain_world = captains.worlds[1]
+        captain_manifest = captain_world.manifest()
+        validate(captain_manifest)
+        assert captain_manifest['p2_second_captain'] is True
+        assert captain_manifest['capabilities'][-2:] == ['resolved-enemy-checks-v1', 'p2-second-captain-v1']
+        assert fingerprint(captain_manifest) != fingerprint(playable)
+        assert captain_manifest == make(captain_options).worlds[1].manifest()
+        assert captain_world.fill_slot_data() == {
+            'manifest': captain_manifest, 'manifest_fingerprint': fingerprint(captain_manifest)}
+        assert captain_manifest['locations'] == playable['locations']
+        from collections import Counter
+        assert Counter(item.name for item in captains.itempool) == Counter(
+            item.name for item in make({'p2_enemy_randomizer': True}).itempool)
+        distribute_items_restrictive(captains)
+        assert captains.can_beat_game() and not captains.get_unfilled_locations()
+        with tempfile.TemporaryDirectory() as out:
+            captain_world.generate_output(out)
+            saved = json.loads(next(Path(out).glob('*.pikmin.json')).read_text())
+            assert saved == captain_manifest
+            validate(saved)
         options = {'p2_enemy_randomizer': True, 'p2_enemy_pool': 'all'}
         # Real packaged admitted placement, not the synthetic denial fixture.
         mw = make(options)
@@ -107,7 +137,7 @@ def main(ap, archive):
         assert declared_bound | set(declared['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids('declared'))
         assert len(declared['p2_layout']['bindings']) <= P2_MAX_BINDINGS
         assert 'randomizer' not in sys.modules and 'experimental' not in sys.modules
-        print('PASS: isolated zip imports, normal AP, invalid/denied placement, deterministic P2 fill, full proxy pool, output roundtrip')
+        print('PASS: isolated zip imports, normal AP, second-captain default/opt-in/rejection/slot data/fill, invalid/denied placement, deterministic P2 fill, full proxy pool, output roundtrip')
         print('Real admitted placement fill passed; runtime acceptance is separate.')
     finally:
         os.chdir(original_cwd)

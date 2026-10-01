@@ -47,7 +47,9 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
 
 #include "pc_window.h"
 #include "pc_bbft.h"
+#include "pc_fatal_log.h"
 #include "pc_gpu_preference.h"
+#include "pc_dev_console.h"
 #include "gl/pc_gfx.h"
 #include "gl/pc_texpack.h"
 #ifdef __ANDROID__
@@ -90,6 +92,9 @@ int main(int argc, char* argv[])
 {
     // Disable stdout buffering so we see logs immediately before any crash
     setvbuf(stdout, NULL, _IONBF, 0);
+    // Every death the process can observe leaves a reason in native.log (and an
+    // orderly exit leaves its own marker); see pc_fatal_log.h.
+    pc_fatal_log_install();
 
 #ifdef __ANDROID__
     // Logcat, carpeta del juego y ruta de guardado: antes de que nada abra un
@@ -118,6 +123,8 @@ int main(int argc, char* argv[])
         return pc_jaudio_integration_test();
 #endif
     pc_bbft_init(argc, argv);
+    // #942 dev console: inert unless PIKMIN_DEV_CONSOLE=1; refuses under netplay.
+    pc_dev_console_init(argc, argv);
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--dump-texture-names") == 0)
             pc_gfx_set_dump_texture_names(1);

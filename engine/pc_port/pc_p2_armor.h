@@ -24,6 +24,9 @@ bool pc_p2_armor_registered(BTeki*);
 // Armor must reject this InteractAttack (not bittered and not the source 'dmg1'
 // part). Returns false for unregistered actors so the shared hook is a no-op.
 bool pc_p2_armor_receiver_rejects(Teki*, const InteractAttack*);
+// Source EnemyBase::bombCallBack: an unconditional addDamage on any part (the Armor does not override it).
+// Observer for the bomb path in InteractBomb::actTeki; no-op for unregistered actors.
+void pc_p2_armor_bombed(Teki*, float damage);
 // Source isEvent(0, EB_Bittered) has no P1 host equivalent; the port admits it
 // as an explicit flag for a host/fixture to raise. No other lane is affected.
 void pc_p2_armor_set_bittered(BTeki*, bool);

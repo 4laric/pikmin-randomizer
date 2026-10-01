@@ -3,15 +3,14 @@
 #include <cmath>
 
 namespace {
-constexpr float kRockRingRadius = 100.0f;
+constexpr float kPi = 3.141592653589793f;
 constexpr float kTwoPi = 6.283185307179586f;
 }
 
 void P2DangoMushiHazardPolicy::reset(const P2DangoMushiHazardParms& parms)
 {
     mParms = parms;
-    mRocksRemaining = parms.rockBudget;
-    mEggsRemaining = parms.eggBudget;
+    mTurns = 0;
     mInTurn = false;
     mRocksThisTurn = false;
     mEggThisTurn = false;
@@ -30,6 +29,7 @@ void P2DangoMushiHazardPolicy::update(const P2DangoMushiHazardInput& input,
         mWindowActive = false;
     }
     if (input.turnEntered) {
+        ++mTurns;
         mInTurn = true;
         mRocksThisTurn = false;
         mEggThisTurn = false;
@@ -38,19 +38,17 @@ void P2DangoMushiHazardPolicy::update(const P2DangoMushiHazardInput& input,
 
     if (mInTurn) {
         if (!mRocksThisTurn) {
-            const int count = mParms.rocksPerTurn < mRocksRemaining
-                ? mParms.rocksPerTurn : mRocksRemaining;
-            if (count > 0) {
-                output.rocksToSpawn = count;
+            // createCrashEnemy on every Turn entry: no lifetime budget.
+            if (mParms.rocksPerTurn > 0) {
+                output.rocksToSpawn = mParms.rocksPerTurn;
                 output.rockLifetime = mParms.rockLifetime;
-                mRocksRemaining -= count;
             }
             mRocksThisTurn = true;
 
+            // getFallEggNum: randWeightFloat(1) < groupSize / activePikmin.
             mEggThisTurn = true;
-            if (mEggsRemaining > 0 && input.eggRoll < input.activeCaptainGroupShare) {
+            if (input.eggRoll < input.activeCaptainGroupShare) {
                 output.eggRequested = true;
-                mEggsRemaining -= 1;
             }
         }
 
@@ -64,8 +62,7 @@ void P2DangoMushiHazardPolicy::update(const P2DangoMushiHazardInput& input,
         output.invulnerable = true;
     }
 
-    output.rocksRemaining = mRocksRemaining;
-    output.eggsRemaining = mEggsRemaining;
+    output.turnIndex = mTurns;
 }
 
 void P2DangoMushiHazardPolicy::rockOffset(int index, int count, float angle,
@@ -77,7 +74,21 @@ void P2DangoMushiHazardPolicy::rockOffset(int index, int count, float angle,
         *z = 0.0f;
         return;
     }
-    const float theta = angle + kTwoPi * float(index) / float(count);
-    *x = std::cos(theta) * kRockRingRadius;
-    *z = std::sin(theta) * kRockRingRadius;
+    float theta = 0.0f;
+    float dist = 7.5f;                       // randWeightFloat(15) midpoint
+    if (index == 0) {
+        theta = 0.0f;
+    } else if (index < 4) {
+        theta = (2.0f * kPi / 3.0f) * float(index) + (angle + 0.5f);
+        dist = 77.5f;                        // 70 + randWeightFloat(15)
+    } else if (index < 10) {
+        theta = (kPi / 3.0f) * float(index) + (angle + 0.5f + 0.25f);
+        dist = 147.5f;                       // 140 + randWeightFloat(15)
+    } else {
+        theta = (kPi / 6.0f) * float(index) + (angle + 0.25f + 0.05f);
+        dist = 227.5f;                       // unused past 10 in retail
+    }
+    if (theta > kTwoPi) theta -= kTwoPi;
+    *x = std::sin(theta) * dist;
+    *z = std::cos(theta) * dist;
 }

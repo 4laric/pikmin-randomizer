@@ -107,7 +107,7 @@ int main()
     {
         gBridge = true;
         Generator* gen = new Generator();
-        const unsigned uid = 5465461u; // a committed source-23 placement from pc_p2_campaign_placements.h
+        const unsigned uid = 5465461u; // a Hope ground slot the seed may bind source 23 to (any slot binds since #948)
         gen->_70 = 7001u;              // retail on-file id, deliberately different from the uid
         BTeki* actor = new BTeki();
         actor->mGenerator = gen;

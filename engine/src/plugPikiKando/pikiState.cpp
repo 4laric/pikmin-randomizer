@@ -1,8 +1,14 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
+#include "pc_p2_gas_cloud.h"
+#include "pc_p2_astonish.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
 #include "pc_p2_purple_direct.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "PikiState.h"
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -1018,6 +1024,11 @@ void PikiBulletState::exec(Piki* piki)
 	CI_LOOP(iter)
 	{
 		Creature* teki = *iter;
+#if defined(PIKI_PC_PORT)
+		if (pc_p2_breadbug_teki_untargetable(teki, "piki_bullet")) {
+			continue; // #898
+		}
+#endif
 		if (teki->isAlive() && teki->isVisible() && !teki->isFlying()) {
 			Vector3f dir = teki->mSRT.t - piki->mSRT.t;
 			f32 dist     = dir.length();
@@ -1699,6 +1710,17 @@ void PikiGoHangState::init(Piki* piki)
  */
 void PikiGoHangState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	CollPart* naviHand = piki->mNavi->mCollInfo->getSphere('rhnd');
 	Vector3f dir       = naviHand->mCentre - piki->mSRT.t;
 	f32 dist           = dir.normalise();
@@ -1764,6 +1786,17 @@ void PikiHangedState::init(Piki* piki)
  */
 void PikiHangedState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	if (piki->mNavi->getCurrState()->getID() != NAVISTATE_ThrowWait) {
 		transit(piki, PIKISTATE_Normal);
 	}
@@ -1817,6 +1850,17 @@ void PikiWaterHangedState::init(Piki* piki)
  */
 void PikiWaterHangedState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	if (piki->mNavi->getCurrState()->getID() != NAVISTATE_ThrowWait) {
 		PRINT("???\n");
 		transit(piki, PIKISTATE_Normal);
@@ -2202,9 +2246,31 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 		return;
 	}
 
-	if (colliderType == OBJTYPE_Teki && collider->isOrganic()) {
+	if (colliderType == OBJTYPE_Teki
+	    && pc_p2_fuefuki_teki_flying_press(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki,
+	                                       piki->mVelocity.y < 0.0f)) {
+		// #245: source PikiFlyingState::collisionCallback stimulates
+		// InteractPress on a descending contact (pikiState.cpp:2319-2327). A
+		// bound Antenna Beetle outside its mCanStruggle window returns true
+		// from pressCallBack, so the source skips the stick (pressCheck); the
+		// P1 stand-in is this function's generic non-stick exit below. When
+		// the press is accepted (Struggle) the ordinary latch runs.
+		piki->restartAI();
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+	if (colliderType == OBJTYPE_Teki && collider->isOrganic()
+#if defined(PIKI_PC_PORT)
+	    && !pc_p2_breadbug_teki_untargetable(collider, "piki_thrown_stick") // #898: never sticks
+#endif
+	) {
 		piki->mActiveAction->abandon(nullptr);
 		PRINT_KANDO("FLYING .. collide\n");
+#if defined(PIKI_PC_PORT)
+		// #892: observe a thrown Pikmin touching a bound Gatling Groink part (armour cover).
+		pc_p2_groink_teki_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki, msg->mEvent.mColliderPart, "thrown");
+		pc_p2_long_legs_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki, msg->mEvent.mColliderPart, "thrown");
+#endif
 		if (msg->mEvent.mColliderPart->isPlatformType()) {
 			if (msg->mEvent.mColliderPart->isStickable()) {
 				PRINT_KANDO("flying ... stick to platform::%s(code %s)\n", msg->mEvent.mColliderPart->mCollInfo->mId.mStringID,
@@ -3325,6 +3391,8 @@ void PikiDenkiDyingState::cleanup(Piki* piki)
  */
 PikiPanicState::PikiPanicState()
     : PikiState(PIKISTATE_Panic, "PANIC")
+    , mAstonish(false)
+    , mAstonishSubState(0)
 {
 }
 
@@ -3337,6 +3405,21 @@ PikiPanicState::PikiPanicState()
  */
 void PikiPanicState::init(Piki* piki)
 {
+	mAstonish = pc_p2_fuefuki_panic_astonish(piki) || pc_p2_astonish_pending(piki);
+	if (mAstonish) {
+		// Source PikiPanicState::init PIKIPANIC_Panic: no gas flag, no death;
+		// mDramaTimer = 0.3 * randFloat() before the KIZUKU (notice) motion.
+		piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+		piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+		mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
+		mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
+		mChangeDirectionTimer = 0.3f * gsys->getRand(1.0f);
+		mMoveDirection        = piki->mFaceDirection;
+		mSpeedRatio           = 1.0f;
+		mAstonishSubState     = 0;
+		piki->mIsPanicked     = true;
+		return;
+	}
 	piki->changeMode(PikiMode::FreeMode, piki->mNavi);
 	piki->startMotion(PaniMotionInfo(PIKIANIM_Moeru), PaniMotionInfo(PIKIANIM_Moeru));
 	piki->enableMotionBlend();
@@ -3347,6 +3430,7 @@ void PikiPanicState::init(Piki* piki)
 	mSpeedRatio           = 1.0f;
 	piki->setGasInvincible(1);
 	piki->mIsPanicked = true;
+	pc_p2_gas_cloud_begin(piki);
 }
 
 /**
@@ -3354,7 +3438,49 @@ void PikiPanicState::init(Piki* piki)
  */
 void PikiPanicState::exec(Piki* piki)
 {
+	if (mAstonish) {
+		// Source PikiPanicState::exec PIKIPANIC_Panic: drama wait, KIZUKU, then
+		// panicRun; the expired timer transits to the walking state (P1 Normal).
+		if (mAstonishSubState == 0) {
+			piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+			mChangeDirectionTimer -= gsys->getFrameTime();
+			if (mChangeDirectionTimer <= 0.0f) {
+				mAstonishSubState     = 1;
+				mChangeDirectionTimer = 1.0f; // KIZUKU hold
+				piki->startMotion(PaniMotionInfo(PIKIANIM_Kizuku), PaniMotionInfo(PIKIANIM_Kizuku));
+			}
+			return;
+		}
+		if (mAstonishSubState == 1) {
+			piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+			mChangeDirectionTimer -= gsys->getFrameTime();
+			if (mChangeDirectionTimer <= 0.0f) {
+				mAstonishSubState     = 2;
+				mChangeDirectionTimer = 0.0f;
+				piki->startMotion(PaniMotionInfo(PIKIANIM_Run), PaniMotionInfo(PIKIANIM_Run));
+			}
+			return;
+		}
+		piki->setSpeed(mSpeedRatio, mMoveDirection);
+		mSurvivalTimer -= gsys->getFrameTime();
+		mChangeDirectionTimer -= gsys->getFrameTime();
+		if (mSurvivalTimer < 0.0f) {
+			pc_p2_fuefuki_panic_end(piki, true);
+			pc_p2_astonish_end(piki, true);
+			mAstonish = false;
+			transit(piki, PIKISTATE_Normal);
+			return;
+		}
+		if (mChangeDirectionTimer < 0.0f) {
+			mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
+			mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
+			mMoveDirection = roundAng(mMoveDirection);
+			mSpeedRatio *= 0.99f;
+		}
+		return;
+	}
 	piki->setSpeed(mSpeedRatio, mMoveDirection);
+	pc_p2_gas_cloud_update(piki);
 	mSurvivalTimer -= gsys->getFrameTime();
 	mChangeDirectionTimer -= gsys->getFrameTime();
 	if (mSurvivalTimer < 0.0f) {
@@ -3375,8 +3501,14 @@ void PikiPanicState::exec(Piki* piki)
  */
 void PikiPanicState::cleanup(Piki* piki)
 {
+	if (mAstonish) {
+		mAstonish = false;
+		pc_p2_fuefuki_panic_end(piki, false);
+		pc_p2_astonish_end(piki, false);
+	}
 	piki->setGasInvincible(0);
 	piki->mIsPanicked = false;
+	pc_p2_gas_cloud_end(piki, false);
 }
 
 /**

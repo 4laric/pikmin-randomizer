@@ -1,7 +1,11 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_purple_impact.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "pc_p2_species.h"
 #include "pc_p2_purple.h"
 #include "pc_randomizer.h"
@@ -990,6 +994,12 @@ int Piki::graspSituation(Creature** outTarget)
 		if (roughCull(teki, this, minTestDist + teki->getCentreSize())) {
 			continue;
 		}
+#if defined(PIKI_PC_PORT)
+		// #898: an unbittered OWN Breadbug is not a living thing (retail pikiAI skips it).
+		if (pc_p2_breadbug_teki_untargetable(teki, "piki_grasp_situation")) {
+			continue;
+		}
+#endif
 		if (teki->isVisible() && teki->isAlive() && !teki->isFlying() && teki->isOrganic() && !teki->isStickTo()) {
 			f32 tekiDist = qdist2(this, teki);
 			if (tekiDist <= minTestDist + teki->getCentreSize()) {
@@ -2009,6 +2019,14 @@ void Piki::startMotion(immut PaniMotionInfo& motion1, immut PaniMotionInfo& moti
 		Creature* target = mLookAtCreature.getPtr();
 		if (!isLooking()) {
 			if (!target) {
+#if defined(PIKI_PC_PORT)
+				// A Pikmin released by a P2 captor (Jellyfloat suction) has no captain until
+				// the whistle reclaims it; &mNavi->mCursorWorldPos on null is a wild pointer
+				// that ViewPiki::refresh dereferences on the next draw.
+				if (!mNavi) {
+					return;
+				}
+#endif
 				int rand = gsys->getRand(1.0f) * 2.0f;
 				if (rand == 0) {
 					startHimaLook(&mNavi->mCursorWorldPos);
@@ -2152,6 +2170,14 @@ void Piki::collisionCallback(immut CollEvent& event)
 #endif
 
 	bool distCheck = true;
+#if defined(PIKI_PC_PORT)
+	// A Pikmin held by a P2 captor (Jellyfloat suction, pc_p2_kurage_receiver)
+	// is released from its captain (mNavi == nullptr) yet still collides with
+	// the crowd around it; vanilla Pikmin always have a captain here.
+	if (!mNavi) {
+		distCheck = false;
+	} else
+#endif
 	if (!mNavi->mForcePikiDistCheck && mNavi->mCStick.length() < 0.1f) {
 		distCheck = false;
 	}
@@ -2207,7 +2233,11 @@ void Piki::collisionCallback(immut CollEvent& event)
 	}
 
 	if (AICONST.mDoCStickAttack() && (collider->mObjType == OBJTYPE_Teki || collider->isBoss()) && collider->isOrganic()
-	    && mMode == PikiMode::FormationMode && getState() != PIKISTATE_Pressed) {
+	    && mMode == PikiMode::FormationMode && getState() != PIKISTATE_Pressed
+#if defined(PIKI_PC_PORT)
+	    && !pc_p2_breadbug_teki_untargetable(collider, "piki_formation_contact") // #898 swarm
+#endif
+	) {
 		ActCrowd* crowd = static_cast<ActCrowd*>(mActiveAction->getCurrAction());
 		if (crowd && crowd->mState == ActCrowd::STATE_Formed) {
 			mActiveAction->abandon(nullptr);
@@ -2913,6 +2943,12 @@ void Piki::doAI()
 		_500.clear();
 		return;
 	}
+	// #245: an Antenna Beetle ActTeki follower walks the beetle's footmark
+	// trail instead of running its P1 action (source Brain ACT_Teki).
+	if (getState() == PIKISTATE_Normal && pc_p2_fuefuki_follower_controls(this)) {
+		_500.clear();
+		return;
+	}
 
 	int state = getState();
 	if (state == PIKISTATE_Unk34) {
@@ -2953,6 +2989,9 @@ void Piki::pcChargeAt(Creature* target)
 	if (!target || playerState->inDayEnd()) {
 		return;
 	}
+	if (pc_p2_breadbug_teki_untargetable(target, "piki_charge")) {
+		return; // #898
+	}
 	mActiveAction->abandon(nullptr);
 	mActiveAction->mCurrActionIdx = PikiAction::Attack;
 	mActiveAction->mChildActions[mActiveAction->mCurrActionIdx].initialise(target);
@@ -2962,6 +3001,29 @@ void Piki::pcChargeAt(Creature* target)
 void Piki::changeMode(int newMode, Navi* navi)
 {
 	STACK_PAD_VAR(6); // idk
+#if defined(PIKI_PC_PORT)
+	// A Pikmin a P2 captor released (pc_p2_captain release_captive_free) has
+	// no captain until a whistle reclaims it (Navi::callPikis sets mNavi
+	// before changeMode). Every FormationMode entry initialises ActCrowd with
+	// mNavi, which read navi->mObjType of null (0x9c access violation, #972
+	// crash follow-up). No captain means no party: free mode, the same ruling
+	// as the ActAction post-work guard (#960).
+	static_assert(p2captivenavi::kFreeMode == PikiMode::FreeMode && p2captivenavi::kFormationMode == PikiMode::FormationMode,
+	              "PikiMode ids");
+	if (p2captivenavi::modeFor(newMode, mNavi != nullptr) != newMode) {
+		p2captivenavi::note("formation_without_captain");
+		newMode = p2captivenavi::modeFor(newMode, false);
+	}
+#endif
+#if defined(PIKI_PC_PORT)
+	// #245: the whistle path into a party is refused for an Antenna Beetle
+	// ActTeki follower in Navi::callPikis (InteractFue::actPiki). Any other
+	// path (day-end gather, co-op transfer, ...) ends the follow here, and a
+	// Pikmin the beetle released logs its reclaim by a captain.
+	if (newMode == PikiMode::FormationMode) {
+		pc_p2_fuefuki_note_formation(this, navi);
+	}
+#endif
 #if defined(PIKI_PC_PORT)
 	// VS: un Pikmin sin dueño pasa a ser del capitán a cuyo grupo entra
 	// (arrancarlo, silbarlo o tocarlo acaban aquí).

@@ -681,6 +681,8 @@ public:
 	particleGenerator* createGenerator(u8*, Texture*, Texture*, immut Vector3f&, CallBack1<particleGenerator*>*,
 	                                   CallBack2<particleGenerator*, particleMdl*>*);
 	void update();
+	// Live generator count (diagnostics: leak checks on detached one-shot effects).
+	u32 getLiveGeneratorCount() { return mActiveGenList.getListNum(); }
 	void draw(Graphics& gfx);
 	void cullingDraw(Graphics& gfx);
 	void killAllGenarator(bool doForceFinish); // dev typo

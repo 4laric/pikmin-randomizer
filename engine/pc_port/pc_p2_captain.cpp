@@ -1,4 +1,12 @@
 #include "pc_p2_captain.h"
+#include "pc_p2_captain_switch_policy.h"
+#include "pc_p2_second_captain.h"
+#include "pc_coop.h"
+#include "NaviState.h"
+#include "Kontroller.h"
+#include "Pcam/CameraManager.h"
+#include "gameflow.h"
+#include "CinematicPlayer.h"
 
 #include "NaviMgr.h"
 #include "Piki.h"
@@ -6,6 +14,7 @@
 #include "PikiMgr.h"
 
 #include <unordered_map>
+#include <cstdio>
 
 // Lane 12 engine glue (#130): binds P2CaptainAdapter to the live P1
 // Navi/NaviMgr/PikiMgr. This is the only translation unit that needs engine
@@ -73,7 +82,24 @@ void live_set_owner_slot(void* context, void* actor, int slot)
     (void)context;
     if (!actor || !naviMgr) return;
     Piki* piki = static_cast<Piki*>(actor);
-    piki->mNavi = P2CaptainOwnershipTable::isCaptain(slot) ? naviMgr->getNavi(slot) : nullptr;
+    Navi* next = P2CaptainOwnershipTable::isCaptain(slot) ? naviMgr->getNavi(slot) : nullptr;
+    Navi* previous = piki->mNavi;
+    if (previous == next) return;
+    const bool formation = piki->mMode == PikiMode::FormationMode && piki->mActiveAction
+        && piki->mActiveAction->mCurrActionIdx == PikiAction::Crowd;
+    if (formation) {
+        const auto identity = actor_id_for(actor);
+        // Crowd cleanup releases the OLD captain's plate. CaptureActor has
+        // already abandoned its action and must not run this callback twice.
+        piki->mActiveAction->abandon(nullptr);
+        const auto current = g_actorIds.find(actor);
+        auto* adapter = pc_p2_captain::adapter();
+        if (current == g_actorIds.end() || current->second != identity || !piki->isAlive()
+            || piki->mNavi != previous || !adapter || adapter->policy().isCaptive(identity)
+            || adapter->ownerOfActor(identity) != slot) return;
+    }
+    piki->mNavi = next;
+    if (formation) piki->changeMode(next ? PikiMode::FormationMode : PikiMode::FreeMode, next);
 }
 
 // Abandon the squad action while Piki::mNavi is still valid, so
@@ -143,6 +169,17 @@ P2CaptainAdapter& live_adapter()
 // the live distance and applies the decision. Persistent across frames.
 P2SquadFollowPolicy g_secondCaptainFollow;
 P2FollowPhase g_secondCaptainFollowPhase = P2FollowPhase::Idle;
+P2CaptainSwitchPress g_switchPress;
+bool g_switchHintShown = false;
+
+bool safe_to_switch(Navi* navi)
+{
+    if (!navi) return false;
+    const int state = navi->getCurrState() ? navi->getCurrState()->getID() : NAVISTATE_NULL;
+    return p2_captain_switch_safe(true, navi->isAlive() && std::isfinite(navi->mHealth) && navi->mHealth > 1.0f,
+        naviMgr->isNaviDead(navi), navi->isGrabbed(), navi->isHolding(),
+        state == NAVISTATE_Walk || state == NAVISTATE_Idle);
+}
 
 } // namespace
 
@@ -167,6 +204,10 @@ void teardown()
     adapter.teardown();
     g_actorIds.clear();
     g_nextActorId = 1;
+    g_switchPress.reset();
+    g_switchHintShown = false;
+    g_secondCaptainFollow = P2SquadFollowPolicy();
+    g_secondCaptainFollowPhase = P2FollowPhase::Idle;
 }
 
 P2CaptainAdapter* adapter() { return live_adapter().bound() ? &live_adapter() : nullptr; }
@@ -186,6 +227,70 @@ bool release_captain(int captain, std::uint64_t captorEpoch)
 }
 
 bool switch_active(int captain) { return live_adapter().switchActive(captain); }
+
+bool single_player_switch_enabled()
+{
+    return second_captain_requested() && !pc_coop_active() && !pc_vs_active()
+        && naviMgr && naviMgr->hasSecondNavi();
+}
+
+void update_player_switch()
+{
+    const bool enabled = single_player_switch_enabled();
+    Navi* current = enabled ? naviMgr->getActiveNavi() : nullptr;
+    const bool down = current && current->mKontroller
+        && current->mKontroller->keyDown(KBBTN_DPAD_UP);
+    const bool pressed = g_switchPress.update(enabled, down);
+    if (!enabled) return;
+    // The normal death animation owns dead flags, health normalization and
+    // releasePikis. A lethal selected captain must stop owning input before
+    // that animation finishes, while a safe living partner is available.
+    if (current && p2_captain_needs_survivor_takeover(current->mHealth)
+        && !(gameflow.mDemoFlags & CinePlayerFlags::NaviNoAI)) {
+        Navi* survivor = naviMgr->getOtherNavi(current);
+        P2CaptainAdapter* live = adapter();
+        if (current->mKontroller && survivor && survivor->mKontroller
+            && safe_to_switch(survivor) && cameraMgr && live
+            && live->policy().controllable(survivor->getNaviIndex())
+            && switch_active(survivor->getNaviIndex())) {
+            p2_captain_neutral_input(*current->mKontroller);
+            p2_captain_neutral_input(*survivor->mKontroller);
+            current->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+            current->mIsCursorVisible = false;
+            p2_captain_bind_camera(*cameraMgr, *survivor);
+            // Keep the press latch held until the physical key is released.
+            std::printf("P2_CAPTAIN_SURVIVOR from=%d to=%d health=%.3f death_animation_unchanged=1\n",
+                        current->getNaviIndex(), survivor->getNaviIndex(), current->mHealth);
+            return;
+        }
+    }
+    // Death/capture can change the roster independently of this key binding.
+    // The camera manager holds its own controller pointer as well as a target.
+    // Reconcile both before processing a new switch (also covers survivor-down).
+    if (current && current->mKontroller && cameraMgr
+        && cameraMgr->mController != current->mKontroller) {
+        if (Navi* other = naviMgr->getOtherNavi(current)) other->mIsCursorVisible = false;
+        p2_captain_bind_camera(*cameraMgr, *current);
+    }
+    if (!g_switchHintShown) {
+        std::printf("P2_CAPTAIN_CONTROLS switch=D-pad-Up (keyboard Up by default; remappable)\n");
+        g_switchHintShown = true;
+    }
+    if (!pressed || (gameflow.mDemoFlags & CinePlayerFlags::NaviNoAI)) return;
+    Navi* next = current ? naviMgr->getOtherNavi(current) : nullptr;
+    if (!safe_to_switch(current) || !safe_to_switch(next) || !cameraMgr) return;
+    P2CaptainAdapter* live = adapter();
+    // Refresh health at the input boundary; the captor adapter additionally
+    // rejects policy-held captains even if their engine state appears idle.
+    if (!live || !live->refresh() || !live->policy().controllable(current->getNaviIndex())
+        || !switch_active(next->getNaviIndex())) return;
+    p2_captain_neutral_input(*current->mKontroller);
+    p2_captain_neutral_input(*next->mKontroller);
+    current->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+    current->mIsCursorVisible = false;
+    p2_captain_bind_camera(*cameraMgr, *next);
+    std::printf("P2_CAPTAIN_SWITCH from=%d to=%d\n", current->getNaviIndex(), next->getNaviIndex());
+}
 
 bool reload() { return live_adapter().reload(); }
 
@@ -231,13 +336,14 @@ void update_inactive_captain_follow()
     // Narrow hook: inert unless a real second Navi exists. On the default
     // single-captain port hasSecondNavi() is false, so this never runs and
     // default play is byte-identical.
-    if (!naviMgr || !naviMgr->hasSecondNavi()) {
+    if (!single_player_switch_enabled()) {
         return;
     }
 
     Navi* active = naviMgr->getActiveNavi();
     Navi* inactive = active ? naviMgr->getOtherNavi(active) : nullptr;
-    if (!active || !inactive || !inactive->isAlive()) {
+    if (!active || !safe_to_switch(inactive) || !adapter()
+        || !adapter()->policy().controllable(inactive->getNaviIndex())) {
         return;
     }
 

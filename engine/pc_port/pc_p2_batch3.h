@@ -7,6 +7,8 @@ void pc_p2_batch3_setup();
 void pc_p2_batch3_setup_bridge();
 void pc_p2_batch3_reset();
 void pc_p2_batch3_forget(BTeki*);
+// Simulation tick (#895): advances move/wait hysteresis and clip crossfades.
+void pc_p2_batch3_update(BTeki*, float seconds);
 bool pc_p2_batch3_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
 bool pc_p2_batch3_corpse_drawn();
 int pc_p2_batch3_actor_count();

@@ -61,6 +61,10 @@ struct In {
     bool naviSucked = false;       // isNaviSucked(): >=1 captain held in a mouth slot
     bool naviSuckFinished = true;  // isFinishNaviSuck(): occupied slots at rest offsets
     float velocityY = 0.0f;        // getVelocity().y for the StateDrop ground test
+    // suckPikmin() result: mSuckedPiki >= ip11 while the suction window is open
+    // finishes the Attack motion (StateAttack::exec). Default false keeps every
+    // existing host unchanged.
+    bool suckFull = false;
 };
 
 struct Out {
@@ -159,8 +163,10 @@ public:
             } else if (in.health <= 0.0f || mStateTimer > mParms.suckTime || mFallTimer > mParms.shakeTime) {
                 mFinishing = true;
             }
-            out.heightVelocity = heightVelocity(mParms, attackPitchOffset(in.motionFrame, mVariant), 5.0f, in.mapY, in.positionY);
+            out.heightVelocity = heightVelocity(mParms, attackPitchOffset(in.motionFrame, mVariant), speedFactor(5.0f), in.mapY, in.positionY);
             out.altitude = altitude(in.mapY, in.positionY);
+            // suckPikmin() -> finishMotion() (OniKurage: only once isFinishNaviSuck())
+            if (mIsSucking && in.suckFull && (mVariant != Variant::Greater || in.naviSuckFinished)) mFinishing = true;
             if (in.keyEvent == KeyEvent::Key2) { out.suckStart = true; mIsSucking = true; }
             if (in.keyEvent == KeyEvent::Key1 && mFinishing) { out.suckStop = true; mIsSucking = false; }
             mStateTimer += in.deltaTime;
@@ -190,7 +196,7 @@ public:
 
         case State::Fall:
             if (in.isFlying) {
-                out.heightVelocity = heightVelocity(mParms, fallPitchOffset(mStateTimer, mVariant), 2.0f, in.mapY, in.positionY);
+                out.heightVelocity = heightVelocity(mParms, fallPitchOffset(mStateTimer, mVariant), speedFactor(2.0f), in.mapY, in.positionY);
                 if (mStateTimer * 30.0f > 65.0f) { mFlags.untargetable = false; mFinishing = true; }
             }
             out.altitude = altitude(in.mapY, in.positionY);
@@ -203,7 +209,7 @@ public:
             break;
 
         case State::TakeOff:
-            if (in.isFlying) out.heightVelocity = heightVelocity(mParms, takeOffPitchOffset(in.motionFrame, mVariant), 2.0f, in.mapY, in.positionY);
+            if (in.isFlying) out.heightVelocity = heightVelocity(mParms, takeOffPitchOffset(in.motionFrame, mVariant), speedFactor(2.0f), in.mapY, in.positionY);
             out.altitude = altitude(in.mapY, in.positionY);
             if (in.keyEvent == KeyEvent::Key2) mFlags.untargetable = true;
             if (in.motionFinished) { transition(out, in.health <= 0.0f ? State::Dead : State::Wait); return out; }
@@ -221,7 +227,7 @@ public:
             break;
 
         case State::FlyFlick:
-            out.heightVelocity = heightVelocity(mParms, flickPitchOffset(in.motionFrame, mVariant), 5.0f, in.mapY, in.positionY);
+            out.heightVelocity = heightVelocity(mParms, flickPitchOffset(in.motionFrame, mVariant), speedFactor(5.0f), in.mapY, in.positionY);
             out.altitude = altitude(in.mapY, in.positionY);
             if (in.keyEvent == KeyEvent::Key2) out.flickStick = true;
             if (in.motionFinished) {
@@ -261,6 +267,10 @@ private:
         default: return State::Wait;
         }
     }
+    // setHeightVelocity speedFactor: the Kurage states pass 5/2/2/5 (Attack/Fall/
+    // TakeOff/FlyFlick), the OniKurage states pass 0.0f everywhere
+    // (OniKurageState.cpp:337/433/583/682; its rise factor fp02 is 5.0 instead).
+    float speedFactor(float lesser) const { return mVariant == Variant::Greater ? 0.0f : lesser; }
     float onFlyingStatePitch(const In& in)
     {
         const float amplitude = mVariant == Variant::Greater

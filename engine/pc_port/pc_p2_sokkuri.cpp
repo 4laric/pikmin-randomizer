@@ -12,11 +12,14 @@
 //   * View-angle detection is treated as a full hemisphere (fp13 is not present
 //     in the Sokkuri general block); sight radius is the source fp12=150.
 //   * Turn rate is a fixed adaptation (~pi rad/s); source uses fp turn class.
-//   * Flick latch radius 25 and shake range/knockback are P1-host approximations.
+//   * The shake-off trigger is the source isStartFlick (flick timer from accepted
+//     hits, ip01-ip07 thresholds) in pc_p2_sokkuri_flick.h (#996); the former
+//     "any Pikmin within 25 units" proximity flick was a port invention.
 //   * Water (MoveWater) is implemented but no staged arena supplies a water box.
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_sokkuri.h"
+#include "pc_p2_sokkuri_flick.h"
 #include "pc_randomizer.h"
 #include "teki.h"
 #include "Interactions.h"
@@ -27,6 +30,7 @@
 #include "pc_p2_navi_select.h"
 #include "Generator.h"
 #include "gameflow.h"
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -77,9 +81,6 @@ constexpr float MAX_WAIT = 3.25f;    // fp12
 constexpr float WAIT_PROB = 0.4f;    // fp11
 constexpr float UNDERWATER_SPEED = 25.0f; // fp21
 constexpr float TURN_RATE = 3.14159265f;  // port adaptation
-constexpr float FLICK_RADIUS = 25.0f;     // port adaptation
-constexpr float SHAKE_RANGE = 100.0f;     // port adaptation
-constexpr float SHAKE_KNOCKBACK = 120.0f; // port adaptation
 
 struct Clip {
     std::string name;
@@ -110,10 +111,19 @@ struct Sokkuri {
     bool deliveryBound = false;
     float lastHealth = LIFE;
     float logTimer = 0.0f;
+    // Source EnemyBase::mFlickTimer (addDamage flickSpeed 1.0 per accepted hit;
+    // cleared by the shake at KEYEVENT_3). #996.
+    float flickTimer = 0.0f;
+    int hitsSinceShake = 0;
+    int totalHits = 0;
+    int shakes = 0;
 };
 
 std::map<PelletView*, Sokkuri> actors;
 std::map<std::string, Clip> clips;
+// Carcass clock (#996): wall-clock start of the first corpse draw per actor, so the
+// looping 'type5' carry motion animates independent of the dead actor's FSM entry.
+std::map<const BTeki*, std::chrono::steady_clock::time_point> carcassStart;
 bool ready = false;
 bool loggedHidden = false;
 
@@ -173,26 +183,58 @@ bool isDisappear(const Vector3f& pos, const Vector3f& home) {
     return distXZ(pos, home) < HOME_RADIUS && nearestTarget(pos) == nullptr;
 }
 
-bool shouldFlick(BTeki* a) {
-    if (!pikiMgr) return false;
-    const Vector3f pos = a->getPosition();
-    Iterator it(pikiMgr);
-    CI_LOOP(it) {
-        Piki* p = static_cast<Piki*>(*it);
-        if (p && p->isAlive() && distXZ(p->getPosition(), pos) < FLICK_RADIUS) return true;
+int stuckPikminCount(BTeki* a) {
+    int n = 0;
+    for (Creature* c = a->mStickListHead; c; c = c->mNextSticker) {
+        if (c->isPiki() && c->isAlive()) ++n;
     }
-    return false;
+    return n;
 }
-void doFlick(BTeki* a) {
-    if (!pikiMgr) return;
+
+// Source EnemyFunc::isStartFlick(sokkuri, false): timer and stuck-count tiers only.
+bool shouldFlick(BTeki* a, const Sokkuri& s) {
+    return p2sokkuriflick::isStartFlick(s.flickTimer, stuckPikminCount(a));
+}
+
+// StateFlick::exec KEYEVENT_3: flickNearbyNavi + flickNearbyPikmin (fp19 range 40,
+// fp17 knockback 50) + flickStickPikmin (fp16 chance 1.0), then mFlickTimer = 0.
+// The Pikmin damage argument is 0: InteractFlick::actPiki ignores it in P2.
+void doFlick(BTeki* a, Sokkuri& s, unsigned token) {
+    int navis = 0, near = 0, stuck = 0;
     const Vector3f pos = a->getPosition();
-    Iterator it(pikiMgr);
-    CI_LOOP(it) {
-        Piki* p = static_cast<Piki*>(*it);
-        if (p && p->isAlive() && distXZ(p->getPosition(), pos) < SHAKE_RANGE) {
-            p->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, 0.0f, 0.0f));
+    const float range2 = p2sokkuriflick::ShakeRange * p2sokkuriflick::ShakeRange;
+    auto sqr3 = [&](const Vector3f& q) {
+        const float dx = q.x - pos.x, dy = q.y - pos.y, dz = q.z - pos.z;
+        return dx * dx + dy * dy + dz * dz;
+    };
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive() || sqr3(n->getPosition()) >= range2) continue;
+            if (n->stimulate(InteractFlick(a, p2sokkuriflick::ShakeKnockback, p2sokkuriflick::ShakeDamage,
+                                           FLICK_BACKWARDS_ANGLE))) ++navis;
         }
     }
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const bool isStuck = p->getStickObject() == a;
+            if (isStuck || sqr3(p->getPosition()) < range2) {
+                if (p->stimulate(InteractFlick(a, p2sokkuriflick::ShakeKnockback, p2sokkuriflick::PikiDamage,
+                                               FLICK_BACKWARDS_ANGLE))) {
+                    if (isStuck) ++stuck; else ++near;
+                }
+            }
+        }
+    }
+    ++s.shakes;
+    std::printf("P2_SOKKURI_SHAKE generator=%u source_id=79 shake=%d hits_since_last=%d total_hits=%d "
+                "flick_timer=%.2f flicked_navi=%d flicked_near=%d flicked_stuck=%d\n",
+                token, s.shakes, s.hitsSinceShake, s.totalHits, s.flickTimer, navis, near, stuck);
+    std::fflush(stdout);
+    s.flickTimer = 0.0f;
+    s.hitsSinceShake = 0;
 }
 
 void enter(Sokkuri& s, State state, const char* clip, float timer = 0.0f) {
@@ -259,9 +301,9 @@ void fireEvents(BTeki* a, Sokkuri& s) {
         if (s.stateTime < event.first / 30.0f) continue;
         s.firedEvents.insert(event.first);
         if (s.state == SOKKURI_FLICK && event.second == 3) {
-            doFlick(a);
+            doFlick(a, s, a->mGenerator ? pc_p2_campaign_token(a) : 0u);
             std::printf("P2_SOKKURI_FLICK generator=%u source_id=79 frame=%d\n",
-                        a->mGenerator ? a->mGenerator->_70 : 0u, event.first);
+                        a->mGenerator ? pc_p2_campaign_token(a) : 0u, event.first);
         } else if (s.state == SOKKURI_DEAD && event.second == 2) {
             std::printf("P2_SOKKURI_DEAD_EFFECT generator=%u source_id=79\n",
                         a->mGenerator ? a->mGenerator->_70 : 0u);
@@ -292,6 +334,7 @@ void setPhase(Sokkuri& s) {
 void pc_p2_sokkuri_reset() {
     actors.clear();
     clips.clear();
+    carcassStart.clear();
     ready = false;
     loggedHidden = false;
 }
@@ -302,6 +345,7 @@ void pc_p2_sokkuri_forget(BTeki* actor) {
     // pc_p2_forget_teki seam also clears it; this is idempotent.
     pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     actors.erase(static_cast<PelletView*>(actor));
+    carcassStart.erase(actor);
 }
 
 // Fixture observability (#165/#407 lifecycle gates): read-only registration
@@ -341,6 +385,34 @@ float pc_p2_sokkuri_param_f(const BTeki* actor, int idx, float fallback) {
     default:
         return fallback;
     }
+}
+
+// Source EnemyBase::damageCallBack -> addDamage(damage, 1.0f): every accepted damaging
+// hit adds 1.0 to mFlickTimer (#996). Called from InteractAttack::actTeki after the
+// host accepted the hit. No-op for every other actor.
+void pc_p2_sokkuri_attacked(BTeki* teki, bool accepted) {
+    if (!ready || !accepted) return;
+    auto it = actors.find(static_cast<PelletView*>(teki));
+    if (it == actors.end()) return;
+    Sokkuri& s = it->second;
+    if (s.state == SOKKURI_DEAD || s.state == SOKKURI_PRESS) return;
+    s.flickTimer += p2sokkuriflick::FlickPerHit;
+    ++s.hitsSinceShake;
+    ++s.totalHits;
+}
+
+// Source Obj::startCarcassMotion: a Sokkuri carcass (lying or carried) plays the
+// looping Carry motion 'type5' (upright leaf). Phase comes from a wall clock that
+// starts at the first corpse draw. True only for clips the bank actually holds.
+bool pc_p2_sokkuri_carcass_clip(const BTeki* actor, const char*& name, float& phase) {
+    auto clip = clips.find(p2sokkuriflick::carcassClip());
+    if (clip == clips.end()) return false;
+    const auto now = std::chrono::steady_clock::now();
+    auto start = carcassStart.emplace(actor, now).first;
+    const double elapsed = std::chrono::duration<double>(now - start->second).count();
+    name = clip->second.name.c_str();
+    phase = p2sokkuriflick::carcassPhase(elapsed, clip->second.duration);
+    return true;
 }
 
 bool pc_p2_sokkuri_pressed(BTeki* teki, Creature*) {
@@ -405,6 +477,11 @@ void pc_p2_sokkuri_setup() {
                         }
                         clips[name] = clip;
                     }
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
                 } else {
                     break;
                 }
@@ -522,9 +599,11 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         break;
     case SOKKURI_APPEAR:
         s.hidden = false;
-        if (shouldFlick(actor)) {
-            std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
             enter(s, SOKKURI_FLICK, "flick1");
         } else if (s.stateTime >= clipDuration("appear1")) {
             setNextMoveInfo(s, pos);
@@ -541,9 +620,11 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         }
         break;
     case SOKKURI_WAIT:
-        if (shouldFlick(actor)) {
-            std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
             enter(s, SOKKURI_FLICK, "flick1");
             break;
         }
@@ -570,9 +651,11 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         const bool water = s.state == SOKKURI_MOVE_WATER;
         updateMove(actor, s, dt, water);
         s.timer += dt;
-        if (shouldFlick(actor)) {
-            std::printf("P2_SOKKURI_STATE generator=%u state=flick\n",
-                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
             enter(s, SOKKURI_FLICK, "flick1");
             break;
         }

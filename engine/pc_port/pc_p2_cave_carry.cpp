@@ -14,6 +14,7 @@
 #include "pc_p2_cave_carry_engine.h"
 #include "pc_p2_cave_rooms_engine.h"
 #include "pc_p2_cave_items_engine.h"
+#include "pc_p2_cave_barrier.h"
 
 #include "Interactions.h"
 #include "MapMgr.h"
@@ -23,12 +24,16 @@
 #include "pc_p2_species.h"
 #include "pc_p2_species_policy.h"
 #include "system.h"
+#include "gameflow.h"
+#include "MoviePlayer.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -42,10 +47,13 @@ struct CarryBlocker {
     std::string key;      // yellow / blue
     Vector3f position;
     bool open = false;    // electric gates only; water never opens
-    float cooldown = 0.0f;
+    bool explicitVolume = false;
+    P2CaveBarrier volume;
 };
 
 std::vector<CarryBlocker> blockers;
+struct CarrySample { Vector3f position; Creature* pellet; int species; };
+std::map<Piki*, CarrySample> previousCarriers;
 int blockedCount = 0;
 int openedCount = 0;
 int carriersDropped = 0;
@@ -134,30 +142,29 @@ bool readPlan(const std::string& path, P2CaveCarryPlan& out, std::string& error)
     return p2CaveCarryParse(in, out, error);
 }
 
-Piki* nearestPikmin(const Vector3f& position, float radius, int hazard, bool immuneOnly,
-                    bool& immune)
+bool touches(const CarryBlocker& blocker, Piki* piki, float legacyRadius)
 {
-    Piki* best = nullptr;
-    float bestSq = radius * radius;
-    immune = false;
-    if (!pikiMgr) return nullptr;
-    Iterator it(pikiMgr);
-    CI_LOOP(it) {
-        Piki* piki = static_cast<Piki*>(*it);
-        if (!piki || !piki->isAlive()) continue;
-        const int species = pc_p2_species(piki);
-        const bool pikminImmune = p2_species_immune(species, hazard);
-        if (immuneOnly && !pikminImmune) continue;
-        if (!immuneOnly && pikminImmune) continue;
-        const float dx = piki->getPosition().x - position.x;
-        const float dz = piki->getPosition().z - position.z;
-        const float distance = dx * dx + dz * dz;
-        if (distance >= bestSq) continue;
-        bestSq = distance;
-        best = piki;
-        immune = pikminImmune;
+    const Vector3f now = piki->getPosition();
+    if (!blocker.explicitVolume) {
+        const float dx = now.x - blocker.position.x, dz = now.z - blocker.position.z;
+        return dx * dx + dz * dz < legacyRadius * legacyRadius;
     }
-    return best;
+    Vector3f before = now;
+    const auto prior = previousCarriers.find(piki);
+    // Sweep only a continuously attached carrier. Raw manager addresses are
+    // reusable after death/conversion; never sweep a newly born free actor from
+    // a previous occupant's position. New pickups still use point containment.
+    if (prior != previousCarriers.end() && piki->getStickObject()
+        && prior->second.pellet == piki->getStickObject()
+        && prior->second.species == pc_p2_species(piki)) before = prior->second.position;
+    return p2CaveBarrierTouches(blocker.volume, before.x, before.y, before.z, now.x, now.y, now.z);
+}
+
+[[noreturn]] void invalidBarrier(const std::string& error)
+{
+    std::fprintf(stderr, "P2_CAVE_BARRIER FATAL %s\n", error.c_str());
+    std::fflush(nullptr);
+    std::abort();
 }
 
 // True when the Pikmin holds a live cave-item Pellet (lane 46's spawned set).
@@ -215,6 +222,7 @@ void pc_p2_cave_carry_shutdown()
     carryPlan = P2CaveCarryPlan{};
     carryActive = false;
     blockers.clear();
+    previousCarriers.clear();
     blockedCount = 0;
     openedCount = 0;
     carriersDropped = 0;
@@ -226,46 +234,77 @@ void pc_p2_cave_carry_setup()
     carryPlan = P2CaveCarryPlan{};
     carryActive = false;
     blockers.clear();
+    previousCarriers.clear();
     blockedCount = 0;
     openedCount = 0;
     carriersDropped = 0;
     waterBlockedCount = 0;
 
+    std::error_code fileError;
+    const bool volumeFile = std::filesystem::exists("p2-cave-barriers.txt", fileError);
+    if (fileError) invalidBarrier("cannot inspect barrier file");
     const char* env = std::getenv("PIKMIN_CAVE_GATES");
     const std::string path = env && env[0] ? env : "p2-cave-gates.txt";
-    if (!std::ifstream(path)) return;
+    if (!std::ifstream(path)) {
+        if (volumeFile) invalidBarrier("barrier sidecar requires readable gates plan");
+        return;
+    }
 
     std::string error;
     if (!readPlan(path, carryPlan, error)) {
+        if (volumeFile) invalidBarrier(error);
         std::printf("P2_CAVE_CARRY FAILED reason=%s\n", error.c_str());
         std::fflush(stdout);
         return;
     }
     const P2CaveRoomLayout* rooms = pc_p2_cave_rooms_layout();
     if (!rooms) {
+        if (volumeFile) invalidBarrier("barrier sidecar requires rooms");
         std::printf("P2_CAVE_CARRY FAILED reason=no rooms layout\n");
         std::fflush(stdout);
         return;
     }
     if (carryPlan.cave != rooms->cave || carryPlan.floor != rooms->floor
         || carryPlan.seed != rooms->seed) {
+        if (volumeFile) invalidBarrier("barrier plan/rooms identity mismatch");
         std::printf("P2_CAVE_CARRY FAILED reason=plan/rooms drift\n");
         std::fflush(stdout);
         return;
     }
+    std::vector<P2CaveBarrier> volumes;
+    if (volumeFile) {
+        if (carryPlan.doors.size() != rooms->units.size()) invalidBarrier("barrier plan must cover every room node");
+        std::ifstream in("p2-cave-barriers.txt");
+        if (!in || !p2CaveBarrierParse(in, carryPlan, volumes, error))
+            invalidBarrier(error.empty() ? "cannot read barrier file" : error);
+    }
     for (const P2CaveCarryDoor& door : carryPlan.doors) {
         const P2CaveRoomUnit* unit = p2CaveRoomsFind(*rooms, door.id);
         if (!unit) {
+            if (volumeFile) invalidBarrier("barrier door absent from rooms");
             std::printf("P2_CAVE_CARRY FAILED reason=door not in rooms: %s\n", door.id.c_str());
             std::fflush(stdout);
             return;
         }
+        if (volumeFile && (door.kind != unit->kind || door.hazard != unit->hazard))
+            invalidBarrier("barrier door semantics disagree with rooms");
+        const std::string expectedBlock = unit->kind != "bud"
+            && (unit->hazard == "water" || unit->hazard == "elec") ? unit->hazard : "";
+        if (volumeFile && door.carry_block != expectedBlock)
+            invalidBarrier("barrier door blocking semantics disagree with rooms");
         if (!p2CaveCarryBlocks(door)) continue;
         CarryBlocker blocker;
         blocker.id = door.id;
         blocker.hazard = p2CaveCarryHazardFor(door.carry_block);
         blocker.key = p2CaveCarryKeyFor(door.carry_block);
         blocker.position = doorPosition(*rooms, *unit);
+        for (const auto& volume : volumes) if (volume.id == door.id) {
+            blocker.explicitVolume = true;
+            blocker.volume = volume;
+            blocker.position = Vector3f(float((volume.low[0] + volume.high[0]) / 2),
+                                       float((volume.low[1] + volume.high[1]) / 2),
+                                       float((volume.low[2] + volume.high[2]) / 2));
+        }
         blockers.push_back(blocker);
         std::printf("%s\n", p2CaveCarryDoorMarker(door).c_str());
         std::printf("P2_CAVE_CARRY_VOLUME id=%s hazard=%s key=%s x=%.3f y=%.3f z=%.3f\n",
@@ -279,55 +318,67 @@ void pc_p2_cave_carry_setup()
 
 void pc_p2_cave_carry_tick()
 {
-    if (!carryActive) return;
-    const float dt = gsys ? gsys->getFrameTime() : 0.0f;
-    // An electric-immune Pikmin at any electric gate clears every electric
-    // gate: the squad holds the yellow key, so the hazard system is passable.
-    bool yellowKey = false;
+    if (!carryActive || !pikiMgr || gameflow.mPauseAll || gameflow.mIsUIOverlayActive
+        || (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive)) return;
+    // Snapshot before applying reactions: transport cleanup mutates attachment
+    // lists, so each actor must be considered independently of a nearest actor.
+    std::vector<Piki*> targets;
+    std::map<Piki*, CarrySample> currentCarriers;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* piki = static_cast<Piki*>(*it);
+        if (!piki || !piki->isAlive()) continue;
+        targets.push_back(piki);
+        if (isCaveCarrier(piki)) currentCarriers.emplace(piki,
+            CarrySample{piki->getPosition(), piki->getStickObject(), pc_p2_species(piki)});
+    }
     for (CarryBlocker& blocker : blockers) {
         if (blocker.hazard != "elec" || blocker.open) continue;
         const int hazard = hazardCode(blocker.hazard);
         if (hazard < 0) continue;
-        bool immune = false;
-        if (nearestPikmin(blocker.position, 22.0f, hazard, true, immune)) yellowKey = true;
-    }
-    if (yellowKey) {
-        for (CarryBlocker& blocker : blockers) {
-            if (blocker.hazard == "elec" && !blocker.open) {
+        for (Piki* piki : targets) {
+            if (p2_species_immune(pc_p2_species(piki), hazard) && touches(blocker, piki, 22.0f)) {
                 blocker.open = true;
                 ++openedCount;
                 std::printf("P2_CAVE_CARRY_OPEN id=%s hazard=elec reason=electric_immune\n",
                             blocker.id.c_str());
                 std::fflush(stdout);
+                break;
             }
         }
     }
     for (CarryBlocker& blocker : blockers) {
-        if (blocker.cooldown > 0.0f) blocker.cooldown -= dt;
         const int hazard = hazardCode(blocker.hazard);
         if (hazard < 0) continue;
         if (blocker.open) continue;
-        if (blocker.cooldown > 0.0f) continue;
-        bool immune = false;
-        Piki* target = nearestPikmin(blocker.position, 16.0f, hazard, false, immune);
-        if (!target) continue;
-        const bool carrying = isCaveCarrier(target);
-        bool accepted = false;
-        if (blocker.hazard == "elec") {
-            Vector3f direction(target->getPosition().x - blocker.position.x, 0.0f,
-                               target->getPosition().z - blocker.position.z);
-            accepted = target->stimulate(InteractDenki(nullptr, 1.0f, &direction));
-        } else {
-            accepted = target->stimulate(InteractBubble(nullptr, 1.0f));
+        for (Piki* target : targets) {
+            if (!target->isAlive() || p2_species_immune(pc_p2_species(target), hazard)
+                || !touches(blocker, target, 16.0f)) continue;
+            Creature* carried = isCaveCarrier(target) ? target->getStickObject() : nullptr;
+            bool accepted = false;
+            if (blocker.hazard == "elec") {
+                Vector3f direction(target->getPosition().x - blocker.position.x, 0.0f,
+                                   target->getPosition().z - blocker.position.z);
+                accepted = target->stimulate(InteractDenki(nullptr, 1.0f, &direction));
+            } else {
+                accepted = target->stimulate(InteractBubble(nullptr, 1.0f));
+            }
+            const bool dropped = accepted && carried && target->getStickObject() != carried;
+            if (accepted) ++blockedCount;
+            if (dropped) ++carriersDropped;
+            if (accepted && blocker.hazard == "water") ++waterBlockedCount;
+            if (!accepted) continue; // Already-reacting or protected actors are not successes.
+            std::printf(
+                "P2_CAVE_CARRY_BLOCKED id=%s hazard=%s species=%d carrying=%d accepted=%d dropped=%d tx=%.2f tz=%.2f\n",
+                blocker.id.c_str(), blocker.hazard.c_str(), pc_p2_species(target), int(carried != nullptr),
+                int(accepted), int(dropped), target->getPosition().x, target->getPosition().z);
+            std::fflush(stdout);
         }
-        blocker.cooldown = 0.5f;
-        ++blockedCount;
-        if (carrying) ++carriersDropped;
-        if (blocker.hazard == "water") ++waterBlockedCount;
-        std::printf(
-            "P2_CAVE_CARRY_BLOCKED id=%s hazard=%s species=%d carrying=%d accepted=%d tx=%.2f tz=%.2f\n",
-            blocker.id.c_str(), blocker.hazard.c_str(), pc_p2_species(target), int(carrying),
-            int(accepted), target->getPosition().x, target->getPosition().z);
-        std::fflush(stdout);
     }
+    // Keep only attachments that survived this tick; no stale actor ownership.
+    for (auto sample = currentCarriers.begin(); sample != currentCarriers.end();) {
+        if (sample->first->getStickObject() != sample->second.pellet) sample = currentCarriers.erase(sample);
+        else ++sample;
+    }
+    previousCarriers.swap(currentCarriers);
 }

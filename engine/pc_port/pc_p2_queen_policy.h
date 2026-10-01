@@ -321,6 +321,8 @@ inline bool babyClipName(const std::string& name) {
 	const std::string names = " dead deadpress move attack attackfail born ";
 	return names.find(" " + name + " ") != std::string::npos;
 }
+// Dense pose bank bound (#972): pikmin2_animation.DEFAULT_POSE_LIMIT. Was 12.
+constexpr int MaxPosesPerClip = 24;
 inline ActorConfig readActorConfig(std::istream& in) {
 	auto fail = []() { throw std::runtime_error("invalid Queen actor profile"); };
 	ActorConfig cfg;
@@ -334,7 +336,7 @@ inline ActorConfig readActorConfig(std::istream& in) {
 		if (!(in >> c.enemy >> c.name >> c.duration >> n)) fail();
 		const bool known = c.enemy == 30 ? queenClipName(c.name) : c.enemy == 31 ? babyClipName(c.name) : false;
 		if (!known || c.name.size() > 24 || c.name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos
-		    || !seen.insert({c.enemy, c.name}).second || c.duration < 1 || c.duration > 10000 || n < 1 || n > 12)
+		    || !seen.insert({c.enemy, c.name}).second || c.duration < 1 || c.duration > 10000 || n < 1 || n > MaxPosesPerClip)
 			fail();
 		for (int j = 0; j < n; ++j) {
 			int f;

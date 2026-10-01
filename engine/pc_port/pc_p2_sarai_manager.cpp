@@ -20,18 +20,36 @@
 #include <string>
 #include <vector>
 
+const P2SaraiSpecies kSaraiSpecies{23, "SARAI", "Sarai", "sarai", false};
+const P2SaraiSpecies kDemonSpecies{32, "DEMON", "Demon", "demon", true};
+
 namespace {
+// One-shot markers are per binding (#215): the old process-static flags
+// reported only the first of several Sarai.
 struct Binding {
     P2SaraiHost* host;
     unsigned generator;
     int type;
+    const P2SaraiSpecies* species = &kSaraiSpecies;
+    int ticks = 0;
+    bool sawCapture = false;
+    bool sawDeath = false;
+    bool escaped = false;
+    float lastHealth = -1.0f;
 };
 std::map<BTeki*, Binding> s;
 std::vector<std::unique_ptr<P2SaraiHost>> hosts;
 // Naturally dead Sarai anchors: kept until the central forget/reset seam so the
 // Pod delivery receipt can still resolve the corpse after the live binding is
-// revoked (mirrors the Kurage/Mamuta pattern).
-std::map<BTeki*, unsigned> corpses;
+// revoked (mirrors the Kurage/Mamuta pattern). The species is kept with the
+// corpse so a Demon anchor that lands here (finalised, or failing revalidation
+// before finalisation) can never resolve as a private-room corpse:sarai
+// receipt (#215 review).
+struct Corpse {
+    unsigned generator;
+    const P2SaraiSpecies* species;
+};
+std::map<BTeki*, Corpse> corpses;
 
 // Exactly one match is required so a stale/ambiguous scene fails closed.
 bool findOwnerActor(unsigned wantedGenerator, int wantedType, BTeki*& match)
@@ -73,12 +91,56 @@ bool readRestOffsets(const char* path, Vector3f& mouthA, Vector3f& mouthB)
 // Sokkuri (79). Single-use: consumed on delivery and cleared on
 // forget/recycle. Rejected (unbindable id) is logged by the callee, never
 // fatal.
-void bindDeliverySource(BTeki* actor, unsigned generator)
+void bindDeliverySource(BTeki* actor, unsigned generator, const P2SaraiSpecies& sp = kSaraiSpecies)
 {
     if (!actor || !generator) return;
-    pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 23, generator);
-    std::printf("P2_SARAI_DELIVERY_BIND generator=%u source_id=23\n", generator);
+    pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), sp.sourceId, generator);
+    std::printf("P2_%s_DELIVERY_BIND generator=%u source_id=%u\n", sp.marker, generator, sp.sourceId);
     std::fflush(stdout);
+}
+
+// Demon (32) profile host (#215): own staged model, all twelve retail clips,
+// the retail event table and the retail parms. Fails closed (nullptr) when any
+// staged file is missing or malformed; never falls back to Sarai assets.
+std::unique_ptr<P2SaraiHost> buildDemonHost(BTeki* match, unsigned generatorId)
+{
+    Vector3f restA, restB;
+    if (!readRestOffsets("demon-attack-mouths.txt", restA, restB)) return nullptr;
+    std::ifstream parmsIn("demon-parms.txt");
+    p2demon::Parms parms;
+    if (!parmsIn || !p2demon::loadParms(parmsIn, parms)) {
+        std::printf("P2_DEMON_PARMS_INVALID generator=%u\n", generatorId);
+        std::fflush(stdout);
+        return nullptr;
+    }
+    std::ifstream events("demon-retail-events.txt");
+    if (!events) return nullptr;
+    p2retail::Table table;
+    try { table = p2retail::read(events); } catch (...) { return nullptr; }
+    auto host = std::make_unique<P2SaraiHost>();
+    host->setSpecies(kDemonSpecies);
+    if (!host->load("courses/pikmin2room/demon0.mod", restA, restB)) return nullptr;
+    const Vector3f home = match->getPosition();
+    // Sarai::onInit: the Demon starts at its spawn and climbs to fp01 through
+    // setHeightVelocity; start it at flight height so the first frames do not
+    // clip the floor.
+    host->setPosition(Vector3f(home.x, home.y + parms.proper.normalFlightHeight, home.z));
+    if (!host->enableDemon(parms, table, "demon", home, generatorId ^ 0x9e3779b9u)) return nullptr;
+    if (!host->bindNativeActor(match, generatorId, match->mTekiType)) return nullptr;
+    host->demonAnchorInit();
+    std::printf("P2_DEMON_PARMS source_id=32 retail=1 life=%.1f territory=%.1f home=%.1f sight=%.1f view=%.1f "
+                "turn=%.2f max_turn=%.1f attack_damage=%.1f fp01=%.1f fp02=%.1f fp03=%.1f fp04=%.1f fp05=%.1f "
+                "fp11=%.2f fp12=%.2f fp21=%.2f fp22=%.2f fp23=%.2f fp41=%.1f\n",
+                parms.general.life, parms.general.territoryRadius, parms.general.homeRadius,
+                parms.general.sightRadius, parms.general.viewAngle, parms.general.turnSpeed,
+                parms.general.maxTurnAngle, parms.general.attackDamage, parms.proper.normalFlightHeight,
+                parms.proper.grabFlightHeight, parms.proper.stateTransitionHeight,
+                parms.proper.normalMovementSpeed, parms.proper.grabMovementSpeed, parms.proper.climbingFactor0,
+                parms.proper.climbingFactor5, parms.proper.payoffProbability1, parms.proper.payoffProbability5,
+                parms.proper.strugglingTime, parms.proper.fallMeckSpeed);
+    std::printf("P2_DEMON_BANK source_id=32 clips=12 carcass=type5 model=courses/pikmin2room/demon0.mod draw=p2_model\n");
+    std::fflush(stdout);
+    return host;
 }
 
 std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId, bool campaign)
@@ -232,37 +294,96 @@ void pc_p2_sarai_manager_setup()
     hosts.push_back(std::move(host));
 }
 
-bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
+namespace {
+bool bindSpecies(BTeki* actor, unsigned generatorId, unsigned seedTargetUid, const P2SaraiSpecies& sp)
 {
     if (!actor || !generatorId || s.count(actor)) return false;
-    auto host = buildHost(actor, generatorId, true);
+    auto host = sp.demon ? buildDemonHost(actor, generatorId) : buildHost(actor, generatorId, true);
     if (!host) {
-        std::printf("P2_GENERATED_PLACEMENT source_id=23 target=%u bound=0 reason=host\n", seedTargetUid);
+        std::printf("P2_GENERATED_PLACEMENT source_id=%u target=%u bound=0 reason=host\n", sp.sourceId, seedTargetUid);
+        // #215 review: a seed slot assigned to the Demon whose staged demon-*
+        // files are missing stays a plain P1 anchor and can never deliver its
+        // check. Say so loudly instead of leaving only the generic marker.
+        if (sp.demon)
+            std::printf("P2_DEMON_HOST_UNAVAILABLE source_id=32 generator=%u target=%u "
+                        "reason=staging slot_check_unreachable=1\n", generatorId, seedTargetUid);
         std::fflush(stdout);
         return false;
     }
-    s[actor] = { host.get(), generatorId, actor->mTekiType };
-    bindDeliverySource(actor, generatorId);
-    std::printf("P2_SARAI_READY source_id=23 species=Sarai generator=%u type=%d health=%.1f behavior=source generated=1 seed_target=%u\n",
-                generatorId, actor->mTekiType, actor->mHealth, seedTargetUid);
-    std::printf("P2_SARAI_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:sarai:%u\n",
-                generatorId, generatorId);
+    Binding binding{host.get(), generatorId, actor->mTekiType};
+    binding.species = &sp;
+    binding.lastHealth = actor->mHealth;
+    s[actor] = binding;
+    bindDeliverySource(actor, generatorId, sp);
+    std::printf("P2_%s_READY source_id=%u species=%s generator=%u type=%d health=%.1f behavior=source generated=1 seed_target=%u\n",
+                sp.marker, sp.sourceId, sp.species, generatorId, actor->mTekiType, actor->mHealth, seedTargetUid);
+    if (sp.demon)
+        std::printf("P2_DEMON_OWN_BIND source_id=32 generator=%u anchor_type=%d anchor_ai=suppressed "
+                    "host=P2SaraiHost profile=Demon proxy=0\n", generatorId, actor->mTekiType);
+    else
+        std::printf("P2_SARAI_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:sarai:%u\n",
+                    generatorId, generatorId);
     std::fflush(stdout);
     hosts.push_back(std::move(host));
     return true;
 }
+} // namespace
+
+bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
+{
+    return bindSpecies(actor, generatorId, seedTargetUid, kSaraiSpecies);
+}
+
+bool pc_p2_sarai_manager_bind_demon(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
+{
+    return bindSpecies(actor, generatorId, seedTargetUid, kDemonSpecies);
+}
+
+P2SaraiHost* pc_p2_sarai_manager_demon_host(const BTeki* actor)
+{
+    auto it = s.find(const_cast<BTeki*>(actor));
+    if (it == s.end() || !it->second.species->demon) return nullptr;
+    return it->second.host;
+}
 
 void pc_p2_sarai_manager_update_actor(BTeki* actor)
 {
-    static int tickCount = 0;
-    static bool sawCapture = false;
-    static bool sawDeath = false;
     auto it = s.find(actor);
     if (it == s.end()) return;
     auto& binding = it->second;
+    // Finalised Demon corpse: nothing left to drive (see draw_actor).
+    if (binding.species->demon && binding.escaped) return;
     if (!binding.host->revalidateNativeActor(actor, binding.generator, binding.type)) {
-        corpses[actor] = binding.generator;
+        corpses[actor] = {binding.generator, binding.species};
         s.erase(it);
+        return;
+    }
+    if (binding.species->demon) {
+        // Demon (#215): the anchor's P1 AI is suppressed (pc_p2_sarai_suppress_ai),
+        // so its queued Pikmin damage is drained here and death is finalised
+        // only after the retail Fall/Dead sequence reaches Dead KEYEVENT_END.
+        if (!binding.escaped) {
+            binding.host->demonAnchorDrain();
+            if (actor->mHealth < binding.lastHealth - 0.001f) {
+                std::printf("P2_DEMON_DAMAGE source_id=32 generator=%u health=%.1f delta=%.1f\n",
+                            binding.generator, actor->mHealth, binding.lastHealth - actor->mHealth);
+                std::fflush(stdout);
+            }
+            binding.lastHealth = actor->mHealth;
+            binding.host->update();
+            binding.host->demonAnchorFollow();
+            if (actor->mHealth <= 0.0f && !binding.sawDeath) {
+                binding.sawDeath = true;
+                std::printf("P2_DEMON_DEAD source_id=32 generator=%u health=%.1f state=%d\n",
+                            binding.generator, actor->mHealth, binding.host->naturalStateId());
+                std::fflush(stdout);
+            }
+            if (binding.host->demonKillRequested()) {
+                binding.escaped = true;
+                corpses[actor] = {binding.generator, binding.species};
+                binding.host->demonAnchorFinalize();
+            }
+        }
         return;
     }
     // The spawned actor is the damage/lifetime anchor. While alive it follows
@@ -270,39 +391,52 @@ void pc_p2_sarai_manager_update_actor(BTeki* actor)
     // behaviour and visual. On death the engine corpse path takes over.
     if (actor->isAlive()) actor->mSRT.t = binding.host->position();
     else {
-        corpses[actor] = binding.generator;
-        if (!sawDeath) {
-            sawDeath = true;
+        corpses[actor] = {binding.generator, binding.species};
+        if (!binding.sawDeath) {
+            binding.sawDeath = true;
             std::printf("P2_SARAI_DEAD source_id=23 generator=%u health=%.1f\n",
                         binding.generator, actor->mHealth);
             std::fflush(stdout);
         }
     }
     binding.host->update();
-    ++tickCount;
-    if (binding.host->occupied() && !sawCapture) {
-        sawCapture = true;
+    ++binding.ticks;
+    if (binding.host->occupied() && !binding.sawCapture) {
+        binding.sawCapture = true;
         std::printf("P2_SARAI_CAPTURE source_id=23 generator=%u slot=0 owner_exact=1\n", binding.generator);
         std::fflush(stdout);
     }
-    if (tickCount % 90 == 0) {
+    if (binding.ticks % 90 == 0) {
         const Vector3f p = binding.host->position();
         std::printf("P2_SARAI_TICK tick=%d generator=%u health=%.1f phase=%d state=%d occupied=%d dead=%d pos=(%.1f,%.1f,%.1f)\n",
-                    tickCount, binding.generator, actor->mHealth, binding.host->naturalPhase(),
+                    binding.ticks, binding.generator, actor->mHealth, binding.host->naturalPhase(),
                     binding.host->naturalStateId(), int(binding.host->occupied()), int(binding.host->dead()),
                     p.x, p.y, p.z);
         std::fflush(stdout);
     }
 }
 
-bool pc_p2_sarai_manager_draw_actor(BTeki* actor, Graphics& gfx, const Matrix4f&, bool)
+bool pc_p2_sarai_manager_draw_actor(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool corpse)
 {
     auto it = s.find(actor);
     if (it == s.end()) return false;
     auto& binding = it->second;
+    // A finalised Demon corpse has detached its generator (revalidation would
+    // fail); the binding stays until the central forget seam, so the carried
+    // pellet keeps the Demon carcass visual instead of the P1 vehicle's.
+    if (binding.species->demon && binding.escaped) {
+        if (corpse) binding.host->demonDrawCarcass(gfx, matrix);
+        return true;
+    }
     if (!binding.host->revalidateNativeActor(actor, binding.generator, binding.type)) {
         s.erase(it);
         return false;
+    }
+    if (binding.species->demon) {
+        // Demon: the live host draws its own mesh; after the anchor becomes the
+        // carried corpse, the host draws the retail carcass pose (type5) at it.
+        binding.host->refresh(gfx);
+        return true;
     }
     // Suppress the retail anchor draw; the host owns the Sarai visual. A dead
     // host keeps suppressing the anchor so only the corpse pellet is visible.
@@ -315,10 +449,13 @@ bool pc_p2_sarai_receipt(PelletView* view, unsigned& generator)
     if (!view) return false;
     BTeki* t = static_cast<BTeki*>(view);
     auto i = s.find(t);
+    // Private-room corpse:sarai receipt is Sarai-only; the Demon delivers
+    // through the campaign Onion ledger (onion:p2:32:<token>).
+    if (i != s.end() && i->second.species->demon) return false;
     if (i != s.end()) { generator = i->second.generator; return true; }
     auto c = corpses.find(t);
-    if (c == corpses.end()) return false;
-    generator = c->second;
+    if (c == corpses.end() || c->second.species->demon) return false;
+    generator = c->second.generator;
     return true;
 }
 

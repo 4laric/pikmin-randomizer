@@ -83,6 +83,7 @@ Creature* NaviMgr::createObject()
 void NaviMgr::update()
 {
 	MonoObjectMgr::update();
+	pc_p2_captain::update_player_switch();
 
 	// Lane 12 two-captain follow-up (#130): drive the inactive captain's follow
 	// state. update_inactive_captain_follow() returns immediately unless a real

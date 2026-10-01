@@ -13,15 +13,28 @@
 #include "Graphics.h"
 #include "Texture.h"
 #include "gameflow.h"
+#include "pc_p2_pose_bank.h"
+#include "pc_p2_pose_motion.h"
+#include "pc_p2_pose_shape.h"
+#include "system.h"
+#include <fstream>
 #include "sysNew.h"
 #include "Generator.h"
 #include "teki.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
+
+struct P2SaraiHost::Smooth {
+    p2pose::Track track;
+    bool failed = false;
+    unsigned crossfades = 0;
+};
 
 namespace {
 std::uint64_t nextSaraiHostToken = 0;
+bool saraiBlendLogged = false;
 // Opaque lane identity for the bound captain; the shared bridge keeps the real
 // Navi* link, this only keys the engine-free lifecycle bookkeeping.
 std::uint64_t saraiCaptainId(Navi* captain) { return reinterpret_cast<std::uintptr_t>(captain); }
@@ -45,10 +58,20 @@ P2SaraiHost::~P2SaraiHost()
     // and without this the Pikmin mouth bridge would keep a mouth link (and
     // claim) against a freed owner. sceneExit() is idempotent.
     sceneExit();
+    // #215 latch fix: a still-bound anchor gets its vehicle CollInfo back
+    // (the own tree is never freed, see demonAnchorBuildColl). A pooled
+    // re-init of the own tree is also safe (capacity >= the vehicle's 22).
+    if (mBoundActor && mAnchorVehicleColl && mBoundActor->mCollInfo == mAnchorOwnColl) {
+        mBoundActor->mCollInfo = mAnchorVehicleColl;
+        if (mBoundActor->isFlying()) mBoundActor->finishFlying();
+    }
+    mAnchorVehicleColl = nullptr;
     // The private host owns its two mouth parts and never registers them with
     // the engine, so teardown deletes them explicitly.
     delete mMouths[0];
     delete mMouths[1];
+    delete mSmooth;
+    mSmooth = nullptr;
     mMouths[0] = nullptr;
     mMouths[1] = nullptr;
 }
@@ -135,6 +158,7 @@ Vector3f P2SaraiHost::staticMouthCentre(unsigned slot) const
 void P2SaraiHost::update()
 {
     if (!mLoaded) return;
+    if (mDemonEnabled) { updateDemon(); return; }
     if (mNaturalEnabled) { updateNatural(); return; }
     updateMouths();
 }
@@ -225,6 +249,37 @@ bool P2SaraiHost::preloadPoseMeshes(const char* profile)
         set.meshes.push_back(shape);
     }
     gsys->setHeap(previousHeap);
+    // #895: decode every sampled mesh's positions/normals so the natural draw
+    // can lerp between the bracketing samples. Any failure keeps nearest-mesh
+    // selection for this set only.
+    {
+        std::vector<unsigned char> topology;
+        for (const auto& pose : set.bank.samples()) {
+            std::ifstream file("assets/dataDir/courses/pikmin2room/" + pose.model, std::ios::binary | std::ios::ate);
+            const auto size = file ? std::streamoff(file.tellg()) : std::streamoff(-1);
+            p2pose::Baked baked;
+            std::vector<unsigned char> data;
+            if (size > 0 && size <= 1024 * 1024) {
+                data.resize(std::size_t(size));
+                file.seekg(0);
+                if (!file.read(reinterpret_cast<char*>(data.data()), size)) data.clear();
+            }
+            if (data.empty() || !p2pose::decodeBaked(data, baked)
+                    || (!topology.empty() && baked.topology != topology)) {
+                std::printf("P2_SARAI_INTERPOLATION_DISABLED profile=%s model=%s fallback=nearest\n", profile,
+                            pose.model.c_str());
+                set.poses.clear();
+                set.frames.clear();
+                break;
+            }
+            if (topology.empty()) topology = baked.topology;
+            set.poses.push_back(std::move(baked.pose));
+            set.frames.push_back(pose.frame);
+        }
+        if (!set.poses.empty())
+            set.seamContinuous = p2motion::seamContinuous(
+                set.poses.size(), [&set](std::size_t i) -> const p2pose::Pose& { return set.poses[i]; }, set.frames);
+    }
     mPoseSets.push_back(std::move(set));
     if (mPoseMeshes.empty()) return switchPoseMeshes(profile);
     return true;
@@ -233,11 +288,13 @@ bool P2SaraiHost::preloadPoseMeshes(const char* profile)
 bool P2SaraiHost::switchPoseMeshes(const char* profile)
 {
     if (!mLoaded || !profile || !*profile) return false;
-    for (const auto& set : mPoseSets) {
+    for (std::size_t i = 0; i < mPoseSets.size(); ++i) {
+        const auto& set = mPoseSets[i];
         if (set.profile != profile) continue;
         if (set.bank.samples().size() != set.meshes.size() || set.meshes.empty()) return false;
         mPoseBank = set.bank;
         mPoseMeshes = set.meshes;
+        mActiveSet = int(i);
         return true;
     }
     // Transitions must use a bank explicitly preloaded during setup; this keeps
@@ -398,6 +455,75 @@ void P2SaraiHost::applyNaturalPose()
         if (float(pose.frame) <= frame) selected = &pose;
     if (!selected && !samples.empty()) selected = &samples.front();
     if (selected) applyPoseFrame(selected->frame);
+    presentSmooth(frame);
+}
+
+// #895: lerp between the bracketing samples of the active set (crossfade on a
+// profile change or a discontinuous loop seam) into a private Shape. The
+// mouths keep the sampled frame applied by the caller; the nearest mesh stays
+// the fallback. Shared by the living body (applyNaturalPose) and the carried
+// Demon corpse (demonDrawCarcass), which used to snap to the nearest pose.
+bool P2SaraiHost::smoothActive() const { return mSmooth && !mSmooth->failed && mSmooth->track.shape; }
+
+void P2SaraiHost::advanceSmooth(float seconds) { if (mSmooth) mSmooth->track.advance(seconds); }
+
+void P2SaraiHost::presentSmooth(float frame)
+{
+    if (mActiveSet < 0 || mActiveSet >= int(mPoseSets.size())) return;
+    const PoseSet& set = mPoseSets[std::size_t(mActiveSet)];
+    if (set.poses.empty() || set.meshes.empty()) return;
+    if (!mSmooth) mSmooth = new Smooth;
+    if (mSmooth->failed) return;
+    if (!mSmooth->track.shape) {
+        const int heap = gsys->setHeap(SYSHEAP_App);
+        const std::string path = "courses/pikmin2room/" + set.bank.samples().front().model;
+        Shape* model = p2pose::privateShape(path.c_str(), *set.meshes.front(), set.poses.front());
+        gsys->setHeap(heap);
+        if (!model) {
+            mSmooth->failed = true;
+            std::printf("P2_SARAI_INTERPOLATION_DISABLED reason=private_shape fallback=nearest\n");
+            return;
+        }
+        mSmooth->track.shape = model;
+        mSmooth->track.size(set.poses.front());
+        std::printf("P2_SARAI_INTERPOLATION_READY positions=%d normals=%d private_geometry=1 gameplay_clock=P2_source\n",
+                    model->mVertexCount, model->mNormalCount);
+    }
+    const p2motion::Tunables& tune = p2motion::tunables();
+    const p2pose::Presented shown = p2pose::present(
+        mSmooth->track, set.profile, set.poses.size(),
+        [&set](std::size_t i) -> const p2pose::Pose& { return set.poses[i]; }, set.frames, frame, tune,
+        set.seamContinuous);
+    if (!shown.ok) return;
+    mShape = mSmooth->track.shape;
+    if ((shown.crossfadeStarted || shown.wrapBlend) && mSmooth->crossfades < 32u) {
+        ++mSmooth->crossfades;
+        std::printf("P2_SARAI_CROSSFADE profile=%s ms=%d cause=%s\n", set.profile.c_str(),
+                    int(tune.crossfadeSeconds * 1000.f + .5f), shown.wrapBlend ? "loop_seam" : "clip_change");
+    }
+    if (!saraiBlendLogged) {
+        saraiBlendLogged = true;
+        std::printf("P2_SARAI_BLEND profile=%s poses=%zu left=%zu right=%zu weight=%.5f lerp=%d\n",
+                    set.profile.c_str(), set.poses.size(), shown.span.left, shown.span.right, shown.span.weight,
+                    int(tune.lerp));
+    }
+}
+
+// Guarded diagnostic (PIKMIN_P2_DEMON_ANIM_LOG=1): clip/phase/fade per state, ~4 Hz.
+void P2SaraiHost::demonAnimDiagnostic(float dt, const char* state)
+{
+    static const bool on = [] { const char* v = std::getenv("PIKMIN_P2_DEMON_ANIM_LOG"); return v && *v && *v != '0'; }();
+    if (!on) return;
+    mAnimLogAccum += dt;
+    if (mAnimLogAccum < 0.25f) return;
+    mAnimLogAccum = 0.0f;
+    const bool smooth = mSmooth != nullptr;
+    std::printf("P2_DEMON_ANIM t=%.2f state=%s clip=%s frame=%.2f fade_active=%d fade_progress=%.2f\n", mDemonClock,
+                state,
+                mActiveSet >= 0 && mActiveSet < int(mPoseSets.size()) ? mPoseSets[std::size_t(mActiveSet)].profile.c_str() : "-",
+                mPlayer.frame(), smooth ? int(mSmooth->track.view.fade.active()) : -1,
+                smooth ? mSmooth->track.view.fade.progress() : -1.0f);
+    std::fflush(stdout);
 }
 
 // Post-drop reacquisition arm (FallMeck::cleanup resetAttackableTimer(0)
@@ -470,6 +596,7 @@ void P2SaraiHost::updateNatural()
 {
     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
     if (!std::isfinite(dt) || dt <= 0.0f || dt > 1.0f) return;
+    if (mSmooth) mSmooth->track.advance(dt);
     // Ordinary anchor death: the spawned actor owns the corpse. Report once and
     // stop the captor clock; the engine's corpse pipeline (dieSoon/becomePellet)
     // handles the pellet that the Pod receipt resolves.

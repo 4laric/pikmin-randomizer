@@ -49,6 +49,12 @@ class P2EnemyRandomizer(Toggle):
     default = 0
 
 
+class P2SecondCaptain(Toggle):
+    """Enable a second captain with single-player switching. Requires the Pikmin 2 enemy bridge and a matching native build. Stored in the seed; does not add items or change progression logic."""
+    display_name = 'Pikmin 2 Second Captain (experimental)'
+    default = 0
+
+
 class P2EnemyPool(Choice):
     """playable: the current admitted production cohort with launcher support. all: every admitted species. full: the production cohort plus proven model proxies; proxies do not earn source-behavior delivery checks. Each seed stores its resolved encounter/check catalog."""
     display_name = 'Pikmin 2 enemy pool'
@@ -267,6 +273,7 @@ class PikminOptions(PerGameCommonOptions):
     carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
     p2_enemy_randomizer: P2EnemyRandomizer
+    p2_second_captain: P2SecondCaptain
     p2_enemy_pool: P2EnemyPool
     p2_placement: P2Placement
     p2_density: P2Density

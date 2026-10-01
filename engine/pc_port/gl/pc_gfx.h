@@ -17,6 +17,13 @@ void pc_gfx_present(void);
 // first live draw. Env-gated inside pc_gfx.cpp (PIKMIN_P2_PROXY_SHOT); without
 // the env var this is a single disabled branch and zero behaviour change.
 void pc_gfx_proxy_shot_notify(const char* key);
+// Test-only: dump every third presented frame for the next `frames` frames (needs PIKMIN_FRAME_DUMP).
+void pc_gfx_frame_dump_burst(unsigned frames);
+// Same, but the frame is captured `frames` presented frames later (probe evidence that needs the
+// moment of an event rather than the default 30-frame delay).
+void pc_gfx_proxy_shot_notify_after(const char* key, int frames);
+// Probe-only: capture the next presented frame as <PIKMIN_P2_PROXY_SHOT>/<key>.bmp.
+void pc_gfx_proxy_shot_now(const char* key);
 void pc_gfx_perf_scope_begin(const char* name);
 void pc_gfx_perf_scope_end(void);
 
@@ -263,6 +270,9 @@ void pc_gfx_release_texture(void* gxTexObj);
 /// from that data is stale; a heap reset means every mesh may be.
 void pc_gfx_invalidate_cpu_range(const void* addr, size_t bytes);
 void pc_gfx_invalidate_resident_meshes(void);
+/// Vertex storage the CPU rewrites every frame (P2 pose blending): drop any
+/// resident mesh built from it and never cache one that reads it again.
+void pc_gfx_mark_dynamic_vertex_range(const void* addr, size_t bytes);
 
 /// Toques sobre menús 2D: la pantalla anota su espacio de dibujo (ancho y
 /// alto de su P2DGrafContext) justo después de setPort(); un toque

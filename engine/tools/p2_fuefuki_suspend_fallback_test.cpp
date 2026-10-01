@@ -171,11 +171,14 @@ int main()
         jin.keyEvent          = 3;
         P2FuefukiFsmOut out   = fsm.tick(jin);
         assert(out.escapeVelocity);
+        // #245: isFlying() (EB_Untargetable) is set at Jump KEYEVENT_3; the
+        // follower's Success/emote exit lands here, Stay's suspend is a no-op.
+        assert(out.releasedSuspend.size() == 1 && out.releasedSuspend[0] == 20);
+        assert(out.suspendFallback == P2FUEFUKI_SUSPEND_FALLBACK_FREE);
         jin.keyEvent = 4;
         out          = fsm.tick(jin);
         assert(out.transited && out.state == S::Stay);
-        assert(out.releasedSuspend.size() == 1 && out.releasedSuspend[0] == 20);
-        assert(out.suspendFallback == P2FUEFUKI_SUSPEND_FALLBACK_FREE);
+        assert(out.releasedSuspend.empty());
         assert(!fsm.squad().holds(20));
         assert(!fsm.squad().reclaimPanic(20).accepted); // not Panic: no whistle reclaim
     }
@@ -317,12 +320,13 @@ int main()
         }
         assert(bind.getFsm().getState() == S::Jump);
         t.keyEvent = 3;
-        bo         = bind.tick(t); // escape burst
+        bo         = bind.tick(t); // escape burst + isFlying: suspend (#245)
         assert(bo.fsm.escapeVelocity);
-        t.keyEvent = 4;
-        bo         = bind.tick(t); // END -> Stay: suspend
-        assert(bind.getFsm().getState() == S::Stay);
         assert(bo.endedSuspend == 1);
+        t.keyEvent = 4;
+        P2FuefukiBindOut stay = bind.tick(t); // END -> Stay: idempotent
+        assert(bind.getFsm().getState() == S::Stay);
+        assert(stay.endedSuspend == 0);
         assert(mh.ended.size() == 1 && mh.ended[0].first == 60
                && mh.ended[0].second == P2FUEFUKI_END_SUSPEND);
         assert(bo.suspendFallback == P2FUEFUKI_SUSPEND_FALLBACK_FREE);

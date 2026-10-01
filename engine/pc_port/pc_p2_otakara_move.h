@@ -205,7 +205,7 @@ inline bool bombFuseStep(float& timer, float dt) {
     return timer > kBombFuseSeconds;
 }
 
-enum class St { Dead, Flick, Wait, Move, Turn };
+enum class St { Dead, Flick, Wait, Move, Turn, Take, ItemWait, ItemMove, ItemTurn, ItemFlick, ItemDrop };
 
 struct In {
     St cur;

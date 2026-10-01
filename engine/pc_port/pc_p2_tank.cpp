@@ -8,6 +8,10 @@
 #include "pc_p2_tank.h"
 #include "pc_p2_tank_policy.h"
 #include "pc_p2_tank_breath.h"
+#include "pc_p2_tank_stream.h"
+#include "pc_p2_attack_fx_host.h"
+#include "EffectMgr.h"
+#include "zen/particle.h"
 #include "pc_p2_species.h"
 #include "pc_p2_species_policy.h"
 #include "pc_p2_tank_phase.h"
@@ -22,6 +26,7 @@
 #include "Graphics.h"
 #include "Camera.h"
 #include "gameflow.h"
+#include "pc_p2_pose_family.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "Navi.h"
@@ -55,6 +60,8 @@ int vmotion(int native){switch(native){case TekiMotion::Move1:return 1;case Teki
 std::map<PelletView*,int> actors;
 const char* ids[]={"Tank","Wtank"};
 std::map<std::string,std::vector<Shape*>> animated[2];
+p2posefamily::Bank poseBank[2]{p2posefamily::Bank("TANK"),p2posefamily::Bank("TANK")}; // #895 interpolated draw
+p2posefamily::Actors poseVis;
 std::map<std::string,p2animation::Clip> timing[2];
 std::set<PelletView*> drawn,drawnCorpse;
 enum TState { TNK_DEAD=0,TNK_WAIT=1,TNK_MOVE=2,TNK_MOVETURN=3,TNK_CHASETURN=4,TNK_ATTACK=5,TNK_FLICK=6 };
@@ -75,7 +82,7 @@ struct TankFsm {
     float blowTimer=0.0f;
     // Breath exposure (#884): emitter growth, KEYEVENT_2 latch and per-breath
     // unique-actor evidence sets (pointer identity; cleared on transition).
-    p2tankbreath::Emit emit;bool discharging=false;p2tankbreath::Stats stats;
+    bool streamLogged=false;p2attackfx::Emitter fx;p2tankbreath::Emit emit;bool discharging=false;p2tankbreath::Stats stats;
     std::unordered_set<const void*> exposedPiki,acceptedPiki,immunePiki,exposedNavi,acceptedNavi;
 };
 std::map<PelletView*,TankFsm> fsms;
@@ -85,36 +92,17 @@ float wrapPi(float a){while(a>PI_F)a-=2.0f*PI_F;while(a<-PI_F)a+=2.0f*PI_F;retur
 float distXZ(const Vector3f& a,const Vector3f& b){const float dx=a.x-b.x,dz=a.z-b.z;return std::sqrt(dx*dx+dz*dz);}
 float clipSeconds(int kind,const std::string& name){auto it=timing[kind].find(name);return it==timing[kind].end()?1.0f:it->second.duration/30.0f;}
 void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
+    // #895: compact loader (few Shapes + decoded vectors per clip); the Shapes
+    // stay the nearest-pose fallback. Fail-closed as before.
     size_t total=0;
-    for(int kind=0;kind<2;++kind){std::vector<unsigned char> reference;
-        for(const auto& clip:banks[kind]){size_t clipBytes=0;
-            for(int i=0;i<clip.count;++i){char path[192];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/tank_%s_%s_%02d.mod",ids[kind],clip.name.c_str(),i);
-                std::ifstream file(path,std::ios::binary|std::ios::ate);if(!file)std::abort();auto size=file.tellg();
-                if(size<=0||size>512*1024)std::abort();clipBytes+=size_t(size);total+=size_t(size);
-                if(clipBytes>512*1024||total>10*1024*1024)std::abort();file.seekg(0);
-                std::vector<unsigned char> bytes(size_t(size),0),resources;
-                if(!file.read(reinterpret_cast<char*>(bytes.data()),size)||!p2animation::resources(bytes,resources))std::abort();
-                if(!reference.empty()&&reference!=resources)std::abort();reference=resources;
-            }
-        }
-    }
-    for(int kind=0;kind<2;++kind){Shape* shared=nullptr;
+    for(int kind=0;kind<2;++kind){p2poseload::Shared shared;
         for(const auto& clip:banks[kind]){timing[kind][clip.name]=clip;
-            for(int i=0;i<clip.count;++i){char path[160];std::snprintf(path,sizeof(path),"courses/pikmin2room/tank_%s_%s_%02d.mod",ids[kind],clip.name.c_str(),i);
-                Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
-                if(!shared){shared=shape;for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture)shape->mTexAttrList[t].mTexture->attach();}
-                else{
-                    if(shape->mMaterialCount!=shared->mMaterialCount||shape->mTexAttrCount!=shared->mTexAttrCount||shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
-                    for(int j=0;j<shape->mTotalMatpolyCount;++j){auto* poly=shape->mMatpolyList[j];if(!poly||!poly->mMaterial)continue;int material=-1;
-                        for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
-                        if(material<0)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
-                    shape->mMaterialList=shared->mMaterialList;shape->mTexAttrList=shared->mTexAttrList;shape->mTevInfoList=shared->mTevInfoList;
-                }
-                animated[kind][clip.name].push_back(shape);
-            }
+            std::string error;
+            if(!p2posefamily::loadFamilyClip(poseBank[kind],clip.name,std::string("tank_")+ids[kind]+"_"+clip.name,clip.count,clip.duration,clip.frames,shared,total,animated[kind][clip.name],error)){
+                std::printf("P2_TANK_BANK_INVALID species=%s clip=%s reason=%s\n",ids[kind],clip.name.c_str(),error.c_str());std::fflush(stdout);std::abort();}
         }
     }
-    std::printf("P2_TANK_BANK_READY mod_bytes=%zu gameplay=P1_unchanged\n",total);
+    std::printf("P2_TANK_BANK_READY mod_bytes=%zu resident=1 gameplay=P1_unchanged\n",total);
 }
 void stop(BTeki* a){a->inputDrive(Vector3f(0.0f,0.0f,0.0f));a->mVelocity.x=0.0f;a->mVelocity.y=0.0f;a->mVelocity.z=0.0f;}
 void walkTo(BTeki* a,TankFsm& s,const Vector3f& target,float speed,float dt){
@@ -175,6 +163,20 @@ bool shouldFlick(BTeki* actor){return stuckPikminCount(actor)>=FLICK_STUCK_MIN;}
 // InteractFire, Wtank InteractBubble (Ftank.cpp:121-125, Wtank.cpp:119-123).
 // Immunity is the receiver's decision; p2_species_immune only classifies
 // evidence here and never gates the stimulus.
+// Watery Blowhog stream (visual only; see pc_p2_tank_stream.h). Re-emits short
+// one-shot P1 water particles along the live breath ray each discharge tick, so
+// the jet lasts exactly as long as the attack and grows with its range.
+void emitWaterStream(const p2tankbreath::Frame& f,TankFsm& s,unsigned gen,unsigned tick){
+    if(!effectMgr)return;
+    // Probe-only frame dump (PIKMIN_P2_PROXY_SHOT directory): one frame per 3 ticks.
+    if(tick%3==0&&tick/3<16){char key[40];std::snprintf(key,sizeof(key),"WtankStream_%02u",tick/3);pc_gfx_proxy_shot_now(key);}
+    p2attackfx::Point pts[p2attackfx::MAX_STREAM_POINTS];
+    const int n=p2attackfx::layoutStream(p2attackfx::Element::Water,f.ox,f.oy,f.oz,f.dx,f.dz,f.range,tick,1.0f,pts);
+    // Every generator carries the actor's Emitter as owner (stopped on state change / forget).
+    const unsigned made=s.fx.emit(p2attackfx::Element::Water,pts,n,tick);
+    if(!s.streamLogged&&n>0){s.streamLogged=true;
+        std::printf("P2_WTANK_FX kind=stream generator=%u origin=%.1f,%.1f,%.1f dir=%.3f,%.3f range=%.1f points=%d generators=%u visual_only=1\n",gen,f.ox,f.oy,f.oz,f.dx,f.dz,f.range,n,made);std::fflush(stdout);}
+}
 int doBreath(BTeki* actor,TankFsm& s,float dt){
     const Vector3f pos=actor->getPosition();
     const p2tank::Params& p=p2tank::params(s.kind);
@@ -198,6 +200,7 @@ int doBreath(BTeki* actor,TankFsm& s,float dt){
     for(Navi* n:navis)s.exposedNavi.insert(n);
     int hit=p2tankbreath::dispatch(pikis,alive,[&](Piki* q){const bool ok=stim(q);if(ok)s.acceptedPiki.insert(q);return ok;});
     hit+=p2tankbreath::dispatch(navis,alive,[&](Navi* n){const bool ok=stim(n);if(ok)s.acceptedNavi.insert(n);return ok;});
+    if(s.kind==1)emitWaterStream(f,s,s.token,unsigned(s.stats.frames));
     ++s.stats.frames;
     if(int(pikis.size())>s.stats.maxExposedPiki)s.stats.maxExposedPiki=int(pikis.size());
     if(int(navis.size())>s.stats.maxExposedNavi)s.stats.maxExposedNavi=int(navis.size());
@@ -235,7 +238,8 @@ void setPhase(int kind,TankFsm& s){
 }
 void transition(BTeki* actor,TankFsm& s,TState st,const char* clip,unsigned gen){
     (void)actor;s.state=st;s.stateTime=0.0f;s.blowing=false;s.breathDone=false;s.flickDone=false;s.blowTimer=0.0f;if(clip)s.clip=clip;
-    s.emit=p2tankbreath::Emit{};s.discharging=false;s.stats=p2tankbreath::Stats{};
+    s.emit=p2tankbreath::Emit{};s.discharging=false;s.stats=p2tankbreath::Stats{};s.streamLogged=false;
+    if(s.fx.created()>0){const unsigned n=s.fx.stopAll();std::printf("P2_WTANK_FX_STOP kind=stream generator=%u reason=state_change generators=%u outstanding=0\n",gen,n);}
     s.exposedPiki.clear();s.acceptedPiki.clear();s.immunePiki.clear();s.exposedNavi.clear();s.acceptedNavi.clear();
     std::printf("P2_TANK_STATE species=%s generator=%u state=%s\n",ids[s.kind],gen,p2tank::stateName(st));
     std::fflush(stdout);
@@ -245,8 +249,8 @@ void die(BTeki* actor,TankFsm& s,unsigned gen,float priorHealth){
     transition(actor,s,TNK_DEAD,"dead",gen);
 }
 }
-void pc_p2_tank_reset(){vactors.clear();vlogged.clear();for(auto& c:vclips)c=VClip{};water=nullptr;waterLogged=false;vbytesTotal=0;actors.clear();fsms.clear();drawn.clear();drawnCorpse.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();ready=false;}
-void pc_p2_tank_forget(BTeki* actor){vactors.erase(actor);vlogged.erase(actor);auto* v=static_cast<PelletView*>(actor);pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
+void pc_p2_tank_reset(){for(auto& b:poseBank)b.reset();poseVis.clear();vactors.clear();vlogged.clear();for(auto& c:vclips)c=VClip{};water=nullptr;waterLogged=false;vbytesTotal=0;actors.clear();fsms.clear();drawn.clear();drawnCorpse.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();ready=false;}
+void pc_p2_tank_forget(BTeki* actor){poseVis.forget(actor);vactors.erase(actor);vlogged.erase(actor);auto* v=static_cast<PelletView*>(actor);pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
 float pc_p2_tank_param_f(const BTeki* actor,int idx,float fallback){
     auto i=actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));if(i==actors.end())return fallback;
     const p2tank::Params& p=p2tank::params(i->second);
@@ -277,7 +281,13 @@ void pc_p2_tank_setup(){
     Iterator it(tekiMgr);CI_LOOP(it){Teki* teki=static_cast<Teki*>(*it);if(!teki||!teki->mGenerator)continue;
      const unsigned token=bridge?pc_p2_campaign_token(teki):teki->mGenerator->_70;
      auto found=wanted.find(token);if(found==wanted.end())continue;
-     int kind=found->second;if(!seen.insert(found->first).second)std::abort();if(teki->mTekiType!=TEKI_Tank)std::abort();
+     int kind=found->second;
+     if(teki->mTekiType!=TEKI_Tank){ // #948: wrong vehicle: refuse this actor with a reason, never abort a campaign
+      if(!bridge)std::abort();
+      std::printf("P2_TANK_UNBOUND generator=%u source_id=%u type=%d reason=host_type_mismatch\n",token,kind?25u:24u,int(teki->mTekiType));std::fflush(stdout);continue;}
+     if(!seen.insert(found->first).second){
+      if(!bridge)std::abort();
+      std::printf("P2_TANK_UNBOUND generator=%u source_id=%u reason=duplicate_generator\n",token,kind?25u:24u);std::fflush(stdout);continue;}
      actors[static_cast<PelletView*>(teki)]=kind;
      teki->mHealth=p2tank::params(kind).health;
      TankFsm& f=fsms[static_cast<PelletView*>(teki)];
@@ -292,7 +302,7 @@ void pc_p2_tank_setup(){
      std::printf("P2_TANK_STATE species=%s generator=%u state=wait\n",ids[kind],token);
      std::fflush(stdout);
     }
-    if(seen.size()!=wanted.size()){std::printf("P2_TANK_ERROR missing_actor wanted=%zu found=%zu\n",wanted.size(),seen.size());std::abort();}
+    if(seen.size()!=wanted.size()){std::printf("P2_TANK_MISSING wanted=%zu found=%zu\n",wanted.size(),seen.size());std::fflush(stdout);if(!bridge)std::abort();}
     loadAnimation(banks);
     // Breath timing is retail-sourced (attack.bca KEYEVENT_2 at 55 of 95);
     // the staged bank carries no events, so only cross-check it.
@@ -482,6 +492,10 @@ bool pc_p2_tank_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view,bool corpse
    if(name){
        float phase=corpse?1.0f:(ft!=fsms.end()?ft->second.phase:0.0f);
        shape=animated[kind].at(name).at(timing[kind].at(name).index(phase,corpse));
+       // #895: lerp + crossfade into a private Shape; nearest pose stays the fallback.
+       const p2animation::Clip& clipTiming=timing[kind].at(name);
+       const float sourceFrame=corpse?float(clipTiming.duration-1):std::max(0.f,std::min(1.f,phase))*float(clipTiming.duration-1);
+       if(Shape* smooth=poseVis.draw(actor,poseBank[kind],name,sourceFrame,actor->mGenerator?pc_p2_campaign_token(actor):0u))shape=smooth;
    }
    shape->updateAnim(gfx,view,nullptr,actor);
    pc_gfx_specular_family_scope(1);

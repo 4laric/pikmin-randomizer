@@ -4,6 +4,7 @@
 #include "teki.h"
 #include "pc_p2_purple_direct.h"
 #include "pc_p2_white_poison.h"
+#include "pc_p2_gas_cloud.h"
 
 #include "pc_p2_armor.h"
 #include "pc_p2_uji.h"
@@ -18,6 +19,7 @@
 #include "pc_p2_mar.h"
 #include "pc_p2_tadpole.h"
 #include "pc_p2_hana.h"
+#include "pc_p2_body_coll.h"
 #include "pc_p2_imomushi.h"
 #include "pc_p2_batch2.h"
 #include "pc_p2_batch3.h"
@@ -46,6 +48,9 @@
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_bombsarai_teki.h"
 #include "pc_p2_groink_teki.h"
+#include "pc_p2_fuefuki_teki.h"
+#include "pc_p2_breadbug_teki.h"
+#include "pc_p2_bigtreasure_teki.h"
 #include "pc_p2_long_legs.h"
 #include "pc_p2_mamuta.h"
 #include "pc_p2_mamuta_fsm.h"
@@ -100,10 +105,14 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_shijimi_forget(actor);
 	pc_p2_kurage_teki_forget(actor);
 	pc_p2_groink_teki_forget(actor);
+	pc_p2_fuefuki_teki_forget(actor);
+	pc_p2_breadbug_teki_forget(actor);
+	pc_p2_bigtreasure_teki_forget(actor);
 	pc_p2_onikurage_teki_forget(actor);
 	pc_p2_bombsarai_teki_forget(actor);
 	pc_p2_king_teki_forget(actor);
 	pc_p2_queen_teki_forget(actor);
+	pc_p2_body_coll_forget(actor);
 	pc_p2_batch2_forget(actor);
 	pc_p2_projectiles_forget(actor);
 	pc_p2_sokkuri_forget(actor);
@@ -138,6 +147,7 @@ void pc_p2_forget_teki(BTeki* actor)
 void pc_p2_reset_all_teki()
 {
 	pc_p2_white_poison_reset();
+	pc_p2_gas_cloud_reset();
 	pc_p2_purple_direct_reset();
 	pc_p2_demon_manager_reset();
 pc_p2_sarai_manager_reset();
@@ -172,11 +182,15 @@ pc_p2_sarai_manager_reset();
 	pc_p2_shijimi_reset();
 	pc_p2_kurage_teki_reset();
 	pc_p2_groink_teki_reset();
+	pc_p2_fuefuki_teki_reset();
+	pc_p2_breadbug_teki_reset();
+	pc_p2_bigtreasure_teki_reset();
 	pc_p2_onikurage_teki_reset();
 	pc_p2_bombsarai_teki_reset();
 	pc_p2_king_teki_reset();
 	pc_p2_queen_teki_reset();
 	pc_p2_batch2_reset();
+	pc_p2_body_coll_reset();
 	pc_p2_projectiles_reset();
 	pc_p2_sokkuri_reset();
 	pc_p2_armor_reset();

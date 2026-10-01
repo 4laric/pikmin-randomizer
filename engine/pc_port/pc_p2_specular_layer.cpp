@@ -47,6 +47,10 @@ bool drawSpecular(Shape& shape,Graphics& gfx,unsigned index,unsigned texture,con
  PVWTevInfo tev;
  std::memcpy(static_cast<void*>(&tev),mat.mTevInfo,sizeof(PVWTevInfo));tev.mTevStageCount=enabled?2:1;tev.mTevStages=stages;
  info.mTextureDataCount=2;info.mTexGenDataCount=2;info.mTevStageCount=1;info.mTextureData=data;info.mTexGenData=gens;
+ // 0x93: COLOR0 lit + EnableSpecular (COLOR1 = light 7 half-vector, SIGN).
+ // This is the specular layer's own runtime draw word (FROG_SPECULAR_RENDER
+ // control=0x93), not a profile word: since #895 converted P2 materials use
+ // the retail P1 words 0xd1/0xd3/0xd0 (experimental/pikmin2_convert.py).
  mat.mTevInfo=&tev;mat.mDisplayListPtr=nullptr;mat.mLightingInfo.mCtrlFlag=0x93;
  gfx.useMaterial(nullptr);shape.drawshape(gfx,*gfx.mCamera,nullptr);
  return true;

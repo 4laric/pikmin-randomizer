@@ -36,15 +36,19 @@ P2GroinkVolley::Emission P2GroinkVolley::emit(const P2GroinkMuzzle& muzzle, floa
     std::array<P2GroinkPolicy, kVolleySize> prepared;
     for (std::size_t i = 0; i < count; ++i)
         if (!prepared[i].emit(muzzle, speed, samples[i])) return {};
+    Emission result;
     for (std::size_t i = 0; i < count; ++i) {
         const std::size_t slot = mInactive[i];
+        result.slots[i] = slot;
         mNodes[slot] = prepared[i];
         mPrimary[slot] = i == 0;
         mActive[mActiveCount++] = slot;
     }
     for (std::size_t i = count; i < mInactiveCount; ++i) mInactive[i-count] = mInactive[i];
     mInactiveCount -= count;
-    return {true, count};
+    result.valid = true;
+    result.count = count;
+    return result;
 }
 
 bool P2GroinkVolley::update(const P2GroinkVec3& owner, float delta,

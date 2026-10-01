@@ -14,6 +14,10 @@ public:
 
     void reset() { mDebt = 0.0; }
 
+    // Fraction (0..1) of the next source tick already accumulated. Presentation
+    // only: lets a 30 Hz source clip be drawn at the real frame rate.
+    float fraction() const { return static_cast<float>(mDebt / kSourceDelta); }
+
     // Inactive, invalid, negative, and long-gap input discard all debt. A
     // long gap cannot turn into a later burst. Normal accumulation preserves
     // only the fractional remainder after a source tick.
