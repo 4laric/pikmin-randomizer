@@ -133,6 +133,31 @@ DEFAULT_ALPHA_STAGE=[7,4,5,7,0,0,0,1,0]  # exporter default: texture alpha x ras
 # APREV (no earlier stage exists) and KONST (no per-stage selector is carried) are refused.
 ALPHA_STAGE_INPUTS=frozenset((1,2,3,4,5,7))
 
+def alpha_tested(m, r):
+    """True when the material's alpha compare can reject a pixel (#1022).
+
+    An opaque (GX_BM_NONE) material with an alpha compare such as
+    GEQUAL 128 cuts out by the TEV alpha, so the exported alpha combiner must
+    be the source's. The Breadbug lair (PanHouse) computes A0 + TEXA*RASA with
+    A0 = 255, i.e. it is solid in P2; the default TEXA*RASA cut its noisy
+    texture alpha into a patchy clump.
+    """
+    at=u32(m,108)
+    if not at: return False
+    at+=u16(m,r+0x146)*8
+    if at+5>len(m): return False
+    comp0,ref0,op,comp1,ref1=m[at:at+5]
+    def always(comp, ref):
+        # GX_NEVER..GX_ALWAYS = 0..7; refs are 0..255
+        return comp==7 or (comp==6 and ref==0) or (comp==3 and ref==255)
+    def never(comp, ref):
+        return comp==0 or (comp==1 and ref==0) or (comp==4 and ref==255)
+    a0,a1=always(comp0,ref0),always(comp1,ref1)
+    if op==0: return not (a0 and a1)       # AND
+    if op==1: return not (a0 or a1)        # OR
+    if op==2: return not ((a0 and never(comp1,ref1)) or (a1 and never(comp0,ref0)))  # XOR
+    return not ((a0 and a1) or (never(comp0,ref0) and never(comp1,ref1)))             # XNOR
+
 def blend_alpha_stage(m, r, slot, has_texture):
     """Source alpha combiner of an alpha-blended material's first TEV stage.
 
@@ -148,7 +173,8 @@ def blend_alpha_stage(m, r, slot, has_texture):
     """
     mode=u32(m,112)+u16(m,r+0x148)*4
     if not all(u32(m,o) for o in (76,80,88,92)) or mode+4>len(m): return None
-    if m[mode]!=1: return None  # GX_BM_BLEND only; opaque/alpha-tested stay unchanged
+    if m[mode]!=1 and not alpha_tested(m, r):
+        return None  # GX_BM_BLEND or alpha-tested only; plain opaque stays unchanged
     if m[u32(m,88)+m[r+4]]<1: return None
     stage=u32(m,92)+u16(m,r+0xe4)*20
     alpha=list(m[stage+10:stage+19])
