@@ -20,7 +20,9 @@ At the pinned native source, `pc_randomizer_outbox_flush` emits `mirror_checked(
 
 Earlier producer-independent fixtures wrote external location names, so they passed while missing this integration boundary. `--native-git` reads the exact native source at `--native-sha`, extracts its real thirty-name table and exercises the current mirror consumer with those names. On the pinned candidate the audit retains all thirty failures in `protocol/thelynk/native-writer-consumer-mismatches.json` and exits nonzero. It intentionally does not turn the failure into a pass or rename persisted identities.
 
-The fix needs explicit #1148 owner coordination: either emit canonical external names from the native TheLynk mirror writer, or add an explicit TheLynk-only internal-alias normalization in the consumer. The final combined check must use the actual corrected writer output. This lane has not modified either producer-owned API.
+The #1148 owner must translate internal engine names to canonical external names at the native mirror producer boundary. Keep the Python consumer strict; accepting additional aliases would hide the producer defect. This lane has not modified either producer-owned API.
+
+The final combined check must use the actual corrected compiled writer output through `--native-mirror-events FULL_PATH`, covering every thirty-part `CHECKED` identity. `--native-git` retains the original source-table diagnostic but cannot independently establish a corrected boundary translator's emitted bytes. The compiled journal input is therefore required for final integration acceptance; a table-only or handcrafted canonical event pass is insufficient.
 
 ## Retained fixture bundle and boundaries
 
