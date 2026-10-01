@@ -1,0 +1,718 @@
+#include "pc_p2_campaign_actor.h"
+#include "pc_p2_setup_failsafe.h"
+// Family-owned ground-invertebrate source behavior for the batch-2 Chappy
+// placement vehicle: Skitter Leaf (Sokkuri, EnemyID 79). Implements the source
+// SokkuriState.cpp FSM (Stay/Appear/Disappear/Wait/MoveGround/MoveWater/Flick/
+// Dead/Press) on the P1 host, driven from p2-ground-actors.txt / p2-ground-bank.txt
+// written by the batch-2 arena. Source revision
+// 632af93787b9c95b63f0c13be32b161375ce3a96; retail parms from
+// experimental/pikmin2_ground_inverts_assets.py (GPVE01 rev 0).
+//
+// Port adaptations (recorded, not retail-faithful):
+//   * View-angle detection is treated as a full hemisphere (fp13 is not present
+//     in the Sokkuri general block); sight radius is the source fp12=150.
+//   * Turn rate is a fixed adaptation (~pi rad/s); source uses fp turn class.
+//   * The shake-off trigger is the source isStartFlick (flick timer from accepted
+//     hits, ip01-ip07 thresholds) in pc_p2_sokkuri_flick.h (#996); the former
+//     "any Pikmin within 25 units" proximity flick was a port invention.
+//   * Water (MoveWater) is implemented but no staged arena supplies a water box.
+// No other lane's module is modified; every hook is a no-op for unregistered
+// actors.
+#include "pc_p2_sokkuri.h"
+#include "pc_p2_sokkuri_flick.h"
+#include "pc_randomizer.h"
+#include "teki.h"
+#include "Interactions.h"
+#include "Piki.h"
+#include "PikiMgr.h"
+#include "Navi.h"
+#include "NaviMgr.h"
+#include "pc_p2_navi_select.h"
+#include "Generator.h"
+#include "gameflow.h"
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+namespace {
+enum State {
+    SOKKURI_INVALID = -1,
+    SOKKURI_DEAD = 0,
+    SOKKURI_PRESS = 1,
+    SOKKURI_STAY = 2,
+    SOKKURI_APPEAR = 3,
+    SOKKURI_DISAPPEAR = 4,
+    SOKKURI_WAIT = 5,
+    SOKKURI_MOVE_GROUND = 6,
+    SOKKURI_MOVE_WATER = 7,
+    SOKKURI_FLICK = 8,
+};
+
+const char* stateName(State s) {
+    switch (s) {
+    case SOKKURI_DEAD: return "dead";
+    case SOKKURI_PRESS: return "press";
+    case SOKKURI_STAY: return "stay";
+    case SOKKURI_APPEAR: return "appear";
+    case SOKKURI_DISAPPEAR: return "disappear";
+    case SOKKURI_WAIT: return "wait";
+    case SOKKURI_MOVE_GROUND: return "moveground";
+    case SOKKURI_MOVE_WATER: return "movewater";
+    case SOKKURI_FLICK: return "flick";
+    default: return "null";
+    }
+}
+
+// Source values (ground_inverts manifest general/proper blocks).
+constexpr float LIFE = 120.0f;
+constexpr float MOVE_SPEED = 120.0f;
+constexpr float SIGHT = 150.0f;
+constexpr float HOME_RADIUS = 150.0f;
+constexpr float TERRITORY = 200.0f;
+constexpr float MAX_TRAVEL = 1.0f;   // fp01
+constexpr float MIN_WAIT = 1.75f;    // fp13
+constexpr float MAX_WAIT = 3.25f;    // fp12
+constexpr float WAIT_PROB = 0.4f;    // fp11
+constexpr float UNDERWATER_SPEED = 25.0f; // fp21
+constexpr float TURN_RATE = 3.14159265f;  // port adaptation
+
+struct Clip {
+    std::string name;
+    float duration = 1.0f;
+    bool loop = false;
+    std::vector<std::pair<int, int>> events; // source frame -> event code
+};
+
+struct Sokkuri {
+    State state = SOKKURI_STAY;
+    State nextState = SOKKURI_INVALID;
+    float stateTime = 0.0f;
+    float timer = 0.0f;
+    float moveVelocity = MOVE_SPEED;
+    float heading = 0.0f;
+    Vector3f targetPosition;
+    Vector3f home;
+    unsigned rng = 1;
+    std::set<int> firedEvents;
+    std::string clip = "appear1";
+    float phase = 0.0f;
+    bool hidden = true;
+    bool deadLogged = false;
+    // #578 receipt boundary: the ordinary-delivery bind is established only
+    // on reveal (STAY -> APPEAR), never at setup. A still-disguised Sokkuri
+    // therefore carries no bound source, so GoalItem::suckMe can never mint
+    // onion:p2:79 for it. Single-use: consumed on delivery, cleared on forget.
+    bool deliveryBound = false;
+    float lastHealth = LIFE;
+    float logTimer = 0.0f;
+    // Source EnemyBase::mFlickTimer (addDamage flickSpeed 1.0 per accepted hit;
+    // cleared by the shake at KEYEVENT_3). #996.
+    float flickTimer = 0.0f;
+    int hitsSinceShake = 0;
+    int totalHits = 0;
+    int shakes = 0;
+};
+
+std::map<PelletView*, Sokkuri> actors;
+std::map<std::string, Clip> clips;
+// Carcass clock (#996): wall-clock start of the first corpse draw per actor, so the
+// looping 'type5' carry motion animates independent of the dead actor's FSM entry.
+std::map<const BTeki*, std::chrono::steady_clock::time_point> carcassStart;
+bool ready = false;
+bool loggedHidden = false;
+
+unsigned nextRand(Sokkuri& s) {
+    s.rng = s.rng * 1664525u + 1013904223u;
+    return s.rng >> 8;
+}
+float rand01(Sokkuri& s) { return float(nextRand(s) & 0xffff) / 65535.0f; }
+float randRange(Sokkuri& s, float lo, float hi) { return lo + (hi - lo) * rand01(s); }
+
+float wrapPi(float a) {
+    while (a > 3.14159265f) a -= 6.28318531f;
+    while (a < -3.14159265f) a += 6.28318531f;
+    return a;
+}
+float distXZ(const Vector3f& a, const Vector3f& b) {
+    const float dx = a.x - b.x, dz = a.z - b.z;
+    return std::sqrt(dx * dx + dz * dz);
+}
+
+float clipDuration(const std::string& name) {
+    auto it = clips.find(name);
+    return it == clips.end() ? 1.0f : it->second.duration;
+}
+bool clipLoops(const std::string& name) {
+    auto it = clips.find(name);
+    return it != clips.end() && it->second.loop;
+}
+
+Creature* nearestTarget(const Vector3f& pos) {
+    Creature* best = nullptr;
+    float bestSq = SIGHT * SIGHT;
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
+            const Vector3f p = n->getPosition();
+            const float dx = p.x - pos.x, dz = p.z - pos.z;
+            const float d = dx * dx + dz * dz;
+            if (d < bestSq) { bestSq = d; best = n; }
+        }
+    }
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const Vector3f q = p->getPosition();
+            const float dx = q.x - pos.x, dz = q.z - pos.z;
+            const float d = dx * dx + dz * dz;
+            if (d < bestSq) { bestSq = d; best = p; }
+        }
+    }
+    return best;
+}
+bool isAppear(const Vector3f& pos) { return nearestTarget(pos) != nullptr; }
+bool isDisappear(const Vector3f& pos, const Vector3f& home) {
+    return distXZ(pos, home) < HOME_RADIUS && nearestTarget(pos) == nullptr;
+}
+
+int stuckPikminCount(BTeki* a) {
+    int n = 0;
+    for (Creature* c = a->mStickListHead; c; c = c->mNextSticker) {
+        if (c->isPiki() && c->isAlive()) ++n;
+    }
+    return n;
+}
+
+// Source EnemyFunc::isStartFlick(sokkuri, false): timer and stuck-count tiers only.
+bool shouldFlick(BTeki* a, const Sokkuri& s) {
+    return p2sokkuriflick::isStartFlick(s.flickTimer, stuckPikminCount(a));
+}
+
+// StateFlick::exec KEYEVENT_3: flickNearbyNavi + flickNearbyPikmin (fp19 range 40,
+// fp17 knockback 50) + flickStickPikmin (fp16 chance 1.0), then mFlickTimer = 0.
+// The Pikmin damage argument is 0: InteractFlick::actPiki ignores it in P2.
+void doFlick(BTeki* a, Sokkuri& s, unsigned token) {
+    int navis = 0, near = 0, stuck = 0;
+    const Vector3f pos = a->getPosition();
+    const float range2 = p2sokkuriflick::ShakeRange * p2sokkuriflick::ShakeRange;
+    auto sqr3 = [&](const Vector3f& q) {
+        const float dx = q.x - pos.x, dy = q.y - pos.y, dz = q.z - pos.z;
+        return dx * dx + dy * dy + dz * dz;
+    };
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive() || sqr3(n->getPosition()) >= range2) continue;
+            if (n->stimulate(InteractFlick(a, p2sokkuriflick::ShakeKnockback, p2sokkuriflick::ShakeDamage,
+                                           FLICK_BACKWARDS_ANGLE))) ++navis;
+        }
+    }
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const bool isStuck = p->getStickObject() == a;
+            if (isStuck || sqr3(p->getPosition()) < range2) {
+                if (p->stimulate(InteractFlick(a, p2sokkuriflick::ShakeKnockback, p2sokkuriflick::PikiDamage,
+                                               FLICK_BACKWARDS_ANGLE))) {
+                    if (isStuck) ++stuck; else ++near;
+                }
+            }
+        }
+    }
+    ++s.shakes;
+    std::printf("P2_SOKKURI_SHAKE generator=%u source_id=79 shake=%d hits_since_last=%d total_hits=%d "
+                "flick_timer=%.2f flicked_navi=%d flicked_near=%d flicked_stuck=%d\n",
+                token, s.shakes, s.hitsSinceShake, s.totalHits, s.flickTimer, navis, near, stuck);
+    std::fflush(stdout);
+    s.flickTimer = 0.0f;
+    s.hitsSinceShake = 0;
+}
+
+void enter(Sokkuri& s, State state, const char* clip, float timer = 0.0f) {
+    s.state = state;
+    s.stateTime = 0.0f;
+    s.timer = timer;
+    s.nextState = SOKKURI_INVALID;
+    s.firedEvents.clear();
+    if (clip) s.clip = clip;
+}
+
+// #578 receipt boundary: bind the ordinary-delivery source at reveal time.
+// Idempotent: the first reveal establishes the single-use bind; later
+// reveals (after a disappear cycle) never re-bind. Rejected (unbindable id)
+// is logged by the callee, never fatal.
+void bindDelivery(BTeki* a, Sokkuri& s) {
+    if (s.deliveryBound) return;
+    s.deliveryBound = true;
+    // Ordinary-delivery bridge (lane 06 contract, #495): bind source 79 to
+    // this live actor so GoalItem::suckMe can grant onion:p2:79 exactly once
+    // through pc_randomizer_p2_corpse_delivered. Single-use: consumed on
+    // delivery and cleared on forget/recycle.
+    pc_randomizer_p2_bind_source(static_cast<PelletView*>(a), 79,
+                                 pc_p2_campaign_token(a));
+    std::printf("P2_SOKKURI_DELIVERY_BIND generator=%u source_id=79\n",
+                pc_p2_campaign_token(a));
+    std::fflush(stdout);
+}
+
+void setNextMoveInfo(Sokkuri& s, const Vector3f& pos) {
+    s.timer = randRange(s, 0.0f, MAX_TRAVEL); // source randWeightFloat(max-min)+0
+    const float deg = randRange(s, 45.0f, 90.0f); // fp04..fp03
+    float angle = deg * 3.14159265f / 180.0f * 3.14159265f;
+    angle = rand01(s) < 0.5f ? angle + s.heading : angle - s.heading;
+    s.targetPosition.x = 1000.0f * std::sin(angle) + pos.x;
+    s.targetPosition.y = pos.y;
+    s.targetPosition.z = 1000.0f * std::cos(angle) + pos.z;
+}
+
+void updateMove(BTeki* a, Sokkuri& s, float dt, bool water) {
+    const Vector3f pos = a->getPosition();
+    if (distXZ(pos, s.home) > TERRITORY) s.targetPosition = s.home;
+    const float speedTarget = water ? UNDERWATER_SPEED : MOVE_SPEED;
+    const float rate = (water ? 10.0f : 25.0f) * dt;
+    s.moveVelocity += (speedTarget - s.moveVelocity) * (rate > 1.0f ? 1.0f : rate);
+    const float desired = std::atan2(s.targetPosition.x - pos.x, s.targetPosition.z - pos.z);
+    const float maxTurn = TURN_RATE * dt;
+    float diff = wrapPi(desired - s.heading);
+    if (diff > maxTurn) diff = maxTurn;
+    if (diff < -maxTurn) diff = -maxTurn;
+    s.heading = wrapPi(s.heading + diff);
+    a->setDirection(s.heading);
+    const Vector3f drive(std::sin(s.heading) * s.moveVelocity, 0.0f,
+                         std::cos(s.heading) * s.moveVelocity);
+    a->inputDrive(drive);
+    a->mVelocity.set(drive);
+}
+
+void fireEvents(BTeki* a, Sokkuri& s) {
+    auto it = clips.find(s.clip);
+    if (it == clips.end()) return;
+    for (const auto& event : it->second.events) {
+        if (s.firedEvents.count(event.first)) continue;
+        if (s.stateTime < event.first / 30.0f) continue;
+        s.firedEvents.insert(event.first);
+        if (s.state == SOKKURI_FLICK && event.second == 3) {
+            doFlick(a, s, a->mGenerator ? pc_p2_campaign_token(a) : 0u);
+            std::printf("P2_SOKKURI_FLICK generator=%u source_id=79 frame=%d\n",
+                        a->mGenerator ? pc_p2_campaign_token(a) : 0u, event.first);
+        } else if (s.state == SOKKURI_DEAD && event.second == 2) {
+            std::printf("P2_SOKKURI_DEAD_EFFECT generator=%u source_id=79\n",
+                        a->mGenerator ? a->mGenerator->_70 : 0u);
+        } else if (s.state == SOKKURI_PRESS && event.second == 2) {
+            std::printf("P2_SOKKURI_PRESS_EFFECT generator=%u source_id=79\n",
+                        a->mGenerator ? a->mGenerator->_70 : 0u);
+        } else if (s.state == SOKKURI_DISAPPEAR && event.second == 2) {
+            std::printf("P2_SOKKURI_HIDE_EFFECT generator=%u source_id=79\n",
+                        a->mGenerator ? a->mGenerator->_70 : 0u);
+        }
+    }
+}
+
+void setPhase(Sokkuri& s) {
+    if (s.state == SOKKURI_STAY) { s.phase = 0.0f; return; }
+    const float duration = clipDuration(s.clip);
+    const float len = duration > 0.0f ? duration : 1.0f;
+    if (clipLoops(s.clip)) {
+        s.phase = s.stateTime / len;
+        s.phase -= std::floor(s.phase);
+    } else {
+        s.phase = s.stateTime / len;
+        if (s.phase > 1.0f) s.phase = 1.0f;
+    }
+}
+}
+
+void pc_p2_sokkuri_reset() {
+    actors.clear();
+    clips.clear();
+    carcassStart.clear();
+    ready = false;
+    loggedHidden = false;
+}
+
+void pc_p2_sokkuri_forget(BTeki* actor) {
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit source 79. The central
+    // pc_p2_forget_teki seam also clears it; this is idempotent.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
+    actors.erase(static_cast<PelletView*>(actor));
+    carcassStart.erase(actor);
+}
+
+// Fixture observability (#165/#407 lifecycle gates): read-only registration
+// count / membership. Never mutates state and is safe for any actor pointer.
+unsigned long pc_p2_sokkuri_count() {
+    return (unsigned long)actors.size();
+}
+
+bool pc_p2_sokkuri_registered(BTeki* actor) {
+    return actors.count(static_cast<PelletView*>(actor)) != 0;
+}
+
+// #578 receipt boundary observability: read-only reveal query. True once the
+// actor's disguise has dropped at least once (delivery bind established);
+// false while still disguised. Never mutates state; false for any
+// unregistered actor.
+bool pc_p2_sokkuri_revealed(BTeki* actor) {
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    return it != actors.end() && it->second.deliveryBound;
+}
+
+float pc_p2_sokkuri_param_f(const BTeki* actor, int idx, float fallback) {
+    if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
+    if (idx == TPF_Life) return LIFE;
+    if (idx == TPF_LifeRecoverRate) return 0.0f;
+    switch (idx) {
+    case TPF_VisibleRange:
+    case TPF_VisibleAngle:
+    case TPF_AttackableRange:
+    case TPF_AttackableAngle:
+    case TPF_AttackRange:
+    case TPF_AttackHitRange:
+    case TPF_AttackPower:
+    case TPF_DangerTerritoryRange:
+    case TPF_SafetyTerritoryRange:
+        return 0.0f;
+    default:
+        return fallback;
+    }
+}
+
+// Source EnemyBase::damageCallBack -> addDamage(damage, 1.0f): every accepted damaging
+// hit adds 1.0 to mFlickTimer (#996). Called from InteractAttack::actTeki after the
+// host accepted the hit. No-op for every other actor.
+void pc_p2_sokkuri_attacked(BTeki* teki, bool accepted) {
+    if (!ready || !accepted) return;
+    auto it = actors.find(static_cast<PelletView*>(teki));
+    if (it == actors.end()) return;
+    Sokkuri& s = it->second;
+    if (s.state == SOKKURI_DEAD || s.state == SOKKURI_PRESS) return;
+    s.flickTimer += p2sokkuriflick::FlickPerHit;
+    ++s.hitsSinceShake;
+    ++s.totalHits;
+}
+
+// Source Obj::startCarcassMotion: a Sokkuri carcass (lying or carried) plays the
+// looping Carry motion 'type5' (upright leaf). Phase comes from a wall clock that
+// starts at the first corpse draw. True only for clips the bank actually holds.
+bool pc_p2_sokkuri_carcass_clip(const BTeki* actor, const char*& name, float& phase) {
+    auto clip = clips.find(p2sokkuriflick::carcassClip());
+    if (clip == clips.end()) return false;
+    const auto now = std::chrono::steady_clock::now();
+    auto start = carcassStart.emplace(actor, now).first;
+    const double elapsed = std::chrono::duration<double>(now - start->second).count();
+    name = clip->second.name.c_str();
+    phase = p2sokkuriflick::carcassPhase(elapsed, clip->second.duration);
+    return true;
+}
+
+bool pc_p2_sokkuri_pressed(BTeki* teki, Creature*) {
+    if (!ready) return false;
+    auto it = actors.find(static_cast<PelletView*>(teki));
+    if (it == actors.end()) return false;
+    Sokkuri& s = it->second;
+    if (s.state == SOKKURI_DEAD || s.state == SOKKURI_PRESS) return true;
+    teki->mHealth = 0.0f;
+    enter(s, SOKKURI_PRESS, "pdead1");
+    std::printf("P2_SOKKURI_PRESS generator=%u source_id=79\n",
+                teki->mGenerator ? pc_p2_campaign_token(teki) : 0u);
+    std::fflush(stdout);
+    return true;
+}
+
+bool pc_p2_sokkuri_clip(const BTeki* actor, const char*& name, float& phase) {
+    if (!ready) return false;
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    if (it == actors.end()) return false;
+    name = it->second.clip.c_str();
+    phase = it->second.phase;
+    return true;
+}
+
+void pc_p2_sokkuri_setup() {
+    pc_p2_sokkuri_reset();
+    if (!tekiMgr) return;
+
+    // Clip durations and event frames from the validated ground-invertebrate bank.
+    std::ifstream bank("p2-ground-bank.txt");
+    if (bank) {
+        std::string token;
+        if (bank >> token && token == "P2_GROUND_BANK_1") {
+            while (bank >> token) {
+                if (token == "species") {
+                    std::string species, id;
+                    bank >> species >> id;
+                } else if (token == "clip") {
+                    std::string species, name, events, marker, status;
+                    long long frames = 0;
+                    int poses = 0;
+                    bank >> species >> name >> frames >> events >> marker >> poses >> status;
+                    if (species == "Sokkuri") {
+                        Clip clip;
+                        clip.name = name;
+                        clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
+                        clip.loop = (name == "run1" || name == "wrun1" || name == "wait1");
+                        if (events != "-") {
+                            size_t start = 0;
+                            while (start < events.size()) {
+                                const size_t comma = events.find(',', start);
+                                const std::string pair = events.substr(start, comma - start);
+                                const size_t colon = pair.find(':');
+                                if (colon != std::string::npos) {
+                                    clip.events.emplace_back(std::atoi(pair.substr(0, colon).c_str()),
+                                                             std::atoi(pair.substr(colon + 1).c_str()));
+                                }
+                                if (comma == std::string::npos) break;
+                                start = comma + 1;
+                            }
+                        }
+                        clips[name] = clip;
+                    }
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    std::ifstream in("p2-ground-actors.txt");
+    if (!in) return;
+    std::string header;
+    int count = 0;
+    if (!(in >> header >> count) || header != "P2_GROUND_ACTORS_1" || count < 1) return;
+    std::map<unsigned, std::string> wanted;
+    for (int i = 0; i < count; ++i) {
+        unsigned long long generator = 0;
+        std::string species;
+        if (!(in >> generator >> species)) return;
+        if (species == "Sokkuri") wanted[unsigned(generator)] = species;
+    }
+    if (pc_randomizer_p2_bridge()) {
+        wanted.clear();
+        for (unsigned id : pc_p2_campaign_ids(79)) wanted[id] = "Sokkuri";
+    }
+    if (wanted.empty()) return;
+
+    std::set<unsigned> found;
+    Iterator it(tekiMgr);
+    CI_LOOP(it) {
+        Teki* actor = static_cast<Teki*>(*it);
+        if (!actor || !actor->mGenerator) continue;
+        auto match = wanted.find(pc_p2_campaign_token(actor));
+        if (match == wanted.end()) continue;
+        if (actor->mTekiType != TEKI_Chappy) {
+            std::printf("P2_SOKKURI_ERROR native_type generator=%u\n", pc_p2_campaign_token(actor));
+            if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Sokkuri", "actor_type_mismatch")) return;
+        }
+        Sokkuri& s = actors[static_cast<PelletView*>(actor)];
+        s.rng = (pc_p2_campaign_token(actor) * 2654435761u) | 1u;
+        s.home = actor->getPosition();
+        s.heading = actor->getDirection();
+        s.targetPosition = s.home;
+        actor->mHealth = LIFE;
+        enter(s, SOKKURI_STAY, "appear1");
+        // #578: the delivery bind is NOT established here. bindDelivery()
+        // runs on the first STAY -> APPEAR reveal, so a still-disguised
+        // Sokkuri carries no bound source and cannot mint onion:p2:79.
+        std::printf("P2_SOKKURI_BIND generator=%u source_id=79 visual_only=0\n",
+                    pc_p2_campaign_token(actor));
+        const Vector3f pos = actor->getPosition();
+        std::printf("P2_ENEMY_READY species=Sokkuri native_family=Chappy generator=%u "
+                    "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
+                    "source_FSM=implemented disguise=native\n",
+                    pc_p2_campaign_token(actor), pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        found.insert(pc_p2_campaign_token(actor));
+    }
+    if (found.size() != wanted.size()) {
+        std::printf("P2_SOKKURI_ERROR missing_actor wanted=%zu found=%zu\n", wanted.size(), found.size());
+        if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Sokkuri", "actor_roster_incomplete")) return;
+    }
+    ready = true;
+}
+
+void pc_p2_sokkuri_update(BTeki* actor) {
+    if (!ready) return;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end()) return;
+    Sokkuri& s = it->second;
+    const float dt = gsys->getFrameTime();
+    if (dt <= 0.0f || dt > 0.5f) return;
+    const Vector3f pos = actor->getPosition();
+
+    // Natural-combat observability (#165/#407): an incremental, still-positive
+    // health decrease is real attack damage (thrown/retaliating Pikmin). The death
+    // marker records prior_health (the value one update before <=0) so a single
+    // fixture-injected jump to 0 is distinguishable from a combat-culminated death
+    // by its large prior_health; P2_SOKKURI_DAMAGE marks combat damage directly.
+    const float previousHealth = s.lastHealth;
+    if (actor->mHealth < s.lastHealth && actor->mHealth > 0.0f) {
+        std::printf("P2_SOKKURI_DAMAGE generator=%u source_id=79 health=%.1f\n",
+                    actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, actor->mHealth);
+        std::fflush(stdout);
+    }
+    s.lastHealth = actor->mHealth;
+
+    if (actor->mHealth <= 0.0f && s.state != SOKKURI_DEAD && s.state != SOKKURI_PRESS) {
+        if (!s.deadLogged) {
+            std::printf("P2_SOKKURI_DEAD generator=%u source_id=79 health=0 prior_health=%.1f\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, previousHealth);
+            std::fflush(stdout);
+            s.deadLogged = true;
+        }
+        enter(s, SOKKURI_DEAD, "dead1");
+    }
+
+    s.stateTime += dt;
+    switch (s.state) {
+    case SOKKURI_STAY:
+        s.hidden = true;
+        s.clip = "appear1";
+        if (!loggedHidden) {
+            loggedHidden = true;
+            std::printf("P2_SOKKURI_DISGUISE generator=%u hidden=1\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+        }
+        if (isAppear(pos)) {
+            std::printf("P2_SOKKURI_DISGUISE generator=%u hidden=0\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            std::printf("P2_SOKKURI_STATE generator=%u state=appear\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            // #578 receipt boundary: first reveal establishes the
+            // single-use delivery bind. Idempotent across disappear cycles.
+            bindDelivery(actor, s);
+            enter(s, SOKKURI_APPEAR, "appear1");
+        }
+        break;
+    case SOKKURI_APPEAR:
+        s.hidden = false;
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
+            enter(s, SOKKURI_FLICK, "flick1");
+        } else if (s.stateTime >= clipDuration("appear1")) {
+            setNextMoveInfo(s, pos);
+            std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            enter(s, SOKKURI_MOVE_GROUND, "run1", randRange(s, 0.0f, MAX_TRAVEL));
+        }
+        break;
+    case SOKKURI_DISAPPEAR:
+        if (s.stateTime >= clipDuration("hide1")) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=stay\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            enter(s, SOKKURI_STAY, "appear1");
+        }
+        break;
+    case SOKKURI_WAIT:
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
+            enter(s, SOKKURI_FLICK, "flick1");
+            break;
+        }
+        s.timer += dt;
+        if (s.timer > MAX_WAIT) {
+            s.nextState = isDisappear(pos, s.home) ? SOKKURI_DISAPPEAR : SOKKURI_MOVE_GROUND;
+        }
+        if (s.stateTime >= clipDuration("wait1")) {
+            const State next = s.nextState == SOKKURI_INVALID ? SOKKURI_MOVE_GROUND : s.nextState;
+            if (next == SOKKURI_DISAPPEAR) {
+                std::printf("P2_SOKKURI_STATE generator=%u state=disappear\n",
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+                enter(s, SOKKURI_DISAPPEAR, "hide1");
+            } else {
+                setNextMoveInfo(s, pos);
+                std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+                enter(s, SOKKURI_MOVE_GROUND, "run1", randRange(s, 0.0f, MAX_TRAVEL));
+            }
+        }
+        break;
+    case SOKKURI_MOVE_GROUND:
+    case SOKKURI_MOVE_WATER: {
+        const bool water = s.state == SOKKURI_MOVE_WATER;
+        updateMove(actor, s, dt, water);
+        s.timer += dt;
+        if (shouldFlick(actor, s)) {
+            std::printf("P2_SOKKURI_STATE generator=%u state=flick flick_timer=%.2f hits_since_last=%d "
+                        "stuck=%d\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, s.flickTimer, s.hitsSinceShake,
+                        stuckPikminCount(actor));
+            enter(s, SOKKURI_FLICK, "flick1");
+            break;
+        }
+        if (s.timer > MAX_TRAVEL) {
+            if (isDisappear(pos, s.home)) {
+                std::printf("P2_SOKKURI_STATE generator=%u state=disappear\n",
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+                enter(s, SOKKURI_DISAPPEAR, "hide1");
+            } else if (rand01(s) < WAIT_PROB) {
+                std::printf("P2_SOKKURI_STATE generator=%u state=wait\n",
+                            actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+                enter(s, SOKKURI_WAIT, "wait1", randRange(s, 0.0f, MAX_WAIT - MIN_WAIT));
+            } else {
+                setNextMoveInfo(s, pos);
+                enter(s, s.state, water ? "wrun1" : "run1", randRange(s, 0.0f, MAX_TRAVEL));
+            }
+        }
+        break;
+    }
+    case SOKKURI_FLICK:
+        actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+        actor->mVelocity.x = 0.0f;
+        actor->mVelocity.z = 0.0f;
+        if (s.stateTime >= clipDuration("flick1")) {
+            const bool water = false; // staged arena has no water box
+            setNextMoveInfo(s, pos);
+            std::printf("P2_SOKKURI_STATE generator=%u state=moveground\n",
+                        actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
+            enter(s, SOKKURI_MOVE_GROUND, water ? "wrun1" : "run1", randRange(s, 0.0f, MAX_TRAVEL));
+        }
+        break;
+    case SOKKURI_DEAD:
+        actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
+        actor->mVelocity.x = 0.0f;
+        actor->mVelocity.z = 0.0f;
+        // Host death handoff: the P1 strategy reacts to mHealth<=0 inside
+        // BTeki::doAI(), calls die() there and then dieSoon()->becomePellet() in
+        // the same doAI() pass. Calling BTeki::die() from this update-phase hook
+        // would set mDeadState before the next doAI() and permanently block
+        // dieSoon(), leaving a dead-but-present actor with no corpse. The module
+        // therefore only drives the source dead clip and lets the host complete
+        // teardown/corpse. (The SOKKURI_PRESS crush path is unchanged.)
+        break;
+    case SOKKURI_PRESS:
+        if (s.stateTime >= clipDuration("pdead1")) actor->die();
+        break;
+    default:
+        break;
+    }
+    setPhase(s);
+    fireEvents(actor, s);
+    s.logTimer += dt;
+    if (s.logTimer >= 1.0f) {
+        s.logTimer = 0.0f;
+        std::printf("P2_SOKKURI_POS generator=%u state=%s clip=%s phase=%.2f x=%.2f z=%.2f\n",
+                    actor->mGenerator ? pc_p2_campaign_token(actor) : 0u, stateName(s.state),
+                    s.clip.c_str(), s.phase, pos.x, pos.z);
+        std::fflush(stdout);
+    }
+}

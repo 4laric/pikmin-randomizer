@@ -1,5 +1,8 @@
+#include <filesystem>
+#include "pc_p2_ship_store.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
+#include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -8,11 +11,56 @@
 #include "pc_randomizer_campaign_catalog.h"
 #undef NDEBUG
 #include <cassert>
+// The engine-free probe links pc_randomizer.cpp without the P2 proxy module
+// (which needs engine headers); no proxy tier is staged here.
+int pc_p2_proxy_host(unsigned) { return -1; }
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (!pc_randomizer_init(argc, argv)) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-checks-probe")) {
+        assert(pc_randomizer_resolved_checks());
+        pc_randomizer_update();
+        int actor;
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--deliver-p2") && i + 3 < argc) {
+                unsigned source = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                unsigned uid = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                int stage = std::atoi(argv[++i]);
+                pc_randomizer_p2_bind_source(&actor, source, uid);
+                assert(pc_randomizer_p2_corpse_delivered(&actor, 3, stage, true));
+            } else if (!std::strcmp(argv[i], "--deliver-p1") && i + 1 < argc) {
+                int type = std::atoi(argv[++i]);
+                pc_randomizer_corpse_delivered(type, 1, true);
+            } else if (!std::strcmp(argv[i], "--check-name") && i + 1 < argc) {
+                pc_randomizer_check(argv[++i]);
+            }
+        }
+        std::puts("ENEMY_CHECKS_PASS");
+        return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--purple-save-probe")) {
+        assert(pc_randomizer_purple_campaign());
+        unsigned char block[32768] = {};
+        const bool resumed = pc_randomizer_load_campaign(block);
+        std::printf("PURPLE_LOADED resumed=%d stock=%d,%d,%d marker=%u\n", resumed,
+            p2ship::stock.counts[0][0], p2ship::stock.counts[0][1], p2ship::stock.counts[0][2], unsigned(block[0]));
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--deposit")) {
+                assert(p2ship::stock.add(3, 0)); assert(p2ship::stock.add(3, 1)); assert(p2ship::stock.add(3, 2));
+                ++block[0];
+            }
+            if (!std::strcmp(argv[i], "--fail-write")) {
+                for (int j = 1; j + 1 < argc; ++j) if (!std::strcmp(argv[j], "--randomizer-seed")) {
+                    const auto token = std::filesystem::path(argv[j+1]).parent_path().filename().string();
+                    std::filesystem::create_directory(std::filesystem::path(pc_randomizer_save_root()).parent_path() / (token + ".tmp"));
+                }
+            }
+            if (!std::strcmp(argv[i], "--commit")) pc_randomizer_save_campaign(block);
+        }
+        return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--campaign-probe")) {
         int objects[72] = {};
@@ -33,6 +81,94 @@ int main(int argc, char** argv) {
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--capacity-probe")) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
         return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        // Target tokens and order are placement-owned; assert the bound identity
+        // set supplied by the caller instead of hard-coding targets.
+        unsigned expected = 0;
+        for (int i = 1; i + 1 < argc; ++i) if (!std::strcmp(argv[i], "--enemy-p2-expect")) {
+            assert(pc_randomizer_p2_bound(static_cast<unsigned>(std::strtoul(argv[i + 1], nullptr, 10))));
+            ++expected;
+        }
+        assert(expected > 0 && pc_randomizer_p2_binding_count() == expected);
+        assert(!pc_randomizer_p2_bound(0));
+        assert(pc_randomizer_p2_source("no-such-target") == 0);
+        assert(pc_randomizer_p2_source(nullptr) == 0);
+        std::puts("ENEMY_P2_PASS"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-spawn-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        int bound = 0;
+        for (const auto& row : randomizerSpawnSlots) {
+            int object;
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            const unsigned uid = pc_randomizer_generator_id(&object);
+            assert(uid == row.uid);
+            const unsigned source = pc_randomizer_p2_source_for_id(uid);
+            if (!source) continue;
+            // The slot uid is re-derived from (stage,file,offset) on every load;
+            // an unset + rebind (cache reload) must re-resolve the same source.
+            pc_randomizer_set_generator_id(&object, 0);
+            assert(pc_randomizer_generator_id(&object) == 0);
+            assert(pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(&object)) == 0);
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            assert(pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(&object)) == source);
+            std::printf("P2_SPAWN_BIND target=%u source_id=%u\n", uid, source);
+            ++bound;
+        }
+        assert(bound > 0);
+        assert(pc_randomizer_p2_source_for_id(0) == 0);
+        assert(pc_randomizer_p2_source_for_id(424242u) == 0); // unknown uid
+        std::puts("ENEMY_P2_SPAWN_PASS"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-roundtrip-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        // Real ramMode/cache SLT1 record round trip, byte-for-byte what
+        // Generator::write/read serializes under the P2 bridge: big-endian
+        // magic 0x534c5431 then the spawn-slot uid. A cache reload must recover
+        // the SAME uid so P2_SEED_RESOLVE can fire again for it.
+        unsigned char record[8];
+        int roundtripped = 0;
+        for (const auto& row : randomizerSpawnSlots) {
+            int object;
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            const unsigned uid = pc_randomizer_generator_id(&object);
+            assert(uid == row.uid);
+            const unsigned source = pc_randomizer_p2_source_for_id(uid);
+            if (!source) continue;
+            const unsigned magic = 0x534c5431u;
+            record[0] = static_cast<unsigned char>(magic >> 24);
+            record[1] = static_cast<unsigned char>(magic >> 16);
+            record[2] = static_cast<unsigned char>(magic >> 8);
+            record[3] = static_cast<unsigned char>(magic);
+            record[4] = static_cast<unsigned char>(uid >> 24);
+            record[5] = static_cast<unsigned char>(uid >> 16);
+            record[6] = static_cast<unsigned char>(uid >> 8);
+            record[7] = static_cast<unsigned char>(uid);
+            // Cache-mode reload: forget the live binding, then re-establish it
+            // from the serialized record alone (Generator::read path).
+            pc_randomizer_set_generator_id(&object, 0);
+            assert(pc_randomizer_generator_id(&object) == 0);
+            assert(pc_randomizer_p2_source_for_id(0) == 0);
+            const unsigned recoveredMagic = (static_cast<unsigned>(record[0]) << 24)
+                | (static_cast<unsigned>(record[1]) << 16)
+                | (static_cast<unsigned>(record[2]) << 8)
+                | static_cast<unsigned>(record[3]);
+            const unsigned recoveredUid = (static_cast<unsigned>(record[4]) << 24)
+                | (static_cast<unsigned>(record[5]) << 16)
+                | (static_cast<unsigned>(record[6]) << 8)
+                | static_cast<unsigned>(record[7]);
+            assert(recoveredMagic == 0x534c5431u);
+            pc_randomizer_set_generator_id(&object, recoveredUid);
+            assert(pc_randomizer_generator_id(&object) == uid);
+            assert(pc_randomizer_p2_source_for_id(recoveredUid) == source);
+            std::printf("P2_ROUNDTRIP_BIND target=%u source_id=%u\n", uid, source);
+            ++roundtripped;
+        }
+        assert(roundtripped > 0);
+        assert(pc_randomizer_p2_source_for_id(0) == 0);
+        std::puts("ENEMY_P2_ROUNDTRIP_PASS"); return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--group-probe")) {
         assert(pc_randomizer_group_slots());
@@ -131,6 +267,9 @@ int main(int argc, char** argv) {
                 while (pc_randomizer_consume_benefit(PC_BENEFIT_PRERELEASE)) ++used;
                 assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
                 std::printf("CAPTAIN_MOVE %.2f\n", pc_randomizer_captain_movement_multiplier());
+                std::printf("MATURITY_PROBE blue=%d red=%d yellow=%d day=%.2f\n", pc_randomizer_maturity(0),
+                    pc_randomizer_maturity(1), pc_randomizer_maturity(2), pc_randomizer_day_length_multiplier());
+                std::printf("WHISTLE_PLUCK_PROBE %d\n", pc_randomizer_whistle_pluck());
                 std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,
                     pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE), pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK));
                 for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--save-probe")) {

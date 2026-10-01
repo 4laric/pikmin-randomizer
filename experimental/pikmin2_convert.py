@@ -1,5 +1,9 @@
 """Restricted static J3D BMD -> Open Nectar MOD proof-of-concept.
-Material shading is reduced to vertex color times a diffuse texture.
+Material shading is reduced to one diffuse texture stage modulated by the
+rasterised COLOR0 channel. That channel follows the source MAT3 channel
+control translated to Pikmin 1's native PVW lighting word (see
+``P1_LIT_CONTROL``): source-lit materials are lit by the P1 scene lights and
+DayMgr ambient, and the source material colour is carried instead of white.
 Identity-root models are accepted by default; static rigid bind-pose baking is
 opt-in. This is not a general J3D exporter.
 """
@@ -16,6 +20,76 @@ def unpack(b, fmt, at=0):
 def u32(b, at): return unpack(b,'I',at)[0]
 def u16(b, at): return unpack(b,'H',at)[0]
 def pack(fmt,*v): return struct.pack('>'+fmt,*v)
+
+# --- P1 lighting policy (issue #895) -------------------------------------
+# PVW LightingControlFlags (engine/include/PVW.h): bit0 EnableColor0,
+# bits3-4 DiffFnColor0, bits5-6 DiffFnAlpha0, bits7-8 DiffFnSpecular,
+# bit11 MatSrcColor0Vtx, bit12 MatSrcAlpha0Vtx. Retail P1 teki MODs use 0xd1
+# (COLOR0 lit, clamp diffuse) on their diffuse materials; 0xd3 adds the COLOR1
+# specular channel and only appears with a second TEV stage that reads it
+# (verified on chappy/tank/frog/swallow/iwagon/beatle/kabekuiA, see
+# experimental/pikmin2_material_audit.py). The converter emits one diffuse
+# stage, so it never sets the specular bit.
+P1_LIT_CONTROL = 0xd1
+P1_LIT_SPECULAR_CONTROL = 0xd3
+# Source-unlit materials: retail kabekuiA writes 0xd0 (COLOR0 disabled, the
+# clamp/specular diffuse-function bits left as on the lit word). With
+# EnableColor0 clear the renderer ignores the diffuse-function bits
+# (dgxGraphics.cpp GXSetChanCtrl, oglGraphics.cpp setLighting), so this draws
+# exactly like the pre-#895 0 word while matching the retail encoding.
+P1_UNLIT_CONTROL = 0xd0
+MAT_SRC_COLOR0_VERTEX = 0x0800
+MAT_SRC_ALPHA0_VERTEX = 0x1000
+# Pre-#895 writer output: unlit, vertex colour/alpha as material when present.
+LEGACY_VERTEX_CONTROL = MAT_SRC_COLOR0_VERTEX | MAT_SRC_ALPHA0_VERTEX
+# The base stage is written at x1 (TEV scale 0) like every retail P1 teki base
+# stage. The converter already wrote 0 here before #895; this names the value
+# rather than changing it. P2 base stages are mostly x2, balanced by P2's own
+# light rig, so the source scale is deliberately not carried over.
+TEV_BASE_SCALE = 0
+# ShapeFlags::AllowCaching (native include/Shape.h): defer translucent materials to the sorted flush.
+SHAPE_ALLOW_CACHING = 1 << 1
+
+def source_lighting(m, r):
+    """Source J3D COLOR0/ALPHA0 channel control and material colour 0.
+
+    MAT3 record ``r``: +2 channel-count index, +8 material colour indices,
+    +12 channel-control indices (COLOR0, ALPHA0, COLOR1, ALPHA1). Channel
+    entries are enabled, material_source, light_mask, diffuse_fn, atten_fn,
+    ambient_source. A missing COLOR0 entry, or a zero channel count, is unlit.
+    Returns None when the MAT3 block has no colour/channel tables at all
+    (minimal synthetic fixtures); such shapes keep the legacy material.
+    """
+    if not (u32(m,32) and u32(m,36) and u32(m,40)): return None
+    def entry(table, index, size):
+        start=u32(m,table)+index*size
+        if not u32(m,table) or start+size>len(m): raise ValueError('Invalid material channel reference')
+        return m[start:start+size]
+    count=entry(36,m[r+2],1)[0]
+    channels=[]
+    for c in range(2):
+        index=u16(m,r+12+2*c)
+        channels.append(None if index==65535 else entry(40,index,8))
+    color_index=u16(m,r+8)
+    rgba=(255,255,255,255) if color_index==65535 else tuple(entry(32,color_index,4))
+    color0,alpha0=channels
+    if (color0 and color0[1]>1) or (alpha0 and alpha0[1]>1): raise ValueError('Unsupported channel material source')
+    return dict(lit=bool(count and color0 and color0[0]),
+                color_vertex=bool(color0 and color0[1]==1),
+                alpha_vertex=bool(alpha0 and alpha0[1]==1),
+                rgba=rgba)
+
+LEGACY_MATERIAL_POLICY='vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced'
+LIT_MATERIAL_POLICY=('P1 PVW lighting from the source COLOR0 channel (lit 0xd1, unlit 0xd0, vertex material/alpha source bits) '
+                     'with the source material colour, times identifiable UV0 diffuse texture (first texture fallback) at x1; '
+                     'original TEV not reproduced')
+
+def lighting_control(source, has_color):
+    """PVW lighting word for one shape from its source channel control."""
+    control=P1_LIT_CONTROL if source['lit'] else P1_UNLIT_CONTROL
+    if has_color and source['color_vertex']: control|=MAT_SRC_COLOR0_VERTEX
+    if has_color and source['alpha_vertex']: control|=MAT_SRC_ALPHA0_VERTEX
+    return control
 
 def texture_layout(kind, width, height):
     # GX tiled base-level bytes; MOD's format enumeration differs from GX.
@@ -54,6 +128,68 @@ def pixel_state(m, r):
             comp0|(ref0<<4)|(op<<16)|(comp1<<20)|(ref1<<24),
             test|(write<<1)|(func<<8), mode|(src<<4)|(dst<<8)|(logic<<12))
 
+DEFAULT_ALPHA_STAGE=[7,4,5,7,0,0,0,1,0]  # exporter default: texture alpha x rasterised alpha
+# GX alpha inputs the single exported stage can honour: A0-A2 registers, TEXA, RASA, ZERO.
+# APREV (no earlier stage exists) and KONST (no per-stage selector is carried) are refused.
+ALPHA_STAGE_INPUTS=frozenset((1,2,3,4,5,7))
+
+def alpha_tested(m, r):
+    """True when the material's alpha compare can reject a pixel (#1022).
+
+    An opaque (GX_BM_NONE) material with an alpha compare such as
+    GEQUAL 128 cuts out by the TEV alpha, so the exported alpha combiner must
+    be the source's. The Breadbug lair (PanHouse) computes A0 + TEXA*RASA with
+    A0 = 255, i.e. it is solid in P2; the default TEXA*RASA cut its noisy
+    texture alpha into a patchy clump.
+    """
+    at=u32(m,108)
+    if not at: return False
+    at+=u16(m,r+0x146)*8
+    if at+5>len(m): return False
+    comp0,ref0,op,comp1,ref1=m[at:at+5]
+    def always(comp, ref):
+        # GX_NEVER..GX_ALWAYS = 0..7; refs are 0..255
+        return comp==7 or (comp==6 and ref==0) or (comp==3 and ref==255)
+    def never(comp, ref):
+        return comp==0 or (comp==1 and ref==0) or (comp==4 and ref==255)
+    a0,a1=always(comp0,ref0),always(comp1,ref1)
+    if op==0: return not (a0 and a1)       # AND
+    if op==1: return not (a0 or a1)        # OR
+    if op==2: return not ((a0 and never(comp1,ref1)) or (a1 and never(comp0,ref0)))  # XOR
+    return not ((a0 and a1) or (never(comp0,ref0) and never(comp1,ref1)))             # XNOR
+
+def blend_alpha_stage(m, r, slot, has_texture):
+    """Source alpha combiner of an alpha-blended material's first TEV stage.
+
+    #960: P2 translucent materials (blend mode BLEND) often derive their alpha
+    from a TEV register plus the diffuse alpha (Jellyfloat bells:
+    A0 + TEXA*RASA), not from texture alpha times vertex alpha alone. The
+    exported stage multiplied texture alpha by vertex alpha, which yields
+    fully transparent or fully opaque texels instead of the source's constant
+    base opacity. Returns None (keep the default stage) when the material is
+    not alpha blended, already uses the default combiner, or the combiner uses
+    an input the exported stage cannot express; otherwise the nine alpha
+    combiner bytes plus the three TEV colour registers the combiner reads.
+    """
+    mode=u32(m,112)+u16(m,r+0x148)*4
+    if not all(u32(m,o) for o in (76,80,88,92)) or mode+4>len(m): return None
+    if m[mode]!=1 and not alpha_tested(m, r):
+        return None  # GX_BM_BLEND or alpha-tested only; plain opaque stays unchanged
+    if m[u32(m,88)+m[r+4]]<1: return None
+    stage=u32(m,92)+u16(m,r+0xe4)*20
+    alpha=list(m[stage+10:stage+19])
+    if alpha==DEFAULT_ALPHA_STAGE: return None
+    if any(v not in ALPHA_STAGE_INPUTS for v in alpha[:4]): return None
+    if alpha[8]!=0: return None  # only PREV feeds the rasterised colour of the exported single stage
+    order=u32(m,76)+u16(m,r+0xbc)*4
+    if 4 in alpha[:4]:
+        if not has_texture or m[order+1]!=slot or m[order]>=8: return None
+    regs=[]
+    for k in range(3):
+        at=u32(m,80)+u16(m,r+220+2*k)*8
+        regs.append(list(struct.unpack('>4h',m[at:at+8])))
+    return dict(alpha=alpha,regs=regs)
+
 def diffuse_slot(m, r):
     """Prefer an explicit untransformed UV0 diffuse stage over a noise input.
 
@@ -62,24 +198,29 @@ def diffuse_slot(m, r):
     its actual texture-times-vertex-color base instead of displaying raw noise.
     """
     count=m[u32(m,88)+m[r+4]]
-    for i in range(count):
-        stage=u32(m,92)+u16(m,r+0xe4+2*i)*20
-        color=list(m[stage+1:stage+10])
-        if color not in ([15,10,8,15,0,0,0,1,0],[15,8,10,15,0,0,0,1,0]):continue
-        order=u32(m,76)+u16(m,r+0xbc+2*i)*4
-        coord,slot=m[order:order+2]
-        if coord>=8 or slot>=8:continue
-        gen=u32(m,56)+u16(m,r+0x28+2*coord)*4
-        if list(m[gen:gen+3])==[1,4,60]:return slot
+    # Pass 0 is the historical x1 base stage. Pass 1 additionally accepts the
+    # same texture-times-RAS stage written at x2 (TEV scale index 1), which is
+    # how P2 lights most base layers: without it a material whose specular/
+    # environment layer sits in texmap 0 falls back to that layer as the
+    # diffuse, e.g. Kabuto's shell rendered as the black gloss sphere instead
+    # of the green shell texture (#884). Only materials that matched nothing
+    # in pass 0 can change.
+    for scale in (0,1):
+        for i in range(count):
+            stage=u32(m,92)+u16(m,r+0xe4+2*i)*20
+            color=list(m[stage+1:stage+10])
+            if color not in ([15,10,8,15,0,0,scale,1,0],[15,8,10,15,0,0,scale,1,0]):continue
+            order=u32(m,76)+u16(m,r+0xbc+2*i)*4
+            coord,slot=m[order:order+2]
+            if coord>=8 or slot>=8:continue
+            gen=u32(m,56)+u16(m,r+0x28+2*coord)*4
+            if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
-def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None,
-           missing_normals='error', singular_normal='error'):
-    from experimental.pikmin2_rigid import MISSING_NORMAL_MODES, SINGULAR_NORMAL_MODES
-    if missing_normals not in MISSING_NORMAL_MODES:
-        raise ValueError(f'Unsupported missing normals mode {missing_normals!r}')
-    if singular_normal not in SINGULAR_NORMAL_MODES:
-        raise ValueError(f'Unsupported singular normal mode {singular_normal!r}')
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error", bindings=None, billboard="error"):
+    if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate","transpose-adjugate-zero"):raise ValueError("Invalid normal policy")
+    if not bake_rigid and (missing_normals!="error" or singular_normal!="error"):raise ValueError("Normal policies require baked geometry")
+    if billboard not in ("error", "static", "native"): raise ValueError("Unsupported billboard mode")
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:
         if not bake_rigid or pose is not None:
@@ -126,9 +267,18 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
     # texture animation is omitted in the explicit material approximation.
     texture_matrix_attrs=range(1,9) if draw_matrices is not None else (1,)
     discarded_matrix_attrs=set()
+    billboard_shapes=[]
+    billboard_pivot=None
+    billboard_scale=None
     for si in range(u16(s,8)):
         rec=u32(s,12)+u16(s,u32(s,16)+2*si)*40
-        if s[rec]!=0 and not (bake_rigid and s[rec]==3): raise ValueError('Unsupported shape matrix type')
+        shape_type=s[rec]
+        if shape_type==1:
+            if not (bake_rigid and billboard in ("static", "native")):
+                raise ValueError('Unsupported shape matrix type')
+            billboard_shapes.append(si)
+        elif shape_type!=0 and not (bake_rigid and shape_type==3):
+            raise ValueError('Unsupported shape matrix type')
         groups,desc,mi,di=unpack(s,'4H',rec+2); attrs=[]; at=u32(s,24)+desc
         while u32(s,at)!=255:
             attr,kind=unpack(s,'II',at); at+=8
@@ -178,6 +328,20 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
                     triangles.extend([verts[i+(i%2)],verts[i+1-(i%2)],verts[i+2]] for i in range(count-2))
                 else: triangles.extend([verts[0],verts[i],verts[i+1]] for i in range(1,count-1))
             if at!=end: raise ValueError('Primitive packet overrun')
+        if billboard=='native' and si in billboard_shapes:
+            if len(billboard_shapes)>1:
+                raise ValueError('Native billboard supports a single shape')
+            if not matrix_slots:
+                raise ValueError('Native billboard shape has no rigid matrix')
+            joint=next(iter(matrix_slots.values()))
+            m=matrices[joint]
+            if any(abs(m[i][j])>1e-6 for i in range(3) for j in range(3) if i!=j):
+                raise ValueError('Native billboard requires an axis-aligned rigid joint')
+            sx,sy,sz=m[0][0],m[1][1],m[2][2]
+            if sx<=0.0 or sy<=0.0 or sz<=0.0 or abs(sx-sy)>1e-6 or abs(sy-sz)>1e-6:
+                raise ValueError('Native billboard requires a uniform positive joint scale')
+            billboard_pivot=(m[0][3],m[1][3],m[2][3])
+            billboard_scale=sx
         shapes.append(triangles)
     hierarchy=b['INF1']; at=u32(hierarchy,20); mat=0; mapping={}; order=[]
     while True:
@@ -188,7 +352,7 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
             mapping[idx]=mat;order.append(idx)
     if sorted(order)!=list(range(len(shapes))): raise ValueError('Expected each shape once in draw hierarchy')
     b['_draw_order']=order
-    m=b['MAT3']; materials=[]; states=[]
+    m=b['MAT3']; materials=[]; states=[]; lighting=[]; alpha_stages=[]
     for i in range(u16(m,8)):
         r=u32(m,12)+u16(m,u32(m,16)+2*i)*332
         if not approximate_materials and m[u32(m,88)+m[r+4]]!=1: raise ValueError('Only single-stage materials supported')
@@ -200,20 +364,40 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         tex=u16(m,r+132+2*slot); tex=-1 if tex==65535 else u16(m,u32(m,72)+tex*2)
         materials.append(tex)
         states.append(pixel_state(m,r))
+        lighting.append(source_lighting(m,r))
+        alpha_stages.append(blend_alpha_stage(m,r,slot,tex>=0) if approximate_materials else None)
     b['_render_states']=[states[mapping[i]] for i in range(len(shapes))]
+    b['_source_lighting']=[lighting[mapping[i]] for i in range(len(shapes))]
+    b['_alpha_stages']=[alpha_stages[mapping[i]] for i in range(len(shapes))]
+    if billboard_shapes:
+        b['_billboard_policy']=billboard
+        b['_billboard_shapes']=list(billboard_shapes)
+        b['_billboard_materials']=[mapping[i] for i in billboard_shapes]
+        if billboard=='native':
+            if billboard_pivot is None or billboard_scale is None:
+                raise ValueError('Native billboard pivot missing')
+            b['_billboard_native_pivot']=tuple(billboard_pivot)
+            b['_billboard_native_scale']=billboard_scale
     if bake_rigid:
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
         shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
-        bake(arrays,shapes,matrices,missing_normals,singular_normal)
-        b['_missing_normals']=missing_normals
-        b['_singular_normal']=singular_normal
+        bake(arrays,shapes,matrices,missing_normals=missing_normals,singular_normal=singular_normal,bindings=bindings)
+    if billboard=='native':
+        # Camera-facing billboard: store geometry in the joint's pivot-relative,
+        # unit-scale local frame; the native renderer rebuilds placement from the
+        # joint (scale + translation) and replaces rotation with the view basis.
+        px,py,pz=billboard_pivot
+        s=billboard_scale
+        arrays[9]=[((x-px)/s,(y-py)/s,(z-pz)/s) for x,y,z in arrays[9]]
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
         arrays[attr]=arrays[attr][:max(used)+1] if used else []
     if draw_matrices is not None:
         b['_discarded_matrix_attributes']=sorted(discarded_matrix_attrs)
+    if missing_normals!='error' or singular_normal!='error':
+        b['_normal_policy']={'missing_normals':missing_normals,'singular_normal':singular_normal,'computed_normal_scope':'baked area-weighted geometry with shape/UV/color seams','degenerate_policy':'error; explicit default mode uses +Y'}
     return b,arrays,shapes,[materials[mapping[i]] for i in range(len(shapes))]
 
 class Writer:
@@ -227,25 +411,44 @@ class Writer:
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
 def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None,
-            missing_normals='error', singular_normal='error'):
+            missing_normals='error', singular_normal='error', billboard='error'):
     if pose is not None and not bake_rigid: raise ValueError('Animation pose requires rigid baking')
     report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose,
-                              missing_normals=missing_normals, singular_normal=singular_normal),output,str(source),y_offset,material_colors)
+                              missing_normals=missing_normals, singular_normal=singular_normal,
+                              billboard=billboard),output,str(source),y_offset,material_colors)
     report['rigid_bind_pose_baked']=bake_rigid
     Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
 
 
-def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
+def write_model(decoded, output, source, y_offset=0.0, material_colors=None, tev_overrides=None):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decoded; w=Writer()
     states=b['_render_states']
     if len(states)!=len(shapes): raise ValueError('Expected pixel state for every shape')
-    colors=material_colors if material_colors is not None else [(255,255,255,255)]*len(shapes)
+    # #960: draw category 4 (alpha blend) materials through P1's translucent path:
+    # the shape opts in to Graphics::cacheShape (deferred, distance sorted,
+    # flushed after every opaque creature) and its blended materials stop writing
+    # depth, as P1's own MATFLAG_AlphaBlend state does, so what sits inside a
+    # translucent body (a swallowed Pikmin) stays visible. Opaque and alpha-test
+    # materials are untouched, and a model with none keeps shape flags 0.
+    blended=[bool(st[0]>>8&4) for st in states]
+    if any(blended):
+        states=[(st[0],st[1],st[2],st[3]&~2,st[4]) if bl else st for st,bl in zip(states,blended)]
+    # decode() records the source lighting; hand-assembled scenes (cave
+    # floors, merged rooms) carry none and keep the legacy unlit material.
+    lighting=b.get('_source_lighting')
+    if lighting is not None and len(lighting)!=len(shapes): raise ValueError('Expected source lighting for every shape')
+    if lighting is not None and all(x is None for x in lighting): lighting=None
+    if material_colors is not None: colors=material_colors
+    elif lighting is not None: colors=[(255,255,255,255) if x is None else tuple(x['rgba']) for x in lighting]
+    else: colors=[(255,255,255,255)]*len(shapes)
     if len(colors)!=len(shapes) or any(len(c)!=4 or any(type(v)!=int or not 0<=v<=255 for v in c) for c in colors):
         raise ValueError('Expected one RGBA8 material color per shape')
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
-    w.begin(0);w.pad();w.put('II',0,0);w.end()
+    billboard_pivot=b.get('_billboard_native_pivot')
+    billboard_scale=b.get('_billboard_native_scale')
+    w.begin(0);w.pad();w.put('II',0,SHAPE_ALLOW_CACHING if any(blended) else 0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):
         if attr not in a: continue
         w.begin(tag,len(a[attr]));w.pad()
@@ -268,16 +471,39 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.end()
     # Each shape gets a deliberately simple static PVW material.
     w.begin(48,len(shapes),len(shapes));w.pad()
-    for tex in mats:
-        for _ in range(3):w.put('4hIfII',255,255,255,255,0,0.,0,0)
+    alpha_stages=b.get('_alpha_stages') or [None]*len(mats)
+    if len(alpha_stages)!=len(mats): raise ValueError('Expected alpha stage entry for every shape')
+    # tev_overrides: {shape index: dict(regs=[C0,C1,C2 as 4 x s16], konst=16 bytes,
+    # stages=[dict(order=[coord,map,channel], color=[9 bytes], alpha=[9 bytes],
+    # kcolor=, kalpha=)])} writes those source TEV stages verbatim instead of the
+    # single approximate stage (the Jellyfloat two-stage layout; #1027).
+    tev_overrides=tev_overrides or {}
+    for index,(tex,alpha_stage) in enumerate(zip(mats,alpha_stages)):
+        override=tev_overrides.get(index)
+        if override is not None:
+            if tex<0 or not 1<=len(override['stages'])<=8 or len(override['regs'])!=3 or len(override['konst'])!=16:
+                raise ValueError('Invalid TEV override')
+            for reg in override['regs']:w.put('4hIfII',*reg,0,0.,0,0)
+            w.data+=bytes(override['konst']);w.put('I',len(override['stages']))
+            for stage in override['stages']:
+                if len(stage['order'])!=3 or len(stage['color'])!=9 or len(stage['alpha'])!=9:
+                    raise ValueError('Invalid TEV override stage')
+                w.data+=bytes([0,*stage['order'],stage.get('kcolor',0),stage.get('kalpha',0),0,0])
+                w.data+=bytes(list(stage['color'])+[0,0,0])+bytes(list(stage['alpha'])+[0,0,0])
+            continue
+        for k in range(3):w.put('4hIfII',*(alpha_stage['regs'][k] if alpha_stage else (255,255,255,255)),0,0.,0,0)
         w.data+=bytes([255])*16;w.put('I',1)
         w.data+=bytes([0,0 if tex>=0 else 255,0 if tex>=0 else 255,4,0,0,0,0])
-        w.data+=bytes([15,8,10,15,0,0,0,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,0,1,0,0,0,0])
-        w.data+=bytes([7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
+        w.data+=bytes([15,8,10,15,0,0,TEV_BASE_SCALE,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,TEV_BASE_SCALE,1,0,0,0,0])
+        w.data+=bytes(alpha_stage['alpha']+[0,0,0] if alpha_stage else [7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
+    controls=[]
+    for i,tris in enumerate(shapes):
+        if lighting is None or lighting[i] is None: controls.append(LEGACY_VERTEX_CONTROL if 11 in a else 0)
+        else: controls.append(lighting_control(lighting[i],bool(tris) and 11 in tris[0][0]))
     for i,tex in enumerate(mats):
         w.put('Ii4BI',states[i][0],tex,*colors[i],i)
         w.put('4BIfII',*colors[i],0,0.,0,0)
-        w.put('If',0x1800 if 11 in a else 0,0.)
+        w.put('If',controls[i],0.)
         w.put('4I',*states[i][1:])
         w.put('I3fI',0,1.,1.,1.,1 if tex>=0 else 0)
         if tex>=0:w.data+=bytes([0,1,4,10])
@@ -286,8 +512,11 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
             w.put('IHH4BIIf7fIII',tex,0,0,0,0,0,0,255,0,0.,1.,1.,0.,0.,0.,0.,0.,0,0,0)
     w.end();w.begin(64,1);w.pad();w.put('h',0);w.end()  # Direct joint 0; negative entries select envelopes.
     w.begin(80,len(shapes));w.pad()
-    for tris in shapes:
+    billboard_shape_set=set(b.get('_billboard_shapes',()))
+    for si,tris in enumerate(shapes):
         hascolor=11 in tris[0][0]; hasuv=13 in tris[0][0]; flags=1|(4 if hascolor else 0)|(8 if hasuv else 0)
+        if billboard_pivot is not None and si in billboard_shape_set:
+            flags|=1<<17  # Mesh::FeatureFlags::Billboard (camera-facing)
         dl=bytearray(pack('BH',0x90,len(tris)*3))
         for tri in tris:
             for v in tri:
@@ -298,21 +527,46 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         w.put('4Ih4I',0,flags,1,1,0,1,0,len(tris),len(dl));w.pad();w.data+=dl
     w.end();w.begin(96,1);w.pad()
     bounds=[min(v[k] for v in a[9]) for k in range(3)]+[max(v[k] for v in a[9]) for k in range(3)]
-    w.put('iI6ff9fI',-1,0,*bounds,0.,1.,1.,1.,0.,0.,0.,0.,0.,0.,len(shapes))
+    if billboard_pivot is not None:
+        joint_scale=(billboard_scale,billboard_scale,billboard_scale)
+        joint_translation=billboard_pivot
+    else:
+        joint_scale=(1.,1.,1.)
+        joint_translation=(0.,0.,0.)
+    w.put('iI6ff9fI',-1,0,*bounds,0.,*joint_scale,0.,0.,0.,*joint_translation,len(shapes))
     # Native material traversal walks the joint list backwards within each pass.
     # J3D hierarchy order matters for depth-write-disabled terrain overlays.
     for i in reversed(b['_draw_order']):w.put('HH',i,i)
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
-    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
+    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':(LIT_MATERIAL_POLICY if lighting is not None else LEGACY_MATERIAL_POLICY),'pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
+    if lighting is not None:
+        report['lighting_controls']=controls
+        report['material_colors']=[list(c) for c in colors]
+    if any(blended):
+        report['translucent_path']={'shape_flags':SHAPE_ALLOW_CACHING,'blended_shapes':[i for i,x in enumerate(blended) if x],'depth_write':'off for blended materials'}
+    if any(alpha_stages):
+        report['alpha_stages']=[x and x['alpha'] for x in alpha_stages]
     if '_discarded_matrix_attributes' in b:
         report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
-    # Opt-in normal-tolerance modes are recorded only when used, so strict
-    # conversions keep byte-identical reports.
-    if b.get('_missing_normals','error')!='error':
-        report['missing_normals']=b['_missing_normals']
-    if b.get('_singular_normal','error')!='error':
-        report['singular_normal']=b['_singular_normal']
+    if '_normal_policy' in b:report['normal_policy']=b['_normal_policy']
+    # Billboard fallback is recorded only when a type-1 shape was actually
+    # baked, so strict/unaffected conversions keep byte-identical reports.
+    if '_billboard_policy' in b:
+        report['billboard_policy']=b['_billboard_policy']
+        report['billboard_shapes']=b['_billboard_shapes']
+        report['billboard_materials']=b['_billboard_materials']
+        if b['_billboard_policy']=='native':
+            report['billboard_pivot']=list(b['_billboard_native_pivot'])
+            report['billboard_scale']=b['_billboard_native_scale']
+            report['billboard_note']=('Shape matrix type 1 (billboard) emitted pivot-relative '
+                                      'with the camera-facing Billboard feature flag; the native '
+                                      'renderer orients it from the view matrix at draw time, so '
+                                      'the joint/mesh rotation is not statically baked.')
+        else:
+            report['billboard_note']=('Shape matrix type 1 (billboard) statically baked '
+                                      'through its rigid joint draw matrix; camera-facing '
+                                      'orientation is not reproduced by the static MOD format.')
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':

@@ -32,10 +32,11 @@ def record(reg, lane, generation, proposal, sha256, outcome, reason, evidence, w
         return entry
 
 
-def feedback(reg, path):
-    with reg.transaction() as state:
+def feedback(reg, path, *, state=None, observed_sha=None):
+    from contextlib import nullcontext
+    with nullcontext(reg.snapshot() if state is None else state) as state:
         entry = copy.deepcopy(state.get('proposal_feedback', {}).get(str(path)))
-        if not entry or entry['sha256'] != digest(path): return None
+        if not entry or entry['sha256'] != (observed_sha or digest(path)): return None
         if entry['outcome'] == 'dependency' and all(
                 state['lanes'].get(k, {}).get('state') == 'done' for k in entry['wait_for_lanes']):
             return None

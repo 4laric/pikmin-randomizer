@@ -241,10 +241,12 @@ Validation (repo root): `python -m pytest tests/test_pikmin2_flora_assets.py -q`
 - No flora parm subdir ships `enemystoneinfo.txt` on this revision; absence is
   recorded per species in `metadata_absent`, not treated as an error.
 - Converter-limited poses are recorded as unsupported with a reason and never
-  fabricated: on this revision the sampled Pelplant keys fail the rigid
-  converter (`Singular animation scale` / `Singular normal transform`) and the
-  single HikariKinoko clip fails on an unsupported shape-matrix type. The run
-  still completes and writes `flora.json`.
+  fabricated. As of #405 the sampled Pelplant keys convert (10/10 clips) under
+  the opt-in `singular_scale='allow'` + `singular_normal='transpose-adjugate'`
+  pair (see [PIKMIN2_SINGULAR_SCALE.md](PIKMIN2_SINGULAR_SCALE.md)); the single
+  HikariKinoko clip still fails on an unsupported shape-matrix type (billboard,
+  type 1) and is recorded as unsupported. The run completes and writes
+  `flora.json`.
 - Spectralid spawning and cave floor gating (Violet/Ivory/Queen budgets) are
   recorded as source facts only.
 

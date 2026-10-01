@@ -3,6 +3,8 @@
 #include "pc_p2_cargo.h"
 #include "Generator.h"
 #include "Suckable.h"
+#include "AIConstant.h"
+#include "DynParticle.h"
 #include <fstream>
 #include <set>
 struct CargoTransportProbe : ActTransport {
@@ -53,8 +55,11 @@ static bool cargoCarryFixture(Navi* n) {
     static bool requested=[](){FILE* f=std::fopen("p2-cargo-carry.txt","r");if(!f)return false;std::fclose(f);return true;}();
     if(!requested)return false;
     static int frames=0,before=0,value=0,repairs=0;static Pellet* target=nullptr;
+    static bool lifted=false;
     ++frames;if(frames<90)return true;
     if(frames==90) {
+        // Transport-only fixture: suppress tutorial UI after normal startup.
+        for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
         require(pc_p2_preview_cargo_count()>0,"cargo missing");
         const int index=pc_p2_preview_cargo_count()>1?1:0;target=pc_p2_preview_cargo_at(index);
         std::ifstream in("p2-cargo.txt");auto specs=p2ReadCargo(in);value=specs[index].value;
@@ -72,14 +77,32 @@ static bool cargoCarryFixture(Navi* n) {
         // Keep the idle test captain out of the cargo's approach to the Pod.
         n->resetPosition(Vector3f(240,mapMgr->getMinY(240,210,true),210));
         std::printf("P2_CARGO_CARRY_START generator=%u weight=%d carriers=%d\n",target->mGenerator->_70,target->mConfig->mCarryMinPikis(),count);
+        std::printf("P2_CARGO_START_XYZ %.3f %.3f %.3f\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z);
     }
-    if(frames%300==0){
+    if(target->getState()==PELSTATE_Normal){
+        if(target->getPickOffset()!=0.0f && target->mCarrierCounter>=target->mConfig->mCarryMinPikis())lifted=true;
+        if(lifted && (target->getPickOffset()==0.0f || target->mCarrierCounter<target->mConfig->mCarryMinPikis())){
+            std::printf("P2_CARGO_DROP xyz=%.3f,%.3f,%.3f strength=%d pick=%.3f\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z,target->mCarrierCounter,target->getPickOffset());
+            require(false,"cargo dropped after initial lift");
+        }
+    }
+    if(frames%90==0){
         std::printf("P2_CARGO_CARRY_PROGRESS x=%.2f y=%.2f z=%.2f strength=%d\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z,target->mCarrierCounter);
         std::printf("P2_CARGO_VELOCITY carry=%.3f,%.3f,%.3f actual=%.3f,%.3f,%.3f volatile=%.3f,%.3f,%.3f ground=%d\n",target->mCarryDirection.x,target->mCarryDirection.y,target->mCarryDirection.z,target->mVelocity.x,target->mVelocity.y,target->mVelocity.z,target->mVolatileVelocity.x,target->mVolatileVelocity.y,target->mVolatileVelocity.z,target->onGround());
         std::printf("P2_CARGO_PHYSICS fixing=%d fixed=%d centre=%.2f bottom=%.2f dt=%.4f",target->isCreatureFlag(CF_AllowFixPosition),target->isCreatureFlag(CF_IsPositionFixed),target->getCentreSize(),target->getBottomRadius(),gsys->getFrameTime());
         if(target->mGroundTriangle)std::printf(" normal=%.3f,%.3f,%.3f",target->mGroundTriangle->mTriangle.mNormal.x,target->mGroundTriangle->mTriangle.mNormal.y,target->mGroundTriangle->mTriangle.mNormal.z);
         std::puts("");
-        capture("p2-cargo-progress.ppm");
+        std::printf("P2_CARGO_DYNAMICS real=%d pick=%.3f gravity=%.3f\n",target->isRealDynamics(),target->getPickOffset(),AICONST.mGravity());
+        float deepest=0;DynParticle* contact=nullptr;
+        for(DynParticle* p=target->mParticleList;p;p=p->mNextParticle){
+            float depth=mapMgr->getMinY(p->mWorldPosition.x,p->mWorldPosition.z,true)-(p->mWorldPosition.y-p->mCollisionRadius);
+            if(depth>deepest){deepest=depth;contact=p;}
+        }
+        if(contact){
+            CollTriInfo* tri=mapMgr->getCurrTri(contact->mWorldPosition.x,contact->mWorldPosition.z,true);
+            std::printf("P2_CARGO_PARTICLE depth=%.3f xyz=%.3f,%.3f,%.3f radius=%.3f normal=%.3f,%.3f,%.3f\n",deepest,contact->mWorldPosition.x,contact->mWorldPosition.y,contact->mWorldPosition.z,contact->mCollisionRadius,tri?tri->mTriangle.mNormal.x:0,tri?tri->mTriangle.mNormal.y:0,tri?tri->mTriangle.mNormal.z:0);
+        }
+        std::fflush(stdout);
         Iterator carriers(pikiMgr);CI_LOOP(carriers){Piki* p=static_cast<Piki*>(*carriers);if(p->isAlive() && p->isStickTo() && p->mActiveAction->mCurrActionIdx==PikiAction::Transport && CargoTransportProbe::print(static_cast<ActTransport*>(p->mActiveAction->getCurrAction())))break;}
     }
     if(!target->isAlive()) {

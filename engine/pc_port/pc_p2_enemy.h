@@ -6,6 +6,7 @@ class Graphics;
 struct Matrix4f;
 void pc_p2_snow_setup();
 void pc_p2_snow_reset();
+void pc_p2_snow_update(BTeki*,float seconds);
 void pc_p2_snow_forget(BTeki*);
 float pc_p2_snow_max_health(const BTeki*, float fallback);
 const char* pc_p2_enemy_name(PelletView*);
@@ -20,3 +21,16 @@ bool pc_p2_snow_turn(BTeki*, float targetAngle, float arrivalStep, bool& arrived
 struct Vector3f;
 // Source chase target velocity; false leaves the native tracing path untouched.
 bool pc_p2_snow_chase(BTeki*, const Vector3f& target);
+
+#include <string>
+namespace p2pose { struct Pose; }
+// Diagnostic copy of the last drawn geometry, absent for disabled/forgotten actors.
+bool pc_p2_snow_geometry(BTeki*,p2pose::Pose&,std::string& clip,float& frame,bool& corpse);
+
+class Teki;
+// Private normal-campaign opt-in; retains all P1 gameplay and reward identities.
+void pc_p2_snow_campaign_setup();
+void pc_p2_snow_campaign_bind(Teki*);
+
+// Authoritative current clock, independent of whether this actor was rendered.
+bool pc_p2_snow_clock(BTeki*, const char*& clip, float& sourceFrame, bool corpse=false);

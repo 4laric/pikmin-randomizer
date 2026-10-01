@@ -1,5 +1,9 @@
 # Enemy family import pipeline
 
+[Current ownership and review policy](PIKMIN2_WORKFLOW.md): family owners deliver
+end-to-end native candidates. This supersedes the early extraction-only lane
+assignments and blanket integration-owned hooks below; evidence levels still apply.
+
 Owner and integration queue: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is the repeatable workflow established by Snow/Dwarf Red Bulborbs, Sheargrubs and small Breadbug. It produces imported visuals and explicitly scoped gameplay slices. It is not a universal P2 AI translator or a one-command enemy port.
 
 ## Evidence levels
@@ -28,7 +32,7 @@ Use new family-prefixed modules and tests. Separate extraction/profile, installa
 - `experimental/pikmin2_breadbug_cargo_install.py`: exact-byte, source-bound installation.
 - `experimental/pikmin2_kochappy_arena.py`: profile separate from original P1 stage placement.
 
-These are reference implementations, not permission to edit a neighbor's modules. Under the **2026-09-13 workflow revision** ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)) a family owner may add a narrow additive converter interface for its own family. For shared converter semantics or defaults, hand the integration lead a minimal reproducer plus the requested interface and continue independent source/profile work.
+Coordinate edits to a neighbor's modules with that owner. If a common converter lacks a capability, supply a minimal reproducer and implement an opt-in fix in your private branch or route it to the toolchain owner. Preserve defaults and obtain focused review before shared integration; root need not implement the fix.
 
 ## 2. Establish the source contract
 
@@ -54,15 +58,24 @@ Follow [the arena contract](PIKMIN2_ENEMY_ARENA.md): original map/collision/rout
 
 Separate model-space attachments, world position and collision ground height. Verify spawn identity from native logs before interpreting combat results.
 
-## 5. Integrate native hooks (family-owned registration)
+## 5. Deliver complete native candidates; serialize maintained merges
 
-**Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)): family owners own registration.** A family owner implements its own extraction, conversion profile, native module and **narrow additive registration hooks** — build-target membership, per-family setup/update/draw/reset entry points and optional visual-bank binding — runs private builds and records runtime evidence. It no longer stops for integration permission after every batch or asset handoff.
-
-Retain focused review for changes to **shared semantics**: saves/rewards, captain state, generic damage/physics, actor lifetime, converter defaults and ID conflicts. When a family needs a shared-converter capability, add a narrow additive interface (or hand the integration lead a minimal reproducer plus the requested interface) rather than changing shared semantics silently. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
+Family workers supply new modules and their complete additive CMake/setup/update/draw/reset hooks in private worktrees. Claim new IDs and coordinate collisions. Changes to shared semantics, such as save/reward protocols, converter defaults, captain state or actor lifetime, receive focused review from the affected engine/toolchain owner before integration. The integration lead owns the maintained merge and combined build. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
 
 Visual timing should follow the authoritative native animation counter where mapped. Document fallback and pause/loop behavior. Do not implement stun by skipping all AI updates if that also skips damage/death. A sampled model bank does not supply P2 collision, FSM or attachment semantics automatically.
 
-Only one shared native build runs at a time. After all edits, run the full build and a no-work dry run. Workers must snapshot copied inputs before further shared edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory.
+For compatible baked banks, the opt-in [Snow actor interpolation path](PIKMIN2_SNOW_INTERPOLATION.md)
+demonstrates private geometry, shared immutable resources and an unchanged P1
+gameplay clock. Its controlled performance fixture is separate from combat
+acceptance; do not treat its timings as free-roaming scene coverage.
+
+For moving mouths, muzzles and attack volumes, use the
+[shared animated attachment contract](PIKMIN2_ANIMATED_ATTACHMENTS.md). It
+provides local-joint interpolation, world transforms, generation-scoped queries
+and bounded per-attack contact filtering. Family owners still supply receiver
+behavior, attack events and source-specific joint corrections.
+
+Only one writer/build uses the maintained native build directory at a time. Private worker builds may run concurrently within host resources. Build the complete candidate and snapshot inputs before later edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory. Repeat combined checks when merges change inputs or introduce new interactions; reuse unchanged worker evidence.
 
 On this Windows checkout:
 
@@ -72,7 +85,7 @@ cmake --build native/build-randomizer --target pikmin_pc -j 6
 cmake --build native/build-randomizer --target pikmin_pc -- -n
 ```
 
-The maintained checkout/build/export stays serialized. A family owner commits native locally and may push complete candidate changes and source exports on a private worker branch; the integration lead runs `py -3.12 scripts/export_native_source.py`, reviews shared-semantics edits and pushes root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
+Workers may export private native source into their own root branch using explicit source/destination paths. Integration commits native locally, reviews the combined export and pushes the maintained root source. Native work branches may be pushed to native origin under the AGENTS.md Git push policy (never default/p2-integration branches, tags or force-pushes). Keep fixed QA packages and player sessions unchanged.
 
 ## 6. Validate behavior, visuals and lifecycle separately
 
@@ -93,13 +106,13 @@ Measure frame/update timing, memory and bank size with a mixed roster before sca
 Every worker delivers:
 
 1. Child/parent issue, owner, branch or isolated patch, exact base and ordered commits (if any).
-2. Owned file list and requested shared hooks; no surprise central edits.
+2. Owned file list and included shared hook hunks; identify semantic changes needing specialist review.
 3. Source IDs/revision/resource hashes, extraction command, real conversion result and resource budget.
 4. Tests and build commands/results; fixed runtime executable/config hashes where applicable.
 5. Gate table with evidence paths and explicit proxy/injection/visual limitations.
 6. Remaining blockers and next bounded slice.
 
-Root reviews and integrates completed slices without waiting for unrelated lanes. Issue progress records the integrated commit; broad parent checklists retain unfinished fidelity requirements.
+Root reviews and integrates completed milestones without waiting for unrelated lanes. Owners may continue independent steps within their claimed scope while a frozen candidate awaits review. Issue progress records the integrated commit; broad parent checklists retain unfinished fidelity requirements.
 
 ## Current parallel queue
 
@@ -122,7 +135,7 @@ level or a requirement to finish every easier enemy before parallel research.
 | Integration lead | Shared-semantics review, maintained build/export serialization; cave diagnostics #193 | #186 | #193 |
 | Kimi | Independent cave return acceptance; later immutable family bundles | #184 | #184 |
 
-Under the 2026-09-13 revision these lanes own end-to-end implementation (extraction → conversion → native module and narrow additive registration hooks → private build → runtime evidence), not extraction/profile only. Their first handoff still determines whether the next step is a compatible P1 proxy or a new native mechanic. No shared native ID ranges are allocated by this table; family-local additive hooks are.
+This historical allocation began with extraction/profile work. Under the current workflow, owners may continue through native mechanics and private runtime evidence. No shared native ID ranges are allocated by this table; record reservations in the coordination issue.
 
 Remaining families are already tracked: Bulborbs #120, ground invertebrates #165, flying #166, aquatic #167, scavengers #168, projectiles #169, elemental #170, flora #171, Bulblax/larvae #172, Long Legs #173, Snagrets/Crawbster #174, Waterwraith/Titan #175. Work can split further by independent resource/FSM group once an owner claims a child issue. Do not concurrently implement variants that share the same base module. Multi-actor bosses and captors need helper/receiver lifetime contracts before gameplay integration; they can still perform isolated extraction audits in parallel.
 
@@ -140,4 +153,29 @@ This update supersedes the initial queue above. User confirmed additional Kimi s
 | Root subagents | Frog/Honeywisp material fixes; Tank movie-heap diagnosis | #207 |
 | Root integration | Shared-semantics review, maintained build/export serialization, cave diagnostics | #186, #193 |
 
-Groink revival is parked by user direction. Kimi issues211–214 had no completion comments at this check. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Under the 2026-09-13 revision, narrow additive family registration hooks and private family builds are family-owned; shared-semantics changes still require integration review. Fixed independent QA184 remains a separate unfinished acceptance scope.
+Groink revival is parked by user direction. This table is a historical claim snapshot; check current issues for delivery status. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Family owners now supply complete private native candidates under the current workflow. Fixed independent QA184 remains a separate unfinished acceptance scope.
+
+Shared engine: [opt-in skeletal playback](PIKMIN2_SKELETAL_PLAYBACK.md) now supports Snow rigid joint-bound geometry through the attachment player. Weighted envelopes remain unsupported; do not substitute rigid bindings for them.
+
+Shared weighted deformation: [weighted skinning contract](PIKMIN2_WEIGHTED_SKINNING.md).
+Groink source geometry is validated offline; each family still owns renderer
+adoption, current joint callbacks and natural gameplay/visual acceptance.
+
+[Joint-local corrections](PIKMIN2_JOINT_CORRECTIONS.md) provide a shared per-sample
+transform stage for both weighted geometry and attachments. It is available for
+family adoption; it does not itself implement source aiming callbacks.
+
+[Texture SRT animation](PIKMIN2_MATERIAL_SRT.md) provides bounded BTK import,
+source-frame sampling and scoped single-matrix material application. Family
+owners must explicitly bind retained material names/slots and validate rendering;
+Queen's missing specular TEV layer and BRK/BTP remain separate work.
+Generation-bound binding sets now apply multiple material tracks in one draw,
+with transactional restoration and shared-storage checks. The UV0 path has a
+real OpenGL texture-phase/replay fixture using Snow's retained model.
+
+### Source-derived animated specular example
+
+[Queen specular (#399)](PIKMIN2_QUEEN_SPECULAR.md) demonstrates an opt-in UV1
+bake plus shared BTK-driven, normal-derived additive highlight. Reuse the audit,
+verified staging and same-frame diffuse/animated/replay fixture pattern; do not
+assume another family has Queen's material indices, TEV equation or lighting.

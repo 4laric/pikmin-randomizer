@@ -32,7 +32,12 @@ def good_log():
             f'phase=0.30 x=-150.00 z=1850.00',
             f'P2_SNAKEJOINT_POS generator={generator} state=attack clip=hit '
             f'phase=0.40 x=-140.00 z=1840.00',
+            f'P2_SNAKEJOINT_DAMAGE_REJECTED generator={generator} state=stay',
+            f'P2_SNAKEJOINT_DAMAGE_ACCEPTED generator={generator} state=attack',
+            f'P2_SNAKEJOINT_JOINTS generator={generator} species={species} '
+            f'source_joints=6 host_joints=1 pose=clip_override',
         ]
+    lines.append('P2_SNAKEJOINT_DEAD generator=376001 source_id=34 health=0')
     return '\n'.join(lines)
 
 
@@ -78,7 +83,12 @@ class SnakeJointBehaviorTests(unittest.TestCase):
             self.assertTrue(checks['bite_in_window'])
             self.assertTrue(checks['eat_in_window'])
             self.assertTrue(checks['eat_bounded'])
+            self.assertTrue(checks['damage_rejected'])
+            self.assertTrue(checks['damage_accepted'])
+            self.assertTrue(checks['joint_gap_measured'])
             self.assertGreater(result['species'][species]['motion_spread'], 5.0)
+        self.assertTrue(result['snakecrow_dead'])
+        self.assertTrue(result['species']['SnakeCrow']['natural_death'])
 
     def test_bite_outside_attack_window_fails(self):
         injected = GOOD_LOG.replace(
@@ -94,6 +104,25 @@ class SnakeJointBehaviorTests(unittest.TestCase):
         result = validate(GOOD_LOG + '\nP2_SNAKEJOINT_EAT generator=376002 pikmin=1', code=0)
         self.assertFalse(result['species']['SnakeWhole']['checks']['eat_bounded'])
         self.assertFalse(result['passed'])
+
+    def test_missing_damage_rejected_fails_snakecrow(self):
+        stripped = GOOD_LOG.replace(
+            'P2_SNAKEJOINT_DAMAGE_REJECTED generator=376001 state=stay\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['species']['SnakeCrow']['checks']['damage_rejected'])
+        self.assertFalse(result['species']['SnakeCrow']['passed'])
+        self.assertFalse(result['passed'])
+        self.assertTrue(result['species']['SnakeWhole']['passed'])
+
+    def test_missing_joints_fails_snakecrow(self):
+        stripped = GOOD_LOG.replace(
+            'P2_SNAKEJOINT_JOINTS generator=376001 species=SnakeCrow '
+            'source_joints=6 host_joints=1 pose=clip_override\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['species']['SnakeCrow']['checks']['joint_gap_measured'])
+        self.assertFalse(result['species']['SnakeCrow']['passed'])
+        self.assertFalse(result['passed'])
+        self.assertTrue(result['species']['SnakeWhole']['passed'])
 
     def test_validate_rejects_non_text(self):
         with self.assertRaises(ValueError):

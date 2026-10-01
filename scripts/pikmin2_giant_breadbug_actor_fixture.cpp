@@ -6,14 +6,30 @@
 #include "Controller.h"
 #include "PikiState.h"
 #include <fstream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+// Standard experimental-room window: honour PIKMIN_P2_ROOM_WINDOW, default
+// 960x540. Mirrors pc_main.cpp's pc_test_window_size so the persisted size
+// cannot override the standard preview window.
+static bool giant_window_size(int& width,int& height){
+ const char* value=std::getenv("PIKMIN_P2_ROOM_WINDOW");
+ if(value&&(!std::strcmp(value,"0")||!std::strcmp(value,"off")))return false;
+ if(value){
+  int customWidth=0,customHeight=0;
+  if(std::sscanf(value,"%dx%d",&customWidth,&customHeight)==2&&customWidth>=320&&customHeight>=240){width=customWidth;height=customHeight;return true;}
+  if(!std::strcmp(value,"1")||!std::strcmp(value,"small")){width=960;height=540;return true;}
+ }
+ width=960;height=540;return true;
+}
 // Giant Breadbug actor arena (#220 batch 4): spawn identity, P2 params,
 // Purple-only press, PelletCarry contest, hide-digest heal, defeat throw-up,
 // owner-linked nest birth/death. P1 FSM drives locomotion/cargo.
 class GiantActorFixture:public PlugPikiApp {
- int frames=0,tick=0,phase=0,phaseTick=0,pressCount=0;
- Teki* giant=nullptr;Teki* nestTeki=nullptr;Pellet* cargoA=nullptr;Pellet* cargoB=nullptr;
+ int frames=0,tick=0,phase=0,phaseTick=0,pressCount=0,sub=0;
+ Teki* giant=nullptr;Teki* nestTeki=nullptr;Teki* small=nullptr;Pellet* cargoA=nullptr;Pellet* cargoB=nullptr;
  Vector3f nestPos;std::vector<Piki*> squad;Piki* purple=nullptr;Piki* carriers[2]={nullptr,nullptr};
- unsigned giantId=0,nestId=0;Vector3f giantXyz,nestXyz;
+ unsigned giantId=0,nestId=0,smallId=0;Vector3f giantXyz,nestXyz,smallXyz;bool observeSmall=false;
 public:
  int idle() override {
   int result=PlugPikiApp::idle();require(++frames<12000,"Giant actor arena timeout");
@@ -26,10 +42,18 @@ public:
    std::ifstream in("giant-arena.txt");require(bool(in>>giantId>>nestId),"arena ids");
    require(bool(in>>giantXyz.x>>giantXyz.y>>giantXyz.z),"giant xyz");
    require(bool(in>>nestXyz.x>>nestXyz.y>>nestXyz.z),"nest xyz");
+   observeSmall=bool(in>>smallId>>smallXyz.x>>smallXyz.y>>smallXyz.z); // optional coexistence line: smallId + XYZ
    std::puts("P2_GIANT_STEP config");std::fflush(stdout);
-   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==giantId)giant=t;if(t->mGenerator->_70==nestId)nestTeki=t;}}
+   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==giantId)giant=t;if(t->mGenerator->_70==nestId)nestTeki=t;if(observeSmall&&t->mGenerator->_70==smallId)small=t;}}
    require(giant&&nestTeki&&giant!=nestTeki,"giant/nest identity");
    require(giant->mTekiType==TEKI_Collec&&nestTeki->mTekiType==TEKI_Hollec,"giant/nest native types");
+   if(observeSmall){ // small PanModoki proxy must stay a separate, disjoint TEKI_Collec actor
+    require(small&&small->mTekiType==TEKI_Collec&&small!=giant&&small!=nestTeki&&smallId!=giantId&&smallId!=nestId,"coexisting small identity");
+    Vector3f sbirth=small->mPersonality->mPosition;
+    require(std::fabs(sbirth.x-smallXyz.x)<.02&&std::fabs(sbirth.y-smallXyz.y)<.02&&std::fabs(sbirth.z-smallXyz.z)<.02,"small birth XYZ");
+    small->setCreatureFlag(CF_AIAlwaysActive);
+    std::printf("P2_GIANT_COEXIST_BIRTH small=%u giant=%u nest=%u xyz=%.3f,%.3f,%.3f\n",smallId,giantId,nestId,sbirth.x,sbirth.y,sbirth.z);
+   }
    std::puts("P2_GIANT_STEP identity");std::fflush(stdout);
    Vector3f birth=giant->mPersonality->mPosition,nbirth=nestTeki->mPersonality->mPosition;
    require(std::fabs(birth.x-giantXyz.x)<.02&&std::fabs(birth.y-giantXyz.y)<.02&&std::fabs(birth.z-giantXyz.z)<.02,"giant birth XYZ");
@@ -53,6 +77,7 @@ public:
    phase=1;phaseTick=0;return result;
   }
   require(giant->isAlive()||phase>=5,"giant died outside defeat phase");
+  if(observeSmall)require(small&&small->isAlive()&&small->mGenerator&&small->mGenerator->_70==smallId&&small!=giant&&small!=nestTeki,"coexisting small lost or entangled");
   switch(phase){
   case 1:{ // Purple-only press: non-purple resisted, purple applies exactly 100.
    require(phaseTick<60,"press phase stall");
@@ -63,12 +88,12 @@ public:
     purple=squad[1];pc_p2_make_purple(purple);
     giant->eventPerformed(TekiEvent(TekiEventType::Pressed,giant,purple));
     require(giant->mHealth==1900.0f,"purple press damage != 100");
-    pressCount=1;
-    std::printf("P2_GIANT_ARENA_PRESS non_purple=resisted purple_damage=100 health=%.1f\n",giant->mHealth);
-    phase=2;phaseTick=0;
+     pressCount=1;
+     std::printf("P2_GIANT_ARENA_PRESS non_purple=resisted purple_damage=100 health=%.1f\n",giant->mHealth);
+     phase=2;phaseTick=0;
    }
    return result;}
-  case 2:{ // PelletCarry contest: carriers >= (min+max)/2 steal the cargo back.
+  case 2:{ // Natural cargo grab -> interruption release -> carrier contest steal.
    if(phaseTick==1){
     cargoA=pelletMgr->newNumberPellet(PELCOLOR_Red,0);require(cargoA,"contest pellet allocation");
     cargoA->init(giant->mSRT.t);cargoA->startAI(0);
@@ -76,16 +101,22 @@ public:
    }
    require(phaseTick<2400,"giant never grabbed contest pellet");
    bool held=giant->getCreaturePointer(2)==cargoA;
-   if(!held&&phaseTick%60==0){ // keep the bait right in front of the wandering giant, camera nearby
+   if(!held&&sub<2&&phaseTick%60==0){ // keep the bait right in front of the wandering giant, camera nearby
     Vector3f forward;giant->outputDirectionVector(forward);
     Vector3f spot=giant->mSRT.t+forward*20.0f;spot.y=mapMgr->getMinY(spot.x,spot.z,true)+5.0f;
     cargoA->mSRT.t=spot;
     Vector3f cam=giant->mSRT.t+Vector3f(0,0,60);cam.y=mapMgr->getMinY(cam.x,cam.z,true);n->resetPosition(cam);
    }
-   if(held){carriers[0]=squad[2];carriers[1]=squad[3];
-    for(int i=0;i<2;++i)if(carriers[i]->isAlive())carriers[i]->startStickObject(cargoA,nullptr,i,1.0f);}
-   static bool wasHeld=false;wasHeld|=held;
-   if(wasHeld&&giant->getCreaturePointer(2)==nullptr){
+   if(sub==0&&held){ // natural grab, then interruption release in place
+    sub=1;
+    giant->eventPerformed(TekiEvent(TekiEventType::Pressed,giant,purple));
+    require(giant->getCreaturePointer(2)==nullptr,"interruption did not release natural cargo");
+    std::printf("P2_GIANT_ARENA_INTERRUPT natural=1 released=1 health=%.1f\n",giant->mHealth);
+   } else if(sub==1&&held){ // re-grab, then the carrier contest steals it back
+    sub=2;carriers[0]=squad[2];carriers[1]=squad[3];
+    for(int i=0;i<2;++i)if(carriers[i]->isAlive())carriers[i]->startStickObject(cargoA,nullptr,i,1.0f);
+   }
+   if(sub==2&&giant->getCreaturePointer(2)==nullptr){ // native contest release
     std::printf("P2_GIANT_ARENA_CONTEST released=1 tick=%d strength=1.5 carriers=2\n",phaseTick);
     phase=3;phaseTick=0;}
    return result;}
@@ -135,10 +166,11 @@ public:
    return result;}
   case 6:{
    if(phaseTick>=30){capture("giant-actor-final.ppm");
+    if(observeSmall)std::printf("P2_GIANT_COEXIST small=%u giant=%u nest=%u small_alive=1 giant_alive=1 independent=1\n",smallId,giantId,nestId);
     std::puts("PASS P2_GIANT_BREADBUG_ARENA spawn_identity press contest digest_heal defeat_throwup nest_linked");std::fflush(nullptr);std::_Exit(0);}
    return result;}
   }
   return result;
  }
 };
-int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);std::setvbuf(stdout,nullptr,_IONBF,0);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");if(!pc_window_init("Giant Breadbug actor arena",960,720))return 3;pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new GiantActorFixture());return 0;}
+int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);std::setvbuf(stdout,nullptr,_IONBF,0);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");int windowWidth=960,windowHeight=540;const bool standardWindow=giant_window_size(windowWidth,windowHeight);if(!pc_window_init("Giant Breadbug actor arena",windowWidth,windowHeight))return 3;pc_settings_init();if(standardWindow){pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(windowWidth,windowHeight);pc_window_center();std::printf("Experimental preview window set to %dx%d windowed and centered\n",windowWidth,windowHeight);std::fflush(stdout);}gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new GiantActorFixture());return 0;}

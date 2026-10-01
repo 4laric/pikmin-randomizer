@@ -1,0 +1,15 @@
+# SYNTHETIC contract log (NOT runtime evidence) - labeled, exercised only.
+P2_MUSE_DAMAGUMO_READY squad=20 damagumo_gen=312004
+P2_MUSE_DAMAGUMO_BIND generator=312004 species=Damagumo native_fsm=implemented
+Experimental preview window set to 960x540 windowed and centered
+P2_MUSE_DAMAGUMO_SESSION navi=1
+P2_LONG_LEGS_STATE species=Damagumo generator=312004 state=Stay
+P2_LONG_LEGS_STATE species=Damagumo generator=312004 state=Land
+P2_LONG_LEGS_STATE species=Damagumo generator=312004 state=Wait
+P2_LONG_LEGS_STATE species=Damagumo generator=312004 state=Walk
+P2_LONG_LEGS_WALK species=Damagumo generator=312004 from=0.0,0.0 to=40.0,0.0 speed=100.0
+P2_LONG_LEGS_WALK_END species=Damagumo generator=312004 distance=38.5 seconds=0.40
+P2_LONG_LEGS_DEAD species=Damagumo generator=312004 health=0 prior_health=120.0
+P2_MUSE_DAMAGUMO_CHILD_BIRTH generator=312004 species=ShijimiChou count=25
+P2_MUSE_DAMAGUMO_REENTRY generator=312004 stale=0 fresh=1 rebind=1
+PASS P2_MUSE_DAMAGUMO

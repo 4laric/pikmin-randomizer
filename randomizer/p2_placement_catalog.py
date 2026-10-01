@@ -1,0 +1,955 @@
+"""Concrete lane-04 candidate slots and P2 placement profiles.
+
+This is the concrete-placement companion to :mod:`randomizer.p2_placement`. It
+turns the real slot tables the game already uses into `p2-placement-v1` slot
+records and pairs them with placement profiles for the P2 candidate cohort
+(fan-out lanes 13, 14, 16, 19, 22 and 30).
+
+Nothing here admits an identity. Every profile ships with empty
+``accepted_gates``, so :func:`randomizer.p2_placement.evaluate` still denies the
+pair; :func:`randomizer.p2_placement.compatibility_report` shows which concrete
+slots are constraint-compatible and which are rejected outright.
+
+Sources of truth:
+
+- ``randomizer.campaign_data.CAMPAIGN_SLOTS`` / ``CAMPAIGN_SOURCES``: the
+  production campaign generators with extracted native XYZ positions, per-day
+  schedule and the source ``protected`` flag (personality pellet / Parameter0).
+- ``randomizer.spawn_data.ADULT_SLOTS`` / ``GROUP_SLOTS`` / ``GENERATOR_SLOTS``:
+  the raw P1 generator inventory (adult, group and the full teki/boss table).
+- ``docs/PIKMIN2_ENEMY_ROSTER.json`` (lane 02): the canonical P2 ``source_id``,
+  enum name and drop type this module keys candidate profiles on.
+
+Terrain classes are derived from the campaign cohort (the P1 species class the
+generator spawns in vanilla), not from a native terrain probe, so slot
+``evidence.terrain`` and ``evidence.route`` stay false until a probe runs.
+Since #948 that evidence is recorded, not required: a slot's physical fields
+are the constraint (CONTRIBUTING "Placement: don't hard-code where a species
+may go"), and :mod:`randomizer.p2_admitted_placement` derives every admitted
+profile's ``accepted_slot_uids`` from those constraints.
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from .campaign_data import CAMPAIGN_SLOTS, CAMPAIGN_SOURCES
+from .spawn_data import ADULT_SLOTS, GROUP_SLOTS, GENERATOR_SLOTS
+from . import p2_placement as _placement
+
+SCHEMA = _placement.SCHEMA
+ENCOUNTER_SCHEMA = _placement.ENCOUNTER_SCHEMA
+DEFAULT_RADIUS = 100.0
+
+# Campaign cohort -> slot terrain class. `frog` is amphibious shore/water,
+# `aquatic` is submerged, `flying` is air; the rest are open ground.
+COHORT_TERRAIN = {
+    'ground': 'ground',
+    'dwarf': 'ground',
+    'grub': 'ground',
+    'frog': 'mixed',
+    'aquatic': 'water',
+    'flying': 'air',
+}
+
+# terrain class -> slot capability defaults used by the lane-04 adapters.
+GROUND_TERRAINS = ('ground', 'mixed')
+# Every campaign generator hosts a carryable P1 enemy in vanilla (the flying
+# cohort's Snitchbugs and Puffy Blowhogs drop to the ground below the spawn
+# and are carried from there; Blue Pikmin carry through water), so every
+# cohort's slots expose a corpse return route. Air was excluded until #948
+# without a source (#951 U5).
+CORPSE_TERRAINS = ('ground', 'mixed', 'water', 'air')
+
+# Lane 02 source_id -> candidate placement profile for the initial cohort.
+# `p1_equivalent` is the P1 catalog id whose campaign pool already routes to
+# the same behavior; None means no equivalent pool exists yet.
+# Fields: source_id, identity, lane, terrains, p1_equivalent.
+# P1 catalog id -> production campaign cohort. Descriptive only since #948
+# (#951 U15): a candidate's P1 equivalent no longer confines it to that
+# cohort's slots; the terrain/water fields express the physical need and the
+# profile's ``cohort`` is written as ``None``.
+P1_COHORT = {
+    3: 'dwarf', 31: 'dwarf',
+    18: 'grub', 19: 'grub', 20: 'grub',
+    4: 'ground', 15: 'ground', 17: 'ground', 24: 'ground', 32: 'ground',
+    11: 'flying', 16: 'flying',
+    25: 'aquatic', 30: 'aquatic',
+    0: 'frog', 33: 'frog',
+}
+
+# `requires_home` was source-backed by the lane-02 roster child reference: a
+# non-null `child_name` of PanHouse/JigumoNest means the identity is anchored to
+# a nest, not a free spawn (only Jigumo qualified). Jigumo's campaign binding
+# is proven on ordinary nest-free ground slots (inst-legs-63g), so no candidate
+# in this table requires a home anchor. Every cohort entry drops a carryable
+# corpse (BDT_Weak..BDT_Strong), so all of them require a corpse return route.
+CANDIDATE_SPECS = (
+    # Lane 13 - Bulborbs, dwarfs and Sheargrubs.
+    (1, 'Kochappy', 13, ['ground'], 3, False),
+    (2, 'Chappy', 13, ['ground'], 4, False),
+    (12, 'UjiA', 13, ['ground'], 18, False),
+    (13, 'UjiB', 13, ['ground'], 19, False),
+    (14, 'Tobi', 13, ['ground'], 20, False),
+    (33, 'FireChappy', 13, ['ground'], None, False),
+    (35, 'KumaChappy', 13, ['ground'], 32, False),
+    (42, 'BlueChappy', 13, ['ground'], None, False),
+    (43, 'YellowChappy', 13, ['ground'], None, False),
+    (44, 'BlueKochappy', 13, ['ground'], None, False),
+    (45, 'YellowKochappy', 13, ['ground'], None, False),
+    # Roster wave (#871): Emperor Bulblax (53) and Bulbmin (67) bind the same
+    # campaign ground slots as the other Chappy-family identities (pool
+    # admission e3e69de3; native host TEKI_Swallow/TEKI_Chappy).
+    (53, 'KingChappy', 13, ['ground'], None, False),
+    (67, 'LeafChappy', 13, ['ground'], None, False),
+    (76, 'KumaKochappy', 13, ['ground'], 31, False),
+    # Lane 14 - Ground invertebrates.
+    (15, 'Armor', 14, ['ground'], None, False),
+    (28, 'ElecBug', 14, ['ground'], None, False),
+    (65, 'Imomushi', 14, ['ground'], None, False),
+    (68, 'TamagoMushi', 14, ['ground'], None, False),
+    (79, 'Sokkuri', 14, ['ground'], None, False),
+    (84, 'Hana', 14, ['ground'], None, False),
+    # Lane 16 - Frogs and aquatic enemies. Jigumo (Hermit Crawmad) is
+    # source-anchored to a nest (child PanHouse) but its campaign binding is
+    # proven on the ordinary ground slots (inst-legs-63g, pool admission
+    # e3e69de3; native host TEKI_Chappy), so it is a ground candidate here;
+    # the source nest fact stays on the roster. Bloysters (71/101) likewise
+    # bind ordinary slots (rev2-worms); they stay listed in BOSS_COHORT for
+    # the arena-descriptor path and are ground candidates here.
+    # #948: the Wollywogs are amphibious in their source game (they sit in
+    # and leap out of water), so the submerged aquatic-cohort slots are in
+    # their terrain set too, next to the shore (mixed) and ground slots.
+    (17, 'Frog', 16, ['mixed', 'ground', 'water'], 0, False),
+    (18, 'MaroFrog', 16, ['mixed', 'ground', 'water'], 33, False),
+    (26, 'Catfish', 16, ['water'], 30, False),
+    (27, 'Tadpole', 16, ['water'], 25, False),
+    (63, 'Jigumo', 16, ['ground'], None, False),
+    # Roster wave (#871): Fiery Blowhog (24) binds campaign ground slots
+    # (inst-frogs-3; native host TEKI_Tank is the vehicle, placement is
+    # ground).
+    (24, 'Tank', 16, ['ground'], None, False),
+    # Admit-frogs5 (#871): Watery Blowhog (25) binds campaign ground slots
+    # (frogs5 blue POWER=30 full loop on its own generator token; same tank
+    # family installer as 24, placement is ground).
+    (25, 'Wtank', 16, ['ground'], None, False),
+    (71, 'UmiMushi', 16, ['ground'], None, False),
+    (101, 'UmiMushiBlind', 16, ['ground'], None, False),
+    # Lane 17 - Kogane beetle family (no P1 counterpart; new in Pikmin 2).
+    (9, 'Kogane', 17, ['ground'], None, False),
+    # Lane 19 - Mamuta.
+    (54, 'Miulin', 19, ['ground'], 24, False),
+    # Lane 22 - elemental Otakara Dweevils (source ids 59-62). The port binds
+    # each to a generated ground slot (lane-22 arena generator=349001).
+    (59, 'FireOtakara', 22, ['ground'], None, False),
+    (60, 'WaterOtakara', 22, ['ground'], None, False),
+    (61, 'GasOtakara', 22, ['ground'], None, False),
+    (62, 'ElecOtakara', 22, ['ground'], None, False),
+    # #964: Volatile Dweevil (93) is the same Otakara Dweevil chassis carrying a
+    # Bomb; it binds the same generated ground slots (native host TEKI_Chappy).
+    (93, 'BombOtakara', 22, ['ground'], None, False),
+    # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
+    # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
+    # #948: the snitchbugs fly (Sarai::Obj hovers above its anchor), so the
+    # P1 flying-cohort slots (air) are in their terrain set as well as ground.
+    (23, 'Sarai', 30, ['ground', 'air'], None, False),
+    # #215: Demon (Bumbling Snitchbug) is a Sarai::Obj subclass and binds the
+    # same generated slots on the Sarai manager (profile Demon).
+    (32, 'Demon', 30, ['ground', 'air'], None, False),
+    # #960: the Greater Spotted Jellyfloat (OniKurage) rides the Kurage OWN module on the
+    # same P1 Frog placement vehicle and binds the same slot set as the Lesser (57).
+    (72, 'OniKurage', 29, ['mixed', 'ground'], None, False),
+    # Roster wave (#871): campaign-proven ground bindings for the remaining
+    # pool identities. Segmented Crawbster (94) shares the snagret bank/family
+    # with the snagret pair (34/70, lane 25); Beady/Raging Long Legs (56/69,
+    # lane 26) ride the Chappy placement vehicle; Armored Cannon Beetle Larva
+    # (75, lane 20) binds a campaign ground slot (inst-frogs-6).
+    (94, 'DangoMushi', 25, ['ground'], None, False),
+    (34, 'SnakeCrow', 25, ['ground'], None, False),
+    (70, 'SnakeWhole', 25, ['ground'], None, False),
+    (56, 'Damagumo', 26, ['ground'], None, False),
+    (69, 'BigFoot', 26, ['ground'], None, False),
+    (75, 'Kabuto', 20, ['ground'], None, False),
+    # Titan Dweevil (73, lane 32, #246): pool boss placed only in the P1 boss
+    # arenas (#899; randomizer.p2_boss_arenas.apply_to_document writes its
+    # arena profile), like the Crawbster above.
+    (73, 'BigTreasure', 32, ['ground'], None, False),
+    # #898: Breadbug (PanModoki 38) binds campaign ground slots; its OWN
+    # campaign run bound spring_init_7002 (native TEKI_Collec placement type).
+    (38, 'PanModoki', 18, ['ground'], 8, False),
+    # #958: Giant Breadbug (OoPanModoki 40) runs the same OWN driver on the
+    # TEKI_Collec placement type. It is an IS_ENEMY_BOSS species but is admitted
+    # on ordinary slots only: no arena receipt exists (r9/r11 killed it, no carry).
+    (40, 'OoPanModoki', 18, ['ground'], 8, False),
+    # #948 (#951 U4): Careening Dirigibug (58) is an ordinary pool species
+    # (admitted #244). It hovers on the P1 flying vehicle TEKI_Napkid, so it
+    # takes ground slots (hover above the spot) and the flying-cohort air
+    # slots. Its first evidence run happened to use Distant Spring
+    # ``init.gen@7416`` (1787125272); that is evidence for that slot, not a
+    # restriction on the others.
+    (58, 'BombSarai', 27, ['ground', 'air'], None, False),
+    # #1042: the standalone Bulborb Larva (Baby 31, lane 24) is a 5-health ground crawler
+    # (source: Baby.cpp; 40 speed, root collision 25). It rides the TEKI_Swallow placement
+    # vehicle at larva scale like the Queen-born larvae and binds ordinary ground slots.
+    (31, 'Baby', 24, ['ground'], None, False),
+)
+
+# Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
+# docs/p2_ground_placement_facts.json). These are the terrain/space/water/home/
+# helper facts only; lane 04 keeps identity, cohort, family_lane, notes and
+# accepted_gates, so no entry here sets a cohort. `footprint_radius` is the
+# source root collision sphere and `helper_budget` is the manager group cap
+# (TamagoMushi: 10 surface / 30 cave; a 0-capacity slot cannot host the group).
+GROUND_INVERT_FACTS = {
+    'Armor': {
+        'terrains': ['ground'], 'footprint_radius': 40, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'ElecBug': {
+        'terrains': ['ground'], 'footprint_radius': 32.5, 'min_water_depth': 0,
+        'requires_burrow_ground': False, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'Imomushi': {
+        'terrains': ['ground'], 'footprint_radius': 17.5, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'TamagoMushi': {
+        'terrains': ['ground', 'underground'], 'footprint_radius': 18, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        # The 10/30 group cap is a manager parameter, not a slot need: 68 was
+        # admitted on ordinary slots with helper_capacity 0 (#871 roster wave),
+        # so the budget is 0 here (#948).
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'Sokkuri': {
+        'terrains': ['ground', 'mixed', 'water'], 'footprint_radius': 25, 'min_water_depth': 0,
+        'requires_burrow_ground': False, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'Hana': {
+        'terrains': ['ground'], 'footprint_radius': 75, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+}
+
+# Muse placement slice (#492): constraint profiles for Fuefuki41, Kurage57,
+# BombSarai58 and MiniHoudai78.
+#
+# Each entry records the generated slot its first evidence run used
+# (`evidence_slot_uid`) plus the P1 placement vehicle the family sidecar
+# binds. Since #948 the evidence slot is NOT written into
+# ``accepted_slot_uids``: a profile accepts every constraint-compatible slot,
+# and the evidence slot stays in the notes and the evidence documents
+# (CONTRIBUTING "Don't invent restrictions" rule 3). Profiles ship with empty
+# `accepted_gates`, so `evaluate` still denies every pair until admission.
+# Fields: source_id, identity, legacy_lane, muse_lane, terrains,
+# evidence_slot_uid, vehicle.
+MUSE_CANDIDATE_SPECS = (
+    # Antenna Beetle: ground follower on the Napkid11 vehicle (lane-28 pattern,
+    # cf. Sarai ground profile). Hope ground slot, renewable, corpse route.
+    (41, 'Fuefuki', 28, 57, ['ground'], 1254096625, 'Napkid11'),
+    # Lesser Spotted Jellyfloat: grounded Frog0 body vehicle (lane-29 sidecar
+    # `p2-kurage-teki.txt` grounds the proxy), so frog-cohort mixed slot.
+    # Navel mixed slot, renewable, corpse route.
+    (57, 'Kurage', 29, 58, ['mixed', 'ground'], 689702860, 'Frog0'),
+    # Careening Dirigibug: Napkid11 carrier vehicle (lane-27 sidecar
+    # `p2-bombsarai-teki.txt`); the 13-state carrier FSM drives from the
+    # vehicle position with hover above a ground slot. Spring ground slot,
+    # renewable, corpse route. The two Bomb payloads are family-internal and
+    # are not slot helpers (helper_budget stays 0).
+    (58, 'BombSarai', 27, 59, ['ground', 'air'], 1787125272, 'Napkid11'),
+    # Gatling Groink: live generated host actor with carcass sidecar (lane-21
+    # `p2-groink-teki.txt`); ground shooter, volley corridor is a family-run
+    # gate, not a placement constraint. Navel ground slot, renewable, corpse
+    # route.
+    (78, 'MiniHoudai', 21, 60, ['ground'], 328297937, 'GroinkHost'),
+)
+
+# Evidence slots of the #492 muse runs (source_id -> slot uid). Historic
+# record for the evidence documents and log correlation tools; native carries
+# no mirror of it since #948 (the compiled `MUSE_GENERATED_SLOT_*` constants
+# and `slot-rejected` refusals are gone) and nothing gates placement on it.
+MUSE_GENERATED_SLOTS = {
+    source_id: slot_uid for source_id, _, _, _, _, slot_uid, _ in MUSE_CANDIDATE_SPECS
+}
+
+MUSE_CANDIDATE_IDS = frozenset(MUSE_GENERATED_SLOTS)
+
+# Provider slice (#575): constraint profile for Waterwraith BlackMan99 so
+# consumer #572 can attempt a real gate1. This table is deliberately SEPARATE
+# from the #492 muse table so `MUSE_CANDIDATE_IDS` stays {41,57,58,78}.
+#
+# Evidence slot: 568677317 navel_0-29_645, stage-2 Navel water-cavern
+# generator, ground cohort, unprotected, renewable (respawn_days 5), corpse
+# route, radius 100. That is where the provider run happened; since #948 the
+# profile accepts every constraint-compatible ground slot with a corpse route
+# (the native `WATERWRAITH_GENERATED_SLOT_BLACKMAN99` constant is gone; the
+# encounter consumer joins the seed's own `p2-waterwraith-generated.txt`
+# sidecar generator/slot pair instead).
+# Vehicle: the lane-31 Waterwraith register seam owns behavior; the native
+# bind arm only records placement acceptance (bound=1), exactly like #492.
+# Tyre98 is the BlackMan manager child (enemyInfo.cpp child_count 1); it is
+# never an independently seeded identity and helper_budget stays 0.
+# Fields: source_id, identity, family_lane, consumer_lane, terrains,
+# accepted_slot_uid, vehicle.
+WATERWRAITH_CANDIDATE_SPEC = (
+    99, "BlackMan", 31, 572, ["ground"], 568677317, "WaterwraithHost",
+)
+
+WATERWRAITH_GENERATED_SLOTS = {
+    WATERWRAITH_CANDIDATE_SPEC[0]: WATERWRAITH_CANDIDATE_SPEC[5]
+}
+
+WATERWRAITH_CANDIDATE_IDS = frozenset(WATERWRAITH_GENERATED_SLOTS)
+WATERWRAITH_HELPER_IDS = frozenset({98})  # Tyre: manager child, never seeded
+
+# Candidate source_ids that are bosses and therefore require a lane-04 encounter
+# descriptor instead of a universal replacement profile. Tracked here so the
+# cohort is complete without silently admitting them.
+BOSS_COHORT = (
+    (71, 'UmiMushi', 16, ['water']),
+    (101, 'UmiMushiBlind', 16, ['water']),
+)
+
+# Encounter descriptors for the lane-16 aquatic bosses. A boss may only be
+# placed through one of these, and the campaign table contains no boss arena
+# slot, so a caller must supply boss slots explicitly. `footprint_radius` is 0
+# because no source arena size is extracted yet; `required_gates` are
+# requirements, not native proof.
+ENCOUNTER_SPECS = (
+    {
+        'id': 'umi_mushi_arena', 'identity': 'UmiMushi', 'source_id': 71, 'lane': 16,
+        'terrains': ['water'], 'helper_budget': 0, 'arena_slots': {'min': 1, 'max': 1},
+        'phases': 1, 'protected_drops': [],
+        'required_gates': ['arena', 'attack', 'suction', 'death', 'reward'],
+        'notes': 'Ranging Bloyster arena; no helper spawns; footprint unmeasured.',
+    },
+    {
+        'id': 'umi_mushi_blind_arena', 'identity': 'UmiMushiBlind', 'source_id': 101, 'lane': 16,
+        'terrains': ['water'], 'helper_budget': 0, 'arena_slots': {'min': 1, 'max': 1},
+        'phases': 1, 'protected_drops': [],
+        'required_gates': ['arena', 'attack', 'suction', 'death', 'reward'],
+        'notes': 'Toady Bloyster arena; no helper spawns; footprint unmeasured.',
+    },
+)
+
+
+def _campaign_index(campaign_sources):
+    index = {}
+    for row in campaign_sources:
+        index[row['uid']] = row
+    return index
+
+
+def slots_from_campaign(campaign_slots=CAMPAIGN_SLOTS, campaign_sources=CAMPAIGN_SOURCES):
+    """Adapt production campaign generators into default-deny slot records."""
+    sources = _campaign_index(campaign_sources)
+    slots = []
+    for row in campaign_slots:
+        cohort = row['cohort']
+        terrain = COHORT_TERRAIN[cohort]
+        source = sources.get(row['uid'], {})
+        position = row.get('position')
+        slots.append({
+            'uid': row['uid'],
+            'label': row['label'],
+            'stage': row['stage'],
+            'terrain': terrain,
+            'radius': DEFAULT_RADIUS,
+            'flight_space': terrain == 'air',
+            'burrow_ground': terrain in GROUND_TERRAINS,
+            'corpse_route': terrain in CORPSE_TERRAINS,
+            'protected': bool(source.get('protected', False)),
+            'first_day': row.get('first_day', 1),
+            'respawn_days': row.get('respawn_days', 0),
+            'source_identity': f"campaign:{cohort}:{row.get('original')}",
+            'cohort': cohort,
+            'evidence': {'xyz': bool(position), 'terrain': False, 'route': False},
+        })
+    return slots
+
+
+def _merge_unique(primary, secondary):
+    merged = {}
+    for record in primary:
+        merged[record['uid']] = record
+    for record in secondary:
+        merged.setdefault(record['uid'], record)
+    return [merged[uid] for uid in sorted(merged)]
+
+
+def _slot_from_legacy_row(row, terrain, source_identity, evidence):
+    radius = DEFAULT_RADIUS
+    return {
+        'uid': row['uid'],
+        'label': row.get('label', str(row['uid'])),
+        'stage': row.get('stage', 0),
+        'terrain': terrain,
+        'radius': radius,
+        'flight_space': terrain == 'air',
+        'burrow_ground': terrain in GROUND_TERRAINS,
+        'corpse_route': terrain in CORPSE_TERRAINS,
+        'first_day': row.get('first_day', 1),
+        'respawn_days': row.get('respawn_days', 0),
+        'source_identity': source_identity,
+        'evidence': dict(evidence),
+    }
+
+
+def _hex_to_float(value):
+    import struct
+    try:
+        return struct.unpack('>f', bytes.fromhex(value))[0]
+    except (ValueError, TypeError):
+        return DEFAULT_RADIUS
+
+
+def slots_from_adult_group(adult_slots=ADULT_SLOTS, group_slots=GROUP_SLOTS):
+    """Adapt the raw adult/group generator rows into default-deny slots."""
+    slots = []
+    for row in adult_slots:
+        slots.append(_slot_from_legacy_row(
+            row, 'ground', f"adult:{row.get('original')}",
+            {'xyz': bool(row.get('position')), 'terrain': False, 'route': False}))
+    for row in group_slots:
+        record = _slot_from_legacy_row(
+            row, 'ground', f"group:{row.get('original')}",
+            {'xyz': bool(row.get('position')), 'terrain': False, 'route': False})
+        record['radius'] = _hex_to_float(row.get('radius_hex'))
+        slots.append(record)
+    return slots
+
+
+def slots_from_generators(generator_slots=GENERATOR_SLOTS):
+    """Adapt generator-only rows; these carry a file offset but no XYZ yet."""
+    slots = []
+    for uid, stage, name, offset, kind, original in generator_slots:
+        slots.append({
+            'uid': uid,
+            'label': f"generator_{name}_{offset}",
+            'stage': stage,
+            'terrain': 'mixed',
+            'radius': DEFAULT_RADIUS,
+            'flight_space': False,
+            'burrow_ground': False,
+            'corpse_route': False,
+            'boss_slot': kind == 'boss',
+            'first_day': 1,
+            'respawn_days': 0,
+            'source_identity': f"generator:{kind}:{original}",
+            'evidence': {'xyz': False, 'terrain': False, 'route': False},
+        })
+    return slots
+
+
+def all_slots(campaign_slots=CAMPAIGN_SLOTS, campaign_sources=CAMPAIGN_SOURCES,
+              adult_slots=ADULT_SLOTS, group_slots=GROUP_SLOTS, generator_slots=GENERATOR_SLOTS,
+              include_generators=False):
+    """Return the merged concrete slot inventory across every real table.
+
+    Generator-only rows are excluded by default: they carry a file offset but no
+    extracted XYZ or terrain, so their terrain cannot be classified and they
+    would spuriously match every open-terrain profile. Pass
+    ``include_generators=True`` to inspect the raw inventory, but keep it out of
+    admission decisions until terrain evidence exists.
+    """
+    campaign = slots_from_campaign(campaign_slots, campaign_sources)
+    legacy = slots_from_adult_group(adult_slots, group_slots)
+    merged = _merge_unique(campaign, legacy)
+    if include_generators:
+        merged = _merge_unique(merged, slots_from_generators(generator_slots))
+    return merged
+
+
+def candidate_profiles():
+    """Return default-deny placement profiles for the non-boss candidate cohort."""
+    profiles = []
+    for source_id, identity, lane, terrains, p1_equivalent, requires_home in CANDIDATE_SPECS:
+        equivalent = 'none' if p1_equivalent is None else str(p1_equivalent)
+        cohort = P1_COHORT.get(p1_equivalent)
+        facts = GROUND_INVERT_FACTS.get(identity, {})
+        record = {
+            'identity': identity,
+            'terrains': list(facts.get('terrains', terrains)),
+            'family_lane': lane,
+            # Descriptive in the notes only; never a constraint (#948).
+            'cohort': None,
+            'requires_home': facts.get('requires_home', requires_home),
+            'requires_corpse_route': facts.get('requires_corpse_route', True),
+            'accepted_gates': [],
+            'notes': (f"P2 source_id {source_id}; lane-04 constraint seed; "
+                      f"p1_equivalent {equivalent}; placement cohort {cohort}; "
+                      f"requires_home {facts.get('requires_home', requires_home)}; "
+                      f"native placement gate pending family lane {lane}."),
+        }
+        for key in ('footprint_radius', 'min_water_depth', 'requires_burrow_ground', 'helper_budget'):
+            if key in facts:
+                record[key] = facts[key]
+        profiles.append(_placement.normalize_profile(record))
+    return profiles
+
+
+def boss_encounters():
+    """Return validated encounter descriptors for the lane-16 aquatic bosses."""
+    return [_placement.normalize_encounter_descriptor({
+        'id': spec['id'],
+        'identity': spec['identity'],
+        'terrains': list(spec['terrains']),
+        'footprint_radius': 0,
+        'helper_budget': spec['helper_budget'],
+        'arena_slots': dict(spec['arena_slots']),
+        'phases': spec['phases'],
+        'protected_drops': list(spec['protected_drops']),
+        'required_gates': list(spec['required_gates']),
+        'notes': spec['notes'],
+    }) for spec in ENCOUNTER_SPECS]
+
+
+def boss_profiles():
+    """Return default-deny boss profiles bound to the encounter descriptors.
+
+    These are only meaningful against caller-supplied boss arena slots; the
+    campaign table exposes none, so `build_document()` excludes them by default.
+    """
+    profiles = []
+    for spec in ENCOUNTER_SPECS:
+        profiles.append(_placement.normalize_profile({
+            'identity': spec['identity'],
+            'terrains': list(spec['terrains']),
+            'family_lane': spec['lane'],
+            'is_boss': True,
+            'encounter_descriptor': spec['id'],
+            'accepted_gates': [],
+            'notes': (f"P2 source_id {spec['source_id']}; lane-04 boss constraint; "
+                      f"requires encounter descriptor {spec['id']}; arena slot "
+                      f"not present in the campaign table."),
+        }))
+    return profiles
+
+
+def candidate_source_ids():
+    """Map lane-04 candidate identities to their lane-02 source ids."""
+    mapping = {identity: source_id for source_id, identity, *_ in CANDIDATE_SPECS}
+    mapping.update({identity: source_id for source_id, identity, *_ in BOSS_COHORT})
+    return mapping
+
+
+def muse_candidate_profiles():
+    """Return default-deny placement profiles for the #492 muse cohort.
+
+    One constraint profile per identity. `accepted_gates` stays empty so
+    `evaluate` denies every pair (fail closed) until admission; the profile
+    carries no `accepted_slot_uids`, so once admitted it accepts every
+    constraint-compatible slot (#948). The evidence slot is recorded in the
+    notes only.
+    """
+    profiles = []
+    for (source_id, identity, legacy_lane, muse_lane, terrains, slot_uid,
+            vehicle) in MUSE_CANDIDATE_SPECS:
+        profiles.append(_placement.normalize_profile({
+            'identity': identity,
+            'terrains': list(terrains),
+            'family_lane': legacy_lane,
+            'requires_corpse_route': True,
+            'accepted_gates': [],
+            'notes': (f"P2 source_id {source_id}; muse placement slice #492; "
+                      f"legacy lane {legacy_lane} / muse observer lane {muse_lane}; "
+                      f"vehicle {vehicle}; evidence slot {slot_uid} (evidence, not a "
+                      f"restriction, #948)."),
+        }))
+    return profiles
+
+
+def _merge_profiles(primary, secondary):
+    """Concatenate profile lists; an identity already in ``primary`` wins.
+
+    BombSarai (58) is both an ordinary candidate (#948) and a muse #492
+    candidate; the candidate profile carries its full constraint set.
+    """
+    names = {profile['identity'] for profile in primary}
+    return list(primary) + [profile for profile in secondary if profile['identity'] not in names]
+
+
+def muse_candidate_source_ids():
+    """Map muse-cohort identities to their lane-02 source ids."""
+    return {identity: source_id
+            for source_id, identity, *_ in MUSE_CANDIDATE_SPECS}
+
+
+def build_muse_document(slots=None, include_bosses=False):
+    """Return a validated document with base + muse-cohort profiles.
+
+    The default `build_document()` is unchanged (pinned lane-04 contract);
+    this parallel document is what packaging (#493) and the four gate
+    observers (#497-#500) consume for the 41/57/58/78 cohort.
+    """
+    if slots is None:
+        slots = all_slots()
+    profiles = _merge_profiles(candidate_profiles(), muse_candidate_profiles())
+    document = {
+        'schema': SCHEMA,
+        'slots': list(slots),
+        'profiles': profiles,
+        'notes': ('Lane-04 concrete candidate slots plus muse #492 candidate-only '
+                  'profiles for 41/57/58/78; default deny.'),
+    }
+    if include_bosses:
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document['profiles'] = ([p for p in profiles
+                                 if p["identity"] not in arena_names]
+                                + boss_profiles())
+        document['encounters'] = boss_encounters()
+    return _placement.validate_document(document)
+
+
+def binding_targets_for_muse_sources(source_ids, document=None):
+    """Return constraint-compatible uid targets for a muse-cohort source list."""
+    if document is None:
+        document = build_muse_document()
+    by_source = {source_id: identity
+                 for identity, source_id in muse_candidate_source_ids().items()}
+    identities = []
+    for source_id in source_ids:
+        identity = by_source.get(source_id)
+        if identity is None:
+            raise ValueError(f'source id {source_id} is not a muse #492 candidate')
+        identities.append(identity)
+    return binding_targets(identities, document=document)
+
+
+def waterwraith_candidate_profile():
+    """Return the default-deny placement profile for Waterwraith BlackMan99.
+
+    Mirrors `muse_candidate_profiles()`: one defensible accepted slot, empty
+    `accepted_gates` so `evaluate` still denies every pair, and no boss
+    encounter descriptor requirement (the generated-placement vehicle path is
+    the same one #492 uses; boss arena descriptors are a lane-04 aquatic-boss
+    concept and the campaign table carries no boss arena slot).
+    """
+    (source_id, identity, family_lane, consumer_lane, terrains, slot_uid,
+     vehicle) = WATERWRAITH_CANDIDATE_SPEC
+    return _placement.normalize_profile({
+        "identity": identity,
+        "terrains": list(terrains),
+        "family_lane": family_lane,
+        "requires_corpse_route": True,
+        "accepted_gates": [],
+        "helper_budget": 0,
+        "notes": ("P2 source_id %d; provider slice #575; family lane %d / "
+                  "consumer lane %d; vehicle %s; evidence slot %d (evidence, not a "
+                  "restriction, #948); Tyre98 is a manager child, never a seeded "
+                  "identity."
+                  % (source_id, family_lane, consumer_lane, vehicle, slot_uid)),
+    })
+
+
+def waterwraith_candidate_source_ids():
+    """Map the Waterwraith identity to its lane-02 source id."""
+    return {WATERWRAITH_CANDIDATE_SPEC[1]: WATERWRAITH_CANDIDATE_SPEC[0]}
+
+
+def waterwraith_accepted_slot(source_id=WATERWRAITH_CANDIDATE_SPEC[0]):
+    """Accepted generated slot for Waterwraith99, or None for any other id."""
+    return WATERWRAITH_GENERATED_SLOTS.get(source_id)
+
+
+def build_waterwraith_document(slots=None, include_bosses=False):
+    """Return a validated document with base + muse + Waterwraith profiles.
+
+    `build_document()` and `build_muse_document()` are unchanged; this parallel
+    document is what consumer #572 consumes for the source99 cohort.
+    """
+    if slots is None:
+        slots = all_slots()
+    profiles = _merge_profiles(candidate_profiles(), muse_candidate_profiles())
+    profiles = profiles + [waterwraith_candidate_profile()]
+    document = {
+        "schema": SCHEMA,
+        "slots": list(slots),
+        "profiles": profiles,
+        "notes": ("Lane-04 concrete candidate slots plus muse #492 candidate-only "
+                  "profiles for 41/57/58/78 and the #575 Waterwraith99 profile; "
+                  "default deny."),
+    }
+    if include_bosses:
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document["profiles"] = ([p for p in profiles
+                                 if p["identity"] not in arena_names]
+                                + boss_profiles())
+        document["encounters"] = boss_encounters()
+    return _placement.validate_document(document)
+
+
+def binding_targets_for_waterwraith(source_id=WATERWRAITH_CANDIDATE_SPEC[0],
+                                    document=None):
+    """Constraint-compatible uid targets for Waterwraith99, or raise."""
+    by_source = {sid: name
+                 for name, sid in waterwraith_candidate_source_ids().items()}
+    identity = by_source.get(source_id)
+    if source_id not in WATERWRAITH_CANDIDATE_IDS or identity is None:
+        raise ValueError("source id %r is not the #575 Waterwraith candidate" % (source_id,))
+    if document is None:
+        document = build_waterwraith_document()
+    return binding_targets([identity], document=document)
+
+
+def waterwraith_generated_triple(log_text):
+    """Real generation-to-seed source99-to-bind correlation API.
+
+    Parses one engine log and reports the correlated triple #572 needs:
+    `P2_SEED_RESOLVE source_id=99 target=<uid>` and a matching
+    `P2_GENERATED_PLACEMENT source_id=99 target=<uid> generator=<g> bound=1`
+    on the SAME target uid. A bound=0 refusal, a missing leg, a target
+    mismatch or a different source id yields correlated False with the exact
+    reason. Pure text function; it emits nothing and never fabricates a marker.
+    """
+    import re as _re
+    source_id = WATERWRAITH_CANDIDATE_SPEC[0]
+    resolve_re = _re.compile(r"P2_SEED_RESOLVE source_id=(\d+) target=(\d+)")
+    bind_re = _re.compile(
+        r"P2_GENERATED_PLACEMENT source_id=(\d+) target=(\d+)"
+        r"(?: generator=(\d+))? bound=(\d)(?: reason=(\S+))?")
+    resolve = None
+    bind = None
+    for line in (log_text or "").splitlines():
+        found = resolve_re.search(line)
+        if found and int(found.group(1)) == source_id:
+            resolve = int(found.group(2))
+        found = bind_re.search(line)
+        if found and int(found.group(1)) == source_id:
+            bind = (int(found.group(2)), int(found.group(3) or 0),
+                    found.group(4), found.group(5))
+    reason = None
+    if resolve is None and bind is None:
+        reason = "no-source99-legs"
+    elif resolve is None:
+        reason = "missing-seed-resolve"
+    elif bind is None:
+        reason = "missing-generated-placement"
+    elif bind[2] != "1":
+        reason = "bind-refused:" + (bind[3] or "unbound")
+    elif bind[0] != resolve:
+        reason = "resolve-bind-uid-mismatch"
+    return {
+        "source_id": source_id,
+        "resolved_uid": resolve,
+        "bound_uid": bind[0] if bind else None,
+        "generator": bind[1] if bind else None,
+        "accepted_uid": WATERWRAITH_GENERATED_SLOTS[source_id],
+        "correlated": reason is None,
+        "reason": reason,
+    }
+
+
+def targets_by_identity(document=None):
+    """Return constraint-compatible slot targets per identity as uid tokens.
+
+    A target token is the slot's integer `uid` rendered as a string, matching the
+    existing native `ENEMY_CAMPAIGN` generator keying. Lane 03 consumes these
+    tokens as its flat binding-target list.
+    """
+    document = document if document is not None else build_document()
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    result = {}
+    for profile in document['profiles']:
+        targets = [str(slot['uid']) for slot in document['slots']
+                   if not _placement.compatibility(slot, profile, encounters)]
+        result[profile['identity']] = sorted(targets, key=int)
+    return result
+
+
+def binding_targets(identities, document=None, targets=None):
+    """Return constraint-compatible uid targets for *every* identity in `identities`.
+
+    This does not enforce accepted placement evidence.
+    Because lane 03 binds a flat target list to a cohort, a target is compatible
+    when every cohort member accepts it: this is the intersection of the members'
+    compatible targets. An empty result means the cohort is not homogeneous enough
+    for the flat contract and needs per-identity targets instead.
+    """
+    by_identity = targets if targets is not None else targets_by_identity(document)
+    names = list(identities)
+    if not names:
+        raise ValueError('cohort is empty')
+    unknown = [name for name in names if name not in by_identity]
+    if unknown:
+        raise ValueError(f'unknown candidate identities: {", ".join(unknown)}')
+    common = set.intersection(*(set(by_identity[name]) for name in names))
+    return sorted(common, key=int)
+
+
+def identities_for_sources(source_ids, document=None):
+    """Map lane-02 source ids to the identity names in ``document``.
+
+    The hand tables above (``CANDIDATE_SPECS``, the muse and Waterwraith
+    specs) are consulted first; any other id resolves through the roster
+    (``docs/PIKMIN2_ENEMY_ROSTER.json`` enum names), so a newly admitted
+    species needs no Python tuple edit to be placeable (#948, #951 U10). An
+    id whose identity has no profile in ``document`` raises.
+    """
+    known = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    known.update({source_id: identity for identity, source_id in muse_candidate_source_ids().items()})
+    known.update({source_id: identity for identity, source_id in waterwraith_candidate_source_ids().items()})
+    profiles = None
+    if document is not None:
+        profiles = {profile.get('identity') for profile in document.get('profiles', [])}
+    identities = []
+    for source_id in source_ids:
+        identity = known.get(source_id)
+        if identity is None:
+            from experimental.pikmin2_enemy_roster import load_roster
+            for entry in load_roster():
+                if entry.source_id == source_id:
+                    identity = entry.enum_name
+                    break
+        if identity is None:
+            raise ValueError(f'source id {source_id} is not a roster identity')
+        if profiles is not None and identity not in profiles:
+            raise ValueError(f'source id {source_id} ({identity}) has no placement profile')
+        identities.append(identity)
+    return identities
+
+
+def binding_targets_union_for_sources(source_ids, document):
+    """Return the union of constraint-compatible targets over ``source_ids``.
+
+    This is the ordinary target set a seed may fill (#948): every slot at
+    least one of the listed identities can physically occupy, sorted by uid.
+    The bridge pairs each target with the identities the document *accepts*
+    there. (`binding_targets` below is the older flat-cohort intersection.)
+    """
+    identities = identities_for_sources(source_ids, document)
+    by_identity = targets_by_identity(document)
+    union = set()
+    for identity in identities:
+        union.update(by_identity.get(identity, ()))
+    return sorted(union, key=int)
+
+
+def binding_targets_for_sources(source_ids, document=None):
+    """Return binding targets for a lane-02 source-id cohort (non-boss).
+
+    Accepts both lane-04 candidates and the muse #492 candidate cohort
+    (41/57/58/78). A cohort that contains any muse candidate is evaluated
+    against the base+muse document, because the default lane-04 document does
+    not carry the muse profiles; a lane-04-only cohort keeps the caller's
+    document (or the default lane-04 document) unchanged. Ids outside the
+    hand tables resolve through the roster (#948).
+    """
+    lane04 = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    muse = {source_id: identity for identity, source_id in muse_candidate_source_ids().items()}
+    uses_muse = any(source_id in MUSE_CANDIDATE_IDS for source_id in source_ids)
+    muse_names = {identity for _, identity, *_ in MUSE_CANDIDATE_SPECS}
+    if uses_muse:
+        # Constraint targets only; the caller's document still supplies the
+        # accepted placement evidence checked later by resolve_placement_layout.
+        # Substitute the base+muse document only when the caller passed a
+        # non-empty document that lacks the muse profiles; an empty document
+        # stays empty so the cohort still fails closed.
+        provided_has_muse = bool(document) and any(
+            profile.get('identity') in muse_names for profile in document.get('profiles', []))
+        if document is None or (document.get('slots') and not provided_has_muse):
+            document = build_muse_document()
+    elif document is None:
+        document = build_document()
+    identities = identities_for_sources(source_ids, document)
+    return binding_targets(identities, document=document)
+
+
+def binding_target_groups(document=None):
+    """Group candidate identities by placement cohort and intersect their targets."""
+    document = document if document is not None else build_document()
+    by_identity = targets_by_identity(document)
+    groups = {}
+    for profile in document['profiles']:
+        groups.setdefault(profile['cohort'] or 'open', []).append(profile['identity'])
+    report = {}
+    for key, identities in groups.items():
+        report[key] = {
+            'identities': sorted(identities),
+            'targets': binding_targets(identities, targets=by_identity),
+        }
+    return {'by_identity': by_identity, 'groups': report, 'source_ids': candidate_source_ids()}
+
+
+def build_document(slots=None, profiles=None, include_bosses=False):
+    """Return a validated `p2-placement-v1` document for the candidate cohort.
+
+    ``include_bosses`` adds the lane-16 boss profiles and their encounter
+    descriptors. Only pass it with caller-supplied boss arena slots; the default
+    campaign slots are not boss arenas.
+    """
+    if slots is None:
+        slots = all_slots()
+    if profiles is None:
+        profiles = candidate_profiles()
+    document = {
+        'schema': SCHEMA,
+        'slots': list(slots),
+        'profiles': list(profiles),
+        'notes': 'Lane-04 concrete candidate slots (campaign + adult/group) and P2 candidate profiles; default deny.',
+    }
+    if include_bosses:
+        # The roster wave admits UmiMushi/UmiMushiBlind as ordinary ground
+        # candidates too; the arena-descriptor versions win when a caller
+        # explicitly asks for boss arenas so the document keeps unique
+        # identities.
+        arena_names = {p["identity"] for p in boss_profiles()}
+        document["profiles"] = [p for p in profiles
+                                if p["identity"] not in arena_names] + boss_profiles()
+        document['encounters'] = boss_encounters()
+    return _placement.validate_document(document)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--document', type=Path, default=None,
+                        help='write the built placement document JSON to this path')
+    parser.add_argument('--summary', action='store_true', help='print per-identity compatibility counts')
+    parser.add_argument('--report', type=Path, default=None,
+                        help='write the compatibility report JSON to this path')
+    parser.add_argument('--boss-descriptors', action='store_true',
+                        help='print the lane-16 boss encounter descriptors and exit')
+    parser.add_argument('--targets', action='store_true',
+                        help='print lane-03 binding targets per identity and placement cohort')
+    args = parser.parse_args(argv)
+
+    if args.boss_descriptors:
+        print(json.dumps(boss_encounters(), indent=2))
+        return 0
+    if args.targets:
+        print(json.dumps(binding_target_groups(), indent=2))
+        return 0
+
+    document = build_document()
+    report = _placement.compatibility_report(document)
+    if args.document:
+        args.document.write_text(json.dumps(document, indent=2))
+    if args.report:
+        args.report.write_text(json.dumps(report, indent=2))
+    if args.summary:
+        summary = {
+            'schema': report['schema'],
+            'encounter_schema': ENCOUNTER_SCHEMA,
+            'slots': report['slots_evaluated'],
+            'identities': report['identities_evaluated'],
+            'compatible': {
+                identity: row['compatible_slots']
+                for identity, row in report['identity_compatibility'].items()
+            },
+            'unplaceable_identities': report['unplaceable_identities'],
+            'boss_cohort': [{'source_id': sid, 'identity': name, 'lane': lane, 'terrains': terrains}
+                            for sid, name, lane, terrains in BOSS_COHORT],
+        }
+        print(json.dumps(summary, indent=2))
+    elif not args.document and not args.report:
+        print(json.dumps(report, indent=2))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

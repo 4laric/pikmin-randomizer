@@ -31,6 +31,16 @@ def atomic_write(path, text):
             time.sleep(0.01)
 
 
+def death_link_summary(manifest, data):
+    """One status line; empty when the seed has no DeathLink."""
+    if not manifest.get("death_link"):
+        return ""
+    unit = manifest["death_link_pikmin"]
+    deaths = data.get("pikmin_deaths", 0)
+    return (f"DeathLink {unit}-Pikmin units: received {data.get('death_links_received', 0)}, "
+            f"sent {deaths // unit}, {deaths % unit}/{unit} deaths toward the next")
+
+
 class Session:
     def __init__(self, manifest, directory):
         self.manifest = manifest
@@ -42,6 +52,12 @@ class Session:
         self.rewards = solo_rewards(manifest) if manifest["mode"] == "solo" else {}
         self.data = dict(schema=1, fingerprint=self.fingerprint, checked=[], received=[], ap_identity=None)
         if manifest.get("goal_mode") == "emperor_bulblax": self.data["emperor_defeated"] = False
+        if manifest.get("death_link"):
+            # Ordinary Pikmin deaths accumulate across days and reconnects; the
+            # remainder below one unit is never lost. Received links are counted
+            # for display; the native game only applies links received while running.
+            self.data["pikmin_deaths"] = 0
+            self.data["death_links_received"] = 0
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
             if (type(loaded) is not dict or set(loaded) != set(self.data)
@@ -59,6 +75,8 @@ class Session:
             if manifest["mode"] == "solo" and (loaded["received"] or identity is not None):
                 raise ValueError("solo save contains AP state")
             if "emperor_defeated" in loaded and type(loaded["emperor_defeated"]) is not bool: raise ValueError("invalid emperor state")
+            for key in ("pikmin_deaths", "death_links_received"):
+                if key in loaded and (type(loaded[key]) is not int or loaded[key] < 0): raise ValueError("invalid death link state")
             self.data = loaded
         # Native delivery is fsynced before the runner sees it. Recover complete
         # records from older runs if the runner was interrupted before its save.
@@ -68,7 +86,30 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
-            if len(fields) != ((23 if manifest['schema'] >= 9 else 21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) + (2 if 'starting_flarlic' in manifest else 0) + (16 if 'color_stats' in manifest else 0) + (2 if manifest.get('progressive_color_stats') else 0) + (2 if manifest.get('benefit_items') else 0) + (33 if 'spawn_layout' in manifest else 0) + (27 if 'group_layout' in manifest else 0) + (2 if manifest.get('miniboss_enemies') and 'campaign_layout' not in manifest else 0) + (5 + 2 * len(manifest['campaign_layout']['assignments']) if 'campaign_layout' in manifest else 0)) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
+            # The seed-bound captain extension is last, after optional Purple.
+            # Never infer opt-in from a journal belonging to a legacy manifest.
+            if manifest.get('p2_second_captain'):
+                if fields[-3:] != ['CAPTAINS', '2', 'END']:
+                    raise ValueError('native journal second-captain mode mismatch')
+                fields = fields[:-3] + ['END']
+            if 'CAPTAINS' in fields:
+                raise ValueError('native journal second-captain mode mismatch')
+            # Purple is a pinned session option, not a seed schema extension.
+            # Normalize only its exact native suffix before the legacy count
+            # check; unknown modes and non-P2 seeds must still fail closed.
+            if 'p2_layout' in manifest and fields[-3:] == ['PURPLE', '1', 'END']:
+                fields = fields[:-3] + ['END']
+            if 'enemy_catalog' in manifest:
+                from .enemy_catalog import bootstrap as catalog_bootstrap
+                extension = catalog_bootstrap(manifest).split()
+                if fields[-len(extension)-1:-1] != extension:
+                    raise ValueError('native journal check catalog mismatch')
+                fields = fields[:-len(extension)-1] + ['END']
+            if manifest.get('p2_proxy_tier'):
+                if fields[-3:] != ['P2_PROXY_TIER', '1', 'END']:
+                    raise ValueError('native journal proxy tier mismatch')
+                fields = fields[:-3] + ['END']
+            if len(fields) != ((23 if manifest['schema'] >= 9 else 21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) + (2 if 'starting_flarlic' in manifest else 0) + (16 if 'color_stats' in manifest else 0) + (2 if manifest.get('progressive_color_stats') else 0) + (2 if manifest.get('benefit_items') else 0) + (2 if manifest.get('progressive_maturity') else 0) + (3 if manifest.get('progressive_day_length') else 0) + (2 if manifest.get('whistle_pluck_item') else 0) + (33 if 'spawn_layout' in manifest else 0) + (27 if 'group_layout' in manifest else 0) + (2 if manifest.get('miniboss_enemies') and 'campaign_layout' not in manifest else 0) + (5 + 2 * len(manifest['campaign_layout']['assignments']) if 'campaign_layout' in manifest else 0) + (2 if manifest.get('death_link') else 0) + (4 + 2 * len(manifest['p2_layout']['bindings']) if 'p2_layout' in manifest else 0)) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
             for line in data[:data.rfind(b"\n") + 1].splitlines():
@@ -98,6 +139,24 @@ class Session:
 
     def save(self):
         atomic_write(self.path, json.dumps(self.data, indent=2) + "\n")
+
+    @property
+    def death_link_unit(self):
+        return self.manifest["death_link_pikmin"] if self.manifest.get("death_link") else 0
+
+    def record_deaths(self, count):
+        """Ordinary (non-induced) Pikmin deaths reported by the native game."""
+        if not self.death_link_unit or type(count) is not int or count < 0:
+            raise ValueError("invalid death report")
+        if count:
+            self.data["pikmin_deaths"] += count
+            self.save()
+
+    def receive_death_link(self):
+        if not self.death_link_unit:
+            raise ValueError("death link disabled for this seed")
+        self.data["death_links_received"] += 1
+        self.save()
 
     def collect(self, name):
         if name not in self.names:
@@ -156,10 +215,13 @@ class Session:
             indices = [str(i) for i, n in enumerate(self.names) if n in self.data['checked']]
             checks = 'CHECKS ' + str(len(indices)) + (' ' + ' '.join(indices) if indices else '')
         emperor = (" EMPEROR " + str(int(self.data["emperor_defeated"]))) if self.manifest.get("goal_mode") == "emperor_bulblax" else ""
+        # The native game treats the first value it reads as its baseline, so
+        # links received while the game was closed are never replayed.
+        death_link = (" DEATHLINK " + str(self.data["death_links_received"])) if self.death_link_unit else ""
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:
             flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])
-            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)}{emperor} END\n"
+            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)}{emperor}{death_link} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 

@@ -137,6 +137,7 @@ public:
     bool isStarted() const { return mStarted; }
     int nodeCount() const { return mNodeCount; }
     float armAngle(int arm) const;
+    float nodeRatio(int index) const; // source node extent ratio (BTA :1315+)
     bool isClockwise() const { return mClockwise; }
 
     // `bittered` freezes arm rotation (BTA :1440-1457).

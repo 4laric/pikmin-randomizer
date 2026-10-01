@@ -30,10 +30,11 @@ from pathlib import Path
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
 from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nodes
+from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Concrete, spawnable dweevil family. IDs from include/Game/enemyInfo.h:
 # FireOtakara/WaterOtakara/GasOtakara/ElecOtakara at 118-121, BombOtakara at
@@ -51,7 +52,7 @@ HAZARDS = {'Hiba': 20, 'GasHiba': 21, 'ElecHiba': 22}
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # enemyInfo.cpp:96-99,110 alias every dweevil onto the FireOtakara model/anim
 # bank; OtakaraBaseMgr.cpp:24-69 shares the first loaded model/anim across the
@@ -368,6 +369,15 @@ def extract(iso, source, output, pose_limit=6):
             rows = animation_rows(
                 params[SHARED_PARM + '/enemyanimmgr.txt'].decode('shift_jis'))
             info = profile(species, blocks_list, rows)
+            # Retail texture swap baked in for species the native draw path
+            # does not tint (BombOtakara; #895). The four RUNTIME_TINTED
+            # dweevils keep the placeholder and get p2batch2tint at draw time.
+            if species in change_texture.RUNTIME_TINTED:
+                baked_model, swaps = model, []
+            else:
+                baked_model, swaps = change_texture.apply(model, species, read)
+            if swaps:
+                info['change_textures'] = swaps
             info.update(model_sha256=sha(model), joints=names,
                         change_texture=CHANGE_TEXTURES[species],
                         metadata_sha256=metadata,
@@ -399,12 +409,8 @@ def extract(iso, source, output, pose_limit=6):
                 for number, frame in enumerate(frames):
                     try:
                         tolerances = TOLERANCES.get(species, {})
-                        _, pose = bca_pose(raw, frame, len(names),
-                                           allow_scale=True)
-                        matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(model, True, bake_rigid=True,
-                                         draw_matrices=matrices,
-                                         **tolerances)
+                        decoded, pose = decode_pose(decode, baked_model, model_blocks, raw, frame,
+                                                    len(names), **tolerances)
                         name = f'ota_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name,
                                                  'enemy.bmd')
@@ -460,9 +466,11 @@ def extract(iso, source, output, pose_limit=6):
             report['hazards'][species] = classification
 
         report['limitations'] = list(LIMITATIONS)
-        report['extract_seconds'] = round(time.perf_counter() - started, 3)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
         (output / 'dweevils.json').write_bytes(
-            (json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
+            (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
+        report['extract_seconds'] = round(time.perf_counter() - started, 3)
         (output / 'p2-dweevils.txt').write_text(TEXT)
         return report
 

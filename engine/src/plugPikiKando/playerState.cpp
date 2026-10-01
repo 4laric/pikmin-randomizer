@@ -22,6 +22,9 @@
 #include "bugprint.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT)
+#include "settings/pc_settings.h"
+#endif
 
 int PlayerState::totalUfoParts = MAX_UFO_PARTS;
 
@@ -89,7 +92,13 @@ void TimeGraph::set(u16 time, int color, int num)
 {
 	int entryIdx = time - mStartTime;
 	if (entryIdx < 0 || entryIdx >= (mEndTime - mStartTime + 1)) {
+#if defined(PIKI_PC_PORT)
+		// Una hora fuera del día (p. ej. la tecla F6 pasando del atardecer) no
+		// tiene casilla en el gráfico: se ignora en vez de parar el juego.
+		return;
+#else
 		ERROR("illegal time int %d\n", time);
+#endif
 	}
 	mEntries[entryIdx].set(color, num);
 }
@@ -243,6 +252,13 @@ PlayerState::PlayerState()
 	mPerHourGraph.create(getStartHour(), getEndHour());
 	mPerDayGraph.create(0, getTotalDays());
 	mIsTutorialMode = true;
+#if defined(PIKI_PC_PORT)
+	if (pc_unlock_all_stages()) {
+		// Sin cinemáticas de introducción: todas las banderas de demo puestas.
+		for (int d = 0; d < DEMOFLAG_COUNT; d++) mDemoFlags.setFlagOnly(d);
+		mIsTutorialMode = false;
+	}
+#endif
 	for (i = 0; i < STAGE_COUNT; i++) {
 		mStagePartsCollected[i] = 0;
 	}
@@ -357,8 +373,44 @@ bool PlayerState::isBbftRestoredPart(u32 id)
     return name && part && part != mCurrentRepairingPart && hasUfoParts(id) && pc_bbft_checked(name);
 }
 
+#if defined(PIKI_PC_PORT)
+bool pc_unlock_all_stages()
+{
+	static int cached = -1;
+	if (cached < 0) {
+		const char* v = getenv("PIKMIN_UNLOCK_ALL");
+		cached        = (v && *v && *v != '0') ? 1 : 0;
+	}
+	return cached == 1;
+}
+#endif
+
+#if defined(PIKI_PC_PORT)
+bool pc_cheat_unlock_zones()
+{
+	return pc_settings_get_unlock_zones() != 0;
+}
+
+// Cheat "All Onions": se escribe en la partida, igual que al descubrirlas.
+static void pcCheatGiveOnions(PlayerState* ps)
+{
+	if (!pc_settings_get_all_onions()) return;
+	ps->setContainer(Yellow);
+	ps->setDisplayPikiCount(Yellow);
+	ps->setContainer(Blue);
+	ps->setDisplayPikiCount(Blue);
+}
+#endif
+
 bool PlayerState::courseOpen(int courseID)
 {
+#if defined(PIKI_PC_PORT)
+	if (pc_unlock_all_stages() && courseID >= STAGE_START && courseID <= STAGE_TESTMAP) return true;
+	pcCheatGiveOnions(this);
+	if (pc_cheat_unlock_zones() && courseID >= STAGE_START && courseID <= STAGE_Last) {
+		SET_STAGE_OPEN(gameflow.mPlayState.mCourseOpenFlags, courseID);
+	}
+#endif
     if (pc_bbft_skip_tutorial() && courseID == STAGE_Practice)
         return pc_randomizer_enabled() && pc_randomizer_has("Pikmin: Impact Site Access");
     if (pc_bbft_progression()) {
@@ -663,6 +715,10 @@ void PlayerState::loadCard(RandomAccessStream& data)
  */
 bool PlayerState::isTutorial()
 {
+#if defined(PIKI_PC_PORT)
+	// Modo de prueba (PIKMIN_UNLOCK_ALL): sin tutorial, directo al mapa.
+	if (pc_unlock_all_stages()) return false;
+#endif
 	if (flowCont.mCurrentStage && flowCont.mCurrentStage->mStageID != STAGE_Practice) {
 		return false;
 	}
@@ -804,6 +860,9 @@ void PlayerState::initCourse()
 	mPerHourGraph.init();
 	setNavi(false);
 	setDayEnd(false);
+#if defined(PIKI_PC_PORT)
+	pcCheatGiveOnions(this);
+#endif
 	mHasExtinctionDemoPlayed = false;
 	mNaviLightEfx            = new PermanentEffect;
 	mNaviLightGlowEfx        = new PermanentEffect;

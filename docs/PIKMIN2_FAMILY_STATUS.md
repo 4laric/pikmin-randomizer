@@ -1,5 +1,29 @@
 # P2 enemy family — ownership and next-step status
 
+Latest integrated baseline and acceptance: [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION_437.md). Older queue entries below are historical and must be checked against this continuation.
+
+Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
+
+Current integration disposition: [integration sweep #456](PIKMIN2_INTEGRATION_456.md).
+Read this before interpreting historical integrated/candidate claims below.
+
+## Current audit notice — #434
+
+Read [the refreshed full-implementation/randomizer audit](PIKMIN2_FULL_IMPL_BLOCKERS.md)
+for current readiness. The table and handoffs below are a historical lane snapshot,
+not proof of registration in draft #432. In particular, the hard-lane export
+`87204df` is present on worker branches but absent from the audited draft; its
+BombSarai/Fuefuki/Titan seam still needs reconciliation. Newer ground-six,
+Mar/Tadpole, cannon and lifecycle/reward candidates also need integration review.
+King's #422 fixture gates and Pelplant's integrated rebind are no longer pending.
+The newer Jellyfloat lane has an arena, but natural flight/suction remains open.
+
+Ordinary seed generation still uses P1 pools. Family mechanics acceptance and
+production P2 randomizer eligibility must be tracked separately. The linked audit
+lists the required roster, placement, asset-install, reward and persistence bridge.
+
+## Family evidence index
+
 Family evidence summaries: this file. Live lane execution, resources, recovery and dispatch use [the workflow registry](PIKMIN2_WORKFLOW.md). Batch history and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
 
 Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is a family evidence index, not an authoritative active-worker list. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
@@ -23,7 +47,7 @@ Shared, serialized resources: the maintained `native/` build/export and shared r
 | Empress/Emperor Bulblax & larvae | #172 | #217 ✅ (+#120) | #389 ✅ install+arena+runtime; #392 ✅ material profile; #400 ✅ Baby captain bite; #415 ✅ King death gate; #416 ✅ Queen envmap converter interface; #239 ✅ BTK decoder | `pc_p2_bulblax_visual` + `pc_p2_queen`/`pc_p2_king` actors (six-lane; export synced on `opencode/p2-batch5-bulblax`) | P2 mechanics (Queen #256 gates PASS incl. Baby attack + envmap interface; King #289 gates PASS incl. death + deterministic bombs + WarCry/cross-Emperor; #239 material profiled + envmap (static + BTK-animated) + TTK1 BTK decoder) | integration review of the opt-in envmap override + final native export sweep | this session (batch 5) |
 | Jellyfloat | #243 | worktree | arena staged | `pc_p2_kurage_*` + `pc_p2_onikurage_*` (#243, species lane) | Kurage source FSM + flight/suction policy + full ingestion lifecycle (unit + runtime PASS); **OniKurage** shared-base variant PASS (Drop + two mouth slots) | material/opacity; live captain capture/release; mixed-scene density budget | species lane |
 | Bumbling Snitchbug / Demon family | #215–#242 | many slices | partial | `pc_p2_demon*` worktrees | P2 mechanics | consolidate drop/capture gates | other agent |
-| Beetles / Breadbug / Mamuta | #168 | #212–#214 ✅ | #219–#221 ✅ | `pc_p2_kogane/mamuta/...` committed | P2 mechanics | runtime gates | other agent |
+| Beetles / Breadbug / Mamuta | #168 | #212–#214 ✅ | #219–#221 ✅ | `pc_p2_kogane/mamuta/...` committed | P2 mechanics | Mamuta death/corpse gate PASS ([PIKMIN2_MAMUTA_DEATH.md](PIKMIN2_MAMUTA_DEATH.md)); natural territory/flick/natural-kill proxy gates PASS ([PIKMIN2_MAMUTA_NATURAL.md](PIKMIN2_MAMUTA_NATURAL.md)); remaining runtime gates: beetle reload/re-entry, breadbug cargo/score, mamuta natural transport/reward + intermittent attack1-draw abort + shared-semantic flags | this session (Mamuta) / other agent |
 
 ## Handoffs / integration queue
 

@@ -1,0 +1,355 @@
+"""P2 boss arenas (#899, owner ruling 2026-09-29 #3).
+
+Pins the catalogue against the spawn inventory and the native mirror, the
+placement document's arena slots, and the seed contract: arena bosses are
+placed only in boss arenas (their own RNG stream, sampled per seed), and the
+ordinary layout is exactly the layout of the same pool without the bosses.
+"""
+import copy
+import json
+import os
+import re
+import unittest
+from pathlib import Path
+
+from experimental.pikmin2_enemy_roster import load_and_validate
+from experimental.pikmin2_seed_bridge import (BOSS_ARENA_KEY, SeedBridgeError, arena_boss_ids,
+                                              resolve_placement_layout, validate_layout)
+from randomizer import p2_boss_arenas as arenas
+from randomizer.p2_placement import audit, validate_document
+from randomizer.seed import P2_REQUIRES_PURPLE, PLAYABLE_P2_SPECIES, generate, validate
+
+# #958: P2_REQUIRES_PURPLE is generic and empty today (the Giant Breadbug 40 needs no Purple); the bridge-level tests below use the default pool
+# unless they say otherwise.
+DEFAULT_POOL = sorted(s for s in PLAYABLE_P2_SPECIES if s not in P2_REQUIRES_PURPLE)
+from randomizer.spawn_data import GENERATOR_SLOTS
+
+ROOT = Path(__file__).resolve().parents[1]
+DOCUMENT = ROOT / "docs" / "PIKMIN2_ADMITTED_PLACEMENT.json"
+
+
+def _native_policy():
+    candidates = []
+    if os.environ.get("PIKMIN_NATIVE_ROOT"):
+        candidates.append(Path(os.environ["PIKMIN_NATIVE_ROOT"]))
+    candidates.append(ROOT / "native")
+    for base in candidates:
+        path = base / "pc_port" / "pc_p2_boss_arena_policy.h"
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    return None
+
+
+def _document():
+    return json.loads(DOCUMENT.read_text(encoding="utf-8"))
+
+
+def _strip_arenas(document):
+    """The same document with the arena slots and arena records removed."""
+    stripped = copy.deepcopy(document)
+    arena_uids = {arena["spawn_uids"][0] for arena in arenas.P1_BOSS_ARENAS}
+    stripped["slots"] = [s for s in stripped["slots"] if s["uid"] not in arena_uids]
+    stripped.pop("arenas", None)
+    return stripped
+
+
+class CatalogueTests(unittest.TestCase):
+    def test_every_arena_uid_is_a_real_p1_boss_generator(self):
+        rows = {uid: (stage, name, offset, kind, species)
+                for uid, stage, name, offset, kind, species in GENERATOR_SLOTS}
+        for arena in arenas.P1_BOSS_ARENAS:
+            for uid in arena["spawn_uids"] + arena["suppress_uids"]:
+                self.assertIn(uid, rows, (arena["id"], uid))
+                stage, _, _, kind, _ = rows[uid]
+                self.assertEqual(stage, arena["stage"], (arena["id"], uid))
+                self.assertEqual(kind, arena["p1_kind"], (arena["id"], uid))
+            _, _, _, _, species = rows[arena["spawn_uids"][0]]
+            self.assertEqual(species, arena["p1_type"], arena["id"])
+
+    def test_every_p1_boss_spawn_is_catalogued(self):
+        # GenObjectBoss Spider/Snake/Slime/King/BoxSnake; Kogane/Pom/KingBack
+        # and geysers are not bosses.
+        catalogued = set(arenas.all_arena_uids())
+        missing = [uid for uid, stage, _, _, kind, species in GENERATOR_SLOTS
+                   if kind == "boss" and species in (0, 1, 2, 3, 7) and uid not in catalogued]
+        self.assertEqual(missing, [])
+
+    def test_hope_cannon_beetle_stays_an_ordinary_slot(self):
+        self.assertNotIn(2506165730, arenas.all_arena_uids())
+        slot = next(s for s in _document()["slots"] if s["uid"] == 2506165730)
+        self.assertFalse(slot["boss_slot"])
+
+    def test_native_mirror_matches(self):
+        text = _native_policy()
+        if text is None:
+            self.skipTest("native checkout not present (set PIKMIN_NATIVE_ROOT)")
+        def pairs(table):
+            body = text.split(table + "[] = {", 1)[1].split("};", 1)[0]
+            return sorted((int(a), int(b)) for a, b in re.findall(r"\{(\d+)u,\s*(\d+)u\}", body))
+        self.assertEqual(pairs("kSuppress"), sorted(arenas.suppress_pairs()))
+        self.assertEqual(pairs("kAlias"), sorted(arenas.alias_pairs()))
+        body = text.split("kArenaUids[] = {", 1)[1].split("};", 1)[0]
+        native_uids = [int(v) for v in re.findall(r"(\d+)u", body)]
+        self.assertEqual(sorted(native_uids), sorted(arenas.all_arena_uids()))
+
+
+class DocumentTests(unittest.TestCase):
+    def setUp(self):
+        self.document = validate_document(_document())
+
+    def test_boss_slots_are_exactly_the_arena_primaries(self):
+        boss_slots = sorted(s["uid"] for s in self.document["slots"] if s["boss_slot"])
+        primaries = sorted(a["primary_uid"] for a in self.document["arenas"])
+        self.assertEqual(boss_slots, primaries)
+
+    def test_protected_arenas_are_denied(self):
+        report = audit(self.document)
+        protected = {a["primary_uid"] for a in self.document["arenas"] if arenas.arena_protected(a)}
+        self.assertTrue(protected)
+        for identity, uids in report["admitted"].items():
+            self.assertFalse(protected & set(uids), identity)
+
+    def test_non_boss_identities_never_accept_an_arena(self):
+        report = audit(self.document)
+        boss_slots = {s["uid"] for s in self.document["slots"] if s["boss_slot"]}
+        for identity, uids in report["admitted"].items():
+            if identity in arenas.BOSS_ENCOUNTERS:
+                self.assertTrue(set(uids) <= boss_slots, identity)
+            else:
+                self.assertFalse(set(uids) & boss_slots, identity)
+
+    def test_non_boss_acceptance_is_unchanged_by_the_arenas(self):
+        report = audit(self.document)
+        stripped = audit(_strip_arenas(_document()))
+        ordinary = {k: v for k, v in report["admitted"].items() if k not in arenas.BOSS_ENCOUNTERS}
+        before = {k: v for k, v in stripped["admitted"].items() if k not in arenas.BOSS_ENCOUNTERS}
+        self.assertEqual(ordinary, before)
+        # Without arena slots an arena boss is accepted nowhere.
+        for identity in arenas.BOSS_ENCOUNTERS:
+            self.assertNotIn(identity, stripped["admitted"])
+
+    def test_crawbster_has_at_least_two_eligible_arenas(self):
+        report = audit(self.document)
+        self.assertGreaterEqual(len(report["admitted"].get("DangoMushi", [])), 2)
+
+    def test_arena_bosses(self):
+        # The pool's arena bosses (94, 73 since #246, 53 since the wave-3 Emperor
+        # lane #289, 30 since #256 and 66 since the Man-at-Legs port #1012) have a
+        # profile; every descriptor still exists for each boss in the catalogue.
+        roster = load_and_validate()
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30, 66})
+        descriptors = {e["identity"] for e in self.document["encounters"]}
+        self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
+
+    def test_rebuild_is_idempotent(self):
+        # #948: the committed document is regenerated end to end (arenas,
+        # holders and constraint-derived accepted slots) by the generator.
+        from randomizer.p2_admitted_placement import build_admitted_document
+        self.assertEqual(build_admitted_document(), _document())
+
+
+
+class HeldPartTransferTests(unittest.TestCase):
+    """#901: held_part_transfer lifts a ship-part arena's protection only."""
+
+    def _catalogue(self, **flags):
+        catalogue = copy.deepcopy(arenas.P1_BOSS_ARENAS)
+        for arena in catalogue:
+            if arena["id"] in flags:
+                arena["held_part_transfer"] = flags[arena["id"]]
+        return catalogue
+
+    def _apply(self, catalogue):
+        original = arenas.P1_BOSS_ARENAS
+        arenas.P1_BOSS_ARENAS = tuple(catalogue)
+        try:
+            return validate_document(arenas.apply_to_document(_document(), arenas.ARENA_MEASUREMENTS))
+        finally:
+            arenas.P1_BOSS_ARENAS = original
+
+    def test_only_the_goal_arena_stays_protected(self):
+        # Owner (#901 comment 5892787827): Emperor arena stays protected
+        # (finale); the Puffstool arena may take a P2 occupant and the part
+        # goes to it; every ship-part arena is open to P2 bosses (#948).
+        by_id = arenas.arenas_by_id()
+        self.assertTrue(arenas.arena_protected(by_id["last_emperor"]))
+        for name in ("navel_puffstool", "hope_snagret_part", "navel_beady_long_legs",
+                     "spring_cannon_beetle"):
+            self.assertFalse(arenas.arena_protected(by_id[name]), name)
+
+    def test_only_proven_arenas_transfer(self):
+        # #924: hope_snagret_part was proven by a campaign run that reached the vanilla
+        # check. #948 / #901 owner ruling: Puffstool and the other ship-part arenas
+        # also transfer. Emperor and the Goolix/pit arenas stay protected.
+        proven = {a["id"] for a in arenas.P1_BOSS_ARENAS if a.get("held_part_transfer")}
+        self.assertEqual(proven, {"hope_snagret_part", "navel_puffstool",
+                                  "navel_beady_long_legs", "spring_cannon_beetle"})
+
+    def test_every_transfer_arena_holds_a_ship_part(self):
+        for arena in arenas.P1_BOSS_ARENAS:
+            if arena.get("held_part_transfer"):
+                self.assertIn("ship part", arena["protected_drop"], arena["id"])
+                self.assertNotIn("goal", arena["protected_drop"], arena["id"])
+
+    def test_transfer_unprotects_the_slot_and_admits_the_boss(self):
+        document = self._apply(self._catalogue(hope_snagret_part=True))
+        slot = next(s for s in document["slots"] if s["uid"] == 4260179239)
+        self.assertFalse(slot["protected"])
+        record = next(a for a in document["arenas"] if a["id"] == "hope_snagret_part")
+        self.assertTrue(record["held_part_transfer"])
+        self.assertIn(4260179239, audit(document)["admitted"].get("DangoMushi", []))
+
+    def test_without_transfer_the_part_arena_is_denied(self):
+        document = self._apply(self._catalogue(hope_snagret_part=False))
+        self.assertNotIn(4260179239, audit(document)["admitted"].get("DangoMushi", []))
+
+    def test_validation_rejects_bad_transfer_records(self):
+        document = _document()
+        for arena_id, drop, flag, slot_protected in (
+                ("last_emperor", None, True, False),       # transfer needs a part
+                ("impact_goolix", None, "yes", False),      # boolean only
+                ("hope_snagret_part", "ship part (pellet config 29)", True, True)):  # slot disagrees
+            bad = copy.deepcopy(document)
+            record = next(a for a in bad["arenas"] if a["id"] == arena_id)
+            record["protected_drop"] = drop
+            record["held_part_transfer"] = flag
+            slot = next(s for s in bad["slots"] if s["uid"] == record["primary_uid"])
+            slot["protected"] = slot_protected
+            with self.assertRaises(Exception, msg=arena_id):
+                validate_document(bad)
+        goal = copy.deepcopy(document)
+        record = next(a for a in goal["arenas"] if a["id"] == "last_emperor")
+        record["held_part_transfer"] = True
+        next(s for s in goal["slots"] if s["uid"] == record["primary_uid"])["protected"] = False
+        with self.assertRaises(Exception):
+            validate_document(goal)
+
+class SeedTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.roster = load_and_validate()
+        cls.document = _document()
+        cls.spawn_by_arena = {a["id"]: {str(a["spawn_uids"][0])} for a in arenas.P1_BOSS_ARENAS}
+        cls.all_arena = {str(u) for u in arenas.all_arena_uids()}
+
+    def layout(self, seed, species=None, document=None):
+        return resolve_placement_layout(seed, "Player1", document or self.document, self.roster,
+                                        species=species)
+
+    def test_crawbster_only_in_boss_arenas(self):
+        used = set()
+        for i in range(40):
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53, 40, 66)])
+            block = layout[BOSS_ARENA_KEY]
+            for binding in layout["bindings"]:
+                if binding["source_id"] == 94:
+                    self.assertIn(binding["target"], self.all_arena)
+                else:
+                    self.assertNotIn(binding["target"], self.all_arena)
+            self.assertEqual(len(block["placed"]), 1)
+            row = block["placed"][0]
+            self.assertEqual(row["source_id"], 94)
+            self.assertEqual(set(row["targets"]), self.spawn_by_arena[row["arena"]])
+            used.add(row["arena"])
+            validate_layout(layout, self.roster)
+        # Sampled per seed: both eligible arenas are used across seeds.
+        self.assertGreaterEqual(len(used), 2)
+
+    def test_both_pool_bosses_get_an_arena(self):
+        # Footprint vs measured clearance decides (#948): the Titan (250)
+        # fits Goolix 275 / Beady 250 / Puffstool 350 / Cannon Beetle 250, the
+        # Crawbster (150) every measured arena. Both are seated on every seed
+        # and the arena varies per seed.
+        titan_arenas = {"impact_goolix", "navel_beady_long_legs", "navel_puffstool",
+                        "spring_cannon_beetle"}
+        # The Emperor (53, #289) needs the tongue footprint (175): every measured,
+        # unprotected arena covers it, so it is not a cast list either. Man-at-Legs
+        # (66, #1012) shares the Titan's 250 footprint (houdai_arena, #899).
+        king_arenas = titan_arenas | {"hope_snagret_pit", "hope_snagret_part"}
+        seen = {30: set(), 53: set(), 66: set(), 73: set(), 94: set()}
+        for i in range(40):
+            layout = self.layout(f"arena-{i}", species=DEFAULT_POOL)
+            block = layout[BOSS_ARENA_KEY]
+            placed = {row["source_id"]: row["arena"] for row in block["placed"]}
+            self.assertEqual(set(placed), {30, 53, 66, 73, 94})
+            self.assertIn(placed[73], titan_arenas)
+            self.assertIn(placed[30], titan_arenas)  # Empress footprint 250 (#256)
+            self.assertIn(placed[66], titan_arenas)  # Man-at-Legs footprint 250 (#899)
+            self.assertIn(placed[53], king_arenas)
+            self.assertEqual(len(set(placed.values())), 5)
+            for source_id, arena in placed.items():
+                seen[source_id].add(arena)
+            self.assertNotIn("unplaced", block)
+            for binding in layout["bindings"]:
+                if binding["source_id"] in (30, 53, 66, 73, 94):
+                    self.assertIn(binding["target"], self.all_arena)
+                else:
+                    self.assertNotIn(binding["target"], self.all_arena)
+            validate_layout(layout, self.roster)
+        self.assertGreater(len(seen[73]), 1)
+        self.assertGreater(len(seen[30]), 1)
+        self.assertGreater(len(seen[94]), 1)
+        self.assertGreater(len(seen[53]), 1)
+        self.assertGreater(len(seen[66]), 1)
+
+    def test_ordinary_layout_equals_the_pool_without_bosses(self):
+        pool = DEFAULT_POOL
+        without = [s for s in pool if s not in (30, 73, 94, 66, 53)]
+        for i in range(10):
+            with_boss = self.layout(f"eq-{i}", species=pool)
+            ordinary = dict(with_boss)
+            ordinary.pop(BOSS_ARENA_KEY)
+            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (30, 53, 66, 73, 94)]
+            self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
+
+    def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
+        without = [s for s in DEFAULT_POOL if s not in (30, 53, 66, 73, 94)]
+        stripped = _strip_arenas(self.document)
+        for i in range(10):
+            new = self.layout(f"id-{i}", species=without)
+            self.assertNotIn(BOSS_ARENA_KEY, new)
+            self.assertEqual(json.dumps(new, sort_keys=True),
+                             json.dumps(self.layout(f"id-{i}", species=without, document=stripped),
+                                        sort_keys=True))
+
+    def test_boss_only_pool(self):
+        layout = self.layout("solo-boss", species=[94])
+        self.assertTrue(all(b["source_id"] == 94 for b in layout["bindings"]))
+        self.assertEqual(len(layout[BOSS_ARENA_KEY]["placed"]), 1)
+
+    def test_tampered_arena_block_is_rejected(self):
+        layout = self.layout("tamper", species=DEFAULT_POOL)
+        bad = copy.deepcopy(layout)
+        bad[BOSS_ARENA_KEY]["placed"][0]["source_id"] = 2
+        with self.assertRaises(SeedBridgeError):
+            validate_layout(bad, self.roster)
+
+    def test_playable_seed_generation(self):
+        manifest = generate("arena-playable", "solo", "Player1", starting_area="forest",
+                            p2_enemies=True, p2_species="playable")
+        validate(manifest)
+        placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 66, 73, 94])
+        from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
+        self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
+        # A --p2-purple-campaign seed does not add a fifth arena boss: the Giant Breadbug (40)
+        # has no arena receipt (#958), so it stays on ordinary slots.
+        purple = generate("arena-playable", "solo", "Player1", starting_area="forest",
+                          p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
+        validate(purple)
+        placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 66, 73, 94])
+
+    def test_giant_breadbug_is_not_an_arena_boss(self):
+        # #958: r9/r11 killed the Giant in an arena but never delivered the corpse, so it has no
+        # arena descriptor and is not seated in any arena, on any seed.
+        self.assertNotIn(40, arenas.ARENA_BOSS_SOURCES)
+        self.assertNotIn("OoPanModoki", arenas.BOSS_ENCOUNTERS)
+        for i in range(10):
+            layout = self.layout(f"giant-{i}", species=sorted(PLAYABLE_P2_SPECIES))
+            placed = {row["source_id"] for row in layout[BOSS_ARENA_KEY]["placed"]}
+            self.assertNotIn(40, placed)
+
+
+if __name__ == "__main__":
+    unittest.main()

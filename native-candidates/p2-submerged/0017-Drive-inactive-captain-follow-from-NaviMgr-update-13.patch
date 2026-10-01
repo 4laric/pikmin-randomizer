@@ -1,0 +1,46 @@
+From 1347260f1bd1b36e4680d588a43cb328feaea310 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 06:02:08 -0400
+Subject: [PATCH 17/17] Drive inactive-captain follow from NaviMgr::update
+ (#130)
+
+Narrow engine hook: NaviMgr::update() calls
+pc_p2_captain::update_inactive_captain_follow() only when mNumObjects > 1.
+The hook returns immediately unless a real second Navi exists, so
+single-captain play is byte-identical. Applies the engine-free follow
+decision to the inactive Navi's target velocity; full follow-state parity,
+camera, controls, HUD and survivor-gated game over remain open.
+---
+ src/plugPikiKando/naviMgr.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/plugPikiKando/naviMgr.cpp b/src/plugPikiKando/naviMgr.cpp
+index 510f00e2..9157fe16 100644
+--- a/src/plugPikiKando/naviMgr.cpp
++++ b/src/plugPikiKando/naviMgr.cpp
+@@ -3,6 +3,7 @@
+ #include "Dolphin/os.h"
+ #include "MemStat.h"
+ #include "gameflow.h"
++#include "pc_p2_captain.h" // lane 12 (#130) inactive-captain follow hook
+ #include "sysNew.h"
+ 
+ /**
+@@ -76,6 +77,14 @@ Creature* NaviMgr::createObject()
+ void NaviMgr::update()
+ {
+ 	MonoObjectMgr::update();
++
++	// Lane 12 two-captain follow-up (#130): drive the inactive captain's follow
++	// state. update_inactive_captain_follow() returns immediately unless a real
++	// second Navi exists, and the guard here keeps the call out of the
++	// single-captain path entirely, so default play is unchanged.
++	if (mNumObjects > 1) {
++		pc_p2_captain::update_inactive_captain_follow();
++	}
+ }
+ 
+ /**
+-- 
+2.55.0.windows.3
+

@@ -1,5 +1,8 @@
 #include "pc_p2_bombsarai_fsm.h"
 
+// Release builds pass -DNDEBUG; force assertions (and their embedded
+// side effects) on so this engine-free gate is not vacuous under ctest.
+#undef NDEBUG
 #include <cassert>
 #include <cstdio>
 
@@ -155,12 +158,36 @@ int main()
         assert(out.entered && fsm.state() == S::Fall);
     }
 
-    // Flick probability: fp31 0.2 at 1 stuck, fp32 0.8 at 5, linear between;
+    // Flick probability: lerp fp31 0.2 -> fp32 0.8 by clamp(stuck-1,0,4)/4
+    // (BombSarai.cpp:326-330): 1 stuck = 0.2 exactly, 3 stuck = 0.5, 5+ = 0.8;
     // success -> Flick/BombFlick by carriage, failure -> Fall (:326-336).
+    {
+        // 1 stuck: a 0.21 roll fails against the source 0.2 (the old stuck/5
+        // lerp gave 0.32 here and flicked).
+        P2BombSaraiFsm fsm; fsm.reset(parms);
+        P2BombSaraiFsmInput in = baseInput();
+        in.stuckPikmin = 1; in.flickRoll = 0.21f;
+        P2BombSaraiFsmOutput out;
+        fsm.update(in, out);
+        assert(fsm.state() == S::Fall);
+    }
+    {
+        // 3 stuck: pop 2 -> 0.2 + 0.6 * 2/4 = 0.5.
+        P2BombSaraiFsm fsm; fsm.reset(parms);
+        P2BombSaraiFsmInput in = baseInput();
+        in.stuckPikmin = 3; in.flickRoll = 0.49f;
+        P2BombSaraiFsmOutput out;
+        fsm.update(in, out);
+        assert(fsm.state() == S::Flick);
+        P2BombSaraiFsm fsm2; fsm2.reset(parms);
+        in.flickRoll = 0.51f;
+        fsm2.update(in, out);
+        assert(fsm2.state() == S::Fall);
+    }
     {
         P2BombSaraiFsm fsm; fsm.reset(parms);
         P2BombSaraiFsmInput in = baseInput();
-        in.stuckPikmin = 1; in.flickRoll = 0.19f; // < 0.2 + 0.6/5*1 = 0.32
+        in.stuckPikmin = 1; in.flickRoll = 0.19f; // < fp31 0.2
         P2BombSaraiFsmOutput out;
         fsm.update(in, out);
         assert(fsm.state() == S::Flick);

@@ -9,19 +9,24 @@ from experimental.pikmin2_mamuta_install import (CONFIG_NAME, install, plan, ver
 from experimental.pikmin2_mamuta_arena import GATES, P1_CHAPPY_TYPE, P1_MIURIN_TYPE, roster
 
 
+BANK_CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4',
+              'flick', 'dead', 'type5')
+
+
 def fake_imported(root):
     """Synthetic schema-1 Mamuta import: real bytes, recorded hashes."""
     species = root / 'Miulin'
     species.mkdir(parents=True)
-    poses = {'wait_00.mod': b'WAIT', 'dead_02.mod': b'DEAD', 'attack1_00.mod': b'ATTACK'}
-    for name, data in poses.items():
-        (species / name).write_bytes(data)
+    poses = {}
     clips = []
-    for clip, name in (('wait.bca', 'wait_00.mod'), ('dead.bca', 'dead_02.mod'),
-                       ('attack1.bca', 'attack1_00.mod')):
-        clips.append({'file': clip, 'status': 'converted',
+    for clip in BANK_CLIPS:
+        name = f'{clip}_00.mod'
+        data = clip.upper().encode()
+        poses[name] = data
+        (species / name).write_bytes(data)
+        clips.append({'file': clip + '.bca', 'status': 'converted',
                       'poses': [{'file': name,
-                                 'sha256': hashlib.sha256(poses[name]).hexdigest()}]})
+                                 'sha256': hashlib.sha256(data).hexdigest()}]})
     meta = {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}
     (root / 'mamuta.json').write_text(json.dumps(meta))
     return root
@@ -72,12 +77,43 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             result = install(imported, run, [(221001, 'Miulin')])
-            self.assertEqual(result['files'], ['miulin_attack1.mod', 'miulin_dead.mod',
-                                               'miulin_wait.mod'])
+            self.assertEqual(result['files'], [
+                'miulin_attack0_00.mod', 'miulin_attack1.mod', 'miulin_attack1_00.mod',
+                'miulin_attack4_00.mod', 'miulin_dead.mod', 'miulin_dead_00.mod',
+                'miulin_flick_00.mod', 'miulin_move_00.mod', 'miulin_type5_00.mod',
+                'miulin_wait.mod', 'miulin_wait_00.mod', 'miulin_waitact_00.mod'])
             verified = verify_install(imported, run, [(221001, 'Miulin')])
             self.assertEqual(verified['verified'], result['files'])
             config = (run / CONFIG_NAME).read_text()
             self.assertEqual(config.split(), ['P2_MAMUTA_ACTORS_1', '1', '221001', 'Miulin'])
+
+    def test_installs_full_attack_bank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            imported = root / 'imported'
+            species = imported / 'Miulin'
+            species.mkdir(parents=True)
+            poses = {f'attack1_{i:02d}.mod': bytes([65 + i]) for i in range(3)}
+            for clip in BANK_CLIPS:
+                poses.setdefault(f'{clip}_00.mod', clip.upper().encode())
+            for name, data in poses.items():
+                (species / name).write_bytes(data)
+            clips = []
+            for clip in BANK_CLIPS:
+                names = sorted(n for n in poses if n.startswith(clip + '_'))
+                clips.append({'file': clip + '.bca', 'status': 'converted',
+                              'poses': [{'file': n, 'sha256': hashlib.sha256(poses[n]).hexdigest()}
+                                        for n in names]})
+            (imported / 'mamuta.json').write_text(json.dumps(
+                {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}))
+            run = self.make_run(root)
+            result = install(imported, run, [(1, 'Miulin')])
+            attack = sorted(n for n in result['files'] if n.startswith('miulin_attack1_'))
+            self.assertEqual(attack, ['miulin_attack1_00.mod', 'miulin_attack1_01.mod',
+                                      'miulin_attack1_02.mod'])
+            # The static anchor is still written alongside the bank.
+            self.assertIn('miulin_attack1.mod', result['files'])
+            verify_install(imported, run, [(1, 'Miulin')])
 
     def test_install_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,7 +128,7 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             install(imported, run, [(1, 'Miulin')])
-            target = run / 'assets/dataDir/courses/pikmin2room/miulin_dead.mod'
+            target = run / 'assets/dataDir/courses/pikmin2room/miulin_dead_00.mod'
             target.write_bytes(b'X')
             with self.assertRaises(ValueError):
                 verify_install(imported, run, [(1, 'Miulin')])

@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from workflow.handoff import Rejected, local_path, validate_handoff
 from workflow.processes import identify
 from workflow.registry import Registry
+from workflow.storage import RegistryBusy
 
 
 def main(argv=None):
@@ -21,11 +22,11 @@ def main(argv=None):
                         'acquire', 'renew', 'release', 'cancel-request', 'watchdog', 'claim-action',
                         'complete-action', 'finish', 'accept-review', 'publish', 'receipt', 'control-status', 'handoff', 'validate-handoff', 'integrate', 'status', 'process',
                         'reconcile-handoff', 'throughput-status', 'wait-events', 'configure-lane-launch',
-                        'set-workstream', 'register-pool-worker', 'provision-pool-lane', 'enqueue-job', 'assign-job',
+                        'set-workstream', 'register-pool-worker', 'reassign-pool-worker', 'provision-pool-lane', 'enqueue-job', 'assign-job',
                         'validate-assignment', 'plan-assignment', 'complete-assignment', 'release-assignment', 'scheduling-status',
                         'snapshot-handoff', 'dispose-review', 'publish-candidate', 'subscribe-candidate-qa',
                         'candidate-qa-ready', 'claim-candidate-qa', 'queue-candidate-qa', 'bind-candidate-qa-launch', 'record-candidate-qa',
-                        'batch-claim', 'batch-record-build', 'batch-isolate', 'batch-close', 'report-cost', 'report-cost-batch'))
+                        'batch-claim', 'batch-reassign', 'batch-record-build', 'batch-isolate', 'batch-close', 'report-cost', 'report-cost-batch'))
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.request.read_text(encoding='utf-8-sig')) if args.request else {}
@@ -49,6 +50,9 @@ def main(argv=None):
             result = getattr(registry, method)(**data)
         print(json.dumps(result, indent=2))
         return 0
+    except RegistryBusy as error:  # Nothing was committed: rerun the same command later; no retry loop needed.
+        print(json.dumps({'error': str(error), 'busy': True}), file=sys.stderr)
+        return 75
     except (Rejected, OSError, ValueError, KeyError, TypeError, sqlite3.Error) as error:
         print(json.dumps({'error': str(error)}), file=sys.stderr)
         return 2

@@ -1,9 +1,10 @@
 """Flora / Candypop batch-2 private arena staging (#353, parent #171).
 
 Thin binding of :mod:`experimental.pikmin2_batch2_core` to the flora family.
-Six Candypop colour buds plus an ordinary P1 control are staged on the original
-Impact Site. Buds have no P1 counterpart, so the neutral Chappy placement
-vehicle is used and identity is not claimed.
+The refreshed Pelplant bank (10/10 clips, #405) plus the six Candypop colour
+buds are staged on the original Impact Site, with an ordinary P1 control last.
+None has a P1 counterpart, so the neutral Chappy placement vehicle is used and
+identity is not claimed.
 """
 import argparse
 from pathlib import Path

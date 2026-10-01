@@ -1,0 +1,23 @@
+{
+  "schema": "p2-cave-spike-scenarios/1",
+  "scenarios": [
+    {
+      "name": "fresh_floor_no_abilities",
+      "species": {},
+      "buds": {},
+      "expect": {"hole": false, "treasure_elec": false, "treasure_water": false, "juji_key_fc": true}
+    },
+    {
+      "name": "come_back_with_yellow",
+      "species": {"yellow": true},
+      "buds": {},
+      "expect": {"hole": false, "treasure_elec": true, "treasure_water": false, "juji_key_fc": true}
+    },
+    {
+      "name": "return_with_yellow_and_blue",
+      "species": {"yellow": true, "blue": true},
+      "buds": {},
+      "expect": {"hole": true, "treasure_elec": true, "treasure_water": true, "juji_key_fc": true}
+    }
+  ]
+}

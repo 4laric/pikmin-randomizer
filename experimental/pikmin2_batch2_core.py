@@ -13,6 +13,7 @@ just bind a config. Native registration/hook wiring is integration-lead work
 (#186) and is never performed here. No shared/native code is touched and no disc
 assets or generated models are committed.
 """
+from experimental.pikmin2_animation import frames_trailer
 import hashlib
 import json
 import struct
@@ -75,7 +76,9 @@ def bank_text(cfg, manifest):
             events = ','.join(f'{frame}:{event}' for frame, event in clip.get('events', []))
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f'clip {species} {clip["name"]} {clip.get("source_frames", 0)} '
-                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}')
+                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}'
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return ('\n'.join(rows) + '\n').encode('ascii')
 
 
@@ -304,8 +307,8 @@ def prepare(cfg, assets, imported, output, installer=None, verifier=None):
     ``installer``/``verifier`` default to this module's generic operations; a
     family with a bespoke install schema (Long Legs, #312) passes its own.
     """
-    installer = installer or install
-    verifier = verifier or verify_install
+    installer = installer or (lambda imported, run, actors: install(cfg, imported, run, actors))
+    verifier = verifier or (lambda imported, run, actors: verify_install(cfg, imported, run, actors))
     assets = assets.resolve()
     imported = imported.resolve()
     data, actors = roster(cfg, assets)

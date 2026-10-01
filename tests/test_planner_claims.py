@@ -172,5 +172,20 @@ class PlanningClaimsTests(unittest.TestCase):
                 claim(self.reg, 'a', 1, ['topic:enemy-9'])
 
 
+    def test_reconcile_only_terminal_helper_topics_preserves_file_claims(self):
+        from workflow.planner_claims import reconcile_topics
+        with self.reg.transaction() as state:
+            state['lanes']['planning-old']=dict(state['lanes']['a'],lane='planning-old')
+            state.setdefault('control',{})['controller']=dict(health='alive')
+        claim(self.reg,'planning-old',1,['topic:old','file:native/foo.cpp'])
+        with self.reg.transaction() as state:
+            lane=state['lanes']['planning-old'];lane.update(state='done',review_disposition={'archived_evidence':self.evidence})
+            lane['process']['health']='dead'
+            for c in state['planning_claims'].values():c['process']['health']='dead'
+        self.assertEqual(reconcile_topics(self.reg),['topic:old'])
+        self.assertEqual([x['resource'] for x in inspect_claims(self.reg)],['file:native/foo.cpp'])
+        self.assertEqual(reconcile_topics(self.reg),[])
+
+
 if __name__ == '__main__':
     unittest.main()

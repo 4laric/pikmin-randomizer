@@ -10,6 +10,7 @@ namespace {
 constexpr int PurpleImpactState = 16;
 struct Runtime {
     p2purpleimpact::Lifetime lifetime = 0;
+    float fitDuration = p2purpleimpact::RedFitDuration;
     p2purpleimpact::ReceiverState state;
 };
 std::map<BTeki*, Runtime> actors;
@@ -21,11 +22,12 @@ void pc_p2_kochappy_stun_reset()
     actors.clear();
 }
 
-void pc_p2_kochappy_stun_register(BTeki* actor)
+void pc_p2_kochappy_stun_register(BTeki* actor, float fitDuration)
 {
     if (!actor) return;
     Runtime runtime;
     runtime.lifetime = ++nextLifetime;
+    runtime.fitDuration = fitDuration > 0.0f ? fitDuration : p2purpleimpact::RedFitDuration;
     actors[actor] = runtime;
 }
 
@@ -83,7 +85,7 @@ bool pc_p2_kochappy_stun_step(BTeki* actor, float deltaTime, float fitRoll)
     if (state.phase == p2purpleimpact::Phase::Fit) {
         actor->mVelocity.set(0.0f, 0.0f, 0.0f);
         actor->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
-        return !p2purpleimpact::updateFit(state, deltaTime, false);
+        return !p2purpleimpact::updateFit(state, deltaTime, false, found->second.fitDuration);
     }
     return true;
 }

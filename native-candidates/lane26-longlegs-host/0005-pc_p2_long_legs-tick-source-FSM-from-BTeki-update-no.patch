@@ -1,0 +1,170 @@
+From 0d7af4d9d49da30e1ceeae0f61f76c92cb0c6cea Mon Sep 17 00:00:00 2001
+From: opencode <opencode@local>
+Date: Mon, 14 Sep 2026 09:33:25 -0400
+Subject: [PATCH 5/7] pc_p2_long_legs: tick source FSM from BTeki::update, not
+ the draw path (#173, #312)
+
+---
+ pc_port/pc_p2_long_legs.cpp      | 111 +++++++++++++++++--------------
+ pc_port/pc_p2_long_legs.h        |   3 +
+ src/plugPikiNakata/tekibteki.cpp |   1 +
+ 3 files changed, 64 insertions(+), 51 deletions(-)
+
+diff --git a/pc_port/pc_p2_long_legs.cpp b/pc_port/pc_p2_long_legs.cpp
+index e48cc63d..67ccf963 100644
+--- a/pc_port/pc_p2_long_legs.cpp
++++ b/pc_port/pc_p2_long_legs.cpp
+@@ -255,64 +255,73 @@ void pc_p2_long_legs_setup() {
+                 bytesTotal, shapes.size());
+ }
+ 
+-bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool corpse) {
++// Per-frame source-FSM tick. Called from BTeki::update() (tekibteki.cpp) so the
++// schedule runs for every registered actor regardless of camera visibility; the
++// previous draw-tick only advanced on-camera actors. A corpse is not alive, so
++// a dead registration never advances the policy or emits a foot-crush.
++void pc_p2_long_legs_update(BTeki* actor) {
+     auto entry = actors.find(actor);
+-    if (entry == actors.end() || !gfx.mCamera) return false;
++    if (entry == actors.end()) return;
+     ActorState& state = entry->second;
+-    auto shapeIt = shapes.find(state.species);
+-    if (shapeIt == shapes.end() || !shapeIt->second) return false;
+-    Shape* shape = shapeIt->second;
++    if (!actor->isAlive()) return;
+ 
+-    // The source FSM advances only for a live actor: a corpse draw must not
+-    // re-enter the policy or emit a foot-crush from a dead registration.
+     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
+-    if (!corpse && dt > 0.0f && dt < 0.5f) {
+-        const Vector3f pos = actor->getPosition();
+-        const P2LongLegsSpecies species = speciesEnum(state.species);
+-        const float land = landingSeconds(species);
+-        const float flick = flickSeconds(species);
+-        const P2LongLegsState before = state.fsm.state();
++    if (!(dt > 0.0f && dt < 0.5f)) return;
+ 
+-        P2LongLegsFsmInput in;
+-        in.health = actor->mHealth;
+-        in.roll = gsys->getRand(1.0f);
+-        in.wakeTargetNearby = nearestTarget(pos, state.parms.privateRadius) != nullptr;
+-        in.pikminAccumulating = countPikiWithin(pos, AccumulateRadius) > 0;
+-        in.landingKey2 = before == P2LongLegsState::Land && !state.key2Fired
+-            && state.animSeconds >= land * 0.5f;
+-        in.flickKey2 = before == P2LongLegsState::Flick && !state.key2Fired
+-            && state.animSeconds >= flick * 0.5f;
+-        in.animEnd = (before == P2LongLegsState::Land && state.animSeconds >= land)
+-            || (before == P2LongLegsState::Flick && state.animSeconds >= flick);
+-        if (in.landingKey2 || in.flickKey2) state.key2Fired = true;
++    const Vector3f pos = actor->getPosition();
++    const P2LongLegsSpecies species = speciesEnum(state.species);
++    const float land = landingSeconds(species);
++    const float flick = flickSeconds(species);
++    const P2LongLegsState before = state.fsm.state();
+ 
+-        P2LongLegsFsmOutput out;
+-        state.fsm.update(in, out);
+-        if (state.fsm.state() != before) {
+-            state.animSeconds = 0.0f;
+-            state.key2Fired = false;
+-            state.lastState = state.fsm.state();
+-        } else {
+-            state.animSeconds += dt;
+-        }
+-        if (out.footCrush) {
+-            std::printf("P2_LONG_LEGS_FOOT species=%s generator=%u\n", state.species.c_str(),
+-                        state.generator);
+-            std::fflush(stdout);
+-            applyFootCrush(actor, pos, state.species, state.generator,
+-                           state.parms.pressDamage, 60.0f);
+-        }
+-        if (out.fireShell)
+-            std::printf("P2_LONG_LEGS_SHELL species=%s generator=%u\n", state.species.c_str(),
+-                        state.generator);
+-        if (!state.stateLogged || out.entered) {
+-            state.stateLogged = true;
+-            std::printf("P2_LONG_LEGS_STATE species=%s generator=%u state=%s\n",
+-                        state.species.c_str(), state.generator,
+-                        P2LongLegsFsm::stateName(state.fsm.state()));
+-            std::fflush(stdout);
+-        }
++    P2LongLegsFsmInput in;
++    in.health = actor->mHealth;
++    in.roll = gsys->getRand(1.0f);
++    in.wakeTargetNearby = nearestTarget(pos, state.parms.privateRadius) != nullptr;
++    in.pikminAccumulating = countPikiWithin(pos, AccumulateRadius) > 0;
++    in.landingKey2 = before == P2LongLegsState::Land && !state.key2Fired
++        && state.animSeconds >= land * 0.5f;
++    in.flickKey2 = before == P2LongLegsState::Flick && !state.key2Fired
++        && state.animSeconds >= flick * 0.5f;
++    in.animEnd = (before == P2LongLegsState::Land && state.animSeconds >= land)
++        || (before == P2LongLegsState::Flick && state.animSeconds >= flick);
++    if (in.landingKey2 || in.flickKey2) state.key2Fired = true;
++
++    P2LongLegsFsmOutput out;
++    state.fsm.update(in, out);
++    if (state.fsm.state() != before) {
++        state.animSeconds = 0.0f;
++        state.key2Fired = false;
++        state.lastState = state.fsm.state();
++    } else {
++        state.animSeconds += dt;
++    }
++    if (out.footCrush) {
++        std::printf("P2_LONG_LEGS_FOOT species=%s generator=%u\n", state.species.c_str(),
++                    state.generator);
++        std::fflush(stdout);
++        applyFootCrush(actor, pos, state.species, state.generator,
++                       state.parms.pressDamage, 60.0f);
+     }
++    if (out.fireShell)
++        std::printf("P2_LONG_LEGS_SHELL species=%s generator=%u\n", state.species.c_str(),
++                    state.generator);
++    if (!state.stateLogged || out.entered) {
++        state.stateLogged = true;
++        std::printf("P2_LONG_LEGS_STATE species=%s generator=%u state=%s\n",
++                    state.species.c_str(), state.generator,
++                    P2LongLegsFsm::stateName(state.fsm.state()));
++        std::fflush(stdout);
++    }
++}
++
++bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool corpse) {
++    auto entry = actors.find(actor);
++    if (entry == actors.end() || !gfx.mCamera) return false;
++    ActorState& state = entry->second;
++    auto shapeIt = shapes.find(state.species);
++    if (shapeIt == shapes.end() || !shapeIt->second) return false;
++    Shape* shape = shapeIt->second;
+ 
+     if (!logged[corpse ? 1 : 0]) {
+         std::printf("P2_LONG_LEGS_DRAW corpse=%d species=%s pose=bind\n",
+diff --git a/pc_port/pc_p2_long_legs.h b/pc_port/pc_p2_long_legs.h
+index 81912a20..a4392946 100644
+--- a/pc_port/pc_p2_long_legs.h
++++ b/pc_port/pc_p2_long_legs.h
+@@ -6,6 +6,9 @@ class BTeki; class Graphics; struct Matrix4f;
+ void pc_p2_long_legs_setup();
+ void pc_p2_long_legs_reset();
+ void pc_p2_long_legs_forget(BTeki*);
++// Per-frame source-FSM tick, called from BTeki::update so it no longer depends
++// on the actor being on camera. No-op for unregistered/dead actors.
++void pc_p2_long_legs_update(BTeki*);
+ bool pc_p2_long_legs_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
+ // Fixture observability (#397): read-only registration count / membership.
+ unsigned long pc_p2_long_legs_count();
+diff --git a/src/plugPikiNakata/tekibteki.cpp b/src/plugPikiNakata/tekibteki.cpp
+index 3da8f342..f012ddf4 100644
+--- a/src/plugPikiNakata/tekibteki.cpp
++++ b/src/plugPikiNakata/tekibteki.cpp
+@@ -460,6 +460,7 @@ void BTeki::update()
+ 	pc_p2_onikurage_teki_tick(this);
+ 	pc_p2_kogane_update(this);
+     pc_p2_snow_update(this,NSystem::getFrameTime());
++    pc_p2_long_legs_update(this);
+ #endif
+ 	if (mDeadState == 0) {
+ 		updateTimers();
+-- 
+2.55.0.windows.3
+

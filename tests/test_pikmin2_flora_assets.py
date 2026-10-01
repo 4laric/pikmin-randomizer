@@ -6,12 +6,13 @@ from unittest.mock import patch
 from experimental.pikmin2_flora_assets import (CLIPS, COMMON_NAME, DISC_PARMS,
                                                ENEMY_FLORA, EXPECTED_EVENTS,
                                                POM_BASE_ID, POM_SPECIES,
+                                               POSE_TOLERANCES,
                                                PROPER_PARM_DEFAULTS,
                                                PROPER_RETAIL_ONLY, PROP_FLORA,
                                                SHARED_BASE, SPECIES, STATE_IDS,
-                                               TEXT, VARIANT_GROUPS, extract,
-                                               flora_animation_rows, profile,
-                                               reference_conversion,
+                                               TEXT, TOLERANCES, VARIANT_GROUPS,
+                                               extract, flora_animation_rows,
+                                               profile, reference_conversion,
                                                resource_id)
 
 
@@ -274,6 +275,22 @@ class FloraAssetsTests(unittest.TestCase):
         self.assertIn('btk_playback false', TEXT)
         self.assertIn('candypop_shared_base Pom', TEXT)
 
+    def test_converter_tolerances_are_scoped(self):
+        # #405/#429: Pelplant is the only flora with an opt-in singular
+        # scale/normal policy and HikariKinoko the only one with the camera-facing
+        # billboard path; every other identity keeps strict converter defaults.
+        self.assertEqual(POSE_TOLERANCES,
+                         {'Pelplant': {'singular_scale': 'allow'}})
+        self.assertEqual(TOLERANCES, {
+            'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
+            'HikariKinoko': {'billboard': 'native', 'missing_normals': 'compute'},
+        })
+        self.assertEqual(set(POSE_TOLERANCES), {'Pelplant'})
+        for strict in PROP_FLORA:
+            if strict == 'HikariKinoko': continue
+            self.assertNotIn(strict, POSE_TOLERANCES)
+            self.assertNotIn(strict, TOLERANCES)
+
     def test_refuse_overwrite_before_source_access(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -297,7 +314,7 @@ class FloraAssetsTests(unittest.TestCase):
     def test_pose_limit_bounds(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for bad in (0, 1, 13, True, '6'):
+            for bad in (0, 1, 65, True, '6'):  # cap = native row cap 64 (#895)
                 with self.assertRaises(ValueError):
                     extract(root / 'x.iso', root, root / f'out-{bad}', bad)
 

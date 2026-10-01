@@ -43,8 +43,10 @@ class TrackerModel:
         finale = ""
         if self.manifest.get("goal_mode") == "emperor_bulblax":
             finale = "    Emperor: " + ("defeated" if data.get("emperor_defeated") else "unlocked" if inventory[REPAIR] >= 25 else "locked until 25 repairs")
+        from .session import death_link_summary
+        death_link = death_link_summary(self.manifest, data)
         return dict(rows=rows, inventory=inventory, profiles=profile_lines(self.manifest, inventory),
-                    benefits=benefit_lines(self.manifest, inventory), onions=onions,
+                    benefits=benefit_lines(self.manifest, inventory) + ([death_link] if death_link else []), onions=onions,
                     summary=f'{len(checked)}/{len(rows)} checks    Repairs {inventory[REPAIR]}/{self.manifest["goal"]} required    Field cap {cap}{finale}')
 
     @staticmethod
@@ -62,7 +64,7 @@ class TrackerWindow:
         self.data = None
         self.window = tk.Toplevel(root)
         self.window.withdraw()
-        self.window.title('Pikmin Randomizer — Tracker')
+        self.window.title('Pikipelago — Tracker')
         self.window.geometry('940x620')
         self.window.minsize(660, 430)
         self.window.protocol('WM_DELETE_WINDOW', on_close)

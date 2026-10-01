@@ -165,9 +165,12 @@ def import_emergence(iso, output):
                     for filename,data in archive_files(read(f'{BASE}/arc/{name}/{archive}.szs')).items():
                         target=directory/archive/filename
                         target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(data)
-                # Water is a separate volume system; do not silently discard wet rooms.
-                if tree((directory/'texts/waterbox.txt').read_text()) != ['0',['0']]:
-                    raise ValueError('Water volumes require a separate conversion')
+                # Water is a separate volume system. Lane 49 parses the volume
+                # and stores it; it no longer refuses wet rooms. Imported lazily to
+                # avoid the pikmin2_cave <-> pikmin2_surface_physics import cycle.
+                from experimental.pikmin2_cave_water import water_unit_sidecar
+                water=water_unit_sidecar((directory/'texts/waterbox.txt').read_text())
+                (directory/'water.json').write_text(json.dumps(water,indent=2)+'\n',encoding='utf-8')
                 room=decode_room(directory/'texts')
                 if any(d['waypoint'] not in {p['id'] for p in room['routes']} for d in definition['doors']):
                     raise ValueError('Door references a missing route waypoint')
@@ -188,7 +191,7 @@ def import_emergence(iso, output):
                 audit=route_audit(room)
                 starts=[p for p in room['spawns'] if p['type']==7]
                 start_routes=[min(room['routes'],key=lambda p:sum((p['position'][i]-s['position'][i])**2 for i in (0,2)))['id'] for s in starts]
-                units[name]=dict(definition=definition,render={k:v for k,v in report.items() if k not in ('source','output')},
+                units[name]=dict(definition=definition,water=water,render={k:v for k,v in report.items() if k not in ('source','output')},
                                  collision_triangles=len(room['triangles']),source_mapcodes=sorted(set(room['mapcodes'])),
                                  route_audit=audit,start_destination_audit=[row for row in audit if row['destination'] in start_routes],
                                  spawn_candidates=room['spawns'],ground_probes=probes,

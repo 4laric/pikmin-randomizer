@@ -16,8 +16,10 @@ on the real registered actors:
     pc_p2_kogane_gas_state introspection hook and must die of sustained
     exposure; the other 19 survive (beetles are harmless; control is distant).
 
-Treasure override and cave relocation remain disabled in the P1 host and are
-not asserted here (recorded gaps on #219).
+The first-flip treasure override is now an opt-in labelled P1 number-pellet
+stand-in (`native_sidecar(..., treasures=...)`), but this fixture configures no
+treasure; cave relocation remains disabled in the P1 host and neither is asserted
+here (recorded gaps on #219).
 """
 import argparse
 import json
@@ -26,6 +28,7 @@ from pathlib import Path
 
 from experimental.pikmin2_kogane_runtime import build as build_fixture_base
 from experimental.pikmin2_kogane_runtime import run as run_fixture_base
+from experimental.pikmin2_kogane_native import treasure_lines
 
 IDS = (219001, 219002, 219003)
 SPECIES_ID = {219001: 9, 219002: 10, 219003: 11}
@@ -61,7 +64,20 @@ public:int idle() override {
    if(id>=219001&&id<=219003){beetles[id-219001]=actor;start[id-219001]=actor->getPosition();}
    ++count;}
   require(count==4,"beetle roster missing");}
- if(observed==60){require(alivePikis()==20,"starting squad size");}
+  if(observed==60){require(alivePikis()==20,"starting squad size");}
+  if(observed==50){
+   int want[3]={9,10,11},before=0;
+   for(int i=0;i<3;++i)if(beetles[i]&&pc_p2_kogane_source_id(static_cast<PelletView*>(beetles[i]))==want[i])++before;
+   require(before==3,"pre-cleanup registration");
+   pc_p2_kogane_reset();
+   int cleared=0;
+   for(int i=0;i<3;++i)if(beetles[i]&&pc_p2_kogane_source_id(static_cast<PelletView*>(beetles[i]))<0)++cleared;
+   require(cleared==3,"stale registration rejected after reset");
+   pc_p2_kogane_setup();
+   int reentry=0;
+   for(int i=0;i<3;++i)if(beetles[i]&&pc_p2_kogane_source_id(static_cast<PelletView*>(beetles[i]))==want[i])++reentry;
+   require(reentry==3,"re-entry registration rebuilt");
+   std::printf("P2_KOGANE_CLEANUP registered_before=%d cleared=%d reentry=%d\n",before,cleared,reentry);std::fflush(stdout);}
  for(int i=0;i<3;++i)if(beetles[i]&&!aliveTeki(219001+i))beetles[i]=nullptr;
  for(int i=0;i<3;++i)if(beetles[i]&&!moved[i]&&start[i].distance(beetles[i]->getPosition())>30.0f)moved[i]=true;
  {Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive())continue;
@@ -93,7 +109,7 @@ public:int idle() override {
 '''
 
 INCLUDES = ('#include <map>\n#include "Demo.h"\n#include "GameStat.h"\n#include "Interactions.h"\n#include "ItemMgr.h"\n#include "ObjType.h"\n'
-            '#include "Pellet.h"\n#include "Piki.h"\n#include "PikiMgr.h"\n#include "PlayerState.h"\n'
+            '#include "Pellet.h"\n#include "PelletView.h"\n#include "Piki.h"\n#include "PikiMgr.h"\n#include "PlayerState.h"\n'
             '#include "pc_p2_kogane.h"\n')
 
 # Exact source drop tables in P1-host resolution (batch-1 audit):
@@ -106,12 +122,14 @@ EXPECTED_DROPS = {(219001, 1): (1, 1, 0), (219001, 2): (0, 0, 2), (219001, 3): (
 EXPECTED_HEALTH = {219001: '1000.0', 219002: '1200.0', 219003: '1500.0'}
 
 
-def native_sidecar(bank, mapping=None):
+def native_sidecar(bank, mapping=None, treasures=None):
     """Build the P2_KOGANE_NATIVE_1 sidecar from the validated batch-1 bank.
 
     Mirrors every constraint of the C++ parser (p2kogane::read) so a generated
     sidecar can never be rejected at load: karada slot, unique generator/species
     rows, and move/wait/damage clips with ascending frames spanning [0, duration).
+    ``treasures`` optionally maps a generator to a P1 stand-in number-pellet value
+    (1 or 5) for that beetle's first flip; the host has no P2 treasure item.
     """
     mapping = mapping or SPECIES_ID
     if set(mapping) != set(IDS) or any(mapping[g] != SPECIES_ID[g] for g in IDS):
@@ -122,6 +140,7 @@ def native_sidecar(bank, mapping=None):
         raise ValueError('Bank clip set mismatch')
     rows = ['P2_KOGANE_NATIVE_1', f'karada {KARADA_INDEX}', f'actors {len(IDS)}']
     rows += [f'{g} {mapping[g]}' for g in IDS]
+    rows += treasure_lines((treasures or {}).items(), IDS)
     for name in ('move', 'wait', 'damage'):
         clip = clips[name + '.bca']
         frames = [int(p['frame']) for p in clip['poses']]
@@ -147,7 +166,9 @@ def validate_behavior(text, code):
     checks = dict(
         completion=code == 0 and 'PASS P2_KOGANE_BEHAVIOR flips7 wander3 escapes2 gas1' in text,
         births=births == [219001, 219002, 219003, 219004],
-        binding=len(re.findall(r'P2_KOGANE_BIND generator=\d+ source_id=(9|10|11) karada_k0=(60|100|15) visual_only=0', text)) == 3,
+        binding={(int(g), int(s)) for g, s in re.findall(
+            r'P2_KOGANE_BIND generator=(\d+) source_id=(\d+) karada_k0=\d+ visual_only=0', text)}
+            == {(g, SPECIES_ID[g]) for g in IDS},
         source_health=health == EXPECTED_HEALTH,
         flip_sequence=sorted(flips) == sorted([(g, f) for g in IDS for f in
                                                ((1, 2, 3) if g != 219003 else (1,))]),
@@ -156,7 +177,8 @@ def validate_behavior(text, code):
         gas_cycle=('P2_KOGANE_GAS start generator=219003 duration=2.500 radius=20.0' in text
                    and 'P2_KOGANE_GAS end generator=219003' in text
                    and 'P2_KOGANE_GAS_KILL generator=219003' in text),
-        draw='P2_KOGANE_DRAW corpse=0' in text)
+        draw='P2_KOGANE_DRAW corpse=0' in text,
+        cleanup_reentry='P2_KOGANE_CLEANUP registered_before=3 cleared=3 reentry=3' in text)
     m = re.search(r'P2_KOGANE_CENSUS pellets=(\d+) nectar=(\d+) pikis=(\d+)', text)
     census = dict(pellets=int(m[1]), nectar=int(m[2]), pikis=int(m[3])) if m else None
     checks['census'] = bool(census) and census['pellets'] == 4 and census['nectar'] == 14 \
@@ -164,7 +186,8 @@ def validate_behavior(text, code):
     return dict(passed=all(checks.values()), checks=checks, census=census, flips=[list(f) for f in flips],
                 drops={f'{g}:{f}': list(v) for (g, f), v in sorted(drops.items())},
                 unmeasured=['material/texture fidelity', 'treasure override (disabled: no P2 treasure in P1 host)',
-                            'cave relocation (disabled: no Cave::randMapMgr in P1 host)', 'reload/reentry'])
+                            'cave relocation (disabled: no Cave::randMapMgr in P1 host)',
+                            'full scene/day reload (manager reset/re-entry covered by cleanup_reentry)'])
 
 
 def build(native, build_dir, output, head, resume=False):

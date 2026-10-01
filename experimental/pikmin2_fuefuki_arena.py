@@ -14,9 +14,9 @@ interference stay BLOCKED pending native actor registration (#186). The estate
 profile from ``pikmin2_fuefuki_install.py`` is the only asset this arena ships;
 no motion bank, no shared/native edits. Gate statuses are recorded honestly from
 the real-GL runtime evidence in ``native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md``:
-the whistle-theft, interference, reclaim, carry and pinned-spawn paths passed
-against retail assets; follow locomotion, panic staging, brain fallback, claim
-persistence and native identity remain blocked.
+the whistle-theft, interference, reclaim and carry paths passed against retail
+assets; follow locomotion, panic staging, brain fallback, claim persistence and
+native identity remain blocked; physical spawn is untested.
 """
 import argparse
 import hashlib
@@ -44,27 +44,30 @@ PROXY = {'Fuefuki': P1_NAPKID_TYPE, 'P1 Chappy': P1_CHAPPY_TYPE}
 FAMILY = {P1_NAPKID_TYPE: 'Napkid (P1 Swooping Snitchbug)',
           P1_CHAPPY_TYPE: 'Chappy (P1 Dwarf Bulborb)'}
 
-# Lane acceptance gates. PASS/BLOCKED strings quote the real-GL evidence in
-# native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md. Nothing here claims gameplay
-# acceptance.
+# Lane acceptance gates. PASS strings quote real-GL evidence where available
+# (native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md binding, P2_FUEFUKI_FOLLOW_RUNTIME_EVIDENCE.md
+# follow, P2_FUEFUKI_VEHICLE_RUNTIME_EVIDENCE.md real vehicle and
+# P2_FUEFUKI_COMBAT.md natural combat). Policy-only passes are labelled
+# "pass (policy)" and unwired/untested gates are labelled "untested". Nothing here
+# claims gameplay acceptance.
 GATES = ('native_identity', 'spawn', 'whistle_theft', 'interference', 'reclaim',
          'carry', 'follow_locomotion', 'panic_staging', 'brain_fallback',
-         'claim_persistence')
+         'claim_persistence', 'press_combat')
 PASSED = {
     'whistle_theft': 'pass: real-GL run claimed exactly the 3 in-ring of 6 real pikiMgr Pikmin, none outside (P2_FUEFUKI_RT_SCAN)',
     'interference': 'pass: real-GL run refused captain whistle/switch/combine on held Pikmin with zero ownership writes (P2_FUEFUKI_RT_NONROUTE)',
     'reclaim': 'pass: real Navi::callPikis reclaim, PIKISTATE_LookAt then real FormationMode join (P2_FUEFUKI_RT_RECLAIM, P2_FUEFUKI_RT_FORMJOIN)',
     'carry': 'pass: dead-anim END delivered kill with carry_anim carcass flag (P2_FUEFUKI_RT_KILL)',
-    'spawn': 'pass: both pinned actors birthed through the real generator path at exact XYZ, generator_delta=0.000 born_delta=0.000 (P2_FUEFUKI_ARENA_SPAWN); placement vehicle only, native identity still blocked',
 }
 BLOCKED = {
     'native_identity': 'blocked: no native Fuefuki (41) registration; Napkid 11 is a placement vehicle only (#186)',
-    'follow_locomotion': 'blocked: P1 has no follow-teki action; follow movement stays policy-fixture-only',
+    'follow_locomotion': 'blocked: labelled mVolatileVelocity approximation drives real motion; no dedicated P1 follow-teki action until provider 12',
     'panic_staging': 'blocked: P1 has no verified panic state; released followers stay PIKISTATE_Normal',
-    'brain_fallback': 'blocked: suspend destination (Formation rejoin vs Free) untraced in source',
     'claim_persistence': 'blocked: claim persistence across day/cave transitions undefined',
 }
 STATUS = {key: PASSED.get(key, BLOCKED.get(key, 'untested')) for key in GATES}
+STATUS['brain_fallback'] = 'pass (policy): suspend destination resolved to Free (ActTeki::getNextAIType()==ACT_Free) via the suspend_fallback policy fixture (mock host, no real-GL run)'
+STATUS['press_combat'] = 'untested: press/hipdrop receiver wired in native (InteractPress -> pc_p2_hardlanes_fuefuki_pressed) and stuck-attacker/health facts fed, but no natural P1 emitter presses the Napkid vehicle (provider lane 10) and no real-GL run exists'
 
 
 def digest(path):

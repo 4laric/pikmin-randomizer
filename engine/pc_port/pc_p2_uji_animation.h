@@ -11,7 +11,7 @@ inline bool parse(std::istream& input,std::vector<p2animation::Clip> (&banks)[2]
         if(kind){names.push_back("attack2");names.push_back("eat");}names.push_back("type5");
         for(const auto& name:names){
             p2animation::Clip clip;
-            if(!(input>>clip.name>>clip.count>>clip.duration)||clip.name!=name||clip.count<1||clip.count>12||clip.duration<1||clip.duration>10000)return false;
+            if(!(input>>clip.name>>clip.count>>clip.duration)||clip.name!=name||clip.count<1||clip.count>64||clip.duration<1||clip.duration>10000)return false;
             for(int i=0;i<clip.count;++i){int frame;if(!(input>>frame)||frame<0||frame>=clip.duration||(i&&frame<=clip.frames.back()))return false;clip.frames.push_back(frame);}
             if(clip.frames.front()!=0||clip.frames.back()!=clip.duration-1)return false;
             parsed[kind].push_back(clip);

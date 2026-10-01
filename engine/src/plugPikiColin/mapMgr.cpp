@@ -1,4 +1,7 @@
 #include "MapMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "gl/pc_gfx.h"
+#endif
 
 #include "AIPerf.h"
 #include "Creature.h"
@@ -21,6 +24,8 @@
 #include "timers.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_bbft.h"
+#include "pc_p2_surface_topology.h"
+#include "pc_p2_cargo_ground.h"
 #endif
 
 //////////////////////////////////////////////////////
@@ -1097,6 +1102,9 @@ struct MapLightMgr {
  */
 MapMgr::MapMgr(Controller* controller)
 {
+#if defined(PIKI_PC_PORT)
+	pc_p2_surface_topology_reset();
+#endif
 	mController = controller;
 
 	// zero-out fade and desaturation
@@ -1215,6 +1223,9 @@ void MapMgr::initShape()
 
 	// set up collisions (with grid size of 64)
 	mMapModel->createCollisions(MAP_GRID_SIZE);
+#if defined(PIKI_PC_PORT)
+	pc_p2_surface_topology_init(mMapModel);
+#endif
 	mMapBounds.expandBound(mMapModel->mCourseExtents);
 
 	// set up physics
@@ -1965,6 +1976,28 @@ f32 MapMgr::getMinY(f32 x, f32 z, bool includePlatColl)
  * @param includePlatColl Whether to consider platform collision as valid "ground" to return.
  * @return Minimum Y value found, or 0.0f if none.
  */
+#if defined(PIKI_PC_PORT)
+// Height and normal come from the same positive-Y static triangle. No candidate
+// means no floor contact; unlike getMinY this never invents ground at zero.
+CollTriInfo* MapMgr::getStaticGroundBelow(f32 x, f32 z, f32 ceiling, f32& height)
+{
+    if (!std::isfinite(x) || !std::isfinite(z) || !std::isfinite(ceiling)) return nullptr;
+    CollTriInfo* result=nullptr;
+    for (CollGroup* group=getCollGroupList(x,z,false);group;group=group->mNextCollGroup) {
+        const int count=getGroundQueryTriCount(group);
+        for(int i=0;i<count;i++) {
+            CollTriInfo* tri=group->mTriangleList[i];
+            Vector3f point(x,0.f,z);
+            const Vector3f& n=tri->mTriangle.mNormal;
+            if (n.y>0.f && tri->inTriClampTo(point)
+                && pc_p2_cargo_ground_candidate(point.y,ceiling,n.x,n.y,n.z)
+                && (!result || point.y>height)) {result=tri;height=point.y;}
+        }
+    }
+    return result;
+}
+#endif
+
 f32 MapMgr::getMaxY(f32 x, f32 z, bool includePlatColl)
 {
 	// track how many times we call this each frame for some reason
@@ -2273,7 +2306,11 @@ void MapMgr::recTraceMove(CollGroup* collGroupList, MoveTrace& trace, f32 timeSt
 				}
 
 				// if collision is too close to vertical, call it a wall and do the appropriate callback
-				if (collisionType != NoCollision && tri->mTriangle.mNormal.y < 0.5f && tri->mTriangle.mNormal.y > -0.5f) {
+				// PC port (#884 round 4): opt-in P2 wall rule (see MoveTrace::mP2WallThreshold).
+				const bool isWall = trace.mP2WallThreshold
+				                      ? (collNormal.y < 0.6f && collNormal.y <= 0.70710677f && collNormal.y >= -0.70710677f)
+				                      : (tri->mTriangle.mNormal.y < 0.5f && tri->mTriangle.mNormal.y > -0.5f);
+				if (collisionType != NoCollision && isWall) {
 					trace.mObject->wallCallback(tri->mTriangle, currGroup->mPlatCollision);
 				}
 				trace.mObject->mCollPlatform = currGroup->mPlatCollision;
@@ -2358,6 +2395,10 @@ void MapMgr::traceMove(Creature* creature, MoveTrace& trace, f32 timeStep)
 			FOREACH_NODE(DynCollShape, mCollShapeList->mChild, coll)
 			{
 				if (coll->mCreature && coll->mCreature == creature) {
+					continue;
+				}
+				// PC port (#884): opt-in skip of enemy/boss body platforms (see MoveTrace::mIgnoreEnemyCollParts).
+				if (trace.mIgnoreEnemyCollParts && coll->mCreature && (coll->mCreature->isTeki() || coll->mCreature->isBoss())) {
 					continue;
 				}
 				if (collCheckBox.intersects(coll->mBoundingBox)) {

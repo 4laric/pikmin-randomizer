@@ -1,0 +1,32 @@
+{
+  "lane": "25 Snagrets and Crawbster",
+  "parent_issue": 174,
+  "child_issue": 376,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-13",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "native_base_branch": "codex/pikmin2-room-preview",
+  "native_base": "f9e139d86afab0b7581599f2178ee1a95dcf33af",
+  "native_head": "94e9ecc67eaddc2406e37be1194e245d37482ce1",
+  "native_worktree": "output/native-lane26",
+  "native_branch": "opencode/p2-longlegs-fsm",
+  "dirty_state": "baseline maintained dirty files preserved; commit adds only lane files; build-fsm/ and compiled test .exe are untracked and not committed",
+  "files": [
+    "pc_port/pc_p2_snagret_fsm.h",
+    "pc_port/pc_p2_snagret_fsm.cpp",
+    "tools/p2_snagret_fsm_test.cpp",
+    "CMakeLists.txt"
+  ],
+  "source": "docs/PIKMIN2_SNAGRET_CRAWBSTER_AUDIT.md (US GPVE01 rev 0); SnakeCrow/SnakeWhole state machines",
+  "verification": {
+    "standalone_command": "g++ -std=c++17 -O2 -Wall -Wextra -Ipc_port tools/p2_snagret_fsm_test.cpp pc_port/pc_p2_snagret_fsm.cpp -o tools/p2_snagret_fsm_test.exe",
+    "standalone_result": "PASS SNAGRET_FSM (exit 0)",
+    "cmake_target": "p2_snagret_fsm_test",
+    "cmake_result": "PASS SNAGRET_FSM (exit 0)",
+    "cmake_exe_sha256": "8A261C98CD607DD1D5177BCDCB1883D09795E7E68B7550CF8892858FE95FD2A7"
+  },
+  "scope": "Engine-free policy for the shared Snagret burrow cycle, appear1/2 choice, five peck boxes and strike points, re-peck on a free mouth slot, latched-Pikmin Struggle, shake dive, SnakeWhole Walk/Home hop gating, surfacing heal, and death drop/corpse. DangoMushi (Crawbster) source FSM already exists at native 8ae1e5b4 and is not duplicated here.",
+  "runtime": "not run: engine-free source-policy slice. No assets, GL window or arena were used, so no six-gate runtime claim is made for this commit.",
+  "note": "The native head hash is recorded from the private worktree; confirm it against the exported patch before integration.",
+  "integration": "Apply native patch 0001 after lane 01 reconciles the #407 species candidates; the module is additive and engine-free until a host wires it to the actor, mouth slots and SnakeJointMgr."
+}

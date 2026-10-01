@@ -1,0 +1,1063 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 70184cfa..8f73116e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -195,6 +195,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_waterwraith_host.cpp
+     pc_port/pc_p2_waterwraith_actor.cpp
+     pc_port/pc_p2_waterwraith_register.cpp
++    pc_port/pc_p2_waterwraith_encounter.cpp
+     pc_port/pc_p2_qurione.cpp
+     pc_port/pc_p2_kurage_receiver.cpp
+     pc_port/pc_p2_sokkuri.cpp
+diff --git a/pc_port/pc_p2_waterwraith_attack_policy.h b/pc_port/pc_p2_waterwraith_attack_policy.h
+new file mode 100644
+index 00000000..38520fe5
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_attack_policy.h
+@@ -0,0 +1,114 @@
++#pragma once
++
++// Lane 31 (#443 / parent #175): engine-free combat rules for the Waterwraith
++// (99 BlackMan) / Tyre (98) owned encounter. This header carries only the
++// selection/acceptance rules; the engine-facing side effects (stimulating real
++// Pikmin and routing damage into `p2_waterwraith_actor_apply_damage`) live in
++// pc_p2_waterwraith_register.cpp. Keeping the rules here lets a warning-clean
++// standalone fixture exercise them without engine objects.
++//
++// Source anchors (US GPVE01 rev 0, research rev 632af937):
++//  - The riding roller is not damageable except while frozen; after the wraith
++//    dismounts (EB_Invulnerable) the exposed body stays damageable
++//    (tyreState.cpp:67-69, :152-153, blackMan.cpp:672-681). Only Purple hits
++//    are accepted; this is enforced structurally by
++//    `p2_waterwraith_actor_apply_damage`.
++//  - Tyre general key fp24 attack damage is 10; the roll-over contact is the
++//    P1 host's closest analogue to the source roller attack (the retained
++//    source attack callback is out of scope, see the assets audit sec.0).
++//  - Radii and the per-hit Purple damage are lane adaptations (the source
++//    collision parts are not representable on this host); they are recorded as
++//    approximations, not retail values.
++
++namespace p2wwatk {
++
++struct Target {
++    float x = 0.0f;
++    float z = 0.0f;
++    bool purple = false;
++    bool alive = false;
++};
++
++struct Rule {
++    float stunRadius = 150.0f;    // Purple landing stun trigger (adaptation)
++    float hitRadius = 120.0f;     // Purple direct-hit acceptance (adaptation)
++    float crushRadius = 90.0f;    // roll-over contact (adaptation)
++    float purpleHitDamage = 60.0f; // per accepted Purple hit (adaptation)
++    float crushKnockback = 100.0f; // InteractFlick intensity (adaptation)
++    float crushDamage = 10.0f;     // Tyre general fp24
++};
++
++enum ActionFlags : unsigned {
++    ActionNone = 0u,
++    ActionStun = 1u << 0,  // a Purple is in stun range while not damageable
++    ActionHit = 1u << 1,   // >=1 Purple in hit range while damageable
++    ActionCrush = 1u << 2, // >=1 non-Purple in crush range while rolling
++};
++
++struct Evaluation {
++    unsigned actions = ActionNone;
++    int purpleHits = 0;   // Purple targets in hit range (one accepted hit each)
++    int crushTargets = 0; // non-Purple targets in crush range
++};
++
++inline bool inRange(float ax, float az, float bx, float bz, float radius)
++{
++    const float dx = ax - bx;
++    const float dz = az - bz;
++    return dx * dx + dz * dz <= radius * radius;
++}
++
++// Pure rules.
++//  `attached`   : the single Tyre child is present and owned by the wraith.
++//  `damageable` : the rig vulnerability gate is open (frozen riding, or after
++//                 the wraith dismounted).
++//  `rolling`    : the wraith is moving with the rollers (crush applies only
++//                 then; a frozen roller is static and does not crush).
++//
++// A Purple target in stun range while the rig is closed sets ActionStun; the
++// caller turns that into a roller quakeFreeze edge (once). While the rig is
++// damageable, each Purple in hit range is one accepted hit. Non-Purple targets
++// never stun or damage; they are only crushed while rolling.
++inline Evaluation evaluate(const Rule& rule, float rollerX, float rollerZ, bool attached,
++                           bool damageable, bool rolling, const Target* targets, int count)
++{
++    Evaluation result;
++    if (!attached) {
++        // Dismounted: the exposed body can still take Purple hits, but there is
++        // no roller to stun or to crush with.
++        for (int i = 0; i < count; ++i) {
++            const Target& target = targets[i];
++            if (!target.alive || !target.purple) {
++                continue;
++            }
++            if (inRange(target.x, target.z, rollerX, rollerZ, rule.hitRadius)) {
++                result.actions |= ActionHit;
++                ++result.purpleHits;
++            }
++        }
++        return result;
++    }
++
++    for (int i = 0; i < count; ++i) {
++        const Target& target = targets[i];
++        if (!target.alive) {
++            continue;
++        }
++        if (target.purple) {
++            if (damageable) {
++                if (inRange(target.x, target.z, rollerX, rollerZ, rule.hitRadius)) {
++                    result.actions |= ActionHit;
++                    ++result.purpleHits;
++                }
++            } else if (inRange(target.x, target.z, rollerX, rollerZ, rule.stunRadius)) {
++                result.actions |= ActionStun;
++            }
++        } else if (rolling && inRange(target.x, target.z, rollerX, rollerZ, rule.crushRadius)) {
++            result.actions |= ActionCrush;
++            ++result.crushTargets;
++        }
++    }
++    return result;
++}
++
++} // namespace p2wwatk
+diff --git a/pc_port/pc_p2_waterwraith_encounter.cpp b/pc_port/pc_p2_waterwraith_encounter.cpp
+new file mode 100644
+index 00000000..4a87ad0b
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_encounter.cpp
+@@ -0,0 +1,177 @@
++#include "pc_p2_waterwraith_encounter.h"
++
++#include "pc_p2_waterwraith_attack_policy.h"
++#include "pc_p2_purple.h"
++
++#include "Interactions.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "Piki.h"
++#include "PikiMgr.h"
++
++#include <cmath>
++#include <cstdio>
++
++namespace {
++constexpr int kMaxTargets = 64;
++
++P2WaterwraithEncounterStats sStats;
++bool sStunEdge = false;
++
++bool hitRange(float ax, float az, float bx, float bz, float radius)
++{
++    return p2wwatk::inRange(ax, az, bx, bz, radius);
++}
++} // namespace
++
++void pc_p2_waterwraith_encounter_reset()
++{
++    sStats = P2WaterwraithEncounterStats();
++    sStunEdge = false;
++}
++
++bool pc_p2_waterwraith_encounter_ready()
++{
++    return true;
++}
++
++const P2WaterwraithEncounterStats& pc_p2_waterwraith_encounter_stats()
++{
++    return sStats;
++}
++
++void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithActorInput& in)
++{
++    p2wwatk::Rule rule;
++    P2WaterwraithRig& rig = actor.rig();
++
++    ++sStats.ticks;
++
++    const bool attached = rig.alive() && rig.attachedToOwner();
++    const bool damageable = attached && rig.damageable();
++    const bool rolling = attached && rig.tyrePhase() != P2TYRE_Freeze;
++    const P2WaterwraithVec3 reference = attached ? rig.position() : actor.position();
++
++    // Gather the live squad's planar targets once per source tick.
++    p2wwatk::Target targets[kMaxTargets];
++    int count = 0;
++    if (pikiMgr) {
++        Iterator iterator(pikiMgr);
++        CI_LOOP(iterator) {
++            Piki* piki = static_cast<Piki*>(*iterator);
++            if (!piki || !piki->isAlive() || count >= kMaxTargets) {
++                continue;
++            }
++            const Vector3f position = piki->getPosition();
++            p2wwatk::Target& target = targets[count++];
++            target.x = position.x;
++            target.z = position.z;
++            target.purple = pc_p2_is_purple(piki);
++            target.alive = true;
++        }
++    }
++
++    const p2wwatk::Evaluation evaluation
++        = p2wwatk::evaluate(rule, reference.x, reference.z, attached, damageable, rolling, targets,
++                            count);
++
++    // A Purple landing stun: request the roller quakeFreeze while the rig is
++    // closed. Repeated requests are harmless (the rig accepts only Move); the
++    // counter/evidence records the edge where the stun actually lands.
++    if ((evaluation.actions & p2wwatk::ActionStun) != 0u) {
++        in.quakeFreeze = true;
++        if (!sStunEdge && rig.tyrePhase() == P2TYRE_Move) {
++            ++sStats.stunned;
++            std::printf("P2_WATERWRAITH_STUN tick=%llu rollerHealth=%.1f\n",
++                        static_cast<unsigned long long>(sStats.ticks), rig.tyreHealth());
++            sStunEdge = true;
++        }
++    } else {
++        sStunEdge = false;
++    }
++
++    // Accepted Purple hits: one damage packet per Purple target in hit range.
++    if ((evaluation.actions & p2wwatk::ActionHit) != 0u) {
++        for (int i = 0; i < count; ++i) {
++            const p2wwatk::Target& target = targets[i];
++            if (!target.alive || !target.purple
++                || !hitRange(target.x, target.z, reference.x, reference.z, rule.hitRadius)) {
++                continue;
++            }
++            p2_waterwraith_actor_apply_damage(actor, rule.purpleHitDamage, true, nullptr);
++            ++sStats.purpleHits;
++            sStats.damageDealt += rule.purpleHitDamage;
++            std::printf("P2_WATERWRAITH_HIT tick=%llu attached=%d rollerHealth=%.1f bodyHealth=%.1f\n",
++                        static_cast<unsigned long long>(sStats.ticks), attached ? 1 : 0,
++                        rig.tyreHealth(), actor.bodyHealth());
++        }
++    }
++
++    // Roller crush: flick non-Purple Pikmin under the rolling wraith. The
++    // acting owner is the resident captain: the source attribution creature is
++    // not present on this host actor (recorded adaptation).
++    if ((evaluation.actions & p2wwatk::ActionCrush) != 0u && naviMgr && naviMgr->getNavi()) {
++        Creature* owner = naviMgr->getNavi();
++        int crushed = 0;
++        if (pikiMgr) {
++            Iterator iterator(pikiMgr);
++            CI_LOOP(iterator) {
++                Piki* piki = static_cast<Piki*>(*iterator);
++                if (!piki || !piki->isAlive() || pc_p2_is_purple(piki)) {
++                    continue;
++                }
++                const Vector3f position = piki->getPosition();
++                if (!hitRange(position.x, position.z, reference.x, reference.z, rule.crushRadius)) {
++                    continue;
++                }
++                if (piki->stimulate(InteractFlick(owner, rule.crushKnockback, rule.crushDamage, 0.0f))) {
++                    ++crushed;
++                }
++            }
++        }
++        if (crushed > 0) {
++            sStats.crushes += static_cast<std::uint64_t>(crushed);
++            std::printf("P2_WATERWRAITH_CRUSH tick=%llu count=%d\n",
++                        static_cast<unsigned long long>(sStats.ticks), crushed);
++        }
++    }
++
++    // Host death script (source roller death -> dismount -> tyre_getoff ->
++    // child removal). Once the Tyre is gone the exposed body stays damageable.
++    if (attached && rig.tyreHealth() <= 0.0f) {
++        if (!sStats.rollerZeroed) {
++            sStats.rollerZeroed = true;
++            std::printf("P2_WATERWRAITH_ROLLER_ZERO tick=%llu\n",
++                        static_cast<unsigned long long>(sStats.ticks));
++        }
++        in.isTyreDead = true;
++    } else if (!attached && rig.alive() && rig.tyreHealth() <= 0.0f && rig.ownerInvulnerableSet()) {
++        if (rig.tyrePhase() != P2TYRE_Dead) {
++            in.tyreDeathStart = true;
++        } else {
++            in.tyreDeadAnimEnd = true;
++        }
++    } else if (!attached && !rig.alive() && !sStats.childRemoved) {
++        sStats.childRemoved = true;
++        std::printf("P2_WATERWRAITH_TYRE_REMOVED tick=%llu\n",
++                    static_cast<unsigned long long>(sStats.ticks));
++    }
++
++    // Wraith body resolution: end the escape, then the source Dead key sequence
++    // (KEYEVENT_5 releases the treasure, KEYEVENT_END kills).
++    if (actor.phase() == P2BM_Escape) {
++        in.animEnd = true;
++    } else if (actor.phase() == P2BM_Dead) {
++        if (!sStats.treasureReleased) {
++            sStats.treasureReleased = true;
++            in.keyEvent5 = true;
++            std::printf("P2_WATERWRAITH_TREASURE tick=%llu\n",
++                        static_cast<unsigned long long>(sStats.ticks));
++        } else if (!sStats.killed) {
++            sStats.killed = true;
++            in.animEnd = true;
++            std::printf("P2_WATERWRAITH_KILL tick=%llu\n",
++                        static_cast<unsigned long long>(sStats.ticks));
++        }
++    }
++}
+diff --git a/pc_port/pc_p2_waterwraith_encounter.h b/pc_port/pc_p2_waterwraith_encounter.h
+new file mode 100644
+index 00000000..64f377a7
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_encounter.h
+@@ -0,0 +1,46 @@
++#pragma once
++
++// Lane 31 (#443 / parent #175): engine-facing Waterwraith combat consumer.
++//
++// This is the missing consumer for the family rules in
++// pc_p2_waterwraith_attack_policy.h and the actor receiver
++// `p2_waterwraith_actor_apply_damage`. It scans the live Piki squad for the
++// registered Waterwraith host actor:
++//
++//   * Purple Pikmin in stun range while the rig is closed -> a roller
++//     quakeFreeze edge (Purple landing stun);
++//   * Purple Pikmin in hit range while the rig is open -> accepted damage on
++//     the frozen roller / dismounted body;
++//   * non-Purple Pikmin in crush range while rolling -> InteractFlick (the P1
++//     host analogue of the source roller contact, fp24 damage 10);
++//   * the host death script: roller death -> dismount -> tyre_getoff ->
++//     child removal.
++//
++// It owns no actor, map or lifetime; the register seam owns the actor and calls
++// this once per source tick. Cleanup/teardown stays with the register seam.
++
++#include "pc_p2_waterwraith_actor.h"
++
++#include <cstdint>
++
++struct P2WaterwraithEncounterStats {
++    std::uint64_t ticks = 0;
++    std::uint64_t stunned = 0;   // Purple landing stuns applied
++    std::uint64_t purpleHits = 0; // accepted Purple hits
++    std::uint64_t crushes = 0;   // non-Purple Pikmin flicked by the roller
++    float damageDealt = 0.0f;
++    bool rollerZeroed = false;   // roller health reached zero
++    bool childRemoved = false;   // tyre_getoff end removed the Tyre child
++    bool treasureReleased = false; // source Dead KEYEVENT_5
++    bool killed = false;         // source Dead KEYEVENT_END (kill requested)
++};
++
++void pc_p2_waterwraith_encounter_reset();
++bool pc_p2_waterwraith_encounter_ready();
++const P2WaterwraithEncounterStats& pc_p2_waterwraith_encounter_stats();
++
++// One source tick, called just before `actor.tick`. Fills `in` with the
++// encounter-derived triggers (stun, roller death, tyre_getoff, body death
++// animation) and applies accepted Purple damage / roller crushes to the live
++// squad. Safe when no squad is present (no-op triggers).
++void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithActorInput& in);
+diff --git a/pc_port/pc_p2_waterwraith_register.cpp b/pc_port/pc_p2_waterwraith_register.cpp
+index 451b645c..ac671f46 100644
+--- a/pc_port/pc_p2_waterwraith_register.cpp
++++ b/pc_port/pc_p2_waterwraith_register.cpp
+@@ -1,6 +1,7 @@
+ #include "pc_p2_waterwraith_register.h"
+ 
+ #include "pc_p2_waterwraith_actor.h"
++#include "pc_p2_waterwraith_encounter.h"
+ #include "pc_p2_waterwraith_visual.h"
+ 
+ #include "Graphics.h"
+@@ -166,6 +167,7 @@ void pc_p2_waterwraith_register_reset()
+ {
+     sState = RegisterState();
+     pc_p2_waterwraith_visual_reset();
++    pc_p2_waterwraith_encounter_reset();
+ }
+ 
+ bool pc_p2_waterwraith_register_ready()
+@@ -196,6 +198,9 @@ void pc_p2_waterwraith_register_tick(float delta)
+         } else if (sState.actorTicks == 2) {
+             in.animEnd = true;
+         }
++        // Live-squad combat: Purple stun/damage and roller crush, plus the
++        // roller death script (dismount -> tyre_getoff -> child removal).
++        pc_p2_waterwraith_encounter_step(sState.actor, in);
+         sState.actor.tick(in, sState.out, kSourceDelta);
+         ++sState.actorTicks;
+         if (sState.visualReady) {
+@@ -248,3 +253,28 @@ const char* pc_p2_waterwraith_register_phase()
+ {
+     return sState.actor.phaseName();
+ }
++
++P2WaterwraithVec3 pc_p2_waterwraith_register_wraith_position()
++{
++    return sState.actor.position();
++}
++
++P2WaterwraithVec3 pc_p2_waterwraith_register_roller_position()
++{
++    return sState.actor.rig().position();
++}
++
++bool pc_p2_waterwraith_register_attached()
++{
++    return sState.actor.rig().alive() && sState.actor.rig().attachedToOwner();
++}
++
++float pc_p2_waterwraith_register_tyre_health()
++{
++    return sState.actor.rig().tyreHealth();
++}
++
++float pc_p2_waterwraith_register_body_health()
++{
++    return sState.actor.bodyHealth();
++}
+diff --git a/pc_port/pc_p2_waterwraith_register.h b/pc_port/pc_p2_waterwraith_register.h
+index f722d2b7..ffdc7d64 100644
+--- a/pc_port/pc_p2_waterwraith_register.h
++++ b/pc_port/pc_p2_waterwraith_register.h
+@@ -65,3 +65,8 @@ std::uint64_t pc_p2_waterwraith_register_ticks();
+ float pc_p2_waterwraith_register_distance();
+ float pc_p2_waterwraith_register_roll();
+ const char* pc_p2_waterwraith_register_phase();
++P2WaterwraithVec3 pc_p2_waterwraith_register_wraith_position();
++P2WaterwraithVec3 pc_p2_waterwraith_register_roller_position();
++bool pc_p2_waterwraith_register_attached();
++float pc_p2_waterwraith_register_tyre_health();
++float pc_p2_waterwraith_register_body_health();
+diff --git a/tools/p2_waterwraith_attack_policy_test.cpp b/tools/p2_waterwraith_attack_policy_test.cpp
+new file mode 100644
+index 00000000..4b52b1e4
+--- /dev/null
++++ b/tools/p2_waterwraith_attack_policy_test.cpp
+@@ -0,0 +1,100 @@
++// Standalone fixture for the engine-free Waterwraith combat rules (#443).
++// Build (single line):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_waterwraith_attack_policy_test.cpp -o <out>.exe
++#include "pc_p2_waterwraith_attack_policy.h"
++
++#include <cassert>
++#include <cstdio>
++
++using namespace p2wwatk;
++
++static Target make(float x, float z, bool purple, bool alive = true)
++{
++    Target t;
++    t.x = x;
++    t.z = z;
++    t.purple = purple;
++    t.alive = alive;
++    return t;
++}
++
++int main()
++{
++    const Rule rule;
++
++    // 1. Riding, not damageable: a Purple inside stun range sets a stun only.
++    {
++        Target t[] = { make(50.0f, 0.0f, true) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, false, true, t, 1);
++        assert((e.actions & ActionStun) != 0u);
++        assert((e.actions & ActionHit) == 0u);
++        assert((e.actions & ActionCrush) == 0u);
++        assert(e.purpleHits == 0 && e.crushTargets == 0);
++    }
++
++    // 2. Riding, damageable (frozen): Purple in hit range is accepted once each;
++    //    a non-Purple in the same range is never a hit.
++    {
++        Target t[] = { make(60.0f, 0.0f, true), make(30.0f, 0.0f, false) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, true, false, t, 2);
++        assert((e.actions & ActionHit) != 0u);
++        assert((e.actions & ActionStun) == 0u);
++        assert((e.actions & ActionCrush) == 0u);
++        assert(e.purpleHits == 1);
++    }
++
++    // 3. Riding, damageable: a Purple outside the hit radius does nothing.
++    {
++        Target t[] = { make(400.0f, 0.0f, true) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, true, false, t, 1);
++        assert(e.actions == ActionNone);
++    }
++
++    // 4. Rolling: non-Purple in crush range is crushed; frozen (not rolling)
++    //    never crushes.
++    {
++        Target t[] = { make(40.0f, 20.0f, false), make(500.0f, 0.0f, false) };
++        Evaluation rolling = evaluate(rule, 0.0f, 0.0f, true, false, true, t, 2);
++        assert((rolling.actions & ActionCrush) != 0u);
++        assert(rolling.crushTargets == 1);
++        Evaluation frozen = evaluate(rule, 0.0f, 0.0f, true, true, false, t, 2);
++        assert((frozen.actions & ActionCrush) == 0u);
++    }
++
++    // 5. A Purple is never crushed (it stuns/hits instead), even while rolling.
++    {
++        Target t[] = { make(40.0f, 0.0f, true) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, false, true, t, 1);
++        assert((e.actions & ActionCrush) == 0u);
++        assert(e.crushTargets == 0);
++        assert((e.actions & ActionStun) != 0u);
++    }
++
++    // 6. Dismounted (no child): no stun, no crush; the exposed body still takes
++    //    Purple hits at hit range.
++    {
++        Target t[] = { make(40.0f, 0.0f, true), make(20.0f, 0.0f, false) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, false, true, false, t, 2);
++        assert((e.actions & ActionStun) == 0u);
++        assert((e.actions & ActionCrush) == 0u);
++        assert((e.actions & ActionHit) != 0u);
++        assert(e.purpleHits == 1);
++    }
++
++    // 7. Dead targets are ignored.
++    {
++        Target t[] = { make(20.0f, 0.0f, true, false), make(10.0f, 0.0f, false, false) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, true, true, t, 2);
++        assert(e.actions == ActionNone);
++    }
++
++    // 8. Multiple Purples in hit range each count as one hit.
++    {
++        Target t[] = { make(10.0f, 0.0f, true), make(20.0f, 30.0f, true), make(300.0f, 0.0f, true) };
++        Evaluation e = evaluate(rule, 0.0f, 0.0f, true, true, false, t, 3);
++        assert(e.purpleHits == 2);
++    }
++
++    std::puts("PASS WATERWRAITH_ATTACK_POLICY");
++    return 0;
++}
+diff --git a/tools/p2_waterwraith_encounter_runtime.cpp b/tools/p2_waterwraith_encounter_runtime.cpp
+new file mode 100644
+index 00000000..ef43524d
+--- /dev/null
++++ b/tools/p2_waterwraith_encounter_runtime.cpp
+@@ -0,0 +1,269 @@
++// Private real-GL Waterwraith ENCOUNTER runtime fixture (#443 / parent #175).
++// Compiled by the isolated fixture build only (root repo
++// scripts/build_pikmin2_fixture.py); it is not part of the game target.
++//
++// Boots the frozen host with --experimental-pikmin2-room and lets the real
++// engine preview setup install the lane-31 registration seam, which now also
++// drives the combat consumer (pc_p2_waterwraith_encounter). The fixture does
++// NOT call the combat API directly: it only arranges live squad Pikmin near the
++// registered actor (repositioning real Piki objects and converting some to
++// Purple) and observes the encounter markers/stats.
++//
++// Coverage:
++//   * Stage A (reds only adjacent): the roller crushes them (InteractFlick),
++//     but non-Purple never damages the actor (`damageDealt == 0`).
++//   * Stage B (Purple adjacent): Purple stuns the riding roller, accepted hits
++//     deplete the Tyre health, the roller death script dismounts and removes the
++//     child, and the exposed body is finished.
++//   * Cleanup/re-entry: reset then re-setup the seam and require it is ready
++//     again with no stale state.
++
++#include <SDL2/SDL.h>
++#include <GL/gl.h>
++#include "gl/pc_opengl.h"
++#include "App.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "Matrix4f.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "Node.h"
++#include "MoviePlayer.h"
++#include "Piki.h"
++#include "PikiMgr.h"
++#include "system.h"
++#include "pc_bbft.h"
++#include "pc_gpu_preference.h"
++#include "pc_window.h"
++#include "pc_p2_preview.h"
++#include "settings/pc_settings.h"
++#include "settings/pc_settings_p2d.h"
++#include "pc_p2_purple.h"
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <vector>
++
++#include "pc_p2_waterwraith_encounter.h"
++#include "pc_p2_waterwraith_register.h"
++
++namespace {
++constexpr int kStageA_Frames = 45;
++constexpr int kMaxFrames = 3600;
++constexpr float kPurpleOffsetX[3] = { 30.0f, 0.0f, -30.0f };
++constexpr float kPurpleOffsetZ[3] = { 0.0f, 30.0f, 0.0f };
++constexpr float kRedOffsetX[2] = { 50.0f, -50.0f };
++constexpr float kRedOffsetZ[2] = { 0.0f, 0.0f };
++
++void require(bool value, const char* message)
++{
++    if (!value) {
++        std::printf("FAIL WATERWRAITH_ENCOUNTER_RUNTIME %s\n", message);
++        std::fflush(stdout);
++        std::_Exit(1);
++    }
++}
++
++void capture(const char* path)
++{
++    auto bind = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
++    GLint previous = 0;
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
++    bind(GL_FRAMEBUFFER, 0);
++    int w = 0, h = 0;
++    SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
++    std::vector<unsigned char> pixels(size_t(w) * size_t(h) * 3);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1);
++    glReadBuffer(GL_BACK);
++    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
++    bind(GL_FRAMEBUFFER, previous);
++    require(glGetError() == GL_NO_ERROR, "capture GL error");
++    bool nonblack = false;
++    for (unsigned char value : pixels) {
++        nonblack |= value > 8;
++    }
++    require(nonblack, "empty capture");
++    FILE* file = std::fopen(path, "wb");
++    require(file != nullptr, "capture file");
++    std::fprintf(file, "P6\n%d %d\n255\n", w, h);
++    for (int y = h - 1; y >= 0; --y) {
++        std::fwrite(pixels.data() + size_t(y) * w * 3, 1, size_t(w) * 3, file);
++    }
++    std::fclose(file);
++}
++
++class WaterwraithEncounterApp final : public PlugPikiApp {
++    int frames = 0;
++    bool windowPrinted = false;
++    bool readyPrinted = false;
++    bool stagedReds = false;
++    bool convertedPurple = false;
++    int stageAFrames = 0;
++    bool stageAOk = false;
++    bool captured = false;
++    bool reentryChecked = false;
++
++public:
++    int idle() override
++    {
++        int result = PlugPikiApp::idle();
++        require(++frames < kMaxFrames, "timeout");
++        if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
++            gameflow.mMoviePlayer->requestSkip();
++            return result;
++        }
++        if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll
++            || gameflow.mIsUIOverlayActive) {
++            return result;
++        }
++        require(pc_p2_waterwraith_register_ready(),
++                "register seam not installed (missing p2-waterwraith-actor.txt?)");
++
++        if (!windowPrinted) {
++            SDL_Window* window = SDL_GL_GetCurrentWindow();
++            require(window != nullptr, "window");
++            int windowWidth = 0, windowHeight = 0;
++            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
++            require(windowWidth == 960 && windowHeight == 540, "window size 960x540");
++            std::printf("P2_WATERWRAITH_ENCOUNTER_WINDOW size=960x540\n");
++            windowPrinted = true;
++        }
++        if (!readyPrinted) {
++            std::printf("P2_WATERWRAITH_ENCOUNTER_READY\n");
++            readyPrinted = true;
++        }
++
++        const P2WaterwraithEncounterStats& stats = pc_p2_waterwraith_encounter_stats();
++        const P2WaterwraithVec3 roller = pc_p2_waterwraith_register_roller_position();
++        const P2WaterwraithVec3 wraith = pc_p2_waterwraith_register_wraith_position();
++        const P2WaterwraithVec3 ref = pc_p2_waterwraith_register_attached() ? roller : wraith;
++
++        // Collect a small live Piki working set once.
++        static std::vector<Piki*> squad;
++        if (!stagedReds) {
++            if (pikiMgr) {
++                Iterator iterator(pikiMgr);
++                CI_LOOP(iterator) {
++                    Piki* piki = static_cast<Piki*>(*iterator);
++                    if (piki && piki->isAlive() && squad.size() < 8) {
++                        squad.push_back(piki);
++                    }
++                }
++            }
++            stagedReds = !squad.empty();
++            if (!stagedReds) {
++                return result;
++            }
++            std::printf("P2_WATERWRAITH_ENCOUNTER_SQUAD count=%d\n", static_cast<int>(squad.size()));
++        }
++
++        // Keep two reds under the rollers (crush). This never damages the actor.
++        const int redCount = 2;
++        for (int i = 0; i < redCount && i < static_cast<int>(squad.size()); ++i) {
++            if (!squad[i]->isAlive()) {
++                continue;
++            }
++            squad[i]->resetPosition(Vector3f(ref.x + kRedOffsetX[i], 0.0f, ref.z + kRedOffsetZ[i]));
++        }
++
++        if (!stageAOk) {
++            ++stageAFrames;
++            if (stats.damageDealt != 0.0f || stats.purpleHits != 0) {
++                require(false, "non-Purple squad damaged the actor");
++            }
++            if (stageAFrames >= kStageA_Frames) {
++                require(stats.crushes > 0, "roller did not crush adjacent non-Purple Pikmin");
++                stageAOk = true;
++                std::printf("P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=%llu damage=%.1f\n",
++                            static_cast<unsigned long long>(stats.crushes), stats.damageDealt);
++            }
++            return result;
++        }
++
++        // Convert three squad members to Purple and keep them adjacent.
++        if (!convertedPurple) {
++            for (int i = 0; i < 3 && i < static_cast<int>(squad.size()); ++i) {
++                if (squad[i]->isAlive()) {
++                    pc_p2_make_purple(squad[i]);
++                }
++            }
++            convertedPurple = true;
++            std::printf("P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP\n");
++        }
++        for (int i = 0; i < 3 && i < static_cast<int>(squad.size()); ++i) {
++            if (!squad[i]->isAlive()) {
++                continue;
++            }
++            squad[i]->resetPosition(Vector3f(ref.x + kPurpleOffsetX[i], 0.0f, ref.z + kPurpleOffsetZ[i]));
++        }
++
++        return result;
++    }
++
++    void draw(Graphics& gfx) override
++    {
++        PlugPikiApp::draw(gfx);
++        if (!stageAOk || !convertedPurple || captured) {
++            return;
++        }
++        const P2WaterwraithEncounterStats& stats = pc_p2_waterwraith_encounter_stats();
++        if (!(stats.stunned > 0 && stats.purpleHits > 0 && stats.damageDealt > 0.0f
++              && stats.rollerZeroed && stats.childRemoved)) {
++            return;
++        }
++
++        require(pc_p2_waterwraith_register_tyre_health() <= 0.0f, "roller health not zeroed");
++
++        // Snapshot the combat counters before cleanup zeroes them.
++        const P2WaterwraithEncounterStats summary = pc_p2_waterwraith_encounter_stats();
++        require(summary.stunned > 0 && summary.purpleHits > 0 && summary.crushes > 0
++                    && summary.damageDealt > 0.0f,
++                "combat counters incomplete");
++
++        // Cleanup and re-entry: tear the seam down and bring it back with no
++        // stale actor/child/squad state.
++        if (!reentryChecked) {
++            pc_p2_waterwraith_register_reset();
++            require(!pc_p2_waterwraith_register_ready(), "register seam did not reset");
++            require(pc_p2_waterwraith_encounter_stats().stunned == 0, "encounter stats did not reset");
++            require(pc_p2_waterwraith_register_setup("p2-waterwraith-actor.txt"),
++                    "register seam re-setup failed");
++            require(pc_p2_waterwraith_register_ready() && pc_p2_waterwraith_register_attached(),
++                    "re-entry seam not ready/attached");
++            std::printf("P2_WATERWRAITH_ENCOUNTER_REENTRY ready=1 attached=1\n");
++            reentryChecked = true;
++        }
++
++        capture("waterwraith-encounter.ppm");
++        std::printf("P2_WATERWRAITH_ENCOUNTER_PASS stuns=%llu hits=%llu crushes=%llu damage=%.1f "
++                    "zeroed=1 child_removed=1\n",
++                    static_cast<unsigned long long>(summary.stunned),
++                    static_cast<unsigned long long>(summary.purpleHits),
++                    static_cast<unsigned long long>(summary.crushes), summary.damageDealt);
++        captured = true;
++        std::puts("PASS WATERWRAITH_ENCOUNTER_RUNTIME");
++        std::fflush(stdout);
++        std::_Exit(0);
++    }
++};
++} // namespace
++
++int main(int argc, char** argv)
++{
++    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
++    SDL_SetMainReady();
++    pc_gpu_preference_apply();
++    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
++    pc_bbft_init(argc, argv);
++    require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
++    require(pc_window_init("Waterwraith encounter runtime fixture", 960, 540), "window init");
++    pc_settings_init();
++    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
++    pc_window_set_window_size(960, 540);
++    pc_window_center();
++    gsys->Initialise();
++    pc_settings_p2d_init();
++    nodeMgr = new NodeMgr();
++    gsys->run(new WaterwraithEncounterApp());
++    return 0;
++}
+diff --git a/tools/p2_waterwraith_encounter_runtime_run.py b/tools/p2_waterwraith_encounter_runtime_run.py
+new file mode 100644
+index 00000000..171e13a8
+--- /dev/null
++++ b/tools/p2_waterwraith_encounter_runtime_run.py
+@@ -0,0 +1,237 @@
++"""Run and verify the private Waterwraith ENCOUNTER runtime fixture (#443 / #175).
++
++Mirrors tools/p2_waterwraith_register_runtime_run.py: verifies fixture
++provenance, stages a fresh room overlay via scripts/preview_pikmin2_room.py,
++copies the opt-in actor profile and the two-species visual stage in, runs the
++fixture with --experimental-pikmin2-room, and checks the encounter markers. The
++combat itself is driven by the real engine tick (pc_p2_waterwraith_register ->
++pc_p2_waterwraith_encounter) over the live Piki squad; the fixture only arranges
++Pikmin near the actor.
++"""
++import argparse
++import hashlib
++import importlib.util
++import json
++import os
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import traceback
++
++MARKERS = (
++    "P2_WATERWRAITH_ENCOUNTER_WINDOW",
++    "P2_WATERWRAITH_ENCOUNTER_READY",
++    "P2_WATERWRAITH_ENCOUNTER_STAGE_A",
++    "P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP",
++    "P2_WATERWRAITH_ENCOUNTER_PASS",
++    "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
++)
++
++
++def sha256(path):
++    digest = hashlib.sha256()
++    with path.open("rb") as source:
++        for chunk in iter(lambda: source.read(1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def file_record(path):
++    return {"path": str(path), "sha256": sha256(path), "size": path.stat().st_size}
++
++
++def load_preview_prepare(root):
++    source = root / "scripts" / "preview_pikmin2_room.py"
++    if not source.is_file():
++        raise ValueError(f"missing preview helper: {source}")
++    spec = importlib.util.spec_from_file_location("p2_preview_overlay", source)
++    module = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module.prepare
++
++
++def fixture_provenance(fixture):
++    provenance_path = fixture / "provenance.json"
++    executable = fixture / "fixture.exe"
++    if not provenance_path.is_file() or not executable.is_file():
++        raise ValueError("fixture must contain provenance.json and fixture.exe")
++    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
++    if provenance.get("status") != "built":
++        raise ValueError("fixture provenance is not built")
++    artifacts = provenance.get("artifacts", {})
++    record = next((value for name, value in artifacts.items()
++                   if Path(name).name.lower() == "fixture.exe"), None)
++    if not isinstance(record, dict) or not isinstance(record.get("sha256"), str):
++        raise ValueError("fixture provenance has no fixture.exe hash")
++    actual = sha256(executable)
++    if actual != record["sha256"]:
++        raise ValueError("fixture.exe hash differs from built provenance")
++    return provenance_path, provenance, executable, actual
++
++
++def copy_new(source, target):
++    if not source.is_file():
++        raise ValueError(f"missing staged input: {source}")
++    if target.exists():
++        raise ValueError(f"refusing to replace existing target: {target}")
++    target.parent.mkdir(parents=True, exist_ok=True)
++    shutil.copyfile(source, target)
++
++
++def verify_log(text):
++    errors = []
++    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_WINDOW\s+size=960x540\s*$", text,
++                     flags=re.MULTILINE):
++        errors.append("missing 960x540 window marker")
++    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_READY\s*$", text, flags=re.MULTILINE):
++        errors.append("missing encounter READY marker")
++    stage_a = re.search(r"^P2_WATERWRAITH_ENCOUNTER_STAGE_A\s+crushes=(\d+)\s+damage=([\d.]+)\s*$",
++                        text, flags=re.MULTILINE)
++    if not stage_a:
++        errors.append("missing Stage A marker")
++    elif int(stage_a.group(1)) < 1 or float(stage_a.group(2)) != 0.0:
++        errors.append(f"Stage A non-Purple damage/crush gate failed: {stage_a.groups()}")
++    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP\s*$", text, flags=re.MULTILINE):
++        errors.append("missing Purple setup marker")
++    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_REENTRY\s+ready=1\s+attached=1\s*$", text,
++                     flags=re.MULTILINE):
++        errors.append("missing cleanup/re-entry marker")
++    passed = re.search(r"^P2_WATERWRAITH_ENCOUNTER_PASS\s+stuns=(\d+)\s+hits=(\d+)\s+crushes=(\d+)\s+"
++                       r"damage=([\d.]+)\s+zeroed=1\s+child_removed=1\s*$", text, flags=re.MULTILINE)
++    if not passed:
++        errors.append("missing encounter PASS marker")
++    else:
++        stuns, hits, crushes, damage = (int(passed.group(1)), int(passed.group(2)),
++                                        int(passed.group(3)), float(passed.group(4)))
++        if stuns < 1:
++            errors.append("no Purple landing stun observed")
++        if hits < 1:
++            errors.append("no accepted Purple hit observed")
++        if crushes < 1:
++            errors.append("no roller crush observed")
++        if damage <= 0.0:
++            errors.append("no damage dealt")
++    if "PASS WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
++        errors.append("missing runtime PASS marker")
++    return errors
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--root-worktree", type=Path, required=True)
++    parser.add_argument("--assets", type=Path, required=True)
++    parser.add_argument("--room", type=Path, required=True)
++    parser.add_argument("--stage", type=Path, required=True,
++                        help="Directory containing p2-waterwraith-actor.txt")
++    parser.add_argument("--visual-stage", type=Path, required=True)
++    parser.add_argument("--purple-stage", type=Path, default=None,
++                        help="Directory containing p2-purple.txt and courses/purple_*.mod")
++    parser.add_argument("--fixture", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    args = parser.parse_args(argv)
++
++    record = {"schema": 1, "arguments": {key: str(value) if isinstance(value, Path) else value
++              for key, value in vars(args).items()}, "status": "failed", "errors": []}
++    run = None
++    try:
++        root = args.root_worktree.resolve()
++        assets, room, stage, fixture, output = (args.assets.resolve(), args.room.resolve(),
++                                                args.stage.resolve(), args.fixture.resolve(),
++                                                args.output.resolve())
++        visual_stage = args.visual_stage.resolve()
++        provenance_path, provenance, executable, executable_hash = fixture_provenance(fixture)
++        prepare = load_preview_prepare(root)
++        run = prepare(assets, room, output)
++        record["run"] = str(run)
++        copy_new(stage / "p2-waterwraith-actor.txt", run / "p2-waterwraith-actor.txt")
++        profile = visual_stage / "p2-waterwraith-visual.txt"
++        copy_new(profile, run / "p2-waterwraith-visual.txt")
++        staged = {}
++        mods = sorted((visual_stage / "assets" / "dataDir" / "courses" / "pikmin2room").glob("*.mod"))
++        if not mods:
++            raise ValueError("visual stage has no .mod files")
++        total = 0
++        for source in mods:
++            total += source.stat().st_size
++            if total > 96 * 1024 * 1024:
++                raise ValueError("visual stage byte budget exceeded")
++            target = run / "assets" / "dataDir" / "courses" / "pikmin2room" / source.name
++            copy_new(source, target)
++            staged[source.name] = sha256(target)
++        record["visual_stage_files"] = len(staged)
++        if args.purple_stage is not None:
++            purple_stage = args.purple_stage.resolve()
++            purple_profiles = sorted(p for p in purple_stage.iterdir()
++                                     if p.is_file() and p.name.startswith("p2-"))
++            if not any(p.name == "p2-purple.txt" for p in purple_profiles):
++                raise ValueError("purple stage has no p2-purple.txt")
++            copied = {}
++            for source in purple_profiles:
++                copy_new(source, run / source.name)
++                copied[source.name] = file_record(run / source.name)
++            record["purple_profiles"] = copied
++            purple_courses = purple_stage / "courses"
++            purple_mods = sorted(purple_courses.glob("*.mod")) if purple_courses.is_dir() else []
++            purple_total = 0
++            for source in purple_mods:
++                purple_total += source.stat().st_size
++                if purple_total > 8 * 1024 * 1024:
++                    raise ValueError("purple stage byte budget exceeded")
++                target = run / "assets" / "dataDir" / "courses" / "pikmin2room" / source.name
++                if not target.exists():
++                    copy_new(source, target)
++            record["purple_stage_files"] = len(purple_mods)
++        record["fixture"] = {"provenance": file_record(provenance_path),
++                             "provenance_status": provenance.get("status"),
++                             "executable": {"path": str(executable), "sha256": executable_hash}}
++        record["inputs"] = {"actor_profile": file_record(run / "p2-waterwraith-actor.txt"),
++                            "profile": file_record(run / "p2-waterwraith-visual.txt")}
++        for name in ("room.mod", "room.ini", "treasure.mod"):
++            record["inputs"][name] = file_record(room / name)
++        record["inputs"]["preview_helper"] = file_record(root / "scripts" / "preview_pikmin2_room.py")
++        command = [str(executable), "--experimental-pikmin2-room"]
++        record["command"] = command
++        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=90,
++                                text=True, encoding="utf-8", errors="replace", capture_output=True)
++        (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
++        (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
++        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 90,
++                                "stdout": file_record(run / "stdout.log"),
++                                "stderr": file_record(run / "stderr.log")}
++        errors = verify_log(result.stdout + "\n" + result.stderr)
++        record["verification"] = {"errors": errors}
++        capture = run / "waterwraith-encounter.ppm"
++        if not capture.is_file():
++            errors.append("missing capture: waterwraith-encounter.ppm")
++        elif capture.stat().st_size < 100000:
++            errors.append("trivial capture: waterwraith-encounter.ppm")
++        else:
++            record["captures"] = {"waterwraith-encounter.ppm": file_record(capture)}
++        if result.returncode != 0:
++            errors.append(f"fixture exit code {result.returncode}")
++        record["errors"].extend(errors)
++        if not errors:
++            record["status"] = "passed"
++    except subprocess.TimeoutExpired as error:
++        record["errors"].append("fixture timed out after 90 seconds")
++        if run is not None:
++            for name, value in (("stdout.log", error.stdout), ("stderr.log", error.stderr)):
++                if isinstance(value, bytes):
++                    value = value.decode("utf-8", errors="replace")
++                (run / name).write_text(value or "", encoding="utf-8")
++    except Exception as error:  # noqa: BLE001 - report any staging failure in the record
++        record["errors"].append(str(error))
++        record["traceback"] = traceback.format_exc()
++    output.mkdir(parents=True, exist_ok=True)
++    if run is not None:
++        (run / "verification.json").write_text(json.dumps(record, indent=2) + "\n",
++                                               encoding="utf-8")
++    print(json.dumps({"status": record["status"], "run": str(run) if run else None,
++                      "errors": record["errors"]}, indent=2))
++    return 0 if record["status"] == "passed" else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

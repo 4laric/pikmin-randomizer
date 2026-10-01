@@ -1,0 +1,1529 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f3da0aff..ae0ff7ff 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -193,6 +193,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_waterwraith.cpp
+     pc_port/pc_p2_waterwraith_visual.cpp
+     pc_port/pc_p2_waterwraith_host.cpp
++    pc_port/pc_p2_waterwraith_actor.cpp
+     pc_port/pc_p2_qurione.cpp
+     pc_port/pc_p2_kurage_receiver.cpp
+     pc_port/pc_p2_sokkuri.cpp
+diff --git a/pc_port/pc_p2_waterwraith_actor.cpp b/pc_port/pc_p2_waterwraith_actor.cpp
+new file mode 100644
+index 00000000..8215b63e
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_actor.cpp
+@@ -0,0 +1,506 @@
++#include "pc_p2_waterwraith_actor.h"
++
++#include <cmath>
++
++// State semantics transcribed from BlackManState.cpp / blackMan.cpp at research
++// revision 632af937. Deliberate, documented simplifications:
++// - Locomotion is host-driven (route waypoints), not the retained-assembly
++//   `walkFunc`/`findNextRoutePoint` pathfinder. The two-step timer and speeds
++//   are carried from the proper parms.
++// - Clip playback and key-event effects are host-owned; the policy emits the
++//   action request booleans and the key pulses drive the source branches.
++// - Timer-expiry branches (freeze/bend/tired) complete the motion in the tick
++//   the counter passes the source length; a host `animEnd` pulse does the same.
++// - The Tyre death order is split into explicit host pulses
++//   (isTyreDead -> dismount, tyreDeathStart, tyreDeadAnimEnd) so the child
++//   lifetime is inspectable; the source interleaves these with the roller FSM.
++
++namespace {
++
++constexpr float kPi = 3.14159265358979323846f;
++
++} // namespace
++
++P2WaterwraithActor::P2WaterwraithActor()
++{
++    reset(P2WaterwraithActorParms{});
++}
++
++P2WaterwraithActor::P2WaterwraithActor(const P2WaterwraithActorParms& parms)
++{
++    reset(parms);
++}
++
++void P2WaterwraithActor::reset(const P2WaterwraithActorParms& parms)
++{
++    mParms = parms;
++    mRig   = P2WaterwraithRig(parms.properRotationSpeed);
++    mAlive = mRig.birth();
++    mPhase = parms.startPhase;
++
++    mStateTimer     = 0.0f;
++    mIntTimer       = 0;
++    mPostFlickState = static_cast<int>(parms.startPhase);
++    mStepPhase      = 0;
++    mStepTimer      = 0;
++    mBodyHealth     = parms.bodyMaxHealth;
++
++    mPosition = P2WaterwraithVec3{};
++    mVelocity = P2WaterwraithVec3{};
++    mFacing   = 0.0f;
++    mScale    = 1.0f;
++
++    mWaypointCount = 0;
++    mWaypointIndex = 0;
++
++    mRollerPinched = false;
++    mRollerZeroed  = false;
++    mBodyPinched   = false;
++    mBodyZeroed    = false;
++
++    if (mPhase == P2BM_Fall) {
++        mRig.beginFall();
++    }
++    pushRig();
++    refreshHealthFlags();
++}
++
++void P2WaterwraithActor::reset()
++{
++    reset(P2WaterwraithActorParms{});
++}
++
++const char* P2WaterwraithActor::phaseName(P2BlackManPhase phase)
++{
++    switch (phase) {
++    case P2BM_Walk: return "walk";
++    case P2BM_Dead: return "dead";
++    case P2BM_Freeze: return "freeze";
++    case P2BM_Bend: return "bend";
++    case P2BM_Escape: return "escape";
++    case P2BM_Fall: return "fall";
++    case P2BM_Flick: return "flick";
++    case P2BM_Recover: return "recover";
++    case P2BM_Tired: return "tired";
++    }
++    return "?";
++}
++
++int P2WaterwraithActor::setRoute(const P2WaterwraithWaypoint* waypoints, std::size_t count)
++{
++    if (count > static_cast<std::size_t>(kMaxWaypoints)) {
++        count = static_cast<std::size_t>(kMaxWaypoints);
++    }
++    for (std::size_t i = 0; i < count; ++i) {
++        mWaypoints[i] = waypoints[i];
++    }
++    mWaypointCount = static_cast<int>(count);
++    mWaypointIndex = 0;
++    return mWaypointCount;
++}
++
++void P2WaterwraithActor::clearRoute()
++{
++    mWaypointCount = 0;
++    mWaypointIndex = 0;
++}
++
++P2WaterwraithVec3 P2WaterwraithActor::nextWaypoint() const
++{
++    if (mWaypointIndex < mWaypointCount) {
++        return mWaypoints[mWaypointIndex].position;
++    }
++    return mPosition;
++}
++
++void P2WaterwraithActor::refreshHealthFlags()
++{
++    const float rollerHealth = mRig.tyreHealth();
++    mRollerZeroed  = mRig.alive() && rollerHealth <= 0.0f;
++    mRollerPinched = mRig.alive() && rollerHealth <= P2WaterwraithRig::kTyreMaxHealth * kPinchFraction;
++    mBodyZeroed    = mBodyHealth <= 0.0f;
++    mBodyPinched   = mBodyHealth <= mParms.bodyMaxHealth * kPinchFraction;
++}
++
++void P2WaterwraithActor::pushRig()
++{
++    if (mRig.alive()) {
++        mRig.push(mPosition, mVelocity, mFacing, mScale);
++    }
++}
++
++void P2WaterwraithActor::enter(P2BlackManPhase next, P2WaterwraithActorOutput& out)
++{
++    const P2BlackManPhase prev = mPhase;
++    mPhase                     = next;
++    mStateTimer                = 0.0f;
++    mIntTimer                  = 0;
++    out.entered                = true;
++    out.state                  = next;
++
++    if (prev == P2BM_Fall) {
++        out.endFallConstraint = true; // StateFall::exec disables EB_NoInterrupt
++    }
++
++    switch (next) {
++    case P2BM_Dead:
++        out.startDeadMotion = true; // StateDead::init (blackManState.cpp:137)
++        mVelocity           = P2WaterwraithVec3{};
++        break;
++    case P2BM_Escape:
++        out.startEscapeMotion = true; // StateEscape::init getoff (:359)
++        break;
++    case P2BM_Fall:
++        out.startFallMotion = true; // StateFall::init land (:427)
++        mRig.beginFall();
++        break;
++    case P2BM_Bend:
++        out.startBendMotion = true; // StateBend::init bend (:271)
++        out.collisionStOn   = true;
++        break;
++    case P2BM_Recover:
++        out.startRecoverMotion = true; // StateRecover::init recover (:482)
++        break;
++    case P2BM_Flick:
++        out.startFlickMotion = true; // StateFlick::init flick (:558)
++        break;
++    case P2BM_Tired:
++        out.startTiredMotion = true; // StateTired::init wait2 (:631)
++        mVelocity            = P2WaterwraithVec3{};
++        break;
++    default:
++        break;
++    }
++}
++
++void P2WaterwraithActor::beginEscape(P2WaterwraithActorOutput& out)
++{
++    // Source `isTyreDead` (:4054) sets EB_Invulnerable and drops mTyre; the rig
++    // models that as dismount(). The wraith animation is tyre_getoff.
++    out.dismountRequested = true;
++    out.collisionStOff    = true;
++    if (mRig.attachedToOwner()) {
++        mRig.dismount();
++    }
++    enter(P2BM_Escape, out);
++}
++
++void P2WaterwraithActor::updateLocomotion(float delta)
++{
++    mVelocity = P2WaterwraithVec3{};
++    if (mPhase == P2BM_Walk && mWaypointCount > 0 && mWaypointIndex < mWaypointCount) {
++        const P2WaterwraithVec3 target = mWaypoints[mWaypointIndex].position;
++        const float dx                 = target.x - mPosition.x;
++        const float dz                 = target.z - mPosition.z;
++        const float dist               = std::sqrt(dx * dx + dz * dz);
++        if (dist <= mParms.waypointGoalRadius) {
++            ++mWaypointIndex; // reached -> host supplies/finds the next waypoint
++        } else {
++            const float desired = std::atan2(dx, dz); // source forward = (sin, cos)
++            float diff          = desired - mFacing;
++            while (diff > kPi) {
++                diff -= 2.0f * kPi;
++            }
++            while (diff < -kPi) {
++                diff += 2.0f * kPi;
++            }
++            float step = diff * mParms.rotationSpeed;
++            if (step > mParms.maxRotationStep) {
++                step = mParms.maxRotationStep;
++            }
++            if (step < -mParms.maxRotationStep) {
++                step = -mParms.maxRotationStep;
++            }
++            mFacing += step;
++
++            const float speed = currentSpeed();
++            mVelocity.x       = std::sin(mFacing) * speed;
++            mVelocity.z       = std::cos(mFacing) * speed;
++            mPosition.x += mVelocity.x * delta;
++            mPosition.z += mVelocity.z * delta;
++        }
++    }
++    pushRig();
++}
++
++void P2WaterwraithActor::execWalk(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // Source walkFunc (:831): ride regen while on the tyres, then the trigger
++    // order is isTyreFreeze -> Bend, health, isTyreDead -> Escape, flick.
++    if (mRig.attachedToOwner()) {
++        mBodyHealth += mRig.rideRegen(true);
++        if (mBodyHealth > mParms.bodyMaxHealth) {
++            mBodyHealth = mParms.bodyMaxHealth;
++        }
++    }
++
++    if (in.isTyreFreeze) {
++        out.collisionStOn = true;
++        enter(P2BM_Bend, out);
++        return;
++    }
++    if (mBodyHealth <= 0.0f) {
++        enter(P2BM_Dead, out);
++        return;
++    }
++    if (in.isTyreDead) {
++        beginEscape(out);
++        return;
++    }
++    if (in.isStartFlick) {
++        mPostFlickState = P2BM_Walk;
++        enter(P2BM_Flick, out);
++        return;
++    }
++    if (in.tired) {
++        enter(P2BM_Tired, out);
++        return;
++    }
++
++    ++mStepTimer;
++    if (mStepPhase == 0 && mStepTimer > mParms.twoStepTimerTicks) {
++        mStepPhase = 1; // fp05 travel speed now applies
++        mStepTimer = 0;
++    }
++}
++
++void P2WaterwraithActor::execDead(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    if (in.keyEvent5) {
++        out.releaseTreasure = true; // StateDead KEYEVENT_5 (:164)
++    }
++    if (in.animEnd) {
++        out.killRequested = true; // StateDead KEYEVENT_END -> kill (:167)
++        mAlive            = false;
++    }
++}
++
++void P2WaterwraithActor::execFreeze(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateFreeze (:212): rollerless stun (kagebozu_bend2).
++    ++mIntTimer;
++    if (mBodyHealth <= 0.0f) {
++        enter(P2BM_Dead, out);
++        return;
++    }
++    if (in.isStartFlick) {
++        mPostFlickState = P2BM_Freeze;
++        enter(P2BM_Flick, out);
++        return;
++    }
++    if (in.animEnd) {
++        out.collisionStOff = true;
++        enter(P2BM_Walk, out);
++        return;
++    }
++    if (mIntTimer > mParms.freezeTimerLength) {
++        out.finishMotionRequested = true;
++        out.collisionStOff        = true;
++        enter(P2BM_Walk, out);
++    }
++}
++
++void P2WaterwraithActor::execBend(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateBend (:292): the wraith bends onto the frozen roller.
++    if (mBodyHealth <= 0.0f) {
++        enter(P2BM_Dead, out);
++        return;
++    }
++    if (in.isTyreDead) {
++        beginEscape(out);
++        return;
++    }
++    if (in.isStartFlick) {
++        mPostFlickState = P2BM_Bend;
++        enter(P2BM_Flick, out);
++        return;
++    }
++    if (in.animEnd) {
++        out.collisionStOff = true;
++        if (in.isTyreDead) {
++            beginEscape(out);
++        } else {
++            enter(P2BM_Recover, out);
++        }
++        return;
++    }
++    ++mIntTimer;
++    if (mIntTimer > mParms.dosinStopTimerLength) {
++        out.finishMotionRequested = true;
++        out.collisionStOff        = true;
++        if (in.isTyreDead) {
++            beginEscape(out);
++        } else {
++            enter(P2BM_Recover, out);
++        }
++    }
++}
++
++void P2WaterwraithActor::execEscape(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateEscape (:378): getoff, then Walk on the end key.
++    if (in.keyEvent2) {
++        out.flickRequested = true;
++    }
++    if (in.animEnd) {
++        enter(P2BM_Walk, out);
++    }
++}
++
++void P2WaterwraithActor::execFall(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateFall (:438): fanfare on KEYEVENT_2; ground contact -> Recover.
++    if (in.keyEvent2) {
++        out.fanfare = true;
++    }
++    if (in.isFallEnd || in.hardFall) {
++        enter(P2BM_Recover, out);
++    }
++}
++
++void P2WaterwraithActor::execFlick(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateFlick (:590): roller death overrides; otherwise return to the saved
++    // pre-flick phase.
++    if (in.isTyreDead) {
++        beginEscape(out);
++        return;
++    }
++    if (in.keyEvent2) {
++        out.flickRequested = true;
++    }
++    if (in.animEnd) {
++        enter(static_cast<P2BlackManPhase>(mPostFlickState), out);
++    }
++}
++
++void P2WaterwraithActor::execRecover(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateRecover (:503): lift the roller back up; moveRestart on the end key.
++    if (in.isTyreDead) {
++        beginEscape(out);
++        return;
++    }
++    if (in.keyEvent2) {
++        out.flickRequested = true;
++    }
++    if (in.keyEvent4) {
++        out.collisionStOff = true; // tyreDownEffect anchor (host effect)
++    }
++    if (in.keyEvent5 && in.finalFloor) {
++        out.fanfare = true; // StateRecover KEYEVENT_5 final-floor flag (:527)
++    }
++    if (in.animEnd) {
++        out.moveRestartRequested = true;
++        mRig.moveRestart(); // Freeze -> Move; roll resumes
++        enter(P2BM_Walk, out);
++    }
++}
++
++void P2WaterwraithActor::execTired(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
++{
++    // StateTired (:642): post-escape wind-down (kagebozu_wait2).
++    mVelocity = P2WaterwraithVec3{};
++    if (in.animEnd) {
++        out.flickRequested = true;
++        enter(P2BM_Walk, out);
++        return;
++    }
++    ++mIntTimer;
++    if (mIntTimer > mParms.standStillTimerLength) {
++        out.finishMotionRequested = true;
++        out.flickRequested        = true;
++        enter(P2BM_Walk, out);
++    }
++}
++
++void P2WaterwraithActor::tick(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out,
++                              float delta)
++{
++    out       = P2WaterwraithActorOutput{};
++    out.state = mPhase;
++    if (!mAlive || !std::isfinite(delta) || !(delta > 0.0f)) {
++        return;
++    }
++
++    // Tyre-child lifecycle triggers (the actor owns the child).
++    if (in.landFloorContact) {
++        mRig.landFloorContact();
++    }
++    if (in.quakeFreeze) {
++        mRig.quakeFreeze();
++    }
++    if (in.moveRestart) {
++        mRig.moveRestart();
++    }
++    if (in.tyreDeathStart && mRig.alive() && mRig.tyreHealth() <= 0.0f
++        && mRig.ownerInvulnerableSet() && mRig.tyrePhase() != P2TYRE_Dead) {
++        if (mRig.beginDead()) {
++            out.tyreDeathStarted = true;
++        }
++    }
++    if (in.tyreDeadAnimEnd && mRig.alive() && mRig.tyrePhase() == P2TYRE_Dead) {
++        mRig.finishDead();
++        out.tyreRemoved = true;
++    }
++
++    // Earthquake stun only reaches the wraith itself while it is rollerless
++    // (blackMan.cpp:727: with a child the quake is delegated to the Tyre).
++    if (in.rollerlessQuake && !mRig.attachedToOwner()
++        && (mPhase == P2BM_Walk || mPhase == P2BM_Tired)) {
++        enter(P2BM_Freeze, out);
++    }
++
++    switch (mPhase) {
++    case P2BM_Walk: execWalk(in, out); break;
++    case P2BM_Dead: execDead(in, out); break;
++    case P2BM_Freeze: execFreeze(in, out); break;
++    case P2BM_Bend: execBend(in, out); break;
++    case P2BM_Escape: execEscape(in, out); break;
++    case P2BM_Fall: execFall(in, out); break;
++    case P2BM_Flick: execFlick(in, out); break;
++    case P2BM_Recover: execRecover(in, out); break;
++    case P2BM_Tired: execTired(in, out); break;
++    }
++
++    updateLocomotion(delta);
++    refreshHealthFlags();
++    out.state = mPhase;
++}
++
++P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& actor, float damage,
++                                                             bool isPurple, bool* outDead)
++{
++    if (outDead) {
++        *outDead = false;
++    }
++    if (!isPurple || !(damage > 0.0f) || !actor.mAlive) {
++        return P2WWDMG_Ignored; // structural Purple-only vulnerability
++    }
++    if (!actor.mRig.damageable()) {
++        return P2WWDMG_Ignored; // riding/moving: the hit does nothing
++    }
++
++    if (actor.mRig.attachedToOwner()) {
++        // Frozen riding roller: source routes freeze/bend damage to mTyre.
++        bool dead = false;
++        actor.mRig.applyDamage(damage, &dead);
++        actor.refreshHealthFlags();
++        if (outDead) {
++            *outDead = dead;
++        }
++        return P2WWDMG_Roller;
++    }
++
++    // Dismounted: the wraith body itself is exposed.
++    actor.mBodyHealth -= damage;
++    if (actor.mBodyHealth < 0.0f) {
++        actor.mBodyHealth = 0.0f;
++    }
++    actor.refreshHealthFlags();
++    if (outDead) {
++        *outDead = actor.mBodyHealth <= 0.0f;
++    }
++    return P2WWDMG_Body;
++}
+diff --git a/pc_port/pc_p2_waterwraith_actor.h b/pc_port/pc_p2_waterwraith_actor.h
+new file mode 100644
+index 00000000..341658c8
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_actor.h
+@@ -0,0 +1,235 @@
++#pragma once
++
++// Waterwraith (99 BlackMan) phase machine for lane 31 (#443 / parent #175),
++// built on the dependent-roller ownership/vulnerability policy
++// (pc_p2_waterwraith, `P2WaterwraithRig`). Engine-free: no actor, map, receiver,
++// sound, effect or strike dependency. The host feeds per-tick trigger booleans
++// and a route; the policy owns the nine source phases and the single Tyre child.
++//
++// Source: US GPVE01 rev 0, research rev 632af937 (src/plugProjectMorimuraU/
++// blackManState.cpp, blackMan.cpp; include/Game/Entities/BlackMan.h). State IDs
++// are BlackMan.h:367-378. Transitions below cite the source state machine.
++//
++// Phase machine (host-fed triggers name the source predicate):
++//   Walk   -> Bend    if isTyreFreeze          (walkFunc -> isTyreFreeze, :837)
++//   Walk   -> Dead    if body health <= 0      (StateWalk::exec :73)
++//   Walk   -> Escape  if isTyreDead            (:78)
++//   Walk   -> Flick   if isStartFlick          (:83, postFlickState = Walk)
++//   Walk   -> Tired   if escapePhase wind-down (host: continuous escape timer)
++//   Walk   -> Freeze  if rollerless quake      (earthquakeCallBack :727)
++//   Freeze -> Dead / Flick / Walk              (StateFreeze :212)
++//   Bend   -> Dead / Escape / Flick / Recover  (StateBend :292)
++//   Flick  -> postFlickState (Walk/Freeze/Bend) or Escape (StateFlick :590)
++//   Recover-> Escape / Walk (moveRestart)      (StateRecover :503)
++//   Escape -> Walk                             (StateEscape :378)
++//   Fall   -> Recover                          (StateFall :438, isFallEnd)
++//   Tired  -> Walk                             (StateTired :642)
++//   Dead: KEYEVENT_5 releases the held treasure, KEYEVENT_END kills (:152).
++//
++// Retained-assembly caveat: the source `walkFunc`/`findNextRoutePoint`/joint
++// callbacks sit beside retained PowerPC assembly and their evaluation order is
++// inferred (assets audit sec.0). This policy therefore does NOT port the
++// retained-assembly pathfinding; locomotion is a HOST-DRIVEN route (the host
++// supplies/updates waypoints) advanced at the source retail travel speed fp05
++// = 120 with a documented two-step timer (ip01 retail 0, so the first step is
++// effectively instantaneous). No claim of natural-Map navigation is made.
++//
++// Damage model (structural, not a receiver): only Purple hits are accepted, and
++// only when `P2WaterwraithRig::damageable()` is true (roller frozen, or after
++// the wraith dismounted). While riding/moving the hit is ignored. Damage while
++// the child is still attached routes to the Tyre health (source freeze/bend
++// routes to `mTyre`, blackMan.cpp:672-681); after dismount it routes to the
++// wraith body health (general fp00 = 1500). This expresses the Purple-only
++// vulnerability without a gameplay receiver adapter (lane 10/11 owns that).
++
++#include "pc_p2_waterwraith.h"
++
++#include <cstddef>
++
++// Routing outcome of `p2_waterwraith_actor_apply_damage`.
++enum P2WaterwraithDamageResult {
++    P2WWDMG_Ignored = 0, // non-Purple, non-positive, dead actor, or not damageable
++    P2WWDMG_Roller  = 1, // accepted while the child roller is attached + frozen
++    P2WWDMG_Body    = 2, // accepted after dismount, applied to the wraith body
++};
++
++// One host-supplied route waypoint (XZ plane; Y is carried through untouched).
++struct P2WaterwraithWaypoint {
++    P2WaterwraithVec3 position{};
++};
++
++// Build-time defaults mirror the source headers; disc/retail values are noted.
++struct P2WaterwraithActorParms {
++    float bodyMaxHealth = 1500.0f;    // BlackMan general fp00 (retail 1500)
++    float travelSpeed = 120.0f;       // proper fp05 (retail 120)
++    float walkSpeed = 50.0f;          // proper fp11 (retail 50; pre-two-step crawl)
++    float rotationSpeed = 0.04f;      // proper fp06 (retail 0.04)
++    float maxRotationStep = 3.0f;     // proper fp07 (retail 3.0)
++    float waypointGoalRadius = 50.0f; // Parms::mWaypointGoalRadius
++    int twoStepTimerTicks = 0;        // proper ip01 (retail 0; header default 300)
++    int dosinStopTimerLength = 200;   // proper ip03
++    int freezeTimerLength = 200;      // proper ip04
++    int continuousEscapeTimerLength = 200; // proper ip05
++    int standStillTimerLength = 200;  // proper ip06
++    float properRotationSpeed = 25.0f;     // Tyre fp01 (retail 25.0)
++    P2BlackManPhase startPhase = P2BM_Fall; // onInit: Fall unless cave y_01 (:168)
++};
++
++// Per-tick host inputs. All triggers are one-tick pulses unless noted.
++struct P2WaterwraithActorInput {
++    // Wraith-facing source triggers.
++    bool isTyreFreeze = false;    // roller reports Freeze -> Bend (walkFunc)
++    bool isStartFlick = false;    // EnemyFunc::isStartFlick -> Flick
++    bool isTyreDead = false;      // roller health <= 0 + anim end -> Escape
++    bool isFallEnd = false;       // Fall: ground/pellet contact -> Recover
++    bool hardFall = false;        // Fall: hard-constraint termination -> Recover
++    bool rollerlessQuake = false; // Walk/Tired with no child -> Freeze stun
++    bool tired = false;           // Walk escape-phase wind-down -> Tired
++    // Tyre-child triggers (the actor owns the child and applies these to the rig).
++    bool landFloorContact = false; // Tyre Land -> Freeze
++    bool quakeFreeze = false;      // Tyre Move -> Freeze
++    bool moveRestart = false;      // Tyre Freeze -> Move
++    bool tyreDeathStart = false;   // begin tyre_getoff (requires zero HP + dismount)
++    bool tyreDeadAnimEnd = false;  // tyre_getoff end -> remove the child
++    // Animation / effect key pulses (host owns the clips and effects).
++    bool keyEvent2 = false;
++    bool keyEvent4 = false;
++    bool keyEvent5 = false; // Dead: release held treasure
++    bool animEnd = false;   // current clip end key
++    bool finalFloor = false; // Recover KEYEVENT_5 fanfare anchor
++};
++
++struct P2WaterwraithActorOutput {
++    P2BlackManPhase state = P2BM_Walk;
++    bool entered = false;      // a transition happened this tick
++    // Host action requests.
++    bool startDeadMotion = false;
++    bool startEscapeMotion = false; // getoff
++    bool startFallMotion = false;
++    bool startBendMotion = false;
++    bool startRecoverMotion = false;
++    bool startFlickMotion = false;
++    bool startTiredMotion = false;
++    bool endFallConstraint = false; // leave Fall: drop the hard constraint
++    bool collisionStOn = false;
++    bool collisionStOff = false;
++    bool flickRequested = false;
++    bool dismountRequested = false;
++    bool tyreDeathStarted = false;
++    bool tyreRemoved = false;
++    bool releaseTreasure = false; // Dead KEYEVENT_5
++    bool killRequested = false;   // Dead KEYEVENT_END
++    bool moveRestartRequested = false;
++    bool finishMotionRequested = false;
++    bool fanfare = false; // Fall KEYEVENT_2 / Recover KEYEVENT_5 on final floor
++};
++
++class P2WaterwraithActor {
++public:
++    static constexpr float kSourceDelta = 1.0f / 30.0f;
++    static constexpr int kMaxWaypoints = 16;
++    // Lane-level gauge marker (no source constant): pinch below 1/4 of maximum.
++    static constexpr float kPinchFraction = 0.25f;
++
++    P2WaterwraithActor();
++    explicit P2WaterwraithActor(const P2WaterwraithActorParms& parms);
++
++    // Births the single Tyre child and enters `startPhase` (source onInit).
++    void reset(const P2WaterwraithActorParms& parms);
++    void reset();
++
++    bool alive() const { return mAlive; }
++    P2BlackManPhase phase() const { return mPhase; }
++    static const char* phaseName(P2BlackManPhase phase);
++    const char* phaseName() const { return phaseName(mPhase); }
++
++    // The actor owns the child; the host may read (not own) the rig.
++    P2WaterwraithRig& rig() { return mRig; }
++    const P2WaterwraithRig& rig() const { return mRig; }
++
++    float bodyHealth() const { return mBodyHealth; }
++    float bodyMaxHealth() const { return mParms.bodyMaxHealth; }
++    bool bodyPinched() const { return mBodyPinched; }
++    bool bodyZeroed() const { return mBodyZeroed; }
++    bool rollerPinched() const { return mRollerPinched; }
++    bool rollerZeroed() const { return mRollerZeroed; }
++    // Combined gauge marker for whichever pool is currently exposed.
++    bool pinched() const { return mRollerPinched || mBodyPinched; }
++    bool zeroed() const { return mRollerZeroed || mBodyZeroed; }
++
++    // Host-driven route (retained-assembly pathfinding is intentionally omitted).
++    int setRoute(const P2WaterwraithWaypoint* waypoints, std::size_t count);
++    void clearRoute();
++    int waypointCount() const { return mWaypointCount; }
++    int waypointIndex() const { return mWaypointIndex; }
++    bool reachedRouteEnd() const { return mWaypointCount > 0 && mWaypointIndex >= mWaypointCount; }
++    P2WaterwraithVec3 nextWaypoint() const;
++
++    // Two-step locomotion state (source walkFunc :861-871).
++    float currentSpeed() const { return mStepPhase == 0 ? mParms.walkSpeed : mParms.travelSpeed; }
++    bool twoStepActive() const { return mStepPhase != 0; }
++    int stepTimer() const { return mStepTimer; }
++
++    P2WaterwraithVec3 position() const { return mPosition; }
++    P2WaterwraithVec3 velocity() const { return mVelocity; }
++    float facing() const { return mFacing; }
++
++    // One 30 Hz policy tick. Advances locomotion and pushes the child position,
++    // velocity and facing so the rig derives the roll angle.
++    void tick(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out,
++              float delta = kSourceDelta);
++
++private:
++    friend P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& actor,
++                                                                       float damage, bool isPurple,
++                                                                       bool* outDead);
++
++    void enter(P2BlackManPhase next, P2WaterwraithActorOutput& out);
++    void beginEscape(P2WaterwraithActorOutput& out);
++    void updateLocomotion(float delta);
++    void pushRig();
++    void refreshHealthFlags();
++
++    void execWalk(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execDead(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execFreeze(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execBend(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execEscape(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execFall(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execFlick(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execRecover(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++    void execTired(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out);
++
++    P2WaterwraithActorParms mParms;
++    P2WaterwraithRig mRig;
++    P2BlackManPhase mPhase = P2BM_Walk;
++    bool mAlive = false;
++    float mBodyHealth = 0.0f;
++    float mStateTimer = 0.0f;
++    int mIntTimer = 0;
++    int mPostFlickState = 0; // P2BlackManPhase to resume after Flick
++    int mStepPhase = 0;
++    int mStepTimer = 0;
++    bool mRollerPinched = false;
++    bool mRollerZeroed = false;
++    bool mBodyPinched = false;
++    bool mBodyZeroed = false;
++
++    P2WaterwraithVec3 mPosition{};
++    P2WaterwraithVec3 mVelocity{};
++    float mFacing = 0.0f;
++    float mScale = 1.0f;
++
++    P2WaterwraithWaypoint mWaypoints[kMaxWaypoints];
++    int mWaypointCount = 0;
++    int mWaypointIndex = 0;
++};
++
++// Routes a hit through the rig's `damageable()` gate. Only Purple damage is
++// accepted (structural vulnerability). While the child is attached the damage
++// goes to the Tyre health; after dismount it goes to the wraith body health.
++// `outDead` (optional) reports the underlying target's death gate (roller death
++// still requires the dismounted EB_Invulnerable flag; body death is HP <= 0).
++P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& actor,
++                                                             float damage, bool isPurple,
++                                                             bool* outDead = nullptr);
+diff --git a/tools/p2_waterwraith_actor_runtime.cpp b/tools/p2_waterwraith_actor_runtime.cpp
+new file mode 100644
+index 00000000..c5ba6ae1
+--- /dev/null
++++ b/tools/p2_waterwraith_actor_runtime.cpp
+@@ -0,0 +1,213 @@
++// Private real-GL Waterwraith/Tyre ACTOR runtime fixture (#443 / parent #175).
++// Compiled by the isolated fixture build only (root repo
++// scripts/build_pikmin2_fixture.py); it is not part of the game target. Boots
++// the frozen host with --experimental-pikmin2-room, loads the two-species
++// sampled-pose bank (P2_WATERWRAITH_VISUAL_1), drives the source-correct
++// BlackMan phase machine + host route (pc_p2_waterwraith_actor) through
++// land -> freeze -> move, draws both species and captures a frame. Display +
++// policy-binding slice only: no source actor registration, AI, receivers or
++// gameplay.
++
++#include <SDL2/SDL.h>
++#include <GL/gl.h>
++#include "gl/pc_opengl.h"
++#include "App.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "Matrix4f.h"
++#include "Navi.h"
++#include "NaviMgr.h"
++#include "Node.h"
++#include "MoviePlayer.h"
++#include "system.h"
++#include "pc_bbft.h"
++#include "pc_gpu_preference.h"
++#include "pc_window.h"
++#include "pc_p2_preview.h"
++#include "settings/pc_settings.h"
++#include "settings/pc_settings_p2d.h"
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <vector>
++
++#include "pc_p2_waterwraith_actor.h"
++#include "pc_p2_waterwraith_visual.h"
++
++namespace {
++constexpr float kDt = 1.0f / 30.0f;
++
++void require(bool value, const char* message)
++{
++    if (!value) {
++        std::printf("FAIL WATERWRAITH_ACTOR_RUNTIME %s\n", message);
++        std::fflush(stdout);
++        std::_Exit(1);
++    }
++}
++
++void capture(const char* path)
++{
++    auto bind = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
++    GLint previous = 0;
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
++    bind(GL_FRAMEBUFFER, 0);
++    int w = 0, h = 0;
++    SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
++    std::vector<unsigned char> pixels(size_t(w) * size_t(h) * 3);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1);
++    glReadBuffer(GL_BACK);
++    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
++    bind(GL_FRAMEBUFFER, previous);
++    require(glGetError() == GL_NO_ERROR, "capture GL error");
++    bool nonblack = false;
++    for (unsigned char value : pixels) {
++        nonblack |= value > 8;
++    }
++    require(nonblack, "empty capture");
++    FILE* file = std::fopen(path, "wb");
++    require(file != nullptr, "capture file");
++    std::fprintf(file, "P6\n%d %d\n255\n", w, h);
++    for (int y = h - 1; y >= 0; --y) {
++        std::fwrite(pixels.data() + size_t(y) * w * 3, 1, size_t(w) * 3, file);
++    }
++    std::fclose(file);
++}
++
++class WaterwraithActorApp final : public PlugPikiApp {
++    int frames = 0;
++    int actorFrames = 0;
++    bool setup = false;
++    bool captured = false;
++    float ground = 0.0f;
++    P2WaterwraithActor actor;
++
++public:
++    int idle() override
++    {
++        int result = PlugPikiApp::idle();
++        require(++frames < 3600, "timeout");
++        if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
++            gameflow.mMoviePlayer->requestSkip();
++            return result;
++        }
++        if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll
++            || gameflow.mIsUIOverlayActive) {
++            return result;
++        }
++        Navi* navi = naviMgr->getNavi();
++        if (!setup) {
++            navi->resetPosition(Vector3f(0, 0, -250));
++            navi->mFaceDirection = 0;
++            navi->mSRT.r.set(0, 0, 0);
++            ground = mapMgr ? mapMgr->getMinY(0, 0, false) : 0.0f;
++            if (!std::isfinite(ground)) {
++                ground = 0.0f;
++            }
++            require(pc_p2_waterwraith_visual_setup("p2-waterwraith-visual.txt"), "visual setup");
++            require(pc_p2_waterwraith_visual_species_count() == 2, "species count");
++            require(pc_p2_waterwraith_visual_play("BlackMan", "kagebozu_walk", true),
++                    "BlackMan walk play");
++            require(pc_p2_waterwraith_visual_play("Tyre", "tyre_move", true), "Tyre move play");
++
++            P2WaterwraithActorParms parms;
++            parms.startPhase = P2BM_Fall;
++            actor             = P2WaterwraithActor(parms);
++            const P2WaterwraithWaypoint route[] = {
++                P2WaterwraithWaypoint{ P2WaterwraithVec3{ 240.0f, 0.0f, 0.0f } },
++                P2WaterwraithWaypoint{ P2WaterwraithVec3{ 480.0f, 0.0f, 0.0f } },
++            };
++            require(actor.setRoute(route, 2) == 2, "route setup");
++            require(actor.alive() && actor.rig().alive() && actor.rig().attachedToOwner(),
++                    "roller birth");
++
++            SDL_Window* window = SDL_GL_GetCurrentWindow();
++            require(window != nullptr, "window");
++            int windowWidth = 0, windowHeight = 0, windowX = 0, windowY = 0;
++            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
++            SDL_GetWindowPosition(window, &windowX, &windowY);
++            require(windowWidth == 960 && windowHeight == 540, "window size 960x540");
++            std::printf("P2_WATERWRAITH_ACTOR_WINDOW size=%dx%d pos=%d,%d\n", windowWidth,
++                        windowHeight, windowX, windowY);
++            std::printf("P2_WATERWRAITH_ACTOR_READY species=2 clips=16\n");
++            std::printf("P2_WATERWRAITH_ACTOR_PLAY BlackMan=kagebozu_walk Tyre=tyre_move\n");
++            setup = true;
++        }
++        require(pc_p2_waterwraith_visual_update() == 2, "visual update");
++
++        // Host script: floor contact resolves the roller, the fall end lifts it
++        // into Recover, Recover's end key restarts the roll (Freeze -> Move),
++        // then the wraith walks the host route at fp05 travel speed.
++        P2WaterwraithActorInput in;
++        if (actorFrames == 0) {
++            in.landFloorContact = true;
++        } else if (actorFrames == 1) {
++            in.isFallEnd = true;
++        } else if (actorFrames == 2) {
++            in.animEnd = true;
++        }
++        actor.tick(in, mOut, kDt);
++        ++actorFrames;
++        return result;
++    }
++
++    void draw(Graphics& gfx) override
++    {
++        PlugPikiApp::draw(gfx);
++        if (!setup) {
++            return;
++        }
++        const P2WaterwraithVec3 wraith = actor.position();
++        const P2WaterwraithVec3 roller = actor.rig().position();
++        Matrix4f wraithWorld;
++        wraithWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, actor.facing(), 0.0f),
++                            Vector3f(wraith.x, ground + wraith.y, wraith.z));
++        Matrix4f tyreWorld;
++        tyreWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f),
++                          Vector3f(0.0f, 0.0f, actor.rig().rollAngle()),
++                          Vector3f(roller.x, ground + roller.y, roller.z));
++        const int wraithDrawn =
++            pc_p2_waterwraith_visual_draw_species(gfx, "BlackMan", wraithWorld);
++        const int tyreDrawn = pc_p2_waterwraith_visual_draw_species(gfx, "Tyre", tyreWorld);
++        require(wraithDrawn == 1 && tyreDrawn == 1, "visual draw");
++        if (actorFrames >= 30 && !captured) {
++            std::printf("P2_WATERWRAITH_ACTOR_DRAW species=%d\n", 1);
++        }
++        if (actorFrames >= 90 && !captured) {
++            require(actor.rig().travelledDistance() > 0.0f, "roller travelled");
++            require(actor.rig().rollAngle() > 0.0f, "roller rolled");
++            std::printf("P2_WATERWRAITH_ACTOR_PASS ticks=%d distance=%.3f roll=%.4f phase=%s\n",
++                        actorFrames, actor.rig().travelledDistance(), actor.rig().rollAngle(),
++                        actor.phaseName());
++            capture("waterwraith-actor.ppm");
++            captured = true;
++            std::puts("PASS WATERWRAITH_ACTOR_RUNTIME");
++            std::fflush(stdout);
++            std::_Exit(0);
++        }
++    }
++
++private:
++    P2WaterwraithActorOutput mOut;
++};
++} // namespace
++
++int main(int argc, char** argv)
++{
++    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
++    SDL_SetMainReady();
++    pc_gpu_preference_apply();
++    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
++    pc_bbft_init(argc, argv);
++    require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
++    require(pc_window_init("Waterwraith actor runtime fixture", 960, 540), "window init");
++    pc_settings_init();
++    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
++    pc_window_set_window_size(960, 540);
++    pc_window_center();
++    gsys->Initialise();
++    pc_settings_p2d_init();
++    nodeMgr = new NodeMgr();
++    gsys->run(new WaterwraithActorApp());
++    return 0;
++}
+diff --git a/tools/p2_waterwraith_actor_runtime_run.py b/tools/p2_waterwraith_actor_runtime_run.py
+new file mode 100644
+index 00000000..3230629e
+--- /dev/null
++++ b/tools/p2_waterwraith_actor_runtime_run.py
+@@ -0,0 +1,191 @@
++"""Run and verify the private Waterwraith ACTOR visual runtime fixture (#443).
++
++Mirrors tools/p2_waterwraith_runtime_run.py: verifies fixture provenance, stages
++a fresh room overlay via scripts/preview_pikmin2_room.py, copies the two-species
++visual profile and pose .mod files in, runs the fixture with
++--experimental-pikmin2-room, and checks the actor window/visual/PASS markers.
++"""
++import argparse
++import hashlib
++import importlib.util
++import json
++import os
++from pathlib import Path
++import re
++import shutil
++import subprocess
++import traceback
++
++MARKERS = ("P2_WATERWRAITH_ACTOR_READY", "P2_WATERWRAITH_ACTOR_DRAW",
++           "P2_WATERWRAITH_ACTOR_PLAY", "P2_WATERWRAITH_ACTOR_WINDOW",
++           "P2_WATERWRAITH_ACTOR_PASS", "PASS WATERWRAITH_ACTOR_RUNTIME")
++
++
++def sha256(path):
++    digest = hashlib.sha256()
++    with path.open("rb") as source:
++        for chunk in iter(lambda: source.read(1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def file_record(path):
++    return {"path": str(path), "sha256": sha256(path), "size": path.stat().st_size}
++
++
++def load_preview_prepare(root):
++    source = root / "scripts" / "preview_pikmin2_room.py"
++    if not source.is_file():
++        raise ValueError(f"missing preview helper: {source}")
++    spec = importlib.util.spec_from_file_location("p2_preview_overlay", source)
++    module = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module.prepare
++
++
++def fixture_provenance(fixture):
++    provenance_path = fixture / "provenance.json"
++    executable = fixture / "fixture.exe"
++    if not provenance_path.is_file() or not executable.is_file():
++        raise ValueError("fixture must contain provenance.json and fixture.exe")
++    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
++    if provenance.get("status") != "built":
++        raise ValueError("fixture provenance is not built")
++    artifacts = provenance.get("artifacts", {})
++    record = next((value for name, value in artifacts.items()
++                   if Path(name).name.lower() == "fixture.exe"), None)
++    if not isinstance(record, dict) or not isinstance(record.get("sha256"), str):
++        raise ValueError("fixture provenance has no fixture.exe hash")
++    actual = sha256(executable)
++    if actual != record["sha256"]:
++        raise ValueError("fixture.exe hash differs from built provenance")
++    return provenance_path, provenance, executable, actual
++
++
++def copy_new(source, target):
++    if not source.is_file():
++        raise ValueError(f"missing staged input: {source}")
++    if target.exists():
++        raise ValueError(f"refusing to replace existing target: {target}")
++    target.parent.mkdir(parents=True, exist_ok=True)
++    shutil.copyfile(source, target)
++
++
++def verify_log(text):
++    errors = []
++    for marker in MARKERS:
++        if marker not in text:
++            errors.append(f"missing marker: {marker}")
++    if not re.search(r"^P2_WATERWRAITH_ACTOR_WINDOW\s+size=960x540\s+pos=-?\d+,-?\d+\s*$", text,
++                     flags=re.MULTILINE):
++        errors.append("missing 960x540 window marker")
++    ready = re.search(r"^P2_WATERWRAITH_ACTOR_READY\s+species=(\d+)\s+clips=(\d+)\s*$", text,
++                      flags=re.MULTILINE)
++    if not ready:
++        errors.append("missing actor READY marker")
++    elif int(ready.group(1)) != 2:
++        errors.append(f"expected 2 species: {ready.groups()}")
++    draw = re.search(r"^P2_WATERWRAITH_ACTOR_DRAW\s+species=(\d+)\s*$", text, flags=re.MULTILINE)
++    if not draw:
++        errors.append("missing actor DRAW marker")
++    elif int(draw.group(1)) != 1:
++        errors.append(f"expected per-species draw marker: {draw.groups()}")
++    passed = re.search(r"^P2_WATERWRAITH_ACTOR_PASS\s+ticks=(\d+)\s+distance=([\d.]+)\s+"
++                       r"roll=([\d.]+)\s+phase=(\w+)\s*$", text, flags=re.MULTILINE)
++    if not passed:
++        errors.append("missing actor PASS marker")
++    elif float(passed.group(2)) <= 0.0 or float(passed.group(3)) <= 0.0:
++        errors.append(f"roller did not travel/roll: {passed.groups()}")
++    return errors
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--root-worktree", type=Path, required=True)
++    parser.add_argument("--assets", type=Path, required=True)
++    parser.add_argument("--room", type=Path, required=True)
++    parser.add_argument("--visual-stage", type=Path, required=True)
++    parser.add_argument("--fixture", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    args = parser.parse_args(argv)
++
++    record = {"schema": 1, "arguments": {key: str(value) if isinstance(value, Path) else value
++              for key, value in vars(args).items()}, "status": "failed", "errors": []}
++    run = None
++    try:
++        root = args.root_worktree.resolve()
++        assets, room, fixture, output = (args.assets.resolve(), args.room.resolve(),
++                                         args.fixture.resolve(), args.output.resolve())
++        visual_stage = args.visual_stage.resolve()
++        provenance_path, provenance, executable, executable_hash = fixture_provenance(fixture)
++        prepare = load_preview_prepare(root)
++        run = prepare(assets, room, output)
++        record["run"] = str(run)
++        profile = visual_stage / "p2-waterwraith-visual.txt"
++        copy_new(profile, run / "p2-waterwraith-visual.txt")
++        staged = {}
++        mods = sorted((visual_stage / "assets" / "dataDir" / "courses" / "pikmin2room").glob("*.mod"))
++        if not mods:
++            raise ValueError("visual stage has no .mod files")
++        total = 0
++        for source in mods:
++            total += source.stat().st_size
++            if total > 96 * 1024 * 1024:
++                raise ValueError("visual stage byte budget exceeded")
++            target = run / "assets" / "dataDir" / "courses" / "pikmin2room" / source.name
++            copy_new(source, target)
++            staged[source.name] = sha256(target)
++        record["visual_stage_files"] = len(staged)
++        record["fixture"] = {"provenance": file_record(provenance_path),
++                             "provenance_status": provenance.get("status"),
++                             "executable": {"path": str(executable), "sha256": executable_hash}}
++        record["inputs"] = {"profile": file_record(run / "p2-waterwraith-visual.txt")}
++        for name in ("room.mod", "room.ini", "treasure.mod"):
++            record["inputs"][name] = file_record(room / name)
++        record["inputs"]["preview_helper"] = file_record(root / "scripts" / "preview_pikmin2_room.py")
++        command = [str(executable), "--experimental-pikmin2-room"]
++        record["command"] = command
++        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=75,
++                                text=True, encoding="utf-8", errors="replace", capture_output=True)
++        (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
++        (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
++        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 75,
++                                "stdout": file_record(run / "stdout.log"),
++                                "stderr": file_record(run / "stderr.log")}
++        errors = verify_log(result.stdout + "\n" + result.stderr)
++        record["verification"] = {"errors": errors}
++        capture = run / "waterwraith-actor.ppm"
++        if not capture.is_file():
++            errors.append("missing capture: waterwraith-actor.ppm")
++        elif capture.stat().st_size < 100000:
++            errors.append("trivial capture: waterwraith-actor.ppm")
++        else:
++            record["captures"] = {"waterwraith-actor.ppm": file_record(capture)}
++        if result.returncode != 0:
++            errors.append(f"fixture exit code {result.returncode}")
++        record["errors"].extend(errors)
++        if not errors:
++            record["status"] = "passed"
++    except subprocess.TimeoutExpired as error:
++        record["errors"].append("fixture timed out after 75 seconds")
++        if run is not None:
++            for name in ("stdout.log", "stderr.log"):
++                value = getattr(error, name.split(".")[0], None)
++                if isinstance(value, bytes):
++                    value = value.decode("utf-8", errors="replace")
++                (run / name).write_text(value or "", encoding="utf-8")
++    except Exception as error:  # noqa: BLE001 - report any staging failure in the record
++        record["errors"].append(str(error))
++        record["traceback"] = traceback.format_exc()
++    output.mkdir(parents=True, exist_ok=True)
++    if run is not None:
++        (run / "verification.json").write_text(json.dumps(record, indent=2) + "\n",
++                                               encoding="utf-8")
++    print(json.dumps({"status": record["status"], "run": str(run) if run else None,
++                      "errors": record["errors"]}, indent=2))
++    return 0 if record["status"] == "passed" else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tools/p2_waterwraith_actor_test.cpp b/tools/p2_waterwraith_actor_test.cpp
+new file mode 100644
+index 00000000..ab0106b2
+--- /dev/null
++++ b/tools/p2_waterwraith_actor_test.cpp
+@@ -0,0 +1,342 @@
++// Standalone engine-free fixture for the Waterwraith/Tyre actor phase machine
++// (pc_port/pc_p2_waterwraith_actor.h/.cpp), lane 31 (#443 / parent #175).
++// Drives the real policy against host-fed triggers and the real rig, covering
++// phase transitions, host-driven route locomotion, the full roller cycle, the
++// damage gate (Purple-only, frozen/dismounted only) and teardown. Build (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_waterwraith_actor_test.cpp pc_port/pc_p2_waterwraith_actor.cpp pc_port/pc_p2_waterwraith.cpp -o output/p2_waterwraith_actor_test.exe
++
++#include "pc_p2_waterwraith_actor.h"
++
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++
++namespace {
++
++constexpr float kDt = 1.0f / 30.0f;
++
++P2WaterwraithActor makeActor(P2BlackManPhase start = P2BM_Walk)
++{
++    P2WaterwraithActorParms parms;
++    parms.startPhase = start;
++    return P2WaterwraithActor(parms);
++}
++
++void step(P2WaterwraithActor& actor, const P2WaterwraithActorInput& in,
++          P2WaterwraithActorOutput* out = nullptr)
++{
++    P2WaterwraithActorOutput local;
++    actor.tick(in, out ? *out : local, kDt);
++}
++
++void testResetAndLifetime()
++{
++    P2WaterwraithActor actor;
++    assert(actor.alive());
++    assert(actor.phase() == P2BM_Fall); // source onInit starts Fall off y_01
++    assert(actor.rig().alive() && actor.rig().attachedToOwner());
++    assert(actor.rig().tyrePhase() == P2TYRE_Land);
++    assert(std::fabs(actor.bodyHealth() - actor.bodyMaxHealth()) < 1e-3f);
++    assert(!actor.pinched() && !actor.zeroed());
++    assert(P2WaterwraithActor::phaseName(P2BM_Walk) != nullptr);
++    assert(actor.phaseName() != nullptr);
++    assert(!actor.reachedRouteEnd());
++    std::puts("PASS actor_lifetime");
++}
++
++void testFallRecoverWalk()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Fall);
++    P2WaterwraithActorInput in;
++    P2WaterwraithActorOutput out;
++    in.isFallEnd = true;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Recover);
++    assert(out.entered && out.endFallConstraint && out.startRecoverMotion);
++
++    in                = P2WaterwraithActorInput{};
++    in.animEnd        = true;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Walk);
++    assert(out.moveRestartRequested);
++    std::puts("PASS actor_fall_recover_walk");
++}
++
++void testBendAndRecover()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    P2WaterwraithActorInput in;
++    P2WaterwraithActorOutput out;
++    in.isTyreFreeze = true;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Bend);
++    assert(out.collisionStOn && out.startBendMotion);
++
++    in         = P2WaterwraithActorInput{};
++    in.animEnd = true;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Recover); // roller alive: lift back up
++    assert(out.collisionStOff);
++    std::puts("PASS actor_bend_recover");
++}
++
++void testFlickReturnsToPostState()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    P2WaterwraithActorInput in;
++    in.isStartFlick = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Flick);
++
++    in         = P2WaterwraithActorInput{};
++    in.animEnd = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Walk); // postFlickState was Walk
++    std::puts("PASS actor_flick_poststate");
++}
++
++void testRollerlessFreezeStun()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    actor.rig().dismount(); // rollerless wraith
++    P2WaterwraithActorInput in;
++    in.rollerlessQuake = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Freeze);
++
++    in         = P2WaterwraithActorInput{};
++    in.animEnd = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Walk);
++    std::puts("PASS actor_rollerless_freeze");
++}
++
++void testTiredWindDown()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    P2WaterwraithActorInput in;
++    in.tired = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Tired);
++
++    in         = P2WaterwraithActorInput{};
++    in.animEnd = true;
++    step(actor, in);
++    assert(actor.phase() == P2BM_Walk);
++    std::puts("PASS actor_tired");
++}
++
++void testDeadReleasesTreasureThenKills()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    actor.rig().dismount();
++    bool dead = false;
++    assert(p2_waterwraith_actor_apply_damage(actor, actor.bodyMaxHealth(), true, &dead)
++           == P2WWDMG_Body);
++    assert(dead && actor.bodyZeroed());
++
++    P2WaterwraithActorInput in;
++    P2WaterwraithActorOutput out;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Dead);
++    assert(out.startDeadMotion);
++
++    in                   = P2WaterwraithActorInput{};
++    in.keyEvent5         = true;
++    step(actor, in, &out);
++    assert(out.releaseTreasure);
++
++    in                  = P2WaterwraithActorInput{};
++    in.animEnd          = true;
++    step(actor, in, &out);
++    assert(out.killRequested && !actor.alive());
++
++    // Dead actor ignores further input and damage.
++    in            = P2WaterwraithActorInput{};
++    in.animEnd    = true;
++    step(actor, in, &out);
++    assert(!out.killRequested);
++    assert(p2_waterwraith_actor_apply_damage(actor, 100.0f, true, &dead) == P2WWDMG_Ignored);
++    std::puts("PASS actor_dead");
++}
++
++void testRouteLocomotion()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    const P2WaterwraithWaypoint route[] = {
++        P2WaterwraithWaypoint{ P2WaterwraithVec3{ 500.0f, 0.0f, 0.0f } },
++        P2WaterwraithWaypoint{ P2WaterwraithVec3{ 500.0f, 0.0f, 200.0f } },
++    };
++    assert(actor.setRoute(route, 2) == 2);
++    assert(!actor.reachedRouteEnd());
++    assert(actor.nextWaypoint().x == 500.0f);
++
++    P2WaterwraithActorInput in;
++    for (int i = 0; i < 40; ++i) {
++        step(actor, in);
++    }
++    // Facing turns toward +X (source forward = (sin, cos) => pi/2).
++    assert(actor.facing() > 1.0f);
++    assert(actor.position().x > 0.0f);
++    assert(actor.waypointIndex() == 0); // goal radius 50 not yet reached
++
++    int ticks = 0;
++    while (!actor.reachedRouteEnd() && ticks < 1200) {
++        step(actor, in);
++        ++ticks;
++    }
++    assert(actor.reachedRouteEnd());
++    assert(actor.waypointIndex() == 2);
++    assert(actor.position().x > 400.0f);
++    assert(actor.position().z > 100.0f);
++    assert(actor.rig().travelledDistance() > 0.0f);
++
++    actor.clearRoute();
++    assert(actor.waypointCount() == 0 && !actor.reachedRouteEnd());
++    assert(actor.nextWaypoint().x == actor.position().x);
++    std::puts("PASS actor_route");
++}
++
++void testTwoStepTimer()
++{
++    P2WaterwraithActorParms parms;
++    parms.startPhase       = P2BM_Walk;
++    parms.twoStepTimerTicks = 5;
++    P2WaterwraithActor actor(parms);
++    P2WaterwraithActorInput in;
++    for (int i = 0; i < 5; ++i) {
++        step(actor, in);
++    }
++    assert(!actor.twoStepActive());
++    assert(std::fabs(actor.currentSpeed() - parms.walkSpeed) < 1e-3f);
++    step(actor, in); // sixth tick crosses ip01
++    assert(actor.twoStepActive());
++    assert(std::fabs(actor.currentSpeed() - parms.travelSpeed) < 1e-3f);
++    std::puts("PASS actor_two_step");
++}
++
++void testRollerFullCycle()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Fall);
++    P2WaterwraithActorInput in;
++    P2WaterwraithActorOutput out;
++    assert(actor.rig().tyrePhase() == P2TYRE_Land);
++
++    in.landFloorContact = true;
++    step(actor, in, &out);
++    assert(actor.rig().tyrePhase() == P2TYRE_Freeze); // land -> freeze
++
++    in           = P2WaterwraithActorInput{};
++    in.isFallEnd = true;
++    step(actor, in, &out);
++    assert(actor.phase() == P2BM_Recover);
++
++    in         = P2WaterwraithActorInput{};
++    in.animEnd = true;
++    step(actor, in, &out); // Recover end calls rig.moveRestart
++    assert(actor.phase() == P2BM_Walk);
++    assert(actor.rig().tyrePhase() == P2TYRE_Move); // freeze -> move
++
++    in             = P2WaterwraithActorInput{};
++    in.quakeFreeze = true;
++    step(actor, in, &out);
++    assert(actor.rig().tyrePhase() == P2TYRE_Freeze); // move -> quake freeze
++
++    // Zero the roller while it is attached; death must stay gated on dismount.
++    bool dead = true;
++    assert(p2_waterwraith_actor_apply_damage(actor, P2WaterwraithRig::kTyreMaxHealth, true, &dead)
++           == P2WWDMG_Roller);
++    assert(actor.rig().tyreHealth() == 0.0f && actor.rollerZeroed());
++    assert(!dead);
++    assert(!actor.rig().beginDead()); // no dismount yet
++
++    in            = P2WaterwraithActorInput{};
++    in.isTyreDead = true;
++    step(actor, in, &out); // dismount + Escape
++    assert(actor.phase() == P2BM_Escape);
++    assert(!actor.rig().attachedToOwner() && actor.rig().ownerInvulnerableSet());
++    assert(out.dismountRequested);
++
++    in                = P2WaterwraithActorInput{};
++    in.tyreDeathStart = true;
++    step(actor, in, &out); // dismounted + zero HP => tyre_getoff allowed
++    assert(out.tyreDeathStarted);
++    assert(actor.rig().tyrePhase() == P2TYRE_Dead);
++
++    in                  = P2WaterwraithActorInput{};
++    in.tyreDeadAnimEnd  = true;
++    step(actor, in, &out);
++    assert(out.tyreRemoved && !actor.rig().alive());
++    std::puts("PASS actor_roller_cycle");
++}
++
++void testDamageGating()
++{
++    // Riding Land: ignored.
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    bool dead                = true;
++    assert(p2_waterwraith_actor_apply_damage(actor, 100.0f, true, &dead) == P2WWDMG_Ignored);
++    assert(!dead && actor.rig().tyreHealth() == P2WaterwraithRig::kTyreMaxHealth);
++
++    // Non-Purple while frozen: ignored structurally.
++    actor.rig().landFloorContact();
++    assert(p2_waterwraith_actor_apply_damage(actor, 100.0f, false, &dead) == P2WWDMG_Ignored);
++    assert(actor.rig().tyreHealth() == P2WaterwraithRig::kTyreMaxHealth);
++
++    // Purple while frozen: routed to the roller; pinch tracks the drop.
++    assert(p2_waterwraith_actor_apply_damage(actor, 1400.0f, true, &dead) == P2WWDMG_Roller);
++    assert(std::fabs(actor.rig().tyreHealth() - 400.0f) < 1e-3f);
++    assert(actor.rollerPinched() && !actor.rollerZeroed());
++
++    // Riding Move: ignored again.
++    actor.rig().moveRestart();
++    assert(p2_waterwraith_actor_apply_damage(actor, 100.0f, true, &dead) == P2WWDMG_Ignored);
++
++    // Dismounted: routed to the wraith body.
++    actor.rig().dismount();
++    assert(p2_waterwraith_actor_apply_damage(actor, 1200.0f, true, &dead) == P2WWDMG_Body);
++    assert(std::fabs(actor.bodyHealth() - 300.0f) < 1e-3f);
++    assert(actor.bodyPinched() && !actor.bodyZeroed() && !dead);
++    assert(p2_waterwraith_actor_apply_damage(actor, 300.0f, true, &dead) == P2WWDMG_Body);
++    assert(dead && actor.bodyZeroed());
++    std::puts("PASS actor_damage_gate");
++}
++
++void testTeardown()
++{
++    P2WaterwraithActor actor = makeActor(P2BM_Walk);
++    actor.rig().landFloorContact();
++    bool dead = false;
++    assert(p2_waterwraith_actor_apply_damage(actor, P2WaterwraithRig::kTyreMaxHealth, true, &dead));
++    assert(actor.rig().tyreHealth() == 0.0f);
++    actor.rig().dismount();
++    assert(actor.rig().beginDead() && actor.rig().finishDead());
++    assert(!actor.rig().alive());
++
++    // reset() tears down and re-births a fresh child.
++    actor.reset();
++    assert(actor.alive() && actor.rig().alive() && actor.rig().attachedToOwner());
++    assert(actor.rig().tyrePhase() == P2TYRE_Land);
++    assert(actor.phase() == P2BM_Fall);
++    std::puts("PASS actor_teardown");
++}
++
++} // namespace
++
++int main()
++{
++    testResetAndLifetime();
++    testFallRecoverWalk();
++    testBendAndRecover();
++    testFlickReturnsToPostState();
++    testRollerlessFreezeStun();
++    testTiredWindDown();
++    testDeadReleasesTreasureThenKills();
++    testRouteLocomotion();
++    testTwoStepTimer();
++    testRollerFullCycle();
++    testDamageGating();
++    testTeardown();
++    std::puts("PASS WATERWRAITH_ACTOR");
++    return 0;
++}

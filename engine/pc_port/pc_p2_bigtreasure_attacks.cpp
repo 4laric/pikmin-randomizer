@@ -147,7 +147,7 @@ bool P2BigTreasureFirePolicy::nodeHit(int index, const P2BigTreasureVec3& emitPo
     const float yGate  = 40.0f * mParams.scale;
     const float radius = kRadius * mParams.scale;
     P2BigTreasureVec3 pos{ emitPosition.x + emitDirection.x * scale,
-                           emitPosition.y + emitDirection.y * scale - 25.0f,
+                           emitPosition.y + emitDirection.y * scale,
                            emitPosition.z + emitDirection.z * scale };
     if (std::fabs(pos.y - target.y) >= yGate) return false;
     return sqrDist2D(pos, target) < radius * radius;
@@ -186,6 +186,11 @@ void P2BigTreasureGasPolicy::finish()
 float P2BigTreasureGasPolicy::armAngle(int arm) const
 {
     return (arm >= 0 && arm < mParams.armNum) ? mArmAngles[arm] : 0.0f;
+}
+
+float P2BigTreasureGasPolicy::nodeRatio(int index) const
+{
+    return (index >= 0 && index < mNodeCount) ? mRatios[index] : 0.0f;
 }
 
 int P2BigTreasureGasPolicy::tick(float delta, bool bittered)

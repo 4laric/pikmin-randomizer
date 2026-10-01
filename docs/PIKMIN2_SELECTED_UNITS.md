@@ -18,9 +18,18 @@ not mean a selected topology has been assembled or traversability proven.
 
 Default material conversion is strict. `--approximate-materials` explicitly
 permits the existing first/diffuse-texture approximation after recording the
-strict failure. Unsupported geometry, collision material codes, water volumes
-and remaining conversion errors stay failures. The importer does not silently
+strict failure. Unsupported geometry, unaudited collision material codes and
+remaining conversion errors stay failures. The importer does not silently
 whitelist new map codes, drop water or relabel partial output as playable.
+
+Water volumes are converted as of lane 49 (#487). A non-empty `texts/waterbox.txt`
+is parsed into a `water.json` sidecar (`schema`, `boxes`, `surface`,
+`runtime_min_y`), validated against the room's horizontal bounds, and passed to
+`attach_collision`, which tags the submerged upward-facing floor triangles with
+the P1 `ATTR_Water` attribute the engine already consumes. Truly malformed water
+sources (wrong version, bad count, non-finite or inverted bounds) still fail the
+unit. The sidecar records `native_consumer_implemented: false` because the port
+has no independent P2 `SeaMgr` water query.
 
 ## Local audit
 

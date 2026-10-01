@@ -5,12 +5,14 @@ import json
 import pytest
 
 from experimental.pikmin2_kogane_runtime import BINDING_IDS, validate_binding, verify_fixed_run
+from experimental.pikmin2_kogane_arena import IDS, POSITIONS
+
+DEFAULT_XYZ = dict(zip(IDS, POSITIONS))
 
 
 def binding_log(xyz=None, ids=None, draw=True, passline=True, control=(219004, -1, 1)):
     ids = ids or [(219001, 9, 0), (219002, 10, 0), (219003, 11, 0), control]
-    xyz = xyz or {219001: (-150., 30., 1850.), 219002: (-50., 30., 1850.),
-                  219003: (50., 30., 1850.), 219004: (150., 30., 1550.)}
+    xyz = xyz or DEFAULT_XYZ
     lines = [f'P2_KOGANE_ID id={i} source_id={s} control={c}' for i, s, c in ids]
     lines += [f'P2_KOGANE_BIRTH id={i} type=3 x={p[0]:.3f} y={p[1]:.3f} z={p[2]:.3f}'
               for i, p in xyz.items()]
@@ -47,8 +49,8 @@ def test_validate_binding_rejects_control_registered_as_species():
 
 
 def test_validate_binding_rejects_wrong_xyz():
-    xyz = {219001: (-150., 30., 1850.), 219002: (-50., 30., 1850.),
-           219003: (50., 30., 1850.), 219004: (150., 30., 1550.5)}
+    xyz = dict(DEFAULT_XYZ)
+    xyz[219004] = (xyz[219004][0], xyz[219004][1], xyz[219004][2] + 0.5)
     evidence = validate_binding(binding_log(xyz=xyz), 0)
     assert not evidence['passed']
     assert not evidence['checks']['exact_xyz']

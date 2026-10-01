@@ -1,19 +1,50 @@
+#include "pc_p2_umimushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_snakejoint.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_kurage_teki.h"
+#include "pc_p2_teki_lifetime.h"
+#include "pc_p2_onikurage_teki.h"
+#include "pc_p2_king_teki.h"
+#include "pc_p2_queen_teki.h"
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_fsm.h"
 #include "pc_p2_tank.h"
+#include "pc_p2_kabuto_fsm.h"
+#include "pc_p2_hiba.h"
+#include "pc_p2_flora_actor.h"
 #include "pc_p2_qurione.h"
+#include "pc_p2_shijimi.h"
+#include "pc_p2_kochappy_fsm.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_bulblax_visual.h"
 #include "pc_p2_breadbug_actor.h"
+#include "pc_p2_giant_breadbug_actor.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
 #include "pc_p2_batch2.h"
+#include "pc_p2_projectiles.h"
+#include "pc_p2_sokkuri.h"
+#include "pc_p2_armor.h"
+#include "pc_p2_uji.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_otakara.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
-#include "pc_p2_white_poison.h"
-#include "pc_p2_purple_direct.h"
+#include "pc_p2_dweevil.h"
+#include "pc_p2_bombotakara.h"
 #endif
 #include "DebugLog.h"
 #include "Dolphin/os.h"
@@ -79,6 +110,13 @@ immut char* TekiMgr::typeNames[TEKI_TypeCount] = {
 	"swallob",  // 32, Spotty Bulbear
 	"frow",     // 33, Wollywog
 	"nakata1",  // 34, ? (unused enemy, crashes)
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-30 captor spawn identity. No dedicated Demon teki bank exists in the
+	// port; the spawned actor is an invisible identity/lifetime anchor whose
+	// visual is drawn by P2DemonHost, so it reuses the retail Chappy bank.
+	// The identity is the distinct appended type id (TEKI_P2Demon), not the name.
+	"chappy",   // 35, PC-only lane-30 captor anchor
+#endif
 };
 
 int TekiMgr::typeIds[TEKI_TypeCount] = {
@@ -117,6 +155,9 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 	'tksb', // 32, Spotty Bulbear
 	'tkfw', // 33, Wollywog
 	'tkn1', // 34, ? (unused enemy, crashes)
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	'tkch', // 35, PC-only lane-30 captor anchor (reuses the Chappy pellet id)
+#endif
 };
 
 /**
@@ -125,7 +166,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 void TekiMgr::initTekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); pc_p2_batch2_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); }
+	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_mamuta_fsm_reset(); pc_p2_tank_reset(); pc_p2_kabuto_fsm_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_otakara_reset(); pc_p2_uji_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); pc_p2_king_teki_reset(); pc_p2_queen_teki_reset(); }
 #endif
 	tekiMgr = nullptr;
 }
@@ -152,7 +193,7 @@ TekiMgr::TekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
-	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); pc_p2_batch2_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); }
+	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_mamuta_fsm_reset(); pc_p2_tank_reset(); pc_p2_kabuto_fsm_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_otakara_reset(); pc_p2_uji_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); pc_p2_king_teki_reset(); pc_p2_queen_teki_reset(); }
 #endif
 	PRINT_NAKATA("TekiMgr>\n");
 	memStat->start("tekiMgr");
@@ -283,9 +324,14 @@ Teki* TekiMgr::newTeki(int type)
 	}
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_purple_direct_forget(teki); pc_p2_breadbug_actor_forget(teki); pc_p2_frog_forget(teki); pc_p2_kogane_forget(teki); pc_p2_mamuta_forget(teki); pc_p2_tank_forget(teki); pc_p2_qurione_forget(teki); pc_p2_batch2_forget(teki); pc_p2_batch3_forget(teki); pc_p2_long_legs_forget(teki); pc_p2_white_poison_forget(teki);
+	// Slot reuse calls the same centralized seam as the death funnel so a pooled
+	// address can never retain a stale family registration.
+	pc_p2_forget_teki(teki);
 #endif
 	teki->init(type);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_snow_campaign_bind(teki);
+#endif
 	return teki;
 }
 
@@ -295,7 +341,7 @@ Teki* TekiMgr::newTeki(int type)
 void TekiMgr::reset()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); pc_p2_batch2_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); }
+	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_mamuta_fsm_reset(); pc_p2_tank_reset(); pc_p2_kabuto_fsm_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_otakara_reset(); pc_p2_uji_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); pc_p2_king_teki_reset(); pc_p2_queen_teki_reset(); }
 #endif
 	PRINT_NAKATA("reset>\n");
 	Iterator iter(this);

@@ -72,6 +72,15 @@ bool P2BombSaraiBomb::capture(std::uint64_t carrierToken, const P2BombSaraiVec3&
     return true;
 }
 
+bool P2BombSaraiBomb::followJoint(const P2BombSaraiVec3& jointPosition)
+{
+    if (mPhase != P2BombSaraiBombPhase::Captured || !finite(jointPosition)) {
+        return false;
+    }
+    mPosition = jointPosition;
+    return true;
+}
+
 bool P2BombSaraiBomb::throwBomb(P2BombSaraiThrowKind kind, float faceDir)
 {
     // Source: throwBomb clears mHeldBomb unconditionally and is a no-op on
@@ -233,6 +242,22 @@ int P2BombSaraiBombPool::activeCount() const
     return count;
 }
 
+bool P2BombSaraiBombPool::slotLive(int slot) const
+{
+    return slot >= 0 && slot < mCapacity && slot < kMaxBombs
+        && mUsed[slot] && livePhase(mBombs[slot].phase());
+}
+
+P2BombSaraiBomb* P2BombSaraiBombPool::bombAt(int slot)
+{
+    return (slot >= 0 && slot < mCapacity && slot < kMaxBombs) ? &mBombs[slot] : nullptr;
+}
+
+const P2BombSaraiBomb* P2BombSaraiBombPool::bombAt(int slot) const
+{
+    return (slot >= 0 && slot < mCapacity && slot < kMaxBombs) ? &mBombs[slot] : nullptr;
+}
+
 P2BombSaraiBomb* P2BombSaraiBombPool::supply(std::uint64_t carrierToken,
                                              const P2BombSaraiVec3& jointPosition,
                                              const P2BombSaraiBombConfig& config)
@@ -242,9 +267,9 @@ P2BombSaraiBomb* P2BombSaraiBombPool::supply(std::uint64_t carrierToken,
     }
     const int limit = mCapacity < kMaxBombs ? mCapacity : kMaxBombs;
     for (int i = 0; i < limit; ++i) {
-        if (mUsed[i] && livePhase(mBombs[i].phase())
+        if (mUsed[i] && mBombs[i].phase() == P2BombSaraiBombPhase::Captured
             && mBombs[i].carrierToken() == carrierToken) {
-            return nullptr; // source !mHeldBomb guard: one live bomb per carrier
+            return nullptr; // source !mHeldBomb guard: one HELD bomb per carrier
         }
     }
     for (int i = 0; i < limit; ++i) {

@@ -60,10 +60,18 @@ def roster(assets):
     return header[:20] + struct.pack('>I', len(entries)) + b''.join(entries), placements
 
 
-def prepare(assets, imported, output):
+def prepare(assets, imported, output, extra_record=None, extra_actor=None):
     assets = assets.resolve()
     imported = imported.resolve()
     data, actors = roster(assets)
+    if extra_record is not None:
+        # Stage an explicit starting squad *before* overlay() so
+        # ensure_pikmin_squad() sees the existing 'ikip' record and preserves
+        # this lane's squad instead of adding the default 20-red squad.
+        count = struct.unpack_from('>I', data, 20)[0]
+        data = data[:20] + struct.pack('>I', count + 1) + data[24:] + extra_record
+        if extra_actor is not None:
+            actors = actors + [extra_actor]
     stage = assets / 'dataDir/stages/practice.ini'
     course = assets / 'dataDir/courses/practice'
     preserved = {str(p.relative_to(assets)).replace('\\', '/'): digest(p)
@@ -81,7 +89,8 @@ def prepare(assets, imported, output):
     overlay(assets, run / 'assets', overrides)
     (run / 'assets/dataDir/courses/pikmin2room').mkdir(parents=True, exist_ok=True)
     birth = deterministic_births(run / 'assets/dataDir/stages/chal0/default.gen',
-                                 [a['generator'] for a in actors])
+                                 [a['generator'] for a in actors
+                                  if a.get('native_family') != 'Piki'])
     installed = install(imported, run, [(a['generator'], 'Miulin') for a in actors
                                         if a['native_family'] == 'Miurin'])
     (run / 'p2-cargo-free.txt').write_text('P2_CARGO_FREE_1\n')

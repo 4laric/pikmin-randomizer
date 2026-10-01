@@ -171,12 +171,11 @@ def normal_model():
 
 
 class MissingNormalsTests(unittest.TestCase):
-    def test_error_is_the_default_and_raises_keyerror(self):
+    def test_error_is_the_default_and_rejects_missing_normal(self):
         model = normalless_model()
-        with self.assertRaises(KeyError) as ctx:
+        with self.assertRaisesRegex(ValueError, 'Missing display-list normal'):
             decode(model, True, bake_rigid=True)
-        self.assertEqual(ctx.exception.args, (10,))
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(ValueError, 'Missing display-list normal'):
             decode(model, True, bake_rigid=True, missing_normals='error')
 
     def test_invalid_modes_rejected(self):
@@ -188,10 +187,11 @@ class MissingNormalsTests(unittest.TestCase):
     def test_default_mode_substitutes_unit_y(self):
         _, arrays, shapes, _ = decode(normalless_model(), True, bake_rigid=True,
                                       missing_normals='default')
-        self.assertEqual(arrays[10], [(0., 1., 0.)])
+        self.assertTrue(arrays[10])
+        self.assertTrue(all(normal == (0., 1., 0.) for normal in arrays[10]))
         for tri in shapes[0]:
             for vertex in tri:
-                self.assertEqual(vertex[10], 0)
+                self.assertEqual(arrays[10][vertex[10]], (0., 1., 0.))
 
     def test_compute_mode_derives_face_normal(self):
         _, arrays, shapes, _ = decode(normalless_model(), True, bake_rigid=True,
@@ -227,7 +227,7 @@ class MissingNormalsTests(unittest.TestCase):
             path = Path(d) / 'pose.mod'
             report = write_model(decode(normalless_model(), True, bake_rigid=True,
                                         missing_normals='compute'), path, 'synthetic.bmd')
-            self.assertEqual(report['missing_normals'], 'compute')
+            self.assertEqual(report['normal_policy']['missing_normals'], 'compute')
             self.assertNotIn('singular_normal', report)
             strict = write_model(decode(normal_model(), True, bake_rigid=True),
                                  Path(d) / 'strict.mod', 'synthetic.bmd')
@@ -251,7 +251,8 @@ class SingularNormalTests(unittest.TestCase):
         # to itself, so the authored +Y normal survives normalized.
         _, arrays, _, _ = decode(normal_model(), True, bake_rigid=True, pose=self.FLAT_Y_POSE,
                                  singular_normal='transpose-adjugate')
-        self.assertEqual(arrays[10], [(0., 1., 0.)])
+        self.assertTrue(arrays[10])
+        self.assertTrue(all(normal == (0., 1., 0.) for normal in arrays[10]))
         for x, y, z in arrays[9]:
             self.assertEqual(y, 0.)
 
@@ -260,7 +261,7 @@ class SingularNormalTests(unittest.TestCase):
             report = write_model(decode(normal_model(), True, bake_rigid=True, pose=self.FLAT_Y_POSE,
                                         singular_normal='transpose-adjugate'),
                                  Path(d) / 'pose.mod', 'synthetic.bmd')
-            self.assertEqual(report['singular_normal'], 'transpose-adjugate')
+            self.assertEqual(report['normal_policy']['singular_normal'], 'transpose-adjugate')
             self.assertNotIn('missing_normals', report)
 
 
@@ -268,7 +269,8 @@ class StrictDefaultTests(unittest.TestCase):
     def test_normal_model_bakes_unchanged(self):
         _, arrays, shapes, _ = decode(normal_model(), True, bake_rigid=True)
         self.assertEqual(arrays[9], TRIANGLE)
-        self.assertEqual(arrays[10], [(0., 1., 0.)])
+        self.assertTrue(arrays[10])
+        self.assertTrue(all(normal == (0., 1., 0.) for normal in arrays[10]))
         self.assertEqual(sum(map(len, shapes)), 1)
 
 

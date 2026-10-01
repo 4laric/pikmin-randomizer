@@ -1,12 +1,17 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_purple_impact.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "pc_p2_species.h"
 #include "pc_p2_purple.h"
 #include "pc_randomizer.h"
 #include "pc_bbft.h"
 #include "Piki.h"
+#include "pc_p2_kurage_receiver.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "Boss.h"
@@ -31,6 +36,8 @@
 #include "UtilityKando.h"
 #include "WeedsItem.h"
 #include "WorkObject.h"
+#include "settings/pc_settings.h"
+#include "pc_coop.h"
 #include "bugprint.h"
 #include "gameflow.h"
 #include "teki.h"
@@ -232,6 +239,15 @@ int Piki::findRoute(int sourceWaypointIndex, int destWaypointIndex, bool isRetry
 	if (ship && ship->mWaypointID == destWaypointIndex) {
 		destinationType = 3;
 	}
+#if defined(PIKI_PC_PORT)
+	// VS: hay dos cohetes y seis cebollas, y las rutas precalculadas por tipo
+	// de meta solo conocen los primeros (y el cohete cambia de punto de camino
+	// tras calcularlas). Camino directo al punto real, como a cualquier otro.
+	if (pc_vs_active()) {
+		destinationType = -1;
+		useAsynchronous = false; // todo por findSync (camino más corto)
+	}
+#endif
 
 	// If destination isn't a special point, try to copy an existing path
 	// from another Piki that's already calculated this route
@@ -289,6 +305,20 @@ int Piki::findRoute(int sourceWaypointIndex, int destWaypointIndex, bool isRetry
 
 	// Calculate new path
 	int handle;
+#if defined(PIKI_PC_PORT)
+	// Better Pathfinding: one exact search for every destination, onions and the
+	// ship included, instead of the greedy walk or the onion cost table. It is
+	// cheap enough to answer now, so the asynchronous path is not needed.
+	if (pc_settings_get_better_pathfinding()) {
+		mUseAsyncPathfinding = false;
+		handle = routeMgr->getPathFinder('test')->findSyncShortest(mPathBuffers, sourceWaypointIndex, destWaypointIndex, isRetryAttempt);
+		if (!handle) {
+			mRouteDestinationIndex = -1;
+			mRouteSourceIndex      = -1;
+		}
+		return handle;
+	}
+#endif
 	if (destinationType != -1) {
 		handle = routeMgr->getPathFinder('test')->findSyncOnyon(mSRT.t, mPathBuffers, sourceWaypointIndex, destinationType, isRetryAttempt);
 		if (!handle) {
@@ -398,6 +428,11 @@ bool Piki::initRouteTrace(immut Vector3f& targetPos, bool p2)
 	}
 
 	WayPoint* nearestTargetWP = routeMgr->findNearestWayPoint('test', targetPos, false);
+#if defined(PIKI_PC_PORT)
+	if (wp1 && wp2 && nearestTargetWP && pc_settings_get_better_pathfinding()) {
+		nearestPikiWP = routeMgr->pickRouteStart(mSRT.t, wp1, wp2, nearestTargetWP->mIndex, onlyLand);
+	}
+#endif
 	mRouteStartPos            = mSRT.t;
 	mRouteGoalPos             = targetPos;
 
@@ -647,6 +682,12 @@ void Piki::updateFire()
 {
 	if (mFiredState) {
 		int state = getState();
+#if defined(PIKI_PC_PORT)
+		if (pc_settings_get_piki_invincible()) {
+			mFiredState = 0; // cheat "Invincible Pikmin"
+			return;
+		}
+#endif
 		if (mFiredState != 2 && state != PIKISTATE_Dying && state != PIKISTATE_Dead && state != PIKISTATE_Fired && state != PIKISTATE_Drown
 		    && !pc_p2_has_red_immunity(this)) {
 			changeMode(PikiMode::FreeMode, mNavi);
@@ -683,7 +724,13 @@ bool Piki::isTeki(Piki* target)
 	}
 
 	if (flowCont.mIsVersusMode == TRUE) {
+#if defined(PIKI_PC_PORT)
+		// VS del port: rival = otro dueño. Los que aún no tienen dueño (-1)
+		// no pelean con nadie.
+		return mPlayerId >= 0 && target->mPlayerId >= 0 && target->mPlayerId != mPlayerId;
+#else
 		return target->mNavi != mNavi;
+#endif
 	}
 
 	return false;
@@ -947,6 +994,12 @@ int Piki::graspSituation(Creature** outTarget)
 		if (roughCull(teki, this, minTestDist + teki->getCentreSize())) {
 			continue;
 		}
+#if defined(PIKI_PC_PORT)
+		// #898: an unbittered OWN Breadbug is not a living thing (retail pikiAI skips it).
+		if (pc_p2_breadbug_teki_untargetable(teki, "piki_grasp_situation")) {
+			continue;
+		}
+#endif
 		if (teki->isVisible() && teki->isAlive() && !teki->isFlying() && teki->isOrganic() && !teki->isStickTo()) {
 			f32 tekiDist = qdist2(this, teki);
 			if (tekiDist <= minTestDist + teki->getCentreSize()) {
@@ -1271,9 +1324,17 @@ int Piki::graspSituation(Creature** outTarget)
  */
 void Piki::initColor(int color)
 {
-    mP2Purple=false;mP2White=false;mP2AnimationTime=0;
+    mP2Purple=false;mP2White=false;mP2Bulbmin=false;mP2AnimationTime=0;
     if (!pc_bbft_color_access(color)) color = Red;
 	mColor = color;
+#if defined(PIKI_PC_PORT)
+	// VS del port: cada jugador tiene los tres colores, así que el dueño no
+	// sale del color (Nintendo: azul J1, rojo J2, amarillo neutral). Nacen
+	// sin dueño y son del primer capitán que los mete en su grupo.
+	if (pc_vs_active()) {
+		mPlayerId = -1;
+	} else
+#endif
 	if (flowCont.mIsVersusMode == TRUE) {
 		switch (color) {
 		case Blue:
@@ -1772,6 +1833,70 @@ bool Piki::mayIstick()
 	return false;
 }
 
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Mod "Blues Only In Water": saca del agua a un Pikmin que entró solo.
+ *
+ * Solo PIKISTATE_Normal cuenta como "por su cuenta": lanzado (Flying) o
+ * golpeado dentro (Flick, Flown) se sigue ahogando, así que el agua no deja
+ * de ser un peligro. Devuelve true si lo ha reubicado.
+ */
+bool Piki::pcStepOutOfWater()
+{
+	if (!pc_settings_get_blues_only_water()) {
+		return false;
+	}
+	if (mColor == Blue || !isAlive()) {
+		return false;
+	}
+
+	// Lista de estados en los que el agua sí debe hacer daño: lanzado por el
+	// capitán, golpeado dentro por un enemigo, o ya fuera de juego. Todo lo
+	// demás -- andar, venir al silbato (LookAt), seguir en formación -- es el
+	// Pikmin moviéndose por su cuenta, y ahí es donde el mod actúa. Antes solo
+	// cubría PIKISTATE_Normal, así que al silbarlos se ahogaban igual.
+	switch (getState()) {
+	case PIKISTATE_Flying:
+	case PIKISTATE_Flown:
+	case PIKISTATE_Flick:
+	case PIKISTATE_Bullet:
+	case PIKISTATE_Hanged:
+	case PIKISTATE_WaterHanged:
+	case PIKISTATE_Drown:
+	case PIKISTATE_Pressed:
+	case PIKISTATE_Swallowed:
+	case PIKISTATE_Dying:
+	case PIKISTATE_Dead:
+		return false;
+	default:
+		break;
+	}
+
+	// Al último suelo seco propio, no al waypoint más cercano: ese podía estar
+	// al otro lado del agua, y el Pikmin aparecía lejos y volvía corriendo.
+	if (mPcHasDryPos) {
+		mSRT.t = mPcLastDryPos;
+	} else {
+		WayPoint* dryWP = routeMgr->findNearestWayPoint('test', mSRT.t, true);
+		if (!dryWP) {
+			return false;
+		}
+		mSRT.t = dryWP->mPosition;
+	}
+
+	mVelocity     = Vector3f(0.0f, 0.0f, 0.0f);
+	mInWaterTimer = 0;
+	mIsPanicked   = false;
+
+	// No se le cambia el modo. Echarlo del escuadrón aquí creaba un bucle:
+	// al silbarlo volvía a entrar, tocaba el agua en el mismo frame y salía
+	// otra vez, así que se quedaba clavado en la orilla para siempre. Sigue
+	// en el escuadrón; lo único que no puede es pisar el agua, y en cuanto
+	// el capitán vuelve a tierra lo sigue con normalidad.
+	return true;
+}
+#endif
+
 /**
  * @todo: Documentation
  */
@@ -1811,7 +1936,13 @@ void Piki::bounceCallback()
 		}
 	}
 
-	if (isDrownSurface && isAlive() && state != PIKISTATE_Dead && state != PIKISTATE_Dying && state != PIKISTATE_Pressed
+#if defined(PIKI_PC_PORT)
+	if (isDrownSurface && pcStepOutOfWater()) {
+		return;
+	}
+#endif
+
+	if (isDrownSurface && isAlive() && !pc_settings_get_piki_invincible() && state != PIKISTATE_Dead && state != PIKISTATE_Dying && state != PIKISTATE_Pressed
 	    && state != PIKISTATE_WaterHanged) {
 		seSystem->playSoundDirect(5, SEW_PIKI_WATERDROP, mSRT.t);
 		startMotion(PaniMotionInfo(PIKIANIM_TYakusui, this), PaniMotionInfo(PIKIANIM_TYakusui));
@@ -1888,6 +2019,14 @@ void Piki::startMotion(immut PaniMotionInfo& motion1, immut PaniMotionInfo& moti
 		Creature* target = mLookAtCreature.getPtr();
 		if (!isLooking()) {
 			if (!target) {
+#if defined(PIKI_PC_PORT)
+				// A Pikmin released by a P2 captor (Jellyfloat suction) has no captain until
+				// the whistle reclaims it; &mNavi->mCursorWorldPos on null is a wild pointer
+				// that ViewPiki::refresh dereferences on the next draw.
+				if (!mNavi) {
+					return;
+				}
+#endif
 				int rand = gsys->getRand(1.0f) * 2.0f;
 				if (rand == 0) {
 					startHimaLook(&mNavi->mCursorWorldPos);
@@ -2020,7 +2159,25 @@ void Piki::collisionCallback(immut CollEvent& event)
 		return;
 	}
 
+#if defined(PIKI_PC_PORT)
+	// VS: un Pikmin lanzado que choca con el capitán rival lo tumba unos
+	// segundos (sin daño); mientras está en el suelo es invulnerable.
+	if (pc_vs_active() && collider->mObjType == OBJTYPE_Navi && getState() == PIKISTATE_Flying && mPlayerId >= 0
+	    && static_cast<Navi*>(collider)->mNaviID != mPlayerId) {
+		InteractFlick flick(this, 80.0f, 0.0f, atan2f(mVelocity.x, mVelocity.z));
+		collider->stimulate(flick);
+	}
+#endif
+
 	bool distCheck = true;
+#if defined(PIKI_PC_PORT)
+	// A Pikmin held by a P2 captor (Jellyfloat suction, pc_p2_kurage_receiver)
+	// is released from its captain (mNavi == nullptr) yet still collides with
+	// the crowd around it; vanilla Pikmin always have a captain here.
+	if (!mNavi) {
+		distCheck = false;
+	} else
+#endif
 	if (!mNavi->mForcePikiDistCheck && mNavi->mCStick.length() < 0.1f) {
 		distCheck = false;
 	}
@@ -2076,7 +2233,11 @@ void Piki::collisionCallback(immut CollEvent& event)
 	}
 
 	if (AICONST.mDoCStickAttack() && (collider->mObjType == OBJTYPE_Teki || collider->isBoss()) && collider->isOrganic()
-	    && mMode == PikiMode::FormationMode && getState() != PIKISTATE_Pressed) {
+	    && mMode == PikiMode::FormationMode && getState() != PIKISTATE_Pressed
+#if defined(PIKI_PC_PORT)
+	    && !pc_p2_breadbug_teki_untargetable(collider, "piki_formation_contact") // #898 swarm
+#endif
+	) {
 		ActCrowd* crowd = static_cast<ActCrowd*>(mActiveAction->getCurrAction());
 		if (crowd && crowd->mState == ActCrowd::STATE_Formed) {
 			mActiveAction->abandon(nullptr);
@@ -2372,6 +2533,9 @@ void Piki::init(Navi* navi)
 	mLeaderCreature   = nullptr;
 	mInWaterTimer     = 0;
 	mFiredState       = 0;
+#if defined(PIKI_PC_PORT)
+	mPcSieging = false; // VS: el objeto se recicla; no heredar el asedio de otro Pikmin
+#endif
 	mIsCallable       = true;
 	mLastAnimPosition.set(0.0f, 0.0f, 0.0f);
 	unsetEraseKill();
@@ -2702,6 +2866,14 @@ void Piki::realAI()
 		}
 	}
 
+#if defined(PIKI_PC_PORT)
+	// Caminar al agua entra por aquí, no por bounceCallback: el rescate tiene
+	// que estar en los dos caminos.
+	if (isInWater && pcStepOutOfWater()) {
+		isInWater = false;
+	}
+#endif
+
 	if (isInWater && getState() != PIKISTATE_WaterHanged) {
 		if (mInWaterTimer == 0) {
 			EffectParm rippleParm(&mShadowPos);
@@ -2722,7 +2894,7 @@ void Piki::realAI()
 		}
 
 		if (state != PIKISTATE_Swallowed && state != PIKISTATE_Dead && state != PIKISTATE_Dying && state != PIKISTATE_Pressed
-		    && state != PIKISTATE_Drown && state != PIKISTATE_Flying && mColor != Blue && isAlive()) {
+		    && state != PIKISTATE_Drown && state != PIKISTATE_Flying && mColor != Blue && isAlive() && !pc_settings_get_piki_invincible()) {
 			if (mInWaterTimer >= int(gsys->getRand(1.0f) * pikiMgr->mPikiParms->mPikiParms.mRandStartDrownFrames())
 			                         + pikiMgr->mPikiParms->mPikiParms.mMinStartDrownFrames()) {
 				startMotion(PaniMotionInfo(PIKIANIM_TYakusui, this), PaniMotionInfo(PIKIANIM_TYakusui));
@@ -2730,6 +2902,13 @@ void Piki::realAI()
 			}
 		}
 	} else {
+#if defined(PIKI_PC_PORT)
+		// Suelo seco: lo recordamos por si hay que devolverlo aquí.
+		if (mGroundTriangle) {
+			mPcLastDryPos = mSRT.t;
+			mPcHasDryPos  = true;
+		}
+#endif
 		if (mInWaterTimer) {
 			mInWaterTimer = 0;
 			mRippleEffect->kill();
@@ -2759,6 +2938,18 @@ immut char* Piki::getCurrentMotionName()
  */
 void Piki::doAI()
 {
+	// Yield only while the receiver still owns this live attachment/travel.
+	if (pc_p2_kurage_receiver_controls(this)) {
+		_500.clear();
+		return;
+	}
+	// #245: an Antenna Beetle ActTeki follower walks the beetle's footmark
+	// trail instead of running its P1 action (source Brain ACT_Teki).
+	if (getState() == PIKISTATE_Normal && pc_p2_fuefuki_follower_controls(this)) {
+		_500.clear();
+		return;
+	}
+
 	int state = getState();
 	if (state == PIKISTATE_Unk34) {
 		mFaceDirection += 1.2f * (HALF_PI * gsys->getFrameTime());
@@ -2785,9 +2976,61 @@ void Piki::doAI()
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Mod "Charge": manda este Pikmin contra un objetivo concreto.
+ *
+ * changeMode(AttackMode) pasa el capitán y deja que ActAttack elija por su
+ * cuenta; aquí el objetivo es el que el jugador ha fijado, así que se inicia
+ * la acción con él directamente.
+ */
+void Piki::pcChargeAt(Creature* target)
+{
+	if (!target || playerState->inDayEnd()) {
+		return;
+	}
+	if (pc_p2_breadbug_teki_untargetable(target, "piki_charge")) {
+		return; // #898
+	}
+	mActiveAction->abandon(nullptr);
+	mActiveAction->mCurrActionIdx = PikiAction::Attack;
+	mActiveAction->mChildActions[mActiveAction->mCurrActionIdx].initialise(target);
+}
+#endif
+
 void Piki::changeMode(int newMode, Navi* navi)
 {
 	STACK_PAD_VAR(6); // idk
+#if defined(PIKI_PC_PORT)
+	// A Pikmin a P2 captor released (pc_p2_captain release_captive_free) has
+	// no captain until a whistle reclaims it (Navi::callPikis sets mNavi
+	// before changeMode). Every FormationMode entry initialises ActCrowd with
+	// mNavi, which read navi->mObjType of null (0x9c access violation, #972
+	// crash follow-up). No captain means no party: free mode, the same ruling
+	// as the ActAction post-work guard (#960).
+	static_assert(p2captivenavi::kFreeMode == PikiMode::FreeMode && p2captivenavi::kFormationMode == PikiMode::FormationMode,
+	              "PikiMode ids");
+	if (p2captivenavi::modeFor(newMode, mNavi != nullptr) != newMode) {
+		p2captivenavi::note("formation_without_captain");
+		newMode = p2captivenavi::modeFor(newMode, false);
+	}
+#endif
+#if defined(PIKI_PC_PORT)
+	// #245: the whistle path into a party is refused for an Antenna Beetle
+	// ActTeki follower in Navi::callPikis (InteractFue::actPiki). Any other
+	// path (day-end gather, co-op transfer, ...) ends the follow here, and a
+	// Pikmin the beetle released logs its reclaim by a captain.
+	if (newMode == PikiMode::FormationMode) {
+		pc_p2_fuefuki_note_formation(this, navi);
+	}
+#endif
+#if defined(PIKI_PC_PORT)
+	// VS: un Pikmin sin dueño pasa a ser del capitán a cuyo grupo entra
+	// (arrancarlo, silbarlo o tocarlo acaban aquí).
+	if (pc_vs_active() && newMode == PikiMode::FormationMode && navi && mPlayerId < 0) {
+		mPlayerId = navi->mNaviID;
+	}
+#endif
 	mActiveAction->abandon(nullptr);
 	switch (newMode) {
 	case PikiMode::FreeMode:

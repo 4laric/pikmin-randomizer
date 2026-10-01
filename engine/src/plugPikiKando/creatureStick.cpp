@@ -8,6 +8,11 @@
 #include "RopeCreature.h"
 #include "Stickers.h"
 #include "Traversable.h"
+#if defined(PIKI_PC_PORT)
+#include "Piki.h"
+#include "teki.h"
+#include "pc_p2_body_coll.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -140,6 +145,12 @@ void Creature::adjustStickObject(immut Vector3f& adjust)
  */
 void Creature::startStickMouth(Creature* mouthOwner, CollPart* mouthPart)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// A death-race refusal is expected, rather than the fatal broken-link case
+	// handled below. Preserve any existing attachment on a refused request.
+	if (isPiki() && mouthOwner && mouthOwner->isTeki()
+	    && static_cast<BTeki*>(mouthOwner)->isP2Dying()) return;
+#endif
 	resetCreatureFlag(CF_StuckToMouth);
 	if (mStickTarget) {
 		PRINT("startStickMouth::already stuck to %s : endStick\n", mStickPart->mCollInfo->mId.mStringID);
@@ -294,6 +305,9 @@ void Creature::startStickObject(Creature* obj, CollPart* stickPart, int slot, f3
 		mStickPart = stickPart;
 		resetCreatureFlag(CF_StuckToMouth);
 		setCreatureFlag(CF_StuckToObject);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		pc_p2_body_coll_note_stick(this, obj, stickPart);
+#endif
 		return;
 	}
 
@@ -326,6 +340,11 @@ const char* _standType[] = { "GROUND", "TEKIPLAT", "PLAT", "AIR" };
  */
 bool Creature::startStick(Creature* stickTarget, CollPart* stickPart)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Protect every attachment entrypoint, including direct thrown-Pikmin calls.
+	if (isPiki() && stickTarget && stickTarget->isTeki()
+	    && static_cast<BTeki*>(stickTarget)->isP2Dying()) return false;
+#endif
 	mStickPart = nullptr;
 	resetCreatureFlag(CF_StuckToObject);
 	if (mStickTarget) {
@@ -358,6 +377,13 @@ bool Creature::startStick(Creature* stickTarget, CollPart* stickPart)
 	}
 
 	mStickPart = stickPart;
+#if defined(PIKI_PC_PORT)
+	// #892: report a Pikmin latching onto a bound Gatling Groink part.
+	if (mObjType == OBJTYPE_Piki && stickTarget->mObjType == OBJTYPE_Teki) {
+		pc_p2_groink_teki_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(stickTarget)), static_cast<Piki*>(this), stickPart, "stick");
+		pc_p2_long_legs_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(stickTarget)), static_cast<Piki*>(this), stickPart, "stick");
+	}
+#endif
 
 	stickToCallback(stickTarget);
 	stickTarget->stickCallback(this);

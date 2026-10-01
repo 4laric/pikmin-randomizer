@@ -1,1 +1,1 @@
-"""Standalone Pikmin Randomizer session and seed contracts."""
+"""Standalone Pikipelago session and seed contracts."""

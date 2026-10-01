@@ -1,0 +1,43 @@
+{
+  "lane": "21",
+  "issues": ["198", "204", "205", "206", "208", "209", "210"],
+  "native_branch": "opencode/p2-groink-strike",
+  "native_base": "6202d852",
+  "native_head": "1ae14480ef83705436ff40de16502bc7061f3449",
+  "native_pushed": false,
+  "native_worktree": "output/native-groink-strike",
+  "patch_series": [
+    "0001-Lane-21-204-205-208-Groink-shell-strike-proxy-receiv.patch",
+    "0002-Lane-21-205-Groink-in-flight-moving-sweep-strikes-wi.patch"
+  ],
+  "vendored_dependency": {
+    "source_branch": "opencode/p2-projectiles-integration",
+    "source_commit": "be8037af5e1d50dcd0d96333d48761cf52e27f84",
+    "files": ["pc_port/pc_p2_projectile_receiver.h", "pc_port/pc_p2_projectile_receiver.cpp", "pc_port/pc_p2_cannon_stone.h", "pc_port/pc_p2_rock_hazard.h"]
+  },
+  "standalone_test": {
+    "source": "tools/p2_groink_strike_test.cpp",
+    "exe_sha256": "9D1D837B4EEA2E32BCB274169817F38CABE922F33C1EB407D5C89A595E27A771",
+    "compile": "g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_strike_test.cpp pc_port/pc_p2_groink_strike.cpp pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_projectile_receiver.cpp -o <out>",
+    "exit": 0
+  },
+  "fixture": {
+    "dir": "output/groink-flight-strike-fixture-01",
+    "exe_sha256": "6dcc7eec9de21f9851062a0415ecec3050993ba507b6b6d8e362cf54968fc0c5",
+    "provenance_sha256": "62cf0d6f2fefa1e8a6a013a3dc521debee989297d827a739ccdcf4a4d3f855b3",
+    "provenance_status": "built",
+    "expected_native_head": "756515d57088f7ea7241c451e2e5b968bf9c7c6d"
+  },
+  "runtime": {
+    "run_dir": "output/groink-runtime-sessions/0d2aa8c8fb084839b6616aef201fa614",
+    "session_copy": "output/groink-flight-strike-session-01",
+    "log_sha256": "c65fe883e707670e208cda0358bc1567177104c20ae33bc1730ffa65af51c549",
+    "window": "960x540",
+    "receiver_hits": 6,
+    "receiver_deaths": 1,
+    "flight_sweep_steps": 90,
+    "flight_sweep_hits": 0,
+    "flight_sweep_wind": 0,
+    "placement": "fixture_pinned terminal_sweep_midpoint; moving sweep executes, no natural moving hit"
+  }
+}

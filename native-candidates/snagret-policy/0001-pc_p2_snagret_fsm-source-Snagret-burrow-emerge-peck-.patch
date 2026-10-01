@@ -1,0 +1,684 @@
+From 94e9ecc67eaddc2406e37be1194e245d37482ce1 Mon Sep 17 00:00:00 2001
+From: Codex <4laric@users.noreply.github.com>
+Date: Sun, 13 Sep 2026 20:21:19 -0400
+Subject: [PATCH] pc_p2_snagret_fsm: source Snagret burrow/emerge/peck/struggle
+ policy + standalone test (#174, #376)
+
+---
+ CMakeLists.txt                |   8 +
+ pc_port/pc_p2_snagret_fsm.cpp | 271 ++++++++++++++++++++++++++++++++++
+ pc_port/pc_p2_snagret_fsm.h   | 127 ++++++++++++++++
+ tools/p2_snagret_fsm_test.cpp | 223 ++++++++++++++++++++++++++++
+ 4 files changed, 629 insertions(+)
+ create mode 100644 pc_port/pc_p2_snagret_fsm.cpp
+ create mode 100644 pc_port/pc_p2_snagret_fsm.h
+ create mode 100644 tools/p2_snagret_fsm_test.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9d0e2b1e..0a7306df 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -206,6 +206,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_bigtreasure_visual.cpp
+     pc_port/pc_p2_long_legs.cpp
+     pc_port/pc_p2_long_legs_fsm.cpp
++    pc_port/pc_p2_snagret_fsm.cpp
+     pc_port/pc_randomizer.cpp
+     pc_port/pc_main.cpp
+     pc_port/pc_window.cpp
+@@ -663,6 +664,13 @@ target_include_directories(p2_long_legs_fsm_test PRIVATE pc_port)
+ target_compile_options(p2_long_legs_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_long_legs_fsm_test COMMAND p2_long_legs_fsm_test)
+ 
++add_executable(p2_snagret_fsm_test
++    tools/p2_snagret_fsm_test.cpp
++    pc_port/pc_p2_snagret_fsm.cpp)
++target_include_directories(p2_snagret_fsm_test PRIVATE pc_port)
++target_compile_options(p2_snagret_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_snagret_fsm_test COMMAND p2_snagret_fsm_test)
++
+ add_executable(pc_visual_snapshot_test
+     pc_port/timing/pc_visual_snapshot_test.cpp
+     pc_port/timing/pc_visual_snapshot.cpp)
+diff --git a/pc_port/pc_p2_snagret_fsm.cpp b/pc_port/pc_p2_snagret_fsm.cpp
+new file mode 100644
+index 00000000..6a904c5a
+--- /dev/null
++++ b/pc_port/pc_p2_snagret_fsm.cpp
+@@ -0,0 +1,271 @@
++#include "pc_p2_snagret_fsm.h"
++
++#include <cmath>
++
++P2SnagretFsmParms p2SnagretParmsFor(P2SnagretSpecies species)
++{
++    P2SnagretFsmParms p;
++    p.species = species;
++    switch (species) {
++    case P2SnagretSpecies::SnakeCrow:
++        p.maxHealth = 1500.0f;
++        p.wfgHealth = 2500.0f;
++        p.buriedMinSeconds = 2.5f;   // fp12 disc
++        p.diveNoTargetSeconds = 2.5f; // fp11 disc
++        p.canWalk = false;
++        break;
++    case P2SnagretSpecies::SnakeWhole:
++        p.maxHealth = 5000.0f;
++        p.wfgHealth = 5000.0f;       // no cave health override
++        p.buriedMinSeconds = 0.5f;
++        p.diveNoTargetSeconds = 0.5f;
++        p.canWalk = true;            // Walk/Home states
++        break;
++    }
++    return p;
++}
++
++const char* P2SnagretFsm::stateName(P2SnagretState state)
++{
++    switch (state) {
++    case P2SnagretState::Dead: return "Dead";
++    case P2SnagretState::Stay: return "Stay";
++    case P2SnagretState::Appear1: return "Appear1";
++    case P2SnagretState::Appear2: return "Appear2";
++    case P2SnagretState::Disappear: return "Disappear";
++    case P2SnagretState::Wait: return "Wait";
++    case P2SnagretState::Walk: return "Walk";
++    case P2SnagretState::Home: return "Home";
++    case P2SnagretState::Attack: return "Attack";
++    case P2SnagretState::Eat: return "Eat";
++    case P2SnagretState::Struggle: return "Struggle";
++    }
++    return "?";
++}
++
++const char* P2SnagretFsm::peckBoxName(P2SnagretPeckBox box)
++{
++    switch (box) {
++    case P2SnagretPeckBox::None: return "none";
++    case P2SnagretPeckBox::Near: return "near";
++    case P2SnagretPeckBox::Normal: return "normal";
++    case P2SnagretPeckBox::Far: return "far";
++    case P2SnagretPeckBox::Right: return "right";
++    case P2SnagretPeckBox::Left: return "left";
++    }
++    return "?";
++}
++
++P2SnagretPeckBox P2SnagretFsm::selectPeckBox(P2SnagretSpecies species,
++                                             float forward, float lateral)
++{
++    const float lat = std::fabs(lateral);
++    if (species == P2SnagretSpecies::SnakeCrow) {
++        if (forward >= 0.0f && forward <= 80.0f && lat <= 30.0f) return P2SnagretPeckBox::Near;
++        if (forward > 80.0f && forward <= 160.0f && lat <= 30.0f) return P2SnagretPeckBox::Normal;
++        if (forward > 160.0f && forward <= 220.0f && lat <= 30.0f) return P2SnagretPeckBox::Far;
++        if (forward >= 50.0f && forward <= 130.0f && lateral >= 50.0f && lateral <= 110.0f)
++            return P2SnagretPeckBox::Right;
++        if (forward >= 50.0f && forward <= 130.0f && lateral <= -50.0f && lateral >= -110.0f)
++            return P2SnagretPeckBox::Left;
++        return P2SnagretPeckBox::None;
++    }
++    // SnakeWhole: forward ranges widen, side boxes shift out by 30.
++    if (forward >= 0.0f && forward <= 120.0f && lat <= 30.0f) return P2SnagretPeckBox::Near;
++    if (forward > 120.0f && forward <= 180.0f && lat <= 30.0f) return P2SnagretPeckBox::Normal;
++    if (forward > 180.0f && forward <= 260.0f && lat <= 30.0f) return P2SnagretPeckBox::Far;
++    if (forward >= 80.0f && forward <= 160.0f && lateral >= 50.0f && lateral <= 110.0f)
++        return P2SnagretPeckBox::Right;
++    if (forward >= 80.0f && forward <= 160.0f && lateral <= -50.0f && lateral >= -110.0f)
++        return P2SnagretPeckBox::Left;
++    return P2SnagretPeckBox::None;
++}
++
++float P2SnagretFsm::strikeForward(P2SnagretSpecies species, P2SnagretPeckBox box)
++{
++    if (species == P2SnagretSpecies::SnakeCrow) {
++        switch (box) {
++        case P2SnagretPeckBox::Near: return 40.0f;
++        case P2SnagretPeckBox::Normal: return 120.0f;
++        case P2SnagretPeckBox::Far: return 190.0f;
++        case P2SnagretPeckBox::Right: return 90.0f;
++        case P2SnagretPeckBox::Left: return 90.0f;
++        default: return 0.0f;
++        }
++    }
++    switch (box) {
++    case P2SnagretPeckBox::Near: return 60.0f;
++    case P2SnagretPeckBox::Normal: return 150.0f;
++    case P2SnagretPeckBox::Far: return 220.0f;
++    case P2SnagretPeckBox::Right: return 120.0f;
++    case P2SnagretPeckBox::Left: return 120.0f;
++    default: return 0.0f;
++    }
++}
++
++void P2SnagretFsm::reset(const P2SnagretFsmParms& parms)
++{
++    mParms = parms;
++    mState = P2SnagretState::Stay;
++    mStateTimer = 0.0f;
++    mBuriedTimer = 0.0f;
++    mStruggleTimer = 0.0f;
++}
++
++void P2SnagretFsm::emitPeck(const P2SnagretFsmInput& input, P2SnagretFsmOutput& output)
++{
++    const P2SnagretPeckBox box = selectPeckBox(mParms.species,
++                                               input.targetForward, input.targetLateral);
++    output.peckBox = box;
++    output.strikeForward = strikeForward(mParms.species, box);
++}
++
++void P2SnagretFsm::enter(P2SnagretState next, const P2SnagretFsmInput& input,
++                         P2SnagretFsmOutput& output)
++{
++    mState = next;
++    mStateTimer = 0.0f;
++    output.entered = true;
++    switch (next) {
++    case P2SnagretState::Stay:
++        mBuriedTimer = 0.0f;
++        break;
++    case P2SnagretState::Appear1:
++    case P2SnagretState::Appear2:
++        output.surfaced = true; // each surfacing heals lifeIncrement (10)
++        break;
++    case P2SnagretState::Disappear:
++        output.diveFlick = true; // dive key 2 flicks nearby creatures
++        break;
++    case P2SnagretState::Struggle:
++        mStruggleTimer = 0.0f;
++        break;
++    case P2SnagretState::Dead:
++        if (input.holdingTreasure)
++            output.dropTreasure = true; // thrown from kutijnt1 at the death key
++        output.leaveCorpse = true;
++        break;
++    default:
++        break;
++    }
++}
++
++void P2SnagretFsm::update(const P2SnagretFsmInput& input, P2SnagretFsmOutput& output)
++{
++    output = P2SnagretFsmOutput();
++    output.state = mState;
++
++    if (mState == P2SnagretState::Dead)
++        return;
++
++    if (input.killed) {
++        enter(P2SnagretState::Dead, input, output);
++        output.state = mState;
++        return;
++    }
++
++    mStateTimer += kSourceDelta;
++
++    switch (mState) {
++    case P2SnagretState::Stay:
++        mBuriedTimer += kSourceDelta;
++        if (mBuriedTimer >= mParms.buriedMinSeconds && input.targetInTerritory) {
++            const bool fast = input.roll < mParms.appear1Chance; // fp01 disc
++            enter(fast ? P2SnagretState::Appear1 : P2SnagretState::Appear2, input, output);
++        }
++        break;
++
++    case P2SnagretState::Appear1:
++    case P2SnagretState::Appear2:
++        if (input.animEnd)
++            enter(P2SnagretState::Wait, input, output);
++        break;
++
++    case P2SnagretState::Wait:
++        if (input.stuckPikmin && input.shakeThreshold) {
++            enter(P2SnagretState::Disappear, input, output);
++        } else if (input.latchedPikmin) {
++            enter(P2SnagretState::Struggle, input, output);
++        } else if (input.targetInPeckBox) {
++            emitPeck(input, output);
++            enter(P2SnagretState::Attack, input, output);
++            emitPeck(input, output); // entering Attack pecks at the strike point
++        } else if (mParms.canWalk && !input.targetInTerritory) {
++            enter(P2SnagretState::Home, input, output);
++        } else if (mParms.canWalk && input.targetInTerritory && input.facingTargetWithin30) {
++            enter(P2SnagretState::Walk, input, output);
++        }
++        // SnakeCrow (or an unaligned SnakeWhole) keeps waiting and turning in place.
++        break;
++
++    case P2SnagretState::Walk:
++        if (input.runKey2)
++            output.hopRequested = true; // run1 key 2 launches the hop
++        if (input.latchedPikmin) {
++            enter(P2SnagretState::Struggle, input, output);
++        } else if (input.targetInPeckBox) {
++            emitPeck(input, output);
++            enter(P2SnagretState::Attack, input, output);
++            emitPeck(input, output);
++        } else if (!input.targetInTerritory) {
++            enter(P2SnagretState::Home, input, output);
++        } else if (input.animEnd) {
++            enter(P2SnagretState::Wait, input, output);
++        }
++        break;
++
++    case P2SnagretState::Home:
++        if (input.runKey2) {
++            output.hopRequested = true;
++            output.hopHome = true;
++        }
++        if (input.targetInPeckBox) {
++            emitPeck(input, output);
++            enter(P2SnagretState::Attack, input, output);
++            emitPeck(input, output);
++        } else if (input.targetInHome) {
++            enter(P2SnagretState::Wait, input, output);
++        } else if (input.animEnd) {
++            enter(P2SnagretState::Wait, input, output);
++        }
++        break;
++
++    case P2SnagretState::Attack:
++        if (input.attackKey4) {
++            if (input.latchedPikmin) {
++                enter(P2SnagretState::Struggle, input, output);
++            } else if (input.mouthSlotFree && input.targetInPeckBox) {
++                emitPeck(input, output); // re-peck if a mouth slot is free
++            } else {
++                enter(P2SnagretState::Wait, input, output);
++            }
++        } else if (input.animEnd && !input.targetInPeckBox) {
++            enter(P2SnagretState::Wait, input, output);
++        }
++        break;
++
++    case P2SnagretState::Eat:
++        // Assembly-retained in the decomp; not modelled in this slice.
++        if (input.animEnd)
++            enter(P2SnagretState::Wait, input, output);
++        break;
++
++    case P2SnagretState::Struggle:
++        output.struggle = true;
++        mStruggleTimer += kSourceDelta;
++        if (mStruggleTimer >= mParms.struggleSeconds)
++            enter(P2SnagretState::Wait, input, output);
++        break;
++
++    case P2SnagretState::Disappear:
++        if (input.animEnd)
++            enter(P2SnagretState::Stay, input, output);
++        break;
++
++    default:
++        break;
++    }
++
++    output.bitterImmune = mState == P2SnagretState::Stay;
++    output.state = mState;
++}
+diff --git a/pc_port/pc_p2_snagret_fsm.h b/pc_port/pc_p2_snagret_fsm.h
+new file mode 100644
+index 00000000..02c7074d
+--- /dev/null
++++ b/pc_port/pc_p2_snagret_fsm.h
+@@ -0,0 +1,127 @@
++#pragma once
++
++// Engine-free Snagret family source policy (#174/#376), mirroring the shared
++// burrow/emerge/peck machinery and the two species state machines of SnakeCrow
++// (34, Burrowing Snagret) and SnakeWhole (70, Pileated Snagret).
++//
++// Source: docs/PIKMIN2_SNAGRET_CRAWBSTER_AUDIT.md (US GPVE01 rev 0),
++// src/plugProjectNishimuraU/{SnakeCrow,SnakeWhole}State.cpp and SnakeJointMgr.
++// Pure policy: the host owns the actor, mouth slots, neck joint callback,
++// animation key events, RNG, collision boxes and all interactions. The policy
++// consumes host-fed spatial booleans (territory/home/facing) because the audit
++// does not state a numeric territory radius for SnakeCrow, and emits intents.
++
++enum class P2SnagretSpecies {
++    SnakeCrow = 34,  // Burrowing Snagret
++    SnakeWhole = 70, // Pileated Snagret
++};
++
++enum class P2SnagretState {
++    Dead = 0,
++    Stay = 1,       // buried
++    Appear1 = 2,
++    Appear2 = 3,
++    Disappear = 4,
++    Wait = 5,
++    Walk = 6,       // SnakeWhole foot-assisted pursuit
++    Home = 7,       // SnakeWhole return hop
++    Attack = 8,
++    Eat = 9,
++    Struggle = 10,
++};
++
++// Forward/lateral peck boxes from the audit. `None` means no peck this tick.
++enum class P2SnagretPeckBox {
++    None = 0,
++    Near,
++    Normal,
++    Far,
++    Right,
++    Left,
++};
++
++struct P2SnagretFsmParms {
++    P2SnagretSpecies species = P2SnagretSpecies::SnakeCrow;
++    float maxHealth = 1500.0f;          // SnakeCrow disc (2500 in White Flower Garden)
++    float wfgHealth = 2500.0f;          // forest_2 override (unused unless applied)
++    float buriedMinSeconds = 2.5f;      // fp12 disc (SnakeWhole 0.5)
++    float diveNoTargetSeconds = 2.5f;   // fp11 disc (SnakeWhole 0.5)
++    float struggleSeconds = 1.5f;
++    float appear1Chance = 0.6f;         // fp01 disc
++    float surfacingHeal = 10.0f;        // lifeIncrement
++    float attackDamage = 10.0f;         // disc, captains and Pikmin in a box
++    float poisonDamage = 300.0f;        // fp21 White Pikmin
++    float purplePoundScale = 0.1f;      // hit with no collision part
++    float petrifiedCoefficient = 0.25f;
++    bool canWalk = false;               // SnakeWhole only
++    bool targetsPlayer = false;         // host must never swallow a captain
++};
++
++P2SnagretFsmParms p2SnagretParmsFor(P2SnagretSpecies species);
++
++struct P2SnagretFsmInput {
++    float health = 0.0f;
++    bool killed = false;
++    bool holdingTreasure = false;       // thrown from kutijnt1 on the death key
++    bool targetInTerritory = false;     // host territory query
++    bool targetInHome = false;          // SnagWhole home query
++    bool facingTargetWithin30 = false;  // SnakeWhole hop alignment gate
++    bool targetInPeckBox = false;       // host box query (any of the five)
++    float targetForward = 0.0f;         // policy box selection when the host
++    float targetLateral = 0.0f;         // does not pre-select a box
++    bool latchedPikmin = false;         // a stuck head Pikmin forces Struggle
++    bool mouthSlotFree = false;         // one Pikmin per mouth, three slots
++    bool animEnd = false;
++    bool attackKey4 = false;            // strike / re-peck key
++    bool runKey2 = false;               // SnakeWhole hop launch
++    bool shakeThreshold = false;        // stuck-Pikmin shake forces a dive
++    bool stuckPikmin = false;
++    float roll = 0.0f;                  // host uniform [0,1) for appear1/2
++};
++
++struct P2SnagretFsmOutput {
++    P2SnagretState state = P2SnagretState::Stay;
++    bool entered = false;
++    bool surfaced = false;              // heal 10 on surfacing
++    bool diveFlick = false;             // dive key 2 flicks nearby creatures
++    P2SnagretPeckBox peckBox = P2SnagretPeckBox::None;
++    float strikeForward = 0.0f;
++    bool swallowRequested = false;      // Eat: one Pikmin per free mouth slot
++    bool struggle = false;
++    bool hopRequested = false;          // SnakeWhole run1 key 2
++    bool hopHome = false;
++    bool dropTreasure = false;
++    bool leaveCorpse = true;            // carriable type5 corpse
++    bool bitterImmune = false;          // only while buried
++};
++
++class P2SnagretFsm {
++public:
++    static constexpr float kSourceDelta = 1.0f / 30.0f;
++
++    void reset(const P2SnagretFsmParms& parms);
++
++    void update(const P2SnagretFsmInput& input, P2SnagretFsmOutput& output);
++
++    P2SnagretState state() const { return mState; }
++    float buriedSeconds() const { return mBuriedTimer; }
++    float stateSeconds() const { return mStateTimer; }
++    static const char* stateName(P2SnagretState state);
++    static const char* peckBoxName(P2SnagretPeckBox box);
++
++    // Pure box selection from source extents (SnakeCrow or SnakeWhole).
++    static P2SnagretPeckBox selectPeckBox(P2SnagretSpecies species,
++                                          float forward, float lateral);
++    static float strikeForward(P2SnagretSpecies species, P2SnagretPeckBox box);
++
++private:
++    void enter(P2SnagretState next, const P2SnagretFsmInput& input,
++               P2SnagretFsmOutput& output);
++    void emitPeck(const P2SnagretFsmInput& input, P2SnagretFsmOutput& output);
++
++    P2SnagretFsmParms mParms;
++    P2SnagretState mState = P2SnagretState::Stay;
++    float mStateTimer = 0.0f;
++    float mBuriedTimer = 0.0f;
++    float mStruggleTimer = 0.0f;
++};
+diff --git a/tools/p2_snagret_fsm_test.cpp b/tools/p2_snagret_fsm_test.cpp
+new file mode 100644
+index 00000000..0f60ad67
+--- /dev/null
++++ b/tools/p2_snagret_fsm_test.cpp
+@@ -0,0 +1,223 @@
++#include "pc_p2_snagret_fsm.h"
++
++#include <cassert>
++#include <cstdio>
++
++// Standalone lifecycle fixture for the lane-owned Snagret source policy.
++// Engine-free: spatial queries, animation keys and interactions are scripted.
++// Source: docs/PIKMIN2_SNAGRET_CRAWBSTER_AUDIT.md (US GPVE01 rev 0).
++
++namespace {
++using S = P2SnagretState;
++using Species = P2SnagretSpecies;
++using Box = P2SnagretPeckBox;
++
++P2SnagretFsmInput baseInput()
++{
++    P2SnagretFsmInput in;
++    in.health = 1000.0f;
++    return in;
++}
++
++P2SnagretFsmOutput run(P2SnagretFsm& fsm, P2SnagretFsmInput in, int ticks)
++{
++    P2SnagretFsmOutput out;
++    for (int i = 0; i < ticks; ++i) fsm.update(in, out);
++    return out;
++}
++}
++
++int main()
++{
++    // Peck boxes: source forward x lateral extents for both species.
++    {
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 40.0f, 0.0f) == Box::Near);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 100.0f, 0.0f) == Box::Normal);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 200.0f, 0.0f) == Box::Far);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 100.0f, 80.0f) == Box::Right);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 100.0f, -80.0f) == Box::Left);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 300.0f, 0.0f) == Box::None);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeCrow, 100.0f, 40.0f) == Box::None);
++        assert(P2SnagretFsm::strikeForward(Species::SnakeCrow, Box::Normal) == 120.0f);
++        assert(P2SnagretFsm::strikeForward(Species::SnakeCrow, Box::Far) == 190.0f);
++
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeWhole, 100.0f, 0.0f) == Box::Near);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeWhole, 150.0f, 0.0f) == Box::Normal);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeWhole, 220.0f, 0.0f) == Box::Far);
++        assert(P2SnagretFsm::selectPeckBox(Species::SnakeWhole, 120.0f, 80.0f) == Box::Right);
++        assert(P2SnagretFsm::strikeForward(Species::SnakeWhole, Box::Far) == 220.0f);
++    }
++
++    // SnakeCrow burrow cycle: buried for at least fp12 2.5 s, then a target in
++    // territory surfaces 120 units away as appear1 (roll < fp01 0.6) or appear2.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        P2SnagretFsmOutput out;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Stay && out.bitterImmune);
++
++        in.targetInTerritory = true; // too early: below the buried minimum
++        fsm.update(in, out);
++        assert(fsm.state() == S::Stay);
++        P2SnagretFsmOutput appearOut;
++        bool appeared = false;
++        for (int i = 0; i < 100 && !appeared; ++i) {
++            fsm.update(in, appearOut);
++            if (fsm.state() == S::Appear1) appeared = true;
++        }
++        assert(appeared); // roll 0 -> fast appear1
++        assert(appearOut.surfaced);
++        assert(!appearOut.bitterImmune); // bitter immunity only while buried
++
++        in.targetInTerritory = false;
++        in.animEnd = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Wait);
++    }
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.roll = 0.9f; // >= fp01 -> slow appear2
++        P2SnagretFsmOutput out = run(fsm, in, 76);
++        in.targetInTerritory = true;
++        out = run(fsm, in, 1);
++        assert(fsm.state() == S::Appear2);
++    }
++
++    // Attack peck / re-peck, then release. Captains are never swallowed in the
++    // host, so the policy only emits peck intents.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.targetInTerritory = true;
++        P2SnagretFsmOutput out = run(fsm, in, 76); // Appear1
++        in.animEnd = true;
++        fsm.update(in, out); // Wait
++        assert(fsm.state() == S::Wait);
++        in.animEnd = false;
++        in.targetInPeckBox = true;
++        in.targetForward = 100.0f; in.targetLateral = 0.0f;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Attack);
++        assert(out.peckBox == Box::Normal && out.strikeForward == 120.0f);
++
++        in.attackKey4 = true; in.mouthSlotFree = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Attack); // free mouth slot re-pecks
++        assert(out.peckBox == Box::Normal);
++        in.mouthSlotFree = false;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Wait);
++        in.attackKey4 = false;
++    }
++
++    // Latched head Pikmin forces Struggle, which lasts 1.5 s and returns to Wait.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.targetInTerritory = true;
++        P2SnagretFsmOutput out = run(fsm, in, 76); // Appear1
++        in.targetInTerritory = false; in.animEnd = true;
++        fsm.update(in, out); // Wait
++        in.animEnd = false;
++        in.latchedPikmin = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Struggle);
++        fsm.update(in, out); // Struggle body runs on the tick after entry
++        assert(out.struggle);
++        in.latchedPikmin = false;
++        run(fsm, in, 46);
++        assert(fsm.state() == S::Wait);
++    }
++
++    // Stuck-Pikmin shake threshold dives; the dive key 2 flicks and returns to Stay.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.targetInTerritory = true;
++        P2SnagretFsmOutput out = run(fsm, in, 76);
++        in.targetInTerritory = false; in.animEnd = true;
++        fsm.update(in, out); // Wait
++        assert(fsm.state() == S::Wait);
++        in.animEnd = false;
++        in.stuckPikmin = true; in.shakeThreshold = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Disappear && out.diveFlick);
++        in.stuckPikmin = false; in.shakeThreshold = false; in.animEnd = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Stay);
++    }
++
++    // SnakeCrow never walks; an aligned target outside a peck box keeps it waiting.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.targetInTerritory = true;
++        run(fsm, in, 76);
++        in.animEnd = true;
++        run(fsm, in, 1);
++        in.animEnd = false;
++        run(fsm, in, 60);
++        assert(fsm.state() == S::Wait); // SnakeCrow has no Walk state
++    }
++
++    // SnakeWhole foot-assisted pursuit: align before hopping, Home when the
++    // target leaves the territory.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeWhole));
++        P2SnagretFsmInput in = baseInput();
++        in.targetInTerritory = true;
++        P2SnagretFsmOutput out = run(fsm, in, 16); // buriedMin 0.5 s
++        assert(fsm.state() == S::Appear1);
++        in.animEnd = true;
++        fsm.update(in, out); // Wait
++        in.animEnd = false;
++        fsm.update(in, out); // not facing: pivot in place
++        assert(fsm.state() == S::Wait);
++        in.facingTargetWithin30 = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Walk);
++        in.runKey2 = true;
++        fsm.update(in, out);
++        assert(out.hopRequested && !out.hopHome);
++        in.runKey2 = false;
++        in.targetInTerritory = false;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Home);
++        in.runKey2 = true;
++        fsm.update(in, out);
++        assert(out.hopRequested && out.hopHome);
++        in.runKey2 = false;
++        in.targetInHome = true;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Wait);
++    }
++
++    // Death: held treasure drops from the beak, a carriable corpse remains, and
++    // death is terminal.
++    {
++        P2SnagretFsm fsm;
++        fsm.reset(p2SnagretParmsFor(Species::SnakeCrow));
++        P2SnagretFsmInput in = baseInput();
++        in.holdingTreasure = true;
++        in.killed = true;
++        P2SnagretFsmOutput out;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Dead);
++        assert(out.dropTreasure && out.leaveCorpse && !out.bitterImmune);
++        in.killed = false; in.holdingTreasure = false;
++        run(fsm, in, 60);
++        assert(fsm.state() == S::Dead);
++    }
++
++    std::puts("PASS SNAGRET_FSM");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

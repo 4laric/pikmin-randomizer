@@ -13,6 +13,7 @@ Catfish/KochappyBase FSM, Jigumo PanHouse nest, shared ``UmiMushi::Mgr``) belong
 to the integration lead (#186) and is flagged on #374; no shared/native edits
 here.
 """
+from experimental.pikmin2_animation import frames_trailer
 import argparse
 import hashlib
 import json
@@ -77,7 +78,9 @@ def bank_text(manifest):
             events = ','.join(f'{frame}:{event}' for frame, event in clip.get('events', []))
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f'clip {species} {clip["name"]} {clip.get("source_frames", 0)} '
-                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}')
+                        f'{events or "-"} poses {poses} {clip.get("status", "unknown")}'
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return ('\n'.join(rows) + '\n').encode('ascii')
 
 
@@ -89,6 +92,12 @@ def actors_text(actors):
 
 def _actor_species(actors):
     used = {species for _, species in actors}
+    # UmiMushiBlind (101) is a visual variant sharing the UmiMushi bank
+    # (same UmiMushi::Mgr FSM, half scale, see pc_p2_umimushi.cpp); map it
+    # to UmiMushi for manifest/visual resolution while the actors file
+    # keeps the Blind species name for the native Blind path.
+    if 'UmiMushiBlind' in used:
+        used = set(used) | {'UmiMushi'}
     return [species for species in SPECIES if species in used]
 
 
@@ -144,7 +153,8 @@ def plan(imported, actors):
     for generator, species in actors:
         if type(generator) is not int or not 0 <= generator <= 0xffffffff or generator in ids:
             raise ValueError('Invalid/duplicate actor identity')
-        if species not in SPECIES:
+        # UmiMushiBlind shares the UmiMushi bank (see _actor_species).
+        if species not in SPECIES and species != 'UmiMushiBlind':
             raise ValueError('Unsupported aquatic actor species: ' + str(species))
         ids.add(generator)
     metadata = json.loads((imported / MANIFEST).read_bytes())

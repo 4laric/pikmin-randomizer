@@ -47,7 +47,14 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
 
 #include "pc_window.h"
 #include "pc_bbft.h"
+#include "pc_fatal_log.h"
 #include "pc_gpu_preference.h"
+#include "pc_dev_console.h"
+#include "gl/pc_gfx.h"
+#include "gl/pc_texpack.h"
+#ifdef __ANDROID__
+#include "android/pc_android.h"
+#endif
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
 
@@ -72,7 +79,7 @@ bool pc_test_window_size(int& width, int& height) {
             return true;
         }
     }
-    if (pc_pikipelago_room_preview()) {
+    if (pc_pikipelago_room_preview() || pc_pikipelago_surface_course()) {
         width = 960;
         height = 540;
         return true;
@@ -85,6 +92,19 @@ int main(int argc, char* argv[])
 {
     // Disable stdout buffering so we see logs immediately before any crash
     setvbuf(stdout, NULL, _IONBF, 0);
+    // Every death the process can observe leaves a reason in native.log (and an
+    // orderly exit leaves its own marker); see pc_fatal_log.h.
+    pc_fatal_log_install();
+
+#ifdef __ANDROID__
+    // Logcat, carpeta del juego y ruta de guardado: antes de que nada abra un
+    // fichero o escriba un mensaje. Sin carpeta no hay assets, y sin assets el
+    // juego no arranca: mejor decirlo que caer más adelante sin explicación.
+    if (!pc_android_init()) {
+        printf("[PC Port Fatal Error] Android storage unavailable\n");
+        return 1;
+    }
+#endif
 
     // SDL_MAIN_HANDLED is defined for this build, which means the application
     // owns main() and SDL2main is not linked. The other half of that contract
@@ -103,15 +123,31 @@ int main(int argc, char* argv[])
         return pc_jaudio_integration_test();
 #endif
     pc_bbft_init(argc, argv);
+    // #942 dev console: inert unless PIKMIN_DEV_CONSOLE=1; refuses under netplay.
+    pc_dev_console_init(argc, argv);
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--dump-texture-names") == 0)
+            pc_gfx_set_dump_texture_names(1);
+        // PLAN_TEXTURAS_HD: hasta que exista el ajuste del menú (fase 2), la
+        // línea de comandos es la única puerta al pack.
+        if (std::strcmp(argv[i], "--texture-pack") == 0)
+            pc_texpack_request_enable();
+    }
+    (void)argc;
+    (void)argv;
 
     printf("╔══════════════════════════════════════════╗\n");
     printf("║   Pikmin - Native Linux PC Port          ║\n");
-    printf("║   Stage 4: OpenGL Rendering Backend      ║\n");
+#if PIKI_USE_GLES
+    printf("║   OpenGL ES 3.0 Rendering Backend        ║\n");
+#else
+    printf("║   OpenGL Rendering Backend               ║\n");
+#endif
     printf("╚══════════════════════════════════════════╝\n\n");
     fflush(stdout);
 
     // Initialize SDL2 Window and OpenGL Context FIRST
-    printf("[PC Port] Initializing SDL2 Window and OpenGL...\n");
+    printf("[PC Port] Initializing SDL2 window and GL context...\n");
     fflush(stdout);
     int windowWidth = 1280, windowHeight = 720;
     const bool smallTestWindow = pc_test_window_size(windowWidth, windowHeight);
@@ -142,7 +178,11 @@ int main(int argc, char* argv[])
     nodeMgr = new NodeMgr();
 
     printf("[PC Port] Starting game application...\n");
+#if PIKI_USE_GLES
+    printf("[PC Port] Native GX/OpenGL ES, SDL input and persistent save backends active.\n");
+#else
     printf("[PC Port] Native GX/OpenGL, SDL input and persistent save backends active.\n");
+#endif
     printf("[PC Port] Audio and movie playback are still under development.\n\n");
 
     gsys->run(new PlugPikiApp());

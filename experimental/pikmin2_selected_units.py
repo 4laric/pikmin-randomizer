@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files,disc_files
-from experimental.pikmin2_cave import BASE,route_audit,safe_name,tree
-from experimental.pikmin2_collision import attach_collision,decode_room,ground_height,route_ini
+from experimental.pikmin2_cave import BASE,route_audit,safe_name
+from experimental.pikmin2_cave_water import validate_water_sidecar,water_unit_sidecar
+from experimental.pikmin2_collision import (attach_collision,decode_room,ground_height,
+                                            route_ini,translate_mapcode,water_tagged_mapcodes)
 from experimental.pikmin2_convert import convert
 
 
@@ -54,10 +56,10 @@ def import_units(iso,catalog_path,dependency_path,output,cave_id='forest_1',appr
                 for member,data in archive_files(read(f'{BASE}/arc/{name}/{folder}.szs')).items():
                     target=directory/folder/member;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
             try:
-                water=tree((directory/'texts/waterbox.txt').read_text())
-                result['water']=dict(empty=water==['0',['0']],source=water)
-                if not result['water']['empty']:raise ValueError('Water-volume conversion not implemented')
+                water=water_unit_sidecar((directory/'texts/waterbox.txt').read_text())
+                result['water']=water
                 room=decode_room(directory/'texts')
+                validate_water_sidecar(water,room)
                 route_ids={r['id'] for r in room['routes']}
                 if any(d['waypoint'] not in route_ids for d in definition['doors']):raise ValueError('Door references missing waypoint')
                 result['route_audit']=route_audit(room)
@@ -73,11 +75,16 @@ def import_units(iso,catalog_path,dependency_path,output,cave_id='forest_1',appr
                     report=convert(directory/'arc/view.bmd',directory/'render.mod',approximate_materials=True)
                     result['material_status']='explicit_approximation'
                 result['render']={k:v for k,v in report.items() if k not in ('source','output')}
-                (directory/'room.mod').write_bytes(attach_collision((directory/'render.mod').read_bytes(),room))
+                room_mod=attach_collision((directory/'render.mod').read_bytes(),room,water_boxes=water['boxes'])
+                (directory/'room.mod').write_bytes(room_mod)
+                (directory/'water.json').write_text(json.dumps(water,indent=2)+'\n',encoding='utf-8')
                 (directory/'room.ini').write_text(route_ini(room['routes']))
                 (directory/'collision.json').write_text(json.dumps(room,indent=2)+'\n')
+                base_codes=[translate_mapcode(c) for c in room['mapcodes']]
+                tagged_codes=water_tagged_mapcodes(room,base_codes,water['boxes'])
+                result['water_collision_triangles']=sum(1 for base,tagged in zip(base_codes,tagged_codes) if base!=tagged)
                 result['status']='converted';result['assembly_ready']=True
-                result['output_sha256']={file:hashlib.sha256((directory/file).read_bytes()).hexdigest() for file in ('render.mod','room.mod','room.ini','collision.json')}
+                result['output_sha256']={file:hashlib.sha256((directory/file).read_bytes()).hexdigest() for file in ('render.mod','room.mod','room.ini','collision.json','water.json')}
             except (ValueError,FileNotFoundError) as error:
                 result['failure']=str(error)
     manifest=dict(schema=1,cave_id=cave_id,floors=floors,units=units,source_sha256=hashes,

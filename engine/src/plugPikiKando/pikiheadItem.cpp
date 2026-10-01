@@ -2,6 +2,9 @@
 #include "pc_p2_white.h"
 #include "pc_bbft.h"
 #include "PikiHeadItem.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
 #include "DebugLog.h"
 #include "GameStat.h"
 #include "GoalItem.h"
@@ -196,7 +199,7 @@ f32 PikiHeadItem::getiMass()
  */
 void PikiHeadItem::setColor(int color)
 {
-    mP2Purple=false;mP2White=false;
+    mP2Purple=false;mP2White=false;mP2Bulbmin=false;
     if (!pc_bbft_color_access(color)) color = Red;
 	mSeedColor = color;
 }
@@ -273,6 +276,9 @@ bool PikiHeadItem::interactBikkuri(immut InteractBikkuri& act)
 		piki->initColor(mSeedColor);
         if(mP2Purple)pc_p2_make_purple(piki);
         if(mP2White)pc_p2_make_white(piki);
+#if defined(PIKI_PC_PORT)
+		if (pc_vs_active() && mPcOwner >= 0) piki->mPlayerId = mPcOwner;
+#endif
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
 
@@ -302,6 +308,9 @@ bool PikiHeadItem::interactSwallow(immut InteractSwallow& act)
 		piki->initColor(mSeedColor);
         if(mP2Purple)pc_p2_make_purple(piki);
         if(mP2White)pc_p2_make_white(piki);
+#if defined(PIKI_PC_PORT)
+		if (pc_vs_active() && mPcOwner >= 0) piki->mPlayerId = mPcOwner;
+#endif
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
 		piki->mFSM->transit(piki, PIKISTATE_AutoNuki);

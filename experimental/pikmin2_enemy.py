@@ -10,6 +10,9 @@ from experimental.pikmin2_convert import blocks, convert, u32, u16, texture_layo
 from experimental.pikmin2_purple import bca_pose
 
 SPECIES = 'YellowKochappy'
+# Lane 02 roster source id for YellowKochappy (Snow Bulborb). The generated
+# bridge binds this identity through ENEMY_P2; staged content must serve it.
+SNOW_SOURCE_ID = 45
 from experimental.pikmin2_animation import CLIPS, sample_frames, parse_bank, validate_files, CLIP_BYTES, TOTAL_BYTES
 
 def replace_texture_zero(model, texture):
@@ -84,6 +87,38 @@ def extract(iso, output, pose_limit=24):
     (output/'snow.json').write_text(json.dumps(result, indent=2))
     return result
 
+def content_manifest(imported):
+    """Lane-05 content manifest staging the generated Snow bank.
+
+    Destinations are relative to the run's private asset overlay so the generated
+    native bridge reads ``assets/p2-snow.txt`` and the private room bank. The
+    manifest declares the lane-02 Snow source identity so session staging rejects
+    content that does not serve the seed's bound identity.
+    """
+    from experimental.pikmin2_staging import build_manifest
+    imported = Path(imported)
+    metadata = json.loads((imported/'snow.json').read_text())
+    if metadata.get('schema') != 1 or metadata.get('species') != SPECIES:
+        raise ValueError('Expected Snow Bulborb import')
+    bank = parse_bank((imported/'p2-snow.txt').read_text())
+    paths, _ = validate_files(imported, bank)
+    entries = []
+    for path in sorted(paths, key=lambda item: item.name):
+        source = path.resolve()
+        entries.append(dict(id=f'snow_{path.name}', kind='model', source=str(source),
+                            destination=f'dataDir/courses/pikmin2room/{path.name}',
+                            sha256=hashlib.sha256(source.read_bytes()).hexdigest()))
+    bank_file = (imported/'p2-snow.txt').resolve()
+    entries.append(dict(id='snow_animation_bank', kind='config', source=str(bank_file),
+                        destination='p2-snow.txt',
+                        sha256=hashlib.sha256(bank_file.read_bytes()).hexdigest()))
+    return build_manifest(1, entries, notes='Generated Snow Bulborb bank', identities=[SNOW_SOURCE_ID])
+
+def write_content_manifest(imported, path):
+    """Write the lane-05 content manifest for a generated Snow bank to ``path``."""
+    from experimental.pikmin2_staging import dump_manifest
+    return dump_manifest(content_manifest(imported), path)
+
 def install(imported, run, generator_ids):
     """Opt in selected native Chappy instances; caller owns floor-scoped placement IDs."""
     import shutil
@@ -109,9 +144,18 @@ def install(imported, run, generator_ids):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--iso', type=Path, required=True)
-    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--iso', type=Path)
+    parser.add_argument('--output', type=Path)
     parser.add_argument('--pose-limit', type=int, default=24, choices=range(2,25))
+    parser.add_argument('--imported', type=Path, help='Existing Snow import dir; emit its lane-05 content manifest')
+    parser.add_argument('--content-manifest', type=Path, help='Write the lane-05 content manifest to this path')
     args = parser.parse_args()
-    print(json.dumps(extract(args.iso, args.output, args.pose_limit), indent=2))
+    if args.imported is not None:
+        if args.content_manifest is None:
+            parser.error('--imported requires --content-manifest')
+        print(json.dumps(write_content_manifest(args.imported, args.content_manifest), indent=2))
+    else:
+        if args.iso is None or args.output is None:
+            parser.error('extraction requires --iso and --output')
+        print(json.dumps(extract(args.iso, args.output, args.pose_limit), indent=2))
 

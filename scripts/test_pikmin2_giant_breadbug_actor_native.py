@@ -17,7 +17,7 @@ from scripts import build_pikmin2_fixture as builder
 from experimental.pikmin2_giant_breadbug_arena import prepare, GIANT_ID, NEST_ID
 
 ROOT = Path(__file__).resolve().parent.parent
-PREFIX = ROOT / 'output/p2-lifecycle-batch/breadbug-actor-runtime-build/room-prefix.inc'
+# Prefix comes from the pinned native source, not another lane's ignored output.
 
 GATES = {
     'actor_ready': r'P2_GIANT_BREADBUG_ACTOR_READY generator=%d nest=%d native_type=8 .*boss=1 bdt=empty_no_music threshold=at_or_above1 health=2000 carryspeed=45 pressdamage=100' % (GIANT_ID, NEST_ID),
@@ -45,13 +45,17 @@ def build(native, build_dir, output, head):
     output.mkdir(parents=True, exist_ok=False)
     fixture = output / 'fixture.cpp'
     fixture.write_text((ROOT / 'scripts/pikmin2_giant_breadbug_actor_fixture.cpp').read_text())
-    shutil.copy2(PREFIX, output / 'room-prefix.inc')
+    source = (native / 'tools/preview_p2_room.cpp').read_text()
+    anchor = 'class RoomApp : public PlugPikiApp {'
+    if source.count(anchor) != 1:
+        raise ValueError('Room fixture prefix boundary changed')
+    (output / 'room-prefix.inc').write_text(source[:source.index(anchor)])
     record = builder.build_fixture(build_dir, native, fixture, output / 'baseline', head)
     compile_cmd = list(record['commands'][-2])
     link = list(record['commands'][-1])
     link[builder.option_index(link, '-o')] = str(output / 'fixture.exe')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''))
-    code, text = builder.run(link, build_dir, env)
+    code, text = builder.run_command(link, build_dir, env, output, 'fixture-link')
     (output / 'fixture-link.log').write_text(text)
     if code:
         raise RuntimeError('fixture link failed')

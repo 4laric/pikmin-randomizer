@@ -38,7 +38,7 @@ enum P2FuefukiEventBit {
 // host substitutes parsed parm-asset values at integration time.
 struct P2FuefukiFsmParms {
     float maxGroundTime = 30.0f;        // fp01
-    float minGroundTime = 20.0f;        // fp02 (appear-timer base; host rolls)
+    float minGroundTime = 20.0f;        // fp02 (appear-timer roll weight fp01-fp02)
     float airborneTime = 3.0f;          // fp03
     float minWhistleTime = 0.0f;        // fp11
     float maxWhistleTimeNoSquad = 5.0f; // fp12
@@ -107,8 +107,24 @@ class P2FuefukiFsm {
     int next = NEXT_NULL;
     float appearTimer = 0.0f, stateTimer = 0.0f, whistleTimer = 0.0f;
     bool canStruggle = false;
+    float lastDelta = 1.0f / 30.0f;   // sys->mDeltaTime seen by the last tick
+    std::uint32_t rngState = 0x2545F491u;
 
     bool squadActive() const { return interference.squadActive(); }
+
+    // Source Obj::resetAppearTimer (Fuefuki.cpp): randWeightFloat(fp01 - fp02).
+    // The weight is clamped at zero so fixture parms with fp01 < fp02 keep a
+    // non-negative timer (retail 20 - 10 = 10 is unaffected).
+    void resetAppearTimer()
+    {
+        const float weight = parms.maxGroundTime - parms.minGroundTime;
+#ifdef P2_FUEFUKI_MUTANT_APPEAR_ZERO
+        (void)weight;
+        appearTimer = 0.0f;
+#else
+        appearTimer = weight > 0.0f ? randWeight(weight) : 0.0f;
+#endif
+    }
 
     bool isJumpAway(const P2FuefukiFsmInput& in)
     {
@@ -168,7 +184,7 @@ class P2FuefukiFsm {
         }
         case P2FuefukiFsmState::Stay:
             canStruggle = false;
-            appearTimer = 0.0f; // resetAppearTimer (host rolls fp01-fp02 weight)
+            resetAppearTimer(); // source StateStay::init resetAppearTimer
             stateTimer  = 0.0f;
             out.eventSet |= P2FUEFUKI_EB_BitterImmune | P2FUEFUKI_EB_Untargetable;
             out.eventClear |= P2FUEFUKI_EB_NoInterrupt | P2FUEFUKI_EB_Lifegauge | P2FUEFUKI_EB_Cullable;
@@ -187,8 +203,11 @@ class P2FuefukiFsm {
             canStruggle = false;
             next        = static_cast<int>(P2FuefukiFsmState::Wait);
             stateTimer  = 0.0f;
-            appearTimer = 0.0f;
-            whistleTimer = (parms.maxWhistleTimeNoSquad - parms.minWhistleTime);
+            resetAppearTimer(); // source StateLand::init resetAppearTimer
+            // resetWhisleTimer(true) then `mWhistleTimer += sys->mDeltaTime`
+            // (FuefukiState.cpp StateLand::init): the landing beetle re-casts
+            // as soon as the landing clip ends (fp12 - fp11 + delta > fp12).
+            whistleTimer = (parms.maxWhistleTimeNoSquad - parms.minWhistleTime) + lastDelta;
             out.eventClear |= P2FUEFUKI_EB_BitterImmune | P2FUEFUKI_EB_Untargetable | P2FUEFUKI_EB_Cullable;
             out.eventSet |= P2FUEFUKI_EB_NoInterrupt;
             out.zeroVelocity     = true;
@@ -231,6 +250,23 @@ public:
     explicit P2FuefukiFsm(P2FuefukiFsmParms p = P2FuefukiFsmParms()) : parms(p) { }
 
     P2FuefukiFsmState getState() const { return state; }
+    float getAppearTimer() const { return appearTimer; }
+    float getWhistleTimer() const { return whistleTimer; }
+    bool getCanStruggle() const { return canStruggle; }
+    const P2FuefukiFsmParms& getParms() const { return parms; }
+
+    // Deterministic source randWeightFloat stand-in (uniform [0, w)). The
+    // host seeds it per actor (campaign token) before spawn(); the same
+    // stream serves the host-side rolls (Land clip, target point, facing).
+    void seed(std::uint32_t s) { rngState = s ? s : 0x2545F491u; }
+    float rand01()
+    {
+        rngState ^= rngState << 13;
+        rngState ^= rngState >> 17;
+        rngState ^= rngState << 5;
+        return static_cast<float>(rngState >> 8) * (1.0f / 16777216.0f);
+    }
+    float randWeight(float w) { return w * rand01(); }
     P2FuefukiInterferencePolicy& squad() { return interference; }
 
     // Bind the squad-ownership epoch; spawn() emits the source onInit ->
@@ -249,14 +285,29 @@ public:
         return out;
     }
 
+    // Force the source owner-death transition. The host's teardown seam
+    // (BTeki::doKill -> pc_p2_forget_teki -> pc_p2_hardlanes_forget) can reach
+    // the actor before the next tick consumes health<=0 -> Dead, so the forget
+    // path calls this directly. Dead entry commits ownerDied (every claim
+    // released as Panic) exactly as the regular tick would; idempotent after a
+    // normal Dead transit because releaseAll returns empty.
+    P2FuefukiFsmOut enterOwnerDeath()
+    {
+        P2FuefukiFsmOut out;
+        if (!boundEpoch) return out;
+        enterDead(out);
+        out.accepted = true;
+        out.state    = state;
+        return out;
+    }
+
     P2FuefukiFsmOut tick(const P2FuefukiFsmInput& in)
     {
         P2FuefukiFsmOut out;
         if (!boundEpoch || !std::isfinite(in.delta) || in.delta < 0.0f || !std::isfinite(in.health))
             return out;
         out.accepted = true;
-
-        appearTimer += in.delta;
+        lastDelta    = in.delta;
 
         // Follower pings arrive from ActTeki exec in any state.
         for (std::uint32_t id : in.followerPings)
@@ -268,6 +319,7 @@ public:
         if (in.pressed && canStruggle && !in.bittered && state != P2FuefukiFsmState::Dead
             && state != P2FuefukiFsmState::Struggle) {
             transit(out, static_cast<int>(P2FuefukiFsmState::Struggle));
+            appearTimer += in.delta;
             out.state = state;
             return out;
         }
@@ -330,6 +382,15 @@ public:
                     out.escapeVelocity = true;
                     out.flickNavi = out.flickPikmin = out.flickStuck = true;
                     out.downEffect = true;
+                    // EnemyBase::isFlying() is EB_Untargetable: from this key
+                    // on, every ActTeki follower ends with the Success/emote
+                    // exit (aiTeki.cpp:79-82) -> ACT_Free. Stay's suspend is
+                    // then an idempotent no-op.
+                    {
+                        P2FuefukiSuspendOut susp = interference.suspend(boundEpoch);
+                        out.releasedSuspend      = susp.released;
+                        out.suspendFallback      = susp.fallback;
+                    }
                     if (in.water) out.fadeRipple = true;
                 } else if (in.keyEvent == 4) {
                     transit(out, static_cast<int>(P2FuefukiFsmState::Stay));
@@ -406,6 +467,8 @@ public:
             break;
         }
 
+        // Source Obj::doUpdate: mFsm->exec(this) THEN mAppearTimer += delta.
+        appearTimer += in.delta;
         out.state = state;
         return out;
     }

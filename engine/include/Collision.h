@@ -257,6 +257,12 @@ public:
 	void updateInfo(Graphics& gfx, bool drawDebug);
 	bool hasInfo();
 	void initInfo(Shape*, CollPart*, u32*);
+#if defined(PIKI_PC_PORT)
+	// PC port (#246): build the part tree from a code-owned ObjCollInfo list
+	// (no parent Shape); the caller must keep every part's update disabled
+	// or give it an updater, since there is no shape to sample joints from.
+	void initInfoTree(ObjCollInfo* root);
+#endif
 	void makeTubesChild(u32, int);
 	void setUpdater(u32, CollPartUpdater*);
 	void dumpInfo();

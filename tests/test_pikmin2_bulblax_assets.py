@@ -143,7 +143,7 @@ class BulblaxAssetsTests(unittest.TestCase):
     def test_pose_limit_bounds(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
-            for bad in (0, 1, 13, True, '6'):
+            for bad in (0, 1, 25, True, '6'):
                 with self.assertRaises(ValueError):
                     extract(root / 'x.iso', root, root / f'out-{bad}', bad)
 

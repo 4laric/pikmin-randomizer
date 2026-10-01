@@ -1,0 +1,72 @@
+From 1cb9f697573cdd50baebcc8fdb56be3bb5303460 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:50:41 -0400
+Subject: [PATCH 4/5] BigTreasure #246: treat the authored loop marker as the
+ host cycle end
+
+---
+ pc_port/pc_p2_bigtreasure_animclock.cpp |  6 ++++++
+ pc_port/pc_p2_bigtreasure_animclock.h   |  5 +++--
+ tools/p2_bigtreasure_animclock_test.cpp | 10 ++++++++--
+ 3 files changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/pc_port/pc_p2_bigtreasure_animclock.cpp b/pc_port/pc_p2_bigtreasure_animclock.cpp
+index f4c18358..f958a1bb 100644
+--- a/pc_port/pc_p2_bigtreasure_animclock.cpp
++++ b/pc_port/pc_p2_bigtreasure_animclock.cpp
+@@ -64,6 +64,12 @@ void p2_bigtreasure_anim_translate(const int* types, int count,
+         case 1000: out.animEnd = true; break;
+         case 2: out.keyEvent2 = true; break;
+         case 100: out.keyEvent100 = true; break;
++        // The authored loop marker is where the host ends the current cycle.
++        // The policy's idle states ignore animEnd, so this only finishes the
++        // one-shot states (Land / PreAttack / Attack / PutItem / Flick /
++        // DropItem / Dead); it mirrors the fixed loop-window the retail
++        // event-player fixture stops on.
++        case 1: out.animEnd = true; break;
+         default: break;
+         }
+     }
+diff --git a/pc_port/pc_p2_bigtreasure_animclock.h b/pc_port/pc_p2_bigtreasure_animclock.h
+index da1e638a..f3d3fb53 100644
+--- a/pc_port/pc_p2_bigtreasure_animclock.h
++++ b/pc_port/pc_p2_bigtreasure_animclock.h
+@@ -34,8 +34,9 @@ bool p2_bigtreasure_anim_clip(P2BigTreasurePhase phase, int chosenWeapon,
+                               char* out, std::size_t capacity);
+ 
+ // Maps retail-dispatched event types to FSM keyframe pulses: 1000 (implicit
+-// completion) -> animEnd; authored KEYEVENT_2 -> keyEvent2; KEYEVENT_100 ->
+-// keyEvent100. Other authored types are host-side effects the policy ignores.
++// completion) and 1 (authored loop marker, treated as the host cycle end) ->
++// animEnd; authored KEYEVENT_2 -> keyEvent2; KEYEVENT_100 -> keyEvent100.
++// Other authored types are host-side effects the policy ignores.
+ void p2_bigtreasure_anim_translate(const int* types, int count,
+                                    P2BigTreasureAnimPulses& out);
+ 
+diff --git a/tools/p2_bigtreasure_animclock_test.cpp b/tools/p2_bigtreasure_animclock_test.cpp
+index fea75379..e47e0e48 100644
+--- a/tools/p2_bigtreasure_animclock_test.cpp
++++ b/tools/p2_bigtreasure_animclock_test.cpp
+@@ -96,11 +96,17 @@ void testTranslate()
+     p2_bigtreasure_anim_translate(all, 3, pulses);
+     assert(pulses.animEnd && pulses.keyEvent2 && pulses.keyEvent100);
+ 
+-    const int none[] = {0, 1, 3, 7};
++    const int none[] = {0, 3, 7};
+     pulses = P2BigTreasureAnimPulses{};
+-    p2_bigtreasure_anim_translate(none, 4, pulses);
++    p2_bigtreasure_anim_translate(none, 3, pulses);
+     assert(!pulses.animEnd && !pulses.keyEvent2 && !pulses.keyEvent100);
+ 
++    // The authored loop marker ends the host cycle.
++    const int loop[] = {1};
++    pulses = P2BigTreasureAnimPulses{};
++    p2_bigtreasure_anim_translate(loop, 1, pulses);
++    assert(pulses.animEnd);
++
+     pulses = P2BigTreasureAnimPulses{};
+     p2_bigtreasure_anim_translate(nullptr, 0, pulses);
+     assert(!pulses.animEnd);
+-- 
+2.55.0.windows.3
+

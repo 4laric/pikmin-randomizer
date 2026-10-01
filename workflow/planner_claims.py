@@ -9,8 +9,9 @@ done/review_ready owner only with hashed disposition
 evidence; unknown processes, protected children and in-flight launches fail closed.
 This is cooperative registry fencing, not authentication against hostile local users.
 
-CLI: python -m workflow.planner_claims --root <shared-absolute-root>
-     --request <json-file> claim|release|inspect
+CLI: <python> <checkout>/scripts/workflow_module.py planner_claims --root <shared-absolute-root>
+     --request <json-file> claim|release|inspect  (workers; provenance.cli renders it)
+     python -m workflow.planner_claims ... works for humans in the checkout itself.
 Request keys match the public functions, excluding reg. Never initialize a private
 registry for helpers. File keys use repository-relative semantic paths, not worktree
 paths. File parents overlap descendants; unrelated topic/provider names require the
@@ -137,6 +138,27 @@ def release(reg, lane, generation, resources, *, disposition=None, coordinator=N
             reg.event(state, 'planning_released', lane, generation=generation,
                       resources=removed, disposition=disposition, coordinator=coordinator)
         return dict(released=removed)
+
+
+def reconcile_topics(reg):
+    """Release terminal helper routing topics, preserving all substantive claims."""
+    from .planner_demand import is_helper
+    from .handoff import Rejected
+    state=reg.snapshot();coordinator=state.get('control',{}).get('controller')
+    if not coordinator or reg.probe(coordinator)!='alive':return []
+    released=[]
+    for resource,claim_record in state.get('planning_claims',{}).items():
+        if not resource.startswith('topic:') or not is_helper(claim_record['lane']):continue
+        lane=state['lanes'].get(claim_record['lane'],{})
+        disposition=lane.get('review_disposition') or {}
+        evidence=disposition.get('archived_evidence') or disposition.get('evidence')
+        if lane.get('state')!='done' or not evidence:continue
+        try:
+            result=release(reg,claim_record['lane'],claim_record['generation'],[resource],
+                           coordinator=coordinator,disposition=evidence)
+            released.extend(result['released'])
+        except (Rejected,OSError,ValueError):continue
+    return released
 
 
 def main(argv=None):

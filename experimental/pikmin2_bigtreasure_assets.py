@@ -34,9 +34,20 @@ PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 OTAKARA_SOURCE = 'user/Abe/Pellet/us/otakara_config.txt'
 DATA_ROOT = 'enemy/data/BigTreasure'
 PELLET_DIR = 'user/Abe/Pellet/us/'
-MAX_POSES = 12
-CLIP_BYTES = 4 * 1024 * 1024
-TOTAL_BYTES = 64 * 1024 * 1024
+# Titan Dweevil pose density (owner playtest 2026-09-30: "needs way more poses
+# ... due to the wide array of attacks"). Every clip longer than POSE_LIMIT
+# frames is sampled at POSE_LIMIT evenly spaced frames; shorter clips keep every
+# source frame. 48 is the native compact pose loader's per-clip row cap minus
+# headroom (POSE_LIMIT_MAX = 64, p2poseload::loadStem) and is 2x the global
+# default (DEFAULT_POSE_LIMIT = 24). Measured on the retail disc: 28 of 29 clips
+# are longer than 24 source frames (dead 332, appear 210, attack* 120 ...).
+POSE_LIMIT = 48
+MAX_POSES = 48
+# Byte budgets measured on the retail extract (docs/PIKMIN2_SMOKE_SEEDS.md /
+# output/p2-content-dense/DENSITY.md): ~97 KiB per baked pose, so one 48-pose
+# clip is ~4.6 MiB and the 29-clip tree is ~110 MiB.
+CLIP_BYTES = 8 * 1024 * 1024
+TOTAL_BYTES = 160 * 1024 * 1024
 
 # 30-slot animation manager registration order (BigTreasure.h AnimID enum
 # matches enemyanimmgr.txt row order); wait2.bca is registered twice (slots

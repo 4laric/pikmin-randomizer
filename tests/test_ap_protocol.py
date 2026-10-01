@@ -23,7 +23,7 @@ class APProtocolTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(connect["items_handling"], 7)
                 await ws.send(json.dumps([dict(cmd="Connected", team=0, slot=1,
                     slot_data=dict(manifest=session.manifest, manifest_fingerprint=session.fingerprint))]))
-                self.assertEqual(json.loads(await ws.recv()), [{"cmd": "Sync"}])
+                self.assertEqual(json.loads(await ws.recv()), [{"cmd": "Sync"}, {"cmd": "Get", "keys": []}])
                 self.assertFalse(ready[0])
                 items = [dict(item=ITEM_IDS[REPAIR], location=0, player=2, flags=1)] * 25
                 await ws.send(json.dumps([dict(cmd="ReceivedItems", index=0, items=items),
@@ -55,3 +55,27 @@ class APProtocolTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     await ap_connect(session, f"ws://127.0.0.1:{host.sockets[0].getsockname()[1]}", None, ready)
             self.assertFalse(ready[0]);self.assertIsNone(session.data["ap_identity"])
+
+    async def test_empty_item_stream_releases_native_after_get_reply(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            session = Session(generate("ap-protocol", "ap"), Path(tmp)); ready = [False]; done = asyncio.Event()
+            async def server(ws):
+                await ws.send(json.dumps([dict(cmd="RoomInfo", seed_name="room")]))
+                await ws.recv()
+                await ws.send(json.dumps([dict(cmd="Connected", team=0, slot=1,
+                    slot_data=dict(manifest=session.manifest, manifest_fingerprint=session.fingerprint))]))
+                self.assertEqual(json.loads(await ws.recv()), [{"cmd": "Sync"}, {"cmd": "Get", "keys": []}])
+                await asyncio.sleep(0.3)
+                self.assertFalse(ready[0])  # Nothing received yet: a real server stays silent on Sync.
+                await ws.send(json.dumps([dict(cmd="Retrieved", keys={})]))
+                while not ready[0]:
+                    await asyncio.sleep(0.05)
+                done.set()
+                await ws.wait_closed()
+            async with websockets.serve(server, "127.0.0.1", 0) as host:
+                task = asyncio.create_task(ap_connect(session, f"ws://127.0.0.1:{host.sockets[0].getsockname()[1]}", None, ready))
+                try:
+                    await asyncio.wait_for(done.wait(), 5)
+                    self.assertTrue(ready[0]); self.assertEqual(session.data["received"], [])
+                finally:
+                    task.cancel(); await asyncio.gather(task, return_exceptions=True)

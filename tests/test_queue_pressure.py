@@ -43,7 +43,7 @@ class PressureTests(unittest.TestCase):
         with self.r.transaction() as s:
             s['lanes']['handoff']=dict(s['lanes']['one'],lane='handoff',state='handoff_ready',handoff_at=9000,worker_id='other')
             s['queue_pressure']={'stages':{'integration':{'pressure':20},'publication':{'pressure':2}}}
-        with patch('workflow.autofill._workers',return_value=[{}]), patch('workflow.autofill._prepare',return_value=True) as prepare:
+        with patch('workflow.autofill._workers',return_value=[{"worker_id":"idle-test-worker"}]), patch('workflow.autofill._prepare',return_value=True) as prepare:
             self.f.tick()
         self.assertEqual(prepare.call_args.args[1]['id'],'integration-helper-cycle-1')
 
@@ -52,18 +52,44 @@ class PressureTests(unittest.TestCase):
         spec['lane']['target_level']='runtime'
         with self.assertRaisesRegex(Rejected,'native'):validate_spec(self.r,spec,verified=True)
         spec['lane']['target_level']='tooling';del spec['lane']['lane']
-        with self.assertRaisesRegex(Rejected,'lane name'):validate_spec(self.r,spec,verified=True)
+        with self.assertRaisesRegex(Rejected,'Explicit slice fields'):validate_spec(self.r,spec,verified=True)
 
     def test_support_precedes_discovery_and_same_snapshot_not_repeated(self):
         helper=self.f.settings['planner_pool']['helpers'][0]
         helper.update(kind='integration_support',bucket=0,buckets=1)
         with self.r.transaction() as s:s['lanes']['handoff']=dict(s['lanes']['one'],lane='handoff',state='handoff_ready',handoff_at=9000,issue=1,handoff=None,worker_id='other')
-        with patch('workflow.autofill._workers',return_value=[{}]), patch('workflow.autofill._prepare',return_value=False):self.f.tick()
+        with patch('workflow.autofill._workers',return_value=[{"worker_id":"idle-test-worker"}]), patch('workflow.autofill._prepare',return_value=False):self.f.tick()
         with self.r.transaction() as s:
             record=s['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies']
-            self.assertIn('Integration review support',record['spec']['instruction'])
+            self.assertIn('Integration support',record['spec']['instruction'])
             record['completed_at']=0
         self.now+=1000
-        with patch('workflow.autofill._workers',return_value=[{}]), patch('workflow.autofill._prepare',return_value=False):self.f.tick()
+        with patch('workflow.autofill._workers',return_value=[{"worker_id":"idle-test-worker"}]), patch('workflow.autofill._prepare',return_value=False):self.f.tick()
         with self.r.transaction() as s:self.assertEqual(s['throughput_runtime']['autofill']['planner_pool']['scopes']['enemies']['cycle'],1)
+
+    def test_backlog_pauses_discovery_but_staffs_preparation(self):
+        helper=self.f.settings['planner_pool']['helpers'][0]
+        helper.update(kind='integration_support',mode='preparation',bucket=0,buckets=1)
+        with self.r.transaction() as s:
+            s['lanes']['handoff']=dict(s['lanes']['one'],lane='handoff',state='handoff_ready',worker_id='other')
+            s['queue_pressure']={'stages':{'integration':{'depth':10,'oldest_seconds':7200}}}
+        with patch('workflow.autofill._workers',return_value=[{"worker_id":"idle-test-worker"}]), patch('workflow.autofill._prepare',return_value=False):
+            self.f.tick()
+        with self.r.transaction() as s:
+            pool=s['throughput_runtime']['autofill']['planner_pool']
+            self.assertEqual(pool['discovery_target'],0)
+            self.assertEqual(pool['integration_support_target'],1)
+            self.assertIn('resolve merge conflicts',pool['scopes']['enemies']['spec']['instruction'])
+
+    def test_preparation_revisits_old_review_once(self):
+        from workflow.queue_pressure import support_work
+        from workflow.control import fingerprint
+        helper=dict(bucket=0,buckets=1,mode='preparation')
+        with self.r.transaction() as s:
+            s['lanes']['handoff']=dict(s['lanes']['one'],lane='handoff',state='handoff_ready',worker_id='other')
+        work=support_work(self.r,helper)
+        with self.r.transaction() as s:s['integration_support_reviewed']={fingerprint(work[0]):dict(mode='review')}
+        self.assertEqual(support_work(self.r,helper),work)
+        with self.r.transaction() as s:s['integration_support_reviewed'][fingerprint(work[0])]['mode']='preparation'
+        self.assertEqual(support_work(self.r,helper),[])
 

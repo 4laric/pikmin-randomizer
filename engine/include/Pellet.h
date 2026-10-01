@@ -434,6 +434,13 @@ class PelletMgr : public MonoObjectMgr {
 	friend void PlayerState::UfoParts::initAnim(PelletShapeObject*); // Accesses `mUfoMotionTable`.
 
 public:
+#if defined(PIKI_PC_PORT)
+	/// Primera configuración de la lista (recorrer con mNext). Solo lectura.
+	PelletConfig* pcFirstConfig() { return static_cast<PelletConfig*>(mConfigList.mChild); }
+	/// #901 held ship part: build this pellet's shape on demand (a late
+	/// spawn of a PCT_LoadIfExists / un** part) and add it to the use list.
+	PelletShapeObject* pcEnsureShape(u32 pelletID);
+#endif
 	/**
 	 * @brief TODO
 	 */

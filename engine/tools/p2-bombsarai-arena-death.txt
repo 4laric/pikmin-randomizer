@@ -1,6 +1,6 @@
 P2_BOMBSARAI_ARENA_1
 carrier 0 120 0 0 9001
-joint 0 55 0
+joint 0 -40 0
 hover 70 2.5 20 1.5 1.0
 bomb 18.666667 4.5 30 15 90 50 500 10
 receivers 4
@@ -10,3 +10,4 @@ receiver 503 piki 0 15 -40 1 0
 receiver 504 teki 10 15 0 0 1
 events 1
 event 45 kill
+pool 1

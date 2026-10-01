@@ -1,5 +1,8 @@
 #include "pc_p2_bigtreasure_attacks.h"
 
+// Release builds pass -DNDEBUG; force assertions (and their embedded
+// side effects) on so this engine-free gate is not vacuous under ctest.
+#undef NDEBUG
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -118,6 +121,9 @@ void testFire()
     assert(geom.nodeHit(0, emitPos, dirZ, P2BigTreasureVec3{ 0.0f, 75.0f, extent }));
     assert(!geom.nodeHit(0, emitPos, dirZ, P2BigTreasureVec3{ 100.0f, 75.0f, extent })); // x outside r25
     assert(!geom.nodeHit(0, emitPos, dirZ, P2BigTreasureVec3{ 0.0f, 10.0f, extent }));  // y gate
+    // #246: the node sits at emit + dir*scale with no extra y offset (source
+    // BigTreasureFireAttack::update); a -25 shift would miss this target.
+    assert(geom.nodeHit(0, emitPos, dirZ, P2BigTreasureVec3{ 0.0f, 130.0f, extent }));
     // Damaged scale widens the radius/gate and extent.
     P2BigTreasureFirePolicy dmg;
     dmg.start(p2_bigtreasure_fire_params(2500.0f));

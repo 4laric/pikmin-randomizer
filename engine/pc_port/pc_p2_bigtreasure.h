@@ -135,6 +135,11 @@ public:
     std::size_t defeat(P2BigTreasureDropEvent* outDrops, std::size_t maxDrops);
 
 private:
+    // Lane 32 persistence proposal (#246): engine-free serialization access
+    // defined in pc_p2_bigtreasure_save.cpp. This grants no runtime hooks and
+    // is not wired into the game save path.
+    friend struct P2BigTreasureSaveAccess;
+
     bool mAttached[P2BTWEAPON_Count];
     float mHealth[P2BTWEAPON_Count];
     bool mLouieAttached;
@@ -211,6 +216,9 @@ public:
     void defeat();
 
 private:
+    // Lane 32 persistence proposal (#246): see P2BigTreasureOwnership above.
+    friend struct P2BigTreasureSaveAccess;
+
     int poolIndex(int element) const;
     bool mStarted[P2BTWEAPON_Count];
     int mInFlight[P2BTWEAPON_Count];

@@ -1,0 +1,874 @@
+"""Machine-readable P2 placement/encounter compatibility schema and audit tool.
+
+This is the lane-04 (fan-out) placement side of the production randomizer
+bridge. It does **not** choose a seed, serialize a layout or implement family
+AI. It answers one question for a candidate `(slot, identity)` pair:
+
+    is this P2 identity allowed to occupy this source spawn slot?
+
+The answer defaults to *denied*. A pair is legal when the identity has a
+placement profile with at least one accepted placement gate (its admission
+evidence), the slot is in the profile's constraint-derived ``accepted_slot_uids``
+when that list is present, and every terrain/space/route/helper constraint
+holds. Bosses additionally require an encounter descriptor; a universal
+replacement permission is never granted.
+
+Constraints describe the species, not a history (#948; CONTRIBUTING
+"Placement: don't hard-code where a species may go", rule 3). A slot's
+``evidence`` block records which native probes have run there; it is kept
+for evidence documents and is not a placement gate. The physical slot facts
+(``terrain``, ``corpse_route``, ``radius``, ...) are.
+
+Identity ownership stays with lane 02 (roster) and seed serialization with lane
+03. This module consumes their identity keys and defines the constraint record
+they must agree on before coding consumers.
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+SCHEMA = 'p2-placement-v1'
+ENCOUNTER_SCHEMA = 'p2-encounter-v1'
+TERRAIN_CLASSES = ('ground', 'water', 'air', 'underground', 'mixed')
+EVIDENCE_KEYS = ('xyz', 'terrain', 'route')
+SLOT_REQUIRED = ('uid', 'label', 'stage', 'terrain', 'radius')
+PROFILE_REQUIRED = ('identity', 'terrains')
+ENCOUNTER_REQUIRED = ('id', 'identity', 'terrains', 'footprint_radius', 'helper_budget',
+                      'arena_slots', 'phases', 'protected_drops', 'required_gates')
+ENCOUNTER_ALLOWED = ENCOUNTER_REQUIRED + ('notes',)
+ARENA_SLOT_KEYS = ('min', 'max')
+DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
+# P2 boss arenas (#899): optional top-level list naming the P1 boss generators
+# an arena slot (boss_slot true, uid == primary_uid) spans.
+ARENA_REQUIRED = ('id', 'stage', 'primary_uid', 'spawn_uids', 'suppress_uids', 'p1_boss')
+ARENA_ALLOWED = ARENA_REQUIRED + ('p1_kind', 'p1_type', 'center', 'first_day', 'respawn_days',
+                                  'protected_drop', 'held_part_transfer', 'measured', 'notes')
+
+PROXY_SCHEMA = 'p2-proxy-placement-v1'
+PROXY_EVIDENCE_LEVEL = 'mechanical-only: xyz from game data; terrain/route unprobed'
+PROXY_PACK_EVIDENCE_LEVEL = (PROXY_EVIDENCE_LEVEL + '; pack binding proven by launch probe pk1 on native '
+                             'ba6832cef (every live member bound, 8 day-2 packs)')
+PROXY_SINGLETON_UIDS = frozenset({1849273021, 2049888785})
+# Placement-cap (#871) promoted both singletons into the admitted document, so
+# they are SHARED between the six-gate and proxy tiers (proxy_only: false). The
+# P2_PLACEMENT_SLOT probe samples the ground triangle and nearest waypoint at
+# the slot XYZ, which is independent of the species or tier occupying it, and
+# two native probes agree: proxy probe pk1 and the six-gate rev8 run. Their
+# terrain/route evidence is therefore true in BOTH documents.
+PROXY_SHARED_UIDS = PROXY_SINGLETON_UIDS
+PROXY_SHARED_EVIDENCE_LEVEL = (
+    'native-probed: P2_PLACEMENT_SLOT terrain=ground route=1 (route coverage radius 200) '
+    'in proxy probe pk1 (native ba6832cef, output/claude-orch/evidence/packs-forest/native.log '
+    'L789/L801) and six-gate run rev8 (native eb510ff4, '
+    'output/claude-orch/evidence/doc-reconcile/rev8-native.log L791/L793); '
+    'shared with docs/PIKMIN2_ADMITTED_PLACEMENT.json')
+PROXY_PACK_UIDS = frozenset({3768801221, 2637843033, 517610653, 2380387682, 3679976242,
+                             1102975523, 3417529495, 1428724902, 648204418, 3157218646,
+                             843459898, 1340027046, 2158371058, 4096115722})
+PROXY_SLOT_UIDS = PROXY_SINGLETON_UIDS | PROXY_PACK_UIDS
+# Small hosts allowed on pack (multi-member) targets. Hosts 18/19/20/25/31/33
+# are SAFE per host-safety section 4 with no open-air/pellet/clearance
+# condition beyond landing space that a generic ground slot provides; hosts
+# 0/3 are proven vanilla hosts (host-safety scope) in the same small-bodied
+# families; all SAFE-WITH-CONDITIONS hosts
+# (6 ephemeral floater, 8 pellet/route-dependent, 11/16 60-height fliers, 17
+# firing-lane Beetle) and all large/dangerous hosts (4, 15, 32, ...) are
+# excluded so a 2-5 member pack cannot multiply difficulty or crowd the spot.
+PACK_HOSTS = (0, 3, 18, 19, 20, 25, 31, 33)
+# Expected pack metadata per uid: (label, stage, original_teki, count, first_day,
+# cohort, source_identity). Pinned fail-closed against campaign_data drift.
+PACK_TARGETS = {
+    3768801221: ('hope_0-29_3791', 1, 18, 3, 2, 'grub', 'campaign:grub:18'),
+    2637843033: ('hope_0-29_3990', 1, 19, 2, 2, 'grub', 'campaign:grub:19'),
+    517610653: ('hope_4-29_2038', 1, 18, 3, 5, 'grub', 'campaign:grub:18'),
+    2380387682: ('hope_4-29_2237', 1, 19, 2, 5, 'grub', 'campaign:grub:19'),
+    3679976242: ('hope_init_3344', 1, 19, 2, 2, 'grub', 'campaign:grub:19'),
+    1102975523: ('hope_init_3543', 1, 18, 3, 2, 'grub', 'campaign:grub:18'),
+    3417529495: ('spring_15-29_24', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    1428724902: ('spring_15-29_223', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    648204418: ('spring_15-29_422', 3, 31, 2, 16, 'dwarf', 'campaign:dwarf:31'),
+    3157218646: ('spring_15-29_621', 3, 31, 3, 16, 'dwarf', 'campaign:dwarf:31'),
+    843459898: ('spring_init_7623', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+    1340027046: ('spring_init_7822', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+    2158371058: ('spring_init_8021', 3, 20, 2, 2, 'grub', 'campaign:grub:20'),
+    4096115722: ('spring_init_8220', 3, 20, 3, 2, 'grub', 'campaign:grub:20'),
+}
+# Kept in the schema for stability but intentionally empty: a proxy keeps its Pikmin 1 host's behaviour and corpse,
+# and reserving committed slots from proxies only made every sampled seed spend them on a repeat of a playable species.
+PROXY_RESERVED_VANILLA = ()
+PROXY_DOCUMENT_REQUIRED = ('schema', 'slots', 'reserved_vanilla', 'pack_hosts')
+PROXY_DOCUMENT_ALLOWED = PROXY_DOCUMENT_REQUIRED + ('notes',)
+
+
+def validate_proxy_document(document):
+    """Validate the proxy-tier-only sibling document (2 singletons + 14 packs).
+
+    Accepts only ``p2-proxy-placement-v1`` with exactly the 16 proxy-tier
+    uids. The 14 pack slots carry honest mechanical-only evidence (xyz true,
+    terrain/route false), ``proxy_only is True`` and
+    :data:`PROXY_PACK_EVIDENCE_LEVEL`. The 2 singletons are shared with the
+    admitted document (:data:`PROXY_SHARED_UIDS`) and carry native-probed
+    evidence (xyz/terrain/route all true), ``proxy_only is False`` and
+    :data:`PROXY_SHARED_EVIDENCE_LEVEL`; anything else is rejected, ``pack``/``count``/``original_teki``
+    metadata pinned per uid, and a top-level ``pack_hosts`` list exactly equal
+    to :data:`PACK_HOSTS`. Never touches the committed document or six-gate
+    behaviour. Schema stays v1 (extension, not a bump): same slot shape, same
+    consumers, same packaged path; fail-closed exact allowlists either way.
+    """
+    _check_keys('proxy document', document, PROXY_DOCUMENT_REQUIRED, PROXY_DOCUMENT_ALLOWED)
+    if document['schema'] != PROXY_SCHEMA:
+        _fail(f'document schema must be {PROXY_SCHEMA}')
+    if not isinstance(document['slots'], list):
+        _fail('proxy document slots must be a list')
+    if not isinstance(document['reserved_vanilla'], list):
+        _fail('proxy document reserved_vanilla must be a list')
+    reserved = document['reserved_vanilla']
+    if (any(not isinstance(uid, int) or isinstance(uid, bool) for uid in reserved)
+            or len(set(reserved)) != len(reserved)
+            or sorted(reserved) != sorted(PROXY_RESERVED_VANILLA)):
+        _fail(f'proxy document reserved_vanilla must be exactly {sorted(PROXY_RESERVED_VANILLA)}')
+    pack_hosts = document.get('pack_hosts')
+    if (not isinstance(pack_hosts, list)
+            or any(not isinstance(host, int) or isinstance(host, bool) for host in pack_hosts)
+            or len(set(pack_hosts)) != len(pack_hosts)
+            or sorted(pack_hosts) != sorted(PACK_HOSTS)):
+        _fail(f'proxy document pack_hosts must be exactly {sorted(PACK_HOSTS)}')
+    if len(document['slots']) != len(PROXY_SLOT_UIDS):
+        _fail(f'proxy document must carry exactly {len(PROXY_SLOT_UIDS)} slots')
+    slots = []
+    seen = set()
+    for raw in document['slots']:
+        if not isinstance(raw, dict):
+            _fail('proxy slot must be an object')
+        if raw.get('pack') not in (True, False):
+            _fail('proxy slot requires pack: true/false')
+        uid = raw.get('uid')
+        shared = uid in PROXY_SHARED_UIDS
+        if raw.get('proxy_only') is not (not shared):
+            _fail('proxy slot requires proxy_only: false (shared with the admitted document)' if shared
+                  else 'proxy slot requires proxy_only: true')
+        is_pack = raw.get('pack') is True
+        if is_pack:
+            if uid not in PROXY_PACK_UIDS:
+                _fail(f'proxy pack slot uid {uid} is not an admitted pack slot')
+            if raw.get('evidence_level') != PROXY_PACK_EVIDENCE_LEVEL:
+                _fail('proxy pack slot has an unexpected evidence_level')
+            expected = PACK_TARGETS[uid]
+            if raw.get('count') != expected[3]:
+                _fail(f'proxy pack slot {uid} has an unexpected count')
+            if raw.get('original_teki') != expected[2]:
+                _fail(f'proxy pack slot {uid} has an unexpected original_teki')
+            if raw.get('first_day') != expected[4]:
+                _fail(f'proxy pack slot {uid} has an unexpected first_day')
+            if raw.get('label') != expected[0]:
+                _fail(f'proxy pack slot {uid} has an unexpected label')
+            if raw.get('stage') != expected[1]:
+                _fail(f'proxy pack slot {uid} has an unexpected stage')
+            if raw.get('cohort') != expected[5]:
+                _fail(f'proxy pack slot {uid} has an unexpected cohort')
+            if raw.get('source_identity') != expected[6]:
+                _fail(f'proxy pack slot {uid} has an unexpected source_identity')
+        else:
+            if uid not in PROXY_SINGLETON_UIDS:
+                _fail(f'proxy singleton slot uid {uid} is not an admitted singleton slot')
+            if raw.get('evidence_level') != PROXY_SHARED_EVIDENCE_LEVEL:
+                _fail('proxy slot has an unexpected evidence_level')
+            if 'count' in raw:
+                _fail('proxy singleton slot must not carry count')
+            if 'original_teki' in raw:
+                _fail('proxy singleton slot must not carry original_teki')
+        if uid in seen:
+            _fail('proxy document has duplicate slot uids')
+        seen.add(uid)
+        stripped = {key: value for key, value in raw.items()
+                    if key not in ('proxy_only', 'evidence_level', 'pack', 'count', 'original_teki')}
+        slot = normalize_slot(stripped)
+        if slot['uid'] not in PROXY_SLOT_UIDS:
+            _fail(f'proxy slot uid {slot["uid"]} is not an admitted proxy-tier slot')
+        if slot['terrain'] != 'ground':
+            _fail('proxy-only slots must be ground terrain')
+        if slot['evidence'].get('xyz') is not True:
+            _fail('proxy slot evidence.xyz must be true (mechanical position)')
+        if shared:
+            if slot['evidence'].get('terrain') is not True:
+                _fail('shared proxy slot evidence.terrain must be true (native-probed)')
+            if slot['evidence'].get('route') is not True:
+                _fail('shared proxy slot evidence.route must be true (native-probed)')
+        else:
+            if slot['evidence'].get('terrain') is not False:
+                _fail('proxy slot evidence.terrain must be false (unprobed)')
+            if slot['evidence'].get('route') is not False:
+                _fail('proxy slot evidence.route must be false (unprobed)')
+        slot['proxy_only'] = not shared
+        slot['pack'] = is_pack
+        slot['evidence_level'] = (PROXY_PACK_EVIDENCE_LEVEL if is_pack else PROXY_SHARED_EVIDENCE_LEVEL)
+        if is_pack:
+            slot['count'] = PACK_TARGETS[uid][3]
+            slot['original_teki'] = PACK_TARGETS[uid][2]
+        slots.append(slot)
+    if set(seen) != set(PROXY_SLOT_UIDS):
+        _fail(f'proxy document slots must be exactly {sorted(PROXY_SLOT_UIDS)}')
+    slots.sort(key=lambda item: item['uid'])
+    return {'schema': PROXY_SCHEMA, 'slots': slots,
+            'reserved_vanilla': list(reserved), 'pack_hosts': list(pack_hosts),
+            'notes': document.get('notes', '')}
+
+
+def load_proxy_document(path):
+    return validate_proxy_document(json.loads(Path(path).read_text()))
+
+
+def _fail(message):
+    raise ValueError(message)
+
+
+def _copy_list(value):
+    return list(value) if isinstance(value, list) else value
+
+
+def _is_bool(value):
+    return isinstance(value, bool)
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _check_keys(kind, data, required, allowed):
+    if not isinstance(data, dict):
+        _fail(f'{kind} must be an object')
+    missing = [key for key in required if key not in data]
+    if missing:
+        _fail(f'{kind} missing required field(s): {", ".join(missing)}')
+    unknown = [key for key in data if key not in allowed]
+    if unknown:
+        _fail(f'{kind} has unknown field(s): {", ".join(sorted(unknown))}')
+
+
+SLOT_ALLOWED = SLOT_REQUIRED + (
+    'water_depth', 'flight_space', 'burrow_ground', 'home', 'helper_capacity',
+    'projectile_corridor', 'corpse_route', 'protected', 'boss_slot',
+    'first_day', 'respawn_days', 'evidence', 'source_identity', 'cohort',
+)
+PROFILE_ALLOWED = PROFILE_REQUIRED + (
+    'family_lane', 'footprint_radius', 'min_water_depth', 'requires_flight_space',
+    'requires_burrow_ground', 'requires_home', 'helper_budget',
+    'requires_projectile_corridor', 'requires_corpse_route', 'is_boss',
+    'encounter_descriptor', 'accepted_gates', 'allow_protected',
+    'requires_renewable_slot', 'min_first_day', 'notes', 'cohort', 'accepted_slot_uids',
+)
+
+
+def normalize_slot(data):
+    _check_keys('slot', data, SLOT_REQUIRED, SLOT_ALLOWED)
+    slot = {
+        'uid': data['uid'],
+        'label': data['label'],
+        'stage': data['stage'],
+        'terrain': data['terrain'],
+        'radius': data['radius'],
+        'water_depth': data.get('water_depth', 0),
+        'flight_space': data.get('flight_space', False),
+        'burrow_ground': data.get('burrow_ground', False),
+        'home': data.get('home', False),
+        'helper_capacity': data.get('helper_capacity', 0),
+        'projectile_corridor': data.get('projectile_corridor', False),
+        'corpse_route': data.get('corpse_route', False),
+        'protected': data.get('protected', False),
+        'boss_slot': data.get('boss_slot', False),
+        'first_day': data.get('first_day', 1),
+        'respawn_days': data.get('respawn_days', 0),
+        'source_identity': data.get('source_identity'),
+        'cohort': data.get('cohort'),
+        'evidence': {
+            key: bool(data.get('evidence', {}).get(key, False)) for key in EVIDENCE_KEYS
+        },
+    }
+    return validate_slot(slot)
+
+
+def validate_slot(slot):
+    if not isinstance(slot['uid'], int) or isinstance(slot['uid'], bool):
+        _fail('slot uid must be an integer')
+    if not isinstance(slot['label'], str) or not slot['label']:
+        _fail('slot label must be a non-empty string')
+    if not isinstance(slot['stage'], int) or isinstance(slot['stage'], bool) or slot['stage'] < 0:
+        _fail('slot stage must be a non-negative integer')
+    if slot['terrain'] not in TERRAIN_CLASSES:
+        _fail(f'slot terrain must be one of {TERRAIN_CLASSES}')
+    if not _is_number(slot['radius']) or slot['radius'] < 0:
+        _fail('slot radius must be a non-negative number')
+    if not _is_number(slot['water_depth']) or slot['water_depth'] < 0:
+        _fail('slot water_depth must be a non-negative number')
+    if not isinstance(slot['helper_capacity'], int) or isinstance(slot['helper_capacity'], bool) or slot['helper_capacity'] < 0:
+        _fail('slot helper_capacity must be a non-negative integer')
+    if not isinstance(slot['first_day'], int) or isinstance(slot['first_day'], bool) or slot['first_day'] < 1:
+        _fail('slot first_day must be a positive integer')
+    if not isinstance(slot['respawn_days'], int) or isinstance(slot['respawn_days'], bool) or slot['respawn_days'] < 0:
+        _fail('slot respawn_days must be a non-negative integer')
+    for key in ('flight_space', 'burrow_ground', 'home', 'projectile_corridor', 'corpse_route', 'protected', 'boss_slot'):
+        if not _is_bool(slot[key]):
+            _fail(f'slot {key} must be a boolean')
+    if slot['source_identity'] is not None and not isinstance(slot['source_identity'], str):
+        _fail('slot source_identity must be a string or null')
+    if slot['cohort'] is not None and not isinstance(slot['cohort'], str):
+        _fail('slot cohort must be a string or null')
+    if not isinstance(slot['evidence'], dict):
+        _fail('slot evidence must be an object')
+    for key in EVIDENCE_KEYS:
+        if not _is_bool(slot['evidence'][key]):
+            _fail(f'slot evidence.{key} must be a boolean')
+    return slot
+
+
+def normalize_profile(data):
+    _check_keys('profile', data, PROFILE_REQUIRED, PROFILE_ALLOWED)
+    profile = {
+        'identity': data['identity'],
+        'terrains': list(data['terrains']),
+        'family_lane': data.get('family_lane', 0),
+        'footprint_radius': data.get('footprint_radius', 0),
+        'min_water_depth': data.get('min_water_depth', 0),
+        'requires_flight_space': data.get('requires_flight_space', False),
+        'requires_burrow_ground': data.get('requires_burrow_ground', False),
+        'requires_home': data.get('requires_home', False),
+        'helper_budget': data.get('helper_budget', 0),
+        'requires_projectile_corridor': data.get('requires_projectile_corridor', False),
+        'requires_corpse_route': data.get('requires_corpse_route', False),
+        'is_boss': data.get('is_boss', False),
+        'encounter_descriptor': data.get('encounter_descriptor'),
+        'accepted_gates': list(data.get('accepted_gates', [])),
+        'allow_protected': data.get('allow_protected', False),
+        'requires_renewable_slot': data.get('requires_renewable_slot', False),
+        'min_first_day': data.get('min_first_day', 0),
+        'notes': data.get('notes', ''),
+        'cohort': data.get('cohort'),
+    }
+    if 'accepted_slot_uids' in data:
+        profile['accepted_slot_uids'] = _copy_list(data['accepted_slot_uids'])
+    return validate_profile(profile)
+
+
+def validate_profile(profile):
+    if 'accepted_slot_uids' in profile:
+        uids = profile['accepted_slot_uids']
+        if (not isinstance(uids, list)
+                or any(not isinstance(uid, int) or isinstance(uid, bool) for uid in uids)
+                or len(set(uids)) != len(uids)):
+            _fail('profile accepted_slot_uids must be a list of unique integer slot IDs')
+    if not isinstance(profile['identity'], str) or not profile['identity']:
+        _fail('profile identity must be a non-empty string')
+    if not isinstance(profile['terrains'], list) or not profile['terrains']:
+        _fail('profile terrains must be a non-empty list')
+    for terrain in profile['terrains']:
+        if terrain not in TERRAIN_CLASSES:
+            _fail(f'profile terrain must be one of {TERRAIN_CLASSES}')
+    if not isinstance(profile['family_lane'], int) or isinstance(profile['family_lane'], bool) or profile['family_lane'] < 0:
+        _fail('profile family_lane must be a non-negative integer')
+    if not _is_number(profile['footprint_radius']) or profile['footprint_radius'] < 0:
+        _fail('profile footprint_radius must be a non-negative number')
+    if not _is_number(profile['min_water_depth']) or profile['min_water_depth'] < 0:
+        _fail('profile min_water_depth must be a non-negative number')
+    if not isinstance(profile['helper_budget'], int) or isinstance(profile['helper_budget'], bool) or profile['helper_budget'] < 0:
+        _fail('profile helper_budget must be a non-negative integer')
+    for key in ('requires_flight_space', 'requires_burrow_ground', 'requires_home',
+                'requires_projectile_corridor', 'requires_corpse_route', 'is_boss',
+                'allow_protected', 'requires_renewable_slot'):
+        if not _is_bool(profile[key]):
+            _fail(f'profile {key} must be a boolean')
+    if profile['encounter_descriptor'] is not None and not isinstance(profile['encounter_descriptor'], str):
+        _fail('profile encounter_descriptor must be a string or null')
+    if not isinstance(profile['accepted_gates'], list) or any(not isinstance(g, str) for g in profile['accepted_gates']):
+        _fail('profile accepted_gates must be a list of strings')
+    if not isinstance(profile['min_first_day'], int) or isinstance(profile['min_first_day'], bool) or profile['min_first_day'] < 0:
+        _fail('profile min_first_day must be a non-negative integer')
+    if not isinstance(profile['notes'], str):
+        _fail('profile notes must be a string')
+    if profile['cohort'] is not None and not isinstance(profile['cohort'], str):
+        _fail('profile cohort must be a string or null')
+    return profile
+
+
+def normalize_encounter_descriptor(data):
+    _check_keys('encounter descriptor', data, ENCOUNTER_REQUIRED, ENCOUNTER_ALLOWED)
+    descriptor = {
+        'id': data['id'],
+        'identity': data['identity'],
+        'terrains': _copy_list(data['terrains']),
+        'footprint_radius': data['footprint_radius'],
+        'helper_budget': data['helper_budget'],
+        'arena_slots': dict(data['arena_slots']) if isinstance(data['arena_slots'], dict) else data['arena_slots'],
+        'phases': data['phases'],
+        'protected_drops': _copy_list(data['protected_drops']),
+        'required_gates': _copy_list(data['required_gates']),
+        'notes': data.get('notes', ''),
+    }
+    return validate_encounter_descriptor(descriptor)
+
+
+def validate_encounter_descriptor(descriptor):
+    if not isinstance(descriptor['id'], str) or not descriptor['id']:
+        _fail('encounter descriptor id must be a non-empty string')
+    if not isinstance(descriptor['identity'], str) or not descriptor['identity']:
+        _fail('encounter descriptor identity must be a non-empty string')
+    if not isinstance(descriptor['terrains'], list) or not descriptor['terrains']:
+        _fail('encounter descriptor terrains must be a non-empty list')
+    for terrain in descriptor['terrains']:
+        if terrain not in TERRAIN_CLASSES:
+            _fail(f'encounter descriptor terrain must be one of {TERRAIN_CLASSES}')
+    if not _is_number(descriptor['footprint_radius']) or descriptor['footprint_radius'] < 0:
+        _fail('encounter descriptor footprint_radius must be a non-negative number')
+    if not isinstance(descriptor['helper_budget'], int) or isinstance(descriptor['helper_budget'], bool) or descriptor['helper_budget'] < 0:
+        _fail('encounter descriptor helper_budget must be a non-negative integer')
+    if not isinstance(descriptor['phases'], int) or isinstance(descriptor['phases'], bool) or descriptor['phases'] < 1:
+        _fail('encounter descriptor phases must be a positive integer')
+    for key in ('protected_drops', 'required_gates'):
+        if not isinstance(descriptor[key], list) or any(not isinstance(item, str) for item in descriptor[key]):
+            _fail(f'encounter descriptor {key} must be a list of strings')
+    if not isinstance(descriptor['notes'], str):
+        _fail('encounter descriptor notes must be a string')
+    arena = descriptor['arena_slots']
+    if not isinstance(arena, dict):
+        _fail('encounter descriptor arena_slots must be an object')
+    unknown = [key for key in arena if key not in ARENA_SLOT_KEYS]
+    if unknown:
+        _fail(f'encounter descriptor arena_slots has unknown field(s): {", ".join(sorted(unknown))}')
+    for key in ARENA_SLOT_KEYS:
+        if key not in arena:
+            _fail(f'encounter descriptor arena_slots missing {key}')
+        if not isinstance(arena[key], int) or isinstance(arena[key], bool) or arena[key] < 0:
+            _fail(f'encounter descriptor arena_slots.{key} must be a non-negative integer')
+    if arena['min'] > arena['max']:
+        _fail('encounter descriptor arena_slots.min must not exceed max')
+    return descriptor
+
+
+def _int_list(value):
+    return (isinstance(value, list)
+            and all(isinstance(item, int) and not isinstance(item, bool) for item in value))
+
+
+def normalize_arena(data, slots_by_uid):
+    """Validate one boss-arena record against the document's slots (#899)."""
+    _check_keys('arena', data, ARENA_REQUIRED, ARENA_ALLOWED)
+    arena = dict(data)
+    if not isinstance(arena['id'], str) or not arena['id']:
+        _fail('arena id must be a non-empty string')
+    if not isinstance(arena['stage'], int) or isinstance(arena['stage'], bool) or arena['stage'] < 0:
+        _fail('arena stage must be a non-negative integer')
+    if not _int_list(arena['spawn_uids']) or not arena['spawn_uids']:
+        _fail(f"arena {arena['id']} spawn_uids must be a non-empty list of integers")
+    if not _int_list(arena['suppress_uids']):
+        _fail(f"arena {arena['id']} suppress_uids must be a list of integers")
+    members = list(arena['spawn_uids']) + list(arena['suppress_uids'])
+    if len(set(members)) != len(members):
+        _fail(f"arena {arena['id']} repeats a generator uid")
+    if arena['primary_uid'] != arena['spawn_uids'][0]:
+        _fail(f"arena {arena['id']} primary_uid must be its first spawn uid")
+    protected_drop = arena.get('protected_drop')
+    if protected_drop is not None and not isinstance(protected_drop, str):
+        _fail(f"arena {arena['id']} protected_drop must be a string or null")
+    # #901: a held ship part transfers to the P2 boss, lifting the protection.
+    transfer = arena.get('held_part_transfer', False)
+    if not isinstance(transfer, bool):
+        _fail(f"arena {arena['id']} held_part_transfer must be a boolean")
+    if transfer and not protected_drop:
+        _fail(f"arena {arena['id']} held_part_transfer needs a protected_drop part")
+    if transfer and 'goal' in protected_drop:
+        _fail(f"arena {arena['id']} cannot transfer a goal boss drop")
+    protected = bool(protected_drop) and not transfer
+    # An arena whose slot a caller removed is inert (never eligible); a slot
+    # that is present must be its boss slot.
+    slot = slots_by_uid.get(arena['primary_uid'])
+    if slot is not None:
+        if not slot['boss_slot']:
+            _fail(f"arena {arena['id']} primary_uid must name a boss_slot slot")
+        if slot['stage'] != arena['stage']:
+            _fail(f"arena {arena['id']} stage does not match its slot")
+        if protected != slot['protected']:
+            _fail(f"arena {arena['id']} protected_drop/held_part_transfer and slot protected disagree")
+    return arena
+
+
+def validate_document(document):
+    _check_keys('document', document, DOCUMENT_REQUIRED,
+                DOCUMENT_REQUIRED + ('notes', 'encounters', 'arenas', 'held_parts'))
+    if document['schema'] != SCHEMA:
+        _fail(f'document schema must be {SCHEMA}')
+    if not isinstance(document['slots'], list) or not isinstance(document['profiles'], list):
+        _fail('document slots and profiles must be lists')
+    slots = [normalize_slot(slot) for slot in document['slots']]
+    profiles = [normalize_profile(profile) for profile in document['profiles']]
+    encounters_raw = document.get('encounters', [])
+    if not isinstance(encounters_raw, list):
+        _fail('document encounters must be a list')
+    encounters = [normalize_encounter_descriptor(encounter) for encounter in encounters_raw]
+    uids = [slot['uid'] for slot in slots]
+    if len(set(uids)) != len(uids):
+        _fail('document has duplicate slot uids')
+    identities = [profile['identity'] for profile in profiles]
+    if len(set(identities)) != len(identities):
+        _fail('document has duplicate profile identities')
+    descriptor_ids = [encounter['id'] for encounter in encounters]
+    if len(set(descriptor_ids)) != len(descriptor_ids):
+        _fail('document has duplicate encounter descriptor ids')
+    descriptors_by_id = {encounter['id']: encounter for encounter in encounters}
+    for profile in profiles:
+        if not profile['is_boss']:
+            continue
+        reference = profile['encounter_descriptor']
+        if not reference:
+            _fail(f"boss profile {profile['identity']} requires an encounter_descriptor")
+        if reference not in descriptors_by_id:
+            _fail(f"boss profile {profile['identity']} references unknown encounter descriptor {reference}")
+    result = {'schema': SCHEMA, 'slots': slots, 'profiles': profiles,
+              'encounters': encounters, 'notes': document.get('notes', '')}
+    if 'arenas' in document:
+        if not isinstance(document['arenas'], list):
+            _fail('document arenas must be a list')
+        slots_by_uid = {slot['uid']: slot for slot in slots}
+        arenas = [normalize_arena(arena, slots_by_uid) for arena in document['arenas']]
+        ids = [arena['id'] for arena in arenas]
+        if len(set(ids)) != len(ids):
+            _fail('document has duplicate arena ids')
+        members = [uid for arena in arenas for uid in arena['spawn_uids'] + arena['suppress_uids']]
+        if len(set(members)) != len(members):
+            _fail('document arenas share a generator uid')
+        arena_primaries = {arena['primary_uid'] for arena in arenas}
+        stray = sorted(slot['uid'] for slot in slots
+                       if slot['boss_slot'] and slot['uid'] not in arena_primaries
+                       and slot['uid'] in members)
+        if stray:
+            _fail(f'arena member uids must not be separate boss slots: {stray}')
+        result['arenas'] = arenas
+    if 'held_parts' in document:
+        if not isinstance(document['held_parts'], list):
+            _fail('document held_parts must be a list')
+        slots_by_uid = {slot['uid']: slot for slot in slots}
+        held = [normalize_held_part(row, slots_by_uid) for row in document['held_parts']]
+        held_uids = [row['uid'] for row in held]
+        if len(set(held_uids)) != len(held_uids):
+            _fail('document has duplicate held_parts uids')
+        arena_members = {uid for arena in result.get('arenas', [])
+                         for uid in arena['spawn_uids'] + arena['suppress_uids']}
+        if set(held_uids) & arena_members:
+            _fail('a held_parts slot must not be a boss arena member')
+        result['held_parts'] = held
+    return result
+
+
+HELD_PART_REQUIRED = ('uid', 'label', 'stage', 'p1_teki', 'part', 'location', 'held_part_transfer')
+HELD_PART_ALLOWED = HELD_PART_REQUIRED + ('evidence',)
+
+
+def normalize_held_part(data, slots_by_uid):
+    """#901 P1 ship-part holder teki slot (randomizer/p2_held_parts.py)."""
+    _check_keys('held_part', data, HELD_PART_REQUIRED, HELD_PART_ALLOWED)
+    row = dict(data)
+    if type(row['uid']) is not int or type(row['stage']) is not int or type(row['p1_teki']) is not int:
+        _fail(f"held_part {row.get('label')} uid/stage/p1_teki must be integers")
+    if not isinstance(row['part'], str) or len(row['part']) != 4 or row['part'][0] != 'u':
+        _fail(f"held_part {row['label']} part must be a four-character UFO part id")
+    if not isinstance(row['held_part_transfer'], bool):
+        _fail(f"held_part {row['label']} held_part_transfer must be a boolean")
+    slot = slots_by_uid.get(row['uid'])
+    if slot is None:
+        # Like an arena whose slot a caller removed: inert, never bound.
+        return row
+    if slot['stage'] != row['stage'] or slot['boss_slot']:
+        _fail(f"held_part {row['label']} slot stage/boss_slot mismatch")
+    if slot['protected'] != (not row['held_part_transfer']):
+        _fail(f"held_part {row['label']} held_part_transfer and slot protected disagree")
+    return row
+
+
+def load_document(path):
+    return validate_document(json.loads(Path(path).read_text()))
+
+
+def _encounter_reasons(slot, profile, descriptor):
+    """Return descriptor constraint failures for a boss pair."""
+    reasons = []
+    if descriptor['identity'] != profile['identity']:
+        reasons.append(
+            f"encounter identity {descriptor['identity']} does not match profile identity {profile['identity']}")
+    if slot['terrain'] not in descriptor['terrains']:
+        reasons.append(f"terrain {slot['terrain']} not in encounter terrains {descriptor['terrains']}")
+    if descriptor['footprint_radius'] > slot['radius']:
+        reasons.append(
+            f"encounter footprint {descriptor['footprint_radius']} exceeds slot radius {slot['radius']}")
+    if descriptor['helper_budget'] > slot['helper_capacity']:
+        reasons.append(
+            f"encounter helper budget {descriptor['helper_budget']} exceeds slot capacity {slot['helper_capacity']}")
+    arena = descriptor['arena_slots']
+    if not arena['min'] <= 1 <= arena['max']:
+        reasons.append('slot cannot host exactly one boss arena')
+    return reasons
+
+
+def _constraint_reasons(slot, profile, descriptor=None):
+    """Hard placement incompatibilities, independent of evidence/gate status.
+
+    These are the reasons a concrete slot cannot host the identity even if all
+    native evidence and admission gates were satisfied. They are what lane 04
+    uses to reject incompatible slots before family/QA evidence lands.
+    """
+    reasons = []
+    if slot['protected'] and not profile['allow_protected']:
+        reasons.append('slot drop is protected')
+    # A profile/slot ``cohort`` is descriptive only (the P1 campaign cohort the
+    # slot or the P1 equivalent came from). It used to deny cross-cohort pairs
+    # ("a Sheargrub identity may not fill an aquatic slot"); the terrain and
+    # water fields already express that physical need, and the cohort itself
+    # is history, not a constraint (#948, #951 U15).
+    if slot['terrain'] not in profile['terrains']:
+        reasons.append(f"terrain {slot['terrain']} not in {profile['terrains']}")
+    if slot['water_depth'] < profile['min_water_depth']:
+        reasons.append(f"water depth {slot['water_depth']} below required {profile['min_water_depth']}")
+    if profile['requires_flight_space'] and not slot['flight_space']:
+        reasons.append('slot lacks flight space')
+    if profile['requires_burrow_ground'] and not slot['burrow_ground']:
+        reasons.append('slot lacks burrow ground')
+    if profile['requires_home'] and not slot['home']:
+        reasons.append('slot lacks a home/nest anchor')
+    if profile['requires_projectile_corridor'] and not slot['projectile_corridor']:
+        reasons.append('slot lacks a projectile corridor')
+    if profile['requires_corpse_route'] and not slot['corpse_route']:
+        reasons.append('slot lacks a corpse return route')
+    if profile['helper_budget'] > slot['helper_capacity']:
+        reasons.append(f"helper budget {profile['helper_budget']} exceeds slot capacity {slot['helper_capacity']}")
+    if profile['footprint_radius'] > slot['radius']:
+        reasons.append(f"footprint {profile['footprint_radius']} exceeds slot radius {slot['radius']}")
+    if profile['requires_renewable_slot'] and slot['respawn_days'] <= 0:
+        reasons.append('slot is one-shot, not renewable')
+    if slot['first_day'] < profile['min_first_day']:
+        reasons.append(f"slot first day {slot['first_day']} before required {profile['min_first_day']}")
+    if profile['is_boss'] and descriptor is not None:
+        reasons.extend(_encounter_reasons(slot, profile, descriptor))
+    return reasons
+
+
+def compatibility(slot, profile, encounters=None):
+    """Return hard incompatibility reasons only, or [] when constraint-compatible.
+
+    Unlike `evaluate`, this does not require accepted gates or native slot
+    evidence: it answers whether the concrete slot *could* host the identity.
+    A boss with no resolvable descriptor is reported as an evidence gap by
+    `evaluate`, not as an incompatibility here.
+    """
+    descriptor = None
+    if profile['is_boss'] and encounters is not None:
+        reference = profile['encounter_descriptor']
+        if reference:
+            descriptor = encounters.get(reference)
+    return sorted(set(_constraint_reasons(slot, profile, descriptor)))
+
+
+def evaluate(slot, profile, encounters=None):
+    """Return {'status': 'legal'|'denied', 'reasons': [...]} with deny default.
+
+    When `encounters` (an id->descriptor mapping) is supplied, a boss must be
+    backed by a matching descriptor; otherwise the legacy descriptor-name check
+    is the only boss gate.
+    """
+    reasons = []
+    if not profile['accepted_gates']:
+        reasons.append('no accepted placement evidence')
+    if 'accepted_slot_uids' in profile and slot['uid'] not in profile['accepted_slot_uids']:
+        reasons.append('slot is not in the accepted slot list for this identity')
+    # Native probe evidence (``slot['evidence']``) is no longer required here:
+    # an unprobed slot is a to-do, not a restriction (#948, #951 R3; CONTRIBUTING
+    # "Don't invent restrictions" rule 3). The slot's physical fields carry the
+    # constraint; ``evidence`` records probe history for the evidence documents.
+    if profile['is_boss'] and not profile['encounter_descriptor']:
+        reasons.append('boss requires an encounter descriptor')
+    if slot['boss_slot'] and not profile['encounter_descriptor']:
+        reasons.append('boss slot requires an encounter descriptor')
+    descriptor = None
+    if profile['is_boss']:
+        if encounters is not None:
+            reference = profile['encounter_descriptor']
+            descriptor = encounters.get(reference) if reference else None
+            if descriptor is None:
+                reasons.append(f"no encounter descriptor {reference!r} defined")
+    reasons.extend(_constraint_reasons(slot, profile, descriptor))
+    return {'status': 'denied' if reasons else 'legal', 'reasons': sorted(set(reasons))}
+
+
+def audit(document, slot_uids=None, identities=None):
+    """Evaluate candidate pairs and return a deterministic machine-readable report."""
+    document = validate_document(document)
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    slots = [s for s in document['slots'] if slot_uids is None or s['uid'] in slot_uids]
+    profiles = [p for p in document['profiles'] if identities is None or p['identity'] in identities]
+    decisions = []
+    admitted = {p['identity']: [] for p in profiles}
+    denied = {p['identity']: [] for p in profiles}
+    reasons = {}
+    for slot in sorted(slots, key=lambda s: s['uid']):
+        for profile in sorted(profiles, key=lambda p: p['identity']):
+            result = evaluate(slot, profile, encounters)
+            row = {'slot_uid': slot['uid'], 'slot_label': slot['label'], 'identity': profile['identity'], **result}
+            decisions.append(row)
+            if result['status'] == 'legal':
+                admitted[profile['identity']].append(slot['uid'])
+            else:
+                denied[profile['identity']].append(slot['uid'])
+                for reason in result['reasons']:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+    return {
+        'schema': SCHEMA,
+        'slots_evaluated': len(slots),
+        'identities_evaluated': len(profiles),
+        'decisions': decisions,
+        'admitted': {k: v for k, v in admitted.items() if v},
+        'denied': {k: v for k, v in denied.items() if v},
+        'denied_reasons': dict(sorted(reasons.items())),
+        'unplaced_identities': sorted(p['identity'] for p in profiles if not admitted[p['identity']]),
+        'boss_slots': sorted(s['uid'] for s in slots if s['boss_slot']),
+    }
+
+
+def coverage_report(document, top_reasons=3):
+    """Return a deterministic per-identity/per-slot coverage summary."""
+    document = validate_document(document)
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    slots = sorted(document['slots'], key=lambda s: s['uid'])
+    profiles = sorted(document['profiles'], key=lambda p: p['identity'])
+    identity_coverage = {}
+    slot_coverage = {}
+    for slot in slots:
+        slot_coverage[slot['uid']] = {
+            'uid': slot['uid'],
+            'label': slot['label'],
+            'boss_slot': slot['boss_slot'],
+            'admitted_identities': 0,
+            'admitted_identity_list': [],
+        }
+    unresolved_bosses = []
+    for profile in profiles:
+        identity = profile['identity']
+        reference = profile['encounter_descriptor']
+        descriptor = encounters.get(reference) if reference else None
+        has_valid_descriptor = descriptor is not None and descriptor['identity'] == identity
+        if profile['is_boss'] and not has_valid_descriptor:
+            unresolved_bosses.append(identity)
+        reasons = {}
+        admitted_uids = []
+        for slot in slots:
+            result = evaluate(slot, profile, encounters)
+            if result['status'] == 'legal':
+                admitted_uids.append(slot['uid'])
+                slot_coverage[slot['uid']]['admitted_identities'] += 1
+                slot_coverage[slot['uid']]['admitted_identity_list'].append(identity)
+            else:
+                for reason in result['reasons']:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+        ordered = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        identity_coverage[identity] = {
+            'identity': identity,
+            'is_boss': profile['is_boss'],
+            'has_valid_descriptor': has_valid_descriptor,
+            'admitted_slots': len(admitted_uids),
+            'admitted_slot_uids': admitted_uids,
+            'top_denial_reasons': [{'reason': reason, 'count': count} for reason, count in ordered[:top_reasons]],
+        }
+    return {
+        'schema': SCHEMA,
+        'encounter_schema': ENCOUNTER_SCHEMA,
+        'slots_evaluated': len(slots),
+        'identities_evaluated': len(profiles),
+        'identity_coverage': identity_coverage,
+        'slot_coverage': slot_coverage,
+        'unresolved_bosses': unresolved_bosses,
+    }
+
+
+
+def compatibility_report(document, encounters=None, top_reasons=3):
+    """Return per-identity/per-slot hard-compatibility without evidence gates.
+
+    This separates "cannot ever fit this concrete slot" from "not yet accepted":
+    a slot counts as compatible when no placement constraint is violated, even
+    while `evaluate` still denies it for missing gates/evidence.
+    """
+    document = validate_document(document)
+    if encounters is None:
+        encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    slots = sorted(document['slots'], key=lambda s: s['uid'])
+    profiles = sorted(document['profiles'], key=lambda p: p['identity'])
+    identity_compatibility = {}
+    slot_compatibility = {
+        slot['uid']: {'uid': slot['uid'], 'label': slot['label'], 'boss_slot': slot['boss_slot'],
+                      'compatible_identities': 0, 'compatible_identity_list': []}
+        for slot in slots
+    }
+    for profile in profiles:
+        compatible = []
+        incompatible = []
+        reasons = {}
+        for slot in slots:
+            violations = compatibility(slot, profile, encounters)
+            if violations:
+                incompatible.append(slot['uid'])
+                for reason in violations:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+            else:
+                compatible.append(slot['uid'])
+                slot_compatibility[slot['uid']]['compatible_identities'] += 1
+                slot_compatibility[slot['uid']]['compatible_identity_list'].append(profile['identity'])
+        ordered = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        identity_compatibility[profile['identity']] = {
+            'identity': profile['identity'],
+            'is_boss': profile['is_boss'],
+            'compatible_slots': len(compatible),
+            'compatible_slot_uids': compatible,
+            'incompatible_slots': len(incompatible),
+            'top_incompatible_reasons': [{'reason': reason, 'count': count} for reason, count in ordered[:top_reasons]],
+        }
+    return {
+        'schema': SCHEMA,
+        'slots_evaluated': len(slots),
+        'identities_evaluated': len(profiles),
+        'identity_compatibility': identity_compatibility,
+        'slot_compatibility': slot_compatibility,
+        'unplaceable_identities': sorted(
+            profile['identity'] for profile in profiles
+            if not identity_compatibility[profile['identity']]['compatible_slots']),
+    }
+
+
+def slot_from_spawn_row(row, terrain='ground', evidence=None):
+    """Adapt a P1 spawn row (spawn_data shape) into a default-deny slot record."""
+    return normalize_slot({
+        'uid': row['uid'],
+        'label': row.get('label', str(row['uid'])),
+        'stage': row.get('stage', 0),
+        'terrain': terrain,
+        'radius': row.get('radius', 0),
+        'first_day': row.get('first_day', 1),
+        'respawn_days': row.get('respawn_days', 0),
+        'protected': row.get('protected', False),
+        'source_identity': row.get('source', row.get('original')),
+        'evidence': evidence or {},
+    })
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--document', type=Path, required=True, help='placement/encounter JSON document')
+    parser.add_argument('--summary', action='store_true', help='print counts only, not every decision')
+    args = parser.parse_args(argv)
+    report = audit(load_document(args.document))
+    if args.summary:
+        print(json.dumps({key: report[key] for key in
+                          ('slots_evaluated', 'identities_evaluated', 'admitted', 'denied_reasons',
+                           'unplaced_identities', 'boss_slots')}, indent=2))
+    else:
+        print(json.dumps(report, indent=2))
+    return 1 if report['unplaced_identities'] and not report['admitted'] else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

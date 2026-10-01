@@ -6,6 +6,9 @@
 #include "pc_p2_bigtreasure_motion.h"
 #include "pc_p2_retail_player.h"
 
+// Release builds pass -DNDEBUG; force assertions (and their embedded
+// side effects) on so this engine-free gate is not vacuous under ctest.
+#undef NDEBUG
 #include <cassert>
 #include <cstdio>
 #include <fstream>

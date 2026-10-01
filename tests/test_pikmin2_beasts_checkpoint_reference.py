@@ -1,5 +1,6 @@
 from copy import deepcopy
 import unittest
+import json
 from experimental.pikmin2_beasts_checkpoint_reference import BeastsReferenceAdapter
 
 def party(red=20,purple=0):return [dict(species='red',maturity=0) for _ in range(red)]+[dict(species='purple',maturity=1) for _ in range(purple)]
@@ -9,6 +10,34 @@ def context(pop=0):return dict(global_plus_cave_purple=pop,spawned_flowers=FLOWE
 def events():return [dict(id=f'conversion:{i}',flower=FLOWERS[i//5],input='red') for i in range(10)]
 
 class BeastsCheckpointReferenceTests(unittest.TestCase):
+    def test_history_json_roundtrip_and_tampering(self):
+        second=self.floor2()
+        third=self.adapter.apply(second,self.adapter.token(second),party(10,10),.5,second['receipts'],events(),{})
+        restored=json.loads(json.dumps(third))
+        self.assertEqual(self.adapter.validate(restored),third)
+        for field,value in [('id','different'),('floor',1),('floor',True),('flower','unknown'),
+                            ('flower',[]),('input','white'),('input',{}),('extra',1)]:
+            bad=deepcopy(restored);bad['conversions']['conversion:0'][field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(ValueError):self.adapter.validate(bad)
+        for value in (None,[],{},'record'):
+            bad=deepcopy(restored);bad['conversions']['conversion:0']=value
+            with self.subTest(record=value),self.assertRaises(ValueError):self.adapter.validate(bad)
+        bad=deepcopy(restored);bad['conversions']['sixth']=dict(id='sixth',floor=2,flower=FLOWERS[0],input='red')
+        with self.assertRaisesRegex(ValueError,'capacity'):self.adapter.validate(bad)
+        bad=deepcopy(second);bad['conversions']=deepcopy(third['conversions'])
+        with self.assertRaisesRegex(ValueError,'boundary'):self.adapter.validate(bad)
+        for value in (None,[],42):
+            with self.subTest(state=value),self.assertRaises(ValueError):self.adapter.validate(value)
+            bad=deepcopy(second);bad['context']=value
+            with self.subTest(context=value),self.assertRaises(ValueError):self.adapter.validate(bad)
+
+    def test_failed_floor2_history_and_suppressed_spawn(self):
+        second=self.floor2()
+        failed=self.adapter.apply(second,self.adapter.token(second),[],0,second['receipts'],events(),{})
+        self.assertEqual(self.adapter.validate(json.loads(json.dumps(failed))),failed)
+        self.assertEqual(self.adapter.apply(failed,self.adapter.token(second),[],0,second['receipts'],events(),{}),failed)
+        bad=deepcopy(failed);bad['context']=context(20);bad['budgets']={}
+        with self.assertRaisesRegex(ValueError,'suppressed'):self.adapter.validate(bad)
     def setUp(self):
         self.adapter=BeastsReferenceAdapter(audit(),'a'*64,{1:{'treasure:floor1:key':50},2:{},3:{}})
         self.initial=self.adapter.initial('trip1',party(),1,{'old':480})

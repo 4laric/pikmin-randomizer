@@ -1,4 +1,9 @@
+#include "pc_p2_ship.h"
+#include "pc_randomizer.h"
 #include "ItemAI.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
 #include "BaseInf.h"
 #include "BombItem.h"
 #include "Boss.h"
@@ -758,6 +763,9 @@ void GoalAI::BootEmit::act(AICreature* item)
 		item->playEventSound(item, SE_CONTAINER_PIKIBORN);
 		seed->startAI(0);
 		seed->mParentOnion = obj;
+#if defined(PIKI_PC_PORT)
+		seed->mPcOwner = obj->mPcOwner;
+#endif
 		C_SAI(seed)->start(seed, PikiHeadAI::PIKIHEAD_Flying);
 		return;
 	}
@@ -770,6 +778,7 @@ void GoalAI::BootEmit::act(AICreature* item)
 	CI_LOOP(it)
 	{
 		PikiHeadItem* item = (PikiHeadItem*)*it;
+        if (pc_randomizer_purple_campaign() && (item->mP2Purple || item->mP2White)) continue;
 		f32 dist           = qdist2(item->mSRT.t.x, item->mSRT.t.z, obj->mSRT.t.x, obj->mSRT.t.z);
 		if (dist > seeddist) {
 			seeddist = dist;
@@ -795,6 +804,7 @@ void GoalAI::BootEmit::act(AICreature* item)
 		CI_LOOP(pikiIt)
 		{
 			Piki* item = (Piki*)*pikiIt;
+            if (pc_p2_ship_special(item)) continue;
 			f32 dist   = qdist2(item->mSRT.t.x, item->mSRT.t.z, obj->mSRT.t.x, obj->mSRT.t.z);
 			if (dist > pikidist) {
 				pikidist = dist;
@@ -857,7 +867,13 @@ void GoalAI::EmitPiki::act(AICreature* item)
 			ERROR(buf);
 		}
 
+#if defined(PIKI_PC_PORT)
+		// VS: con el campo del dueño lleno, la semilla se queda en su cebolla.
+		const bool vsFull = pc_vs_active() && obj->mPcOwner >= 0 && pcVsFieldPikis(obj->mPcOwner) >= pcVsFieldLimit();
+		PikiHeadItem* seed = vsFull ? nullptr : static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
+#else
 		PikiHeadItem* seed = static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
+#endif
 		GameStat::bornPikis.inc(obj->mOnionColour);
 		if (seed) {
 			Vector3f pos = obj->mSRT.t;
@@ -869,6 +885,9 @@ void GoalAI::EmitPiki::act(AICreature* item)
 			item->playEventSound(item, SE_CONTAINER_PIKIBORN);
 			seed->startAI(0);
 			seed->mParentOnion = obj;
+#if defined(PIKI_PC_PORT)
+			seed->mPcOwner = obj->mPcOwner;
+#endif
 			C_SAI(seed)->start(seed, PikiHeadAI::PIKIHEAD_Flying);
 		} else {
 			pikiInfMgr.incPiki(obj->mOnionColour, Leaf);

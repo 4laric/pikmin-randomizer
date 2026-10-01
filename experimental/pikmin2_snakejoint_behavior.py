@@ -18,6 +18,7 @@ file `p2-snagret-bank.txt` is materialized from the batch-1 `snagret.json`
 manifest because the snagret install stores the actor config/poses but not the
 clip listing the native bank loader consumes.
 """
+from experimental.pikmin2_animation import frames_trailer
 import argparse
 import json
 import os
@@ -79,7 +80,9 @@ def bank_text(manifest):
                               for frame, kind in clip.get('events', [])) or '-'
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f"clip {name} {clip['name']} {clip.get('source_frames', 0)} "
-                        f"{events} poses {poses} status {clip.get('status', '')}")
+                        f"{events} poses {poses} status {clip.get('status', '')}"
+                        + frames_trailer([p for p in clip.get('poses', []) if 'file' in p],
+                                         clip.get('source_frames', 0)))
     return '\n'.join(rows) + '\n'
 
 
@@ -174,6 +177,15 @@ def _species_checks(text, snake):
             eat_in_window = False
 
     emerged = bool({'appear1', 'appear2'} & set(states))
+    damage_rejected = bool(re.search(
+        rf'P2_SNAKEJOINT_DAMAGE_REJECTED generator={generator} state=\w+', text))
+    damage_accepted = bool(re.search(
+        rf'P2_SNAKEJOINT_DAMAGE_ACCEPTED generator={generator} state=\w+', text))
+    joint_gap_measured = bool(re.search(
+        rf'P2_SNAKEJOINT_JOINTS generator={generator} species={species} '
+        rf'source_joints=6 host_joints=1 pose=clip_override', text))
+    natural_death = bool(re.search(
+        rf'P2_SNAKEJOINT_DEAD generator={generator} source_id=\d+ health=0', text))
     checks = dict(
         identity=bool(re.search(
             rf'P2_SNAKEJOINT_BIND generator={generator} species={species} '
@@ -194,8 +206,12 @@ def _species_checks(text, snake):
         # SnakeCrow is stationary by source (fp06=0); motion is only required of
         # the mobile SnakeWhole.
         autonomous_motion=(spread > 5.0) or species == 'SnakeCrow',
+        damage_rejected=damage_rejected,
+        damage_accepted=damage_accepted,
+        joint_gap_measured=joint_gap_measured,
     )
-    return checks, dict(bites=bites, eats=eats, states=states, motion_spread=spread)
+    return checks, dict(bites=bites, eats=eats, states=states, motion_spread=spread,
+                        natural_death=natural_death)
 
 
 def validate(text, code=0):
@@ -204,17 +220,22 @@ def validate(text, code=0):
     window = bool(re.search(
         r'Experimental preview window set to 960x540 windowed and centered', text))
     no_extinction = not re.search(r'Extinction', text, re.IGNORECASE)
+    informational = {'damage_accepted'}
+    snakecrow_dead = bool(re.search(
+        r'P2_SNAKEJOINT_DEAD generator=376001 source_id=\d+ health=0', text))
     species_results = {}
     for snake in SNAKES:
         checks, detail = _species_checks(text, snake)
         checks['window'] = window
         checks['no_extinction'] = no_extinction
         species_results[snake['species']] = dict(
-            passed=all(checks.values()), checks=checks, **detail)
+            passed=all(value for key, value in checks.items()
+                       if key not in informational),
+            checks=checks, **detail)
     passed = window and no_extinction and all(
         result['passed'] for result in species_results.values())
     return dict(passed=passed, window=window, no_extinction=no_extinction,
-                species=species_results, exit_code=code,
+                species=species_results, exit_code=code, snakecrow_dead=snakecrow_dead,
                 unmeasured=['shared SnakeJointMgr bodyjnt3-bodyjnt8 spine matrices',
                             'source P2 burrow model hide / invulnerability flags',
                             'SnakeCrow White Flower Garden mWFGHealth (fp31) override',

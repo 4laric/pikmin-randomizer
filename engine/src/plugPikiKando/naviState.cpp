@@ -1,11 +1,23 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_escape_state.h"
+#include "pc_p2_demon_bridge.h"
+#endif
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_whistle.h"
 #include "pc_whistle_pluck.h"
 #include <chrono>
+#endif
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
 #endif
 #include <cstdlib>
 #include <cstdio>
@@ -26,6 +38,9 @@
 #include "NaviMgr.h"
 #include "Pcam/Camera.h"
 #include "Pcam/CameraManager.h"
+#if defined(PIKI_PC_PORT)
+static bool pcOnyonBusyByOther(Navi* navi, GoalItem* onyon);
+#endif
 #include "Pellet.h"
 #include "PikiAI.h"
 #include "PikiHeadItem.h"
@@ -77,9 +92,22 @@ NaviState* NaviStateMachine::getNaviState(Navi* navi)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+void NaviStateMachine::transit(Navi* navi, int next)
+{
+	pc_demon_before_transition(navi, next);
+	pc_demon_drop_before_transition(navi, next);
+	StateMachine<Navi>::transit(navi, next);
+}
+#endif
+
 void NaviStateMachine::init(Navi* navi)
 {
 	create(NAVISTATE_Count);
+#if defined(PIKI_PC_PORT)
+	registerState(pc_demon_drop_state_create());
+	registerState(pc_demon_escape_state_create());
+#endif
 	registerState(new NaviWalkState());
 	registerState(new NaviStuckState());
 	registerState(new NaviFlickState());
@@ -601,7 +629,12 @@ void NaviWalkState::exec(Navi* navi)
 	}
 
 	for (int i = 0; i < 3; i++) {
+#if defined(PIKI_PC_PORT)
+		// VS: cada capitán solo abre sus cebollas.
+		GoalItem* onyon = itemMgr->pcGetContainer(i, navi->mNaviID);
+#else
 		GoalItem* onyon = itemMgr->getContainer(i);
+#endif
 		if (!onyon || pc_p2_preview_is_pod(onyon)) {
 			continue;
 		}
@@ -614,8 +647,13 @@ void NaviWalkState::exec(Navi* navi)
 		if (diff.length() <= navi->getSize() + coll->mRadius) {
 			onyon->setSpotActive(true);
 			if (navi->mKontroller->keyClick(KBBTN_A)) {
+#if defined(PIKI_PC_PORT)
+				if (pcOnyonBusyByOther(navi, onyon)) {
+					continue; // el otro Olimar ya tiene abierta esta cebolla
+				}
+#endif
 				navi->mGoalItem = onyon;
-				rumbleMgr->start(RUMBLE_Unk2, 0, nullptr);
+				rumbleMgr->start(RUMBLE_Unk2, navi->mNaviID, nullptr);
 				transit(navi, NAVISTATE_Container);
 				return;
 			}
@@ -749,7 +787,7 @@ void NaviWalkState::exec(Navi* navi)
 #if defined(PIKI_PC_PORT)
 		// Third place that chooses a Pikmin to throw. Same two-pass colour
 		// preference as the others: the chosen colour first, then everyone.
-		const int preferredColor = pc_preferred_throw_color();
+		const int preferredColor = pc_preferred_throw_color_for(navi);
 		for (int pass = 0; pass < 2; pass++) {
 			const bool restrict = (pass == 0) && (preferredColor >= 0);
 			if (pass == 1 && (nearestPiki != nullptr || preferredColor < 0)) {
@@ -808,7 +846,11 @@ void NaviWalkState::exec(Navi* navi)
 			{
 				Creature* teki = *tekiIter;
 				if (!roughCull(teki, navi, teki->getCentreSize() + navi->getCentreSize() + 10.0f) && teki->isAlive() && teki->isVisible()
-				    && !teki->isFlying() && teki->isOrganic()) {
+				    && !teki->isFlying() && teki->isOrganic()
+#if defined(PIKI_PC_PORT)
+				    && !pc_p2_breadbug_teki_untargetable(teki, "navi_attack_entry") // #898
+#endif
+				) {
 					Vector3f diff = teki->mSRT.t - navi->mSRT.t;
 					f32 unused    = atan2f(diff.x, diff.z);
 					if (diff.length() <= teki->getCentreSize() + navi->getCentreSize() + 10.0f) {
@@ -1012,6 +1054,25 @@ void NaviUfoState::procAnimMsg(Navi* navi, MsgAnim* msg)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+// Cooperativo: una cebolla solo atiende a un Olimar a la vez.
+static bool pcOnyonBusyByOther(Navi* navi, GoalItem* onyon)
+{
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+		Navi* other = naviMgr->getNavi(ni);
+		if (other && other != navi && other->getCurrState()->getID() == NAVISTATE_Container && other->mGoalItem == onyon) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static zen::DrawContainer* pcContainerWindowFor(Navi* navi)
+{
+	return (navi->mNaviID == 1 && containerWindow2) ? containerWindow2 : containerWindow;
+}
+#endif
+
 NaviContainerState::NaviContainerState()
     : NaviState(NAVISTATE_Container)
 {
@@ -1038,7 +1099,11 @@ void NaviContainerState::init(Navi* navi)
 
 	int totalExitPendingPikis = 0;
 	for (int i = 0; i < 3; i++) {
+#if defined(PIKI_PC_PORT)
+		GoalItem* goal = itemMgr->pcGetContainer(i, navi->mNaviID);
+#else
 		GoalItem* goal = itemMgr->getContainer(i);
+#endif
 		if (goal) {
 			totalExitPendingPikis += goal->mPikisToExit;
 		}
@@ -1046,12 +1111,26 @@ void NaviContainerState::init(Navi* navi)
 
 	GameStat::update();
 	PRINT("START CONAINER WINDOW ***\n");
+#if defined(PIKI_PC_PORT)
+	// Cooperativo: cada Olimar tiene su ventana y su mando; el mundo no se
+	// pausa (el otro sigue jugando) y el HUD no se oculta.
+	zen::DrawContainer* win = pcContainerWindowFor(navi);
+	const bool coop         = containerWindow2 != nullptr;
+	if (!coop) gameflow.mGameInterface->message(MOVIECMD_HideHUD, 0);
+	// VS: el campo y el tope son los del jugador (mitad del límite cada uno).
+	const int fieldNow = pc_vs_active() ? pcVsFieldPikis(navi->mNaviID) : totalExitPendingPikis + GameStat::mapPikis;
+	const int fieldMax = pc_vs_active() ? pcVsFieldLimit() : int(AICONST.mMaxPikisOnField());
+	win->start((zen::DrawContainer::containerType)navi->mGoalItem->mOnionColour, storedPikisAvailable, 10000,
+	           numOnionColoredPikis, fieldMax, fieldNow, fieldMax);
+	if (!coop) gameflow.mPauseAll = TRUE;
+#else
 	gameflow.mGameInterface->message(MOVIECMD_HideHUD, 0);
 	containerWindow->start((zen::DrawContainer::containerType)navi->mGoalItem->mOnionColour, storedPikisAvailable, 10000,
 	                       numOnionColoredPikis, AICONST.mMaxPikisOnField(), totalExitPendingPikis + GameStat::mapPikis,
 	                       AICONST.mMaxPikisOnField());
 	PRINT("FINISH START CONAINER WINDOW ***\n");
 	gameflow.mPauseAll = TRUE;
+#endif
 	mContainerWinEvent = 0;
 	mContainerWinCount = 0;
 }
@@ -1095,8 +1174,13 @@ void NaviContainerState::onCloseWindow()
 void NaviContainerState::exec(Navi* navi)
 {
 	int signedPikiCount;
+#if defined(PIKI_PC_PORT)
+	if (pcContainerWindowFor(navi)->update(signedPikiCount)) {
+		if (!containerWindow2) gameflow.mGameInterface->message(MOVIECMD_ShowHUD, 0);
+#else
 	if (containerWindow->update(signedPikiCount)) {
 		gameflow.mGameInterface->message(MOVIECMD_ShowHUD, 0);
+#endif
 		PRINT("result is %d\n", signedPikiCount);
 		if (signedPikiCount > 0) {
 			enterPikis(navi, signedPikiCount);
@@ -1167,7 +1251,11 @@ void NaviContainerState::exitPikis(Navi* navi, int countToExit)
 void NaviContainerState::cleanup(Navi* navi)
 {
 	PRINT("cleanup\n");
+#if defined(PIKI_PC_PORT)
+	if (!containerWindow2) gameflow.mPauseAll = FALSE;
+#else
 	gameflow.mPauseAll = FALSE;
+#endif
 	navi->mGoalItem->setSpotActive(true);
 }
 
@@ -1633,7 +1721,7 @@ void NaviGeyzerState::procBounceMsg(Navi* navi, MsgBounce* msg)
 	if (mGeyserState != 0) {
 		mGeyserState = 3;
 		mGetupDelayTimer = 0.3f + (0.2f * gsys->getRand(1.0f));
-		rumbleMgr->start(RUMBLE_Unk10, 0, nullptr);
+		rumbleMgr->start(RUMBLE_Unk10, navi->mNaviID, nullptr);
 	}
 }
 
@@ -1688,7 +1776,11 @@ void NaviGatherState::init(Navi* navi)
 	int kEffID = (navi->mNaviID == 0) ? KandoEffect::NaviWhistle0 : KandoEffect::NaviWhistle1;
 	EffectParm parm(navi->mSRT.t);
 	UtEffectMgr::cast(kEffID, parm);
+#if defined(PIKI_PC_PORT)
+	UtEffectMgr::cast(navi->mNaviID == 0 ? KandoEffect::NaviFue0 : KandoEffect::NaviFue1, parm);
+#else
 	UtEffectMgr::cast(KandoEffect::NaviFue0, parm);
+#endif
 	mWhistleEffectsStopped = false;
 
 #if defined(PIKI_PC_PORT)
@@ -1699,12 +1791,12 @@ void NaviGatherState::init(Navi* navi)
 	navi->mWhistleRadiusFrac = pc_whistle_fraction(0.0f);
 	navi->mWhistleCircleMode = 2;
 	mWhistleCallRadius = (C_NAVI_PARM(navi, mWhistleMinRadius)
-	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
+	    + navi->mWhistleRadiusFrac * (NAVI_WHISTLE_MAX_RADIUS(navi) - C_NAVI_PARM(navi, mWhistleMinRadius)))
 	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 	if (!gameflow.mPauseAll) navi->callPikis(mWhistleCallRadius, mTapState.recallWorkers);
-    mNextWhistlePluckTime = pc_whistle_pluck(navi, mWhistleCallRadius) ? PC_WHISTLE_PLUCK_INTERVAL : 0.0f;
+	mNextWhistlePluckTime = pc_whistle_pluck(navi, mWhistleCallRadius) ? PC_WHISTLE_PLUCK_INTERVAL : 0.0f;
 #endif
-	rumbleMgr->start(RUMBLE_Unk3, 0, nullptr);
+	rumbleMgr->start(RUMBLE_Unk3, navi->mNaviID, nullptr);
 }
 
 /**
@@ -1731,6 +1823,11 @@ void NaviGatherState::exec(Navi* navi)
 			Vector3f diff = coll->mCentre - navi->getCentre();
 			f32 test      = diff.length();
 			if (test <= navi->getSize() + coll->mRadius && navi->mKontroller->keyClick(KeyConfig::_instance->mSetCursorKey.mBind)) {
+#if defined(PIKI_PC_PORT)
+				if (pcOnyonBusyByOther(navi, onyon)) {
+					continue;
+				}
+#endif
 				navi->mGoalItem = onyon;
 				transit(navi, NAVISTATE_Container);
 				return;
@@ -1752,9 +1849,9 @@ void NaviGatherState::exec(Navi* navi)
 	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 	if (!gameflow.mPauseAll) {
 		navi->callPikis(mWhistleCallRadius, (down && mTapState.recallWorkers) || pc_whistle_recall_workers(navi->mWhistleTimer, down));
-        if (down && navi->mWhistleTimer >= mNextWhistlePluckTime && pc_whistle_pluck(navi, mWhistleCallRadius)) {
-            mNextWhistlePluckTime = navi->mWhistleTimer + PC_WHISTLE_PLUCK_INTERVAL;
-        }
+		if (down && navi->mWhistleTimer >= mNextWhistlePluckTime && pc_whistle_pluck(navi, mWhistleCallRadius)) {
+			mNextWhistlePluckTime = navi->mWhistleTimer + PC_WHISTLE_PLUCK_INTERVAL;
+		}
 	} else {
 		navi->callDebugs(mWhistleCallRadius);
 	}
@@ -1788,9 +1885,9 @@ void NaviGatherState::exec(Navi* navi)
 			navi->mWhistleTimer = C_NAVI_PARM(navi, mWhistleExpandTime);
 
 			if (!gameflow.mPauseAll) {
-				navi->callPikis(C_NAVI_PARM(navi, mWhistleMaxRadius) * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE));
+				navi->callPikis(NAVI_WHISTLE_MAX_RADIUS(navi) * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE));
 			} else {
-				navi->callDebugs(C_NAVI_PARM(navi, mWhistleMaxRadius));
+				navi->callDebugs(NAVI_WHISTLE_MAX_RADIUS(navi));
 			}
 			navi->mWhistleRadiusFrac = navi->mWhistleTimer / C_NAVI_PARM(navi, mWhistleExpandTime);
 			navi->mWhistleTimer      = 0.0f;
@@ -1802,7 +1899,7 @@ void NaviGatherState::exec(Navi* navi)
 	if (navi->mWhistleCircleMode == 1 && up) {
 		f32 scale                = navi->mWhistleTimer / C_NAVI_PARM(navi, mWhistleExpandTime);
 		navi->mWhistleRadiusFrac = scale;
-		scale *= (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius));
+		scale *= (NAVI_WHISTLE_MAX_RADIUS(navi) - C_NAVI_PARM(navi, mWhistleMinRadius));
 		scale += C_NAVI_PARM(navi, mWhistleMinRadius);
 
 		check                    = true;
@@ -1843,7 +1940,11 @@ void NaviGatherState::exec(Navi* navi)
 		seSystem->stopPlayerSe(SE_GATHER);
 		mWhistleEffectsStopped = true;
 		utEffectMgr->kill(navi->mNaviID == 0 ? KandoEffect::NaviWhistle0 : KandoEffect::NaviWhistle1);
+#if defined(PIKI_PC_PORT)
+		utEffectMgr->kill(navi->mNaviID == 0 ? KandoEffect::NaviFue0 : KandoEffect::NaviFue1);
+#else
 		utEffectMgr->kill(KandoEffect::NaviFue0);
+#endif
 	}
 
 	if (check || navi->mWhistleTimer > C_NAVI_PARM(navi, mWhistleHoldTime)) {
@@ -1886,11 +1987,17 @@ void NaviGatherState::procAnimMsg(Navi* navi, MsgAnim* msg)
  */
 void NaviGatherState::cleanup(Navi* navi)
 {
-	rumbleMgr->stop(3, 0);
+	rumbleMgr->stop(3, navi->mNaviID);
 	int id = (navi->mNaviID == 0) ? 1 : 2;
 	seSystem->stopPlayerSe(SE_GATHER);
 	utEffectMgr->kill(id);
+#if defined(PIKI_PC_PORT)
+	// 7 = NaviFue0 (P1), 8 = NaviFue1 (P2): si no, el efecto del silbato de
+	// P2 se queda encendido para siempre.
+	utEffectMgr->kill(navi->mNaviID == 0 ? KandoEffect::NaviFue0 : KandoEffect::NaviFue1);
+#else
 	utEffectMgr->kill(7);
+#endif
 }
 
 /**
@@ -1988,6 +2095,15 @@ void NaviThrowWaitState::restart(Navi* navi)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+/// Mod "Throw Speed": cuánto se alarga el alcance para coger (nunca se acorta).
+static f32 pcThrowReachScale()
+{
+	const f32 scale = pc_settings_get_throw_speed_scale();
+	return scale > 1.0f ? scale : 1.0f;
+}
+#endif
+
 void NaviThrowWaitState::init(Navi* navi)
 {
 	navi->mThrowHoldTime = 0.0f;
@@ -2004,7 +2120,7 @@ void NaviThrowWaitState::init(Navi* navi)
 	// nobody in range, the original unrestricted search. Without the second
 	// pass, pointing the wheel at a colour standing further away would leave
 	// the captain grabbing nothing.
-	const int preferredColor = pc_preferred_throw_color();
+	const int preferredColor = pc_preferred_throw_color_for(navi);
 	for (int pass = 0; pass < 2; pass++) {
 		const bool restrict = (pass == 0) && (preferredColor >= 0);
 		if (pass == 1 && (throwPiki != nullptr || preferredColor < 0)) {
@@ -2068,7 +2184,14 @@ void NaviThrowWaitState::init(Navi* navi)
 		fflush(stderr);
 	}
 #endif
+#if defined(PIKI_PC_PORT)
+	// Mod "Throw Speed": por encima del 100 % también se alarga el alcance
+	// para coger. Si no, con el grupo detrás cada Pikmin tiene que andar hasta
+	// la mano y esa caminata, no la animación, marca la cadencia.
+	if (maxDist <= C_NAVI_PARM(navi, mPluckGrabRange) * pcThrowReachScale()) {
+#else
 	if (maxDist <= C_NAVI_PARM(navi, mPluckGrabRange)) {
+#endif
 		mHeldThrowPiki = throwPiki;
 	} else {
 		mPendingThrowPiki = throwPiki;
@@ -2101,6 +2224,13 @@ void NaviThrowWaitState::procAnimMsg(Navi* navi, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_Action0:
 	{
+#if defined(PIKI_PC_PORT)
+		// Captured by a P2 captor since the grab began (see exec).
+		if (!mHeldThrowPiki || !p2captivenavi::keepThrowPick(mHeldThrowPiki->mNavi != nullptr)) {
+			p2captivenavi::note("grab_key_lost_captain");
+			break;
+		}
+#endif
 		mIsHoldingThrowPiki = true;
 		mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Hanged);
 		break;
@@ -2132,12 +2262,62 @@ void NaviThrowWaitState::lockHangPiki(Navi* navi)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Alcance efectivo para recoger el Pikmin que viene a la mano.
+ *
+ * Mod "Throw While Moving". El relevo se cierra cuando el Pikmin llega a
+ * mPluckGrabRange del capitán, pero si el capitán anda, el Pikmin persigue un
+ * blanco que se mueve y el relevo tarda o vence el temporizador de 3 s. Con el
+ * mod, el alcance crece con la velocidad del capitán, que es justo el terreno
+ * que el Pikmin no consigue recuperar.
+ */
+static f32 pcGrabRange(Navi* navi)
+{
+	f32 range = C_NAVI_PARM(navi, mPluckGrabRange) * pcThrowReachScale();
+	if (pc_settings_get_throw_while_moving()) {
+		Vector3f vel = navi->mVelocity;
+		vel.y        = 0.0f;
+		range += vel.length() * 0.5f;
+	}
+	return range;
+}
+
+/// Distancia al Pikmin: con el mod, solo en horizontal, para que una cuesta
+/// no cuente como distancia que el Pikmin tiene que recuperar.
+static f32 pcGrabDist(immut Vector3f& diff)
+{
+	if (pc_settings_get_throw_while_moving()) {
+		return speedy_sqrtf(diff.x * diff.x + diff.z * diff.z);
+	}
+	return diff.length();
+}
+#endif
+
 void NaviThrowWaitState::exec(Navi* navi)
 {
 	if (navi->demoCheck()) {
 		return;
 	}
 	navi->makeVelocity(false);
+
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, ...) may take the Pikmin this captain
+	// picked to throw while the grab is still pending: the capture clears
+	// Piki::mNavi. It is no longer this captain's to hang or throw; drop it and
+	// walk on (the grab transit to Hanged read the null captain, #972 crash
+	// follow-up).
+	if ((mHeldThrowPiki && !p2captivenavi::keepThrowPick(mHeldThrowPiki->mNavi != nullptr))
+	    || (mPendingThrowPiki && !p2captivenavi::keepThrowPick(mPendingThrowPiki->mNavi != nullptr))) {
+		p2captivenavi::note("throw_pick_lost_captain");
+		mHeldThrowPiki       = nullptr;
+		mPendingThrowPiki    = nullptr;
+		mIsHoldingThrowPiki  = false;
+		navi->mNextThrowPiki = nullptr;
+		transit(navi, NAVISTATE_Walk);
+		return;
+	}
+#endif
 
 #if defined(PIKI_PC_PORT)
 	// Swap only once the original grab has completed. Preserve the captain's
@@ -2172,8 +2352,8 @@ void NaviThrowWaitState::exec(Navi* navi)
 #endif
 			}
 			Vector3f diff = mPendingThrowPiki->mSRT.t - navi->mSRT.t;
-			f32 d         = diff.length();
-			if (d <= C_NAVI_PARM(navi, mPluckGrabRange)) {
+			f32 d         = pcGrabDist(diff);
+			if (d <= pcGrabRange(navi)) {
 				navi->mMotionSpeed = 30.0f;
 				navi->startMotion(PaniMotionInfo(PIKIANIM_ThrowWait, navi), PaniMotionInfo(PIKIANIM_ThrowWait));
 				navi->enableMotionBlend();
@@ -2187,6 +2367,24 @@ void NaviThrowWaitState::exec(Navi* navi)
 			return;
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	// A sujeto + cruceta izquierda/derecha (issue #43): el Pikmin en la mano
+	// vuelve al grupo y la selección se repite con el nuevo color.
+	if (pc_navi_step_throw_color(navi) && mHeldThrowPiki && mIsHoldingThrowPiki
+	    && mHeldThrowPiki->mColor != pc_preferred_throw_color_for(navi)) {
+		mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Normal);
+		init(navi);
+		if (!mHeldThrowPiki && !mPendingThrowPiki) {
+			transit(navi, NAVISTATE_Walk);
+			return;
+		}
+		if (mHeldThrowPiki) {
+			mIsHoldingThrowPiki = true;
+			mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Hanged);
+			lockHangPiki(navi);
+		}
+	}
+#endif
 	navi->mNextThrowPiki = mHeldThrowPiki;
 
 	navi->mThrowDistance = C_NAVI_PARM(navi, mThrowMinDistance)
@@ -2210,10 +2408,40 @@ void NaviThrowWaitState::exec(Navi* navi)
 		}
 	}
 
+#if defined(PIKI_PC_PORT)
+	// Mod "Cancel Throw With B": con A sujeto, B devuelve el Pikmin al grupo en
+	// vez de lanzarlo. Walk solo entra en ThrowWait con una pulsación nueva de
+	// A, así que soltarla después no lo vuelve a coger.
+	if (pc_settings_get_throw_cancel_b() && (mHeldThrowPiki || mPendingThrowPiki)
+	    && navi->mKontroller->keyClick(KeyConfig::_instance->mSetCursorKey.mBind)) {
+		Piki* piki = mHeldThrowPiki ? mHeldThrowPiki : mPendingThrowPiki;
+		if (piki->isAlive()) {
+			piki->mFSM->transit(piki, PIKISTATE_Normal);
+		}
+		mHeldThrowPiki    = nullptr;
+		mPendingThrowPiki = nullptr;
+		navi->mNextThrowPiki = nullptr;
+		transit(navi, NAVISTATE_Walk);
+		return;
+	}
+
+	// keyUp is level-triggered. A release while a nearby Pikmin is still
+	// waiting for the grab keyframe used to sit here until the ThrowWait
+	// animation reached KEY_Action0, which put a whole grab animation between
+	// every throw and capped the cadence (issues #37 / #40). Complete the grab
+	// on the spot instead: the Pikmin is in range and would have been attached
+	// a few frames later anyway.
+	if (navi->mKontroller->keyUp(KeyConfig::_instance->mThrowKey.mBind) && !mIsHoldingThrowPiki && mHeldThrowPiki
+	    && mHeldThrowPiki->getState() == PIKISTATE_Normal) {
+		mIsHoldingThrowPiki = true;
+		mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Hanged);
+		lockHangPiki(navi);
+	}
+#endif
 	if (navi->mKontroller->keyUp(KeyConfig::_instance->mThrowKey.mBind)
 #if defined(PIKI_PC_PORT)
-	    // keyUp is level-triggered: a quick release remains pending while the
-	    // Pikmin approaches and the grab animation finishes.
+	    // A pending (far) Pikmin still walking over remains pending until it
+	    // is actually grabbed.
 	    && mIsHoldingThrowPiki
 #endif
 	) {
@@ -2297,6 +2525,9 @@ void NaviThrowState::init(Navi* navi)
 	mHasThrownPiki = false;
 	seSystem->playPlayerSe(SE_THROW);
 	_11 = false;
+#if defined(PIKI_PC_PORT)
+	mQueuedThrowPress = false;
+#endif
 }
 
 /**
@@ -2316,7 +2547,7 @@ void NaviThrowState::procAnimMsg(Navi* navi, MsgAnim* msg)
 	case KEY_Action0:
 	{
 		mTargetPiki->mFSM->transit(mTargetPiki, 14);
-		rumbleMgr->start(RUMBLE_Unk2, 0, nullptr);
+		rumbleMgr->start(RUMBLE_Unk2, navi->mNaviID, nullptr);
 
 		// none of this is used for anything
 		f32 test = C_NAVI_PARM(navi, mThrowMinDistance)
@@ -2351,7 +2582,20 @@ void NaviThrowState::exec(Navi* navi)
 
 	navi->findNextThrowPiki();
 
+#if defined(PIKI_PC_PORT)
+	// keyClick is a one-tick edge. While mashing, the next press usually
+	// lands during the wind-up and was ignored, so every other throw was
+	// lost and the cadence felt capped (issues #37 / #40). Remember it and
+	// act on it the tick the Pikmin leaves the hand.
+	const bool throwClick = navi->mKontroller->keyClick(KeyConfig::_instance->mThrowKey.mBind);
+	if (!mHasThrownPiki && throwClick) {
+		mQueuedThrowPress = true;
+	}
+	if (mHasThrownPiki && (throwClick || mQueuedThrowPress)) {
+		mQueuedThrowPress = false;
+#else
 	if (mHasThrownPiki && navi->mKontroller->keyClick(KeyConfig::_instance->mThrowKey.mBind)) {
+#endif
 		if (navi->procActionButton()) {
 			return;
 		}
@@ -2572,10 +2816,15 @@ void NaviNukuState::init(Navi* navi)
 	navi->mPressedTimer = 0.0f;
 	mPullCountRemaining = C_NAVI_PARM(navi, mPluckLoopCount);
 	if (navi->mIsCursorVisible && !playerState->isChallengeMode() && !navi->mIsPlucking && playerState->mTotalPluckedPikiCount < 100) {
-		cameraMgr->mCamera->startMotion(cameraMgr->mCamera->mAttentionInfo);
+#if defined(PIKI_PC_PORT)
+		PcamCameraManager* naviCam = pcCameraMgrForNavi(navi->mNaviID);
+#else
+		PcamCameraManager* naviCam = cameraMgr;
+#endif
+		naviCam->mCamera->startMotion(naviCam->mCamera->mAttentionInfo);
 		BUGPRINT("> camera START MOTION | NUKU");
-		navi->mIsPlucking                    = true;
-		cameraMgr->mCamera->mControlsEnabled = false;
+		navi->mIsPlucking                  = true;
+		naviCam->mCamera->mControlsEnabled = false;
 	}
 
 	if (!AICONST._54()) {
@@ -2779,6 +3028,9 @@ void NaviNukuAdjustState::exec(Navi* navi)
 			piki->initColor(navi->mSproutToPluck->mSeedColor);
             if(navi->mSproutToPluck->mP2Purple)pc_p2_make_purple(piki);
             if(navi->mSproutToPluck->mP2White)pc_p2_make_white(piki);
+#if defined(PIKI_PC_PORT)
+			if (pc_vs_active() && navi->mSproutToPluck->mPcOwner >= 0) piki->mPlayerId = navi->mSproutToPluck->mPcOwner;
+#endif
 			piki->setFlower(navi->mSproutToPluck->mFlowerStage);
 			piki->resetPosition(navi->mSproutToPluck->mSRT.t);
 
@@ -3014,6 +3266,11 @@ void NaviAttackState::exec(Navi* navi)
 	CI_LOOP(it)
 	{
 		Creature* teki = *it;
+#if defined(PIKI_PC_PORT)
+		if (pc_p2_breadbug_teki_untargetable(teki, "navi_punch")) {
+			continue; // #898
+		}
+#endif
 		if (teki->isAlive() && teki->isVisible() && !teki->isFlying()) {
 			Vector3f diff = teki->mSRT.t - navi->mSRT.t;
 			f32 angle     = atan2f(diff.x, diff.z);
@@ -3026,7 +3283,7 @@ void NaviAttackState::exec(Navi* navi)
 						dir = navi->mSRT.t + dir * 11.0f;
 						effectMgr->create(EffectMgr::EFF_Navi_PunchA, dir, nullptr, nullptr);
 						effectMgr->create(EffectMgr::EFF_Navi_PunchB, dir, nullptr, nullptr);
-						rumbleMgr->start(RUMBLE_Unk2, 0, nullptr);
+						rumbleMgr->start(RUMBLE_Unk2, navi->mNaviID, nullptr);
 						navi->playEventSound(teki, SE_PIKI_ATTACK_HIT);
 						mAttackPhase = 2;
 					} else {
@@ -3192,6 +3449,52 @@ void NaviDeadState::restart(Navi* navi)
  */
 void NaviDeadState::init(Navi* navi)
 {
+#if defined(PIKI_PC_PORT)
+	// Lane 12 (#130) knockout roster sync: mark this captain down in the shared
+	// roster (source NaviMgr::informOrimaDead), which also re-points the active
+	// index at a survivor. The stage only finishes when every captain is down
+	// (source singleGS_MainGame.cpp:914-928 `mDeadNavis != 2`).
+	if (naviMgr) {
+		naviMgr->informOrimaDead(navi);
+	}
+	// Cooperativo: si el otro Olimar sigue vivo, este solo queda caído. La
+	// partida (y el permadeath) solo termina cuando caen los dos.
+	mDowned = false;
+	// Un Olimar muere con mHealth <= 1, no a 0: se deja a 0 para que isAlive()
+	// (enemigos, getNearestNavi, getMovieNavi) lo ignore, y el "otro vivo" se
+	// juzga por salud > 1, por si caen los dos en la misma frame.
+	navi->mHealth = 0.0f;
+	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
+		Navi* other = naviMgr->getNavi(ni);
+		if (other && other != navi && other->mHealth > 1.0f && other->getCurrState()->getID() != NAVISTATE_Dead) {
+			mDowned = true;
+		}
+	}
+	// Lane 12: the P2 second-captain roster survivor counts too.
+	if (naviMgr->getAliveOrima()) {
+		mDowned = true;
+	}
+	if (mDowned) {
+		playerState->mResultFlags.setOn(zen::RESFLAG_OlimarDown);
+		navi->mMotionSpeed = 30.0f;
+		navi->startMotion(PaniMotionInfo(PIKIANIM_ODead, navi), PaniMotionInfo(PIKIANIM_ODead));
+		// SE_PLAYER_DOWN es un evento de escena (corta la música): con el
+		// otro vivo la música sigue; se avisa con el sonido de daño.
+		seSystem->playPlayerSe(SE_DAMAGED);
+		navi->mVelocity.set(0.0f, 0.0f, 0.0f);
+		navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+		// Only upstream co-op has a per-captain camera. The P2 opt-in second
+		// captain shares the single camera, so leave it running for the survivor.
+		if (pc_coop_active()) {
+			PcamCameraManager* naviCam = pcCameraMgrForNavi(navi->mNaviID);
+			naviCam->mCamera->startMotion(naviCam->mCamera->mAttentionInfo);
+			naviCam->mCamera->mIsActive = false;
+		}
+		navi->releasePikis();
+		return;
+	}
+#endif
+
 	GameStat::orimaDead = true;
 	playerState->mResultFlags.setOn(zen::RESFLAG_OlimarDown);
 	gameflow.mGameInterface->message(MOVIECMD_SetPauseAllowed, FALSE);
@@ -3203,8 +3506,13 @@ void NaviDeadState::init(Navi* navi)
 	navi->mVelocity.set(0.0f, 0.0f, 0.0f);
 	navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 
-	cameraMgr->mCamera->startMotion(cameraMgr->mCamera->mAttentionInfo);
-	cameraMgr->mCamera->mIsActive = false;
+#if defined(PIKI_PC_PORT)
+	PcamCameraManager* naviCam = pcCameraMgrForNavi(navi->mNaviID);
+#else
+	PcamCameraManager* naviCam = cameraMgr;
+#endif
+	naviCam->mCamera->startMotion(naviCam->mCamera->mAttentionInfo);
+	naviCam->mCamera->mIsActive = false;
 	seMgr->setPikiNum(0);
 	navi->releasePikis();
 	GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
@@ -3233,6 +3541,11 @@ void NaviDeadState::procAnimMsg(Navi* navi, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_Finished:
 	{
+#if defined(PIKI_PC_PORT)
+		if (mDowned) {
+			break; // el cuerpo se queda; el otro sigue jugando
+		}
+#endif
 		gameflow.mGameInterface->message(MOVIECMD_GameEndCondition, ENDCAUSE_NaviDown);
 		break;
 	}
@@ -3481,6 +3794,9 @@ void NaviPartsAccessState::procAnimMsg(Navi* navi, MsgAnim* msg)
 			gameflow.mShipTextType   = SHIPTEXT_PartsAccess;
 			gameflow.mShipTextPartID = id;
 			playerState->mDemoFlags.resetFlag(id + DEMOFLAG_UfoPartDiscoveryOffset);
+#if defined(PIKI_PC_PORT)
+			naviMgr->setMovieNavi(navi);
+#endif
 			playerState->mDemoFlags.setFlag(id + DEMOFLAG_UfoPartDiscoveryOffset, pelt);
 		}
 		break;

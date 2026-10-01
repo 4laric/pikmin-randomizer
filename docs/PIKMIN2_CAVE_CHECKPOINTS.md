@@ -10,6 +10,29 @@ Local launcher: `output/pikmin2-lifecycle112/Play.cmd`. Press **F6 near the Rese
 
 The launcher starts the next native process automatically. Leaving floor 2 saves the result and closes the game; there is not yet a surface scene to return to. The engineering launcher remains silent while the earlier audio issue is investigated.
 
+### Optional Purple heavy flight (#926)
+
+The persistent runner now accepts `--purple-motion <source-motion-bank>` in
+addition to its existing required `--purple` bank. It forwards the motion bank
+to each floor preview, enabling the existing heavy-flight implementation,
+throw/fall source poses and impact opt-in. Previously this option was available
+only to standalone previews, so the durable cave launcher omitted it.
+
+Use a new `--session` directory when enabling the option. The runner validates
+the profile and exact 34-pose bank before creating a session, and binds those
+inputs and the flight policy to its checkpoint content identity. Removing the
+option or changing the bank rejects resume rather than changing an existing
+run's behavior. Omitting the option preserves the previous content identity
+and staging behavior.
+
+This connects existing cave mechanics; it does not add ordinary campaign
+day saves, ship storage, more enemy receivers or controller acceptance.
+The #926 source regression uses synthetic assets and simulated native process
+handoffs: it verifies both-floor forwarding, actual preview motion/config
+staging, legacy identity compatibility, malformed-bank rejection before session
+creation and changed-bank resume rejection. Fresh gameplay evidence remains
+required for acquisition, throwing, hauling and checkpoint restart together.
+
 ## Save contract
 
 - `play-session/checkpoint.json` is the authority. Squad, health, destination and receipts are committed in one atomic replacement at descent or exit.

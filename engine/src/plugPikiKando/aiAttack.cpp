@@ -1,4 +1,7 @@
 #include "AIConstant.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_breadbug_teki.h"
+#endif
 #include "AIPerf.h"
 #include "CourseDebug.h"
 #include "DebugLog.h"
@@ -11,6 +14,22 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "zen/Math.h"
+
+#if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
+#endif
+
+// Un Pikmin es objetivo de ataque si es un Pikmin-seta; en VS, también si es
+// del rival (sin esto, la acción de ataque termina al instante contra él).
+static bool pcFightablePiki(Piki* attacker, Piki* target)
+{
+#if defined(PIKI_PC_PORT)
+	if (pc_vs_active()) {
+		return target->isTeki(attacker);
+	}
+#endif
+	return target->isKinoko();
+}
 
 /**
  * @todo: Documentation
@@ -77,6 +96,15 @@ void ActAttack::init(Creature* creature)
 		target            = creature;
 		mTargetIsPlayer   = false;
 	}
+
+#if defined(PIKI_PC_PORT)
+	// #898 backstop: whatever path chose it, an unbittered OWN Breadbug is not
+	// a living thing and never becomes an attack target.
+	if (target && pc_p2_breadbug_teki_untargetable(target, "act_attack_init")) {
+		target = nullptr;
+		mOther.clear();
+	}
+#endif
 
 	if (target) {
 		mOther.set(target);
@@ -288,7 +316,7 @@ int ActAttack::exec()
 
 	if (mOther.getPtr()->isPiki()) {
 		Piki* targetPiki = static_cast<Piki*>(mOther.getPtr());
-		if (!targetPiki->isKinoko() || (targetPiki->isKinoko() && targetPiki->getState() == PIKISTATE_KinokoChange)) {
+		if (!pcFightablePiki(mPiki, targetPiki) || (targetPiki->isKinoko() && targetPiki->getState() == PIKISTATE_KinokoChange)) {
 			mPiki->mEmotion = PikiEmotion::Searching;
 			return ACTOUT_Success;
 		}
@@ -458,7 +486,7 @@ void ActJumpAttack::procCollideMsg(Piki* piki, MsgCollide* msg)
 		return;
 	}
 
-	if (mTarget.getPtr()->mObjType == OBJTYPE_Piki && !static_cast<Piki*>(mTarget.getPtr())->isKinoko()) {
+	if (mTarget.getPtr()->mObjType == OBJTYPE_Piki && !pcFightablePiki(piki, static_cast<Piki*>(mTarget.getPtr()))) {
 		_2C = true;
 		return;
 	}
@@ -481,6 +509,14 @@ void ActJumpAttack::procCollideMsg(Piki* piki, MsgCollide* msg)
 		PRINT("ざまし! ta no coll part\n"); // 'alarm clock! ta no coll part'
 		return;
 	}
+
+#if defined(PIKI_PC_PORT)
+	// #892: observe a jumping Pikmin touching a bound Gatling Groink part (armour cover).
+	if (msg->mEvent.mCollider && msg->mEvent.mCollider->mObjType == OBJTYPE_Teki) {
+		pc_p2_groink_teki_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(msg->mEvent.mCollider)), piki, msg->mEvent.mColliderPart, "jump");
+		pc_p2_long_legs_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(msg->mEvent.mCollider)), piki, msg->mEvent.mColliderPart, "jump");
+	}
+#endif
 
 	if (msg->mEvent.mColliderPart->isPlatformType()) {
 		if (msg->mEvent.mColliderPart->isStickable()) {
@@ -533,7 +569,11 @@ void ActJumpAttack::procCollideMsg(Piki* piki, MsgCollide* msg)
 int ActJumpAttack::exec()
 {
 	Creature* target = mTarget.getPtr();
-	if (!target || !target->isVisible() || !target->isAlive()) {
+	if (!target || !target->isVisible() || !target->isAlive()
+#if defined(PIKI_PC_PORT)
+	    || pc_p2_breadbug_teki_untargetable(target, "act_jump_attack") // #898 backstop
+#endif
+	) {
 		if (mPiki->isStickTo()) {
 			mPiki->endStickObject();
 		}
@@ -542,7 +582,7 @@ int ActJumpAttack::exec()
 
 	if (target->mObjType == OBJTYPE_Piki) {
 		Piki* targPiki = static_cast<Piki*>(target);
-		if (!targPiki->isKinoko()) {
+		if (!pcFightablePiki(mPiki, targPiki)) {
 			return ACTOUT_Success;
 		}
 	}

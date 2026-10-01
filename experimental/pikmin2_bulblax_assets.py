@@ -31,7 +31,7 @@ PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 CARCASS_SOURCE = 'user/Abe/Pellet/us/carcass_config.txt'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
 EXTRA_DISC_FILES = {'Queen': 'enemy/data/Queen/queenchappy_model.btk'}  # hash + preserve only; no btk playback
-MAX_POSES = 12
+MAX_POSES = 24  # = pikmin2_animation.DEFAULT_POSE_LIMIT (#943/#950, #972)
 
 # Clip order equals the AnimID enum registration order (Queen.h:195-205,
 # Baby.h:116-123, KingChappy.h:318-333) and the enemyanimmgr.txt row order.
@@ -314,8 +314,10 @@ def extract(iso, source, output, pose_limit=6):
                 info['clips'].append(clip)
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
+        (output / 'bulblax.json').write_bytes((json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
         report['extract_seconds'] = round(time.perf_counter() - started, 3)
-        (output / 'bulblax.json').write_bytes((json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
         (output / 'p2-bulblax.txt').write_text(TEXT)
         return report
 

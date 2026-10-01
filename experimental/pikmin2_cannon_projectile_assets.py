@@ -22,20 +22,21 @@ import subprocess
 import time
 from pathlib import Path
 
+from experimental import pikmin2_change_texture as change_texture
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_sheargrub_assets import joints
 from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nodes
 from experimental.pikmin2_convert import blocks, decode, u16, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 SPECIES = {'Kabuto': 75, 'Rkabuto': 95, 'Fkabuto': 96, 'Rock': 19, 'Stone': 74,
            'Bomb': 36, 'Egg': 37, 'FminiHoudai': 97}
 
 PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 
 # Model/anim/collision/stone/animmgr resource owner. Empty EnemyInfo resource
 # slots fall back to the row's own name (enemyMgrBase.cpp:519-565); Rkabuto,
@@ -513,6 +514,8 @@ def extract(iso, source, output, pose_limit=6):
             model = archive_files(
                 read(f'enemy/data/{owner}/model.szs'))['enemy.bmd']
             model_blocks = blocks(model)
+            # Retail Obj::changeMaterial texture swaps (#895); enemy.bmd stays retail.
+            baked_model, change_textures = change_texture.apply(model, species, read)
             motions = archive_files(
                 read(f'enemy/data/{owner}/anim.szs'))
             names = joints(model)
@@ -544,6 +547,8 @@ def extract(iso, source, output, pose_limit=6):
                             params[owner.lower() + '/enemycoll.txt'],
                             len(names)),
                         clips=[])
+            if change_textures:
+                info['change_textures'] = change_textures
             reference = None
             for row in rows:
                 member = motion_member(motions, row['file'])
@@ -565,12 +570,8 @@ def extract(iso, source, output, pose_limit=6):
                 for number, frame in enumerate(frames):
                     try:
                         tolerances = TOLERANCES.get(species, {})
-                        _, pose = bca_pose(raw, frame, len(names),
-                                           allow_scale=True)
-                        matrices = draw_matrices(model_blocks, pose)
-                        decoded = decode(model, True, bake_rigid=True,
-                                         draw_matrices=matrices,
-                                         **tolerances)
+                        decoded, pose = decode_pose(decode, baked_model, model_blocks, raw, frame,
+                                                    len(names), **tolerances)
                         name = f'cannon_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name,
                                                  'enemy.bmd')
@@ -602,11 +603,25 @@ def extract(iso, source, output, pose_limit=6):
                         clip['poses'][0]['unsupported_reason'] \
                         if clip['poses'] else 'no sampled frames'
                 info['clips'].append(clip)
+                if species == 'FminiHoudai' and clip['name'] == 'attack1':
+                    # #888 WP5: model-space kuti basis at the shell-emission
+                    # key frame, staged as the native Groink bank muzzle row.
+                    from experimental.pikmin2_groink_assets import muzzle
+                    from experimental.pikmin2_minihoudai_assets import emission_frame
+                    from experimental.pikmin2_rigid import joint_matrices
+                    if names.count('kuti') != 1:
+                        raise ValueError('Expected one FminiHoudai kuti joint')
+                    fire = emission_frame(row['events'])
+                    _, pose = bca_pose(raw, fire, len(names), allow_scale=True)
+                    info['muzzle'] = dict(clip='attack1', frame=fire, **muzzle(
+                        joint_matrices(model_blocks, pose)[names.index('kuti')]))
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
-        report['extract_seconds'] = round(time.perf_counter() - started, 3)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
         (output / 'cannon_projectile.json').write_bytes(
-            (json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
+            (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
+        report['extract_seconds'] = round(time.perf_counter() - started, 3)
         (output / 'p2-cannon-projectile.txt').write_text(TEXT)
         return report
 

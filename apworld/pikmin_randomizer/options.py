@@ -1,6 +1,6 @@
 """Player-facing options for the Pikmin Randomizer world."""
 from dataclasses import dataclass
-from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet
+from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet, DeathLink, OptionDict
 
 
 class ExpandedChecks(Toggle):
@@ -41,6 +41,49 @@ class CampaignEnemies(Toggle):
     """Campaign-wide compatible ground, frog, flying, small-enemy and aquatic pools, with a Teki miniboss in Hope, Navel and Spring. Impact's scheduled Mamuta is included. Final Trial bosses/hazards and scripted drops remain pinned. Overrides older enemy toggles."""
     display_name = 'Campaign Enemy Randomizer'
     default = 0
+
+
+class P2EnemyRandomizer(Toggle):
+    """Place admitted Pikmin 2 enemies in accepted P1 campaign slots. Adds delivery checks for actually placed P2 identities and retains surviving P1 checks. Requires the matching native enemy-check catalog capability. Off by default; imports join the pool after admission and production corpse metadata are recorded."""
+    display_name = 'Pikmin 2 Enemy Bridge (experimental)'
+    default = 0
+
+
+class P2SecondCaptain(Toggle):
+    """Enable a second captain with single-player switching. Requires the Pikmin 2 enemy bridge and a matching native build. Stored in the seed; does not add items or change progression logic."""
+    display_name = 'Pikmin 2 Second Captain (experimental)'
+    default = 0
+
+
+class P2EnemyPool(Choice):
+    """playable: the current admitted production cohort with launcher support. all: every admitted species. full: the production cohort plus proven model proxies; proxies do not earn source-behavior delivery checks. Each seed stores its resolved encounter/check catalog."""
+    display_name = 'Pikmin 2 enemy pool'
+    option_playable = 0
+    option_all = 1
+    option_full = 2
+    default = 0
+
+
+class P2Placement(OptionDict):
+    """Reviewed p2-placement-v1 override. Empty uses the bundled accepted placement. Denied placements fail generation; this option never grants enemy admission. Resolved AP checks currently require canonical campaign generator targets."""
+    display_name = 'Pikmin 2 placement document'
+    default = {}
+
+
+class P2Density(Choice):
+    """Default preserves the pool's existing placement policy. all_targets fills all legal targets; bounded_coverage seats the selected cohort with bounded extras; sampled chooses per-seed identities and records sampled-out species. Proxy pools require sampled."""
+    display_name = 'Pikmin 2 encounter density'
+    option_default = 0
+    option_all_targets = 1
+    option_bounded_coverage = 2
+    option_sampled = 3
+    default = 0
+
+
+class P2Species(OptionSet):
+    """Optional retail source IDs, for example 44, 54, 79. Empty selects the pool above. Explicit IDs must be admitted and supported; generation reports incompatible density or missing production check metadata."""
+    display_name = 'Pikmin 2 source species'
+    default = frozenset()
 
 
 class GroupSpawnEnemies(Toggle):
@@ -144,7 +187,7 @@ class GoalMode(Choice):
 
 
 class BombRockWeight(Range):
-    """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery / Flower Shower weights are 2 / 1. Zero disables. Queued until a safe gameplay landing; not required by logic."""
+    """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery weight is 2. Zero disables. Queued until a safe gameplay landing; not required by logic."""
     display_name = 'Bomb Rock Delivery Weight'
     range_start = 0
     range_end = 10
@@ -175,8 +218,43 @@ class PrereleaseTrapWeight(Range):
     default = 0
 
 
+class ProgressiveDayLength(Range):
+    """Number of Progressive Day Length items in the pool. Each copy lengthens every following stretch of the day by Day Length Increment percent of a normal day; zero disables. Receiving one mid-day slows the clock without moving it, so it never jumps toward sunset. Useful, not required by logic. Copies take filler slots: the smallest check set (collection checks only) fits 8, larger ones fit all 10."""
+    display_name = "Progressive Day Length"
+    range_start = 0
+    range_end = 10
+    default = 0
+
+
+class WhistlePluckItem(Toggle):
+    """Place one Whistle Pluck item. Once received, holding the whistle over buried sprouts plucks them one after another, keeping their colour and maturity. Useful, not required by logic. Takes one filler slot."""
+    display_name = "Whistle Pluck Item"
+    default = 1
+
+
+class DayLengthIncrement(Range):
+    """Percent of a normal day added by each Progressive Day Length item. Rounded down to a multiple of 5."""
+    display_name = "Day Length Increment"
+    range_start = 10
+    range_end = 100
+    default = 25
+
+
+class DeathLinkPikmin(Range):
+    """DeathLink unit. Every N ordinary Pikmin deaths (remainder kept across days) sends one link; each received link kills up to N living field Pikmin through their normal death, never Olimar or Onion stock. Links received while the game is closed are dropped."""
+    display_name = 'DeathLink Pikmin'
+    range_start = 1
+    range_end = 100
+    default = 10
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    death_link: DeathLink
+    death_link_pikmin: DeathLinkPikmin
+    progressive_day_length: ProgressiveDayLength
+    day_length_increment: DayLengthIncrement
+    whistle_pluck_item: WhistlePluckItem
     goal: GoalMode
     bomb_rock_weight: BombRockWeight
     bomb_trap_weight: BombTrapWeight
@@ -194,6 +272,12 @@ class PikminOptions(PerGameCommonOptions):
     attack_rate_upgrades: AttackRateUpgrades
     carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
+    p2_enemy_randomizer: P2EnemyRandomizer
+    p2_second_captain: P2SecondCaptain
+    p2_enemy_pool: P2EnemyPool
+    p2_placement: P2Placement
+    p2_density: P2Density
+    p2_species: P2Species
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies

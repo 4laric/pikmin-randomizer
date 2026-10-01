@@ -201,7 +201,7 @@ public:
 	void moveVelocity();
 	bool getAvoid(immut Vector3f&, immut Vector3f&);
 	void moveRotation(f32);
-	void moveNew(f32);
+	void moveNew(f32, bool applyGravity = true);
 	Plane* getNearestPlane(CollTriInfo*);
 	void interactStickers(Creature*, immut Interaction&, immut Condition*);
 	void killStickers(Creature*, immut Condition*, int);

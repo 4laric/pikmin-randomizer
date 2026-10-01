@@ -1,4 +1,10 @@
 #include "PikiMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "settings/pc_settings.h"
+#include "pc_vs.h"
+#include "GoalItem.h"
+#include "PikiHeadItem.h"
+#endif
 #include "AIConstant.h"
 #include "DebugLog.h"
 #include "GameStat.h"
@@ -8,6 +14,12 @@
 #include "PikiAI.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "Piki.h"
+#include "pc_p2_bulbmin.h"
+#include "pc_p2_captain.h"
+#include "pc_p2_captor_forget.h"
+#endif
 
 PikiMgr* pikiMgr;
 bool PikiMgr::containerDebug;
@@ -49,7 +61,18 @@ Creature* PikiMgr::birth()
 		return nullptr;
 	}
 
-	return MonoObjectMgr::birth();
+	Creature* born = MonoObjectMgr::birth();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-11 Bulbmin: a recycled slot must not inherit the previous
+	// occupant's dependent id/leader. Lane 12 (#130): the same slot must not
+	// inherit a stale captain-capture actor id. Both inert unless opted in.
+	if (born) {
+		pc_p2_bulbmin_forget(static_cast<Piki*>(born));
+		pc_p2_captain_forget_piki(static_cast<Piki*>(born));
+		pc_p2_captor_forget_piki(static_cast<Piki*>(born)); // #886 captor mouths
+	}
+#endif
+	return born;
 }
 
 /**
@@ -193,3 +216,29 @@ void PikiMgr::dumpAll()
 		pikiNum++;
 	}
 }
+
+#if defined(PIKI_PC_PORT)
+int pcVsFieldPikis(int player)
+{
+	int count = 0;
+	Iterator it(pikiMgr);
+	CI_LOOP(it)
+	{
+		Piki* piki = static_cast<Piki*>(*it);
+		if (piki->isAlive() && piki->mPlayerId == player) count++;
+	}
+	Iterator heads(itemMgr->getPikiHeadMgr());
+	CI_LOOP(heads)
+	{
+		Creature* c = *heads;
+		if (c->mObjType == OBJTYPE_Pikihead && static_cast<PikiHeadItem*>(c)->mPcOwner == player) count++;
+	}
+	for (int color = PikiMinColor; color < PikiColorCount; color++) {
+		GoalItem* goal = itemMgr->pcGetContainer(color, player);
+		if (goal) count += goal->mPikisToExit;
+	}
+	return count;
+}
+
+int pcVsFieldLimit() { return pc_vs_rules().fieldLimit; }
+#endif

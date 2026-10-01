@@ -11,18 +11,30 @@ from experimental.pikmin2_convert import blocks,convert,u32,u16
 from experimental.pikmin2_rigid import local_matrix,joint_matrices
 
 
-def bca_pose(data,frame,expected_joints,allow_scale=False):
+SINGULAR_SCALE_MODES=('error','allow','clamp')
+# 'clamp' (#895) replaces an authored near-zero axis scale by a tiny scale of
+# the same sign. The joint's geometry stays collapsed (invisible) but its draw
+# matrix is invertible, so its normals keep the rotation's direction instead of
+# failing as a singular transform. Used only as a retry for frames that fail.
+COLLAPSED_SCALE_FLOOR=1e-4
+
+def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error',extra_tracks=False):
+    if singular_scale not in SINGULAR_SCALE_MODES:
+        raise ValueError(f'Unsupported singular scale mode {singular_scale!r}')
     # Retail archives omit the final alignment padding counted in some BCA headers.
     if len(data)<72 or data[:8]!=b'J3D1bca1' or struct.unpack_from('>I',data,8)[0]!=(len(data)+31)//32*32:
         raise ValueError('Expected framed BCA')
     b=data[32:]
     if b[:4]!=b'ANF1':raise ValueError('Expected full transform animation')
     duration,count=struct.unpack_from('>HH',b,10)
-    if count!=expected_joints or duration<1:raise ValueError('Animation skeleton mismatch')
+    # J3D applies track i to joint i and ignores trailing tracks the skeleton lacks
+    # (UmiMushi sturn1.bca carries 26 tracks for the 25-joint model, #995/#972).
+    # Opt-in only: every other caller keeps the strict equality check.
+    if duration<1 or (count<expected_joints if extra_tracks else count!=expected_joints):raise ValueError('Animation skeleton mismatch')
     table,scales,rotations,translations=struct.unpack_from('>4I',b,20)
     if table<36 or table+count*36>len(b):raise ValueError('Truncated BCA joint table')
     pose=[]
-    for joint in range(count):
+    for joint in range(expected_joints):
         r=[];t=[];scale=[]
         for axis in range(3):
             values=[]
@@ -34,7 +46,13 @@ def bca_pose(data,frame,expected_joints,allow_scale=False):
                 values.append(struct.unpack_from('>'+fmt,b,offset+at*size)[0])
             if not all(math.isfinite(v) for v in values):raise ValueError('Non-finite BCA transform')
             if not allow_scale and abs(values[0]-1)>1e-5:raise ValueError('Scaled animation not supported')
-            if abs(values[0])<1e-8:raise ValueError('Singular animation scale')
+            # 'allow' accepts an authored zero/annihilated axis scale (a hidden
+            # or grow-from-nothing joint). Callers must pair it with the
+            # converter's explicit collapsed-normal decode policy when needed,
+            # because such poses produce a singular draw matrix.
+            if abs(values[0])<1e-8 and singular_scale=='error':raise ValueError('Singular animation scale')
+            if singular_scale=='clamp' and abs(values[0])<COLLAPSED_SCALE_FLOOR:
+                values[0]=math.copysign(COLLAPSED_SCALE_FLOOR,values[0]) if values[0] else COLLAPSED_SCALE_FLOOR
             scale.append(values[0])
             r.append(values[1]);t.append(values[2])
         matrix=local_matrix(r,t)

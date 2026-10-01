@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 from .seed import generate, validate, fingerprint, solo_rewards, spheres
 from .runner import launch
@@ -8,7 +9,7 @@ from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, A
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Pikmin Randomizer: standalone identity-placement milestone")
+    parser = argparse.ArgumentParser(description="Pikipelago: standalone identity-placement milestone")
     sub = parser.add_subparsers(dest="command", required=True)
     crosswalk = sub.add_parser("naming-crosswalk", help="Export TheLynk ship-part naming aliases without changing seeds")
     crosswalk.add_argument("--output", type=Path)
@@ -28,8 +29,20 @@ def main():
     gen.add_argument('--progg-trap-weight', type=int, default=0, choices=range(11), help='Smoky Progg ambush filler weight (0 disables)')
     gen.add_argument('--bomb-trap-weight', type=int, default=0, choices=range(11), help='Lit bomb ambush filler weight (0 disables)')
     gen.add_argument('--bomb-rock-weight', type=int, default=1, choices=range(11), help='Bomb delivery filler weight (0 disables; default 1)')
+    gen.add_argument('--death-link', action='store_true', help='AP DeathLink: every N ordinary Pikmin deaths sends a link; each received link kills up to N field Pikmin')
+    gen.add_argument('--progressive-day-length', type=int, default=0, choices=range(11), metavar='N', help='Progressive Day Length items in the pool (0..10; 0 disables)')
+    gen.add_argument('--whistle-pluck-item', action='store_true', help='Place one Whistle Pluck item: holding the whistle over sprouts plucks them once received')
+    gen.add_argument('--day-length-step', type=int, default=25, choices=range(10, 101, 5), metavar='PCT', help='Percent of a normal day added per Day Length item (10..100, multiple of 5; default 25)')
+    gen.add_argument('--death-link-pikmin',type=int, default=10, choices=range(1, 101), metavar='N', help='DeathLink unit in Pikmin (1..100; default 10)')
     gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--group-spawn-enemies', action='store_true', help='Experimental dwarf/Sheargrub groups; implies per-spawn adults')
+    gen.add_argument('--p2-enemies', action='store_true', help='Experimental: place admitted Pikmin 2 source identities via the versioned admission bridge, using the committed accepted-placement document')
+    gen.add_argument('--p2-second-captain', action='store_true', help='With --p2-enemies: enable a second captain with single-player switching; pinned to this seed')
+    gen.add_argument('--p2-purple-campaign', action='store_true', help="With --p2-enemies: seed for the opt-in Purple campaign, which admits Purple-only species (Giant Breadbug: only Purple presses hurt it, panModoki.cpp:1738). 'randomizer run' then requires --purple-bank and --purple-motion")
+    gen.add_argument('--p2-species', help="With --p2-enemies: 'playable' (only species the launcher can run today), 'full' (playable plus the --p2-proxy-tier species) or comma-separated admitted source ids; default all admitted")
+    gen.add_argument('--p2-proxy-tier', choices=('proven', 'declared'), default=None, help='Opt-in proxy tier: Pikmin 2 models over Pikmin 1 enemy behaviour (P1 behaviour and combat), never six-gate P2 identities. proven: only rows with native evidence; declared: every declared proxy row, for private probe runs only')
+    gen.add_argument('--p2-placement', type=Path, help='Lane 04 placement/encounter JSON document supplying legal binding targets; defaults to the committed admitted-cohort document docs/PIKMIN2_ADMITTED_PLACEMENT.json')
+    gen.add_argument('--p2-density', choices=('all-targets-v1', 'bounded-coverage-v1'), default=None, help='With --p2-enemies: versioned placement fill policy. Default all-targets-v1 (legacy, unchanged); bounded-coverage-v1 binds the minimum accepted targets that covers each selected species')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
     gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and population 10/25/50/100 per color')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
@@ -44,6 +57,15 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--purple-bank", type=Path, help="Opt in to ordinary P2 Purple campaign; source pose bank directory")
+    run.add_argument("--purple-motion", type=Path, help="Required retail Purple throw/fall bank with --purple-bank")
+    run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest; staged into the run's private asset tree before launch")
+    run.add_argument("--family-install", help="Lane 05 family installer name (an existing family installer to consume)")
+    run.add_argument("--family-source", type=Path, help="Family bank/imported source directory for --family-install")
+    run.add_argument("--family-actor", action="append", default=[], metavar="ID:SPECIES", help="generator_id:Species for --family-install (repeatable)")
+    run.add_argument("--p2-content", type=Path, help="Lane 05 identity-keyed content root; auto-stages each p2_layout binding's family content")
+    run.add_argument("--p2-actors", type=Path, help="JSON {target: generator_id} actor bindings for --p2-content")
+    run.add_argument("--dev-console", action="store_true", help="Enable the native in-game dev console (PIKMIN_DEV_CONSOLE=1; commands also read from <session>/dev-console.txt). Dev/testing only.")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -63,7 +85,16 @@ def main():
             print(text, end="")
         return
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, prerelease_trap_weight=args.prerelease_trap_weight, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.prerelease_trap_weight or args.goal == "emperor_bulblax"))
+        try:
+            manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, prerelease_trap_weight=args.prerelease_trap_weight, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, death_link=args.death_link, death_link_pikmin=args.death_link_pikmin, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.prerelease_trap_weight or args.goal == "emperor_bulblax"), p2_enemies=args.p2_enemies, p2_checks=args.p2_enemies, p2_species=(None if not args.p2_species else 'playable' if args.p2_species == 'playable' else 'full' if args.p2_species == 'full' else [int(x) for x in args.p2_species.split(',')]), p2_placement=(json.loads(args.p2_placement.read_text(encoding='utf-8')) if args.p2_placement else None), p2_density=args.p2_density, p2_proxy_tier=args.p2_proxy_tier, progressive_maturity=True, progressive_day_length=args.progressive_day_length, day_length_step=args.day_length_step, whistle_pluck_item=args.whistle_pluck_item, p2_purple_campaign=args.p2_purple_campaign, p2_second_captain=args.p2_second_captain)
+        except ValueError as exc:
+            # Report a bridge/placement rejection as a clean actionable CLI
+            # error (exit 2), never an uncaught traceback.
+            print(f"Error: {exc}", file=sys.stderr)
+            if args.p2_enemies and not args.p2_species:
+                print("Hint: retry with --p2-species playable, or pass a "
+                      "--p2-placement document that accepts the pool.", file=sys.stderr)
+            raise SystemExit(2)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -84,19 +115,25 @@ def main():
             with SessionLock(args.session_dir):
                 session = Session(manifest, args.session_dir)
                 checked = set(session.data["checked"])
-                lines = ["# Pikmin Randomizer status", "",
+                lines = ["# Pikipelago status", "",
                          f"Collected: {len(checked)}/{len(session.names)} checks. "
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2))}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
                 from .benefits import benefit_lines
                 lines += benefit_lines(manifest, session.inventory) + [""]
+                if session.death_link_unit:
+                    from .session import death_link_summary
+                    lines += [death_link_summary(manifest, session.data), ""]
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]
                 from .catalog import population_checks, TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY, bestiary_sources, START_AREAS
+                bestiary_entries = ([row['name'] for row in manifest['enemy_catalog']['checks']]
+                                    if 'enemy_catalog' in manifest else
+                                    {**DELIVERY_BESTIARY, **NEW_BESTIARY} if manifest['schema'] >= 7 else BESTIARY)
                 for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", population_checks(manifest) if manifest['schema'] >= 7 else POPULATION),
-                                          ("Bestiary - deliveries and defeats" if manifest['schema'] >= 7 else "Bestiary - first defeats", ({**DELIVERY_BESTIARY, **NEW_BESTIARY}) if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
+                                          ("Bestiary - deliveries and defeats" if manifest['schema'] >= 7 else "Bestiary - first defeats", bestiary_entries), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue
                     lines += ["## " + category, ""]
@@ -118,7 +155,20 @@ def main():
                 else:
                     print(text)
         else:
-            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server)
+            family_actors = [(int(value.split(':', 1)[0]), value.split(':', 1)[1])
+                             for value in args.family_actor]
+            p2_actors = None
+            if args.p2_actors is not None:
+                import json as _json
+                raw = _json.loads(args.p2_actors.read_text(encoding='utf-8'))
+                p2_actors = {str(target): int(generator) for target, generator in raw.items()}
+            if args.dev_console:
+                import os as _os
+                from .dev_console import DEFAULT_SCRIPT_NAME, native_environment
+                _os.environ.update(native_environment(args.session_dir.resolve() / DEFAULT_SCRIPT_NAME))
+            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
+                   args.content_manifest, args.family_install, args.family_source, family_actors,
+                   args.p2_content, p2_actors, args.purple_bank, args.purple_motion)
 
 
 if __name__ == "__main__":

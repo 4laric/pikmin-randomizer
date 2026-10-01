@@ -1,0 +1,42 @@
+From eb658d23cd699a8ca452c948030c0d02fa23bdb9 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 03:36:01 -0400
+Subject: [PATCH 2/8] BigTreasure attacks: expose gas node extent ratio for
+ encounter hit registration (#246)
+
+---
+ pc_port/pc_p2_bigtreasure_attacks.cpp | 5 +++++
+ pc_port/pc_p2_bigtreasure_attacks.h   | 1 +
+ 2 files changed, 6 insertions(+)
+
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.cpp b/pc_port/pc_p2_bigtreasure_attacks.cpp
+index b4f6f46c..83d46f48 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.cpp
++++ b/pc_port/pc_p2_bigtreasure_attacks.cpp
+@@ -188,6 +188,11 @@ float P2BigTreasureGasPolicy::armAngle(int arm) const
+     return (arm >= 0 && arm < mParams.armNum) ? mArmAngles[arm] : 0.0f;
+ }
+ 
++float P2BigTreasureGasPolicy::nodeRatio(int index) const
++{
++    return (index >= 0 && index < mNodeCount) ? mRatios[index] : 0.0f;
++}
++
+ int P2BigTreasureGasPolicy::tick(float delta, bool bittered)
+ {
+     int recycled = 0;
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.h b/pc_port/pc_p2_bigtreasure_attacks.h
+index 4b195283..c8ce2a9e 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.h
++++ b/pc_port/pc_p2_bigtreasure_attacks.h
+@@ -137,6 +137,7 @@ public:
+     bool isStarted() const { return mStarted; }
+     int nodeCount() const { return mNodeCount; }
+     float armAngle(int arm) const;
++    float nodeRatio(int index) const; // source node extent ratio (BTA :1315+)
+     bool isClockwise() const { return mClockwise; }
+ 
+     // `bittered` freezes arm rotation (BTA :1440-1457).
+-- 
+2.55.0.windows.3
+

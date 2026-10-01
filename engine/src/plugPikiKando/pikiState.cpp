@@ -1,8 +1,14 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_captive_navi_policy.h"
+#endif
+#include "pc_p2_gas_cloud.h"
+#include "pc_p2_astonish.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
 #include "pc_p2_purple_direct.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_white.h"
+#include "pc_p2_breadbug_teki.h"
 #include "PikiState.h"
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -23,6 +29,9 @@
 #include "PikiAI.h"
 #include "PikiHeadItem.h"
 #include "PikiMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "settings/pc_settings.h"
+#endif
 #include "PlayerState.h"
 #include "RumbleMgr.h"
 #include "SoundMgr.h"
@@ -173,6 +182,8 @@ void PikiStateMachine::init(Piki* piki)
 	registerState(new PikiAbsorbState());
 	registerState(new PikiDyingState());
 	registerState(new PikiDeadState());
+	registerState(new PikiDenkiDyingState());
+	registerState(new PikiPanicState());
 	registerState(new PikiKinokoState());
 	registerState(new PikiDrownState());
 	registerState(new PikiEmotionState());
@@ -1013,6 +1024,11 @@ void PikiBulletState::exec(Piki* piki)
 	CI_LOOP(iter)
 	{
 		Creature* teki = *iter;
+#if defined(PIKI_PC_PORT)
+		if (pc_p2_breadbug_teki_untargetable(teki, "piki_bullet")) {
+			continue; // #898
+		}
+#endif
 		if (teki->isAlive() && teki->isVisible() && !teki->isFlying()) {
 			Vector3f dir = teki->mSRT.t - piki->mSRT.t;
 			f32 dist     = dir.length();
@@ -1694,6 +1710,17 @@ void PikiGoHangState::init(Piki* piki)
  */
 void PikiGoHangState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	CollPart* naviHand = piki->mNavi->mCollInfo->getSphere('rhnd');
 	Vector3f dir       = naviHand->mCentre - piki->mSRT.t;
 	f32 dist           = dir.normalise();
@@ -1701,6 +1728,12 @@ void PikiGoHangState::exec(Piki* piki)
 	if (dist > 2.0f * C_NAVI_PARM(piki->mNavi, mPluckGrabRange)) {
 		speedFactor = 2.0f;
 	}
+#if defined(PIKI_PC_PORT)
+	// Mod "Throw Speed": el Pikmin que va a la mano corre en proporción.
+	if (pc_settings_get_throw_speed_scale() > 1.0f) {
+		speedFactor *= pc_settings_get_throw_speed_scale();
+	}
+#endif
 	piki->mTargetVelocity = dir * C_PIKI_PARM(piki, mMaxLeafMoveSpeed) * speedFactor;
 	if (piki->mNavi->getCurrState()->getID() != NAVISTATE_ThrowWait) {
 		transit(piki, PIKISTATE_Normal);
@@ -1753,6 +1786,17 @@ void PikiHangedState::init(Piki* piki)
  */
 void PikiHangedState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	if (piki->mNavi->getCurrState()->getID() != NAVISTATE_ThrowWait) {
 		transit(piki, PIKISTATE_Normal);
 	}
@@ -1806,6 +1850,17 @@ void PikiWaterHangedState::init(Piki* piki)
  */
 void PikiWaterHangedState::exec(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
+	// captures a Pikmin; a captain's grab can still land on it afterwards. No
+	// captain means nothing to hang from: back to normal instead of reading
+	// the null captain (0xdd0 access violation, #972 crash follow-up).
+	if (!p2captivenavi::mayHang(piki->mNavi != nullptr)) {
+		p2captivenavi::note("hang_without_captain");
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+#endif
 	if (piki->mNavi->getCurrState()->getID() != NAVISTATE_ThrowWait) {
 		PRINT("???\n");
 		transit(piki, PIKISTATE_Normal);
@@ -2191,9 +2246,31 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 		return;
 	}
 
-	if (colliderType == OBJTYPE_Teki && collider->isOrganic()) {
+	if (colliderType == OBJTYPE_Teki
+	    && pc_p2_fuefuki_teki_flying_press(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki,
+	                                       piki->mVelocity.y < 0.0f)) {
+		// #245: source PikiFlyingState::collisionCallback stimulates
+		// InteractPress on a descending contact (pikiState.cpp:2319-2327). A
+		// bound Antenna Beetle outside its mCanStruggle window returns true
+		// from pressCallBack, so the source skips the stick (pressCheck); the
+		// P1 stand-in is this function's generic non-stick exit below. When
+		// the press is accepted (Struggle) the ordinary latch runs.
+		piki->restartAI();
+		transit(piki, PIKISTATE_Normal);
+		return;
+	}
+	if (colliderType == OBJTYPE_Teki && collider->isOrganic()
+#if defined(PIKI_PC_PORT)
+	    && !pc_p2_breadbug_teki_untargetable(collider, "piki_thrown_stick") // #898: never sticks
+#endif
+	) {
 		piki->mActiveAction->abandon(nullptr);
 		PRINT_KANDO("FLYING .. collide\n");
+#if defined(PIKI_PC_PORT)
+		// #892: observe a thrown Pikmin touching a bound Gatling Groink part (armour cover).
+		pc_p2_groink_teki_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki, msg->mEvent.mColliderPart, "thrown");
+		pc_p2_long_legs_piki_contact(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki, msg->mEvent.mColliderPart, "thrown");
+#endif
 		if (msg->mEvent.mColliderPart->isPlatformType()) {
 			if (msg->mEvent.mColliderPart->isStickable()) {
 				PRINT_KANDO("flying ... stick to platform::%s(code %s)\n", msg->mEvent.mColliderPart->mCollInfo->mId.mStringID,
@@ -2938,13 +3015,23 @@ void PikiNukareState::cleanup(Piki* piki)
 
 	if (piki->mColor == Red && !playerState->mDemoFlags.isFlag(DEMOFLAG_PluckRedPikmin)) {
 		PRINT("** NUKARE STATE CLEANUP !!!\n");
+#if defined(PIKI_PC_PORT)
+		// El que arranca el pikmin protagoniza el vídeo.
+		Navi* pluckNavi = piki->mNavi ? piki->mNavi : naviMgr->getNavi();
+		naviMgr->setMovieNavi(pluckNavi);
+#else
+		Navi* pluckNavi = naviMgr->getNavi();
+#endif
 		playerState->mDemoFlags.setFlag(DEMOFLAG_PluckRedPikmin, piki);
 		playerState->mDemoFlags.setFlagOnly(DEMOFLAG_NoPikminTimeout);
 		playerState->mDemoFlags.setFlagOnly(DEMOFLAG_ApproachSeed);
-		playerState->mDemoFlags.setTimer(demoParms->mParms._30(), DEMOFLAG_Unk9, naviMgr->getNavi());
+		playerState->mDemoFlags.setTimer(demoParms->mParms._30(), DEMOFLAG_Unk9, pluckNavi);
 		playerState->setDisplayPikiCount(Red);
 
 	} else if (piki->mColor == Yellow && !playerState->mDemoFlags.isFlag(DEMOFLAG_PluckYellowPikmin)) {
+#if defined(PIKI_PC_PORT)
+		if (piki->mNavi) naviMgr->setMovieNavi(piki->mNavi);
+#endif
 		playerState->mDemoFlags.setFlag(DEMOFLAG_PluckYellowPikmin, piki);
 		playerState->mResultFlags.setOn(zen::RESFLAG_MeetYellowPikminNoBomb);
 		playerState->mResultFlags.setOn(zen::RESFLAG_Onyons);
@@ -2952,6 +3039,9 @@ void PikiNukareState::cleanup(Piki* piki)
 		playerState->setDisplayPikiCount(Yellow);
 
 	} else if (piki->mColor == Blue && !playerState->mDemoFlags.isFlag(DEMOFLAG_PluckBluePikmin)) {
+#if defined(PIKI_PC_PORT)
+		if (piki->mNavi) naviMgr->setMovieNavi(piki->mNavi);
+#endif
 		playerState->mDemoFlags.setFlag(DEMOFLAG_PluckBluePikmin, piki);
 		playerState->mResultFlags.setOn(zen::RESFLAG_MeetBluePikmin);
 		playerState->setContainer(Blue);
@@ -2976,7 +3066,7 @@ void PikiNukareState::procAnimMsg(Piki* piki, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_Action0:
 	{
-		rumbleMgr->start(RUMBLE_Unk0, 0, nullptr);
+		rumbleMgr->start(RUMBLE_Unk0, piki->mNavi ? piki->mNavi->mNaviID : 0, nullptr);
 		if (piki->mGroundTriangle && MapCode::getAttribute(piki->mGroundTriangle) == ATTR_Water) {
 			effectMgr->create(EffectMgr::EFF_P_Bubbles, piki->mSRT.t, nullptr, nullptr);
 		} else {
@@ -3121,8 +3211,6 @@ void PikiPressedState::exec(Piki* piki)
 	if (piki->mDeathTimer < 0.0f) {
 		piki->mDeathTimer = 0.0f;
 		transit(piki, PIKISTATE_Normal);
-		f32 scale = C_PIKI_PARM(piki, mPikiDisplayScale);
-		piki->mSRT.s.set(scale, scale, scale);
 	}
 
 	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
@@ -3136,10 +3224,12 @@ void PikiPressedState::exec(Piki* piki)
 }
 
 /**
- * @brief No explicit cleanup.
+ * @brief Restore scale on every exit, including an interrupting interaction.
  */
 void PikiPressedState::cleanup(Piki* piki)
 {
+	f32 scale = C_PIKI_PARM(piki, mPikiDisplayScale);
+	piki->mSRT.s.set(scale, scale, scale);
 }
 
 /**
@@ -3250,6 +3340,175 @@ void PikiDeadState::exec(Piki* piki)
 void PikiDeadState::cleanup(Piki* piki)
 {
 	piki->mSRT.s.set(0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief Constructs the P2 electric-shock death state.
+ */
+PikiDenkiDyingState::PikiDenkiDyingState()
+    : PikiState(PIKISTATE_DenkiDying, "DENKI_DYING")
+{
+}
+
+/**
+ * @brief Freezes the Piki, plays the death animation and sets the electric wait.
+ */
+void PikiDenkiDyingState::init(Piki* piki)
+{
+	piki->mActiveAction->abandon(nullptr);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Dead), PaniMotionInfo(PIKIANIM_Dead));
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime = 0.3f;
+}
+
+/**
+ * @brief Holds the Piki still, then hands off to the ordinary death pipeline.
+ *
+ * Source `PikiDenkiDyingState::exec` (`pikiState.cpp:1268`) emits the electric
+ * effect and kills after `mWaitTime`; this port has no electric effect, so it
+ * transitions into `PIKISTATE_Dead`, which shrinks and kills the Piki.
+ */
+void PikiDenkiDyingState::exec(Piki* piki)
+{
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime -= gsys->getFrameTime();
+	if (mWaitTime <= 0.0f) {
+		transit(piki, PIKISTATE_Dead);
+	}
+}
+
+/**
+ * @brief No explicit cleanup.
+ */
+void PikiDenkiDyingState::cleanup(Piki* piki)
+{
+}
+
+/**
+ * @brief Constructs the P2 gas panic state.
+ */
+PikiPanicState::PikiPanicState()
+    : PikiState(PIKISTATE_Panic, "PANIC")
+    , mAstonish(false)
+    , mAstonishSubState(0)
+{
+}
+
+/**
+ * @brief Enters panic movement and raises the narrow gas gate.
+ *
+ * Mirrors the source `PIKIPANIC_Gas` init (`pikiState.cpp:839`): panic-run
+ * movement and the panic effect, then death when the poison timer expires. The
+ * source `gasInvicible` flag is modelled by `Piki::setGasInvincible`.
+ */
+void PikiPanicState::init(Piki* piki)
+{
+	mAstonish = pc_p2_fuefuki_panic_astonish(piki) || pc_p2_astonish_pending(piki);
+	if (mAstonish) {
+		// Source PikiPanicState::init PIKIPANIC_Panic: no gas flag, no death;
+		// mDramaTimer = 0.3 * randFloat() before the KIZUKU (notice) motion.
+		piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+		piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+		mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
+		mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
+		mChangeDirectionTimer = 0.3f * gsys->getRand(1.0f);
+		mMoveDirection        = piki->mFaceDirection;
+		mSpeedRatio           = 1.0f;
+		mAstonishSubState     = 0;
+		piki->mIsPanicked     = true;
+		return;
+	}
+	piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Moeru), PaniMotionInfo(PIKIANIM_Moeru));
+	piki->enableMotionBlend();
+	mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
+	mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
+	mChangeDirectionTimer = 0.1f;
+	mMoveDirection        = piki->mFaceDirection;
+	mSpeedRatio           = 1.0f;
+	piki->setGasInvincible(1);
+	piki->mIsPanicked = true;
+	pc_p2_gas_cloud_begin(piki);
+}
+
+/**
+ * @brief Runs panicked movement until the poison timer expires, then dies.
+ */
+void PikiPanicState::exec(Piki* piki)
+{
+	if (mAstonish) {
+		// Source PikiPanicState::exec PIKIPANIC_Panic: drama wait, KIZUKU, then
+		// panicRun; the expired timer transits to the walking state (P1 Normal).
+		if (mAstonishSubState == 0) {
+			piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+			mChangeDirectionTimer -= gsys->getFrameTime();
+			if (mChangeDirectionTimer <= 0.0f) {
+				mAstonishSubState     = 1;
+				mChangeDirectionTimer = 1.0f; // KIZUKU hold
+				piki->startMotion(PaniMotionInfo(PIKIANIM_Kizuku), PaniMotionInfo(PIKIANIM_Kizuku));
+			}
+			return;
+		}
+		if (mAstonishSubState == 1) {
+			piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+			mChangeDirectionTimer -= gsys->getFrameTime();
+			if (mChangeDirectionTimer <= 0.0f) {
+				mAstonishSubState     = 2;
+				mChangeDirectionTimer = 0.0f;
+				piki->startMotion(PaniMotionInfo(PIKIANIM_Run), PaniMotionInfo(PIKIANIM_Run));
+			}
+			return;
+		}
+		piki->setSpeed(mSpeedRatio, mMoveDirection);
+		mSurvivalTimer -= gsys->getFrameTime();
+		mChangeDirectionTimer -= gsys->getFrameTime();
+		if (mSurvivalTimer < 0.0f) {
+			pc_p2_fuefuki_panic_end(piki, true);
+			pc_p2_astonish_end(piki, true);
+			mAstonish = false;
+			transit(piki, PIKISTATE_Normal);
+			return;
+		}
+		if (mChangeDirectionTimer < 0.0f) {
+			mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
+			mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
+			mMoveDirection = roundAng(mMoveDirection);
+			mSpeedRatio *= 0.99f;
+		}
+		return;
+	}
+	piki->setSpeed(mSpeedRatio, mMoveDirection);
+	pc_p2_gas_cloud_update(piki);
+	mSurvivalTimer -= gsys->getFrameTime();
+	mChangeDirectionTimer -= gsys->getFrameTime();
+	if (mSurvivalTimer < 0.0f) {
+		transit(piki, PIKISTATE_Dying);
+		return;
+	}
+
+	if (mChangeDirectionTimer < 0.0f) {
+		mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
+		mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
+		mMoveDirection = roundAng(mMoveDirection);
+		mSpeedRatio *= 0.99f;
+	}
+}
+
+/**
+ * @brief Clears the gas gate and panic flag when the state is left.
+ */
+void PikiPanicState::cleanup(Piki* piki)
+{
+	if (mAstonish) {
+		mAstonish = false;
+		pc_p2_fuefuki_panic_end(piki, false);
+		pc_p2_astonish_end(piki, false);
+	}
+	piki->setGasInvincible(0);
+	piki->mIsPanicked = false;
+	pc_p2_gas_cloud_end(piki, false);
 }
 
 /**

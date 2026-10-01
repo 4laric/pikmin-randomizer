@@ -981,6 +981,23 @@ void CollInfo::initInfo(Shape* shape, CollPart* parts, u32* ids)
 	makeTree();
 }
 
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief PC port (#246): initializes from a code-owned ObjCollInfo list rooted at @p root.
+ */
+void CollInfo::initInfoTree(ObjCollInfo* root)
+{
+	for (int i = 0; i < mMaxParts; i++) {
+		mCollParts[i].mParentInfo = this;
+	}
+
+	mShape      = nullptr;
+	mPartsCount = 0;
+	createPart(root, 0, true);
+	makeTree();
+}
+#endif
+
 /**
  * @brief Prints a debug dump of all parts (index/id/code/links/type).
  * @note UNUSED Size: 0000DC

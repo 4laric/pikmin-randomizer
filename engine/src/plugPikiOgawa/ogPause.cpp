@@ -1,4 +1,5 @@
 #include "zen/ogPause.h"
+#include <string.h>
 #include "DebugLog.h"
 #include "P2D/Graph.h"
 #include "P2D/Picture.h"
@@ -9,6 +10,8 @@
 #include "zen/DrawMenu.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include "pc_coop.h"
+#include "settings/pc_settings.h"
 #endif
 
 /**
@@ -92,6 +95,37 @@ void zen::ogScrPauseMgr::start(bool isChallengeMode)
 		mContLastSaveMainTextBox1->setString(mStoryModeQuitText);
 		mContLastSaveMainTextBox2->setString(mStoryModeQuitText);
 	}
+#if defined(PIKI_PC_PORT)
+	// VS: "salir" vuelve al título; ni desafío ni última partida guardada.
+	// Solo ASCII: la fuente del juego no tiene todos los acentos en todas las versiones.
+	// En pause_ok.blo 'yame' tiene una copia sin nombre (sombra) con el mismo
+	// texto, junto a él o debajo: se cambian todas las que comparten el texto.
+	static char* sChalSubText = mQuitChalModeSubTextBox->getString();
+	static char sVsQuitEn[]   = "Quit match";
+	static char sVsQuitEs[]   = "Salir de la partida";
+	char* subText             = sChalSubText;
+	if (pc_vs_active()) {
+		char* quit = pc_settings_get_language() == 3 ? sVsQuitEs : sVsQuitEn; // OS_LANG_SPANISH
+		mContLastSaveMainTextBox1->setString(quit);
+		mContLastSaveMainTextBox2->setString(quit);
+		subText = quit;
+	}
+	auto setCopies = [&](P2DPane* parent) {
+		if (!parent) return;
+		for (PSUTree<P2DPane>* it = parent->getFirstChild(); it; it = it->getNextChild()) {
+			P2DPane* pane = it->getObject();
+			if (!pane || pane->getTypeID() != PANETYPE_TextBox) continue;
+			P2DTextBox* box = static_cast<P2DTextBox*>(pane);
+			char* text      = box->getString();
+			if (text && (text == sVsQuitEn || text == sVsQuitEs || (sChalSubText && strcmp(text, sChalSubText) == 0))) {
+				box->setString(subText);
+			}
+		}
+	};
+	mQuitChalModeSubTextBox->setString(subText);
+	setCopies(mQuitChalModeSubTextBox);
+	setCopies(mQuitChalModeSubTextBox->pcGetParentPane());
+#endif
 
 	mMainMenu->start(-1);
 	mState      = PAUSE_FadeIn;
@@ -113,7 +147,11 @@ zen::ogScrPauseMgr::PauseStatus zen::ogScrPauseMgr::update(Controller* controlle
 		return mState;
 	}
 
-	if (playerState->getCurrDay() == 0 || playerState->getCurrDay() == playerState->getTotalDays() - 1) {
+	if (playerState->getCurrDay() == 0 || playerState->getCurrDay() == playerState->getTotalDays() - 1
+#if defined(PIKI_PC_PORT)
+	    || pc_vs_active() // VS: sin atardecer; la revancha está en la pantalla final
+#endif
+	) {
 		// disable "Go to Sunset" menu option on day 1 (trapped in tutorial) and day 30 (can't die early)
 		mMainMenu->setMenuItemActiveSw(1, false);
 	} else {
@@ -186,7 +224,11 @@ zen::ogScrPauseMgr::PauseStatus zen::ogScrPauseMgr::update(Controller* controlle
 			mQuitChalModeSubTextBox->hide();
 			mContLastSaveSubTextBox->hide();
 			mGoToSunsetSubTextBox->hide();
-			if (mIsChallengeMode) {
+			if (mIsChallengeMode
+#if defined(PIKI_PC_PORT)
+			    || pc_vs_active()
+#endif
+			) {
 				mQuitChalModeSubTextBox->show();
 			} else {
 				mContLastSaveSubTextBox->show();

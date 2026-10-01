@@ -6,12 +6,17 @@
  */
 #include "Dolphin/vi.h"
 #include "pc_window.h"
+#include "pc_dev_console.h"
 #include "gl/pc_gfx.h"
 #include <cstdio>
 #include <cstring>
 
 #if defined(PIKI_PC_PORT) && defined(PIKI_PC_SETTINGS_MENU)
 #include "settings/pc_settings.h"
+#include "settings/pc_glass_menu.h"
+#if PIKI_PC_TOUCH
+#include "touch/pc_touch.h"
+#endif
 #endif
 
 static u32 sRetraceCount = 0;
@@ -33,9 +38,17 @@ void VIWaitForRetrace(void)    {
 #if defined(PIKI_PC_PORT) && defined(PIKI_PC_SETTINGS_MENU)
     // Draw the settings overlay through the game GX stack before the native
     // framebuffer is blitted to the window, so it appears on top.
+    pc_settings_draw_idle_counter();
+    pc_settings_draw_vs_hud();
     pc_settings_draw();
+    pc_glass_menu_draw();
 #endif
+    // #942 dev console overlay (input line + recent output); inert when disabled.
+    pc_dev_console_draw();
     pc_gfx_present();
+#if PIKI_PC_TOUCH
+    pc_touch_draw();
+#endif
     pc_window_swap_buffers();
     pc_window_poll_events(nullptr);
 }

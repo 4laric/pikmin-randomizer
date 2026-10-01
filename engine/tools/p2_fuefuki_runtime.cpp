@@ -423,7 +423,19 @@ int main(int argc, char** argv)
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
     pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
-    require(pc_window_init("Fuefuki whistle-path runtime fixture", 960, 720), "window init");
+    require(pc_window_init("Fuefuki whistle-path runtime fixture", 960, 540), "window init");
+    pc_window_center();
+    {
+        SDL_Window* window = SDL_GL_GetCurrentWindow();
+        int width = 0, height = 0, x = 0, y = 0; SDL_GetWindowSize(window, &width, &height);
+        SDL_GetWindowPosition(window, &x, &y);
+        SDL_Rect bounds{0, 0, 0, 0}; SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(window), &bounds);
+        const bool centered = std::abs(x - (bounds.x + (bounds.w - width) / 2)) <= 2
+            && std::abs(y - (bounds.y + (bounds.h - height) / 2)) <= 2;
+        std::printf("P2_FUEFUKI_RT_WINDOW size=%dx%d pos=%d,%d display=%dx%d centered=%d\n",
+            width, height, x, y, bounds.w, bounds.h, int(centered));
+        std::fflush(stdout);
+    }
     pc_settings_init();
     gsys->Initialise();
     pc_settings_p2d_init();

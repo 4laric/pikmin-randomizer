@@ -1,0 +1,338 @@
+From 416ccb49b1f8261f3c8c49b850573ae16f059a1d Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 10:18:01 -0400
+Subject: [PATCH 5/5] lane 11: extract the cave checkpoint wire format and gate
+ schema-3 round trip (#131/#112)
+
+---
+ pc_port/pc_p2_cave.cpp          |  50 ++++++-------
+ pc_port/pc_p2_cave_transfer.h   | 121 ++++++++++++++++++++++++++++++++
+ tools/test_p2_cave_transfer.cpp |  95 +++++++++++++++++++++++++
+ 3 files changed, 239 insertions(+), 27 deletions(-)
+ create mode 100644 pc_port/pc_p2_cave_transfer.h
+ create mode 100644 tools/test_p2_cave_transfer.cpp
+
+diff --git a/pc_port/pc_p2_cave.cpp b/pc_port/pc_p2_cave.cpp
+index 2fcc99ee..9283e8bd 100644
+--- a/pc_port/pc_p2_cave.cpp
++++ b/pc_port/pc_p2_cave.cpp
+@@ -9,6 +9,7 @@
+ #include "pc_p2_white.h"
+ #include "pc_p2_species.h"
+ #include "pc_p2_species_schema.h"
++#include "pc_p2_cave_transfer.h"
+ #include "pc_bbft.h"
+ #include "Piki.h"
+ #include "PikiMgr.h"
+@@ -43,7 +44,7 @@ Shape* transitionShape=nullptr;
+ P2CaveNavRate navRate;
+ unsigned navDrawCalls=0;
+ bool navMarkerLogged=false;
+-struct Survivor {int color,maturity;};
++using Survivor = P2CaveSurvivor;
+ void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
+ bool active(){return floorId && !completed && pc_p2_preview_ready() && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
+ bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
+@@ -73,32 +74,29 @@ void pc_p2_cave_setup(){
+     floorId=0;checkpointSchema=1;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
+     if(!pc_pikipelago_room_preview())return;
+     std::ifstream in("p2-cave-entry.txt");if(!in)return;
+-    std::string version,extra;int floor,count;float health;
+-    if(!(in>>version>>token>>floor>>health>>count) || (version!="P2_CAVE_ENTRY_1" && version!="P2_CAVE_ENTRY_2" && version!="P2_CAVE_ENTRY_3")
+-        || token.size()!=32 || token.find_first_not_of("0123456789abcdef")!=std::string::npos
+-        || (floor!=1 && floor!=2) || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
+-        invalid("header");
+-    std::vector<Survivor> squad;
+-    checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
+-    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || !p2_schema_supports(checkpointSchema,s.color) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
+-    if(in>>extra || !in.eof())invalid("trailing data");
++    std::stringstream entryText;entryText<<in.rdbuf();
++    P2CaveEntry entry;std::string entryError;
++    if(!p2_cave_parse_entry(entryText.str(),entry,entryError))invalid(entryError.c_str());
++    std::vector<Survivor> squad=entry.squad;
++    checkpointSchema=entry.schema;
++    token=entry.token;
+     std::vector<Piki*> spawned;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())spawned.push_back(p);}
+     if(spawned.size()!=squad.size())invalid("spawn count differs from checkpoint");
+     for(size_t i=0;i<squad.size();++i){
+         Piki* p=spawned[i];p->mHappa=squad[i].maturity;
+-        if(squad[i].color==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
+-        if(squad[i].color==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
+-        if(!pc_p2_set_species(p,squad[i].color))invalid("Pikmin species");
+-        if(squad[i].color==3)pc_p2_make_purple(p);
+-        if(squad[i].color==4)pc_p2_make_white(p);
+-        if(squad[i].color==5)pc_p2_make_bulbmin(p);
+-        std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].color,squad[i].maturity);
++        if(squad[i].species==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
++        if(squad[i].species==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
++        if(!pc_p2_set_species(p,squad[i].species))invalid("Pikmin species");
++        if(squad[i].species==3)pc_p2_make_purple(p);
++        if(squad[i].species==4)pc_p2_make_white(p);
++        if(squad[i].species==5)pc_p2_make_bulbmin(p);
++        std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].species,squad[i].maturity);
+     }
+     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
+-    n->mHealth=C_NAVI_PARM(n,mHealth)*health;
+-    floorId=floor;
++    n->mHealth=C_NAVI_PARM(n,mHealth)*entry.health;
++    floorId=entry.floor;
+     std::ifstream location("p2-cave-transition.txt");
+-    if(location && !p2_cave_read_anchor(location,floor,anchor))invalid("transition anchor");
++    if(location && !p2_cave_read_anchor(location,entry.floor,anchor))invalid("transition anchor");
+     if(anchor.enabled)std::printf("P2_CAVE_ANCHOR kind=%s x=%.3f y=%.3f z=%.3f radius=%.3f\n",anchor.kind.c_str(),anchor.x,anchor.y,anchor.z,anchor.radius);
+     std::ifstream visual("p2-cave-visual.txt");
+     if(visual){
+@@ -112,7 +110,7 @@ void pc_p2_cave_setup(){
+             if(transitionShape->mTexAttrList[i].mTexture)transitionShape->mTexAttrList[i].mTexture->attach();
+         std::printf("P2_CAVE_VISUAL_READY kind=%s vertices=%d\n",kind.c_str(),transitionShape->mVertexCount);
+     }
+-    std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
++    std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",entry.floor,int(squad.size()),entry.health);std::fflush(stdout);
+ }
+ void pc_p2_cave_request(){if(active())requested=true;}
+ bool pc_p2_cave_interact(float x,float y,float z){
+@@ -157,12 +155,10 @@ bool pc_p2_cave_checkpoint(bool confirm){
+         SDL_MessageBoxData data={SDL_MESSAGEBOX_INFORMATION,SDL_GL_GetCurrentWindow(),"Emergence Cave",message.c_str(),2,buttons,nullptr};int choice=0;
+         if(SDL_ShowMessageBox(&data,&choice)!=0 || choice!=1)return false;
+     }
+-    int writeSchema=checkpointSchema;
+-    for(const auto& s:squad){const int required=p2_schema_required_for_species(s.color);if(required>writeSchema)writeSchema=required;}
+-    std::ostringstream out;out.precision(9);
+-    out<<"P2_CAVE_TRANSFER_"<<writeSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
+-    for(const auto& s:squad)out<<s.color<<' '<<s.maturity<<'\n';
+-    std::string text=out.str();FILE* file=std::fopen("p2-cave-transfer.tmp","wb");
++    P2CaveEntry transfer;transfer.schema=checkpointSchema;transfer.token=token;
++    transfer.floor=floorId;transfer.health=health;transfer.squad=squad;
++    std::string text=p2_cave_format_transfer(transfer);
++    FILE* file=std::fopen("p2-cave-transfer.tmp","wb");
+     if(!file)return false;
+     bool ok=std::fwrite(text.data(),1,text.size(),file)==text.size() && std::fflush(file)==0;
+     if(std::fclose(file)!=0)ok=false;
+diff --git a/pc_port/pc_p2_cave_transfer.h b/pc_port/pc_p2_cave_transfer.h
+new file mode 100644
+index 00000000..f37f959e
+--- /dev/null
++++ b/pc_port/pc_p2_cave_transfer.h
+@@ -0,0 +1,121 @@
++#pragma once
++#include "pc_p2_species_schema.h"
++
++#include <cmath>
++#include <sstream>
++#include <string>
++#include <vector>
++
++// P2 cave checkpoint wire format, lane 11 (#131/#112).
++//
++// A cave checkpoint is a token-authenticated, versioned transfer of the living
++// Pikmin squad plus captain health. The entry header names the schema the reader
++// must apply; the transfer header names the schema required to carry the squad.
++// This header is engine-free so `tools/test_p2_cave_transfer.cpp` can pin the
++// exact encode/decode the engine uses, including the lane-11 Bulbmin schema.
++//
++// Entry:    P2_CAVE_ENTRY_<schema> <32-hex token> <floor> <health> <count>
++//           <species> <maturity>            (count lines)
++// Transfer: P2_CAVE_TRANSFER_<schema> <32-hex token> <floor> <health> <count>
++//           <species> <maturity>            (count lines)
++//
++// The two headers differ only in name/direction; both carry the squad. Schema 3
++// is required to carry Bulbmin, and an old reader must reject it explicitly.
++
++enum { P2CaveMaxSurvivors = 100 };
++
++struct P2CaveSurvivor {
++    int species = -1;
++    int maturity = 0;
++};
++
++struct P2CaveEntry {
++    int schema = P2SpeciesSchemaPurple;
++    std::string token;
++    int floor = 0;
++    float health = 0.0f;
++    std::vector<P2CaveSurvivor> squad;
++};
++
++inline int p2_cave_schema_from_version(const std::string& version, const char* prefix) {
++    const std::string base(prefix);
++    if (version == base + "_1") return P2SpeciesSchemaPurple;
++    if (version == base + "_2") return P2SpeciesSchemaWhite;
++    if (version == base + "_3") return P2SpeciesSchemaBulbmin;
++    return -1;
++}
++
++inline bool p2_cave_token_valid(const std::string& token) {
++    if (token.size() != 32) return false;
++    for (char c : token) {
++        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
++    }
++    return true;
++}
++
++// Parse either header. `prefix` is "P2_CAVE_ENTRY" or "P2_CAVE_TRANSFER".
++// On failure `error` names the failing clause ("header", "Pikmin",
++// "trailing data") exactly as the engine reports it.
++inline bool p2_cave_parse(const std::string& text, const char* prefix,
++                          P2CaveEntry& out, std::string& error) {
++    std::istringstream in(text);
++    std::string version;
++    int count = 0;
++    if (!(in >> version >> out.token >> out.floor >> out.health >> count)) {
++        error = "header";
++        return false;
++    }
++    out.schema = p2_cave_schema_from_version(version, prefix);
++    if (out.schema < 0 || !p2_cave_token_valid(out.token)
++        || (out.floor != 1 && out.floor != 2) || !std::isfinite(out.health)
++        || out.health <= 0 || out.health > 1 || count < 1 || count > P2CaveMaxSurvivors) {
++        error = "header";
++        return false;
++    }
++    out.squad.clear();
++    for (int i = 0; i < count; ++i) {
++        P2CaveSurvivor s;
++        if (!(in >> s.species >> s.maturity) || !p2_schema_supports(out.schema, s.species)
++            || s.maturity < 0 || s.maturity > 2) {
++            error = "Pikmin";
++            return false;
++        }
++        out.squad.push_back(s);
++    }
++    std::string extra;
++    if (in >> extra || !in.eof()) {
++        error = "trailing data";
++        return false;
++    }
++    return true;
++}
++
++inline bool p2_cave_parse_entry(const std::string& text, P2CaveEntry& out, std::string& error) {
++    return p2_cave_parse(text, "P2_CAVE_ENTRY", out, error);
++}
++
++inline bool p2_cave_parse_transfer(const std::string& text, P2CaveEntry& out, std::string& error) {
++    return p2_cave_parse(text, "P2_CAVE_TRANSFER", out, error);
++}
++
++// The transfer schema must be at least the entry schema and at least the schema
++// required by every surviving species, so a Bulbmin is never written into a
++// payload an older reader would silently accept.
++inline int p2_cave_transfer_schema(int entrySchema, const std::vector<P2CaveSurvivor>& squad) {
++    int writeSchema = entrySchema;
++    for (const auto& s : squad) {
++        const int required = p2_schema_required_for_species(s.species);
++        if (required > writeSchema) writeSchema = required;
++    }
++    return writeSchema;
++}
++
++inline std::string p2_cave_format_transfer(const P2CaveEntry& e) {
++    const int writeSchema = p2_cave_transfer_schema(e.schema, e.squad);
++    std::ostringstream out;
++    out.precision(9);
++    out << "P2_CAVE_TRANSFER_" << writeSchema << '\n' << e.token << '\n'
++        << e.floor << ' ' << e.health << ' ' << e.squad.size() << '\n';
++    for (const auto& s : e.squad) out << s.species << ' ' << s.maturity << '\n';
++    return out.str();
++}
+diff --git a/tools/test_p2_cave_transfer.cpp b/tools/test_p2_cave_transfer.cpp
+new file mode 100644
+index 00000000..0d85005e
+--- /dev/null
++++ b/tools/test_p2_cave_transfer.cpp
+@@ -0,0 +1,95 @@
++// Lane 11 cave-checkpoint wire gate (#131/#112).
++//
++// Pins the exact encode/decode the engine uses in pc_lane/pc_p2_cave.cpp:
++// schema-3 (Bulbmin) round trip, old-reader rejection of a newer species,
++// unknown-version rejection, token/floor/health/trailing validation, and the
++// transfer schema bump. Engine-free; follows tools/test_p2_species_schema.cpp.
++#include "pc_p2_cave_transfer.h"
++
++#include <cassert>
++#include <cstdio>
++#include <string>
++
++namespace {
++std::string token() { return std::string(32, 'a'); }
++
++std::string entryText(const std::string& version, const std::vector<P2CaveSurvivor>& squad,
++                      const std::string& tok, int floor, float health) {
++    std::string text = version + "\n" + tok + "\n" + std::to_string(floor) + " "
++        + std::to_string(health) + " " + std::to_string(squad.size()) + "\n";
++    for (const auto& s : squad) text += std::to_string(s.species) + " " + std::to_string(s.maturity) + "\n";
++    return text;
++}
++}  // namespace
++
++int main() {
++    const std::string tok = token();
++    // v1 already carried Purple; v2 adds White; v3 adds Bulbmin.
++    const std::vector<P2CaveSurvivor> base = {{0, 0}, {1, 1}, {3, 2}};
++    const std::vector<P2CaveSurvivor> withWhite = {{0, 0}, {4, 2}};
++    const std::vector<P2CaveSurvivor> withBulbmin = {{0, 0}, {1, 2}, {4, 1}, {5, 0}};
++
++    P2CaveEntry out;
++    std::string error;
++
++    // 1. v1 parses and preserves species/maturity.
++    assert(p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_1", base, tok, 1, 0.625f), out, error));
++    assert(out.schema == P2SpeciesSchemaPurple && out.floor == 1 && out.squad.size() == 3);
++    assert(out.squad[2].species == 3 && out.squad[1].maturity == 1);
++    assert(out.token == tok);
++
++    // 2. v2 parses White.
++    assert(p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_2", withWhite, tok, 2, 1.0f), out, error));
++    assert(out.schema == P2SpeciesSchemaWhite && out.squad[1].species == 4);
++
++    // 3. v3 parses Bulbmin.
++    assert(p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_3", withBulbmin, tok, 1, 0.5f), out, error));
++    assert(out.schema == P2SpeciesSchemaBulbmin && out.squad[3].species == 5);
++
++    // 4. Old readers reject a newer species explicitly ("Pikmin", not "header").
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_2", withBulbmin, tok, 1, 0.5f), out, error));
++    assert(error == "Pikmin");
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_1", withWhite, tok, 1, 0.5f), out, error));
++    assert(error == "Pikmin");
++
++    // 5. Unknown version / bad token / bad floor / bad health / bad maturity.
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_4", base, tok, 1, 0.5f), out, error));
++    assert(error == "header");
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_1", base, std::string(32, 'g'), 1, 0.5f), out, error));
++    assert(error == "header");
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_1", base, tok, 3, 0.5f), out, error));
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_1", base, tok, 1, 1.5f), out, error));
++    assert(!p2_cave_parse_entry(entryText("P2_CAVE_ENTRY_3", {{0, 3}}, tok, 1, 0.5f), out, error));
++    assert(error == "Pikmin");
++
++    // 6. Trailing data is rejected.
++    std::string trailing = entryText("P2_CAVE_ENTRY_1", base, tok, 1, 0.5f);
++    trailing += "0 0\n";
++    assert(!p2_cave_parse_entry(trailing, out, error) && error == "trailing data");
++
++    // 7. Transfer schema is bumped to the newest species and never downgraded.
++    assert(p2_cave_transfer_schema(P2SpeciesSchemaPurple, base) == 1);
++    assert(p2_cave_transfer_schema(P2SpeciesSchemaPurple, withWhite) == 2);
++    assert(p2_cave_transfer_schema(P2SpeciesSchemaWhite, withBulbmin) == 3);
++    assert(p2_cave_transfer_schema(P2SpeciesSchemaBulbmin, base) == 3);
++
++    // 8. Write -> read round trip preserves the schema and every survivor.
++    P2CaveEntry written;
++    written.schema = P2SpeciesSchemaPurple;
++    written.token = tok;
++    written.floor = 1;
++    written.health = 0.625f;
++    written.squad = withBulbmin;
++    const std::string transfer = p2_cave_format_transfer(written);
++    assert(transfer.rfind("P2_CAVE_TRANSFER_3\n", 0) == 0);
++    P2CaveEntry reread;
++    assert(p2_cave_parse_transfer(transfer, reread, error));
++    assert(reread.schema == P2SpeciesSchemaBulbmin && reread.squad.size() == withBulbmin.size());
++    for (size_t i = 0; i < withBulbmin.size(); ++i) {
++        assert(reread.squad[i].species == withBulbmin[i].species);
++        assert(reread.squad[i].maturity == withBulbmin[i].maturity);
++    }
++
++    std::puts("PASS P2_CAVE_TRANSFER");
++    return 0;
++}

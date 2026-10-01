@@ -1,0 +1,483 @@
+From 2a4521da5363a9ce06b7a6dd2af5b5cd20396a3d Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 05:58:51 -0400
+Subject: [PATCH] Add P2 electric/gas Pikmin reaction states and route
+ receivers (#170/#408)
+
+Add PIKISTATE_DenkiDying and PIKISTATE_Panic with PikiDenkiDyingState and
+PikiPanicState, registered in PikiStateMachine::init so they are reachable.
+Route InteractDenki::actPiki / InteractGas::actPiki non-immune paths into the
+new states through the testable pc_p2_hazard_reaction helper, keeping the
+lane-11 immunity matrix intact. Add the narrow Piki::gasInvicible gate and a
+standalone tools test.
+---
+ include/Interactions.h               |  12 +--
+ include/Piki.h                       |   7 ++
+ include/PikiState.h                  |  58 +++++++++++++++
+ pc_port/pc_p2_hazard_reaction.h      |  42 +++++++++++
+ src/plugPikiKando/interactBattle.cpp |  43 +++++------
+ src/plugPikiKando/pikiState.cpp      | 105 +++++++++++++++++++++++++++
+ tools/test_p2_hazard_reaction.cpp    |  56 ++++++++++++++
+ 7 files changed, 293 insertions(+), 30 deletions(-)
+ create mode 100644 pc_port/pc_p2_hazard_reaction.h
+ create mode 100644 tools/test_p2_hazard_reaction.cpp
+
+diff --git a/include/Interactions.h b/include/Interactions.h
+index ea188025..03eaeda5 100644
+--- a/include/Interactions.h
++++ b/include/Interactions.h
+@@ -228,9 +228,9 @@ struct InteractChangeHappa : public Interaction {
+  * Source: `InteractDenki : public InteractWind` (`include/Game/Interaction.h`),
+  * `actPiki` rejects Yellow/Bulbmin and requests `PIKISTATE_DenkiDying`
+  * (`native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334,347`).
+- * This P1-derived port has no `PIKISTATE_Denki*` state, so the receiver routes
+- * non-immune Piki to the closest existing death path and records the missing
+- * P2 state (#170/#408, see docs/PIKMIN2_RECEIVER_PATHS.md).
++ * The port now carries `PIKISTATE_DenkiDying` (`PikiState.h`) and routes
++ * non-immune Piki through `p2_hazard_reaction` (#170/#408, see
++ * docs/PIKMIN2_RECEIVER_PATHS.md).
+  */
+ struct InteractDenki : public Interaction {
+ 	InteractDenki(Creature* owner, f32 force, Vector3f* direction)
+@@ -317,9 +317,9 @@ struct InteractFlute : public Interaction {
+  * `Piki::gasInvicible()` and rejects White/Bulbmin, otherwise requesting
+  * `PIKISTATE_Panic` with `PIKIPANIC_Gas`
+  * (`native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531,543`).
+- * This P1-derived port has no panic/gas state or `gasInvicible` timer, so the
+- * receiver routes non-immune Piki to the closest existing panic-style path and
+- * records the missing inputs (#170/#408, see docs/PIKMIN2_RECEIVER_PATHS.md).
++ * The port now carries `PIKISTATE_Panic` and the narrow gas gate, routing
++ * non-immune Piki through `p2_hazard_reaction` (#170/#408, see
++ * docs/PIKMIN2_RECEIVER_PATHS.md).
+  */
+ struct InteractGas : public Interaction {
+ 	inline InteractGas(Creature* owner, f32 damage)
+diff --git a/include/Piki.h b/include/Piki.h
+index f4ceca07..816661c6 100644
+--- a/include/Piki.h
++++ b/include/Piki.h
+@@ -227,6 +227,12 @@ public:
+ 
+ 	bool isFired() { return mFiredState == 1; }
+ 
++	// Narrow P2 gas-reaction gate (#170/#408). Source `Piki::gasInvicible`
++	// (`native/pikmin2-research/src/plugProjectKandoU/piki.cpp:832`). The gas
++	// panic state raises it so `InteractGas::actPiki` cannot restart the panic.
++	bool gasInvicible() { return mGasInvincible != 0; }
++	void setGasInvincible(u8 frames) { mGasInvincible = frames; }
++
+ protected:
+ 	virtual void doKill(); // _10C
+ 
+@@ -337,6 +343,7 @@ public:
+     bool mP2White = false;
+     bool mP2Bulbmin = false; // source Piki.h Bulbmin = 5; cave-only, wild by default
+     float mP2AnimationTime = 0;
++    u8 mGasInvincible = 0; // P2 gas-reaction gate (#170/#408); see gasInvicible()
+ };
+ 
+ /**
+diff --git a/include/PikiState.h b/include/PikiState.h
+index 6360f231..b842a9a7 100644
+--- a/include/PikiState.h
++++ b/include/PikiState.h
+@@ -48,6 +48,8 @@ enum PikiStateID {
+ 	PIKISTATE_UNUSED32     = 32, // Unused
+ 	PIKISTATE_Pressed      = 33, // Crushed/flattened; stun + temporary invulnerability.
+ 	PIKISTATE_Unk34        = 34, // Unused
++	PIKISTATE_DenkiDying   = 35, // P2 electric-shock death reaction (#170/#408).
++	PIKISTATE_Panic        = 36, // P2 panic state, currently the gas reaction (#170/#408).
+ 	PIKISTATE_Count,             // Total number of states.
+ };
+ 
+@@ -236,6 +238,62 @@ protected:
+ 	// _00-_10 = PikiState
+ };
+ 
++/**
++ * @brief P2 electric-shock death reaction (#170/#408).
++ *
++ * Source `PikiDenkiDyingState` (`include/Game/PikiState.h:236`): a Piki that is
++ * not Yellow/Bulbmin is zapped by `InteractDenki`, freezes, waits 0.3s and then
++ * dies to electricity (`pikiState.cpp:1256-1283`). This port has no electric
++ * effect or animation entry, so the state plays the ordinary death animation
++ * and hands off to `PIKISTATE_Dead` (the existing kill pipeline) after the wait.
++ *
++ * @note Size: 0x14.
++ */
++struct PikiDenkiDyingState : public PikiState {
++public:
++	PikiDenkiDyingState();
++
++	virtual void init(Piki*);                      // _38
++	virtual void exec(Piki*);                      // _3C
++	virtual void cleanup(Piki*);                   // _40
++	virtual bool useLookUpdate() { return false; } // _60
++
++protected:
++	// _00     = VTBL
++	// _00-_10 = PikiState
++	f32 mWaitTime; // _10
++};
++
++/**
++ * @brief P2 panic state; currently the gas reaction (#170/#408).
++ *
++ * Source `PikiPanicState` with `PIKIPANIC_Gas` (`include/Game/PikiState.h:717`,
++ * `interactPiki.cpp:531,551`): a Piki that is not White/Bulbmin panics and then
++ * dies from poison (`pikiState.cpp:1014-1063`). This port has no `StateArg`
++ * channel and no gas animation, so the state is the gas flavour of panic and
++ * reuses the panic-run movement of `PikiFiredState`; `InteractGas` is its only
++ * producer. It is gated by the narrow `Piki::gasInvicible()` flag so repeated
++ * gas stimuli cannot restart it.
++ *
++ * @note Size: 0x20.
++ */
++struct PikiPanicState : public PikiState {
++public:
++	PikiPanicState();
++
++	virtual void init(Piki*);    // _38
++	virtual void exec(Piki*);    // _3C
++	virtual void cleanup(Piki*); // _40
++
++protected:
++	// _00     = VTBL
++	// _00-_10 = PikiState
++	f32 mSurvivalTimer;        // _10
++	f32 mChangeDirectionTimer; // _14
++	f32 mMoveDirection;        // _18
++	f32 mSpeedRatio;           // _1C
++};
++
+ /**
+  * @brief Drowning sequence (struggle, sink, and death).
+  *
+diff --git a/pc_port/pc_p2_hazard_reaction.h b/pc_port/pc_p2_hazard_reaction.h
+new file mode 100644
+index 00000000..1da7bb3f
+--- /dev/null
++++ b/pc_port/pc_p2_hazard_reaction.h
+@@ -0,0 +1,42 @@
++#pragma once
++#include "pc_p2_species_policy.h"
++
++// P2 Pikmin hazard-reaction routing, lane 10 receivers (#170/#408). This is the
++// decision the electric/gas receivers make after the engine-level state/alive
++// guards: immune species are rejected (None) and everything else is routed to
++// the P2 reaction state that mirrors the decompilation. It is header-only so
++// tools/test_p2_hazard_reaction.cpp can pin the table without linking the
++// engine, following pc_p2_species_policy.h.
++//
++// Source basis (native/pikmin2-research, US GPVE01 revision 0):
++//   InteractDenki::actPiki :334, reject unless Yellow/Bulbmin (:347),
++//                              transit PIKISTATE_DenkiDying (:348-349)
++//   InteractGas::actPiki   :531, reject when gasInvicible (:533),
++//                              reject unless White/Bulbmin (:543),
++//                              transit PIKISTATE_Panic + PIKIPANIC_Gas (:550-552)
++
++enum P2HazardReaction {
++    P2HazardReactionNone = 0, // receiver rejects; no state change
++    P2HazardReactionDenkiDying = 1, // -> PIKISTATE_DenkiDying
++    P2HazardReactionGasPanic = 2, // -> PIKISTATE_Panic (gas)
++};
++
++// `gasInvincible` is the engine's narrow P2 gate (`Piki::gasInvicible()`); it
++// only suppresses the gas reaction. Fire/water keep their own receivers and do
++// not consult this helper (they return None here).
++inline P2HazardReaction p2_hazard_reaction(int species, int hazard, bool gasInvincible) {
++    if (hazard == P2HazardGas && gasInvincible) {
++        return P2HazardReactionNone;
++    }
++    if (p2_species_immune(species, hazard)) {
++        return P2HazardReactionNone;
++    }
++    switch (hazard) {
++    case P2HazardElectric:
++        return P2HazardReactionDenkiDying;
++    case P2HazardGas:
++        return P2HazardReactionGasPanic;
++    default:
++        return P2HazardReactionNone;
++    }
++}
+diff --git a/src/plugPikiKando/interactBattle.cpp b/src/plugPikiKando/interactBattle.cpp
+index 63675e99..1d2088c8 100644
+--- a/src/plugPikiKando/interactBattle.cpp
++++ b/src/plugPikiKando/interactBattle.cpp
+@@ -1,4 +1,5 @@
+ #include "pc_p2_purple.h"
++#include "pc_p2_hazard_reaction.h"
+ #include "pc_p2_species.h"
+ #include "pc_p2_species_policy.h"
+ #include "BombItem.h"
+@@ -211,11 +212,11 @@ bool InteractFire::actPiki(Piki* piki) immut
+  *
+  * P2 electric receiver (#170/#408). Source `InteractDenki::actPiki`
+  * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334) rejects
+- * Yellow and Bulbmin and otherwise transits to `PIKISTATE_DenkiDying`. This
+- * port has no `PIKISTATE_Denki*` state: non-immune Piki take the closest
+- * existing lethal path (`PIKISTATE_Dying`) and the missing P2 state is logged
+- * and recorded as the blocker. The routing is matrix-driven, so P2 Bulbmin is
+- * covered without a separate colour test.
++ * Yellow and Bulbmin and otherwise transits to `PIKISTATE_DenkiDying`; this
++ * port now has that state, reached through the same lane-11 matrix so P2
++ * Bulbmin is covered without a separate colour test. Routing is decided by
++ * `p2_hazard_reaction`, which keeps the immunity gate and the reaction target
++ * in one testable place.
+  *
+  * `__attribute__((used))`: no gas/denki emitter references this receiver yet,
+  * so LTO would otherwise dead-strip it (and its P2_RECV_ log) from the link.
+@@ -227,17 +228,16 @@ __attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
+ 	}
+ 
+ 	int state = piki->getState();
+-	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead) {
++	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_DenkiDying) {
+ 		return false;
+ 	}
+ 
+-	if (p2_species_immune(pc_p2_species(piki), P2HazardElectric)) {
++	if (p2_hazard_reaction(pc_p2_species(piki), P2HazardElectric, piki->gasInvicible()) != P2HazardReactionDenkiDying) {
+ 		return false;
+ 	}
+ 
+-	PRINT("P2_RECV_DENKI species=%d accepted=1 p2_state=PIKISTATE_DenkiDying missing using=PIKISTATE_Dying\n",
+-	      pc_p2_species(piki));
+-	piki->mFSM->transit(piki, PIKISTATE_Dying);
++	PRINT("P2_RECV_DENKI species=%d accepted=1 p2_state=PIKISTATE_DenkiDying\n", pc_p2_species(piki));
++	piki->mFSM->transit(piki, PIKISTATE_DenkiDying);
+ 	return true;
+ }
+ 
+@@ -245,13 +245,11 @@ __attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
+  * @todo: Documentation
+  *
+  * P2 gas receiver (#170/#408). Source `InteractGas::actPiki`
+- * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531) checks
+- * `Piki::gasInvicible()` and rejects White and Bulbmin, otherwise requesting
+- * `PIKISTATE_Panic` with `PIKIPANIC_Gas`. This port has neither a panic/gas
+- * state nor a gas-invincibility timer: non-immune Piki take the closest
+- * existing panic-style path (`PIKISTATE_Fired`) and both missing inputs are
+- * logged and recorded as the blocker. Routing stays matrix-driven so P2
+- * Bulbmin is covered.
++ * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531) rejects a
++ * gas-invincible Piki, then White and Bulbmin, and otherwise requests
++ * `PIKISTATE_Panic` with `PIKIPANIC_Gas`. This port now has that state and the
++ * narrow `Piki::gasInvicible()` gate; the species gate stays matrix-driven so
++ * P2 Bulbmin is covered. `p2_hazard_reaction` applies both gates.
+  *
+  * `__attribute__((used))` keeps the receiver and its P2_RECV_ log in the link
+  * until a gas emitter references it (see InteractDenki::actPiki above).
+@@ -263,19 +261,16 @@ __attribute__((used)) bool InteractGas::actPiki(Piki* piki) immut
+ 	}
+ 
+ 	int state = piki->getState();
+-	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_Fired) {
++	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_Panic) {
+ 		return false;
+ 	}
+ 
+-	if (p2_species_immune(pc_p2_species(piki), P2HazardGas)) {
++	if (p2_hazard_reaction(pc_p2_species(piki), P2HazardGas, piki->gasInvicible()) != P2HazardReactionGasPanic) {
+ 		return false;
+ 	}
+ 
+-	PRINT("P2_RECV_GAS species=%d accepted=1 p2_state=PIKISTATE_Panic(gas) missing using=PIKISTATE_Fired "
+-	      "gasInvicible=missing\n",
+-	      pc_p2_species(piki));
+-	piki->changeMode(0, piki->mNavi);
+-	piki->mFSM->transit(piki, PIKISTATE_Fired);
++	PRINT("P2_RECV_GAS species=%d accepted=1 p2_state=PIKISTATE_Panic(gas)\n", pc_p2_species(piki));
++	piki->mFSM->transit(piki, PIKISTATE_Panic);
+ 	return true;
+ }
+ 
+diff --git a/src/plugPikiKando/pikiState.cpp b/src/plugPikiKando/pikiState.cpp
+index 45950238..efd7f355 100644
+--- a/src/plugPikiKando/pikiState.cpp
++++ b/src/plugPikiKando/pikiState.cpp
+@@ -173,6 +173,8 @@ void PikiStateMachine::init(Piki* piki)
+ 	registerState(new PikiAbsorbState());
+ 	registerState(new PikiDyingState());
+ 	registerState(new PikiDeadState());
++	registerState(new PikiDenkiDyingState());
++	registerState(new PikiPanicState());
+ 	registerState(new PikiKinokoState());
+ 	registerState(new PikiDrownState());
+ 	registerState(new PikiEmotionState());
+@@ -3252,6 +3254,109 @@ void PikiDeadState::cleanup(Piki* piki)
+ 	piki->mSRT.s.set(0.0f, 0.0f, 0.0f);
+ }
+ 
++/**
++ * @brief Constructs the P2 electric-shock death state.
++ */
++PikiDenkiDyingState::PikiDenkiDyingState()
++    : PikiState(PIKISTATE_DenkiDying, "DENKI_DYING")
++{
++}
++
++/**
++ * @brief Freezes the Piki, plays the death animation and sets the electric wait.
++ */
++void PikiDenkiDyingState::init(Piki* piki)
++{
++	piki->mActiveAction->abandon(nullptr);
++	piki->startMotion(PaniMotionInfo(PIKIANIM_Dead), PaniMotionInfo(PIKIANIM_Dead));
++	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
++	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
++	mWaitTime = 0.3f;
++}
++
++/**
++ * @brief Holds the Piki still, then hands off to the ordinary death pipeline.
++ *
++ * Source `PikiDenkiDyingState::exec` (`pikiState.cpp:1268`) emits the electric
++ * effect and kills after `mWaitTime`; this port has no electric effect, so it
++ * transitions into `PIKISTATE_Dead`, which shrinks and kills the Piki.
++ */
++void PikiDenkiDyingState::exec(Piki* piki)
++{
++	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
++	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
++	mWaitTime -= gsys->getFrameTime();
++	if (mWaitTime <= 0.0f) {
++		transit(piki, PIKISTATE_Dead);
++	}
++}
++
++/**
++ * @brief No explicit cleanup.
++ */
++void PikiDenkiDyingState::cleanup(Piki* piki)
++{
++}
++
++/**
++ * @brief Constructs the P2 gas panic state.
++ */
++PikiPanicState::PikiPanicState()
++    : PikiState(PIKISTATE_Panic, "PANIC")
++{
++}
++
++/**
++ * @brief Enters panic movement and raises the narrow gas gate.
++ *
++ * Mirrors the source `PIKIPANIC_Gas` init (`pikiState.cpp:839`): panic-run
++ * movement and the panic effect, then death when the poison timer expires. The
++ * source `gasInvicible` flag is modelled by `Piki::setGasInvincible`.
++ */
++void PikiPanicState::init(Piki* piki)
++{
++	piki->changeMode(PikiMode::FreeMode, piki->mNavi);
++	piki->startMotion(PaniMotionInfo(PIKIANIM_Moeru), PaniMotionInfo(PIKIANIM_Moeru));
++	piki->enableMotionBlend();
++	mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
++	mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
++	mChangeDirectionTimer = 0.1f;
++	mMoveDirection        = piki->mFaceDirection;
++	mSpeedRatio           = 1.0f;
++	piki->setGasInvincible(1);
++	piki->mIsPanicked = true;
++}
++
++/**
++ * @brief Runs panicked movement until the poison timer expires, then dies.
++ */
++void PikiPanicState::exec(Piki* piki)
++{
++	piki->setSpeed(mSpeedRatio, mMoveDirection);
++	mSurvivalTimer -= gsys->getFrameTime();
++	mChangeDirectionTimer -= gsys->getFrameTime();
++	if (mSurvivalTimer < 0.0f) {
++		transit(piki, PIKISTATE_Dying);
++		return;
++	}
++
++	if (mChangeDirectionTimer < 0.0f) {
++		mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
++		mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
++		mMoveDirection = roundAng(mMoveDirection);
++		mSpeedRatio *= 0.99f;
++	}
++}
++
++/**
++ * @brief Clears the gas gate and panic flag when the state is left.
++ */
++void PikiPanicState::cleanup(Piki* piki)
++{
++	piki->setGasInvincible(0);
++	piki->mIsPanicked = false;
++}
++
+ /**
+  * @brief Constructs the transient emotion/celebration state.
+  */
+diff --git a/tools/test_p2_hazard_reaction.cpp b/tools/test_p2_hazard_reaction.cpp
+new file mode 100644
+index 00000000..ab558f54
+--- /dev/null
++++ b/tools/test_p2_hazard_reaction.cpp
+@@ -0,0 +1,56 @@
++#include "pc_p2_hazard_reaction.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 10 reaction-routing test (#170/#408). The electric receiver must route
++// every non-immune species to the DenkiDying state and the gas receiver every
++// non-immune, non-gas-invincible species to the Panic state. Immune species and
++// gas-invincible Piki must be rejected (None), so the receivers keep the
++// immunity gate intact and leave existing behavior untouched.
++//
++// Source basis (native/pikmin2-research, src/plugProjectKandoU/interactPiki.cpp):
++//   InteractDenki::actPiki :334 -> PIKISTATE_DenkiDying           (:347-349)
++//   InteractGas::actPiki   :531 -> gasInvicible gate (:533),
++//                            PIKISTATE_Panic PIKIPANIC_Gas        (:542-552)
++// This is an engine-double test: the receivers themselves are compiled and
++// linked by the pikmin_pc build.
++int main() {
++    // Electric: only Yellow and Bulbmin are immune; every other species is
++    // routed to DenkiDying (electric death).
++    assert(p2_hazard_reaction(P2SpeciesYellow, P2HazardElectric, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesBulbmin, P2HazardElectric, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardElectric, false) == P2HazardReactionDenkiDying);
++    assert(p2_hazard_reaction(P2SpeciesBlue, P2HazardElectric, false) == P2HazardReactionDenkiDying);
++    assert(p2_hazard_reaction(P2SpeciesPurple, P2HazardElectric, false) == P2HazardReactionDenkiDying);
++    assert(p2_hazard_reaction(P2SpeciesWhite, P2HazardElectric, false) == P2HazardReactionDenkiDying);
++
++    // Gas: only White and Bulbmin are immune; every other species panics.
++    assert(p2_hazard_reaction(P2SpeciesWhite, P2HazardGas, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesBulbmin, P2HazardGas, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardGas, false) == P2HazardReactionGasPanic);
++    assert(p2_hazard_reaction(P2SpeciesBlue, P2HazardGas, false) == P2HazardReactionGasPanic);
++    assert(p2_hazard_reaction(P2SpeciesYellow, P2HazardGas, false) == P2HazardReactionGasPanic);
++    assert(p2_hazard_reaction(P2SpeciesPurple, P2HazardGas, false) == P2HazardReactionGasPanic);
++
++    // The gas-invincibility gate suppresses only the gas reaction, and only for
++    // a species that would otherwise panic. It never affects electricity.
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardGas, true) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesWhite, P2HazardGas, true) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesBulbmin, P2HazardGas, true) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardElectric, true) == P2HazardReactionDenkiDying);
++
++    // Fire and water keep their existing receivers and never select a new
++    // reaction through this helper.
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardFire, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesBlue, P2HazardWater, false) == P2HazardReactionNone);
++
++    // Unknown species are not immune, so they follow the non-immune path; an
++    // out-of-range hazard never selects a reaction.
++    assert(p2_hazard_reaction(99, P2HazardElectric, false) == P2HazardReactionDenkiDying);
++    assert(p2_hazard_reaction(99, P2HazardGas, false) == P2HazardReactionGasPanic);
++    assert(p2_hazard_reaction(P2SpeciesRed, -1, false) == P2HazardReactionNone);
++    assert(p2_hazard_reaction(P2SpeciesRed, P2HazardCount, false) == P2HazardReactionNone);
++
++    std::puts("PASS P2_HAZARD_REACTION");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

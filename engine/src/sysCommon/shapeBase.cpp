@@ -250,6 +250,9 @@ void Joint::write(RandomAccessStream& stream)
  * @todo: Documentation
  * @note UNUSED Size: 00043C (Matching by size)
  */
+/**
+ * @todo: Documentation
+ */
 void Joint::render(Graphics& gfx)
 {
 	if (!JOINT_IS_VISIBLE(*this)) {

@@ -10,6 +10,9 @@ class RoutingTests(unittest.TestCase):
         self.c=self.f.controller;self.r=self.f.reg
         self.inbox=self.f.root/'output/inbox';self.c.config['integrator_inbox']=str(self.inbox)
         self.c.config['shared_review_routing']={'enabled':True,'files':{'native/shared.cpp':'provider'}}
+        self.c.config['lanes']['provider']=dict(self.c.config['lanes']['consumer'])  # Supervised: a stopped owner can be woken.
+        with self.r.transaction() as s:  # Routing sends packets only to an owner that can record the decision.
+            s.setdefault('throughput',{}).setdefault('workstreams',{})['routed']=dict(owner_lane='provider',lanes=['consumer'])
         self.path=self.f.out/'handoff.json';self.data={'shared_reviews':[{'file':'native/shared.cpp','status':'requested'}]}
         self.save()
     def save(self):
@@ -21,8 +24,47 @@ class RoutingTests(unittest.TestCase):
         next(self.inbox.glob('*.md')).unlink();tick(self.c);self.assertFalse(list(self.inbox.glob('*.md')))
         self.f.now+=601;tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
         with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'awaiting_owner_decision')
-        self.data['shared_reviews'][0]['status']='approved';self.save();tick(self.c)
+        self.data['shared_reviews'][0]['status']='approved';self.save();tick(self.c)  # A handoff status resolves nothing.
+        with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'awaiting_owner_decision')
+        from workflow.approvals import pins
+        with self.r.transaction() as s:
+            s['approvals']={'row':dict(id='row',kind='handoff_review',lane='consumer',file='native/shared.cpp',at=1,
+                pins=pins(s['lanes']['consumer']),status='approved',reviewer=dict(lane='provider'))}
+        tick(self.c)
         with self.r.transaction() as s:self.assertEqual(next(iter(s['shared_review_routes'].values()))['status'],'resolved_or_superseded')
+    def test_owner_without_decision_authority_gets_no_packet(self):
+        with self.r.transaction() as s:s['throughput']['workstreams']['routed']['owner_lane']='other-owner'
+        tick(self.c);tick(self.c)
+        self.assertFalse(list(self.inbox.glob('*.md')) if self.inbox.exists() else [])
+        state=self.r.snapshot();route=next(iter(state['shared_review_routes'].values()))
+        self.assertEqual((route['status'],route['owner']),('owner_cannot_decide','provider'))
+        notices=[n for n in state['control']['notices'].values() if n['kind']=='shared_review_owner_cannot_decide']
+        self.assertEqual(len(notices),1);self.assertIn('own producer workstream',notices[0]['detail']['error'])
+        with self.r.transaction() as s:s['throughput']['workstreams']['routed']['owner_lane']='provider'
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+    def test_stopped_unsupervised_owner_is_held_with_a_notice_until_supervised(self):
+        del self.c.config['lanes']['provider']
+        tick(self.c);tick(self.c)
+        self.assertFalse(list(self.inbox.glob('*.md')) if self.inbox.exists() else [])
+        state=self.r.snapshot();route=next(iter(state['shared_review_routes'].values()))
+        self.assertEqual((route['status'],route['owner']),('owner_unsupervised','provider'))
+        notices=[n for n in state['control']['notices'].values() if n['kind']=='shared_review_target_dead']
+        self.assertEqual([(n['lane'],n['status']) for n in notices],[('provider','pending')])
+        self.c.config['lanes']['provider']=dict(self.c.config['lanes']['consumer'])
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+        notices=[n for n in self.r.control_status()['notices'].values() if n['kind']=='shared_review_target_dead']
+        self.assertEqual(sorted(n['status'] for n in notices),['info','pending'])
+    def test_delivered_route_survives_an_unsupervised_owner_stopping(self):
+        del self.c.config['lanes']['provider']
+        alive=[True];self.r.probe=lambda p:'alive' if alive[0] else 'dead'
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+        for running in (False,True,False,True):  # Stop/start cycles between owner sessions.
+            alive[0]=running;self.f.now+=10;tick(self.c)
+            route=next(iter(self.r.snapshot()['shared_review_routes'].values()))
+            self.assertEqual((route['protocol'],route['attempts'],route['status']),(2,1,'awaiting_owner_decision'))
+            self.assertEqual(route.get('owner_state'),None if running else 'unsupervised_stopped')
+        routed=[e for e in self.r.snapshot()['events'] if e.get('kind')=='shared_review_routed']
+        self.assertEqual(len(routed),1)
     def test_unrouted_file_never_receives_invented_owner(self):
         self.c.config['shared_review_routing']['files']={};tick(self.c)
         self.assertFalse(self.inbox.exists())

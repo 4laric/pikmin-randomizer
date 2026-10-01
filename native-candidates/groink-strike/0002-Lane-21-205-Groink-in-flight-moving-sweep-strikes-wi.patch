@@ -1,0 +1,369 @@
+From 1ae14480ef83705436ff40de16502bc7061f3449 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 05:57:42 -0400
+Subject: [PATCH 2/2] Lane 21 (#205): Groink in-flight moving-sweep strikes
+ with per-shell dedup tracker + Wind impulse
+
+---
+ pc_port/pc_p2_groink_strike.cpp    | 40 +++++++++++++
+ pc_port/pc_p2_groink_strike.h      | 35 ++++++++++++
+ tools/p2_groink_strike_test.cpp    | 91 +++++++++++++++++++++++++++++
+ tools/p2_groink_target_runtime.cpp | 92 +++++++++++++++++++++++++-----
+ 4 files changed, 243 insertions(+), 15 deletions(-)
+
+diff --git a/pc_port/pc_p2_groink_strike.cpp b/pc_port/pc_p2_groink_strike.cpp
+index 304e4dfc..573a9e0e 100644
+--- a/pc_port/pc_p2_groink_strike.cpp
++++ b/pc_port/pc_p2_groink_strike.cpp
+@@ -34,3 +34,43 @@ P2GroinkStrikeResult p2_groink_apply_strike(P2ProjectileReceiverRegistry& regist
+     }
+     return result;
+ }
++
++bool P2GroinkStrikeTracker::firstHit(std::size_t shellSlot, std::uint64_t targetToken)
++{
++    for (std::size_t i = 0; i < mCount; ++i) {
++        if (mEntries[i].slot == shellSlot && mEntries[i].token == targetToken) {
++            return false;
++        }
++    }
++    if (mCount < kMaxTracked) {
++        mEntries[mCount].slot = shellSlot;
++        mEntries[mCount].token = targetToken;
++        ++mCount;
++    }
++    // Overflow is a best-effort host bound: report the strike rather than drop
++    // an otherwise-valid one, at the cost of not remembering the pair.
++    return true;
++}
++
++void P2GroinkStrikeTracker::clearSlot(std::size_t shellSlot)
++{
++    std::size_t kept = 0;
++    for (std::size_t i = 0; i < mCount; ++i) {
++        if (mEntries[i].slot != shellSlot) {
++            mEntries[kept++] = mEntries[i];
++        }
++    }
++    mCount = kept;
++}
++
++void P2GroinkStrikeTracker::reset()
++{
++    mCount = 0;
++}
++
++bool p2_groink_strike_first_hit(P2GroinkStrikeTracker& tracker,
++                                std::size_t shellSlot,
++                                std::uint64_t targetToken)
++{
++    return tracker.firstHit(shellSlot, targetToken);
++}
+diff --git a/pc_port/pc_p2_groink_strike.h b/pc_port/pc_p2_groink_strike.h
+index 7d3dab3e..89bc709b 100644
+--- a/pc_port/pc_p2_groink_strike.h
++++ b/pc_port/pc_p2_groink_strike.h
+@@ -3,6 +3,7 @@
+ #include "pc_p2_groink_hit.h"
+ #include "pc_p2_projectile_receiver.h"
+ 
++#include <cstddef>
+ #include <cstdint>
+ 
+ // Private Groink shell-strike -> health bridge (#205 receiver half). It is the
+@@ -46,3 +47,37 @@ struct P2GroinkStrikeResult {
+ P2GroinkStrikeResult p2_groink_apply_strike(P2ProjectileReceiverRegistry& registry,
+                                             const P2GroinkStrikeInput& input,
+                                             const P2GroinkHitCandidate& candidate);
++
++// Host-side dedup for hosts that process one shell across many moving steps.
++// It records (shellSlot, targetToken) so one shell damages a given candidate at
++// most once per flight, while a different shell can still hit the same
++// candidate. p2_groink_apply_strike stays pure; this tracker is the only state.
++//
++// Hosts consult it only after the classifier reports a non-None kind, then call
++// p2_groink_apply_strike when `firstHit` returns true. `clearSlot` forgets one
++// shell once its pool slot recycles so a reused slot starts a fresh flight.
++class P2GroinkStrikeTracker {
++public:
++    static constexpr std::size_t kMaxTracked = 64;
++
++    // Records the pair and returns true the first time it is seen; a repeated
++    // identical call returns false. Bounded: if full, the pair is reported as a
++    // hit but not stored (see implementation note).
++    bool firstHit(std::size_t shellSlot, std::uint64_t targetToken);
++    // Forgets every pair for one shell slot. Call when that shell recycles.
++    void clearSlot(std::size_t shellSlot);
++    void reset();
++
++private:
++    struct Entry {
++        std::size_t slot = 0;
++        std::uint64_t token = 0;
++    };
++    Entry mEntries[kMaxTracked];
++    std::size_t mCount = 0;
++};
++
++// Convenience wrapper for hosts that prefer a free function over the method.
++bool p2_groink_strike_first_hit(P2GroinkStrikeTracker& tracker,
++                                std::size_t shellSlot,
++                                std::uint64_t targetToken);
+diff --git a/tools/p2_groink_strike_test.cpp b/tools/p2_groink_strike_test.cpp
+index da25de53..8466df48 100644
+--- a/tools/p2_groink_strike_test.cpp
++++ b/tools/p2_groink_strike_test.cpp
+@@ -176,6 +176,94 @@ void testWildcardSinkUnknownRuntimeToken()
+     assert(near(result.health, 15.0f));
+ }
+ 
++// Tracker dedups (slot, token): one shell applies once across its flight, a
++// second slot can still hit the same token, and reset/clearSlot forget history.
++void testTrackerDedupsPerShellSlotButAllowsAnotherSlot()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 30.0f));
++
++    P2GroinkStrikeTracker tracker;
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(10.0f);
++    input.targetToken = kNaviToken;
++
++    // Slot 0 records the pair on its first contact and the strike applies.
++    assert(tracker.firstHit(0, kNaviToken));
++    const P2GroinkStrikeResult first =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(first.applied && near(first.health, 20.0f));
++
++    // A later moving step of the same shell must not apply a second hit.
++    assert(!tracker.firstHit(0, kNaviToken));
++    assert(!p2_groink_strike_first_hit(tracker, 0, kNaviToken));
++    assert(near(registry.find(kNaviToken)->health(), 20.0f));
++
++    // A different shell may hit the same token exactly once of its own.
++    assert(tracker.firstHit(1, kNaviToken));
++    const P2GroinkStrikeResult second =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(second.applied && near(second.health, 10.0f));
++
++    // Reset forgets everything; clearSlot forgets only one shell.
++    tracker.clearSlot(0);
++    assert(tracker.firstHit(0, kNaviToken));
++    assert(!tracker.firstHit(1, kNaviToken));
++    tracker.reset();
++    assert(tracker.firstHit(0, kNaviToken));
++    assert(tracker.firstHit(1, kNaviToken));
++}
++
++// A non-terminal moving segment (previous -> current position) still applies.
++void testMovingNonTerminalSegmentApplies()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit.start = { 0.0f, 0.0f, 0.0f };
++    input.hit.end = { 0.0f, 0.0f, 6.0f }; // mid-flight step, not the terminal end
++    input.hit.radius = 2.0f;
++    input.hit.terminalRadius = 2.0f;
++    input.hit.damage = 10.0f;
++    input.hit.terminal = false;
++    input.targetToken = kNaviToken;
++
++    const P2GroinkStrikeResult result =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 3.0f));
++    assert(result.valid && result.insideSweep && result.kind == P2GroinkHitKind::Bomb);
++    assert(result.applied && !result.died && near(result.health, 10.0f));
++}
++
++// Wind carries impulse with no health change and is deduped like a Bomb. Wind is
++// only ever classified at a terminal falloff, so this uses the terminal flag even
++// though the host invokes it from a moving-step scan.
++void testWindStepCarriesImpulseWithoutHealthAndDedups()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeTracker tracker;
++    P2GroinkStrikeInput input;
++    input.hit = windSweep(10.0f);
++    input.targetToken = kNaviToken;
++
++    assert(tracker.firstHit(0, kNaviToken));
++    const P2GroinkStrikeResult wind =
++        p2_groink_apply_strike(registry, input, captain(2.0f, 10.0f));
++    assert(wind.valid && !wind.insideSweep && wind.kind == P2GroinkHitKind::Wind);
++    assert(!wind.applied && !wind.died);
++    assert(near(wind.impulse.x, 135.0f) && near(wind.impulse.y, 0.0f)
++           && near(wind.impulse.z, 0.0f));
++    // Wind never touches receiver health.
++    assert(near(registry.find(kNaviToken)->health(), 20.0f));
++    assert(near(wind.health, 20.0f));
++
++    // The same shell does not re-report the candidate; another shell does.
++    assert(!tracker.firstHit(0, kNaviToken));
++    assert(tracker.firstHit(1, kNaviToken));
++}
++
+ void testExactTokenTakesPrecedenceOverWildcard()
+ {
+     P2ProjectileReceiverRegistry registry;
+@@ -207,6 +295,9 @@ int main()
+     testRepeatedStrikesClampAtZero();
+     testWildcardSinkUnknownRuntimeToken();
+     testExactTokenTakesPrecedenceOverWildcard();
++    testTrackerDedupsPerShellSlotButAllowsAnotherSlot();
++    testMovingNonTerminalSegmentApplies();
++    testWindStepCarriesImpulseWithoutHealthAndDedups();
+     std::puts("p2_groink_strike_test PASS");
+     return 0;
+ }
+diff --git a/tools/p2_groink_target_runtime.cpp b/tools/p2_groink_target_runtime.cpp
+index 8657634d..957d283d 100644
+--- a/tools/p2_groink_target_runtime.cpp
++++ b/tools/p2_groink_target_runtime.cpp
+@@ -67,6 +67,10 @@ void capture(const char* path) {
+ 
+ struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
+ 
++// Per-tick snapshot of an active shell before volley.update, so the moving
++// segment (previous -> current) can be classified after the update.
++struct ActiveShellSnapshot { std::size_t slot = 0; P2GroinkVec3 position; };
++
+ // Source MiniHoudai parameters for the shell sweep. The profile's attack radius
+ // is 15; the terminal falloff radius is the source attack hit angle (65). The
+ // proxy health is deliberately small so repeated terminal strikes reach zero.
+@@ -97,6 +101,10 @@ class GroinkAttackApp final : public PlugPikiApp {
+     unsigned receiverHits = 0, receiverDeaths = 0;
+     bool receiverHealthDecreased = false, strikePlacementPrinted = false;
+     float lastReceiverHealth = kProxyHealth;
++    // Dedups one shell against one candidate across its whole flight; moving and
++    // terminal steps share it so a duplicate position cannot apply twice.
++    P2GroinkStrikeTracker flightTracker;
++    unsigned flightSteps = 0, flightHits = 0, flightWind = 0;
+     const std::array<P2GroinkVec3,3> spread{{{0.5f,0.5f,0.5f},{0,0.5f,0},{1,0.5f,1}}};
+ public:
+     int idle() override {
+@@ -126,8 +134,37 @@ public:
+         for (int i = 0; i < ticks; ++i) {
+             ++sourceTicks;
+             require(sourceTicks < 600, "attack cycles did not finish");
++            // Snapshot active shells before the update so each survivor's
++            // previous -> current position forms the moving sweep segment. The
++            // policy does not record per-step segments itself.
++            ActiveShellSnapshot movingSnapshot[P2GroinkVolley::kCapacity];
++            std::size_t movingCount = 0;
++            for (std::size_t s=0;s<P2GroinkVolley::kCapacity;++s) {
++                const P2GroinkShell shell = volley.shell(s);
++                if (shell.active) { movingSnapshot[movingCount].slot=s; movingSnapshot[movingCount].position=shell.position; ++movingCount; }
++            }
+             // Living/common update moves existing shells before FSM emissions.
+             require(volley.update(owner,P2GroinkPolicy::kSourceDelta,P2GroinkMapTrace::trace,&trace), "volley update");
++            // In-flight creature-hit processing: classify each surviving shell's
++            // moving segment against the live Navi, deduped per (slot, token).
++            if (movingCount > 0) {
++                const Vector3f naviState = n->getPosition();
++                const P2GroinkHitCandidate movingCandidate{{naviState.x,naviState.y,naviState.z},
++                    P2GroinkCandidateKind::Captain,n->isAlive(),false,radius};
++                const std::uint64_t token = reinterpret_cast<std::uint64_t>(n);
++                for (std::size_t s=0;s<movingCount;++s) {
++                    const P2GroinkShell current = volley.shell(movingSnapshot[s].slot);
++                    if (!current.active) continue; // terminal path owns this shell now
++                    ++flightSteps;
++                    P2GroinkStrikeInput flight;
++                    flight.hit.start = movingSnapshot[s].position;
++                    flight.hit.end = current.position;
++                    flight.hit.radius = radius; flight.hit.terminalRadius = radius;
++                    flight.hit.damage = kShellDamage; flight.hit.terminal = false;
++                    flight.targetToken = token; flight.attributedToken = token;
++                    recordStrike(movingSnapshot[s].slot, flight, movingCandidate, true);
++                }
++            }
+             for (std::size_t j=0;j<volley.terminalCount();++j) {
+                 const auto& hit = volley.terminals()[j];
+                 require(hit.step.valid && (hit.step.reason == P2GroinkTerminalReason::Floor || hit.step.reason == P2GroinkTerminalReason::Wall), "non-terrain terminal");
+@@ -154,20 +191,10 @@ public:
+                 strike.hit.damage = kShellDamage; strike.hit.terminal = true;
+                 const std::uint64_t token = reinterpret_cast<std::uint64_t>(n);
+                 strike.targetToken = token; strike.attributedToken = token;
+-                const P2GroinkStrikeResult receipt = p2_groink_apply_strike(proxy,strike,candidate);
+-                if (receipt.kind != P2GroinkHitKind::None) {
+-                    ++receiverHits;
+-                    std::printf("P2_GROINK_RECEIVER_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
+-                        (unsigned long long)token,
+-                        receipt.kind == P2GroinkHitKind::Bomb ? "Bomb" : "Wind",
+-                        receipt.damage, receipt.health);
+-                    if (receipt.applied && receipt.health < lastReceiverHealth) receiverHealthDecreased = true;
+-                    lastReceiverHealth = receipt.health;
+-                }
+-                if (receipt.died) {
+-                    ++receiverDeaths;
+-                    std::printf("P2_GROINK_RECEIVER_DEAD token=%llu\n",(unsigned long long)token);
+-                }
++                recordStrike(hit.slot, strike, candidate, false);
++                // This shell has recycled; forget its flight so a reused pool
++                // slot begins a fresh dedup history.
++                flightTracker.clearSlot(hit.slot);
+                 n->resetPosition(Vector3f(relocated?100.0f:0.0f,0,100));
+             }
+             if (cycles < 2) {
+@@ -253,7 +280,7 @@ public:
+             capture("groink-volley-terminal.ppm");
+             std::printf("P2_GROINK_FLIGHT_PASS ticks=%d traces=%llu floors=%llu walls=%llu\n",sourceTicks,(unsigned long long)trace.calls(),(unsigned long long)trace.floors(),(unsigned long long)trace.walls());
+             require(primaryImpacts == 2 && volley.activeCount() == 0, "terminal accounting");
+-            volley.reset(); clock.reset();
++            volley.reset(); clock.reset(); flightTracker.reset();
+             require(volley.activeCount() == 0 && volley.terminalCount() == 0, "pool reset");
+             require(volley.emit(muzzle,100,spread).count == 3, "pool reuse after reset"); volley.reset();
+             std::printf("P2_GROINK_VOLLEY_PASS emitted=%u impacts=%u primary=%u reset=1\n",emitted,impacts,primaryImpacts);
+@@ -263,12 +290,47 @@ public:
+             require(receiverHits > 0,"no classified receiver strike");
+             require(receiverHealthDecreased,"proxy health did not decrease after a Bomb strike");
+             require(receiverDeaths == 1,"proxy died marker did not fire exactly once");
++            require(flightSteps > 0,"in-flight moving sweep did not execute");
++            std::printf("P2_GROINK_FLIGHT_SWEEP_PASS steps=%u hits=%u wind=%u\n",flightSteps,flightHits,flightWind);
+             std::printf("P2_GROINK_STRIKE_PASS hits=%u deaths=%u health_start=%.3f health_end=%.3f placement=fixture_pinned\n",
+                 receiverHits,receiverDeaths,kProxyHealth,lastReceiverHealth);
+             std::puts("PASS GROINK_VOLLEY_RUNTIME"); std::fflush(stdout); std::_Exit(0);
+         }
+     }
+ private:
++    // Classify, dedup per (slot, token), then apply. The bridge stays pure; the
++    // tracker is the only mutable state. Moving and terminal steps share it so a
++    // duplicate position can never apply twice; recycle via flightTracker.clearSlot.
++    void recordStrike(std::size_t slot, const P2GroinkStrikeInput& strike,
++                      const P2GroinkHitCandidate& candidate, bool flight) {
++        const P2GroinkHitCommand command = p2_groink_classify_hit(strike.hit, candidate);
++        if (command.kind == P2GroinkHitKind::None) return;
++        if (!flightTracker.firstHit(slot, strike.targetToken)) return;
++        const P2GroinkStrikeResult receipt = p2_groink_apply_strike(proxy, strike, candidate);
++        const unsigned long long token = (unsigned long long)strike.targetToken;
++        const char* kind = command.kind == P2GroinkHitKind::Bomb ? "Bomb" : "Wind";
++        if (flight) {
++            ++flightHits;
++            if (command.kind == P2GroinkHitKind::Wind) ++flightWind;
++            std::printf("P2_GROINK_FLIGHT_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
++                token, kind, receipt.damage, receipt.health);
++            if (command.kind == P2GroinkHitKind::Wind) {
++                std::printf("P2_GROINK_FLIGHT_IMPULSE token=%llu ix=%.3f iy=%.3f iz=%.3f\n",
++                    token, receipt.impulse.x, receipt.impulse.y, receipt.impulse.z);
++            }
++        } else {
++            ++receiverHits;
++            std::printf("P2_GROINK_RECEIVER_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
++                token, kind, receipt.damage, receipt.health);
++        }
++        if (receipt.applied && receipt.health < lastReceiverHealth) receiverHealthDecreased = true;
++        lastReceiverHealth = receipt.health;
++        if (receipt.died) {
++            ++receiverDeaths;
++            std::printf("P2_GROINK_RECEIVER_DEAD token=%llu\n", token);
++        }
++    }
++
+     P2GroinkTargetResult queryNavi() {
+         Navi* n=naviMgr->getNavi(); require(n!=nullptr,"live Navi missing");
+         const Vector3f pos=n->getPosition();
+-- 
+2.55.0.windows.3
+

@@ -26,7 +26,7 @@ from experimental.pikmin2_breadbug_assets import parameter_blocks, collision_nod
 from experimental.pikmin2_convert import blocks, decode, u16, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_skinning import draw_matrices
-from experimental.pikmin2_animation import resource_chunks, sample_frames
+from experimental.pikmin2_animation import POSE_LIMIT_MAX, resource_chunks, sample_frames, decode_pose
 
 # Identity map. enemyInfo.h:59 (Pelplant = 0), :62-67 (BluePom..RandPom = 3-8),
 # :105-111 (Tanpopo..Wakame_l = 46-52). EnemyID_Pom (82, enemyInfo.h:141) is the
@@ -83,7 +83,7 @@ PARM_SOURCE = 'enemy/parm/enemyParms.szs'
 # are recorded per species rather than required.
 METADATA_FILES = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt', 'enemystoneinfo.txt')
 REQUIRED_METADATA = ('enemyanimmgr.txt', 'enemyparm.txt', 'enemycoll.txt')
-MAX_POSES = 12
+MAX_POSES = POSE_LIMIT_MAX  # native bank row cap (#895)
 # Registration filenames include a capital 'L' for the large Figwort/Shoot
 # (ooinu_L.bca, wakame_L.bca) while anim.szs stores the members lowercased; the
 # shared sheargrub parser rejects the capitals, so this lane parses the same
@@ -246,7 +246,25 @@ LIMITATIONS = [
 ]
 
 # Opt-in converter tolerances per species (#186); strict defaults everywhere else.
-TOLERANCES = {}
+# Pelplant authors zero/annihilated joint scales for hidden and grow-from-nothing
+# segments, so its rigid bakes need the singular_normal fallback. HikariKinoko
+# ships a shape-matrix type 1 (billboard) quad: 'billboard': 'native' emits the
+# pivot-relative camera-facing flag the renderer orients from the active matrix
+# (GL-accepted, #429) and 'missing_normals': 'compute' derives the quad's normal
+# from its own baked geometry because the source billboard shape carries no
+# normal attribute.
+# See docs/PIKMIN2_SINGULAR_SCALE.md (#405) and
+# docs/PIKMIN2_BILLBOARD_NATIVE.md (#429).
+TOLERANCES = {
+    'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
+    'HikariKinoko': {'billboard': 'native', 'missing_normals': 'compute'},
+}
+# Opt-in BCA pose (scale) tolerances. 'singular_scale': 'allow' accepts an
+# authored zero axis scale and must be paired with the matching
+# singular_normal decode policy in TOLERANCES above.
+POSE_TOLERANCES = {
+    'Pelplant': {'singular_scale': 'allow'},
+}
 
 TEXT = (
     'P2_FLORA_1\n'
@@ -499,22 +517,25 @@ def extract(iso, source, output, pose_limit=6):
                             loop_semantics=LOOPS.get(raw[40]),
                             event_loop_boundaries=[r for r in row['events']
                                                    if r[1] in (0, 1)],
+                            pose_conversion_policy=dict(
+                                POSE_TOLERANCES.get(species, {})),
+                            decode_conversion_policy=dict(
+                                TOLERANCES.get(species, {})),
                             poses=[], status='unsupported')
                 try:
                     if raw[40] not in LOOPS:
                         raise ValueError('Unsupported source loop attribute')
-                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
+                    pose_tolerances = POSE_TOLERANCES.get(species, {})
+                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True,
+                                           **pose_tolerances)
                     clip['source_frames'] = duration
                     frames = sample_frames(duration, pose_limit)
                     for number, frame in enumerate(frames):
                         try:
                             tolerances = TOLERANCES.get(species, {})
-                            _, pose = bca_pose(raw, frame, len(names),
-                                               allow_scale=True)
-                            matrices = draw_matrices(model_blocks, pose)
-                            decoded = decode(model, True, bake_rigid=True,
-                                             draw_matrices=matrices,
-                                             **tolerances)
+                            decoded, pose = decode_pose(decode, model, model_blocks, raw, frame,
+                                                        len(names), pose_kwargs=pose_tolerances,
+                                                        **tolerances)
                             name = (f'flora_{species}_{clip["name"]}'
                                     f'_{number:02}.mod')
                             conversion = write_model(decoded, root / name,
@@ -552,9 +573,11 @@ def extract(iso, source, output, pose_limit=6):
                 info['clips'].append(clip)
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
-        report['extract_seconds'] = round(time.perf_counter() - started, 3)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
         (output / 'flora.json').write_bytes(
-            (json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
+            (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
+        report['extract_seconds'] = round(time.perf_counter() - started, 3)
         (output / 'p2-flora.txt').write_text(TEXT)
         return report
 

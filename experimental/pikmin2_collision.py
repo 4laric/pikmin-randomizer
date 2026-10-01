@@ -32,12 +32,50 @@ def plane(vertices, tri):
     return (*n, sum(n[i]*a[i] for i in range(3)))
 
 
-def collision_geometry(room, cap_exits=False, *, mapcode_translator=translate_mapcode):
+# Lane 49: P1 attribute (bits 29-31) the engine already consumes for water
+# (`MapCode::getAttribute == ATTR_Water` -> waypoint InWater, path avoidance and
+# `ActTransport::useWaterRoute`). P2's own water is a separate SeaMgr volume, so
+# this is a converter-side approximation: submerged upward-facing floor
+# triangles are re-tagged water. Only water-unit conversion opts in.
+ATTR_WATER = 5
+
+
+def water_tagged_mapcodes(room, codes, boxes):
+    """Return ``codes`` with P1 ``ATTR_Water`` set on triangles inside a box.
+
+    A triangle qualifies when it is upward-facing (a walkable floor), its
+    centroid XZ lies inside a box (1-unit tolerance) and its centroid Y is at or
+    below the box surface (plus the source surface-3 admission tolerance). The
+    exact P2 predicate has no lower-Y test; the P1 attribute is a surface tag, so
+    only floors are marked here.
+    """
+    vertices = room['vertices']
+    result = list(codes)
+    for index, tri in enumerate(room['triangles']):
+        nx, ny, nz, _ = plane(vertices, tri)
+        if ny <= 0.01:
+            continue
+        cx = sum(vertices[v][0] for v in tri) / 3.0
+        cy = sum(vertices[v][1] for v in tri) / 3.0
+        cz = sum(vertices[v][2] for v in tri) / 3.0
+        for box in boxes:
+            low, high = box['min'], box['max']
+            if (low[0] - 1.0 <= cx <= high[0] + 1.0 and low[2] - 1.0 <= cz <= high[2] + 1.0
+                    and cy <= box['surface'] + 3.0):
+                result[index] = (result[index] & ~(7 << 29)) | (ATTR_WATER << 29)
+                break
+    return result
+
+
+def collision_geometry(room, cap_exits=False, *, mapcode_translator=translate_mapcode,
+                       water_boxes=None):
     vertices = [list(v) for v in room['vertices']]
     triangles = [list(t) for t in room['triangles']]
     codes = [mapcode_translator(c) for c in room['mapcodes']]
     if len(codes) != len(triangles):
         raise ValueError('Mapcode count mismatch')
+    if water_boxes:
+        codes = water_tagged_mapcodes(room, codes, water_boxes)
     if cap_exits:
         lo, hi = room['bounds']['min'], room['bounds']['max']
         # Reversed face winding creates inward normals under P1 conventions. Boundary
@@ -114,8 +152,10 @@ def route_ini(routes):
     return '\n'.join(lines+['}',''])
 
 
-def attach_collision(mod, room, cap_exits=False, *, mapcode_translator=translate_mapcode):
-    vertices,triangles,codes=collision_geometry(room,cap_exits,mapcode_translator=mapcode_translator)
+def attach_collision(mod, room, cap_exits=False, *, mapcode_translator=translate_mapcode,
+                     water_boxes=None):
+    vertices,triangles,codes=collision_geometry(room,cap_exits,mapcode_translator=mapcode_translator,
+                                                water_boxes=water_boxes)
     chunks=[]
     cursor=0
     offset=None

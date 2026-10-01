@@ -41,12 +41,199 @@ class TerminalRecoveryTests(unittest.TestCase):
                 dict(ProcessId=701, ParentProcessId=700, Name='opencode.exe'),
                 dict(ProcessId=702, ParentProcessId=701, Name='conhost.exe')]
 
+    def silent_stream(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['state']='running'
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=INFO run=abc message=stream '
+                              'providerID=paid modelID=muse session.id=session-consumer small=false\n'
+                              'timestamp=1970-01-01T00:16:41Z level=INFO run=abc message="llm runtime selected" llm.model=muse\n')
+
+    def test_initial_silent_response_recovers_child_and_records_failure(self):
+        self.silent_stream();self.recover();self.recover()
+        self.assertEqual(self.stopped,[self.child])
+        journal=next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual(journal['evidence']['failure'],'first_response_timeout')
+
+    def test_initial_timeout_does_not_kill_tools_permissions_or_fresh_events(self):
+        self.silent_stream()
+        self.events.write_text('{partial');self.recover();self.assertFalse(self.stopped)
+        self.events.write_text('');os.utime(self.events,(1000,1000))
+        original=self.errors.read_text()
+        self.errors.write_text(original+'timestamp=1970-01-01T00:16:42Z level=INFO run=abc message=asking id=p permission=read\n')
+        self.recover();self.assertFalse(self.stopped)
+        self.errors.write_text(original);os.utime(self.events,(1999,1999))
+        self.recover();self.assertFalse(self.stopped)
+
+    def test_initial_timeout_keeps_build_lease_and_descendants_protected(self):
+        self.silent_stream()
+        self.recover(table=lambda:self.rows()+[dict(ProcessId=703,ParentProcessId=701,Name='ninja.exe')])
+        self.assertFalse(self.stopped)
+        with self.reg.transaction() as state:
+            state['leases']['build:private']=dict(lane='consumer',process=self.runner,generation=2,acquired_at=900,expires_at=3000)
+        self.recover();self.assertFalse(self.stopped)
+
     def stop(self, identity):
         self.stopped.append(identity)
         self.alive.remove(identity)
 
     def recover(self, **kwargs):
         recover_terminal(self.controller, table=kwargs.get('table', self.rows), stop=kwargs.get('stop', self.stop))
+
+    def test_expired_terminal_runner_build_lease_allows_real_child_exit_only(self):
+        with self.reg.transaction() as state:
+            state['leases']['build:private'] = dict(lane='consumer', process=self.runner,
+                                                    generation=2, expires_at=1000)
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        with self.reg.transaction() as state:
+            self.assertIn('build:private', state['leases'])
+            self.assertEqual(state['control']['launches']['managed']['status'], 'running')
+
+    def test_missing_outcome_runner_lease_recovers_without_deleting_lease(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['state'] = 'running'
+            state['leases']['build:private'] = dict(lane='consumer', process=self.runner,
+                generation=2, acquired_at=900, expires_at=3000)
+        self.recover(table=lambda: self.rows()+[dict(ProcessId=703, ParentProcessId=701, Name='ninja.exe')])
+        self.assertFalse(self.stopped)
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        self.assertIn('build:private', self.reg.snapshot()['leases'])
+        self.assertEqual(self.reg.snapshot()['lanes']['consumer']['state'], 'running')
+
+    def test_provider_failure_runner_lease_requires_pre_boundary_acquisition(self):
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
+            'message=process session.id=session-consumer error="[invalid_request_error]"\n')
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['state'] = 'running'
+            state['leases']['build:private'] = dict(lane='consumer', process=self.runner,
+                generation=2, acquired_at=1001, expires_at=3000)
+        self.recover(); self.assertFalse(self.stopped)
+        with self.reg.transaction() as state:
+            state['leases']['build:private']['acquired_at'] = 900
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        self.assertIn('build:private', self.reg.snapshot()['leases'])
+
+    def test_completed_unexpired_runner_lease_does_not_trap_terminal_cli(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer']['state']='blocked'
+            state['leases']['build:private']=dict(lane='consumer',process=self.runner,
+                generation=2, acquired_at=900, expires_at=5000)
+        self.recover()
+        self.assertEqual(self.stopped,[self.child])
+        with self.reg.transaction() as state:self.assertIn('build:private',state['leases'])
+
+    def test_post_completion_lease_remains_protected(self):
+        with self.reg.transaction() as state:
+            state['leases']['build:private']=dict(lane='consumer',process=self.runner,
+                generation=2, acquired_at=1100, expires_at=5000)
+        self.recover()
+        self.assertFalse(self.stopped)
+
+    def test_ended_runner_waiter_no_longer_deadlocks_fifo_cleanup(self):
+        with self.reg.transaction() as state:
+            state['queue']['consumer:2:build:private'] = dict(lane='consumer',process=self.runner,
+                generation=2,resource='build:private',requested_at=900)
+        self.recover()
+        self.assertEqual(self.stopped,[self.child])
+        with self.reg.transaction() as state:self.assertIn('consumer:2:build:private',state['queue'])
+
+    def test_active_or_unproven_queue_owner_remains_protected(self):
+        for override in [dict(requested_at=1100),dict(generation=1),dict(process=self.child),dict(resource='shared-runtime')]:
+            with self.subTest(override=override):
+                with self.reg.transaction() as state:
+                    state['queue']={'wait':dict(dict(lane='consumer',process=self.runner,
+                        generation=2,resource='build:private',requested_at=900),**override)}
+                self.recover();self.assertFalse(self.stopped)
+
+    def test_expired_lease_exception_keeps_all_other_fences(self):
+        cases = [('leases','build:private',{'generation':1}),
+                 ('leases','build:private',{'expires_at':3000}),
+                 ('leases','build:private',{'process':self.child}),
+                 ('leases','runtime:private',{}), ('queue','build:private',{})]
+        for group, key, override in cases:
+            with self.subTest(group=group,override=override):
+                with self.reg.transaction() as state:
+                    state['leases'] = {}; state['queue'] = {}
+                    state[group][key] = dict(dict(lane='consumer',process=self.runner,
+                                                generation=2,expires_at=1000),**override)
+                self.recover(); self.assertFalse(self.stopped)
+        with self.reg.transaction() as state:
+            state['queue'] = {}
+            state['leases']['build:private'] = dict(lane='consumer',process=self.runner,generation=2,expires_at=1000)
+            state['lanes']['consumer']['state'] = 'running'
+        self.recover(); self.assertFalse(self.stopped)
+        with self.reg.transaction() as state: state['lanes']['consumer']['state'] = 'done'
+        self.recover(table=lambda:self.rows()+[dict(ProcessId=703,ParentProcessId=701,Name='ninja.exe')])
+        self.assertFalse(self.stopped)
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc message=process session.id=session-consumer error="Insufficient balance"\n')
+        self.recover(); self.assertFalse(self.stopped)
+
+    def test_only_repository_default_permission_can_recover(self):
+        from workflow.managed_config import output_access
+        config = self.f.root/'config.json'
+        config.write_text('{"permission":{"task":"deny"}}')
+        self.controller.config['lanes']['consumer']['config'] = str(config)
+        output = self.f.out
+        line = ('timestamp=1970-01-01T00:16:40Z level=INFO run=abc message=asking id=per_one '
+                'permission=external_directory patterns=')
+        def prompt(path):
+            self.errors.write_text(line + json.dumps(json.dumps([str(path) + '/*'])) + '\n')
+        prompt(self.f.root.parent)
+        self.recover()
+        self.assertFalse(self.stopped)
+        config.write_text('{"permission":{"external_directory":"deny"}}')
+        prompt(output)
+        self.recover()
+        self.assertFalse(self.stopped)
+        config.write_text('{"permission":{"task":"deny"}}')
+        prompt(self.f.root / 'output' / 'other-worktree')
+        self.errors.write_text(self.errors.read_text() +
+            'timestamp=1970-01-01T00:16:41Z level=INFO run=abc message=\"touching file\" file=ready.json\n')
+        derived = output_access(config, output, self.f.root)
+        self.assertEqual(derived['permission']['task'], 'deny')
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual(journal['evidence']['failure'], 'output_permission')
+
+    def test_balance_failure_recovers_only_quiet_session_and_idle_tree(self):
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
+            'message=process session.id=session-consumer error="Insufficient balance"\n')
+        self.recover(table=lambda: self.rows() + [dict(ProcessId=703, ParentProcessId=701, Name='ninja.exe')])
+        self.assertFalse(self.stopped)
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual(journal['evidence']['failure'], 'provider_failure')
+
+    def test_aborted_attempt_evidence_is_replaced_by_the_attempt_that_stops(self):
+        calls = []
+        def racing_table():
+            calls.append(1)
+            if len(calls) == 2:  # Work appears between persisting intent and revalidation.
+                self.errors.write_text(self.marker + 'new work\n')
+            return self.rows()
+        self.recover(table=racing_table)
+        self.assertFalse(self.stopped)
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual((journal['status'], journal['evidence']['failure']), ('stopping', None))
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
+            'message=process session.id=session-consumer error="Insufficient balance"\n')
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual((journal['status'], journal['evidence']['failure']), ('child_stop_requested', 'provider_failure'))
+
+    def test_balance_error_other_session_or_later_work_does_not_stop(self):
+        error = ('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
+                 'message=process session.id=session-other error="Insufficient balance"\n')
+        self.errors.write_text(error)
+        self.recover()
+        self.errors.write_text(error.replace('session-other', 'session-consumer') + 'new work\n')
+        self.recover()
+        self.assertFalse(self.stopped)
 
     def test_stops_child_only_and_replay_does_not_forge_result(self):
         self.recover()

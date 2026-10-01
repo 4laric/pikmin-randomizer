@@ -98,6 +98,12 @@ public:
 	void update();
 	void init();
 	void updateController(Controller*);
+
+	// TEST-ONLY (#794): scripted PAD sink for fixture runs. Writes button
+	// bits into sControllerPad[0] so keyDown() observes injected presses.
+	// Called exclusively by the #794 guarded fixture; production code never
+	// references it. Test builds only by usage.
+	static void testSinkPadButtons(unsigned short buttons);
 };
 
 #endif // CONTROLLER_H

@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "NewPikiGame.h"
 
 #include "Controller.h"
@@ -24,8 +25,13 @@
 #include "Section.h"
 #include "SoundMgr.h"
 #include "gameflow.h"
+#include "timing/pc_tick_profiler.h"
+#include <chrono>
 
 #include "settings/pc_settings.h"
+#include "settings/pc_tutorial_policy.h"
+#include "pc_vs.h"
+#include "gl/pc_gfx.h"
 #include "jaudio/piki_scene.h"
 #include "jaudio/pikidemo.h"
 #include "sysNew.h"
@@ -42,10 +48,15 @@
 #include "zen/ogResult.h"
 #include "zen/ogTotalScore.h"
 #include "zen/ogTutorial.h"
+#include "zen/ogRader.h"
+#include "zen/DrawContainer.h"
+#include "Kontroller.h"
 #if defined(PIKI_PC_PORT)
+#include "pc_coop.h"
 #include "timing/pc_render_phase.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_permadeath.h"
+#include "pc_p2_test_day_cycle.h"
 #endif
 #endif
 
@@ -128,6 +139,20 @@ static bool gameInfoIn;
 
 /// Radar map/Pikmin counts/controls menu (opened with Y).
 static zen::ogScrMenuMgr* menuWindow;
+#if defined(PIKI_PC_PORT)
+// Cooperativo: menú de mapa/controles de P2 (el de P1 es menuWindow). Ambos
+// viven en el heap de vídeo; solo se resetea cuando se cierra el último.
+static zen::ogScrMenuMgr* menuWindow2 = nullptr;
+// Pulsaciones de P1 sin fusionar con P2, capturadas antes de la fusión.
+static u32 sP1InputPressedRaw = 0;
+// Mandos por jugador sin fusionar (la sección se define más abajo).
+static Controller* sP1Controller = nullptr;
+static Controller* sP2Controller = nullptr;
+// gamecore vive en el heap Teki, que se resetea al acabar el día mientras
+// la sección sigue dibujando (resultados, tarjeta). Mientras esté a false,
+// nada del port toca gamecore.
+static bool sGamecoreLive = false;
+#endif
 
 /// Text ("tutorial") pop-ups/overlays.
 static zen::ogScrTutorialMgr* tutorialWindow;
@@ -505,6 +530,9 @@ struct DayOverModeState : public ModeState {
 		// hide the HUD
 		gamecore->mDrawGameInfo->upperFrameOut(0.5f, true);
 		gamecore->mDrawGameInfo->lowerFrameOut(0.5f, true);
+#if defined(PIKI_PC_PORT)
+		if (gamecore->mDrawGameInfo2) gamecore->mDrawGameInfo2->lowerFrameOut(0.5f, true);
+#endif
 
 		if (startState == STATE_PhaseZero) {
 #if defined(VERSION_GPIP01)
@@ -593,6 +621,9 @@ static void showFrame(bool set, f32 fadeTime)
 			}
 			// always show the captain health and pikmin counts etc regardless of day
 			gamecore->mDrawGameInfo->lowerFrameIn(fadeTime, true);
+#if defined(PIKI_PC_PORT)
+			if (gamecore->mDrawGameInfo2) gamecore->mDrawGameInfo2->lowerFrameIn(fadeTime, true);
+#endif
 			gameInfoIn = true;
 		}
 	} else {
@@ -604,6 +635,9 @@ static void showFrame(bool set, f32 fadeTime)
 			}
 			// hide bottom HUD
 			gamecore->mDrawGameInfo->lowerFrameOut(fadeTime, true);
+#if defined(PIKI_PC_PORT)
+			if (gamecore->mDrawGameInfo2) gamecore->mDrawGameInfo2->lowerFrameOut(fadeTime, true);
+#endif
 			gameInfoIn = false;
 		}
 	}
@@ -612,7 +646,11 @@ static void showFrame(bool set, f32 fadeTime)
 /**
  * @brief Creates and initializes the map and controls menu (Y menu).
  */
+#if defined(PIKI_PC_PORT)
+static void createMenuWindow(int player = 0)
+#else
 static void createMenuWindow()
+#endif
 {
 	// load menu assets without a loading screen
 	gsys->startLoading(nullptr, false, 0);
@@ -625,8 +663,14 @@ static void createMenuWindow()
 	gsys->setHeap(SYSHEAP_Movie);
 	int oldMovieAlloc = gsys->getHeap(SYSHEAP_Movie)->setAllocType(AYU_STACK_GROW_DOWN);
 
+#if defined(PIKI_PC_PORT)
+	zen::ogScrMenuMgr* win = new zen::ogScrMenuMgr;
+	win->start();
+	if (player == 1) menuWindow2 = win; else menuWindow = win;
+#else
 	menuWindow = new zen::ogScrMenuMgr;
 	menuWindow->start();
+#endif
 
 	// restore movie heap settings
 	gsys->getHeap(SYSHEAP_Movie)->setAllocType(oldMovieAlloc);
@@ -646,6 +690,18 @@ static void createMenuWindow()
  * @brief Destroys the map and controls menu (Y menu) window and frees resources.
  * @note UNUSED Size: 000040
  */
+#if defined(PIKI_PC_PORT)
+static void deleteMenuWindow(int player = 0)
+{
+	if (player == 1) menuWindow2 = nullptr; else menuWindow = nullptr;
+	if (menuWindow || menuWindow2) {
+		return; // el otro sigue abierto: su memoria vive en el mismo heap
+	}
+	gsys->resetHeap(SYSHEAP_Movie, AYU_STACK_GROW_DOWN);
+	PRINT("menu window detach\n");
+	gameflow.mIsUIOverlayActive = FALSE;
+}
+#else
 static void deleteMenuWindow()
 {
 	// clear movie heap to free resources
@@ -654,6 +710,7 @@ static void deleteMenuWindow()
 	gameflow.mIsUIOverlayActive = FALSE;
 	menuWindow                  = nullptr;
 }
+#endif
 
 /**
  * @brief Creates and displays a text window.
@@ -729,6 +786,9 @@ static void deleteTutorialWindow()
 			gamecore->mDrawGameInfo->upperFrameIn(0.5f, true);
 		}
 		gamecore->mDrawGameInfo->lowerFrameIn(0.5f, true);
+#if defined(PIKI_PC_PORT)
+		if (gamecore->mDrawGameInfo2) gamecore->mDrawGameInfo2->lowerFrameIn(0.5f, true);
+#endif
 		gameInfoIn = true;
 	}
 
@@ -881,7 +941,23 @@ ModeState* IntroGameModeState::update(u32& result)
  */
 ModeState* RunningModeState::update(u32& result)
 {
+#if defined(PIKI_PC_PORT)
+	// VS: revancha o título, pedidos desde la pantalla final.
+	if (const int vsExit = pc_vs_take_exit_request()) {
+		gameflow.mPauseAll                         = FALSE;
+		mParentSection->mPendingOnePlayerSectionID = vsExit == PC_VS_EXIT_REMATCH ? ONEPLAYER_NewPikiGame : ONEPLAYER_GameExit;
+		gsys->setFade(0.0f);
+		return new QuittingGameModeState(mParentSection);
+	}
+#endif
 	result = UPDATE_ALL; // enable all update types to start, then disable any we don't want.
+#if defined(PIKI_PC_PORT)
+	// VS: nadie se mueve durante la cuenta atrás ni con la partida acabada.
+	// mPauseAll solo para el reloj y el mundo; la IA (capitanes incluidos) va aparte.
+	if (pc_vs_active() && (pc_vs_countdown_holding() || pc_vs_match_over())) {
+		result &= ~UPDATE_AI;
+	}
+#endif
 
 	// if we've entered the end of day cutscene, transit to the day over state to handle the day end phases
 	if (!gameflow.mMoviePlayer->mIsActive && !gameflow.mIsTutorialTextActive && gameflow.mIsDayEndActive) {
@@ -958,10 +1034,24 @@ ModeState* RunningModeState::update(u32& result)
 			if (!mParentSection->mActiveMenu)
 #endif
 			{
+#if defined(PIKI_PC_PORT)
+				// Cooperativo: cada jugador abre el suyo con su mando, el
+				// mundo no se pausa y el otro sigue jugando.
+				if (pc_coop_active()) {
+					if ((sP1InputPressedRaw & KBBTN_Y) && !menuWindow) {
+						gameflow.mGameInterface->message(MOVIECMD_CreateMenuWindow, 0);
+					}
+					if (sP2Controller && sP2Controller->keyClick(KBBTN_Y) && !menuWindow2) {
+						gameflow.mGameInterface->message(MOVIECMD_CreateMenuWindow, 1);
+					}
+				} else
+#endif
+				{
 				// also can't open the map/controls menu in the very last ~8s of gameplay before sunset
 				gameflow.mGameInterface->message(MOVIECMD_CreateMenuWindow, 0);
 				mIsOverlayCached            = gameflow.mIsUIOverlayActive;
 				gameflow.mIsUIOverlayActive = TRUE;
+				}
 			}
 		}
 #if defined(DEVELOP) || defined(WIN32)
@@ -1003,6 +1093,26 @@ ModeState* RunningModeState::update(u32& result)
 	}
 
 	// handle the Y menu, if it's open
+#if defined(PIKI_PC_PORT)
+	if (pc_coop_active() && sP1Controller && sP2Controller) {
+		// Con el mapa abierto, el mando de ese jugador solo mueve el menú.
+		if (gamecore && gamecore->mNavi) gamecore->mNavi->mKontroller->mIsControllerFrozen = menuWindow != nullptr;
+		if (gamecore && gamecore->mNavi2) gamecore->mNavi2->mKontroller->mIsControllerFrozen = menuWindow2 != nullptr;
+		if (menuWindow) {
+			// P1 navega con su mando sin fusionar; el mundo sigue.
+			if (menuWindow->update(sP1Controller) == zen::ogScrMenuMgr::STATE_TransitionToInactive) {
+				deleteMenuWindow(0);
+			}
+		}
+		if (menuWindow2) {
+			zen::gRaderNaviIndex = 1;
+			if (menuWindow2->update(sP2Controller) == zen::ogScrMenuMgr::STATE_TransitionToInactive) {
+				deleteMenuWindow(1);
+			}
+			zen::gRaderNaviIndex = 0;
+		}
+	} else
+#endif
 	if (menuWindow) {
 		zen::ogScrMenuMgr::returnStatusFlag state = menuWindow->update(mController);
 		if (state == zen::ogScrMenuMgr::STATE_ActiveDisplay) {
@@ -1023,6 +1133,15 @@ ModeState* RunningModeState::update(u32& result)
 		// disable AI updates when pause menu is active
 		result &= ~UPDATE_AI;
 
+#if defined(PIKI_PC_PORT)
+	} else if (pc_vs_active() && (state == zen::ogScrPauseMgr::PAUSE_ExitToSunset || state == zen::ogScrPauseMgr::PAUSE_ExitToTitle)) {
+		// VS: no hay atardecer ni selección de nivel. "Atardecer" es revancha
+		// y "salir", volver al título.
+		gameflow.mIsUIOverlayActive                = mIsOverlayCached;
+		mParentSection->mPendingOnePlayerSectionID = state == zen::ogScrPauseMgr::PAUSE_ExitToSunset ? ONEPLAYER_NewPikiGame : ONEPLAYER_GameExit;
+		gsys->setFade(0.0f);
+		return new QuittingGameModeState(mParentSection);
+#endif
 	} else if (state == zen::ogScrPauseMgr::PAUSE_ExitToSunset) {
 		// go to sunset selected - end the day
 		gamecore->forceDayEnd();
@@ -1053,6 +1172,16 @@ ModeState* RunningModeState::update(u32& result)
 		gameflow.mIsUIOverlayActive = mIsOverlayCached;
 		seSystem->playSysSe(SYSSE_UNPAUSE);
 	}
+
+#if defined(PIKI_PC_PORT)
+	// TEST-ONLY (#246, inert unless PIKMIN_P2_TEST_DAY_CYCLE is set): end the
+	// day through the same calls as the pause menu's "go to sunset" above.
+	if (pc_p2_test_day_cycle_due(gsys->getFrameTime()) && !gameflow.mIsDayEndTriggered) {
+		gamecore->forceDayEnd();
+		gameflow.mIsPauseAllowed    = FALSE;
+		gameflow.mIsDayEndTriggered = TRUE;
+	}
+#endif
 
 	return this;
 }
@@ -1092,8 +1221,26 @@ void RunningModeState::postRender(Graphics& gfx)
 
 	if (!menuOn) {
 		// no map menu open, draw any other 2D screen objects (enemy health gauges, debug text, etc)
-		gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
-		gamecore->draw1D(gfx);
+#if defined(PIKI_PC_PORT)
+		// Pantalla partida: los 2D proyectados desde 3D (gauges, etiquetas)
+		// van una vez por vista, con su cámara y su viewport.
+		if (sGamecoreLive && gamecore->isSplitScreen() && !gameflow.mMoviePlayer->mIsActive) {
+			for (int view = 0; view < 2; view++) {
+				gamecore->beginView(gfx, view, 10000.0f);
+				// La proyección ya va corrida al lado de la vista (beginView),
+				// así que los 2D proyectados caen en su sitio a pantalla
+				// completa; setOrthogonal() repone el scissor, se recorta después.
+				gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
+				gfx.setScissor(gamecore->currentViewRect(gfx));
+				gamecore->draw1D(gfx);
+			}
+			gamecore->endViews(gfx, gamecore->getViewCamera(0));
+		} else
+#endif
+		{
+			gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
+			gamecore->draw1D(gfx);
+		}
 	}
 
 	// handle sunset approaching/countdown text overlay
@@ -1395,6 +1542,14 @@ ModeState* DayOverModeState::update(u32& result)
 			// Clear the global pointer first so the draw pass cannot dereference
 			// the released screen while a memory-card dialog is still active.
 			resultWindow = nullptr;
+			// The abandoned results background may still have a StartMovie
+			// command queued. Drop pending cutscene commands before the
+			// gameplay section is torn down; otherwise parseMessages() would
+			// dispatch them against a released NaviMgr on a later frame.
+			if (gameflow.mGameInterface) {
+				static_cast<GameMovieInterface*>(gameflow.mGameInterface)->mSimpleMessageCount = 0;
+				static_cast<GameMovieInterface*>(gameflow.mGameInterface)->mComplexMesgCount   = 0;
+			}
 			// 2-second loading screen
 			gsys->startLoading(nullptr, true, 120);
 			PRINT("EXITDAYEND!!!!\n");
@@ -1402,6 +1557,12 @@ ModeState* DayOverModeState::update(u32& result)
 			gamecore->exitDayEnd();
 			gameflow.mMoviePlayer->fixMovieList();
 			Jac_SceneSetup(SCENE_Results, JACRES_EndOfDay);
+#if defined(PIKI_PC_PORT)
+			sGamecoreLive = false;
+			containerWindow2 = nullptr;
+			cameraMgrP2      = nullptr;
+			cameraMgrP1      = nullptr;
+#endif
 			gsys->resetHeap(SYSHEAP_Movie, AYU_STACK_GROW_DOWN);
 			gsys->resetHeap(SYSHEAP_Teki, AYU_STACK_GROW_DOWN);
 			gsys->resetHeap(SYSHEAP_Teki, AYU_STACK_GROW_UP);
@@ -1683,6 +1844,9 @@ ModeState* DayOverModeState::initialisePhaseTwo()
 		}
 
 		// advance the day and handle the end-of-day results entries
+#if defined(PIKI_PC_PORT)
+		if (!pc_settings_get_no_day_advance()) // cheat "No Day Limit"
+#endif
 		gameflow.mWorldClock.mCurrentDay = pc_randomizer_next_day(gameflow.mWorldClock.mCurrentDay);
 		if (!gameflow.mIsChallengeMode) {
 			// story mode - get a diary entry to show at the end of the day, along with how many pages/screens it has
@@ -1705,6 +1869,15 @@ ModeState* DayOverModeState::initialisePhaseTwo()
 			// start the results window with our chosen diary entry
 			resultWindow = new zen::ogScrResultMgr((zen::EnumResult*)resultTable);
 			resultWindow->start();
+			// The end-of-day results/diary is EXEMPT from the tutorial suppression
+			// in normal play: it is the P2 treasure/diary tally, not a tutorial, so
+			// the player always sees it. Only unattended preview/fixture runs
+			// (--experimental-pikmin2-room) keep the historical auto-dismiss so they
+			// cannot stall on "1 Day Since Impact"; those can opt out by pinning
+			// disableTutorials = 0 in their private pikmin_settings.conf.
+			if (pc_pikipelago_room_preview() && pc_settings_get_disable_tutorials()) {
+				resultWindow->skip();
+			}
 
 		} else {
 			// challenge mode - start the challenge mode results window
@@ -1890,6 +2063,9 @@ public:
 
 		// set up unused player 2 controller (!!)
 		mPlayer2Controller = new Controller(2);
+#if defined(PIKI_PC_PORT)
+		mPlayer1Controller = new Controller(1); // P1 sin fusionar (menús por jugador)
+#endif
 
 		mNextModeState = nullptr;
 
@@ -1933,6 +2109,9 @@ public:
 
 		// set up our workhorse gameplay handler
 		gamecore = new GameCoreSection(mController, mapMgr, mGameCamera);
+#if defined(PIKI_PC_PORT)
+		sGamecoreLive = true;
+#endif
 		add(gamecore);
 
 		// debug menus!
@@ -2041,7 +2220,11 @@ public:
 		if (playerState->isTutorial()) {
 			// start our wake-up post-crash-landing cutscene for Day 1
 			gameflow.mMoviePlayer->startMovie(DEMOID_OlimarWakeUp, 0, nullptr, nullptr, nullptr, CAF_AllVisibleMask, true);
-		} else if (flowCont.mCurrentStage->mStageID < STAGE_COUNT) {
+		} else if (flowCont.mCurrentStage->mStageID < STAGE_COUNT
+#if defined(PIKI_PC_PORT)
+		           && !pc_vs_active() // VS: directo al mapa, todo ya colocado
+#endif
+		) {
 			// landing cutscene if we have a valid stage!
 			gameflow.mMoviePlayer->startMovie(DEMOID_Landing, 0, nullptr, nullptr, nullptr, CAF_AllVisibleMask, true);
 		}
@@ -2073,6 +2256,31 @@ public:
 		// update both player 1 and player 2 (!) controllers
 		mController->update();
 		mPlayer2Controller->update();
+#if defined(PIKI_PC_PORT)
+		mPlayer1Controller->update();
+		sP1InputPressedRaw = mController->mInputPressed;
+		sP1Controller      = mPlayer1Controller;
+		sP2Controller      = mPlayer2Controller;
+		// Cooperativo: los menús de sección (texto de tutorial, mensajes de
+		// pieza, saltar fin de día, pausa) leen mController; se le suma P2
+		// para que cualquiera de los dos pueda avanzar el texto.
+		if (pc_coop_active()) {
+			Controller* p2 = mPlayer2Controller;
+			mController->mCurrentInput       |= p2->mCurrentInput;
+			mController->mPrevInput          |= p2->mPrevInput;
+			mController->mInputPressed       |= p2->mInputPressed;
+			mController->mInputReleased      |= p2->mInputReleased;
+			mController->mInputDoublePressed |= p2->mInputDoublePressed;
+			if (mController->mMainStickX == 0 && mController->mMainStickY == 0) {
+				mController->mMainStickX = p2->mMainStickX;
+				mController->mMainStickY = p2->mMainStickY;
+			}
+			if (mController->mSubStickX == 0 && mController->mSubStickY == 0) {
+				mController->mSubStickX = p2->mSubStickX;
+				mController->mSubStickY = p2->mSubStickY;
+			}
+		}
+#endif
 
 		if (!mIsInitialSetup) {
 			// handle any pending mode state transitions
@@ -2165,8 +2373,22 @@ public:
 			}
 
 			gfx.setCamera(&mGameCamera);
-			mGameCamera.update(f32(gfx.mScreenWidth) / f32(gfx.mScreenHeight), mGameCamera.mFov, 100.0f, mCameraFarClip);
+			mGameCamera.update(f32(gfx.mScreenWidth) / f32(gfx.mScreenHeight), mGameCamera.mFov, pc_first_person_active() ? 3.0f : 100.0f, mCameraFarClip);
 		}
+
+#if defined(PIKI_PC_PORT)
+		// Pantalla partida (PLAN_COOP fase 3): fuera de cinemáticas se dibuja
+		// el mundo dos veces, una por Olimar, cada una en su mitad y con su
+		// cámara. El estado (sonido, efectos) solo avanza en la primera pasada.
+		const bool splitScreen = sGamecoreLive && gamecore && gamecore->isSplitScreen() && !gameflow.mMoviePlayer->mIsActive
+		                      && !(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie) && !memcardWindow;
+		mSplitViews = splitScreen ? 2 : 1;
+		for (int view = 0; view < mSplitViews; view++) {
+			if (sGamecoreLive && gamecore) gamecore->mRenderPass = view;
+			if (splitScreen) {
+				beginSplitView(gfx, view);
+			}
+#endif
 
 		// do any pre-rendering, assuming we're not in a cutscene
 		if (!(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie)) {
@@ -2191,7 +2413,11 @@ public:
 					isDVDNormal = false;
 				}
 
+#if defined(PIKI_PC_PORT)
+				if (isDVDNormal && gamecore->mRenderPass == 0) {
+#else
 				if (isDVDNormal) {
+#endif
 					effectMgr->update();
 				}
 				MATCHING_STOP_TIMER("effect");
@@ -2202,12 +2428,25 @@ public:
 			MATCHING_STOP_TIMER("eff draw");
 		}
 
+#if defined(PIKI_PC_PORT)
+		}
+		if (splitScreen) {
+			endSplitViews(gfx);
+		}
+		if (sGamecoreLive && gamecore) gamecore->mRenderPass = 0;
+#endif
+
 		// do any 2D post-rendering (for overlays and windows)
 		if (!(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie)) {
 			MATCHING_START_TIMER("postRender", true);
 			menuOn = false;
 			gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
 			postRender(gfx);
+#if defined(PIKI_PC_PORT)
+			if (!mActiveMenu && pc_coop_active() && sGamecoreLive && gamecore && gamecore->isSplitScreen() && (menuWindow || menuWindow2)) {
+				drawSplitMenuWindows(gfx);
+			} else
+#endif
 			if (!mActiveMenu && menuWindow) {
 				menuOn = menuWindow->draw(gfx);
 			}
@@ -2252,8 +2491,22 @@ public:
 		if (!mIsInitialSetup) {
 			// check if we should advance the time of day
 			if (!gsys->resetPending() && (!mActiveMenu || gameflow.mMoviePlayer->mIsActive)) {
+				// PIKMIN_TICK_STATS: the world simulation lives here, inside
+				// the draw, so time it apart from the GX translation.
+				const bool profiling = pc_tick_profiler_enabled();
+				const double simStart
+				    = profiling ? std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count()
+				                : 0.0;
 				if (!gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {
-					if (!gameflow.mMoviePlayer->mIsActive && (mUpdateFlags & UPDATE_WORLD_CLOCK) && !playerState->isTutorial()) {
+#if defined(PIKI_PC_PORT)
+					pc_settings_note_gameplay_frame();
+#endif
+					// Mod "Infinite Day": only the playable clock is held. The
+					// title screen keeps its own clock running, so its sky
+					// still moves.
+					const bool pcClockHeld = pc_settings_get_infinite_day() != 0;
+					if (!pcClockHeld && !gameflow.mMoviePlayer->mIsActive && (mUpdateFlags & UPDATE_WORLD_CLOCK)
+					    && !playerState->isTutorial()) {
 						f32 tod = gameflow.mWorldClock.mTimeOfDay;
 						gameflow.mWorldClock.update(1.0f);
 						f32 tod2 = gameflow.mWorldClock.mTimeOfDay;
@@ -2263,9 +2516,18 @@ public:
 				}
 				// update the HUD
 				gamecore->mDrawGameInfo->update();
+#if defined(PIKI_PC_PORT)
+				if (gamecore->mDrawGameInfo2) gamecore->mDrawGameInfo2->update();
+#endif
 				if (mUpdateFlags & UPDATE_AI && !(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie)) {
 					// update enemy/boss/pikmin/etc AI
 					gamecore->updateAI();
+				}
+				if (profiling) {
+					pc_tick_profiler_record(
+					    kPcTickWorldSim,
+					    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count()
+					        - simStart);
 				}
 			}
 		} else {
@@ -2302,6 +2564,9 @@ public:
 #endif
 		tutorialWindow = nullptr;
 		menuWindow     = nullptr;
+#if defined(PIKI_PC_PORT)
+		menuWindow2    = nullptr;
+#endif
 		memStat->start("gameover");
 		gameoverWindow = new zen::DrawGameOver;
 		memStat->end("gameover");
@@ -2358,14 +2623,45 @@ public:
 	 */
 	void preRender(Graphics& gfx) { gamecore->mMapMgr->preRender(gfx); }
 
+#if defined(PIKI_PC_PORT)
+	/// Menú de mapa/controles de cada jugador dentro de su mitad (4:3
+	/// uniforme, centrado), sin tapar la mitad del otro.
+	void drawSplitMenuWindows(Graphics& gfx)
+	{
+		zen::ogScrMenuMgr* wins[2] = { menuWindow, menuWindow2 };
+		for (int view = 0; view < 2; view++) {
+			if (!wins[view]) continue;
+			gamecore->setViewSubrect(view);
+			pc_gfx_set_ui_43_no_bars(1);
+			zen::gRaderNaviIndex = view;
+			wins[view]->draw(gfx);
+			zen::gRaderNaviIndex = 0;
+			pc_gfx_set_ui_43_no_bars(0);
+		}
+		pc_gfx_clear_view_subrect();
+		gfx.setViewport(AREA_FULL_SCREEN(gfx));
+		gfx.setScissor(AREA_FULL_SCREEN(gfx));
+	}
+	int mSplitViews = 1; ///< Vistas dibujadas esta frame (1 ó 2).
+	void beginSplitView(Graphics& gfx, int view) { gamecore->beginView(gfx, view, mCameraFarClip); }
+	void endSplitViews(Graphics& gfx) { gamecore->endViews(gfx, &mGameCamera); }
+#endif
+
 	/**
 	 * @brief Performs the main rendering for a single frame, including getting `gamecore` to also render.
 	 * @param gfx Graphics context for rendering.
 	 */
 	void mainRender(Graphics& gfx)
 	{
+#if defined(PIKI_PC_PORT)
+		// Vista partida: viewport completo (la proyección va corrida) y
+		// recorte a la mitad.
+		gfx.setViewport(AREA_FULL_SCREEN(gfx));
+		gfx.setScissor(gamecore->currentViewRect(gfx));
+#else
 		gfx.setViewport(AREA_FULL_SCREEN(gfx));
 		gfx.setScissor(AREA_FULL_SCREEN(gfx));
+#endif
 		gfx.setClearColour(COLOUR_TRANSPARENT);
 		gfx.clearBuffer(Graphics::ClearBufferFlag::Both, false);
 		gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov, gfx.mCamera->mAspectRatio, gfx.mCamera->mNear,
@@ -2592,6 +2888,9 @@ public:
 	u8 _48[0x50 - 0x48];            ///< _048, unused/unknown.
 	Menu* mDebugMenu;               ///< _050, debug menu, only enabled in DEVELOP builds.
 	Controller* mPlayer2Controller; ///< _054, controller for player 2 - never used, but set up and updated.
+#if defined(PIKI_PC_PORT)
+	Controller* mPlayer1Controller = nullptr; ///< P1 sin fusionar con P2.
+#endif
 	Font* mGameFont;                ///< _058, "big" font, seemingly for screens - set up, but never used.
 	Camera mGameCamera;             ///< _05C, camera following captain.
 	f32 mCameraFarClip;             ///< _3A4, max render distance from the camera.
@@ -2661,6 +2960,17 @@ void GameMovieInterface::parse(GameMovieInterface::SimpleMessage& msg)
 	switch (cmd) {
 	case MOVIECMD_TextDemo:
 	{
+#if defined(PIKI_PC_PORT)
+		// Mod "Disable Tutorials": drop the six informational hints before a
+		// window is allocated. Story, recovery, part and ending text still open.
+		if (pc_should_skip_tutorial(pc_settings_get_disable_tutorials(), data)) {
+			// Match normal text dismissal: release an associated movie wait too.
+			if (gameflow.mMoviePlayer->mIsActive) {
+				gameflow.mMoviePlayer->skipScene(SCENESKIP_Skip);
+			}
+			break;
+		}
+#endif
 		// open a text window - data here should use the zen::ogScrTutorialMgr::EnumTutorial enum (text ID)
 		PRINT("***** START TUTORIAL WINDOW\n");
 		int ufoPartID = -1;
@@ -2868,7 +3178,11 @@ void GameMovieInterface::parse(GameMovieInterface::SimpleMessage& msg)
 	case MOVIECMD_CreateMenuWindow:
 	{
 		// open the Y menu (map and controls etc)
+#if defined(PIKI_PC_PORT)
+		createMenuWindow(data);
+#else
 		createMenuWindow();
+#endif
 		break;
 	}
 #if defined(VERSION_PIKIDEMO)

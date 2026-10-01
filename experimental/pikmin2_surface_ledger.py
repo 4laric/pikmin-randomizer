@@ -98,10 +98,13 @@ class SurfaceLedger:
         self.content, self.campaign = content, campaign
 
     def _read(self):
-        state = validate(json.loads(self.path.read_text(encoding='utf-8'), object_pairs_hook=_unique))
+        state = self._validate(json.loads(self.path.read_text(encoding='utf-8'), object_pairs_hook=_unique))
         if state['content'] != self.content or state['campaign'] != self.campaign:
             raise ValueError('Surface ledger belongs to different content/campaign')
         return state
+
+    def _validate(self, state):
+        return validate(state)
 
     def read(self):
         with SessionLock(self.directory):
@@ -120,7 +123,7 @@ class SurfaceLedger:
                 raise ValueError('Missing ledger in an existing session; refusing reset')
             state = dict(schema=1, campaign=self.campaign, content=self.content, origin=origin,
                          revision=0, phase='surface', surface=snapshot, trip=None, events={})
-            atomic_write(self.path, json.dumps(validate(state), indent=2))
+            atomic_write(self.path, json.dumps(self._validate(state), indent=2))
             return state
 
     def _change(self, expected_revision, key, request, apply):
@@ -139,7 +142,7 @@ class SurfaceLedger:
             apply(candidate)
             candidate['events'][key] = request
             candidate['revision'] += 1
-            atomic_write(self.path, json.dumps(validate(candidate), indent=2))
+            atomic_write(self.path, json.dumps(self._validate(candidate), indent=2))
             return candidate
 
     def enter_cave(self, expected_revision, trip_id, *, native_entry=None):

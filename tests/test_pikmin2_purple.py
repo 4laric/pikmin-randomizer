@@ -37,6 +37,23 @@ def test_bca_rejects_truncated_tracks():
     with pytest.raises(ValueError,match='Truncated BCA track'):bca_pose(data,0,1)
 
 
+def test_bca_singular_scale_policy():
+    # An authored zero axis scale (plant grow-from-nothing / hidden joint) is a
+    # hard error by default and stays a scaled-animation error without
+    # allow_scale, but the opt-in 'allow' policy passes the zero through.
+    data=animation();struct.pack_into('>f',data,32+128,0)
+    with pytest.raises(ValueError,match='Singular animation scale'):
+        bca_pose(data,0,1,allow_scale=True)
+    with pytest.raises(ValueError,match='Scaled'):
+        bca_pose(data,0,1,singular_scale='allow')
+    duration,pose=bca_pose(data,0,1,allow_scale=True,singular_scale='allow')
+    assert duration==2
+    assert pose[0]==[[0.,0.,0.,1.],[0.,0.,0.,4.],[0.,0.,0.,5.]]
+    assert bca_pose(data,1,1,allow_scale=True,singular_scale='allow')[1][0][0][:3]==[0.,0.,0.]
+    with pytest.raises(ValueError,match='singular scale mode'):
+        bca_pose(data,0,1,allow_scale=True,singular_scale='bogus')
+
+
 def test_local_purple_source_data_and_distinct_walk_poses():
     directory=Path('output/pikmin2-purple113/import-05')
     if not directory.exists():pytest.skip('Requires local user-owned disc extraction')

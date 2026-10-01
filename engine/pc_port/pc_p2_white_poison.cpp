@@ -20,12 +20,16 @@ std::set<const BTeki*> predators;
 P2WhitePoisonEvents events;
 }
 
-void pc_p2_white_poison_setup() {
+void pc_p2_white_poison_reset() {
     enabled = false;
     poisonDamage = 0.0f;
     predatorGenerators.clear();
     predators.clear();
     events.reset();
+}
+
+void pc_p2_white_poison_setup() {
+    pc_p2_white_poison_reset();
     if (!pc_p2_whites_enabled()) return;
     std::ifstream in("p2-white-poison.txt");
     if (!in) return;
