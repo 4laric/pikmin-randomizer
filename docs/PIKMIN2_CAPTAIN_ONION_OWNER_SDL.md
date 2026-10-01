@@ -47,19 +47,28 @@ deposit, switch, withdrawal, formation, controls, and native save. Historical
 #1130 saves took approximately 57 seconds, leaving insufficient demonstrated
 slack for deposit plus withdrawal. No whole-sequence timing claim is made yet.
 
-The draft retains the existing safe single diary B edge followed by A input.
-There is no public exact diary input observer at the pinned native base. A
-read-only observer would require separately coordinated production ownership
-before any page-aware input schedule is implemented. No blind repeated B,
-clock change, results-state write, or direct card writer invocation is allowed.
+The PC-only const observer reports input eligibility from the actual result
+window, only during DiaryMessage and the message's ActiveDisplay state with
+input enabled. The fixture sends an ordinary SDL B edge to reveal a page and
+an A edge to advance a revealed page, followed by a neutral frame. When
+eligibility is unavailable, the existing ordinary A cadence serves fades and
+results/card prompts; it never emits B there. Observer/action changes are logged.
+There is no clock change, message state write, direct reveal/update call, or
+direct card writer invocation.
+
+The engine-free test exercises eligibility boundaries and verifies unavailable
+outer gates do not invoke inner readers. Explicit checks and static assertions
+remain effective under Release/NDEBUG. It does not instantiate real UI objects;
+production compilation, source review, and actual UI runtime remain necessary.
 
 ## Source and execution boundary
 
 Base root: `36ac5ddd2877b9308276f96b28a81e137ae58c5a`.
 Base native: `67f91ef9a9d3a8fec9f7ae84a653321fe153c893`.
 Private branches: `codex/captain-onion-1166` in separate root/native worktrees.
-Files owned by this lane are the new fixture, runner, and this document only.
-No CMake, shared fixture, or production source edits are authorized by this claim.
+The supported editing agreement also claims the five read-only observer files
+and new engine-free test. It retains both primary integration and radar producer
+claims and evidence. The shared #1157 fixture remains outside this claim.
 
 The runner preserves the reviewed #1157 runtime-directory hashes and environment
 scrub in its own file, with additional mandatory ownership markers. Build and

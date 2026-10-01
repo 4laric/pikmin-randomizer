@@ -86,6 +86,7 @@ def main():
  assert run.handshaken,'actual production handshake required'
  if a.phase=='save':
   assert len(after)==1 and 'CAMPAIGN_SAVED generation=1' in log
+  assert 'P2_ONION_DIARY input=B observed=1' in log and 'P2_ONION_DIARY input=A observed=2' in log,'actual eligible diary inputs required'
   end=re.search(r'PASS P2_CAPTAIN_ONION_OWNER_SAVE day_before=(\d+) day_after=(\d+)',log);assert end and int(end[2])==int(end[1])+1
   facts=re.search(r'P2_SAVE_SCENE .*?live=(\d+) stored=(\d+)',log);assert facts
   baseline=dict(acceptance=a.timeout==60,save_wall_timeout_seconds=a.timeout,cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
