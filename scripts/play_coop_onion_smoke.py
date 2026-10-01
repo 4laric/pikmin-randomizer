@@ -49,9 +49,10 @@ def main():
     env['NECTAR_SAVE_DIR'] = str(run/'save')
     env['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
     env['COOP_ONION_HUMAN'] = '1'
+    env['PIKMIN_RANDOMIZER_TEST_BACKGROUND'] = '2'  # native auto-withdraw, visible window (only1 hides)
     env.pop('COOP_ONION_FORCE_DOWN', None)
     (run/'smoke-inputs.json').write_text(json.dumps(dict(exe=str(exe),exe_sha256=hashlib.sha256(exe.read_bytes()).hexdigest(),assets=str(assets),orientation=args.orientation,human_judgment='unrecorded'),indent=2),encoding='utf-8')
-    print('INJECTED Onion UI scenario: both menus open after startup. Native pending births fill the 30-Pikmin capacity; staged deaths, stock and pending exits then change while the menus remain open. P1: Up/Down selects, Space confirms, Shift cancels. P2: controller stick selects, A/Cross confirms, B/Circle cancels. Watch available counts update while the world runs; try withdrawing after room frees. Close the game or wait 60 seconds. Rerun for a fresh reset. No campaign-progress claim.', flush=True)
+    print('INJECTED Onion UI scenario: both menus open after startup. Native pending births fill the 30-Pikmin capacity; staged deaths, stock and pending exits then change while the menus remain open. P1: W/S selects, Space confirms, Shift cancels. P2: controller stick selects, A/Cross confirms, B/Circle cancels. Watch available counts update while the world runs; try withdrawing after room frees. Close the game or wait 60 seconds. Rerun for a fresh reset. No campaign-progress claim.', flush=True)
     try:
         with (run/'native.log').open('wb') as log:
             proc = subprocess.Popen([str(exe),'--coop','--randomizer-seed',str(run/'bootstrap.txt')],cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT)

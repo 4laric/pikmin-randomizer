@@ -22,10 +22,12 @@ Connect a controller for P2, then run:
 py -3.12 scripts/play_coop_onion_smoke.py
 ```
 
-P1 Up/Down selects transfers; Enter/Space confirms and Shift cancels. P2 uses
+P1 W/S selects transfers; Enter/Space confirms and Shift cancels. P2 uses
 its stick and A/B (Cross/Circle). Watch the available counts and withdrawal
 limit change while the world runs. Closing the game or the 90-second bound
 ends the private attempt; rerun for a fresh reset. Saves and state stay under
 ignored output. The manual smoke has no network sockets and remains unlaunched
 until the user runs it. Human readability/input judgment is separate from the
 automated proof and does not admit P2 gameplay or full campaign resume.
+
+The scripted visible startup explicitly sets TEST_BACKGROUND=2: native auto-withdraw supplies20; only the exact value1 hides the window. This test staging does not alter normal campaign starts.
