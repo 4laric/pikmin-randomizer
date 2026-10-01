@@ -94,3 +94,21 @@ class ProtocolConsumers(unittest.TestCase):
             invalid=json.loads(before);invalid["death_links_received"]=1<<32
             with self.assertRaises(ValueError): client.mirror.save(invalid)
             self.assertEqual((client.directory/"mirror.json").read_bytes(),before)
+
+    def test_complete_client_bootstrap_refusal_before_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            ordinary=generate("protocol-bootstrap", "ap", progressive_maturity=True, progressive_day_length=3, whistle_pluck_item=True)
+            host=Session(ordinary,root/"host")
+            token=secrets.token_hex(32)
+            self.assertIn("MATURITY 1",native_bootstrap(host,token))
+            cases=[(ordinary,native_bootstrap(host,token).replace("MATURITY 1","MATURITY 0")),
+                   (ordinary,native_bootstrap(host,token)+"UNKNOWN 1\n")]
+            tl=TheLynkSession(patch(),root/"tl-host")
+            cases.extend([(patch(),tl.bootstrap(token).replace("CHECKS 330","CHECKS 329")),
+                          (patch(),tl.bootstrap(token)+f"SESSION {token}\n")])
+            for i,(manifest,text) in enumerate(cases):
+                target=root/str(i)
+                with self.assertRaisesRegex(ValueError,"complete host manifest"):
+                    NetplayClientRun(manifest,target,text)
+                self.assertFalse(target.exists())

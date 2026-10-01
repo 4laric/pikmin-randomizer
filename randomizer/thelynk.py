@@ -136,6 +136,12 @@ def render_session_state(data, token, ready):
             + " ".join(map(str, checked)) + " BONUSES " + " ".join(map(str, counts)) + " END\n")
 
 
+def render_bootstrap(patch, token):
+    ids = sorted(enabled_locations(patch["Options"]).values())
+    return (f"PIKMIN_THELYNK 1\nSESSION {token}\nFINGERPRINT {session_fingerprint(patch)}\n"
+            f"CHECKS {len(ids)} " + " ".join(map(str, ids)) + "\nEND\n")
+
+
 class TheLynkSession:
     def __init__(self, patch, directory):
         self.patch = patch
@@ -195,9 +201,7 @@ class TheLynkSession:
         return set(PART_ITEMS.values()) <= set(self.data["received"])
 
     def bootstrap(self, token):
-        ids = sorted(self.locations.values())
-        return (f"PIKMIN_THELYNK 1\nSESSION {token}\nFINGERPRINT {self.fingerprint}\n"
-                f"CHECKS {len(ids)} " + " ".join(map(str, ids)) + "\nEND\n")
+        return render_bootstrap(self.patch, token)
 
     def state(self, token, ready):
         return render_session_state(self.data, token, ready)

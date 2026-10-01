@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from .catalog import GAME, NAMES, LOCATION_IDS
 from .netplay_mirror import (
     BOOTSTRAP_FILENAME,
@@ -508,6 +509,15 @@ class NetplayClientRun:
         self.token = self.directory.name
         if fingerprint_line != self.fingerprint_value:
             raise ValueError("client bootstrap fingerprint does not match manifest")
+        if is_thelynk(manifest):
+            from .thelynk import render_bootstrap
+            canonical_bootstrap = render_bootstrap(manifest, token)
+        else:
+            identity = SimpleNamespace(manifest=manifest, fingerprint=self.fingerprint_value,
+                death_link_unit=manifest["death_link_pikmin"] if manifest.get("death_link") else 0)
+            canonical_bootstrap = native_bootstrap(identity, token, bool(manifest.get("p2_purple_campaign")))
+        if bootstrap_text != canonical_bootstrap:
+            raise ValueError("client bootstrap differs from complete host manifest")
         self.directory.mkdir(parents=True, exist_ok=True)
         if native_directory is None:
             atomic_write(self.directory / BOOTSTRAP_FILENAME, bootstrap_text)
