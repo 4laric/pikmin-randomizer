@@ -3,8 +3,19 @@
 Issue #1080 adds an explicit generation option for the existing single-player
 captain-switching implementation. Use `randomizer generate --p2-enemies
 --p2-second-captain` or `generate(..., p2_enemies=True,
-p2_second_captain=True)`. Both solo and AP manifests support the option; this
-does not add an Archipelago options UI or change cooperative multiplayer.
+p2_second_captain=True)`. Both solo and AP manifests support the option.
+Archipelago YAML exposes the same default-off option:
+
+```yaml
+Pikmin Randomizer:
+  p2_enemy_randomizer: true
+  p2_second_captain: true
+```
+
+Enabling the captain option without `p2_enemy_randomizer` fails generation.
+It adds no items or progression requirements and does not change cooperative
+multiplayer. Generated slot data and the exported manifest carry the same
+captain setting and fingerprint.
 
 The default is false. False and omission produce the same legacy manifest.
 Opt-in adds the true-only `p2_second_captain` field and the
