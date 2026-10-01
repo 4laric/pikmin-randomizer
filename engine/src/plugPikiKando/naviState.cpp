@@ -1,5 +1,7 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
+#include "pc_bbft.h"
+#include <cstring>
 #endif
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
@@ -3628,6 +3630,12 @@ void NaviStartingState::init(Navi* navi)
 		mWalkTargetPos.y = mapMgr->getMinY(mWalkTargetPos.x, mWalkTargetPos.z, true);
 		mWalkTargetPos   = ufo->getGoalPos();
 	}
+#if defined(PIKI_PC_PORT)
+	else if (pc_pikipelago_surface_course() && !std::strcmp(pc_pikipelago_surface_course(), "tutorial")) {
+		// The opt-in bootstrap has no ship; no authored landing walk exists.
+		mWalkTargetPos = navi->mSRT.t;
+	}
+#endif
 	mStartPhase      = STARTPHASE_Delay;
 	mStartDelayTimer = 1.7f;
 
@@ -3665,6 +3673,13 @@ void NaviStartingState::exec(Navi* navi)
 	if (ufo) {
 		mWalkTargetPos = ufo->getGoalPos();
 	}
+#if defined(PIKI_PC_PORT)
+	else if (pc_pikipelago_surface_course() && !std::strcmp(pc_pikipelago_surface_course(), "tutorial")) {
+		// GenMgr may place the captain after init; use the current position.
+		// Preserve the ordinary delay/start animation and Walk transition.
+		mWalkTargetPos = navi->mSRT.t;
+	}
+#endif
 
 	switch (mStartPhase) {
 	case 0:

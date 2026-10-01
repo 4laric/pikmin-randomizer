@@ -1,6 +1,16 @@
 # Native source provenance
 
-The current P2 source-delivery snapshot is native
+The current private second-batch engine source snapshot is native
+`38b19c5f6bef44954319cc69769ee44f9e4aa7c8`, exported from the clean
+`output/native-p2-acceptance-batch-two` worktree under #1142 into private root
+base `e388dabe272967f8ccb72979761ca7d0b53cedcf`. It combines accepted captain,
+surface-water and cave-continuation source while preserving the first wave.
+Actual private production build and 4,036-file export plus six retained dependencies
+are verified. Fresh captain save/load, water FSM and cave transfer/recovery checks
+passed; final snapshot CI/merge and producer receipts are recorded separately. See
+[the second batch and acceptance limits](docs/PIKMIN2_ACCEPTANCE_BATCH_TWO.md).
+
+The preceding first-wave P2 source-delivery snapshot is native
 `9a76a11d9d65529690237e2ed55344302cb29b13`, exported from the clean private
 `output/native-p2-acceptance-wave` worktree under #1131. It adds independently
 reviewed native Red cave identity, White ingestion and durable enemy receipt
