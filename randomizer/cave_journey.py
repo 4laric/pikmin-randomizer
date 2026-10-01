@@ -116,7 +116,9 @@ class Session:
         saved = checkpoint(transfer, buds, ledger, self.manifests[1], self.placements[1])
         boundary = dict(run=str(run), transfer=transfer, buds=buds, receipts=ledger,
                         hashes={name:hashlib.sha256(text.encode()).hexdigest()
-                                for name,text in [('transfer',transfer),('buds',buds),('receipts',ledger)]})
+                                for name,text in [('transfer',transfer),('buds',buds),('receipts',ledger)]},
+                        inputs={name:hashlib.sha256((run/name).read_bytes()).hexdigest()
+                                for name in ('cave.json','p2-cave-entry.txt','layout.json','nectar.exe')})
         return saved, boundary
 
     def destination(self, source):
@@ -140,7 +142,7 @@ class Session:
                 raise ValueError('unexpected source boundary')
         else:
             boundary = state['boundary']
-            if type(boundary) is not dict or set(boundary) != {'run','transfer','buds','receipts','hashes'}:
+            if type(boundary) is not dict or set(boundary) != {'run','transfer','buds','receipts','hashes','inputs'}:
                 raise ValueError('missing source boundary')
             run = self.run_path(boundary['run'])
             source, actual = self.source_boundary(run)

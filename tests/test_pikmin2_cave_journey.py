@@ -152,6 +152,14 @@ class JourneyTests(unittest.TestCase):
         self.assertTrue(self.session.pending_path.exists())
         self.assertEqual(self.session.load()['floor'],1)
 
+    def test_committed_source_input_hashes_remain_pinned(self):
+        run = self.run_dir(); self.transfer(run)
+        state,_ = self.session.recover()
+        self.assertEqual(set(state['boundary']['inputs']),{'cave.json','p2-cave-entry.txt','layout.json','nectar.exe'})
+        (run/'layout.json').write_text('changed after source boundary commit')
+        with self.assertRaisesRegex(ValueError,'source boundary bytes changed'):
+            self.session.load()
+
     def test_package_hash_descriptor_and_duplicate_json_refused(self):
         from scripts.play_pikmin2_cave_journey import package_inputs
         package = Path(self.tmp.name)/'package'; package.mkdir()
