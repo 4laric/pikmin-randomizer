@@ -1,11 +1,11 @@
 # Generated P2 delivery bridge acceptance (#1096)
 
 Implementation owner: Codex through shared GitHub account `4laric`.
-This private lane proves one generated encounter; it does not grant full P2,
+This private lane tests one generated encounter; it does not grant full P2,
 full campaign, all original-slot routes or human gameplay acceptance.
 
 The supported generator receives a subset of the existing admitted placement
-with audited Hope singleton1849273021 (`1/0-29.gen@4189`). Every retained slot,
+with audited Hope singleton4222852521 (`1/0-29.gen@2659`). Every retained slot,
 profile and admission fact stays intact. Pool44 Dwarf Orange Bulborb and34 Female
 Sheargrub samples44 into this singleton and records34 as unplaced. The resolved
 catalog adds only the placed P2 identity and retains surviving P1 checks.
@@ -33,6 +33,11 @@ is confirmed virtual, with TEST_BACKGROUND and enabled/ready session. It repolls
 that virtual pad from zero, excluding keyboard/mouse/physical samples. Ordinary
 foreground policy, other players and settings consumption stay in place. This
 is scripted input proof, not human acceptance or a direct controller override.
+The fixture reads the native land waypoint graph and actual bramble gate owner.
+It walks existing open route legs, swarms a closed bramble through normal input,
+and observes production health/stage completion before replanning. It never
+sets route flags, gate health/stages or actor positions. Bomb gates fail.
+Preserved earlier original-slot attempts rejected closed routes honestly.
 Policy tests reject physical, unready, flag-off, implicit and other-player cases.
 
 Require20 live starters, correct source44/UID/day2 binding and an observed
