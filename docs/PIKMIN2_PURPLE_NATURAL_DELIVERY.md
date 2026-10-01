@@ -7,7 +7,33 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
-## Latest status: round05 projection correction
+## Latest status: round06 identifies the native cursor-only band
+
+Producer `7172a2d9586ffae60629816d0accfde75bfe245e` passed Windows36914100082:
+212 tests, eight hashes and no-work; actual compiled merge
+`915bd0b31e9352230e58a18155ea8b74ce4858b7`. Executable SHA256
+`fdb68be4744145bbd68587bfb87d47e6160ef2e535010cce66c82fae70877e92`.
+All seven initialized guard06 cases PASS. East06 and West06 both time out at
+60.125s after real conversion, before pluck/cargo. Post-frame contact samples0
+do not establish absence of every physics contact, but do not support treating
+these stalls as confirmed Violet obstruction.
+
+Both logs show classic control mode0. The actual loaded p44 cursor-only threshold
+is0.65. Recorded East stick(4,35) and West(4,38) revise to magnitudes0.503/0.546;
+the exact compiled Navi::makeVelocity zeros walking velocity in this band.
+This identifies a concrete controller cause previously obscured by the collision
+hypothesis. Immutable receipt: `output/purple1128-runtime-summary06.json`.
+
+Pushed native `9983a687f67899df0e054df226d992eb30298374` keeps ordinary stick
+input above loaded p44, records actual/target velocity and requires default
+captain speed scale1. No movement parameter, actor, terrain or placement change.
+The same commit adds separate natural_dayend/natural_resume modes using actual
+SDL sunset/results/card input and native checkpoint restoration. They do not use
+direct stock helpers or clock advancement, and explicitly leave withdrawal UI
+unaccepted. MinGW syntax/diff and runner AST pass. Windows36916137829 and fresh07
+runtime are pending; no new gameplay acceptance is claimed.
+
+## Round05 projection correction
 
 Producer `5c5ca307f4660ad024471ae35ae57b33f59e120b` passed Windows36912221783:
 212 tests, eight hashes and no-work. Compiled merge
