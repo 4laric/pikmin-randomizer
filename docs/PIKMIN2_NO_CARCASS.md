@@ -68,7 +68,7 @@ Five focused native ctests pass: no-carcass policy, Kurage bank and non-campaign
 transport, Queen own FSM, and long-legs FSM.
 
 Each fresh campaign run uses autoplay power x30 and a test-only initial squad/
-captain teleport. Damage comes through existing combat receivers; health/death
+captain teleport. Damage comes through existing combat receivers; enemy health/death
 state is not injected. These are accelerated bot fights, not normal player
 combat acceptance. All five runs show death/animation completion, vanish, no
 carcass markers, `P2_NO_CARCASS`, `P2_NO_CARCASS_KILL receipt=1`, and exactly one
