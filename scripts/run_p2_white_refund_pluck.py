@@ -3,14 +3,15 @@ import argparse, hashlib, json, os, sys, uuid
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from scripts.preview_p2_white_acquisition import prepare
-from scripts.run_pikmin2_fixture import launch
 
 def sha(p): return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def main():
  p=argparse.ArgumentParser(description=__doc__)
  for name in ('workspace','exe','assets','white','pod','room'): p.add_argument('--'+name,type=Path,required=True)
  p.add_argument('--mode',choices=('refund','full','negative','manual','startup-check'),default='refund')
- a=p.parse_args();root=a.workspace.resolve();run=root/'output/white-refund-pluck'/('run-'+a.mode+'-'+uuid.uuid4().hex[:10])
+ a=p.parse_args();root=a.workspace.resolve();sys.path.insert(0,str(root/'scripts'))
+ from run_pikmin2_fixture import launch
+ run=root/'output/white-refund-pluck'/('run-'+a.mode+'-'+uuid.uuid4().hex[:10])
  for k in list(os.environ):
   if k.startswith(('P2_WHITE_','PIKMIN_RANDOMIZER_AUTOPLAY','PIKMIN_P2_')): del os.environ[k]
  os.environ['PIKMIN_RANDOMIZER_AUTOPLAY']='0'
