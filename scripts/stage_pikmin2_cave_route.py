@@ -13,6 +13,7 @@ from randomizer.cave_route import Route
 from scripts.stage_pikmin2_cave_journey import stage_package as stage_journey
 from scripts.stage_pikmin2_surface_water import prepare
 
+ROUTE_START=[-210.,90.,1350.]
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -35,7 +36,7 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
             if len(templates)!=20:raise ValueError('current twenty-Red surface template required')
             rows=[row for row in rows if row[72:76]!=b'ikip']
             for i,(species,maturity) in enumerate(surface['squad']):
-                baseline=(surface==dict(position=[220.,96.0442,1000.],health=1.,squad=[[1,0]]*20))
+                baseline=(surface==dict(position=ROUTE_START,health=1.,squad=[[1,0]]*20))
                 row=bytearray(templates[i] if baseline else templates[0]);struct.pack_into('<I',row,8,1000+i)
                 # First visit retains the existing dry-bank baseline. Reentry
                 # places actual survivors on that same audited bank.
@@ -71,7 +72,9 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
 
 def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,workspace):
     stage_journey(seed,slot,assets,pod,exe,generator,output,workspace)
-    surface=dict(position=[220.,96.0442,1000.],health=1.,squad=[[1,0]]*20)
+    # Short connected approach: source ground rises50->80 at z1350->1240.
+    # Shoreline220,1000 is separated by a ledge and needs a much longer route.
+    surface=dict(position=ROUTE_START,health=1.,squad=[[1,0]]*20)
     _,inputs=stage_surface(assets,bundle,identity,output/'surface-blueprint',exe,surface,'0'*32)
     run=output/'surface-blueprint/run'
     record=dict(schema=1,bundle=str(bundle.resolve()),receipt_identity=identity,

@@ -5,7 +5,11 @@ Implementation owner: Codex through shared account `4laric`.
 The opt-in route uses the full imported tutorial model, collision, routes and
 static water. Its entrance is an explicit fallback ring at (-210,80,1160), radius
 60. It does not replace the terrain with the historical fenced entrance pocket.
-The surface contains a staged checkpoint party; retail surface generator actors
+The first captain spawn is (-210,90,1350), forty units above the source floor50,
+outside the entrance ring on its connected sloped approach. The shoreline start
+used by water fixtures cannot reach this ring by a straight line because of a
+source terrain ledge. This is an explicit engineering spawn, not a retail actor
+placement or a claim of traversing the entire surface. The surface contains a staged checkpoint party; retail surface generator actors
 are not imported by this route. Generated forest_1 floors retain the delivered
 original engineered geometry and item identities.
 
