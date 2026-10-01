@@ -32,7 +32,8 @@ children of a common replacement desktop host do not prevent correction.
 
 Any lane resource lease/request, active launch, pending session adoption, planning
 claim, claimed action, terminal recovery, queued/open pool job or assignment for
-the lane or its worker, current candidate, or QA subscription
+the lane or its worker, active integration batch ownership or membership, current
+candidate, or QA subscription
 blocks correction. Delivery states and handoffs also block it. Historical completed
 launches and archived agreements remain untouched.
 

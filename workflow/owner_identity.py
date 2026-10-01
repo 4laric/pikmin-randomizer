@@ -96,6 +96,10 @@ def execution(reg, state, receipt):
                     for row in state.get('control', {}).get('terminal_recoveries', {}).values()),
             'Lane terminal recovery in flight')
     delivery = state.get('throughput', {})
+    require(not any(row.get('state') not in ('closed', 'completed', 'cancelled') and
+                    (row.get('integrator') == lane['lane'] or
+                     lane['lane'] in row.get('candidates', {}))
+                    for row in delivery.get('batches', {}).values()), 'Lane has active integration batch')
     for collection in ('jobs', 'assignments'):
         require(not any((row.get('lane') == lane['lane'] or row.get('worker_id') == lane['worker_id']) and
                         row.get('status') not in ('completed', 'cancelled', 'superseded')

@@ -148,6 +148,16 @@ class OwnerIdentityTests(unittest.TestCase):
                         s['throughput'] = {collection: {'job': dict(lane='owner', worker_id='worker', status=status)}}
                     self.rejected('queued pool execution')
 
+    def test_active_batch_reservation_refuses_without_launch_or_lease(self):
+        for role in ('integrator', 'candidate'):
+            with self.subTest(role=role):
+                batch = dict(state='claimed', integrator='owner' if role == 'integrator' else 'other',
+                             candidates={'owner': {}} if role == 'candidate' else {'other': {}})
+                with self.reg.transaction() as s:
+                    s['throughput'] = dict(batches={'batch': batch})
+                self.rejected('active integration batch')
+
+
 
     def test_whole_lane_cas(self):
         with self.reg.transaction() as s:
