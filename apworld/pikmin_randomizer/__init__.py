@@ -108,11 +108,8 @@ class PikminRandomizerWorld(World):
         if not hasattr(self, '_manifest'):
             passthrough = getattr(self.multiworld, 're_gen_passthrough', {}).get(GAME)
             if passthrough:
-                manifest = passthrough['manifest']
-                if fingerprint(manifest) != passthrough.get('manifest_fingerprint'):
-                    raise ValueError('Universal Tracker slot_data manifest does not match its fingerprint')
-                self._manifest = manifest
-                return manifest
+                self._manifest = restore_slot_manifest(passthrough)
+                return self._manifest
             selected_p2 = None
             if self.options.p2_enemy_randomizer and self.options.p2_species.value:
                 try:

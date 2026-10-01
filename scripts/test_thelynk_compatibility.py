@@ -118,7 +118,8 @@ def main(ap):
     from Fill import distribute_items_restrictive
     from BaseClasses import CollectionState
     from randomizer.seed import fingerprint
-    with tempfile.TemporaryDirectory() as directory:
+    # Packaged P2 resource readers may retain ZIP handles until process exit on Windows.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
         sys.path.insert(0, str(build(Path(directory) / "pikmin_randomizer.apworld")))
         mod = importlib.import_module("pikmin_randomizer")
         World = mod.PikminRandomizerWorld

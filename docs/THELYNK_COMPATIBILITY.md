@@ -16,7 +16,7 @@ The output records the upstream source pin. It does not alias population checks:
 
 ## Universal Tracker
 
-APWorld 0.32.0 supports generation without YAML through `interpret_slot_data`, `generate_early` and `re_gen_passthrough`. It restores the exact authoritative manifest, validates the existing fingerprint and uses the stored resolved start, enemy layouts, stats, check set and goal. Current option defaults and RNG do not regenerate these values. Solo, malformed and fingerprint-mismatched manifests are rejected. The manifest is copied so tracker reconstruction cannot mutate server data.
+APWorld 0.34.0 supports generation without YAML through `interpret_slot_data`, `generate_early` and `re_gen_passthrough`. It restores the exact authoritative manifest, validates the existing fingerprint and uses the stored resolved start, enemy layouts, stats, check set and goal. Current option defaults and RNG do not regenerate these values. Solo, malformed and fingerprint-mismatched manifests are rejected. The manifest is copied so tracker reconstruction cannot mutate server data.
 
 Item groups: Ship Repairs, Onions, Area Access, Color Upgrades, Benefits, Traps.
 Location groups: Ship Parts, Onion Discovery, Population, Bestiary, Exploration, Structures.
@@ -71,4 +71,4 @@ The upstream defaults for several of these differ. Existing seeds using those de
 
 Native builds are private and leased through the canonical workflow registry. Build pins, executable hashes, logs and Ninja dry runs live under `output/thelynk-build-*`. The first attempt used the default legacy audio configuration and failed linking an inherited missing `Jac_NoteDemoSkipped` symbol; it also failed source immutability and is not acceptance evidence. The subsequent attempt uses the maintained Release/Ninja/MinGW/JAudio configuration and a frozen native commit.
 
-Compiled and protocol evidence does not establish full campaign gameplay acceptance. Real ship-part absorption/repair animations, tutorial exit, world-map refresh, pre-discovery typed stock, sunset extinction and full campaign save/re-entry still require a supervised native playtest and player sign-off. This experimental mode is delivered on the private native branch for integration review; it is not installed into the maintained executable or exported source.
+Compiled and protocol evidence does not establish full campaign gameplay acceptance. Real ship-part absorption/repair animations, tutorial exit, world-map refresh, pre-discovery typed stock, sunset extinction and full campaign save/re-entry still require a supervised native playtest and player sign-off. The experimental native mode requires the matching companion native source. Merging the source PRs does not install a maintained executable or refresh the exported source; those release steps and supervised campaign acceptance remain separate.
