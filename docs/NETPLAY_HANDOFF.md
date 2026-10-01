@@ -1,3 +1,15 @@
+> **Historical snapshot (2026-10-01).** This handoff predates the current
+> [co-op/P2 integration #1144](https://github.com/4laric/pikmin-randomizer/issues/1144)
+> and [complete-state protocol #1148](https://github.com/4laric/pikmin-randomizer/issues/1148).
+> The branch/worktree status, pending issues, commands and capacity gates below
+> describe that original handoff only. Follow current [AGENTS.md](../AGENTS.md)
+> and the [workflow operating contract](PIKMIN2_WORKFLOW.md); supported remote
+> builds use the canonical `output/workflow/GITHUB_RUNNER_QUICKSTART.md` without
+> local heavy-build leases. Preserve the original provenance and interrupted
+> worktrees; do not execute inherited commands as current instructions.
+> Historical test results do not establish current combined-source or gameplay
+> acceptance. The original handoff is preserved verbatim below.
+
 # Netplay handoff (2026-10-01, Claude → Codex)
 
 This page is for whoever picks up online co-op netplay for the native Pikmin PC port: Codex working through the shared `4laric` account. It covers what has shipped, what is half-done, where every branch and folder is, and the rules learned the hard way.
