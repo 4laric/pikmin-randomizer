@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 from .seed import generate, validate, fingerprint, solo_rewards, spheres
-from .runner import launch
+from .runner import launch, launch_netplay_client, attach_native_host, attach_native_client
 from .session import Session, SessionLock
 from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, ALL_EXPLORATION, NAMES, POSITRON
 
@@ -57,6 +57,13 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--netplay-client", action="store_true",
+                     help="Mirror mode: no AP connection; ingest mirror-events.txt into session/netplay/<fingerprint>/")
+    run.add_argument("--mirror-dir", type=Path,
+                     help="Netplay client mirror directory (defaults to <session-dir>/netplay/<fingerprint>/)")
+    run.add_argument("--attach-native-run", type=Path, help="Attach to native ICE session/runs/token; no engine launch or bootstrap overwrite")
+    run.add_argument("--bootstrap", type=Path,
+                     help="Host-provided bootstrap file for --netplay-client")
     run.add_argument("--purple-bank", type=Path, help="Opt in to ordinary P2 Purple campaign; source pose bank directory")
     run.add_argument("--purple-motion", type=Path, help="Required retail Purple throw/fall bank with --purple-bank")
     run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest; staged into the run's private asset tree before launch")
@@ -146,7 +153,7 @@ def main():
                             for row in sources: stages[row['stage']] = min(stages.get(row['stage'], 999), row['first_day'])
                             descriptions = [next(area for sid, area, _ in START_AREAS.values() if sid == stage)
                                 + (f" (day {day}+)" if day > 2 else '') for stage, day in sorted(stages.items())]
-                            suffix += ' — sources: ' + ', '.join(descriptions)
+                            suffix += ' â€” sources: ' + ', '.join(descriptions)
                         lines.append(f"- [{'x' if name in checked else ' '}] {name}{suffix}")
                     lines.append("")
                 text = "\n".join(lines)
@@ -155,6 +162,26 @@ def main():
                 else:
                     print(text)
         else:
+            if args.attach_native_run:
+                if args.exe or args.assets or args.bootstrap:
+                    raise ValueError("attach uses the existing native process/bootstrap/assets")
+                if args.netplay_client:
+                    if args.server:
+                        raise ValueError("client attach never contacts AP")
+                    attach_native_client(manifest, args.attach_native_run)
+                else:
+                    attach_native_host(manifest, args.session_dir, args.attach_native_run, args.server)
+                return
+            if args.netplay_client:
+                if args.server:
+                    raise ValueError("--netplay-client never contacts AP; drop --server")
+                if not args.bootstrap:
+                    raise ValueError("--netplay-client requires --bootstrap <host bootstrap>")
+                launch_netplay_client(manifest, args.session_dir.resolve(),
+                                      args.bootstrap.read_text(encoding="ascii"),
+                                      args.mirror_dir.resolve() if args.mirror_dir else None,
+                                      args.exe, args.assets)
+                return
             family_actors = [(int(value.split(':', 1)[0]), value.split(':', 1)[1])
                              for value in args.family_actor]
             p2_actors = None

@@ -5,6 +5,7 @@ from tkinter import ttk
 from .catalog import (ITEM_IDS, REPAIR, color_inventory, field_capacity,
                       can_reach_manifest, check_area, bestiary_sources, START_AREAS)
 from .seed import fingerprint, solo_rewards
+from .session import load_session_data
 from .stats import profile_lines
 from .benefits import benefit_lines
 
@@ -49,6 +50,10 @@ class TrackerModel:
                     benefits=benefit_lines(self.manifest, inventory) + ([death_link] if death_link else []), onions=onions,
                     summary=f'{len(checked)}/{len(rows)} checks    Repairs {inventory[REPAIR]}/{self.manifest["goal"]} required    Field cap {cap}{finale}')
 
+    def snapshot_from_dir(self, session_dir):
+        """Read a host session or the same-schema netplay mirror."""
+        return self.snapshot(load_session_data(session_dir))
+
     @staticmethod
     def filter_rows(rows, query='', area='All areas', status='Unchecked'):
         query = query.casefold().strip()
@@ -64,7 +69,7 @@ class TrackerWindow:
         self.data = None
         self.window = tk.Toplevel(root)
         self.window.withdraw()
-        self.window.title('Pikipelago — Tracker')
+        self.window.title('Pikipelago â€” Tracker')
         self.window.geometry('940x620')
         self.window.minsize(660, 430)
         self.window.protocol('WM_DELETE_WINDOW', on_close)
@@ -75,7 +80,7 @@ class TrackerWindow:
         frame = ttk.Frame(self.window, padding=14)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, textvariable=self.summary, font=('Segoe UI', 13, 'bold')).pack(anchor='w')
-        ttk.Label(frame, text='F8 / Esc: back to game. Game continues running — pause it first when needed.').pack(anchor='w', pady=(4, 8))
+        ttk.Label(frame, text='F8 / Esc: back to game. Game continues running â€” pause it first when needed.').pack(anchor='w', pady=(4, 8))
         ttk.Label(frame, textvariable=self.details).pack(anchor='w', pady=(0, 8))
         tabs = ttk.Notebook(frame)
         tabs.pack(fill='both', expand=True)

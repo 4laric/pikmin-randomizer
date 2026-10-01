@@ -1,5 +1,7 @@
 """Local file-IPC runner. Every launch has a private token and journal directory."""
 import asyncio
+import copy
+import hashlib
 import json
 import os
 import secrets
@@ -8,11 +10,37 @@ import subprocess
 import sys
 from pathlib import Path
 from .catalog import GAME, NAMES, LOCATION_IDS
+from .netplay_mirror import (
+    BOOTSTRAP_FILENAME,
+    CARD_DIRNAME,
+    EVENTS_FILENAME,
+    HELLO_FILENAME,
+    INGEST_FILENAME,
+    MIRROR_FILENAME,
+    SAVE_RESULT_FILENAME,
+    STATE_FILENAME,
+    MirrorStore,
+    is_thelynk,
+    mirror_fingerprint,
+    mirror_dir_for,
+    parse_mirror_line,
+    render_mirror_state,
+    run_dir_for,
+)
 from .enemy_catalog import bootstrap as bootstrap_enemy_checks
 from .seed import fingerprint
 from .stats import bootstrap_stats
 from .enemy_slots import bootstrap_slots, verify_source_assets
 from .session import Session, SessionLock, atomic_write
+
+
+def native_bootstrap(session, token, purple_campaign=False):
+    return ( f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
+                     f"SESSION {token}\nFINGERPRINT {session.fingerprint}\n" +
+                     f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
+                     ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
+                     (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + bootstrap_enemy_checks(session.manifest) + ("PURPLE 1\n" if purple_campaign else "") + ("CAPTAINS 2\n" if session.manifest.get("p2_second_captain") else "") + "END\n")
 
 
 class NativeRun:
@@ -25,16 +53,32 @@ class NativeRun:
         self.directory = session.directory / "runs" / self.token
         self.directory.mkdir(parents=True)
         self.bootstrap = self.directory / "bootstrap.txt"
-        atomic_write(self.bootstrap, f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
-                     f"SESSION {self.token}\nFINGERPRINT {session.fingerprint}\n" +
-                     f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
-                     ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
-                     (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + bootstrap_enemy_checks(session.manifest) + ("PURPLE 1\n" if self.purple_campaign else "") + ("CAPTAINS 2\n" if session.manifest.get("p2_second_captain") else "") + "END\n")
+        atomic_write(self.bootstrap, native_bootstrap(session, self.token, self.purple_campaign))
         self.seen = 0
         self.deaths_seen = 0
         self.handshaken = False
         self.write_state(False)
+
+    @classmethod
+    def attach(cls, session, directory):
+        directory = Path(directory).resolve(strict=True)
+        bootstrap = directory / "bootstrap.txt"
+        token = directory.name
+        run_dir_for(directory.parent.parent, token)  # strict token grammar
+        if directory.parent.parent != session.directory.resolve():
+            raise ValueError("attached host session must be native-created session root")
+        text = bootstrap.read_text(encoding="ascii")
+        purple = bool(session.manifest.get("p2_purple_campaign"))
+        if text != native_bootstrap(session, token, purple):
+            raise ValueError("attached bootstrap differs from complete host manifest")
+        obj = cls.__new__(cls)
+        obj.session = session; obj.token = token; obj.directory = directory
+        obj.bootstrap = bootstrap; obj.purple_campaign = purple
+        obj.seen = 0; obj.handshaken = False
+        # Native ICE creates exactly one run per private session root. Its
+        # cumulative death journal is an absolute watermark on host reattach.
+        obj.deaths_seen = session.data.get("pikmin_deaths", 0)
+        return obj
 
     def write_state(self, ready):
         atomic_write(self.directory / "state.txt", self.session.native_state(self.token, ready))
@@ -417,3 +461,310 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
     if process and process.returncode:
         log_path = run.directory / 'native.log'
         raise RuntimeError(f"native process exited {process.returncode} ({describe_native_exit(log_path)}); see {log_path}")
+
+
+class NetplayClientRun:
+    """One ``--netplay-client`` run. This class never touches the network.
+
+    It owns only its mirror run directory
+    (``<mirror>/runs/<token>/`` with ``bootstrap.txt``, ``mirror.json``,
+    ``mirror-events.txt``, ``hello.txt``, a debug ``state.txt`` and ``card/``).
+    It never imports ``websockets``, never contacts Archipelago, and never
+    writes the host's ``session.json``, ``checks.txt`` or ``campaign/``.
+    There is no reference to ``websockets``, ``ap_connect`` or ``serve``
+    anywhere on this code path by construction.
+
+    The run token is the peer token the host chose in ``export_client_bundle``
+    and stamped into the bootstrap ``SESSION`` line: when ``run_token`` is
+    omitted it is derived from the bootstrap (validated as hex), so relaunching
+    with the same host bootstrap resumes the same ``runs/<token>/`` directory,
+    ``mirror.json`` and ingest cursor. Passing ``run_token`` explicitly still
+    requires it to match the bootstrap ``SESSION`` line.
+    """
+
+    def __init__(self, manifest, mirror_dir, bootstrap_text, run_token=None, seed_data=None, native_directory=None):
+        self.manifest = manifest
+        self.fingerprint_value = mirror_fingerprint(manifest)
+        self.mirror_dir = Path(mirror_dir)
+        if type(bootstrap_text) is not str or not bootstrap_text:
+            raise ValueError("netplay client requires the host bootstrap")
+        fields = bootstrap_text.split()
+        try:
+            session_line = fields[fields.index("SESSION") + 1]
+            fingerprint_line = fields[fields.index("FINGERPRINT") + 1]
+        except (ValueError, IndexError):
+            raise ValueError("client bootstrap is missing SESSION/FINGERPRINT")
+        if run_token is None:
+            token = session_line
+        else:
+            if session_line != run_token:
+                raise ValueError("client bootstrap SESSION does not match this run token")
+            token = run_token
+        expected_directory = run_dir_for(self.mirror_dir, token)
+        self.directory = (Path(native_directory).resolve(strict=True) if native_directory is not None
+                          else expected_directory)
+        if native_directory is not None and self.directory != expected_directory.resolve():
+            raise ValueError("attached client directory differs from native SESSION layout")
+        self.token = self.directory.name
+        if fingerprint_line != self.fingerprint_value:
+            raise ValueError("client bootstrap fingerprint does not match manifest")
+        self.directory.mkdir(parents=True, exist_ok=True)
+        if native_directory is None:
+            atomic_write(self.directory / BOOTSTRAP_FILENAME, bootstrap_text)
+        elif (self.directory / BOOTSTRAP_FILENAME).read_text(encoding="ascii") != bootstrap_text:
+            raise ValueError("attached client bootstrap changed; refusing overwrite")
+        (self.directory / CARD_DIRNAME).mkdir(exist_ok=True)
+        self.events = self.directory / EVENTS_FILENAME
+        self.hello = self.directory / HELLO_FILENAME
+        self.handshaken = False
+        if seed_data is not None and not (self.directory / MIRROR_FILENAME).exists():
+            from .netplay_mirror import validate_mirror_data
+            validate_mirror_data(manifest, seed_data)
+            atomic_write(self.directory / MIRROR_FILENAME,
+                         json.dumps(seed_data, indent=2) + "\n")
+        self.mirror = MirrorStore(manifest, self.directory / MIRROR_FILENAME)
+        self.ingest_path = self.directory / INGEST_FILENAME
+        self.offset = 0
+        self.seen = set()
+        self.checkpoint = None
+        self.last_frame = -1
+        self.prefix_hash = hashlib.sha256(b"").hexdigest()
+        if self.ingest_path.exists():
+            try:
+                state = json.loads(self.ingest_path.read_text(encoding="utf-8"))
+                offset, seen, checkpoint = state["offset"], state["seen"], state.get("checkpoint")
+                last_frame = state.get("last_frame", -1)
+                prefix_hash = state.get("prefix_hash", self.prefix_hash)
+                if type(offset) is not int or offset < 0 or type(seen) is not list:
+                    raise ValueError("bad ingest state")
+                if type(last_frame) is not int or last_frame < -1:
+                    raise ValueError("bad ingest state")
+                if type(prefix_hash) is not str:
+                    raise ValueError("bad ingest state")
+            except (ValueError, KeyError, UnicodeDecodeError):
+                raise ValueError("mirror ingest state is damaged")
+            self.offset = offset
+            self.seen = set(seen)
+            self.checkpoint = checkpoint
+            self.last_frame = last_frame
+            self.prefix_hash = prefix_hash
+        self._check_hello()
+        self.write_state(True)
+
+    def _save_ingest(self):
+        atomic_write(self.ingest_path, json.dumps(
+            dict(offset=self.offset, seen=sorted(self.seen), checkpoint=self.checkpoint,
+                 last_frame=self.last_frame, prefix_hash=self.prefix_hash),
+            indent=2) + "\n")
+
+    def _check_hello(self):
+        """Gate ingest on the native ``hello.txt`` handshake.
+
+        The native client advertises ``PIKMIN_HELLO <schema> <token>
+        <fingerprint> <capabilities...> END`` in the run directory, mirroring
+        the host ``NativeRun`` handshake. Nothing is ingested until it matches;
+        a present-but-wrong hello is fatal.
+        """
+        if self.handshaken:
+            return True
+        if not self.hello.exists():
+            return False
+        try:
+            fields = self.hello.read_text(encoding="ascii").split()
+        except (OSError, UnicodeDecodeError):
+            raise ValueError("mirror hello is unreadable")
+        expected = (["THELYNK_HELLO", "1", self.token, self.fingerprint_value,
+                     "individual-parts-v1", "squad-checks-v1", "typed-pikmin-v1", "END"]
+                    if is_thelynk(self.manifest) else
+                    ["PIKMIN_HELLO", str(self.manifest["schema"]), self.token,
+                     self.fingerprint_value, *self.manifest["capabilities"], "END"])
+        if fields != expected:
+            raise ValueError("mirror hello handshake mismatch")
+        self.handshaken = True
+        return True
+
+    def write_state(self, ready=True):
+        atomic_write(self.directory / STATE_FILENAME,
+                     render_mirror_state(self.manifest, self.mirror.load(), self.token, ready))
+
+    def poll(self):
+        """Ingest newly appended events; return ``(applied, duplicates)``.
+
+        Lines are split on ``b"\\n"`` only; any ``\\r`` or control byte stays
+        inside the line and is rejected by the strict parser. The whole batch
+        is parsed and validated before anything is applied, so a malformed
+        line leaves ``mirror.json``, the card pointer and the ingest cursor
+        untouched. A malformed stream is fatal to the run (matching host
+        semantics): the offending poll raises.
+        """
+        if not self._check_hello():
+            return (0, 0)
+        raw = self.events.read_bytes() if self.events.exists() else b""
+        complete = raw[:raw.rfind(b"\n") + 1] if raw else b""
+        if len(complete) < self.offset:
+            raise ValueError("mirror event file was truncated")
+        if self.offset and hashlib.sha256(bytes(complete[:self.offset])).hexdigest() != self.prefix_hash:
+            raise ValueError("mirror event file was rewritten")
+        try:
+            text = complete.decode("ascii")
+        except UnicodeDecodeError:
+            raise ValueError("mirror event file is not ASCII")
+        chunk = text[self.offset:]
+        if not chunk:
+            return (0, 0)
+        raw_lines = chunk.split("\n")
+        if raw_lines[-1] != "":
+            raise ValueError("mirror event batch is not newline terminated")
+        lines = raw_lines[:-1]
+        if any(line == "" for line in lines):
+            raise ValueError("invalid mirror event: blank line")
+        # Phase 1: parse every line and check frame monotonicity, skipping
+        # exact duplicates (which are no-ops by construction).
+        parsed = []
+        running = self.last_frame
+        for line in lines:
+            if line in self.seen:
+                parsed.append(None)
+                continue
+            frame, tag, args = parse_mirror_line(line)
+            if frame < running:
+                raise ValueError("mirror frame retracted")
+            running = max(running, frame)
+            parsed.append((frame, tag, args))
+        # Phase 1b: validate the whole batch against a copy before mutating.
+        data_copy = copy.deepcopy(self.mirror.load())
+        checkpoint_copy = copy.deepcopy(self.checkpoint)
+        for line, event in zip(lines, parsed):
+            if event is None:
+                continue
+            frame, tag, args = event
+            if tag in ("SAVE_RESULT", "SAVE_FAIL"):
+                checkpoint_copy = (dict(gen=args[0], digest=args[1], ok=True, frame=frame)
+                                   if tag == "SAVE_RESULT"
+                                   else dict(gen=args[0], digest=None, ok=False, frame=frame))
+                continue
+            self.mirror.apply(data_copy, event)
+        # Phase 2: apply for real; card writes happen only after validation.
+        data = self.mirror.load()
+        applied = duplicates = 0
+        card_text = None
+        for line, event in zip(lines, parsed):
+            if event is None:
+                duplicates += 1
+                continue
+            frame, tag, args = event
+            if tag in ("SAVE_RESULT", "SAVE_FAIL"):
+                if tag == "SAVE_RESULT":
+                    gen, digest = args
+                    self.checkpoint = dict(gen=gen, digest=digest, ok=True, frame=frame)
+                    card_text = f"SAVE_RESULT {gen} {digest}\n"
+                else:
+                    (gen,) = args
+                    self.checkpoint = dict(gen=gen, digest=None, ok=False, frame=frame)
+                    card_text = f"SAVE_FAIL {gen}\n"
+                self.seen.add(line)
+                applied += 1
+                continue
+            if self.mirror.apply(data, event):
+                applied += 1
+            else:
+                duplicates += 1
+            self.seen.add(line)
+        self.offset = len(complete)
+        self.last_frame = running
+        self.prefix_hash = hashlib.sha256(bytes(complete)).hexdigest()
+        if lines:
+            if card_text is not None:
+                atomic_write(self.directory / CARD_DIRNAME / SAVE_RESULT_FILENAME, card_text)
+            self.mirror.save(data)
+            self._save_ingest()
+            self.write_state(True)
+        return (applied, duplicates)
+
+
+async def serve_netplay_client(manifest, run, process=None):
+    """Local-file serve loop for client mode. No sockets, no AP reconnect."""
+    try:
+        while process is None or process.poll() is None:
+            run.poll()
+            await asyncio.sleep(0.1)
+    finally:
+        try:
+            run.poll()
+        finally:
+            run.write_state(True)
+
+
+def launch_netplay_client(manifest, session_dir, bootstrap_text, mirror_dir=None, exe=None, assets=None):
+    """Run the mirror client. Only writes under the mirror directory."""
+    if bootstrap_text is None:
+        raise ValueError("netplay client requires the host bootstrap")
+    target = Path(mirror_dir) if mirror_dir else mirror_dir_for(session_dir, mirror_fingerprint(manifest))
+    with SessionLock(target):
+        return _launch_netplay_client(manifest, target, bootstrap_text, exe, assets)
+
+
+def _launch_netplay_client(manifest, mirror_dir, bootstrap_text, exe=None, assets=None):
+    run = NetplayClientRun(manifest, mirror_dir, bootstrap_text)
+    process = None
+    overlay = None
+    log = None
+    if exe:
+        exe = Path(exe).resolve(strict=True)
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        target = run.directory / "assets"
+        import _winapi
+        _winapi.CreateJunction(str(Path(assets).resolve()), str(target.resolve()))
+        env = dict(os.environ)
+        env.pop("BBFT_PORT", None)
+        log = (run.directory / "native.log").open("w", encoding="utf-8")
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 1  # Win32 SW_SHOWNORMAL; not exported by subprocess.
+        process = subprocess.Popen([str(exe), "--randomizer-seed", str((run.directory / BOOTSTRAP_FILENAME).resolve())],
+            cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
+        overlay_manifest = run.directory / "overlay-manifest.json"
+        atomic_write(overlay_manifest, json.dumps(manifest))
+        try:
+            overlay = subprocess.Popen([sys.executable, "-m", "randomizer.overlay",
+                "--manifest", str(overlay_manifest.resolve()), "--session-dir", str(run.directory.resolve()),
+                "--pid", str(process.pid)], cwd=Path(__file__).resolve().parents[1],
+                stdout=log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+        except OSError as exc:
+            print(f"Overlay unavailable: {exc}", flush=True)
+    print(f"Netplay client mirror: {run.directory.resolve()}", flush=True)
+    try:
+        asyncio.run(serve_netplay_client(manifest, run, process))
+    finally:
+        if process and process.poll() is None:
+            process.terminate()
+            process.wait(timeout=10)
+        if log:
+            if overlay and overlay.poll() is None:
+                overlay.terminate()
+                overlay.wait(timeout=5)
+            log.close()
+    if process and process.returncode:
+        raise RuntimeError(f"native process exited {process.returncode}; see {run.directory / 'native.log'}")
+
+
+def attach_native_host(manifest, session_dir, native_directory, server=None):
+    """Serve an existing native ICE run; never launch/stop its process or rewrite bootstrap."""
+    session_dir = Path(session_dir).resolve(strict=True)
+    with SessionLock(session_dir):
+        session = Session(manifest, session_dir)
+        run = NativeRun.attach(session, native_directory)
+        try:
+            asyncio.run(serve(session, run, server=server))
+        finally:
+            run.write_state(False)
+
+
+def attach_native_client(manifest, native_directory):
+    """Attach file IPC to the exact native-created peer token and private run."""
+    directory = Path(native_directory).resolve(strict=True)
+    text = (directory / BOOTSTRAP_FILENAME).read_text(encoding="ascii")
+    with SessionLock(directory.parent.parent):
+        run = NetplayClientRun(manifest, directory.parent.parent, text, native_directory=directory)
+        asyncio.run(serve_netplay_client(manifest, run))
