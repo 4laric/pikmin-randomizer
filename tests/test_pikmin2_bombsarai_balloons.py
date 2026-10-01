@@ -99,3 +99,19 @@ class RetailBalloons(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RetailBombSeams(unittest.TestCase):
+    """#1066: the Bomb's glowing-seam material keeps its source C0 + TEXC*RASC stage."""
+
+    def test_extracted_bomb_carries_seam_stage(self):
+        from experimental.pikmin2_bombsarai_assets import SEAM_STAGE
+        self.assertEqual(SEAM_STAGE['color'], [15, 8, 10, 2, 0, 0, 2, 1, 0])  # C0 + TEXC*RASC, x4
+        for base in (ROOT.parent / 'smooth-evidence' / 'dirigi' / 'content-lit',):
+            record = base / 'BombSarai' / 'Bomb' / 'bombsarai_Bomb_hit_loop_00.json'
+            if record.is_file():
+                break
+        else:
+            self.skipTest('no local #1066 Bomb extraction')
+        report = json.loads(record.read_text(encoding='utf-8'))
+        self.assertEqual(report['seam_tev_shapes'], [1])
