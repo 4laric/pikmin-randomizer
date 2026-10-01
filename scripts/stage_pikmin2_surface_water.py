@@ -36,7 +36,8 @@ def prepare(assets, bundle, identity, output, species_probe=False):
             if len(starts) != 20:
                 raise ValueError('Expected current twenty-Pikmin template')
             for i, offset in enumerate(starts):
-                if data[offset+72:offset+76] != b'ikip':
+                if (data[offset+72:offset+76] != b'ikip' or data[offset+80:offset+84] != b'p00\x04'
+                        or data[offset+88:offset+92] != b'p01\x04'):
                     raise ValueError('Unsupported generator record')
                 # 18 Reds stay free at the dry entrance; a Red and a Blue start
                 # on the dry shoreline in formation. Native color0 is Blue.
@@ -55,7 +56,7 @@ def prepare(assets, bundle, identity, output, species_probe=False):
     record = dict(schema=1, receipt_identity=identity, static_source_boxes=3,
                   native_water_consumer=True, dynamic_lowering=False,
                   native_body_convention='P1 feet position and collision radius',
-                  captain_start_xz=[220, 1000], starting_squad='20 Reds retained on dry entrance bank',
+                  captain_start_xz=[220, 1000], starting_squad='19 Reds/1 Blue disclosed probe' if species_probe else '20 Reds retained on dry entrance bank',
                   species_probe=species_probe,
                   species_probe_staging='19 Reds/1 Blue; 18 free dry-bank Reds, two shoreline followers' if species_probe else None,
                   water_sha256=hashlib.sha256(water).hexdigest(),
