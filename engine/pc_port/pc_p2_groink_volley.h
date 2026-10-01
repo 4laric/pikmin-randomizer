@@ -10,7 +10,13 @@ class P2GroinkVolley {
 public:
     static constexpr std::size_t kCapacity = 6;
     static constexpr std::size_t kVolleySize = 3;
-    struct Emission { bool valid = false; std::size_t count = 0; };
+    struct Emission {
+        bool valid = false;
+        std::size_t count = 0;
+        // Pool slots of the shells this call spawned, in emission order (slots[0] is the
+        // primary shell that carries the camera/rumble flag).
+        std::array<std::size_t, kVolleySize> slots{};
+    };
     struct Terminal {
         std::size_t slot = 0;
         bool primary = false;

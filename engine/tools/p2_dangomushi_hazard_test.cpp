@@ -63,53 +63,67 @@ int main()
         assert(out.invulnerable && !out.stickable && !policy.windowActive());
     }
 
-    // Rock rain: 10 per turn with a 30 s lifetime, capped by the reserved 30.
+    // Rock rain (#897): createCrashEnemy fires 10 Rocks (30 s) on EVERY Turn.
+    // There is no lifetime budget: the 4th, 5th ... Turn still rains 10.
     {
         P2DangoMushiHazardPolicy policy;
         policy.reset(parms);
         P2DangoMushiHazardOutput out;
-        enterTurn(policy, out, 10.0f, 0.0f, 1.0f);
-        assert(out.rocksToSpawn == 10 && out.rockLifetime == 30.0f);
-        assert(out.rocksRemaining == 20);
-        P2DangoMushiHazardInput in;
-        in.turnEntered = true; in.turnFrame = 10.0f;
-        policy.update(in, out);
-        assert(out.rocksToSpawn == 10 && out.rocksRemaining == 10);
-        policy.update(in, out);
-        assert(out.rocksToSpawn == 10 && out.rocksRemaining == 0);
-        policy.update(in, out);
-        assert(out.rocksToSpawn == 0 && out.rocksRemaining == 0); // budget exhausted
+        for (int turn = 1; turn <= 8; ++turn) {
+            P2DangoMushiHazardInput in;
+            in.turnEntered = true; in.turnFrame = 0.0f;
+            policy.update(in, out);
+            assert(out.rocksToSpawn == 10 && out.rockLifetime == 30.0f);
+            assert(out.turnIndex == turn);
+            // Only the entry tick of a Turn rains.
+            in.turnEntered = false; in.turnFrame = 40.0f;
+            policy.update(in, out);
+            assert(out.rocksToSpawn == 0);
+            in = P2DangoMushiHazardInput(); in.turnExited = true;
+            policy.update(in, out);
+        }
+        assert(policy.turns() == 8);
     }
 
     // Egg: one at home with probability equal to the captain's Pikmin share,
-    // capped by the reserved 10.
+    // decided once per Turn, never budget-limited.
     {
         P2DangoMushiHazardPolicy policy;
         policy.reset(parms);
         P2DangoMushiHazardOutput out;
         enterTurn(policy, out, 10.0f, 0.5f, 0.4f); // 0.4 < 0.5 -> Egg
-        assert(out.eggRequested && out.eggsRemaining == 9);
+        assert(out.eggRequested);
         P2DangoMushiHazardInput in;
-        in.turnEntered = true; in.turnFrame = 10.0f;
-        in.activeCaptainGroupShare = 0.5f; in.eggRoll = 0.6f; // 0.6 >= 0.5 -> none
-        policy.update(in, out);
-        assert(!out.eggRequested && out.eggsRemaining == 9);
-        for (int i = 0; i < 12; ++i) {
-            policy.update(in, out); // only the first of each turn can spawn
+        in.turnFrame = 10.0f; in.activeCaptainGroupShare = 1.0f; in.eggRoll = 0.0f;
+        policy.update(in, out); // same Turn: no second decision
+        assert(!out.eggRequested);
+        int eggs = 0;
+        for (int i = 0; i < 15; ++i) {
+            enterTurn(policy, out, 0.0f, 1.0f, 0.2f);
+            eggs += out.eggRequested ? 1 : 0;
         }
-        assert(out.eggsRemaining == 9);
+        assert(eggs == 15);
+        enterTurn(policy, out, 0.0f, 0.5f, 0.6f); // 0.6 >= 0.5 -> none
+        assert(!out.eggRequested);
     }
 
-    // Deterministic ring offsets instead of engine RNG.
+    // Source createCrashEnemy ring layout (jitter at its midpoint).
     {
         float x0 = 0.0f, z0 = 0.0f, x1 = 0.0f, z1 = 0.0f;
         P2DangoMushiHazardPolicy::rockOffset(0, 10, 0.0f, &x0, &z0);
         P2DangoMushiHazardPolicy::rockOffset(0, 10, 0.0f, &x1, &z1);
         assert(x0 == x1 && z0 == z1);
-        assert(std::fabs(x0 - 100.0f) < 1e-3f && std::fabs(z0) < 1e-3f);
-        float x2 = 0.0f, z2 = 0.0f;
-        P2DangoMushiHazardPolicy::rockOffset(5, 10, 0.0f, &x2, &z2);
-        assert(std::fabs(x2 + 100.0f) < 1e-3f);
+        assert(std::fabs(std::sqrt(x0 * x0 + z0 * z0) - 7.5f) < 1e-3f);
+        for (int i = 1; i < 4; ++i) {
+            float x = 0.0f, z = 0.0f;
+            P2DangoMushiHazardPolicy::rockOffset(i, 10, 0.3f, &x, &z);
+            assert(std::fabs(std::sqrt(x * x + z * z) - 77.5f) < 1e-3f);
+        }
+        for (int i = 4; i < 10; ++i) {
+            float x = 0.0f, z = 0.0f;
+            P2DangoMushiHazardPolicy::rockOffset(i, 10, 0.3f, &x, &z);
+            assert(std::fabs(std::sqrt(x * x + z * z) - 147.5f) < 1e-3f);
+        }
     }
 
     std::puts("PASS DANGOMUSHI_HAZARD");

@@ -75,3 +75,8 @@ void pc_p2_receipt_host_close(P2ReceiptHostHandle handle);
 
 // Stateless atomic write (unrelated to any open ledger).
 bool pc_p2_receipt_host_atomic_write(const char* path, const char* data);
+
+// Read-only lookup. Returns 1 for a durable receipt, 0 if absent, -1 for
+// invalid inputs/handle. Never creates a grant while restoring world actors.
+int pc_p2_receipt_host_has(P2ReceiptHostHandle handle, const char* seed,
+    const char* reward, const char* slotOrActor, const char* encounter);

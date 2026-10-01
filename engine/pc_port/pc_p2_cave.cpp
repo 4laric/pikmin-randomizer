@@ -281,7 +281,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
         return true;
     }
     Navi* n=naviMgr->getNavi();std::vector<Piki*> alive;
-    bool busy=false;
+    bool busy=pc_p2_cave_bud_pending();
     Iterator it(pikiMgr);CI_LOOP(it){
         Piki* p=static_cast<Piki*>(*it);if(!p->isAlive())continue;
         const int state=p->getState();
@@ -335,6 +335,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
     if(beasts)out<<"P2_BEASTS_TRANSFER_1\n"<<token<<"\n2 3 "<<health<<' '<<squad.size()<<'\n';
     else out<<"P2_CAVE_TRANSFER_"<<writeSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
     for(const auto& s:squad)out<<s.species<<' '<<s.maturity<<'\n';
+    if(!pc_p2_cave_bud_save("p2-cave-bud-transfer.txt"))return false;
     if(!writeTransfer(out.str())){if(confirm)notice("Could not prepare the checkpoint. Stay on this floor and retry.");return false;}
     // Commit the ledger mutation only now that the transfer file is durable, so a
     // retry after a failed write still tracks every removed dependent.

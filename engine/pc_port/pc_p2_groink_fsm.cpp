@@ -680,6 +680,7 @@ void Fsm::execState() {
                 const P2GroinkMuzzle muzzle = worldMuzzle(mPos);
                 const auto e = mShells.emit(muzzle, mGun.speed(), samples);
                 mOut->volley += e.valid ? int(e.count) : 0;
+                mOut->burst = p2groinkburst::summarize(mShells, e);
                 mOut->shotFired = true;
                 mOut->volleyMuzzle = muzzle;
                 mOut->volleySpeed = mGun.speed();

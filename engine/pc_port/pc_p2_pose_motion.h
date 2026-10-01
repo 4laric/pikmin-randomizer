@@ -260,16 +260,132 @@ inline float extent(const p2pose::Pose& pose) {
     return float(std::sqrt(dx * dx + dy * dy + dz * dz));
 }
 
-// Last pose whose extent is at least `fraction` of the clip's largest (the
-// last visible pose; count-1 when nothing collapses).
+// Bounding-box spans of a pose's positions, largest first. Sorted so a clip that
+// rotates the body (a flopping fish) does not read as a stretch.
+inline void sortedSpans(const p2pose::Pose& pose, float out[3]) {
+    out[0] = out[1] = out[2] = 0.f;
+    if (pose.positions.empty()) return;
+    p2pose::Vec lo = pose.positions.front(), hi = lo;
+    for (const auto& v : pose.positions) {
+        lo = {std::min(lo.x, v.x), std::min(lo.y, v.y), std::min(lo.z, v.z)};
+        hi = {std::max(hi.x, v.x), std::max(hi.y, v.y), std::max(hi.z, v.z)};
+    }
+    out[0] = hi.x - lo.x;
+    out[1] = hi.y - lo.y;
+    out[2] = hi.z - lo.z;
+    std::sort(out, out + 3, [](float l, float r) { return l > r; });
+}
+
+// How far a pose's body is stretched next to the clip's rest pose: the largest
+// ratio of the sorted bounding-box spans. Spans of the rest pose under a quarter
+// of its largest are not judged (a flat rest pose would amplify noise).
+inline float stretchRatio(const p2pose::Pose& pose, const p2pose::Pose& rest) {
+    float a[3], r[3];
+    sortedSpans(pose, a);
+    sortedSpans(rest, r);
+    float hi = 0.f;
+    for (int i = 0; i < 3; ++i) {
+        if (r[i] <= 4.0f || r[i] < 0.25f * r[0]) continue;
+        hi = std::max(hi, a[i] / r[i]);
+    }
+    return hi;
+}
+
+// A dead clip's hold pose (#895, #964 "corpse has what looks like a vertex
+// explosion up"). Some death clips whip part of the body far out before they
+// scale it away: the Hana dead clip stretches the head to 5x its height and then
+// collapses it through a line one vertex wide. The last pose that is still 20%
+// of the largest extent is then a thin spike, which is what the owner saw.
+struct Envelope {
+    float wideMax = 2.5f;    // the legacy hold is implausible when stretched beyond this
+    float tightMax = 1.6f;   // the replacement hold stops before the first pose past this
+};
+struct HoldPick {
+    std::size_t index = 0;      // the pose to hold
+    std::size_t legacy = 0;     // the last pose still >= `fraction` of the largest extent
+    bool adjusted = false;      // index != legacy: the legacy pose was a stretched spike
+    std::size_t firstBad = 0;   // first pose past tightMax (when adjusted)
+    float worstHigh = 0.f;      // stretch ratio of the legacy pose
+    float worstLow = 1.f;       // stretch ratio of the first pose past tightMax
+};
+
+// Last pose whose extent is at least `fraction` of the clip's largest (the last
+// visible pose; count-1 when nothing collapses). When that pose is stretched
+// beyond the wide envelope of the rest pose (pose 0) the hold steps back to the
+// last pose before the body first stretches past the tight envelope. Clips whose
+// legacy hold is plausible keep it exactly.
 template <class PoseAt>
-inline std::size_t visibleEnd(std::size_t count, PoseAt poseAt, float fraction = 0.2f) {
-    if (!count) return 0;
+inline HoldPick holdPick(std::size_t count, PoseAt poseAt, float fraction = 0.2f, const Envelope& env = Envelope()) {
+    HoldPick pick;
+    if (!count) return pick;
     float biggest = 0.f;
     for (std::size_t i = 0; i < count; ++i) biggest = std::max(biggest, extent(poseAt(i)));
+    pick.index = count - 1;
     for (std::size_t i = count; i-- > 0;)
-        if (extent(poseAt(i)) >= fraction * biggest) return i;
-    return count - 1;
+        if (extent(poseAt(i)) >= fraction * biggest) { pick.index = i; break; }
+    pick.legacy = pick.index;
+    const p2pose::Pose& rest = poseAt(0);
+    pick.worstHigh = stretchRatio(poseAt(pick.legacy), rest);
+    if (pick.worstHigh <= env.wideMax) return pick;
+    for (std::size_t i = 1; i <= pick.legacy; ++i) {
+        const float ratio = stretchRatio(poseAt(i), rest);
+        if (ratio > env.tightMax) {
+            pick.index = i - 1;
+            pick.adjusted = true;
+            pick.firstBad = i;
+            pick.worstLow = ratio;
+            break;
+        }
+    }
+    return pick;
+}
+template <class PoseAt>
+inline std::size_t visibleEnd(std::size_t count, PoseAt poseAt, float fraction = 0.2f) {
+    return holdPick(count, poseAt, fraction).index;
+}
+
+// Draw-time guard (#964): refuse a pose whose vertices are not finite or sit
+// outside any believable extent, so a broken bake, a bad blend or an index past
+// the bank cannot be drawn silently. `refExtent` is the bank rest pose's
+// bounding-box diagonal; the limits are loose (a legitimate Hana death stretch
+// is 3.6x) and exist to catch garbage, not to shape animation.
+struct GuardLimits {
+    float extentFactor = 12.0f;   // pose diagonal vs rest diagonal
+    float extentFloor = 200.0f;   // added so tiny rest poses still get room
+    float absoluteCoord = 50000.0f;
+};
+struct GuardVerdict {
+    bool ok = true;
+    const char* reason = "";
+    std::size_t index = 0;   // offending vertex / normal
+    float value = 0.f;       // offending coordinate, or the extent
+    float limit = 0.f;
+};
+inline GuardVerdict guardPose(const p2pose::Pose& pose, float refExtent, const GuardLimits& lim = GuardLimits()) {
+    GuardVerdict v;
+    if (pose.positions.empty()) { v.ok = false; v.reason = "empty"; return v; }
+    for (std::size_t i = 0; i < pose.positions.size(); ++i) {
+        const p2pose::Vec p = pose.positions[i];
+        const float c[3] = {p.x, p.y, p.z};
+        for (int a = 0; a < 3; ++a) {
+            if (!std::isfinite(c[a])) { v.ok = false; v.reason = "non_finite_vertex"; v.index = i; v.value = c[a]; return v; }
+            if (std::fabs(c[a]) > lim.absoluteCoord) {
+                v.ok = false; v.reason = "vertex_out_of_bounds"; v.index = i; v.value = c[a]; v.limit = lim.absoluteCoord;
+                return v;
+            }
+        }
+    }
+    for (std::size_t i = 0; i < pose.normals.size(); ++i) {
+        const p2pose::Vec n = pose.normals[i];
+        if (!std::isfinite(n.x) || !std::isfinite(n.y) || !std::isfinite(n.z)) {
+            v.ok = false; v.reason = "non_finite_normal"; v.index = i; return v;
+        }
+    }
+    if (refExtent > 0.f) {
+        const float e = extent(pose), limit = lim.extentFactor * refExtent + lim.extentFloor;
+        if (e > limit) { v.ok = false; v.reason = "extent_out_of_bounds"; v.value = e; v.limit = limit; }
+    }
+    return v;
 }
 
 // A P1 loop wrap: the same clip's source frame jumped back by more than half

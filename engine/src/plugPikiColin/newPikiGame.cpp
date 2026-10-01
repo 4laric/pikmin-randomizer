@@ -56,6 +56,7 @@
 #include "timing/pc_render_phase.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_permadeath.h"
+#include "pc_p2_test_day_cycle.h"
 #endif
 #endif
 
@@ -1171,6 +1172,16 @@ ModeState* RunningModeState::update(u32& result)
 		gameflow.mIsUIOverlayActive = mIsOverlayCached;
 		seSystem->playSysSe(SYSSE_UNPAUSE);
 	}
+
+#if defined(PIKI_PC_PORT)
+	// TEST-ONLY (#246, inert unless PIKMIN_P2_TEST_DAY_CYCLE is set): end the
+	// day through the same calls as the pause menu's "go to sunset" above.
+	if (pc_p2_test_day_cycle_due(gsys->getFrameTime()) && !gameflow.mIsDayEndTriggered) {
+		gamecore->forceDayEnd();
+		gameflow.mIsPauseAllowed    = FALSE;
+		gameflow.mIsDayEndTriggered = TRUE;
+	}
+#endif
 
 	return this;
 }

@@ -88,6 +88,8 @@ void ControllerMgr::updateController(Controller* controller)
 		controller->mMainStickY = scriptedY;
 		controller->mSubStickX  = 0;
 		controller->mSubStickY  = 0;
+		// #901 TEST-ONLY: a scripted C-stick (autoplay swarm); 0/0 unless set.
+		pc_p2_input_script_sub(controller->mPlayerNum, &controller->mSubStickX, &controller->mSubStickY);
 		controller->mAnalogA    = 0;
 		controller->mAnalogB    = 0;
 		controller->mTriggerL   = 0;

@@ -22,7 +22,7 @@ for(int i=0;i<count;++i){unsigned long long id;if(!(in>>id>>word)||id>0xffffffff
 if(!(in>>word)||word!="Kabuto")return false;
 std::vector<p2animation::Clip> clips;
 for(const char* name:{"dead","move","flick","attack","wait"}){
-p2animation::Clip c;if(!(in>>c.name>>c.count>>c.duration)||c.name!=name||c.count<2||c.count>12||c.duration<1||c.duration>10000)return false;
+p2animation::Clip c;if(!(in>>c.name>>c.count>>c.duration)||c.name!=name||c.count<2||c.count>64||c.duration<1||c.duration>10000)return false;
 for(int j=0;j<c.count;++j){int f;if(!(in>>f)||f<0||f>=c.duration||(j&&f<=c.frames.back()))return false;c.frames.push_back(f);}
 if(c.frames.front()!=0||c.frames.back()!=c.duration-1)return false;clips.push_back(c);}
 if(in>>word)return false;actors=parsed;bank=clips;return true;

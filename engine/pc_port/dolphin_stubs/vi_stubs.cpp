@@ -6,6 +6,7 @@
  */
 #include "Dolphin/vi.h"
 #include "pc_window.h"
+#include "pc_dev_console.h"
 #include "gl/pc_gfx.h"
 #include <cstdio>
 #include <cstring>
@@ -42,6 +43,8 @@ void VIWaitForRetrace(void)    {
     pc_settings_draw();
     pc_glass_menu_draw();
 #endif
+    // #942 dev console overlay (input line + recent output); inert when disabled.
+    pc_dev_console_draw();
     pc_gfx_present();
 #if PIKI_PC_TOUCH
     pc_touch_draw();

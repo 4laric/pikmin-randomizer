@@ -25,3 +25,9 @@ int pc_p2_cave_bud_conversions();
 
 // World position of the first actor of a colour ("yellow"/"blue"/...).
 bool pc_p2_cave_bud_position(const char* colour, Vector3f& out);
+
+// Conversion output still waiting for item-manager capacity.
+bool pc_p2_cave_bud_pending();
+
+// Snapshot conversion budgets at the same floor boundary as the squad.
+bool pc_p2_cave_bud_save(const char* path);

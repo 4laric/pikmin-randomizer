@@ -4,24 +4,61 @@
 #include <initializer_list>
 #include <set>
 int main() {
-    const unsigned sources[] = {9,23,34,44,54,56,57,59,60,61,62,63,65,69,70,71,78,79,101,17,18,24,25,15,75,26,27,84,93,66,97};
-    const int hosts[] = {3,3,3,3,24,3,0,3,3,3,3,3,3,3,3,3,0,3,3,0,33,15,15,3,17,30,25,3,3,4,0};
-    for (unsigned i=0;i<31;++i) {
+    const unsigned sources[] = {9,23,34,44,54,56,57,59,60,61,62,63,65,69,70,71,78,79,101,17,18,24,25,15,75,26,27,84,93,66,97,41,73};
+    const int hosts[] = {3,3,3,3,24,3,0,3,3,3,3,3,3,3,3,3,0,3,3,0,33,15,15,3,17,30,25,3,3,4,0,3,4};
+    for (unsigned i=0;i<33;++i) {
         for (int original=0;original<34;++original) {
             assert(p2campaign::hostType(sources[i],original,false)==hosts[i]);
             assert(p2campaign::hostType(sources[i],original,true)==original);
         }
     }
-    for (unsigned source: {0u,1u,41u,45u,58u,99u,999u})
+    for (unsigned source: {0u,1u,45u,99u,999u})
         assert(p2campaign::hostType(source,17,false)==17);
-    for (unsigned source : {9u,23u,34u,44u,54u,56u,57u,59u,60u,61u,62u,63u,65u,69u,70u,71u,78u,79u,101u,17u,18u,24u,25u,15u,75u,26u,27u,84u,93u,66u,97u})
+    // #1042: admitted Bulborb Larva uses the Swallow vehicle; protected
+    // source slots keep their original host instead of being replaced.
+    for (int original=0;original<34;++original) {
+        assert(p2campaign::hostType(31u,original,false)==4);
+        assert(p2campaign::hostType(31u,original,true)==original);
+    }
+    assert(p2campaign::hasStaticHost(31u));
+    // #898: Breadbug (PanModoki 38) rides TEKI_Collec (8); protected spawns keep theirs.
+    for (int original=0;original<34;++original) {
+        assert(p2campaign::hostType(38u,original,false)==8);
+        assert(p2campaign::hostType(38u,original,true)==original);
+    }
+    assert(p2campaign::hasStaticHost(38u));
+    // #958: Giant Breadbug (OoPanModoki 40) shares the Breadbug vehicle.
+    for (int original=0;original<34;++original) {
+        assert(p2campaign::hostType(40u,original,false)==8);
+        assert(p2campaign::hostType(40u,original,true)==original);
+    }
+    assert(p2campaign::hasStaticHost(40u));
+    // #960: the Greater Spotted Jellyfloat (OniKurage 72) rides TEKI_Frog (0) like the Kurage.
+    for (int original=0;original<34;++original) {
+        assert(p2campaign::hostType(72u,original,false)==0);
+        assert(p2campaign::hostType(72u,original,true)==original);
+    }
+    assert(p2campaign::hasStaticHost(72u));
+    for (unsigned source : {9u,23u,34u,44u,54u,56u,57u,59u,60u,61u,62u,63u,65u,69u,70u,71u,78u,79u,101u,17u,18u,24u,25u,15u,75u,26u,27u,84u,93u,66u,97u,73u,30u})
         assert(p2campaign::hasStaticHost(source));
+    // #244 OWN: Careening Dirigibug rides TEKI_Napkid (11) statically.
+    for (int original = 0; original < 34; ++original) {
+        assert(p2campaign::hostType(58u, original, false) == 11);
+        assert(p2campaign::hostType(58u, original, true) == original);
+    }
+    assert(p2campaign::hasStaticHost(58u));
     // inst-chappy (#871, lane complete): Chappy (2), FireChappy (33),
     // YellowChappy (43) and KingChappy (53) ride TEKI_Swallow (4),
     // KumaChappy (35) rides TEKI_Swallob (32), LeafChappy (67) rides
     // TEKI_Chappy (3), KumaKochappy (76) rides TEKI_Chappb (31).
     for (unsigned source : {2u,33u,35u,43u,53u,67u,76u})
         assert(p2campaign::hasStaticHost(source));
+    // #256 Empress Bulblax OWN rides TEKI_Swallow (4).
+    assert(p2campaign::hasStaticHost(30u));
+    for (int original = 0; original < 34; ++original) {
+        assert(p2campaign::hostType(30u, original, false) == 4);
+        assert(p2campaign::hostType(30u, original, true) == original);
+    }
     // inst-frogs (#871): 17/18/24/25/15/75 are static now (see list above),
     // so only the 0 sentinel stays non-static here.
     for (unsigned source : {0u})

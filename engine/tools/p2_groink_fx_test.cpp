@@ -50,7 +50,8 @@ int count(const std::vector<P2GroinkFxCommand>& v, P2GroinkFxKind k) {
 }
 
 struct Run {
-    int shoots = 0, trails = 0, hits = 0, water = 0, ticks = 0;
+    int shoots = 0, trails = 0, hits = 0, water = 0, ticks = 0, glows = 0, markers = 0;
+    std::vector<P2GroinkVec3> markerPos;
     std::vector<P2GroinkVec3> hitPos;
 };
 
@@ -77,6 +78,10 @@ Run fly(P2GroinkShellFx& fx, P2GroinkVolley& vol, const P2GroinkMuzzle& m, float
         r.trails += count(cmds, P2GroinkFxKind::Trail);
         r.hits += count(cmds, P2GroinkFxKind::Hit);
         r.water += count(cmds, P2GroinkFxKind::WaterHit);
+        r.glows += count(cmds, P2GroinkFxKind::Glow);
+        r.markers += count(cmds, P2GroinkFxKind::Marker);
+        for (const auto& c : cmds)
+            if (c.kind == P2GroinkFxKind::Marker) r.markerPos.push_back(c.pos);
         for (const auto& c : cmds)
             if (c.kind == P2GroinkFxKind::Hit || c.kind == P2GroinkFxKind::WaterHit) r.hitPos.push_back(c.pos);
         ++r.ticks;
@@ -126,6 +131,21 @@ int main() {
               "trail puffs at creation, then every kTrailInterval ticks");
         check(r.trails > 3, "a shell in flight keeps showing (more than the creation puff)");
         for (std::size_t s = 0; s < P2GroinkVolley::kCapacity; ++s) check(!fx.live(s), "landed shells stop trailing");
+        // #892 in-flight visibility: a glow and a floor-marker command at their
+        // own cadence, per live shell, at the live shell position.
+        check(r.glows >= 3 && r.glows <= 3 * (1 + live / P2GroinkShellFx::kGlowInterval),
+              "glow at creation, then every kGlowInterval ticks");
+        check(r.markers >= 3 && r.markers <= 3 * (1 + live / P2GroinkShellFx::kMarkerInterval),
+              "floor marker at creation, then every kMarkerInterval ticks");
+        check(r.glows > 3 && r.markers > 3, "a shell in flight keeps its glow and marker");
+        // Readability (#892): glow and marker follow the shell every tick (short-lived
+        // one-shots on the host), the trail puff stays sparser.
+        check(P2GroinkShellFx::kGlowInterval == 1 && P2GroinkShellFx::kMarkerInterval == 1,
+              "glow and floor marker are emitted every tick so they track the shell");
+        check(r.markers == r.glows && r.trails < r.glows, "marker and glow per tick, trail sparser");
+        bool aboveGround = !r.markerPos.empty();
+        for (const auto& p : r.markerPos) aboveGround = aboveGround && p.y >= 0.0f;
+        check(aboveGround, "marker commands carry the live shell position (host projects to the floor)");
     }
 
     // ---- Water landing -> THdamaHit3 stand-in, never also the ground blast.

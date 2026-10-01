@@ -670,6 +670,16 @@ void ViewPiki::refresh(Graphics& gfx)
 
 	if (getState() == PIKISTATE_Swallowed && mSwallowMouthPart) {
 		Matrix4f mouthMtx = mSwallowMouthPart->getJointMatrix();
+#if defined(PIKI_PC_PORT)
+		// #1020: a mouth part owned by a P2 species (mIsUpdateActive off, no parent shape) carries only a
+		// camera-relative ROTATION in mJointMatrix; its position is mCentre. The retail path takes the joint
+		// matrix as a full view matrix, which put the Pikmin at the camera origin (invisible). Build the full
+		// view matrix from the world matrix (invCamMat * rotation, translation = mCentre) instead.
+		if (!mSwallowMouthPart->mIsUpdateActive) {
+			Matrix4f worldMtx = mSwallowMouthPart->getMatrix();
+			gfx.mCamera->mLookAtMtx.multiplyTo(worldMtx, mouthMtx);
+		}
+#endif
 		f32 swallowScale  = 1.0f / reinterpret_cast<Vector3f&>(mouthMtx).length();
 		if (swallowScale <= 0.0f) {
 			BUGPRINT("swallow scale=%f", swallowScale);

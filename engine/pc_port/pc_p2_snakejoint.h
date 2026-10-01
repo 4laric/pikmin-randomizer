@@ -33,6 +33,8 @@ inline bool pc_p2_snakejoint_suppressed(bool registered) {
     return registered;
 }
 float pc_p2_snakejoint_param_f(const BTeki*, int idx, float fallback);
+// Source EB_ModelHidden: true only while a registered snagret is buried (Stay).
+bool pc_p2_snakejoint_model_hidden(const BTeki*);
 bool pc_p2_snakejoint_clip(const BTeki*, const char*& name, float& phase);
 bool pc_p2_snakejoint_receipt(class PelletView*, unsigned&);
 int pc_p2_snakejoint_bound_count();

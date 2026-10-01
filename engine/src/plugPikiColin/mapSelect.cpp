@@ -18,6 +18,9 @@
 #include "system.h"
 #include "zen/DrawCM.h"
 #include "zen/DrawWorldMap.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_test_day_cycle.h"
+#endif
 #if PIKI_PC_TOUCH
 #include "touch/pc_touch.h"
 #endif
@@ -268,6 +271,24 @@ public:
 			} else
 #endif
 			{
+#if defined(PIKI_PC_PORT)
+				// TEST-ONLY (#246, inert unless PIKMIN_P2_TEST_DAY_CYCLE is set):
+				// re-enter the stage just played, as a player's map pick would.
+				int testStage = -1;
+				if (mapWindow && pc_p2_test_day_cycle_mapselect(&testStage)) {
+					FOREACH_NODE(StageInfo, flowCont.mStageList.mChild, stage)
+					{
+						if (stage->mStageID == testStage) {
+							enterCourse(stage);
+							mNextSectionsFlag = PACK_NEXT_ONEPLAYER(ONEPLAYER_NewPikiGame);
+							gameflow.mWorldClock.setTime(gameflow.mParameters->mStartHour());
+							mSectionState = Exit;
+							gsys->setFade(0.0f);
+							break;
+						}
+					}
+				}
+#endif
 				// process challenge mode if we've made a decision
 				if (selectWindow && selectWindow->update(mController)) {
 					zen::DrawCMcourseSelect::returnStatusFlag chalStatus = selectWindow->getReturnStatusFlag();

@@ -16,6 +16,7 @@
 // damage receiver, reward or collision semantics are implemented here; those
 // stay tracked on the family issues and #186.
 #include "pc_p2_batch3.h"
+#include "Pellet.h"
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_setup_failsafe.h"
 #include "pc_randomizer.h"
@@ -26,6 +27,8 @@
 #include "pc_p2_pose_bank.h"
 #include "pc_p2_pose_blend.h"
 #include "pc_p2_pose_shape.h"
+#include "pc_p2_pose_loader.h"
+#include "pc_p2_pose_motion.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Generator.h"
@@ -40,6 +43,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include "pc_p2_body_coll.h"
 #include <fstream>
 #include <map>
 #include <set>
@@ -60,8 +64,11 @@ const FamilyDef FAMILIES[] = {
     {"flying", "fly", "p2-flying-actors.txt", "p2-flying-bank.txt"},
     {"snagret", "snake", "p2-snagret-actors.txt", "p2-snagret-bank.txt"},
 };
-constexpr size_t ClipBytes = 512 * 1024;         // per clip
-constexpr size_t TotalBytes = 48 * 1024 * 1024;  // per setup
+// Resident budgets (#895), see pc_p2_pose_loader.h and pc_p2_batch2.cpp.
+// #895 budgets (owner-approved 1 MiB per clip), shared with every pose-bank loader.
+constexpr size_t PoseFileBytes = p2poseload::PoseFileBytes;  // per pose file
+constexpr size_t ClipBytes = p2poseload::ClipBytes;          // resident per clip (1 MiB)
+constexpr size_t TotalBytes = p2poseload::TotalBytes;        // resident per setup (48 MiB)
 
 struct ClipRow {
     std::string name;
@@ -75,19 +82,19 @@ struct Bank {
     std::map<std::string, p2animation::Clip> timing;
     std::map<std::string, std::vector<p2pose::Baked>> baked;
     std::map<std::string, bool> interp;
+    std::map<std::string, bool> seam;  // loop seam continuous (#895)
+    std::map<std::string, size_t> hold;  // last visible pose (#895 death clips)
     std::string prefix;
     std::string fileSpecies;
 };
 struct BlendState {
-    Shape* shape = nullptr;
-    p2pose::Pose scratch;
-    std::string clip;
-    float frame = 0.0f;
+    p2pose::Track track;
     bool corpse = false;
 };
 std::map<std::string, Bank> banks;             // key "family|species"
 std::map<BTeki*, std::string> actors;          // actor -> key
 std::map<BTeki*, BlendState> blends;           // actor -> private deform target
+std::map<BTeki*, p2motion::MoveGate> gates;    // actor -> move/wait hysteresis
 std::set<std::string> drawnKeys;               // "<corpse>|<key>|<token>" already reported
 // Worms lane (#871) round 2: once-per-actor campaign DRAW markers for the
 // evidence scorer (bound/drawn/killed/carried/received). Cleared on reset,
@@ -185,35 +192,6 @@ const char* firstClip(const Bank& bank, const char* const* names, int count) {
     for (int i = 0; i < count; ++i)
         if (bank.clips.count(names[i])) return names[i];
     return nullptr;
-}
-
-Shape* loadPose(const std::string& prefix, const std::string& species,
-                const std::string& clip, int index,
-                std::vector<unsigned char>& reference, size_t& clipBytes,
-                std::vector<unsigned char>* rawOut = nullptr) {
-    char rel[192];
-    std::snprintf(rel, sizeof(rel), "assets/dataDir/courses/pikmin2room/%s_%s_%s_%02d.mod",
-                  prefix.c_str(), species.c_str(), clip.c_str(), index);
-    std::ifstream file(rel, std::ios::binary | std::ios::ate);
-    if (!file) fail("missing pose bank");
-    const auto size = file.tellg();
-    if (size <= 0 || size_t(size) > ClipBytes || clipBytes + size_t(size) > ClipBytes
-            || bytesTotal + size_t(size) > TotalBytes) fail("pose bank exceeds budget");
-    clipBytes += size_t(size);
-    bytesTotal += size_t(size);
-    file.seekg(0);
-    std::vector<unsigned char> data(size_t(size), 0), resources;
-    if (!file.read(reinterpret_cast<char*>(data.data()), size)
-            || !p2animation::resources(data, resources)) fail("invalid pose resources");
-    if (!reference.empty() && reference != resources) fail("pose resources differ");
-    reference = resources;
-    if (rawOut) *rawOut = data;
-    char load[160];
-    std::snprintf(load, sizeof(load), "courses/pikmin2room/%s_%s_%s_%02d.mod",
-                  prefix.c_str(), species.c_str(), clip.c_str(), index);
-    Shape* shape = gameflow.loadShape(load, true);
-    if (!shape) fail("pose load failed");
-    return shape;
 }
 
 bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) {
@@ -342,12 +320,9 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
     Bank bank;
     bank.prefix = family.prefix;
     bank.fileSpecies = species;
-    std::vector<unsigned char> reference;
-    std::vector<unsigned char> topologyRef;
-    bool haveTopologyRef = false;
-    Shape* shared = nullptr;
+    p2poseload::Shared shared;
+    const p2poseload::Limits limits{PoseFileBytes, ClipBytes, TotalBytes};
     for (const auto& clip : rows) {
-        size_t clipBytes = 0;
         p2animation::Clip timing;
         timing.name = clip.name;
         timing.count = clip.poseCount;
@@ -375,89 +350,41 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
             if (ok) timing.frames = clip.poseFrames;
         }
         bank.timing[clip.name] = timing;
-        bool allowInterp = interpolation && !clip.framesMalformed && clip.poseCount >= 2;
-        bank.interp[clip.name] = allowInterp;
-        std::vector<p2pose::Baked> decoded;
-        if (allowInterp) decoded.reserve(size_t(clip.poseCount));
-        for (int i = 0; i < clip.poseCount; ++i) {
-            std::vector<unsigned char> raw;
-            Shape* shape = loadPose(family.prefix, species, clip.name, i, reference, clipBytes,
-                                    allowInterp ? &raw : nullptr);
-            if (!shared) {
-                shared = shape;
-                for (int t = 0; t < shape->mTexAttrCount; ++t)
-                    if (shape->mTexAttrList[t].mTexture) shape->mTexAttrList[t].mTexture->attach();
-            } else {
-                if (shape->mMaterialCount != shared->mMaterialCount
-                        || shape->mTexAttrCount != shared->mTexAttrCount
-                        || shape->mTevInfoCount != shared->mTevInfoCount) fail("material framing mismatch");
-                for (int j = 0; j < shape->mTotalMatpolyCount; ++j) {
-                    auto* poly = shape->mMatpolyList[j];
-                    if (!poly || !poly->mMaterial) continue;
-                    int material = -1;
-                    for (int m = 0; m < shape->mMaterialCount; ++m)
-                        if (poly->mMaterial == &shape->mMaterialList[m]) material = m;
-                    if (material < 0) fail("pose material not found");
-                    poly->mMaterial = &shared->mMaterialList[material];
-                }
-                shape->mMaterialList = shared->mMaterialList;
-                shape->mTexAttrList = shared->mTexAttrList;
-                shape->mTevInfoList = shared->mTevInfoList;
-            }
-            bank.clips[clip.name].push_back(shape);
-            if (allowInterp) {
-                p2pose::Baked bakedPose;
-                if (!p2pose::decodeBaked(raw, bakedPose)) {
-                    allowInterp = false;
-                    decoded.clear();
-                } else {
-                    decoded.push_back(std::move(bakedPose));
-                }
-            }
+        p2poseload::Clip loaded;
+        std::string error;
+        if (!p2poseload::loadClip(family.prefix, species, clip.name, clip.poseCount, limits, shared,
+                                  bytesTotal, loaded, error))
+            fail(error.empty() ? "pose load failed" : error.c_str());
+        if (!loaded.shapes.empty()) bank.clips[clip.name] = loaded.shapes;  // 0-pose rows stay undrawable
+        bank.interp[clip.name] = interpolation && !clip.framesMalformed && clip.poseCount >= 2;
+        if (loaded.vectors) {
+            std::vector<int> frames = timing.frames;
+            if (frames.empty()) frames = uniformFramesFor(clip.poseCount, timing.duration);
+            bank.seam[clip.name] = p2poseload::seamOf(loaded.baked, frames);
+            const p2motion::HoldPick holdPick = p2motion::holdPick(
+                loaded.baked.size(), [&loaded](size_t i) -> const p2pose::Pose& { return loaded.baked[i].pose; });
+            bank.hold[clip.name] = holdPick.index;
+            if (holdPick.adjusted)
+                std::printf("P2_POSE_HOLD_ADJUST species=%s clip=%s legacy=%zu held=%zu first_bad=%zu ratio_high=%.2f "
+                            "ratio_low=%.2f poses=%zu\n",
+                            species.c_str(), clip.name.c_str(), holdPick.legacy, holdPick.index, holdPick.firstBad,
+                            double(holdPick.worstHigh), double(holdPick.worstLow), loaded.baked.size());
+            bank.baked[clip.name] = std::move(loaded.baked);
         }
-        if (allowInterp) {
-            bool ok = decoded.size() == size_t(clip.poseCount) && !decoded.empty();
-            if (ok) {
-                const size_t positions = decoded.front().pose.positions.size();
-                const size_t normals = decoded.front().pose.normals.size();
-                if (positions == 0 || normals == 0) ok = false;
-                for (const auto& entry : decoded) {
-                    if (entry.pose.positions.size() != positions
-                            || entry.pose.normals.size() != normals
-                            || entry.topology != decoded.front().topology) {
-                        ok = false;
-                        break;
-                    }
-                }
-                if (ok && haveTopologyRef && decoded.front().topology != topologyRef) ok = false;
-            }
-            if (!ok) {
-                allowInterp = false;
-                decoded.clear();
-            } else {
-                if (!haveTopologyRef) {
-                    topologyRef = decoded.front().topology;
-                    haveTopologyRef = true;
-                }
-                bank.baked[clip.name] = std::move(decoded);
-            }
-        }
-        bank.interp[clip.name] = allowInterp;
-        if (!allowInterp) bank.baked.erase(clip.name);
     }
     return bank;
 }
 
 static bool ensureBlendState(BTeki* actor, const std::string& key) {
-    if (!interpolation || blends.count(actor)) return blends.count(actor) != 0;
+    if (blends.count(actor)) return true;
     auto bankIt = banks.find(key);
     if (bankIt == banks.end()) return false;
     const Bank& bank = bankIt->second;
+    pc_p2_body_coll_register_bank(key, bank.baked);  // shared body collision fit (rest pose)
     const std::vector<p2pose::Baked>* baseBaked = nullptr;
     std::string baseClip;
     for (const auto& entry : bank.baked) {
-        auto interpIt = bank.interp.find(entry.first);
-        if (interpIt != bank.interp.end() && interpIt->second && !entry.second.empty()) {
+        if (!entry.second.empty()) {
             baseBaked = &entry.second;
             baseClip = entry.first;
             break;
@@ -477,20 +404,22 @@ static bool ensureBlendState(BTeki* actor, const std::string& key) {
     gsys->setHeap(previousHeap);
     if (!model) return false;
     for (const auto& entry : blends) {
-        if (entry.second.shape
-                && (entry.second.shape->mVertexList == model->mVertexList
-                    || entry.second.shape->mNormalList == model->mNormalList))
+        if (entry.second.track.shape
+                && (entry.second.track.shape->mVertexList == model->mVertexList
+                    || entry.second.track.shape->mNormalList == model->mNormalList))
             return false;
     }
     BlendState state;
-    state.shape = model;
-    state.scratch.positions.resize(base.positions.size());
-    state.scratch.normals.resize(base.normals.size());
+    state.track.shape = model;
+    state.track.size(base);
     blends.emplace(actor, std::move(state));
     unsigned generator = 0;
     if (actor && actor->mGenerator) generator = actor->mGenerator->_70;
-    std::printf("P2_BATCH3_INTERPOLATION_READY key=%s generator=%u positions=%d normals=%d private_geometry=1 gameplay_clock=P1\n",
-                key.c_str(), generator, model->mVertexCount, model->mNormalCount);
+    const p2motion::Tunables& tune = p2motion::tunables();
+    std::printf("P2_BATCH3_INTERPOLATION_READY key=%s generator=%u positions=%d normals=%d private_geometry=1 "
+                "lerp=%d crossfade_ms=%d gameplay_clock=P1\n",
+                key.c_str(), generator, model->mVertexCount, model->mNormalCount, int(interpolation),
+                int(tune.crossfadeSeconds * 1000.f + .5f));
     return true;
 }
 }
@@ -499,6 +428,7 @@ void pc_p2_batch3_reset() {
     banks.clear();
     actors.clear();
     blends.clear();
+    gates.clear();
     drawnKeys.clear();
     wormDrawn.clear();
     wormCorpseDrawn.clear();
@@ -510,8 +440,21 @@ void pc_p2_batch3_reset() {
 void pc_p2_batch3_forget(BTeki* actor) {
     actors.erase(actor);
     blends.erase(actor);
+    gates.erase(actor);
     wormDrawn.erase(actor);
     wormCorpseDrawn.erase(actor);
+}
+
+void pc_p2_batch3_update(BTeki* actor, float seconds) {
+    if (!actor) return;
+    auto boundKey = actors.find(actor);
+    if (boundKey == actors.end()) return;
+    pc_p2_body_coll_assign(actor, boundKey->second);
+    const p2motion::Tunables& tune = p2motion::tunables();
+    const float speed = actor->mVelocity.x * actor->mVelocity.x + actor->mVelocity.z * actor->mVelocity.z;
+    gates[actor].update(speed, seconds, tune);
+    auto blendIt = blends.find(actor);
+    if (blendIt != blends.end()) blendIt->second.track.advance(seconds);
 }
 
 bool pc_p2_batch3_corpse_drawn() { return logged[1]; }
@@ -719,9 +662,7 @@ static void setupBridgeWorms() {
     }
     std::printf("P2_BATCH3_BANK total_mod_bytes=%zu species=%zu\n", bytesTotal, banks.size());
     std::fflush(stdout);
-    if (interpolation) {
-        for (const auto& entry : actors) ensureBlendState(entry.first, entry.second);
-    }
+    for (const auto& entry : actors) ensureBlendState(entry.first, entry.second);
 }
 
 void pc_p2_batch3_setup() {
@@ -788,12 +729,13 @@ void pc_p2_batch3_setup() {
                 fail("native type mismatch");
             }
             if (!found.insert(generator).second) {
-                if (bridge) {
-                    std::printf("P2_SETUP_SKIP batch3 %s duplicate_generator generator=%u\n",
-                                family.name, generator);
-                    continue;
-                }
-                fail("duplicate generator in scene");
+                // Water slots are Wogpole/Dumple PACK generators: one campaign
+                // token, several live hosts. The behaviour modules bind every
+                // member; skipping the extra members here left them drawing as
+                // the P1 host model (wave 3 mechanics probe, Catfish/Tadpole
+                // b26/b27). In bridge mode every member is bound and the token
+                // counts once; found.size() below still compares tokens.
+                if (!bridge) fail("duplicate generator in scene");
             }
             actors[teki] = std::string(family.name) + "|" + match->second;
             speciesUsed.insert(match->second);
@@ -865,9 +807,7 @@ void pc_p2_batch3_setup() {
                 loadBank(family, bankSpecies, clipRows->second);
         }
     }
-    if (interpolation) {
-        for (const auto& entry : actors) ensureBlendState(entry.first, entry.second);
-    }
+    for (const auto& entry : actors) ensureBlendState(entry.first, entry.second);
     for (const auto& entry : actors) {
         const unsigned gen = (bridge && entry.first && entry.first->mGenerator)
             ? pc_p2_campaign_token(entry.first)
@@ -888,6 +828,8 @@ bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     auto bankIt = banks.find(entry->second);
     if (bankIt == banks.end()) return false;
     const Bank& bank = bankIt->second;
+    // Buried snagret (StateStay sets EB_ModelHidden): draw nothing.
+    if (!corpse && pc_p2_snakejoint_model_hidden(actor)) return true;
     static const char* const deadClips[] = {"dead", "dead1", "pdead1", "kagebozu_dead"};
     static const char* const attackClips[] = {"attack1", "attack", "attack2", "attack_2",
                                               "sattack1", "hit", "hit_near", "hit_far", "charge",
@@ -914,59 +856,81 @@ bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
         name = firstClip(bank, attackClips, int(sizeof(attackClips) / sizeof(attackClips[0])));
     }
     if (!name) {
+        // Move/wait with hysteresis + dwell (#895), advanced in pc_p2_batch3_update.
         const f32 speed = actor->mVelocity.x * actor->mVelocity.x + actor->mVelocity.z * actor->mVelocity.z;
-        name = speed > 1.f
+        auto gate = gates.find(actor);
+        const bool moving = gate != gates.end() ? gate->second.moving() : speed > p2motion::tunables().moveEnter;
+        name = moving
             ? firstClip(bank, moveClips, int(sizeof(moveClips) / sizeof(moveClips[0])))
             : firstClip(bank, waitClips, int(sizeof(waitClips) / sizeof(waitClips[0])));
     }
     if (!name) name = firstClip(bank, waitClips, int(sizeof(waitClips) / sizeof(waitClips[0])));
     if (!name) return false;
+    if (corpse && entry->second == "snagret|DangoMushi") {
+        // #897 carry check: the corpse draw matrix must follow the pellet.
+        static unsigned corpseDraws = 0;
+        if (corpseDraws++ % 60u == 0u) {
+            // matrix is the pellet's model-view matrix (its translation is
+            // camera-relative); the pellet's own world position is beside it.
+            const Vector3f at = actor->mPellet ? actor->mPellet->mSRT.t : Vector3f(0.0f, 0.0f, 0.0f);
+            std::printf("P2_DANGOMUSHI_CORPSE_DRAW draws=%u pellet=%d px=%.2f py=%.2f pz=%.2f "
+                        "view_z=%.2f\n", corpseDraws, int(actor->mPellet != nullptr), at.x, at.y, at.z,
+                        matrix.mMtx[2][3]);
+        }
+    }
     const auto& poses = bank.clips.at(name);
     if (poses.empty()) return false;
     const int frames = actor->mTekiAnimator->getFrameCount();
     const float phase = forcedPhase >= 0.0f ? forcedPhase
         : (frames > 1 ? actor->mTekiAnimator->getCounter() / (frames - 1) : 0.f);
     const p2animation::Clip& timing = bank.timing.at(name);
-    const size_t index = timing.index(phase, corpse);
+    // Death clips stop at their last visible pose (#895, p2motion::isDeathClip).
+    auto holdIt = bank.hold.find(name);
+    const size_t holdIndex = holdIt != bank.hold.end() && holdIt->second < poses.size() ? holdIt->second : poses.size() - 1;
+    size_t index = timing.index(phase, corpse);
+    if ((corpse || p2motion::isDeathClip(name)) && index > holdIndex) index = holdIndex;
     Shape* shape = poses.at(index < poses.size() ? index : poses.size() - 1);
-    if (interpolation && !corpse) {
-        auto interpIt = bank.interp.find(name);
-        auto bakedIt = bank.baked.find(name);
-        if (interpIt != bank.interp.end() && interpIt->second && bakedIt != bank.baked.end()
-                && !bakedIt->second.empty() && bakedIt->second.size() == poses.size()) {
+    // Decoded pose vectors drive the draw (#895); see pc_p2_batch2.cpp.
+    auto bakedIt = bank.baked.find(name);
+    if (bakedIt != bank.baked.end() && bakedIt->second.size() == poses.size()) {
+        std::vector<int> frames = timing.frames;
+        if (frames.empty()) frames = uniformFramesFor(int(poses.size()), timing.duration);
+        if (!blends.count(actor)) ensureBlendState(actor, entry->second);
+        auto blendIt = blends.find(actor);
+        if (blendIt != blends.end() && blendIt->second.track.shape) {
+            p2motion::Tunables tune = p2motion::tunables();
+            auto interpIt = bank.interp.find(name);
+            tune.lerp = interpIt != bank.interp.end() && interpIt->second;
             const float clampedPhase =
                 phase != phase ? 0.0f : (phase < 0.0f ? 0.0f : (phase > 1.0f ? 1.0f : phase));
-            const double sourceFrame = double(clampedPhase) * double(timing.duration - 1);
-            std::vector<int> frames = timing.frames;
-            if (frames.empty()) frames = uniformFramesFor(int(poses.size()), timing.duration);
-            p2pose::Interval span;
-            if (frames.size() == poses.size() && p2pose::bracket(frames, float(sourceFrame), span)
-                    && span.left < bakedIt->second.size() && span.right < bakedIt->second.size()) {
-                if (!blends.count(actor)) ensureBlendState(actor, entry->second);
-                auto blendIt = blends.find(actor);
-                if (blendIt != blends.end() && blendIt->second.shape) {
-                    const auto& bakedVec = bakedIt->second;
-                    const auto& left = bakedVec[span.left].pose;
-                    const auto& right = bakedVec[span.right].pose;
-                    if (left.positions.size() == size_t(blendIt->second.shape->mVertexCount)
-                            && left.normals.size() == size_t(blendIt->second.shape->mNormalCount)
-                            && left.positions.size() == right.positions.size()
-                            && left.normals.size() == right.normals.size()
-                            && p2pose::apply(*blendIt->second.shape, left, right, span.weight,
-                                             blendIt->second.scratch)) {
-                        shape = blendIt->second.shape;
-                        if (blendIt->second.clip != name || blendIt->second.corpse != corpse) {
-                            std::printf(
-                                "P2_BATCH3_BLEND key=%s clip=%s corpse=%d source_frame=%.5f left=%zu "
-                                "right=%zu weight=%.5f\n",
-                                entry->second.c_str(), name, int(corpse), sourceFrame, span.left,
-                                span.right, span.weight);
-                        }
-                        blendIt->second.clip = name;
-                        blendIt->second.frame = float(sourceFrame);
-                        blendIt->second.corpse = corpse;
-                    }
+            float drawFrame = corpse ? float(timing.duration - 1)
+                                     : clampedPhase * float(timing.duration - 1);
+            if ((corpse || p2motion::isDeathClip(name)) && holdIndex < frames.size()
+                    && drawFrame > float(frames[holdIndex]))
+                drawFrame = float(frames[holdIndex]);
+            const auto& bakedVec = bakedIt->second;
+            auto seamIt = bank.seam.find(name);
+            const bool seamOk = seamIt == bank.seam.end() || seamIt->second;
+            const p2pose::Presented shown = p2pose::present(
+                blendIt->second.track, name, bakedVec.size(),
+                [&bakedVec](size_t i) -> const p2pose::Pose& { return bakedVec[i].pose; }, frames, drawFrame, tune,
+                seamOk);
+            if (shown.ok) {
+                shape = blendIt->second.track.shape;
+                static unsigned crossfadeLogs = 0;
+                if ((shown.crossfadeStarted || shown.wrapBlend) && crossfadeLogs < 64u) {
+                    ++crossfadeLogs;
+                    std::printf("P2_BATCH3_CROSSFADE key=%s clip=%s ms=%d cause=%s\n", entry->second.c_str(), name,
+                                int(tune.crossfadeSeconds * 1000.f + .5f), shown.wrapBlend ? "loop_seam" : "clip_change");
                 }
+                if (blendIt->second.corpse != corpse
+                        || drawnKeys.insert(std::string("blend|") + entry->second + "|" + name).second) {
+                    std::printf("P2_BATCH3_BLEND key=%s clip=%s corpse=%d source_frame=%.5f left=%zu "
+                                "right=%zu weight=%.5f poses=%zu lerp=%d\n",
+                                entry->second.c_str(), name, int(corpse), double(drawFrame), shown.span.left,
+                                shown.span.right, shown.span.weight, bakedVec.size(), int(tune.lerp));
+                }
+                blendIt->second.corpse = corpse;
             }
         }
     }

@@ -1,5 +1,6 @@
 #include "pc_p2_white.h"
 #include "pc_p2_white_policy.h"
+#include "pc_p2_ivory_budget.h"
 #include "pc_p2_species.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
@@ -95,13 +96,14 @@ bool pc_p2_ivory(const Pom* pom){
 
 int pc_p2_convert_ivory(Pom* pom,int remaining){
     if(!pc_p2_ivory(pom))return -1;
-    Stickers stickers(pom);Iterator it(&stickers);int converted=0;
+    Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};
     CI_LOOP(it){Creature* creature=*it;if(!creature||!creature->isAlive()||!creature->isPiki())continue;Piki* p=static_cast<Piki*>(creature);
-        if(converted>=remaining){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        const bool alreadyWhite=pc_p2_is_white(p);
+        if(!budget.accepts(alreadyWhite)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
         if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);pc_p2_set_species(sprout,P2SpeciesWhite);
-        float angle=converted*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
-        p->setEraseKill();p->kill(false);it.dec();++converted;}
-    std::printf("P2_IVORY_CONVERT count=%d\n",converted);return converted;
+        float angle=budget.births*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
+        p->setEraseKill();p->kill(false);it.dec();budget.completed(alreadyWhite);}
+    std::printf("P2_IVORY_CONVERT count=%d slots=%d\n",budget.births,budget.slots);return budget.slots;
 }

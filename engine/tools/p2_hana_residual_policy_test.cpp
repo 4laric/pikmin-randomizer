@@ -88,5 +88,21 @@ int main()
     assert(poisonDamage(poison) == 0.0f);
 
     std::puts("p2_hana_residual_policy_test PASS");
+    // --- Flick return (chappyState.cpp:2206-2207 transit to mPreviousID). ---
+    {
+        const int kWalk = 3, kGoHome = 4, kFlick = 7;
+        (void)kFlick;
+        FlickReturn fr;
+        // Entered from Walk: back to Walk.
+        fr.noteEnter(kWalk);
+        assert(fr.returnState(kWalk, kGoHome) == kWalk);
+        // Entered from GoHome: back to GoHome, not Walk.
+        fr.noteEnter(kGoHome);
+        assert(fr.returnState(kWalk, kGoHome) == kGoHome);
+        // A later Walk entry overwrites the memory.
+        fr.noteEnter(kWalk);
+        assert(fr.returnState(kWalk, kGoHome) == kWalk);
+    }
+
     return 0;
 }

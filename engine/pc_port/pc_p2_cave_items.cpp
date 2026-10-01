@@ -97,6 +97,17 @@ PelletConfig* treasureTemplate()
 }
 // #441 receipt-host API: grant goes through an explicit ledger handle.
 P2ReceiptHostHandle receiptHandle = nullptr;
+std::string rewardId(const P2CaveItemEntry& entry)
+{
+    return "treasure:" + placement.cave + ":f" + std::to_string(placement.floor) + ":" + entry.slot_id;
+}
+void receiptFailure()
+{
+    std::fputs("P2_CAVE_ITEM_RECEIPT FATAL persistence failure; refusing reward loss\n", stderr);
+    std::fflush(nullptr);
+    std::abort();
+}
+
 }  // namespace
 
 bool pc_p2_cave_items_active() { return itemsActive; }
@@ -132,6 +143,7 @@ void pc_p2_cave_items_shutdown()
 
 void pc_p2_cave_items_setup()
 {
+    pc_p2_cave_items_shutdown();
     placement = P2CaveItemPlacement{};
     itemsActive = false;
     spawned.clear();
@@ -178,7 +190,18 @@ void pc_p2_cave_items_setup()
         if (itemShape->mTexAttrList[i].mTexture) itemShape->mTexAttrList[i].mTexture->attach();
     }
 
+    const char* receiptEnv = std::getenv("PIKMIN_P2_ITEM_RECEIPT_PATH");
+    receiptHandle = pc_p2_receipt_host_open(receiptEnv && receiptEnv[0] ? receiptEnv : "p2-cave-item-receipts.txt");
+    if (!receiptHandle) receiptFailure();
     for (const P2CaveItemEntry& entry : placement.items) {
+        const std::string seed = std::to_string(placement.seed);
+        const int collected = pc_p2_receipt_host_has(receiptHandle, seed.c_str(),
+            rewardId(entry).c_str(), entry.host.c_str(), "cave_treasure");
+        if (collected < 0) receiptFailure();
+        if (collected) {
+            std::printf("P2_CAVE_ITEM_RESTORE item=%s collected=1 spawn=0\n", entry.item.c_str());
+            continue;
+        }
         const P2CaveRoomUnit* unit = p2CaveRoomsFind(*rooms, entry.host);
         if (!unit) {
             std::printf("P2_CAVE_ITEMS FAILED reason=missing host unit %s\n", entry.host.c_str());
@@ -241,14 +264,14 @@ bool pc_p2_cave_items_deliver(Pellet* pellet)
         if (!receiptHandle) {
             std::printf("P2_CAVE_ITEM_RECEIPT ERROR slot=%s open_failed=1\n", entry.slot_id.c_str());
             std::fflush(stdout);
-            return true;
+            receiptFailure();
         }
     }
-    const std::string reward = "treasure:" + placement.cave + ":f"
-                               + std::to_string(placement.floor) + ":" + entry.slot_id;
+    const std::string reward = rewardId(entry);
     const std::string seed = std::to_string(placement.seed);
     const P2ReceiptHostResult result = pc_p2_receipt_host_grant(
         receiptHandle, seed.c_str(), reward.c_str(), entry.host.c_str(), "cave_treasure");
+    if (result == P2ReceiptHostResult::Error) receiptFailure();
     const bool granted = result == P2ReceiptHostResult::Granted;
     if (granted) ++deliveredCount;
     if (result != P2ReceiptHostResult::Error) ++deliveryEventCount;

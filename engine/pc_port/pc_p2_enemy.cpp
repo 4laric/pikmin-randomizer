@@ -119,7 +119,13 @@ bool pc_p2_kabuto_bind_dynamic(Teki* actor, unsigned generatorId, unsigned sourc
     P2KabutoSpecies species;
     if(!P2KabutoHost::species_for_source(sourceId,species))return false;
     if(!actor || !generatorId)return false;
-    if(actor->mTekiType!=TEKI_Beatle)return false;
+    if(actor->mTekiType!=TEKI_Beatle) {
+        // #948: never silent; the seed bound a Kabuto id to a non-Beatle vehicle.
+        std::printf("P2_KABUTO_GENERATED_BIND generator=%u source=%u type=%d host=0 reason=host_type_mismatch\n",
+                    generatorId,sourceId,int(actor->mTekiType));
+        std::fflush(stdout);
+        return false;
+    }
     if(!kabutoGeneratedBankLoaded) {
         kabutoGeneratedBankLoaded=true;
         std::ifstream bank("assets/p2-kabuto-attach.txt");

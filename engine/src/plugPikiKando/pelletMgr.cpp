@@ -1679,6 +1679,28 @@ void PelletMgr::addUseList(u32 pelletID)
 	}
 }
 
+#if defined(PIKI_PC_PORT)
+PelletShapeObject* PelletMgr::pcEnsureShape(u32 pelletID)
+{
+	addUseList(pelletID);
+	PelletConfig* config = getConfig(pelletID);
+	if (!config) {
+		return nullptr;
+	}
+	FOREACH_NODE(CoreNode, mAnimInfoList.mChild, node)
+	{
+		PelletAnimInfo* info = static_cast<PelletAnimInfo*>(node);
+		if (info->mID.mId == config->mPelletId.mId) {
+			if (!info->mPelletShapeObject) {
+				info->createShapeObject();
+			}
+			return info->mPelletShapeObject;
+		}
+	}
+	return nullptr;
+}
+#endif
+
 /**
  * @todo: Documentation
  */

@@ -5,11 +5,13 @@
 #include "Interactions.h"
 #include "PaniPikiAnimator.h"
 #include "system.h"
+#include "RumbleMgr.h"
 #include <deque>
 #include <cstdio>
 #include <limits>
 namespace {
 class DropState;
+unsigned gSilentDamage=0; // >0 while the deferred KokeDamage HP deduction runs (no second hit feedback).
 struct Listener final : PaniAnimKeyListener {
     DropState* state; Navi* captain; std::uint64_t generation,serial;
     Listener(DropState* s,Navi* n,std::uint64_t g,std::uint64_t a):state(s),captain(n),generation(g),serial(a) {}
@@ -21,6 +23,7 @@ public:
     Navi* captain=nullptr;
     std::uint64_t generation=0,serial=0,dispatch=0;
     bool delivering=false, retired=false;
+    unsigned frame=0; // frames since begin(), for impact/damage timing evidence
     int expected=-1;
     std::deque<Listener> listeners; // Stable issuance tokens; retained until state destruction.
     DropState():NaviState(NAVISTATE_DemonDrop) {}
@@ -49,6 +52,7 @@ public:
     void restart(Navi*) override { std::printf("DEMON_STATE_RESTART phase=%d\n",int(policy.phase())); }
     void exec(Navi* n) override {
         if(!owns(n)) return;
+        ++frame;
         if(n->mHealth<=1) { n->mStateMachine->transit(n,NAVISTATE_Dead); return; }
         if(policy.phase()!=P2DemonDropPhase::Falling) zero(n);
         auto c=policy.tick(generation,gsys->getFrameTime());
@@ -57,8 +61,16 @@ public:
     void procBounceMsg(Navi* n,MsgBounce*) override {
         if(!owns(n)) return;
         auto c=policy.bounce(generation); if(!c.accepted) return;
-        std::printf("DEMON_STATE_BOUNCE generation=%llu health=%.3f\n",static_cast<unsigned long long>(generation),n->mHealth);
+        std::printf("DEMON_STATE_BOUNCE generation=%llu health=%.3f frame=%u\n",static_cast<unsigned long long>(generation),n->mHealth,frame);
         zero(n);
+        if(c.impactZeroDamage) {
+            // P2 NaviFallMeckState::bounceCallback -> addDamage(0, true): the hit
+            // feedback (SE, camera shake, rumble, damage effect) fires on the
+            // ground-impact frame; the HP comes off when JKOKE ends.
+            n->startDamageEffect();
+            rumbleMgr->start(RUMBLE_Unk1,n->mNaviID,nullptr);
+            std::printf("DEMON_STATE_IMPACT_FEEDBACK generation=%llu frame=%u\n",static_cast<unsigned long long>(generation),frame);
+        }
         if(c.startKnockdown) motion(n,PIKIANIM_JKoke);
         if(c.resume) n->mStateMachine->transit(n,NAVISTATE_Walk);
     }
@@ -69,11 +81,11 @@ public:
         auto c=policy.animationEnd(generation,phase);
         if(c.deliverDamage) {
             const auto saved=generation;
-            struct Guard { bool& flag; Guard(bool& f):flag(f){flag=true;} ~Guard(){flag=false;} } guard(delivering);
+            struct Guard { bool& flag; Guard(bool& f):flag(f){flag=true;++gSilentDamage;} ~Guard(){flag=false;--gSilentDamage;} } guard(delivering);
             const float hp=n->mHealth;
             InteractAttack attack(n,nullptr,c.damage,false);
             const bool accepted=n->stimulate(attack);
-            std::printf("DEMON_STATE_DAMAGE generation=%llu accepted=%d before=%.3f after=%.3f\n",static_cast<unsigned long long>(saved),int(accepted),hp,n->mHealth);
+            std::printf("DEMON_STATE_DAMAGE generation=%llu accepted=%d before=%.3f after=%.3f frame=%u\n",static_cast<unsigned long long>(saved),int(accepted),hp,n->mHealth,frame);
             if(!owns(n)||generation!=saved) return;
             if(n->mHealth<=1) return; // Outer native finishDamage owns the lethal transition.
         }
@@ -96,6 +108,7 @@ DropState* registered(Navi* n) {
     return dynamic_cast<DropState*>(m->mStates[index]);
 }
 }
+bool pc_demon_drop_silent_damage() { return gSilentDamage>0; }
 NaviState* pc_demon_drop_state_create() { return new DropState(); }
 bool pc_demon_drop_begin(Navi* n,std::uint64_t g,float damage,float speed) {
     auto* s=registered(n);
@@ -103,7 +116,7 @@ bool pc_demon_drop_begin(Navi* n,std::uint64_t g,float damage,float speed) {
        damage<0||!std::isfinite(n->mSRT.t.x)||!std::isfinite(n->mSRT.t.y)||!std::isfinite(n->mSRT.t.z)||
        n->isCreatureFlag(CF_DisableMovement|CF_IgnoreGravity|CF_IsFlying)||s->listeners.size()>4093) return false;
     auto c=s->policy.begin(g,damage,speed); if(!c.accepted) return false;
-    s->captain=n; s->generation=g;
+    s->captain=n; s->generation=g; s->frame=0;
     n->mStateMachine->transit(n,NAVISTATE_DemonDrop);
     if(!s->owns(n)) { s->policy.cancel(); s->captain=nullptr; return false; }
     n->mGroundTriangle=nullptr; n->mPreviousTriangle=nullptr; n->mCollPlatform=nullptr;

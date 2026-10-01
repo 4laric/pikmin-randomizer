@@ -43,17 +43,30 @@ struct SpeciesParams {
     float attackHitRange = 80.0f; // general fp22
     float attackDamage = 10.0f;   // general fp24
     float poisonDamage = 300.0f;  // proper fp02 / fp01 white
+    // Retail enemyparm.txt EnemyParmsBase block (GPVE01): territory fp09, home
+    // range fp10, private distance fp11, view angle fp13, search angle fp15,
+    // alert time fp29, vigilant life fp30. Sight fp12 doubles as the search
+    // distance fp14 (500 for every adult row). The 2026-09-30 owner playtest
+    // (Fiery Bulblax) showed the port's hard-coded 300 territory / 50 home
+    // against source 400 / 15 made the adults turn for home mid-chase.
+    float territory = 400.0f;
+    float homeRadius = 15.0f;
+    float privateRadius = 70.0f;
+    float viewAngle = 90.0f;
+    float searchAngle = 90.0f;
+    float alertTime = 7.0f;
+    float lifeBeforeAlert = 30.0f;
 };
 
 // Retail-audited family table in lane order. Hosts preserve the proxy era.
 inline const SpeciesParams kSpecies[] = {
-    {2, "Chappy", "Red Bulborb", 4, 750.0f, 100.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 750.0f},
-    {33, "FireChappy", "Fiery Bulblax", 4, 1400.0f, 110.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 300.0f},
-    {35, "KumaChappy", "Spotty Bulbear", 32, 1200.0f, 100.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 400.0f},
-    {43, "YellowChappy", "Hairy Bulborb", 4, 650.0f, 90.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 650.0f},
-    {53, "KingChappy", "Emperor Bulblax", 4, 1300.0f, 45.0f, 500.0f, 130.0f, 30.0f, 80.0f, 5.0f, 200.0f},
-    {67, "LeafChappy", "Bulbmin", 3, 300.0f, 50.0f, 300.0f, 40.0f, 30.0f, 50.0f, 10.0f, 500.0f},
-    {76, "KumaKochappy", "Dwarf Bulbear", 31, 500.0f, 60.0f, 150.0f, 35.0f, 25.0f, 38.0f, 10.0f, 500.0f},
+    {2, "Chappy", "Red Bulborb", 4, 750.0f, 100.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 750.0f, 400.0f, 15.0f, 70.0f, 90.0f, 90.0f, 7.0f, 30.0f},
+    {33, "FireChappy", "Fiery Bulblax", 4, 1400.0f, 110.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 300.0f, 400.0f, 15.0f, 70.0f, 90.0f, 120.0f, 15.0f, 30.0f},
+    {35, "KumaChappy", "Spotty Bulbear", 32, 1200.0f, 100.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 400.0f, 400.0f, 50.0f, 70.0f, 90.0f, 90.0f, 15.0f, 50.0f},
+    {43, "YellowChappy", "Hairy Bulborb", 4, 650.0f, 90.0f, 500.0f, 75.0f, 25.0f, 80.0f, 10.0f, 650.0f, 400.0f, 15.0f, 70.0f, 90.0f, 90.0f, 7.0f, 30.0f},
+    {53, "KingChappy", "Emperor Bulblax", 4, 1300.0f, 45.0f, 500.0f, 130.0f, 30.0f, 80.0f, 5.0f, 200.0f, 300.0f, 30.0f, 70.0f, 130.0f, 120.0f, 15.0f, 30.0f},
+    {67, "LeafChappy", "Bulbmin", 3, 300.0f, 50.0f, 300.0f, 40.0f, 30.0f, 50.0f, 10.0f, 500.0f, 400.0f, 50.0f, 70.0f, 90.0f, 90.0f, 15.0f, 50.0f},
+    {76, "KumaKochappy", "Dwarf Bulbear", 31, 500.0f, 60.0f, 150.0f, 35.0f, 25.0f, 38.0f, 10.0f, 500.0f, 500.0f, 80.0f, 70.0f, 180.0f, 180.0f, 15.0f, 30.0f},
 };
 
 inline const SpeciesParams* speciesForSource(unsigned source)
@@ -178,5 +191,22 @@ public:
         return it == actors.end() ? fallback : it->second;
     }
 };
+
+// ---- P1 AI-grid culling (#994) ----------------------------------------------
+// Creature::update (creature.cpp:678) skips a whole teki update, including
+// moveNew, while no captain or Pikmin is in the actor's AI-grid neighbourhood. P2
+// enemies are never culled out of motion (culling only skips animation), so an
+// awake Bulborb that outpaces the captain (across a pond, say) must keep
+// integrating its commanded walk. Owner playtest: the Fiery froze mid-chase with
+// velocity set and the FSM flipping Walk/TurnToHome/GoHome in place. The pin is
+// CF_AIAlwaysActive (Creature::setInsideView). A sleeping actor is not pinned:
+// it only wakes on a touch (ChappyBase::isWakeup), which lights its own grid cell.
+// The Emperor keeps its own burrow/appear path and is never pinned here.
+enum PinFamily { PinAdult = 0, PinKuma = 1, PinKumako = 2, PinKing = 3 };
+inline bool keepUpdatingOffGrid(int family, bool alive, bool asleep)
+{
+    if (family == PinKing) return false;
+    return alive && !asleep;
+}
 
 } // namespace p2chappy

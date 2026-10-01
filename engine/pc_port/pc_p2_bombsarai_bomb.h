@@ -145,6 +145,10 @@ public:
     bool induce(P2BombSaraiCarrierFn carrier, void* carrierContext);
 
     int inductionCounter() const { return mInductionCounter; }
+    // Fuse life left / configured fuse life (source mHealth / mMaxHealth, the
+    // ratio the P2 life gauge shows, EnemyBase::doGetLifeGaugeParam).
+    float fuseRemaining() const { return mFuseHealthRemaining; }
+    float fuseMax() const { return mConfig.fuseHealth; }
 
     P2BombSaraiBombPhase phase() const { return mPhase; }
     const P2BombSaraiVec3& position() const { return mPosition; }

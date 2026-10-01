@@ -39,6 +39,7 @@ struct BindCall {
     unsigned seedTargetUid;
 };
 std::vector<BindCall> gBindCalls;
+std::vector<BindCall> gDemonCalls; // #215 Demon (32) profile claims
 std::vector<const BTeki*> gBound;
 
 void require(bool ok, const char* what)
@@ -79,6 +80,7 @@ void clearActors()
 void resetBinds()
 {
     gBindCalls.clear();
+    gDemonCalls.clear();
     gBound.clear();
     gHostPresent = true;
 }
@@ -113,6 +115,18 @@ bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsign
         if (bound == actor) return false;
     if (!gHostPresent) return false;
     gBindCalls.push_back({actor, generatorId, seedTargetUid});
+    gBound.push_back(actor);
+    return true;
+}
+
+// #215 Demon (32) profile binder double: same claim contract, own record.
+bool pc_p2_sarai_manager_bind_demon(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
+{
+    if (!actor || !generatorId || !seedTargetUid) return false;
+    for (const BTeki* bound : gBound)
+        if (bound == actor) return false;
+    if (!gHostPresent) return false;
+    gDemonCalls.push_back({actor, generatorId, seedTargetUid});
     gBound.push_back(actor);
     return true;
 }
@@ -181,6 +195,25 @@ int main()
     require(!pc_p2_generated_placement_bind(unplaced, 23, 873045719u, 873045719u),
             "absent sidecar fails the dynamic bind quietly");
     require(gBindCalls.empty(), "failed bind leaves no claim");
+
+    // 6. #215: source-32 actors bind through the Demon profile, never the
+    //    Sarai binder, and a mixed 23/32 campaign binds each to its own.
+    resetBinds();
+    clearActors();
+    pc_p2_generated_placement_reset();
+    BTeki* sarai = makeActor(5465461u, 23, 3001);
+    BTeki* demon = makeActor(1945764764u, 32, 3002);
+    require(pc_p2_generated_placement_sweep_sarai(), "sweep claims the 23 and 32 actors");
+    require(gBindCalls.size() == 1 && gBindCalls[0].actor == sarai, "only the 23 actor reaches the Sarai binder");
+    require(gDemonCalls.size() == 1 && gDemonCalls[0].actor == demon
+                && gDemonCalls[0].generatorId == 1945764764u && gDemonCalls[0].seedTargetUid == 1945764764u,
+            "the 32 actor reaches the Demon binder with its own campaign token");
+    require(!pc_p2_generated_placement_sweep_sarai(), "repeat mixed sweep claims nothing new");
+    resetBinds();
+    BTeki* placedDemon = makeActor(3850487044u, 32, 3003);
+    require(pc_p2_generated_placement_bind(placedDemon, 32, 3850487044u, 3850487044u),
+            "placement bind claims source 32");
+    require(gDemonCalls.size() == 1 && gBindCalls.empty(), "placement bind for 32 never reaches the Sarai binder");
 
     clearActors();
     resetBinds();

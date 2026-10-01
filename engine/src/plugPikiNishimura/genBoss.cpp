@@ -5,7 +5,13 @@
 #include "Pellet.h"
 #include "sysNew.h"
 #include "pc_randomizer.h"
+#include "pc_p2_boss_arena.h"
+#include "pc_held_part.h"
+#include "pc_p2_boss_arena_policy.h"
+#include "pc_p2_placement_probe.h"
+#include "teki.h"
 #include <cstdio>
+#include <cstdlib>
 
 /**
  * @todo: Documentation
@@ -112,8 +118,24 @@ void GenObjectBoss::writeParameters(RandomAccessStream& output)
 /**
  * @todo: Documentation
  */
-void GenObjectBoss::updateUseList(Generator*, int count)
+void GenObjectBoss::updateUseList(Generator* generator, int count)
 {
+	// P2 boss arenas: a bound arena spawn reserves its P2 boss vehicle instead
+	// of the P1 boss; a suppressed arena mate reserves nothing.
+	pc_p2_boss_arena_rekey(generator);
+	const int p2Host = pc_p2_boss_arena_host(generator);
+	if (p2Host >= 0) {
+		tekiMgr->mUsingType[p2Host] = true;
+		pc_p2_reserve_source_extras(generator);
+		// #901: the arena boss holds the P1 boss's ship part; load its shape
+		// with the stage like any other part holder.
+		const unsigned heldPart = pc_held_part_for_pellet_config(mPelletConfigIdx);
+		if (heldPart) pelletMgr->addUseList(heldPart);
+		return;
+	}
+	if (pc_p2_boss_arena_suppressed(generator)) {
+		return;
+	}
 	if (mBossID == GENBOSS_Spider) {
 		bossMgr->addUseCount(BOSS_Spider, 1);
 		return;
@@ -163,6 +185,25 @@ void GenObjectBoss::updateUseList(Generator*, int count)
  */
 Creature* GenObjectBoss::birth(BirthInfo& info)
 {
+	if (pc_randomizer_p2_bridge() && info.mGenerator) {
+		pc_p2_boss_arena_rekey(info.mGenerator);
+		const unsigned uid = pc_randomizer_generator_id(info.mGenerator);
+		if (std::getenv("PIKMIN_P2_BOSS_ARENA_PROBE") && p2bossarena::isArenaUid(uid))
+			{
+			pc_p2_boss_arena_probe(info.mPosition.x, info.mPosition.y, info.mPosition.z, uid, "p1boss", mBossID);
+			pc_p2_placement_probe_birth(info.mPosition.x, info.mPosition.y, info.mPosition.z, info.mGenerator->_70, uid, -1);
+		}
+		if (pc_randomizer_p2_source_for_id(uid)) {
+			// Bound arena spawn: the P2 boss replaces the P1 boss.
+			return pc_p2_boss_arena_birth(info, *this);
+		}
+		if (pc_p2_boss_arena_suppressed(info.mGenerator)) {
+			std::printf("P2_BOSS_ARENA_SUPPRESS target=%u primary=%u p1_boss=%d\n", uid,
+			            p2bossarena::suppressPrimary(uid), mBossID);
+			std::fflush(stdout);
+			return nullptr;
+		}
+	}
 	Creature* boss = nullptr;
 	PRINT("\n");
 	PRINT("************ BOSS BIRTH START : kind = %d ************\n", mBossID);
@@ -200,7 +241,9 @@ Creature* GenObjectBoss::birth(BirthInfo& info)
 	}
 	PRINT("\n");
 
-    if (pc_randomizer_enabled()) std::printf("[Pikmin Randomizer] BOSS_SPAWN type=%d success=%d\n", mBossID, boss != nullptr);
+    if (pc_randomizer_enabled())
+        std::printf("[Pikmin Randomizer] BOSS_SPAWN type=%d success=%d uid=%u\n", mBossID, boss != nullptr,
+                    info.mGenerator ? pc_randomizer_generator_id(info.mGenerator) : 0u);
 	return boss;
 }
 

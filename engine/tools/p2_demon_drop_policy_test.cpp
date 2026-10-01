@@ -38,5 +38,17 @@ int main() {
     p.begin(7,10,200); p.bounce(7); p.animationEnd(7,S::Knockdown);
     assert(p.tick(7,1000).startGetUp);
     assert(!p.tick(7,1000).startGetUp);
+    // Slam sync: the hit feedback command is issued by the same bounce() call that
+    // starts the knockdown (the ground-impact frame); HP is deferred to the
+    // JKOKE end event and never re-announces impact feedback.
+    {
+        P2DemonDropPolicy q; q.begin(1,10,200);
+        unsigned frame=0, impactFrame=~0u, damageFrame=~0u;
+        for(; frame<120; ++frame) {
+            if(frame==30) { auto b=q.bounce(1); if(b.impactZeroDamage) impactFrame=frame; assert(!b.deliverDamage&&b.damage==0); }
+            if(frame==90) { auto e=q.animationEnd(1,S::Knockdown); assert(!e.impactZeroDamage); if(e.deliverDamage) damageFrame=frame; }
+        }
+        assert(impactFrame==30 && damageFrame==90);
+    }
     puts("p2_demon_drop_policy_test PASS");
 }

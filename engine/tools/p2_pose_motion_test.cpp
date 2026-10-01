@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -216,6 +217,70 @@ int main() {
                     && p2motion::isDeathClip("dead_p") && !p2motion::isDeathClip("hide1")
                     && !p2motion::isDeathClip("wait1"),
                 "death clip names");
+    }
+
+    // #964 corpse vertex explosion: the Hana dead clip whips the head up to 5x its
+    // height and then scales the body to nothing through a one-vertex-wide line;
+    // the old hold rule (last pose >= 20% of the largest extent) picked a pose in
+    // that tail, which drew as a thin line straight up from the corpse.
+    {
+        // Box of the given spans, origin at the feet.
+        auto box = [](float sx, float sy, float sz) {
+            return p2pose::Pose{{{-sx / 2, 0, -sz / 2}, {sx / 2, sy, sz / 2}}, {{0, 1, 0}, {0, 1, 0}}};
+        };
+        std::vector<p2pose::Pose> dead{box(107, 123, 73), box(108, 107, 75), box(109, 134, 101), box(108, 180, 84),
+                                       box(110, 238, 90),  box(120, 590, 140), box(24, 392, 18),   box(8, 104, 8),
+                                       box(6, 6, 6),       box(6, 6, 6)};
+        auto at = [&dead](std::size_t i) -> const p2pose::Pose& { return dead[i]; };
+        const p2motion::HoldPick pick = p2motion::holdPick(dead.size(), at);
+        require(pick.legacy == 6, "legacy rule stops in the stretched tail (extent 392 >= 20% of 600)");
+        require(pick.adjusted && pick.firstBad == 4 && pick.index == 3,
+                "hold stops before the first pose stretched past 1.6x (180 tall = 1.5x ok, 238 = 1.9x bad)");
+        require(p2motion::visibleEnd(dead.size(), at) == pick.index, "visibleEnd follows the plausibility rule");
+        // A clip that rotates the body (a flopping fish) is not a stretch: spans are sorted.
+        std::vector<p2pose::Pose> flop{box(100, 30, 40), box(40, 100, 30), box(30, 40, 100), box(30, 40, 100)};
+        auto flopAt = [&flop](std::size_t i) -> const p2pose::Pose& { return flop[i]; };
+        const p2motion::HoldPick fl = p2motion::holdPick(flop.size(), flopAt);
+        require(!fl.adjusted && fl.index == 3, "a rotated body keeps the legacy hold");
+        // A body that grows to 2.4x (under the wide 2.5x envelope) keeps its legacy hold:
+        // only a spike is stepped over, other species' corpses are not reshaped.
+        std::vector<p2pose::Pose> grow{box(40, 30, 40), box(60, 50, 60), box(96, 72, 96)};
+        auto growAt = [&grow](std::size_t i) -> const p2pose::Pose& { return grow[i]; };
+        const p2motion::HoldPick gr = p2motion::holdPick(grow.size(), growAt);
+        require(!gr.adjusted && gr.index == 2, "a 2.4x growth is not a spike");
+        // Clips without an excursion keep the legacy pick exactly.
+        std::vector<p2pose::Pose> calm{box(40, 30, 40), box(44, 28, 36), box(50, 20, 44)};
+        auto calmAt = [&calm](std::size_t i) -> const p2pose::Pose& { return calm[i]; };
+        const p2motion::HoldPick c = p2motion::holdPick(calm.size(), calmAt);
+        require(!c.adjusted && c.index == 2, "no excursion keeps the legacy hold");
+    }
+
+    // The draw guard refuses garbage and accepts every legitimate pose.
+    {
+        p2pose::Pose rest{{{-50, 0, -30}, {50, 120, 30}}, {{0, 1, 0}, {0, 1, 0}}};
+        const float ref = p2motion::extent(rest);
+        require(p2motion::guardPose(rest, ref).ok, "rest pose passes");
+        p2pose::Pose stretched{{{-50, 0, -30}, {50, 620, 30}}, {{0, 1, 0}, {0, 1, 0}}};
+        require(p2motion::guardPose(stretched, ref).ok, "a 5x death stretch is legitimate, not garbage");
+        p2pose::Pose nan = rest;
+        nan.positions[1].y = std::numeric_limits<float>::quiet_NaN();
+        p2motion::GuardVerdict v = p2motion::guardPose(nan, ref);
+        require(!v.ok && std::string(v.reason) == "non_finite_vertex" && v.index == 1, "NaN vertex refused");
+        p2pose::Pose inf = rest;
+        inf.positions[0].x = std::numeric_limits<float>::infinity();
+        require(!p2motion::guardPose(inf, ref).ok, "infinite vertex refused");
+        p2pose::Pose huge = rest;
+        huge.positions[1].y = 1.0e6f;
+        v = p2motion::guardPose(huge, ref);
+        require(!v.ok && std::string(v.reason) == "vertex_out_of_bounds", "coordinate beyond the world refused");
+        p2pose::Pose spike = rest;
+        spike.positions[1].y = 9000.f;
+        v = p2motion::guardPose(spike, ref);
+        require(!v.ok && std::string(v.reason) == "extent_out_of_bounds", "one exploded vertex beyond 12x the body refused");
+        p2pose::Pose badNormal = rest;
+        badNormal.normals[0].z = std::numeric_limits<float>::quiet_NaN();
+        require(!p2motion::guardPose(badNormal, ref).ok, "NaN normal refused");
+        require(!p2motion::guardPose(p2pose::Pose{}, ref).ok, "empty pose refused");
     }
 
     std::cout << "p2_pose_motion_test OK checks=" << checks << '\n';

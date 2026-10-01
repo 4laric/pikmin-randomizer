@@ -84,6 +84,35 @@ int main()
         require(fsm6.tick(lost).state == State::Move, "Attack with no target creature returns to Move");
     }
 
+    // --- #215 latch fix: one body sticker at hover height (fp01 = 85) ends
+    // the hover. Wait/Move only consult getNextStateOnHeight above the
+    // transition height (fp03, defaults 50 here), with one stuck Pikmin the
+    // payoff index is 0 (fp21) and the source falls unless the random unit
+    // is below fp21; Fall clears EB_Untargetable, Damage keeps it clear.
+    {
+        Fsm fsm; fsm.forceState(State::Wait, 0.1f);
+        In in = base(); in.positionY = 85.0f; in.bodyStuckCount = 0;
+        require(fsm.tick(in).state == State::Wait, "Wait at 85 with no sticker keeps hovering");
+        require(fsm.flags().untargetable, "hovering Wait is untargetable (anchor CF_IsFlying)");
+        In stuck = in; stuck.bodyStuckCount = 1; stuck.randomUnit = 0.99f;
+        Out out = fsm.tick(stuck);
+        require(out.state == State::Fall && out.motionChanged && out.motion == Motion::Fall,
+                "one sticker at hover height drops the Demon (Fall)");
+        require(!fsm.flags().untargetable, "Fall clears untargetable (anchor lands, CF_IsFlying off)");
+        require(out.flickAttackers, "Fall entry calls flickStickTarget (captive freed)");
+        In landing = stuck; landing.positionY = 5.0f; landing.motionFinished = true;
+        require(fsm.tick(landing).state == State::Damage, "Fall END on the ground enters Damage");
+        require(!fsm.flags().untargetable, "Damage stays targetable: ground Pikmin may attack");
+        In noStick = landing; noStick.bodyStuckCount = 0; noStick.motionFinished = false;
+        require(fsm.tick(noStick).finishing, "Damage finishes once the last sticker drops");
+        In takeOff = noStick; takeOff.motionFinished = true;
+        require(fsm.tick(takeOff).state == State::TakeOff && fsm.flags().untargetable,
+                "Damage END -> TakeOff is untargetable again (anchor flying)");
+        Fsm moveFsm; moveFsm.forceState(State::Move, 0.1f);
+        In moveStuck = stuck; moveStuck.randomUnit = 0.99f;
+        require(moveFsm.tick(moveStuck).state == State::Fall, "Move at 85 with one sticker drops too");
+    }
+
     // --- CatchFly: keep-flying when no decision; drop decision routes ---
     {
         Fsm fsm; fsm.forceState(State::CatchFly, 0.1f);

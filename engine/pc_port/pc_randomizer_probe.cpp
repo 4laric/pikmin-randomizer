@@ -20,6 +20,27 @@ int main(int argc, char** argv) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-checks-probe")) {
+        assert(pc_randomizer_resolved_checks());
+        pc_randomizer_update();
+        int actor;
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--deliver-p2") && i + 3 < argc) {
+                unsigned source = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                unsigned uid = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                int stage = std::atoi(argv[++i]);
+                pc_randomizer_p2_bind_source(&actor, source, uid);
+                assert(pc_randomizer_p2_corpse_delivered(&actor, 3, stage, true));
+            } else if (!std::strcmp(argv[i], "--deliver-p1") && i + 1 < argc) {
+                int type = std::atoi(argv[++i]);
+                pc_randomizer_corpse_delivered(type, 1, true);
+            } else if (!std::strcmp(argv[i], "--check-name") && i + 1 < argc) {
+                pc_randomizer_check(argv[++i]);
+            }
+        }
+        std::puts("ENEMY_CHECKS_PASS");
+        return 0;
+    }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--purple-save-probe")) {
         assert(pc_randomizer_purple_campaign());
         unsigned char block[32768] = {};

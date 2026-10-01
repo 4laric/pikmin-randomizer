@@ -6,10 +6,22 @@
 // 632af93787b9c95b63f0c13be32b161375ce3a96; retail parms from
 // experimental/pikmin2_ground_inverts_assets.py (GPVE01 rev 0).
 //
+// Campaign (per-placement) mode, issue #992 -- source behaviour:
+//   * Every placement is its own leader. It starts hidden in StateAppear (no atari,
+//     invulnerable, appear clip held at frame 0) until a Pikmin or captain comes
+//     within the retail appearance range fp02 = 120 (Obj::isFound). The leader then
+//     births nine fellows (Mgr::createGroup, count 10, ground offsets), every member
+//     waits a random 20..90 ticks and emerges; at the appear clip's KEYEVENT_2 the
+//     leader astonishes every Pikmin within 150 (Obj::appearPanic).
+//   * Any Pikmin touching a surfaced Mitite is astonished (collisionCallback), via
+//     the real PikiPanicState astonish (pc_p2_astonish). Nothing damages a Pikmin.
+//   * Walk/Turn cycle with the retail ip01/ip02 tick windows, then after
+//     0.8..1.0 x 180 ticks the member dives (StateHide); fellows are killed there as
+//     in the source, the bound leader recycles to hidden so its check stays reachable.
+//   * Fellows carry no delivery source: one placement is one check, not ten.
 // Port adaptations (recorded, not retail-faithful):
-//   * The P1 engine has no InteractAstonish; contact with a Pikmin is resolved
-//     as an InteractFlick knockback (the closest P1 panic/scatter receiver),
-//     applied once per contact.
+//   * Legacy arena fixtures (no campaign bridge) keep the InteractFlick approximation
+//     of the contact receiver, applied once per contact.
 //   * Walk ends into Turn (source KEYEVENT_END) before Hide; Hide recycles to
 //     Appear as a bounded port approximation (source Hide despawns the actor,
 //     which would end the campaign encounter before any kill).
@@ -30,6 +42,10 @@
 //     the host corpse is suppressed so the reward is exactly-once.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_tamago.h"
+#include "pc_p2_tamago_policy.h"
+#include "pc_p2_astonish.h"
+#include "pc_p2_navi_select.h"
+#include "pc_p2_batch2.h"
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_setup_failsafe.h"
 #include "pc_randomizer.h"
@@ -124,6 +140,25 @@ struct Tamago {
     // Manager-driven birth (#165): host births its group exactly once on Appear.
     bool madeFellow = false;
     bool isGroupHost = false;
+    // Campaign per-placement source FSM (#992).
+    bool sourceMode = false;
+    bool born = false;
+    int member = 0;
+    bool hidden = true;
+    bool gate = false;
+    bool found = false;
+    bool emerging = false;
+    bool panicFired = false;
+    bool cleanupDone = false;
+    float appearDelay = 0.0f;
+    float appearTimer = 0.0f;
+    float walkMax = 0.0f;
+    float activeTicks = 0.0f;
+    float activeMax = 0.0f;
+    float turnFactor = 1.0f;
+    float speedFactor = 1.0f;
+    float moveOffset = 0.0f;
+    Vector3f goal;
 };
 
 std::map<PelletView*, Tamago> actors;
@@ -204,6 +239,96 @@ void astonishContacts(BTeki* a, Tamago& s) {
     }
     s.inContact.swap(inside);
 }
+float rnd01() { return gsys ? gsys->getRand(1.0f) : 0.5f; }
+// Source Stay/Appear: invulnerable, no atari while hidden (mirrors pc_p2_hana).
+void applyGate(BTeki* a, Tamago& s) {
+    const bool under = s.hidden;
+    if (under == s.gate) return;
+    s.gate = under;
+    if (under) {
+        a->clearTekiOption(TEKIOPT_Atari);
+        a->setTekiOption(TEKIOPT_Invincible);
+    } else {
+        a->setTekiOption(TEKIOPT_Atari);
+        a->clearTekiOption(TEKIOPT_Invincible);
+    }
+}
+// Obj::isFound inputs: nearest live Pikmin / captain inside the appearance range.
+bool foundNear(const Vector3f& pos) {
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            const Vector3f q = p->getPosition();
+            if (p2tamagopolicy::withinAppearRange(distXZ(q, pos))) return true;
+        }
+    }
+    if (naviMgr) {
+        for (Navi* n : pc_p2_navis()) {
+            if (!n->isAlive()) continue;
+            if (p2tamagopolicy::withinAppearRange(distXZ(n->getPosition(), pos))) return true;
+        }
+    }
+    return false;
+}
+void beginSourceAppear(BTeki* a, Tamago& s) {
+    enter(s, TAMAGO_APPEAR, "set");
+    s.hidden = true;
+    s.found = false;
+    s.emerging = false;
+    s.panicFired = false;
+    s.appearTimer = 0.0f;
+    s.appearDelay = p2tamagopolicy::appearDelaySeconds(rnd01());
+    s.activeTicks = 0.0f;
+    s.activeMax = p2tamagopolicy::activeMaxTicks(rnd01());
+    s.phase = 0.0f;
+    stop(a);
+}
+void pickGoal(BTeki* a, Tamago& s) {
+    const float r = p2tamagopolicy::Territory * (0.5f * rnd01() + 0.5f);
+    const float ang = 6.28318531f * rnd01();
+    s.goal = s.home;
+    s.goal.x += r * std::sin(ang);
+    s.goal.z += r * std::cos(ang);
+    (void)a;
+}
+// Obj::appearPanic: only the leader; every Pikmin within the panic radius.
+int appearPanic(BTeki* a, Tamago& s) {
+    if (s.born) return 0;
+    const Vector3f pos = a->getPosition();
+    int hit = 0, seen = 0;
+    if (pikiMgr) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* p = static_cast<Piki*>(*it);
+            if (!p || !p->isAlive()) continue;
+            if (distXZ(p->getPosition(), pos) >= p2tamagopolicy::PanicRadius) continue;
+            ++seen;
+            if (pc_p2_astonish_request(p, a, s.generator, "mitite_appear")) ++hit;
+        }
+    }
+    std::printf("P2_TAMAGO_APPEAR_PANIC generator=%u radius=%.0f pikmin_in_radius=%d astonished=%d\n",
+                s.generator, p2tamagopolicy::PanicRadius, seen, hit);
+    std::fflush(stdout);
+    return hit;
+}
+// collisionCallback: a Pikmin touching a surfaced Mitite is astonished.
+void astonishContactsSource(BTeki* a, Tamago& s) {
+    if (s.hidden || s.state == TAMAGO_APPEAR || s.state == TAMAGO_DEAD || !pikiMgr) return;
+    const Vector3f pos = a->getPosition();
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p || !p->isAlive()) continue;
+        if (distXZ(p->getPosition(), pos) > p2tamagopolicy::ContactRadius) continue;
+        if (pc_p2_astonish_request(p, a, s.generator, "mitite_contact")) {
+            std::printf("P2_TAMAGO_ASTONISH generator=%u member=%d pikmin=1 source=contact harm=none\n",
+                        s.generator, s.member);
+            std::fflush(stdout);
+        }
+    }
+}
 void dropHoney(BTeki* a, Tamago& s) {
     if (s.honeyDropped) return;
     s.honeyDropped = true;
@@ -219,6 +344,7 @@ void dropHoney(BTeki* a, Tamago& s) {
 }
 
 void pc_p2_tamago_reset() {
+    pc_p2_astonish_reset();
     actors.clear();
     clips.clear();
     pendingKills.clear();
@@ -303,6 +429,47 @@ void pc_p2_tamago_tick() {
         std::fflush(stdout);
     }
     pendingKills.clear();
+}
+
+// Source Obj::createFellow -> Mgr::createGroup(leader, count, false): births
+// count-1 fellows around the leader. Unbound (one placement is one check), each
+// hidden in StateAppear until the leader is found.
+static int birthFellowsSource(BTeki* host, Tamago& hs, int count) {
+    int born = 0;
+    const Vector3f hostPos = host->getPosition();
+    const int follow = p2tamagopolicy::fellowCount(count);
+    for (int i = 0; i < follow; ++i) {
+        Teki* child = host->generateTeki(TEKI_Chappy);
+        if (!child) break;
+        const p2tamagopolicy::Offset o = p2tamagopolicy::fellowOffset(i, count, rnd01());
+        Vector3f pos = hostPos;
+        pos.x += o.x;
+        pos.z += o.z;
+        child->inputPosition(pos);
+        child->startAI(0);
+        child->setDirection(o.faceDir);
+        child->mHealth = LIFE;
+        Tamago& s = actors[static_cast<PelletView*>(child)];
+        s = Tamago();
+        s.sourceMode = true;
+        s.born = true;
+        s.member = i + 1;
+        s.generator = hs.generator;
+        s.leaderGenerator = hs.generator;
+        s.leaderActor = host;
+        s.isLeader = false;
+        s.home = pos;
+        s.heading = o.faceDir;
+        s.speedFactor = 0.7f + 0.3f * rnd01();
+        s.turnFactor = 0.7f + 0.3f * rnd01();
+        beginSourceAppear(child, s);
+        // The leader is already found when fellows are born, so they start the
+        // random emerge delay at once (source isFound defers to the leader).
+        s.found = true;
+        pc_p2_batch2_adopt(child, host);
+        ++born;
+    }
+    return born;
 }
 
 void pc_p2_tamago_birth_group(BTeki* host, int count) {
@@ -421,6 +588,11 @@ void pc_p2_tamago_setup() {
                         clip.loop = (name == "move" || name == "wait");
                         clips[name] = clip;
                     }
+                } else if (token == "frames") {
+                    // P2_BANK_FRAMES_1 trailer (#895): per-pose source frames,
+                    // consumed by the batch draw paths; skip its list token here.
+                    std::string framesList;
+                    bank >> framesList;
                 } else {
                     break;
                 }
@@ -549,6 +721,51 @@ void pc_p2_tamago_setup() {
               [](const std::pair<BTeki*, unsigned>& a, const std::pair<BTeki*, unsigned>& b) {
                   return a.second < b.second;
               });
+    if (bridge) {
+        // Campaign (#992): every placement is its own leader; staged members that
+        // share one campaign token join the first member of that token as fellows.
+        std::map<unsigned, BTeki*> leaders;
+        for (const auto& entry : matched) {
+            BTeki* actor = entry.first;
+            const unsigned generator = entry.second;
+            Tamago& s = actors[static_cast<PelletView*>(actor)];
+            s = Tamago();
+            s.sourceMode = true;
+            s.generator = generator;
+            s.home = actor->getPosition();
+            s.heading = actor->getDirection();
+            s.speedFactor = 0.7f + 0.3f * rnd01();
+            s.turnFactor = 0.7f + 0.3f * rnd01();
+            actor->mHealth = LIFE;
+            auto lead = leaders.find(generator);
+            if (lead == leaders.end()) {
+                leaders[generator] = actor;
+                s.isLeader = true;
+                s.leaderGenerator = generator;
+                s.leaderActor = actor;
+            } else {
+                s.isLeader = false;
+                s.born = true;
+                s.member = 1;
+                s.leaderGenerator = generator;
+                s.leaderActor = lead->second;
+            }
+            beginSourceAppear(actor, s);
+            pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 68, generator);
+            std::printf("P2_TAMAGO_DELIVERY_BIND generator=%u source_id=68\n", generator);
+            std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0\n", generator);
+            const Vector3f pos = actor->getPosition();
+            std::printf("P2_TAMAGO_SOURCE_READY generator=%u leader=%d hidden=1 appear_range=%.0f "
+                        "group=%d pikmin_harm=none scare=astonish\n",
+                        generator, int(s.isLeader), p2tamagopolicy::AppearRange, p2tamagopolicy::GroupCount);
+            std::printf("P2_ENEMY_READY species=TamagoMushi native_family=Chappy generator=%u "
+                        "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
+                        "source_FSM=implemented astonish=native_PikiPanic group=10 honey=native\n",
+                        generator, pos.x, pos.y, pos.z, actor->mHealth, LIFE);
+        }
+        ready = true;
+        return;
+    }
     BTeki* leaderActor = matched.front().first;
     const unsigned leaderGenerator = matched.front().second;
     const Vector3f leaderHome = leaderActor->getPosition();
@@ -619,6 +836,151 @@ void pc_p2_tamago_update(BTeki* actor) {
         enter(s, TAMAGO_DEAD, "dead");
     }
 
+    if (s.sourceMode) {
+        if (s.state != TAMAGO_DEAD) astonishContactsSource(actor, s);
+        s.stateTime += dt;
+        switch (s.state) {
+        case TAMAGO_APPEAR: {
+            stop(actor);
+            if (!s.found) {
+                bool f;
+                if (s.born && s.leaderActor && s.leaderActor != actor) {
+                    auto lit = actors.find(static_cast<PelletView*>(s.leaderActor));
+                    f = lit != actors.end() && lit->second.found;
+                } else {
+                    f = foundNear(pos);
+                }
+                if (f) {
+                    s.found = true;
+                    if (!s.born) {
+                        std::printf("P2_TAMAGO_FOUND generator=%u range=%.0f x=%.1f z=%.1f\n", generator,
+                                    p2tamagopolicy::AppearRange, pos.x, pos.z);
+                        if (!s.madeFellow && !birthMode) {
+                            s.madeFellow = true;
+                            int alive = 0;
+                            for (auto& e : actors)
+                                if (e.second.born && e.second.leaderActor == actor && e.first != static_cast<PelletView*>(actor)) ++alive;
+                            const int born = alive > 0 ? 0 : birthFellowsSource(actor, s, p2tamagopolicy::GroupCount);
+                            s.isGroupHost = false;
+                            std::printf("P2_TAMAGO_GROUP_BIRTH host=%u count=%d fellows=%d born=%d source=createFellow\n",
+                                        generator, p2tamagopolicy::GroupCount, p2tamagopolicy::fellowCount(p2tamagopolicy::GroupCount), born);
+                        }
+                    }
+                }
+                s.phase = 0.0f;
+                break;
+            }
+            s.appearTimer += dt;
+            if (!s.emerging) {
+                if (s.appearTimer > s.appearDelay) {
+                    s.emerging = true;
+                    s.stateTime = 0.0f;
+                    std::printf("P2_TAMAGO_EMERGE generator=%u member=%d delay=%.2f\n", generator, s.member, s.appearDelay);
+                } else {
+                    s.phase = 0.0f;
+                    break;
+                }
+            }
+            if (!s.panicFired && s.stateTime >= p2tamagopolicy::AppearEventSeconds) {
+                s.panicFired = true;
+                s.hidden = false;
+                appearPanic(actor, s);
+            }
+            if (s.stateTime >= clipDuration("set")) {
+                std::printf("P2_TAMAGO_STATE generator=%u member=%d state=walk\n", generator, s.member);
+                s.activeTicks = 0.0f;
+                s.walkMax = p2tamagopolicy::walkSeconds(rnd01());
+                pickGoal(actor, s);
+                enter(s, TAMAGO_WALK, "move");
+            }
+            break;
+        }
+        case TAMAGO_WALK: {
+            // Source: walk along the wander heading, speed = speedFactor * fp06.
+            const float want = std::atan2(s.goal.x - pos.x, s.goal.z - pos.z);
+            const float turn = s.turnFactor * 3.14159265f * dt;
+            float diff = wrapPi(want - s.heading);
+            if (diff > turn) diff = turn;
+            if (diff < -turn) diff = -turn;
+            s.moveOffset += 0.3f;
+            s.heading = wrapPi(s.heading + diff + 0.15f * std::sin(s.moveOffset) * dt);
+            actor->setDirection(s.heading);
+            const float speed = s.speedFactor * p2tamagopolicy::MoveSpeed;
+            const Vector3f drive(std::sin(s.heading) * speed, 0.0f, std::cos(s.heading) * speed);
+            actor->inputDrive(drive);
+            actor->mVelocity.set(drive);
+            s.activeTicks += dt / p2tamagopolicy::TickSeconds;
+            if (distXZ(pos, s.goal) < 10.0f || s.stateTime > s.walkMax) {
+                std::printf("P2_TAMAGO_STATE generator=%u member=%d state=turn\n", generator, s.member);
+                pickGoal(actor, s);
+                enter(s, TAMAGO_TURN, "wait");
+            }
+            break;
+        }
+        case TAMAGO_TURN: {
+            stop(actor);
+            const float want = std::atan2(s.goal.x - pos.x, s.goal.z - pos.z);
+            const float turn = s.turnFactor * 3.14159265f * dt * 2.0f;
+            float diff = wrapPi(want - s.heading);
+            const bool done = std::fabs(diff) < 0.1f;
+            if (diff > turn) diff = turn;
+            if (diff < -turn) diff = -turn;
+            s.heading = wrapPi(s.heading + diff);
+            actor->setDirection(s.heading);
+            s.activeTicks += dt / p2tamagopolicy::TickSeconds;
+            if (done || s.stateTime > 1.5f) {
+                s.walkMax = p2tamagopolicy::walkSeconds(rnd01());
+                enter(s, TAMAGO_WALK, "move");
+            }
+            break;
+        }
+        case TAMAGO_HIDE:
+            stop(actor);
+            if (s.stateTime >= clipDuration("dive")) {
+                if (s.born) {
+                    s.hidden = true;
+                    applyGate(actor, s);
+                    if (!s.cleanupDone) {
+                        std::printf("P2_TAMAGO_HIDE_KILL generator=%u member=%d source=StateHide\n", generator, s.member);
+                        std::fflush(stdout);
+                        s.cleanupDone = true;
+                        pendingKills.push_back(actor); // drained by pc_p2_tamago_tick
+                    }
+                    break;
+                }
+                std::printf("P2_TAMAGO_HIDE_RECYCLE generator=%u bound_leader=1\n", generator);
+                s.madeFellow = false;
+                beginSourceAppear(actor, s);
+            }
+            break;
+        case TAMAGO_DEAD:
+            stop(actor);
+            s.hidden = false;
+            if (!s.escaped && s.stateTime >= clipDuration("dead")) {
+                s.escaped = true;
+                actor->pcEscapeNow();
+            }
+            break;
+        default:
+            break;
+        }
+        if ((s.state == TAMAGO_WALK || s.state == TAMAGO_TURN) &&
+            p2tamagopolicy::shouldHide(s.activeTicks, s.activeMax)) {
+            std::printf("P2_TAMAGO_STATE generator=%u member=%d state=hide active_ticks=%.0f\n", generator, s.member, s.activeTicks);
+            enter(s, TAMAGO_HIDE, "dive");
+        }
+        applyGate(actor, s);
+        setPhase(s);
+        if (s.state == TAMAGO_APPEAR && !s.emerging) s.phase = 0.0f;
+        s.logTimer += dt;
+        if (s.logTimer >= 1.0f) {
+            s.logTimer = 0.0f;
+            std::printf("P2_TAMAGO_POS generator=%u member=%d state=%s clip=%s phase=%.2f x=%.2f z=%.2f hidden=%d\n",
+                        generator, s.member, stateName(s.state), s.clip.c_str(), s.phase, pos.x, pos.z, int(s.hidden));
+            std::fflush(stdout);
+        }
+        return;
+    }
     if (s.state != TAMAGO_DEAD) astonishContacts(actor, s);
 
     const bool follower = !s.isLeader && s.leaderActor && s.leaderActor != actor;
