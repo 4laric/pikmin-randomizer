@@ -19,8 +19,11 @@ display wording.
 Native kill and corpse paths share a seed-stable durable receipt ledger and
 consume the same actor binding. The AP check is persisted before the secondary
 ledger. A leftover corpse path cannot award a second check. The ledger identity
-remains `onion:p2:<source>:<stage>`; a kill uses the encounter tag `kill` and marker
-`P2_KILL_P2_RECEIPT`.
+remains `onion:p2:<source>:<stage>`. Kill and corpse endpoint tags consume
+one durable actor receipt: new rows retain the legacy `corpse` key, and
+either accepted historical `corpse` or pre-release `kill` rows suppresses
+another grant without rewriting that row. Kill logs still use the marker
+`P2_KILL_P2_RECEIPT`; unrelated encounter coordinates retain their semantics.
 
 The teardown hook uses the canonical `PelletView*` binding address, not the
 distinct `BTeki*` subobject address. It tests the raw host Alive option cleared
@@ -53,7 +56,7 @@ Implementation owner: Codex through shared GitHub account 4laric, continuing
 Claude's committed native WIP without squashing it. Shared checkout and
 maintained build/export are unchanged. Native and root PRs remain draft.
 
-## Current validation
+## Earlier validation at the first candidate
 
 Native candidate `d703218cae578376338fd292aed8477949a661b4` is clean in
 `output/native-smooth-jelly`, branch `claude/p2-no-carcass-kill`. It retains the
@@ -159,3 +162,29 @@ observation pointer; each exits 86 without a PASS marker. Raw negative run
 results remain interrupted/failed; separate checks verify the expected refusal.
 These are fixture instrumentation tests, not natural damage or species combat.
 Prior sources, runs and logs remain preserved.
+
+## Persisted ledger replay correction
+
+Independent review reproduced two durable rows at native d703218: the old
+AP-once probe did not assert the journal and could omit its campaign directory.
+That earlier check proves AP-once behavior, not one durable actor receipt.
+The failed two-process reproduction is preserved under
+`output/p2-tested-merge/reviews/no-carcass-1088-white/ledger-reproduction-v2.json`.
+
+Native `b2d8e1f3b58a44299b42928a9cee4f4c8b50f319` makes ordinary kill/corpse
+endpoints share one actor receipt and accepts either legacy spelling without
+rewriting existing rows. Receipt formats, AP identities and unrelated encounter
+keys remain unchanged. The new persisted IPC assertion fails all ten subcases
+on the old probe (five species, both process orderings), then passes all ten
+on the repaired probe. It explicitly creates the campaign directory and checks
+header plus one actor row, unchanged journal bytes after a fresh process,
+no second `new=1`, and AP-once state. All six IPC tests pass. Native persisted
+host tests also cover legacy corpse/kill rows, close/reopen, distinct actor slots
+and unrelated encounters; all seven focused native tests pass.
+
+Private production build `output/codex-1088-build-ledger5` passes at the clean
+new pin, with no work in the dry run. Executable SHA-256:
+`81efd6fbb1d034bee92531ffadfcd2696a60b21e30b0255ce817fdc4c3a84885`.
+The five historical d703 power-mode death runs above remain separate evidence
+for that candidate's animation/kill endpoint; they are not rerun or relabelled
+as new-pin gameplay. The new correction is engine-free ledger replay evidence.
