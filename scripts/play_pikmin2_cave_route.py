@@ -18,7 +18,8 @@ from randomizer.test_run import apply_test_run_env
 from experimental.pikmin2_cave_items import parse_items_text
 from scripts.play_pikmin2_cave_journey import package_inputs,exclusive
 from scripts.play_pikmin2_cave import live_runtime_paths,runtime_capacity
-from scripts.stage_pikmin2_playable_cave import stage
+from scripts.stage_pikmin2_playable_cave import stage, verify_species_banks, read_species_banks, SPECIES_MODEL_DIR
+from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 from scripts.stage_pikmin2_cave_route import stage_surface,sha
 
 
@@ -32,7 +33,17 @@ def floor_inputs(run):
     for name in required:
         if not (run/name).is_file():raise ValueError('missing route floor input: '+name)
     native=[path.relative_to(run).as_posix() for path in (run/'assets/dataDir/stages/chal0').glob('*.gen')]
+    native += [path.relative_to(run).as_posix() for prefix in ('purple','white')
+               for path in (run/SPECIES_MODEL_DIR).glob(prefix+'_*.mod')
+               if (run/f'p2-{prefix}.txt').is_file()]
     return sorted(set(required+native+[path.name for path in run.glob('p2-*') if path.is_file()]))
+
+
+def route_species_banks(package,records):
+    banks=verify_species_banks(package,records)
+    # Route floors as well as surfaces exclude the unreviewed impact bank.
+    read_species_banks(banks,surface=True)
+    return banks
 
 
 def route_inputs(package):
@@ -43,12 +54,80 @@ def route_inputs(package):
         path=(run/name).resolve()
         if not path.is_relative_to(run) or not path.is_file() or sha(path)!=digest:raise ValueError('surface blueprint changed: '+name)
     Route.validate_surface(route['surface'])
+    route_species_banks(package,route.get('species_banks',{}))
     return meta,journey,route
+
+
+def verify_run_banks(run,records,species):
+    """Compare copies against package pins, not a possibly changed source read."""
+    for member in species:
+        for name,digest in records[str(member)]['files'].items():
+            path=run/(SPECIES_MODEL_DIR+'/'+name if name.endswith('.mod') else name)
+            if not path.resolve().is_relative_to(run.resolve()) or not path.is_file() or sha(path)!=digest:
+                raise ValueError('staged species bank differs from package: '+name)
+
+
+def private_file(directory,name):
+    directory=Path(directory).resolve();relative=Path(name)
+    if not name or relative.is_absolute() or '..' in relative.parts:
+        raise ValueError('foreign pinned path: '+str(name))
+    path=directory
+    for part in relative.parts:
+        path=path/part
+        if path.is_symlink() or path.is_junction(): raise ValueError('linked pinned path: '+str(name))
+    if not path.resolve().is_relative_to(directory) or not path.is_file():
+        raise ValueError('missing or escaping pinned path: '+str(name))
+    return path
+
+
+def capture_package_pins(package,meta,spec):
+    """Snapshot the admitted authority once; subsequent phases never reload it."""
+    pins=dict(meta['files'])
+    for name,value in (('package.json',meta),('route-package.json',spec)):
+        path=private_file(package,name)
+        if read_json(path)!=value: raise ValueError('package metadata changed during admission')
+        pins[name]=sha(path)
+    for name,digest in spec['files'].items(): pins['surface-blueprint/run/'+name]=digest
+    for name,digest in spec['geometry'].items():
+        key='surface-blueprint/run/'+name
+        if key in pins and pins[key]!=digest: raise ValueError('conflicting surface geometry pin')
+        pins[key]=digest
+    for bank in spec.get('species_banks',{}).values():
+        for name,digest in bank['files'].items(): pins[bank['directory']+'/'+name]=digest
+    verify_package_pins(package,pins)
+    return pins
+
+
+def verify_package_pins(package,pins):
+    for name,digest in pins.items():
+        if sha(private_file(package,name))!=digest: raise ValueError('original package input changed: '+name)
+    expected={name for name in pins if len(Path(name).parts)==1 and name.lower().endswith('.dll')}
+    actual={p.name for p in Path(package).iterdir() if p.name.lower().endswith('.dll')}
+    if actual!=expected: raise ValueError('package DLL inventory changed')
+
+
+def verify_copied_inputs(run,pins,phase):
+    names={name:name for name in pins if len(Path(name).parts)==1 and name.lower().endswith('.dll')}
+    names['nectar.exe']='nectar.exe'
+    if phase!='surface':
+        names['cave-generator.exe']='cave-generator.exe'
+        prefix=f'floor-{int(phase[-1])}/'
+        dynamic={'p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt'}
+        for name in pins:
+            if name.startswith(prefix):
+                local=name[len(prefix):]
+                if local.startswith('p2-') and local not in dynamic: names[local]=name
+    for local,original in names.items():
+        if sha(private_file(run,local))!=pins[original]: raise ValueError('copied runtime input changed: '+local)
+    actual={p.name for p in Path(run).iterdir() if p.name.lower().endswith('.dll')}
+    if actual!={name for name in names if name.lower().endswith('.dll')}: raise ValueError('runtime DLL inventory changed')
+    return sorted(names)
 
 
 def main(package,agent_test=False,max_phases=4):
     if type(max_phases) is not int or not 1<=max_phases<=8:raise ValueError('phase budget must be 1-8')
     package=Path(package).resolve();meta,journey,spec=route_inputs(package)
+    package_pins=capture_package_pins(package,meta,spec)
     workspace=Path(meta['workspace']).resolve()
     if not package.is_relative_to(workspace/'output'):raise ValueError('private output package required')
     directory=package/'route-session';directory.mkdir(exist_ok=True)
@@ -60,11 +139,16 @@ def main(package,agent_test=False,max_phases=4):
         report['recovered_boundary']=recovered
         if route.pending_path.exists():raise ValueError('interrupted native run has no durable boundary; preserving party without relaunch/reset')
         for _ in range(max_phases):
+            verify_package_pins(package,package_pins)
+            banks=route_species_banks(package,spec.get('species_banks',{}))
+            route_identity=dict(seed=_seed_uint64(journey['seed']),
+                                slot_hash=hashlib.sha256(journey['slot'].encode('utf-8')).hexdigest(),
+                                receipt_identity=spec['receipt_identity'])
             phase=state['phase'];target=directory/'runs'/uuid.uuid4().hex
             if phase=='surface':
                 token=uuid.uuid4().hex
                 run,inputs=stage_surface(Path(meta['assets']),Path(spec['bundle']),spec['receipt_identity'],target,
-                    package/'nectar.exe',state['surface'],token)
+                    package/'nectar.exe',state['surface'],token,banks or None,route_identity)
                 for name,digest in spec['geometry'].items():
                     if sha(run/name)!=digest:raise ValueError('surface geometry changed')
                 args=['--arg=--experimental-pikmin2-surface','--arg=tutorial'];marker='P2_CAVE_SURFACE_READY'
@@ -72,13 +156,17 @@ def main(package,agent_test=False,max_phases=4):
                 n=int(phase[-1]);floor=journey['floors'][n-1];run=target
                 checkpoint=dict(state['entry'],receipts=route.ledger(n))
                 stage(floor['descriptor'],Path(meta['assets']),Path(meta['pod']),package/'nectar.exe',
-                      package/'cave-generator.exe',run,floor['salt'],checkpoint)
+                      package/'cave-generator.exe',run,floor['salt'],checkpoint,banks or None)
                 for name,digest in meta['blueprints'][str(n)].items():
                     if sha(run/name)!=digest:raise ValueError('floor geometry changed: '+name)
                 token=fingerprint(floor['descriptor'])[:32]
                 inputs=floor_inputs(run)
                 inputs+=list(meta['blueprints'][str(n)])
                 args=['--arg=--experimental-pikmin2-room'];marker='P2_CAVE_RESTORE'
+            selected=sorted({s for s,m in state['surface']['squad'] if s>2}) if phase=='surface' else sorted(banks)
+            verify_run_banks(run,spec.get('species_banks',{}),selected)
+            verify_package_pins(package,package_pins)
+            inputs+=verify_copied_inputs(run,package_pins,phase)
             route.begin(run,state,token,inputs)
             env=os.environ.copy()
             for key in list(env):

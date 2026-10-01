@@ -7,6 +7,8 @@ only. Legal installed P1 assets and locally extracted Pod/treasure are required.
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
 import shutil
 import struct
@@ -22,6 +24,197 @@ from experimental.pikmin2_cave_rooms import rooms_from_layout, rooms_text
 from experimental.pikmin2_cave_items import items_from_layout, items_text
 from experimental.pikmin2_cave_gates import build_gates, gates_text
 from scripts.preview_pikmin2_room import generator, overlay
+
+
+SPECIES_NAMES = {3: 'purple', 4: 'white'}
+SPECIES_MODEL_DIR = 'assets/dataDir/courses/pikmin2room'
+
+
+def species_bank_files(species, directory, *, surface=False):
+    """Read an explicit local bank; derive its exact model inventory from native config.
+
+    Bytes are retained verbatim. Surface impact auxiliaries are deliberately not
+    admitted: red_earthquake_v1 needs a separately reviewed auxiliary bank.
+    """
+    if type(species) is not int or species not in SPECIES_NAMES:
+        raise ValueError('unsupported species bank')
+    directory = Path(directory).resolve()
+    name = SPECIES_NAMES[species]; config = f'p2-{name}.txt'
+    try:
+        data = (directory/config).read_bytes(); words = data.decode('utf-8').split()
+        cursor = 0
+        def take():
+            nonlocal cursor
+            if cursor == len(words): raise ValueError('incomplete species config')
+            value = words[cursor]; cursor += 1; return value
+        def expect(value):
+            if take() != value: raise ValueError('unexpected species config field: '+value)
+        def integer():
+            value = take()
+            if not re.fullmatch(r'[0-9]+', value): raise ValueError('invalid species config integer')
+            return int(value)
+        def number():
+            value = take()
+            if not re.fullmatch(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?', value):
+                raise ValueError('invalid species config number')
+            value = float(value)
+            if not math.isfinite(value): raise ValueError('nonfinite species config')
+            # Native config extraction targets float, not Python double. Apply
+            # the same precision before bounds/positive-duration checks while
+            # retaining the original config bytes for the eventual copy.
+            try: value = struct.unpack('f',struct.pack('f',value))[0]
+            except (OverflowError,struct.error) as error:
+                raise ValueError('species config overflows native float32') from error
+            if not math.isfinite(value): raise ValueError('nonfinite native float32 config')
+            return value
+        expect(f'P2_{name.upper()}_1'); expect('stats')
+        stats = [number() for _ in range(9)]
+        if species == 3:
+            valid = all(0 <= value <= 1000 for value in stats)
+        else:
+            bounds = [(1,3),(1,30),(0,2),(0,5),(0,2),(0,2),(0,2),(0,2),(0,500)]
+            valid = all(lo <= value <= hi for value,(lo,hi) in zip(stats,bounds)) and stats[2] > 0 and stats[8] > 0
+        if not valid: raise ValueError('species stats outside native bounds')
+        if species == 4:
+            expect('ivory_generators'); count = integer()
+            if not 1 <= count <= 32: raise ValueError('invalid Ivory generator count')
+            ids = [integer() for _ in range(count)]
+            if len(set(ids)) != count or any(i > 0xffffffff for i in ids):
+                raise ValueError('invalid or duplicate Ivory generator IDs')
+        clips = {}
+        for motion in ('wait','walk','attack1'):
+            expect(motion); count = integer(); seconds = number()
+            if not 1 <= count <= 32 or seconds <= 0: raise ValueError('invalid species clip')
+            clips[motion] = count
+        expected = {(motion,i) for motion,count in clips.items() for i in range(count)}
+        seen = set(); impact = False
+        while cursor < len(words):
+            field = take()
+            if field == 'impact' and species == 3:
+                if impact: raise ValueError('duplicate Purple impact config')
+                expect('red_earthquake_v1'); impact = True
+                continue
+            if field != 'happa': raise ValueError('unknown species config field')
+            attachment = (take(),integer())
+            if attachment not in expected or attachment in seen: raise ValueError('invalid or duplicate happa attachment')
+            seen.add(attachment)
+            for _ in range(12): number()
+        if seen != expected: raise ValueError('incomplete happa attachments')
+        if surface and impact:
+            raise ValueError('unsupported surface auxiliary bank: Purple impact red_earthquake_v1')
+        names = [f'{name}_{motion}_{i:02d}.mod' for motion,count in clips.items() for i in range(count)]
+        names += [f'{name}_happa_{i}.mod' for i in range(3)]
+        result = {config: data}
+        for model in names:
+            path = directory/model
+            if not path.resolve().is_relative_to(directory): raise ValueError('species model escapes bank')
+            blob = path.read_bytes()
+            if not blob: raise ValueError('empty species model: '+model)
+            result[model] = blob
+        if not (directory/config).resolve().is_relative_to(directory): raise ValueError('species config escapes bank')
+        return result
+    except (OSError, UnicodeError) as error:
+        raise ValueError('missing or unreadable species bank: '+str(directory)) from error
+
+
+def read_species_banks(species_banks=None, *, surface=False):
+    if species_banks is None: return {}
+    if type(species_banks) is not dict: raise ValueError('species_banks must map 3/4 to local directories')
+    return {species: species_bank_files(species,path,surface=surface) for species,path in species_banks.items()}
+
+
+def install_species_banks(run, banks):
+    """Install validated byte banks without writing through shared asset links."""
+    if not banks: return []
+    run = Path(run).resolve(); target = run/SPECIES_MODEL_DIR
+    if not target.parent.resolve().is_relative_to(run): raise ValueError('species parent is not private')
+    model_bytes = {name:data for files in banks.values() for name,data in files.items() if name.endswith('.mod')}
+    if target.is_junction() or target.is_symlink():
+        source = target.resolve(); temporary = target.with_name('pikmin2room-species-private')
+        overlay(source,temporary,model_bytes)
+        if target.is_junction(): os.rmdir(target)  # remove this private junction, never its target
+        else: target.unlink()
+        temporary.rename(target)
+    else:
+        if not target.resolve().is_relative_to(run): raise ValueError('species models are not private')
+        target.mkdir(parents=True,exist_ok=True)
+        for name,data in model_bytes.items():
+            path=target/name
+            # Existing overlay files may be hardlinks; replacement must not edit their source.
+            if path.exists() or path.is_symlink(): path.unlink()
+            path.write_bytes(data)
+    files=[]
+    for bank in banks.values():
+        for name,data in bank.items():
+            relative=f'{SPECIES_MODEL_DIR}/{name}' if name.endswith('.mod') else name
+            if not name.endswith('.mod'):
+                path=run/name
+                if path.exists() or path.is_symlink(): path.unlink()
+                path.write_bytes(data)
+            files.append(relative)
+    return sorted(files)
+
+
+def pin_species_banks(package,species_banks=None):
+    banks=read_species_banks(species_banks)
+    record={}
+    for species,files in sorted(banks.items()):
+        relative=f'species-banks/{SPECIES_NAMES[species]}'
+        directory=Path(package)/relative; directory.mkdir(parents=True,exist_ok=False)
+        for name,data in files.items(): (directory/name).write_bytes(data)
+        record[str(species)]=dict(directory=relative,files={name:hashlib.sha256(data).hexdigest() for name,data in sorted(files.items())})
+    return record
+
+
+def verify_species_banks(package,record):
+    package=Path(package).resolve()
+    if type(record) is not dict or any(k not in ('3','4') for k in record): raise ValueError('invalid package species banks')
+    result={}
+    for key,item in record.items():
+        if type(item) is not dict or set(item)!={'directory','files'}: raise ValueError('invalid package bank record')
+        expected=f'species-banks/{SPECIES_NAMES[int(key)]}'
+        if item['directory']!=expected: raise ValueError('foreign package bank path')
+        directory=(package/expected).resolve()
+        if not directory.is_relative_to(package): raise ValueError('package bank escapes package')
+        files=species_bank_files(int(key),directory)
+        hashes={name:hashlib.sha256(data).hexdigest() for name,data in files.items()}
+        if hashes!=item['files'] or set(p.name for p in directory.iterdir())!=set(files):
+            raise ValueError('package species bank changed')
+        result[int(key)]=directory
+    return result
+
+
+def seal_surface_species(run,token,route_identity,files,species):
+    """Bind private bank bytes to the actual versioned surface config and identity."""
+    if (not re.fullmatch('[0-9a-f]{32}',token) or type(route_identity) is not dict
+            or set(route_identity)!={'seed','slot_hash','receipt_identity'}
+            or type(route_identity['seed']) is not int or not 0<=route_identity['seed']<2**64
+            or any(not isinstance(route_identity[k],str) or not re.fullmatch('[0-9a-f]{64}',route_identity[k])
+                   for k in ('slot_hash','receipt_identity'))):
+        raise ValueError('invalid package-derived species route identity')
+    if not species or sorted(set(species))!=species or any(type(s) is not int or s not in SPECIES_NAMES for s in species):
+        raise ValueError('invalid surface activation species')
+    run=Path(run).resolve();config=run/'p2-cave-route-surface.txt'
+    words=config.read_text().split()
+    if len(words)<8 or words[:2]!=['P2_CAVE_ROUTE_SURFACE_2',token]:
+        raise ValueError('surface species activation requires matching version2 config')
+    from randomizer.cave_route import surface_transfer
+    party=surface_transfer('P2_CAVE_ROUTE_TRANSFER_2 '+token+' '+' '.join(words[2:5]+words[6:]),token)
+    if sorted({s for s,m in party['squad'] if s>2})!=species: raise ValueError('surface activation differs from actual party')
+    identity=f"{route_identity['seed']} {route_identity['slot_hash']} {route_identity['receipt_identity']}"
+    identity_path=run/'p2-cave-route-identity.txt'
+    identity_path.write_text(f'P2_CAVE_ROUTE_IDENTITY_1 {identity} forest_1 tutorial\n',encoding='ascii')
+    paths=sorted(set(files+['p2-cave-route-identity.txt']))
+    hashes={}
+    for name in paths:
+        path=(run/name).resolve()
+        if not path.is_relative_to(run) or not path.is_file(): raise ValueError('foreign activation file')
+        hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
+    text=(f'P2_CAVE_ROUTE_SPECIES_1\nroute tutorial forest_1 {token} 2 {hashlib.sha256(config.read_bytes()).hexdigest()}\n'
+          f'identity {identity}\nspecies {len(species)} '+ ' '.join(map(str,species))+f'\nfiles {len(paths)}\n'
+          +''.join(f'{name} {digest}\n' for name,digest in hashes.items()))
+    (run/'p2-cave-route-species.txt').write_text(text,encoding='ascii')
+    return paths+['p2-cave-route-species.txt']
 
 
 def physical_layout(layout, salt):
@@ -118,7 +311,10 @@ def mesh(tiles, water, output):
     return data,route_ini(routes).encode()
 
 
-def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=None):
+def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=None, species_banks=None):
+    banks=read_species_banks(species_banks)
+    if checkpoint and any(s>2 and s not in banks for s,m in checkpoint['squad']):
+        raise ValueError('missing bank for actual cave checkpoint species')
     validate(manifest)
     if output.exists(): raise ValueError('use a fresh private output directory')
     for p in (assets/'dataDir/stages/chal0/default.gen',assets/'dataDir/stages/chal0.ini',
@@ -168,6 +364,7 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     for p in (assets/'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/'+p.name,empty)
     overlay(assets,output/'assets',overrides)
+    install_species_banks(output,banks)
     (output/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
     token=fingerprint(manifest)[:32]
     health=checkpoint['health'] if checkpoint else 1

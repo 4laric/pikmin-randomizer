@@ -12,15 +12,27 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from randomizer.cave_route import Route
 from scripts.stage_pikmin2_cave_journey import stage_package as stage_journey
 from scripts.stage_pikmin2_surface_water import prepare
+from scripts.stage_pikmin2_playable_cave import (read_species_banks, install_species_banks,
+    pin_species_banks, seal_surface_species)
 
 ROUTE_START=[-210.,90.,1350.]
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage_surface(assets,bundle,identity,output,exe,surface,token):
+def stage_surface(assets,bundle,identity,output,exe,surface,token,species_banks=None,route_identity=None):
     Route.validate_surface(surface)
     if len(token)!=32 or any(c not in '0123456789abcdef' for c in token):raise ValueError('invalid route token')
+    # All route banks must be admissible before staging, including unselected
+    # banks: the route scope has no Purple impact auxiliary asset bank.
+    banks=read_species_banks(species_banks,surface=True)
+    requested=sorted({species for species,maturity in surface['squad'] if species>2})
+    if requested:
+        if any(species not in banks for species in requested): raise ValueError('missing bank for actual surface checkpoint species')
+        banks=read_species_banks({species:species_banks[species] for species in requested},surface=True)
+        if route_identity is None or route_identity.get('receipt_identity')!=identity:
+            raise ValueError('surface species require package-derived route identity')
+    else:banks={}
     run=prepare(assets,bundle,identity,output)
     directory=run/'assets/dataDir/stages/p2_tutorial'
     if not directory.resolve().is_relative_to(run.resolve()):raise ValueError('private surface generators required')
@@ -61,11 +73,14 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
     config=f'P2_CAVE_ROUTE_SURFACE_{version} '+token+' -210 80 1160 60 '+str(surface['health'])+' '+str(len(surface['squad']))+'\n'
     config+=''.join(f'{species} {maturity}\n' for species,maturity in surface['squad'])
     (run/'p2-cave-route-surface.txt').write_text(config)
+    species_files=install_species_banks(run,banks)
+    if requested:species_files=seal_surface_species(run,token,route_identity,species_files,requested)
     shutil.copy2(exe,run/'nectar.exe')
     for dll in exe.parent.glob('*.dll'):shutil.copy2(dll,run/dll.name)
     inputs=['p2-cave-route-surface.txt','nectar.exe','full-surface-inputs.json','surface-water-inputs.json']
     inputs+=['assets/'+name for name in terrain['files']]
     inputs+=['assets/dataDir/courses/p2tutorial/full.water','surface-water.json','assets/dataDir/stages/p2_tutorial/day.gen']
+    inputs+=species_files
     inputs=sorted(set(inputs))
     (run/'route-surface-inputs.json').write_text(json.dumps(dict(schema=1,receipt_identity=identity,
         starting_party=surface,anchor=[-210,80,1160,60],files={name:sha(run/name) for name in inputs},
@@ -74,7 +89,8 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
     return run,inputs+['route-surface-inputs.json']
 
 
-def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,workspace):
+def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,workspace,species_banks=None):
+    read_species_banks(species_banks,surface=True)  # fail before creating a partial runnable package
     stage_journey(seed,slot,assets,pod,exe,generator,output,workspace)
     # Short connected approach: source ground rises50->80 at z1350->1240.
     # Shoreline220,1000 is separated by a ledge and needs a much longer route.
@@ -85,6 +101,7 @@ def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,work
                 surface=surface,files={name:sha(run/name) for name in inputs},
                 geometry={name:sha(run/name) for name in ('assets/dataDir/courses/p2tutorial/full.mod',
                     'assets/dataDir/courses/p2tutorial/full.water')})
+    if species_banks:record['species_banks']=pin_species_banks(output,species_banks)
     (output/'route-package.json').write_text(json.dumps(record,indent=2)+'\n')
     launcher=Path(__file__).with_name('play_pikmin2_cave_route.py')
     (output/'PlayRoute.cmd').write_text('@echo off\npy -3.12 "'+str(launcher)+'" "'+str(output)+'"\npause\n')
@@ -95,4 +112,6 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('assets','pod','exe','generator','bundle','output','workspace'):p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--identity',required=True);p.add_argument('--seed',default='1154');p.add_argument('--slot',default='Player1')
-    a=p.parse_args();print(json.dumps(stage_package(a.seed,a.slot,a.assets,a.pod,a.exe,a.generator,a.bundle,a.identity,a.output,a.workspace),indent=2))
+    p.add_argument('--purple-bank',type=Path);p.add_argument('--white-bank',type=Path)
+    a=p.parse_args();banks={s:path for s,path in ((3,a.purple_bank),(4,a.white_bank)) if path is not None}
+    print(json.dumps(stage_package(a.seed,a.slot,a.assets,a.pod,a.exe,a.generator,a.bundle,a.identity,a.output,a.workspace,banks or None),indent=2))
