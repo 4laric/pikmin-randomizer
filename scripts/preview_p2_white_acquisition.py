@@ -17,11 +17,15 @@ def prepare(assets, white, pod, output):
     starts=[m.start() for m in re.finditer(b'    0.0v',data)]
     rows=[data[a:(starts[i+1] if i+1<len(starts) else len(data))] for i,a in enumerate(starts)]
     rows=[r for r in rows if r[16:48].rstrip(b'\0')!=b'preview dwarf bulborb']
+    # P1 Starting walks from the ship; stage it beside the initial squad.
+    for i,r in enumerate(rows):
+        if r[16:48].rstrip(b'\0')==b'preview ship':
+            row=bytearray(r);struct.pack_into('>6f',row,48,-40,0,0,0,0,0);rows[i]=bytes(row)
     template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen') if r[72:80]==b'ssob\x02\x00\x00\x00')
     # Native Generator::readID preserves four-byte IDs by swapping readInt;
     # the Windows integer identity therefore uses little-endian record bytes.
     flower=bytearray(template);struct.pack_into('<I',flower,8,25);flower[16:48]=b'preview ivory'.ljust(32,b'\0')
-    struct.pack_into('>6f',flower,48,0,0,85,0,0,0);struct.pack_into('>I',flower,80,5|(1<<6));rows.append(bytes(flower))
+    struct.pack_into('>6f',flower,48,-25,0,67,0,0,0);struct.pack_into('>I',flower,80,5|(1<<6));rows.append(bytes(flower))
     data=data[:20]+struct.pack('>I',len(rows))+b''.join(rows)
     empty=b'1.0v'+struct.pack('>4fI',-85,0,0,45,0)
     overrides={'dataDir/stages/chal0/default.gen':data}
