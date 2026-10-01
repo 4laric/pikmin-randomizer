@@ -7,11 +7,12 @@ import sys
 import shutil
 import os
 import subprocess
+import asyncio
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from randomizer.seed import generate, fingerprint, validate
 from randomizer.session import Session
-from randomizer.runner import NativeRun
+from randomizer.runner import NativeRun, ap_connect
 from randomizer.campaign_data import CAMPAIGN_SLOTS
 from experimental.pikmin2_family_install import install_layout
 from scripts.preview_pikmin2_room import overlay
@@ -49,17 +50,24 @@ def case(seed='p2-journal-1096'):
                           note='Subset of existing audited targets; unchanged geometry/profile/admission facts. Not the stock all-target seed.')
 
 
-def prepare(directory, content, assets, seed='p2-journal-1096'):
+def prepare(directory, content, assets, seed='p2-journal-1096', supplied_manifest=None):
     if directory.exists():
         raise ValueError('Use a fresh private output directory')
     directory.mkdir(parents=True)
     manifest, audit = case(seed)
+    if supplied_manifest is not None:
+        validate(supplied_manifest)
+        if supplied_manifest['p2_layout']['bindings'] != manifest['p2_layout']['bindings'] or supplied_manifest['p2_layout']['unplaced'] != [ABSENT]:
+            raise ValueError('Server manifest must preserve the selected source44 and excluded34 case')
+        manifest = supplied_manifest
+        audit['manifest_source'] = 'Genuine private AP Generate/Main output'
     (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     session = Session(manifest, directory / 'session')
     run = NativeRun(session)
     # This is local bridge acceptance in AP mode, without a network server.
-    # No item/check/receipt is injected. Session's starting inventory supplies state.
-    run.write_state(True)
+    # Selected starting color/area are native manifest grants; received stream may
+    # legitimately be empty. Authentic readiness still requires AP authentication.
+    run.write_state(False)
     receipt = install_layout(run.directory, manifest['p2_layout'], content,
                              actor_bindings={str(TARGET): TARGET}, retail_assets=assets)
     # Existing production TEST_BACKGROUND startup withdraws the real20 starting
@@ -79,7 +87,7 @@ def prepare(directory, content, assets, seed='p2-journal-1096'):
                                 'enemy_position_override':False,
                                 'source_default_sha256':digest(assets/'dataDir/stages/stage1/default.gen'),
                                 'original_enemy_file_sha256':digest(assets/'dataDir/stages/stage1/0-29.gen')},
-                 local_ap_readiness=True, network_ap_acceptance=False)
+                 local_ap_readiness=False, network_ap_acceptance=False)
     (directory / 'readiness.json').write_text(json.dumps(audit, indent=2) + '\n')
     return audit, session, run
 
@@ -124,6 +132,51 @@ def observe(audit, session, run, fixture, workspace, negative=False):
     return 0 if report['passed'] else 1
 
 
+async def network_observe(audit, session, run, fixture, workspace, server, negative):
+    ready = [False]
+    connection = asyncio.create_task(ap_connect(session, server, '', ready))
+    try:
+        for _ in range(200):
+            if connection.done():
+                await connection
+            if ready[0]:
+                break
+            await asyncio.sleep(.1)
+        if not ready[0] or session.data['ap_identity'] is None:
+            raise RuntimeError('Private AP authentication/item reconciliation did not complete')
+        audit['local_ap_readiness'] = True
+        audit['network_setup'] = {'server': server, 'identity': session.data['ap_identity'], 'received_count':len(session.data['received']), 'artificial_receipts':False}
+        run.write_state(True)
+        (Path(audit['game']).parent/'authenticated-readiness.json').write_text(json.dumps(audit,indent=2)+'\n')
+        result = await asyncio.to_thread(observe,audit,session,run,fixture,workspace,negative)
+        await asyncio.sleep(2) # Permit actual LocationChecks -> actual server reward stream.
+        if connection.done():
+            await connection
+        connection.cancel()
+        try:
+            await connection
+        except asyncio.CancelledError:
+            pass
+        before = json.loads(json.dumps(session.data))
+        ready[0] = False
+        connection = asyncio.create_task(ap_connect(session,server,'',ready))
+        for _ in range(200):
+            if connection.done():
+                await connection
+            if ready[0]:
+                break
+            await asyncio.sleep(.1)
+        network = {'authenticated':ready[0], 'before_reconnect':before, 'after_reconnect':session.data, 'no_duplicate_receipts':before['received']==session.data['received'], 'gameplay_result':result, 'no_check_injection':True}
+        (Path(audit['game']).parent/'network-assessment.json').write_text(json.dumps(network,indent=2)+'\n')
+        return result
+    finally:
+        connection.cancel()
+        try:
+            await connection
+        except asyncio.CancelledError:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
@@ -133,12 +186,23 @@ def main():
     parser.add_argument('--seed', default='p2-journal-1096')
     parser.add_argument('--fixture',type=Path)
     parser.add_argument('--negative',action='store_true')
+    parser.add_argument('--manifest',type=Path)
+    parser.add_argument('--server')
+    parser.add_argument('--shader-cache',type=Path)
     args = parser.parse_args()
     if not args.output.resolve().is_relative_to(args.workspace.resolve() / 'output'):
         raise ValueError('Private output must be under the canonical workspace output/')
-    report,session,run = prepare(args.output.resolve(), args.content.resolve(), args.assets.resolve(), args.seed)
+    report,session,run = prepare(args.output.resolve(), args.content.resolve(), args.assets.resolve(), args.seed, json.loads(args.manifest.read_text()) if args.manifest else None)
+    if args.shader_cache:
+        cache=args.shader_cache.resolve()
+        if not cache.is_relative_to(args.workspace.resolve()/'output') or not cache.is_dir():raise ValueError('Reuse only private shader cache directories')
+        shutil.copytree(cache,Path(report['game'])/'shader_cache')
+        report['shader_cache']={str(p.relative_to(cache)):digest(p) for p in cache.rglob('*') if p.is_file()}
+        (args.output.resolve()/'readiness.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k: report[k] for k in ('fingerprint', 'native_run', 'runtime_status', 'delivery_status')}))
-    if args.fixture:return observe(report,session,run,args.fixture.resolve(),args.workspace.resolve(),args.negative)
+    if args.fixture:
+        if not args.server:raise ValueError('Runtime requires a genuine private AP server; readiness staging alone is allowed')
+        return asyncio.run(network_observe(report,session,run,args.fixture.resolve(),args.workspace.resolve(),args.server,args.negative))
     return 0
 
 
