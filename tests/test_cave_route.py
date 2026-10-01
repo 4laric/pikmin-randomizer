@@ -66,6 +66,21 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(self.route.recover(),(state,False))
         self.assertEqual((state['phase'],state['revision'],state['visit']),('floor1',4,2))
 
+    def test_native_wire1_purple_promotes_custom_surface2_and_reentry(self):
+        self.stage_run(self.state,'enter-purple-test');state,_=self.route.recover()
+        for name in ('purple-descend','purple-exit'):
+            n=int(state['phase'][-1]);run=self.stage_run(state,name)
+            token=fingerprint(self.route.manifests[n])[:32]
+            (run/'p2-cave-transfer.txt').write_text(f'P2_CAVE_TRANSFER_1 {token} {n} .5 2 3 2 1 1')
+            state,changed=self.route.recover();self.assertTrue(changed)
+        self.assertEqual(state['surface'],dict(position=[-210.,80.,1160.],health=.5,squad=[[3,2],[1,1]],wire_schema=2))
+        run=self.stage_run(state,'purple-reenter')
+        wire=(run/'p2-cave-surface-transfer.txt').read_text().replace('P2_CAVE_ROUTE_TRANSFER_1','P2_CAVE_ROUTE_TRANSFER_2')
+        (run/'p2-cave-surface-transfer.txt').write_text(wire)
+        state,changed=self.route.recover();self.assertTrue(changed)
+        self.assertEqual(state['entry']['squad'],[[3,2],[1,1]])
+        self.assertEqual(state['entry']['wire_schema'],2)
+
     def test_crash_after_commit_before_pending_unlink_recovers_once(self):
         self.stage_run(self.state,'enter');real=cave_route.atomic_write
         def crash(path,text):
