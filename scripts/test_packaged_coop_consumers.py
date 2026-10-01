@@ -187,6 +187,9 @@ def thelynk(output, native_names=None, native_events=None):
     assert len(host.locations) == 330 and host.locations == LOCATIONS
     assert len(PART_CROSSWALK) == 30 and set(PART_ITEMS.values()) == set(range(71400, 71430))
     assert len(BONUSES) == 18 and set(BONUSES.values()) == set(range(71800, 71818))
+    expected_bonus_names = [f"{n} {color} {stage} Pikmin" for color in ("Red", "Yellow", "Blue")
+                            for stage in ("Leaf", "Bud", "Flower") for n in (1, 5)]
+    assert BONUSES == {name: 71800 + i for i, name in enumerate(expected_bonus_names)}
     # Independent item-name golden sequence from upstream P1Data ALL_PARTS.
     names = ("Bowsprit", "Gluon Drive", "Anti-Dioxin Filter", "Eternal Fuel Dynamo", "Main Engine",
         "Whimsical Radar", "Interstellar Radio", "Guard Satellite", "Chronos Reactor", "Radiation Canopy",
@@ -213,7 +216,8 @@ def thelynk(output, native_names=None, native_events=None):
     mirror_root = destination / "client"
     client = NetplayClientRun(patch, mirror_root, bundle["bootstrap_text"], seed_data=bundle["session_snapshot"])
     hello(patch, client)
-    items = sorted(PART_ITEMS.values()) + sorted(BONUSES.values())
+    items = sorted(PART_ITEMS.values()) + [item for i, item in enumerate(sorted(BONUSES.values()))
+                                         for _ in range(i + 1)]
     host.receive(0, items)
     host.receive(0, items)  # same AP replay is a no-op
     (directory / "checks.txt").write_text("".join(f"{i}\n" for i in sorted(LOCATIONS.values())), encoding="ascii")
@@ -227,6 +231,8 @@ def thelynk(output, native_names=None, native_events=None):
     assert set(client.mirror.load()["checked"]) == set(LOCATIONS.values())
     assert client.mirror.load()["received"] == items
     assert (client.directory / "state.txt").read_text() == host.state(peer_token, True)
+    bonus_fields = (client.directory / "state.txt").read_text().split(" BONUSES ")[1].split()
+    assert list(map(int, bonus_fields[:-1])) == list(range(1, 19))
     assert TheLynkSession(patch, host.directory).data == host.data
     resumed = NetplayClientRun(patch, mirror_root, bundle["bootstrap_text"])
     assert resumed.poll() == (0, 0)
@@ -311,7 +317,7 @@ def main():
         native_sha=args.native_sha, native_executed=False,
         thelynk_patch_kind="synthetic supported metadata; not an upstream generated seed/ISO patch",
         tracker_boundary="P1/P2 host/mirror tracker verified; TheLynk metadata has no local TrackerModel UI",
-        native_writer_consumer_checked=native_names is not None,
+        native_writer_consumer_checked=native_names is not None or bool(args.native_mirror_events),
         compiled_emitter_journal_ingested=bool(args.native_mirror_events),
         native_writer_consumer_failures=len(failures),
         files={str(p.relative_to(output)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths})
