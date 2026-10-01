@@ -713,7 +713,8 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:31:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-31-2/native.log (sha256 4106a1d36c572adfcfc4877342cc80fa01b73173c05fcd401d0af9527370e776; native d703218cae578376338fd292aed8477949a661b4)",
+      "delivery_receipt": "onion:p2:31:1 (P2_LARVA_CARCASS then P2_ORDINARY_P2_RECEIPT new=1) output/larva-evidence/nat2/runs/00bd993b66d9f927e4c4f7b9bbd3ee83e5fd5feeee02db0f20ceadad68e18f82/native.log:L1612 receipt on generator 4222852521 (sha256 b1e471019c9390a3aa79ff9201d70be0d8833399748679285ed5e9f73147633c)",
+      "kill_receipt": "onion:p2:31:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-31-2/native.log (sha256 4106a1d36c572adfcfc4877342cc80fa01b73173c05fcd401d0af9527370e776; native d703218cae578376338fd292aed8477949a661b4)",
       "notes": [
         "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
         "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
@@ -1116,7 +1117,8 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:57:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-57-2/native.log (sha256 8c3c3adc1345ab4158aa6050ec23d58cdfa2f23cf51f333dc91ab869f34071ba; native d703218cae578376338fd292aed8477949a661b4)",
+      "delivery_receipt": "onion:p2:57:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) final exe bin-b12 output/claude-orch/p2-w3-flyers/runs/f3-57/session/runs/5a6ad2d410947cb8ad338bde02798df8dead912cedb39e5cdfb8460c22e5300e/native.log:L13487 receipt (sha256 117eb8ac47d65821447738af3068f1e54f6ed0716622d84e587b967bc17f464a); first-admission run k6 output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log:L9247 receipt (sha256 a3ff30c09e624b62829ef4cfe339f6940943be29e3f955cf59e7d554490836e6) (exe not recorded, attributed to b5)",
+      "kill_receipt": "onion:p2:57:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-57-2/native.log (sha256 8c3c3adc1345ab4158aa6050ec23d58cdfa2f23cf51f333dc91ab869f34071ba; native d703218cae578376338fd292aed8477949a661b4)",
       "notes": [
         "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
         "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
@@ -1305,7 +1307,8 @@
         "PIKMIN2_PLAYABLE_POOL.md",
         "PIKMIN2_NO_CARCASS.md"
       ],
-      "delivery_receipt": "onion:p2:66:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-66-2/native.log (sha256 bda13f508e336d0d1c33ac4807d0e3926ce1cfca9b91a78300e99fa946c4180c; native d703218cae578376338fd292aed8477949a661b4)",
+      "delivery_receipt": "onion:p2:66:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-66-own/runs/c2/session/runs/0a737916a5c704ec2cd5ea489d43d5dd3a0ecfd63b9030830219a0187af8d44b/native.log:L1575 (sha256 9efc43f3e7e35dd224166cccb1ffb0b1a2c0216fa3bd63febdbafcdc78933635)",
+      "kill_receipt": "onion:p2:66:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-66-2/native.log (sha256 bda13f508e336d0d1c33ac4807d0e3926ce1cfca9b91a78300e99fa946c4180c; native d703218cae578376338fd292aed8477949a661b4)",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1360,7 +1363,8 @@
         "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
-      "delivery_receipt": "onion:p2:69:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-69-2/native.log (sha256 e5320bfd7091a5ba56898cc583a4c847f9a87402601fc4cb3100b38cbaccbbf4; native d703218cae578376338fd292aed8477949a661b4)",
+      "delivery_receipt": "onion:p2:69:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log:L1810 receipt (sha256 0fbcb5d984defcdf...)",
+      "kill_receipt": "onion:p2:69:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-69-2/native.log (sha256 e5320bfd7091a5ba56898cc583a4c847f9a87402601fc4cb3100b38cbaccbbf4; native d703218cae578376338fd292aed8477949a661b4)",
       "source": [
         "PIKMIN2_PLAYABLE_POOL.md",
         "PIKMIN2_NO_CARCASS.md"
@@ -1446,7 +1450,8 @@
         "cleanup_reentry: the real day cycle (PIKMIN_P2_TEST_DAY_CYCLE=time:100,time:100) on the final exe b12, normal 20-squad run r5 (no power mode, so the Greater Jellyfloat stays alive): output/claude-orch/p2-w3-flyers/runs/r5-72/session/runs/c0ea02ab04b2b16e4e2be1eca3351f2dba180409da1ec72115a9fd168ddb743a/native.log (sha256 3cb9842f89c2121a0b152f961ef0c3d20dbb412b9ec279578e68687b6c2b3266). The 72 (generator 1945764764) is bound at L1338 (day 2), fought (Drop, Land, grounded attack, TakeOff cycles; health 4500 down to 4430 by the day-2 sunset), alive at L6634 SUNSET (P2_KURAGE_TEKI_FORGET bound=1 remaining=0 at L6643/L6647), re-entered at L6972 (MAPSELECT day=3), bound again at L7770, alive at L13605 SUNSET (FORGET L13614/L13618), re-entered at L13938 (day=4), bound a third time at L14734, and P2_TEST_DAY_CYCLE_DONE day=4 prints at L19210; the 72 is still alive (health 4090 at L38325) when the harness stopped the run, no crash across three stage loads. (The earlier r3 on b10 is not cited: there the 72 died and was delivered at L4970/L5899 before the first sunset, and every later bind and FORGET line was the Lesser 57. Run r2 on b8 also kept a live 72 across three loads but on a superseded exe.)",
         "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the P1 Frog actor's collision/pellet config stands in for the body (the corpse carry weight comes from the Frog carcass config), the body joint is the rest-mesh centroid, the captain suction is one captain (the shared demon captain bridge is single-binding, so a second co-op captain is not sucked), the vomit is the demon FallMeck drop with the fp24 damage rather than the InteractFlick plus InteractBomb pair, and the receipt evidence is power mode as the owner allows (no claim is made about whether a normal squad can kill it in a day: run n2 on b11 killed it with a 20-squad, r5 on b12 fought it to about 4100 HP by the harness stop, and the earlier n1 log was cut off mid-run before any sunset)."
       ],
-      "delivery_receipt": "onion:p2:72:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-72-2/native.log (sha256 5dc4b9e73ecf6e45ae2a4bc6e93f0609e22a428edf4c44118bf29d58b13e0654; native d703218cae578376338fd292aed8477949a661b4)"
+      "delivery_receipt": "onion:p2:72:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) final exe bin-b12 output/claude-orch/p2-w3-flyers/runs/e4-72/session/runs/53c07bad63e6497e7c645e535c95c96ed998e6a1f15be153c369be2044de8f62/native.log:L6018 receipt (sha256 979cabe4436712d69a435fd5d2166d17329cfe893242dee6578fc8b65424f67f)",
+      "kill_receipt": "onion:p2:72:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-72-2/native.log (sha256 5dc4b9e73ecf6e45ae2a4bc6e93f0609e22a428edf4c44118bf29d58b13e0654; native d703218cae578376338fd292aed8477949a661b4)"
     },
     "73": {
       "native_module": "pc_p2_bigtreasure",

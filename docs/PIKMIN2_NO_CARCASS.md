@@ -43,8 +43,11 @@ spawn (`BigFoot.cpp:661–672`, 30 when no treasure) remain unimplemented and
 outside this issue's scope. The port's long-legs birth marker is not a spawn.
 
 Historical corpse transport claims in the roster and playable-pool report
-predate the ruling. They remain historical evidence, not proof of the new kill
-endpoint. Current validation and its limitations are recorded below.
+predate the ruling. The evidence roster preserves each complete historical
+`delivery_receipt` citation and records the new endpoint separately as
+`kill_receipt`. Source 66 retains its original `onion:p2:66:3` admission; the
+new stage-1 kill receipt does not overwrite it. Current validation and its
+limitations are recorded below.
 
 Implementation owner: Codex through shared GitHub account 4laric, continuing
 Claude's committed native WIP without squashing it. Shared checkout and
@@ -102,13 +105,13 @@ are untouched. Evidence: `output/codex-1088-package-verification.json` and
 & .\output\smoke-smooth-longlegs\play.ps1
 ```
 
-Mandatory baseline adoption is repeated on the final native candidate: fresh
+Historical baseline adoption on the final native candidate: fresh
 `output/codex-1088-baseline-arena2` via current root overlay and
 `ensure_pikmin_squad`. The unprotected custom startup reports 960x540 client,
 position (373,263), display (0,0,1707,1067), 20 live reds, captain HP100, Walk
 and five active frames without extinction. Bounded runner passes in 11.656sec.
-The forced captain-down test exits raw86 and emits the guard marker without
-PASS. Baseline fixture SHA-256:
+The old forced captain-down test exits raw86 before SDL/engine startup; it
+proves helper refusal only, not in-engine guard ordering. Baseline fixture SHA-256:
 `b2c70da0b95354805f04656f54817abf3d6e056ea41b43a9a44bf50c44b6514b`;
 provenance status built in `output/codex-1088-baseline-build2/provenance.json`.
 Inputs/log/result are in the fresh arena; negative evidence is
@@ -129,3 +132,30 @@ not a full campaign-resume run. Shared hooks require integration review through
 owned by unfinished lane p2-start-fix-882; this report and the current seed/
 roster evidence supersede its historical corpse descriptions. Generated roster
 identity JSON is unchanged because no source identity changed.
+
+## Resumed validation after #1064 integration
+
+The complete historical delivery citations for all five species are restored,
+with current kill evidence stored separately. The unrelated source-79/source-66
+preservation regression is unchanged. The root CI slice passes 450 tests and
+55 subtests (14 skipped, one deselected); both fixed-seed generation pairs are
+byte-identical. The additional focused roster/receipt checks pass 31 tests.
+
+A new external `output/codex-1088-baseline-v2.cpp` corrects the inherited guard
+ordering. Immediately after engine idle it checks both initialized captain
+slots before null-manager/state, movie/UI and readiness returns, and blocks
+unexpected initialized-captain disappearance. Positive observation is
+unprotected. It is built against the unchanged clean native candidate d703218
+in `output/codex-1088-baseline-v2-build1` with recorded built provenance and
+no-work Ninja checks, using the canonical exclusive build lease.
+
+Fresh regenerated arenas `output/codex-1088-baseline-v2-positive-arena1`,
+`output/codex-1088-baseline-v2-health-arena1` and
+`output/codex-1088-baseline-v2-missing-arena1` use the same executable and
+60-second supervisors. Positive startup observes 20 live Reds, HP100, five
+active frames and a centred 960x540 window, exiting 0. Both negatives initialize
+the actual captain in-engine at tick 3 before injecting zero HP or hiding its
+observation pointer; each exits 86 without a PASS marker. Raw negative run
+results remain interrupted/failed; separate checks verify the expected refusal.
+These are fixture instrumentation tests, not natural damage or species combat.
+Prior sources, runs and logs remain preserved.

@@ -318,3 +318,18 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     assert {binding["source_id"] for binding in admitted_layout["bindings"]} == set(EXPECTED_ADMITTED)
 
 
+
+
+def test_no_carcass_kill_evidence_preserves_historical_delivery_citations():
+    payload = json.loads((ROSTER_PATH.parent / 'PIKMIN2_ENEMY_ROSTER_EVIDENCE.json').read_text(encoding='utf-8'))
+    old_stages = {31: 1, 57: 3, 66: 3, 69: 3, 72: 3}
+    for source, old_stage in old_stages.items():
+        entry = payload['entries'][str(source)]
+        # Historical transport admitted the species. A new kill run must not
+        # overwrite its stage, runtime-log citation or evidence description.
+        assert f'onion:p2:{source}:{old_stage}' in entry['delivery_receipt']
+        assert 'native.log' in entry['delivery_receipt']
+        assert 'P2_KILL_P2_RECEIPT' not in entry['delivery_receipt']
+        assert f'onion:p2:{source}:1' in entry['kill_receipt']
+        assert 'P2_KILL_P2_RECEIPT' in entry['kill_receipt']
+        assert f'codex-1088-death-{source}-2/native.log' in entry['kill_receipt']
