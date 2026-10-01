@@ -19,7 +19,9 @@ def main():
   assert not sessiondir.exists(),'New save phase requires new session directory'
   sessiondir.mkdir(parents=True);m=generate('captain-save-1079','solo',starting_area='impact',starting_flarlic=2,p2_enemies=True,p2_species=[2],p2_second_captain=True);validate(m)
   (sessiondir/'manifest.json').write_text(json.dumps(m,indent=2),encoding='utf-8')
- else:m=json.loads((sessiondir/'manifest.json').read_text(encoding='utf-8'));validate(m)
+ else:
+  m=json.loads((sessiondir/'manifest.json').read_text(encoding='utf-8'));validate(m)
+  if a.timeout==60:assert json.loads((sessiondir/'saved-observation.json').read_text()).get('acceptance') is True,'acceptance resume requires an accepted60-second save'
  session=Session(m,sessiondir);run=NativeRun(session);run.write_state(True)
  assert m.get("p2_second_captain") is True and "CAPTAINS 2\n" in run.bootstrap.read_text(),"generated captain choice required"
  # Preserve production practice terrain/generators, append only a legal 20-red
@@ -64,7 +66,7 @@ def main():
   assert len(after)==1 and 'CAMPAIGN_SAVED generation=1' in log
   end=re.search(r'PASS P2_CAPTAIN_CAMPAIGN_SAVE day_before=(\d+) day_after=(\d+)',log);assert end and int(end[2])==int(end[1])+1
   facts=re.search(r'P2_SAVE_SCENE .*?live=(\d+) stored=(\d+)',log);assert facts
-  baseline=dict(cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
+  baseline=dict(acceptance=a.timeout==60,save_wall_timeout_seconds=a.timeout,cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
   (sessiondir/'saved-observation.json').write_text(json.dumps(baseline,indent=2),encoding='utf-8')
  else:
   baseline=json.loads((sessiondir/'saved-observation.json').read_text());assert before==after==baseline['cards'],'committed card mutated on resume'
