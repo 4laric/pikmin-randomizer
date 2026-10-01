@@ -22,9 +22,15 @@ def main():
     exe, assets = a.exe.resolve(strict=True), a.assets.resolve(strict=True)
     if not (assets / 'dataDir').is_dir():
         p.error('The game data folder is incomplete.')
-    run = (a.out or exe.parent / 'smoke-runs').resolve() / uuid.uuid4().hex
-    run.mkdir(parents=True)
+    # A deep package path makes native startup fall back to the user's profile.
+    # Prefer a short workspace output root so the whole smoke stays disposable.
+    output_root = next((parent for parent in exe.parents if parent.name.lower() == 'output'), None)
+    default_out = output_root / 'cu-smoke' if output_root else exe.parent / 'smoke-runs'
+    run = (a.out or default_out).resolve() / uuid.uuid4().hex
     stage = run / 'game'
+    if len(str(stage)) > 100:
+        p.error('Choose a shorter --out folder for the disposable smoke.')
+    run.mkdir(parents=True)
     stage.mkdir()
     subprocess.run(['cmd', '/c', 'mklink', '/J', str(stage / 'assets'), str(assets)], check=True, capture_output=True)
     # Keep the recovery actions usable in this disposable game's folder.
