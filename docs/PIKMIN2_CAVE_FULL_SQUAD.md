@@ -40,23 +40,28 @@ squad, centered 960×540 startup and the captain guard. Failed attempts must sta
 immutable. Source-only changes belong on the new `codex/cave-full-squad-1072`
 branches; #930's accepted handoff and merged branch heads remain untouched.
 
-Bounded runtime acceptance passed on 2026-10-01 at native
+Bounded runtime acceptance was refreshed under the mandatory 60-second
+wall-clock supervisor on 2026-10-01 at native
 `a7e461c0f0d4944407399571e1b9180d9884d614`, with a clean private build and
 no-work Ninja dry run. Fixture SHA-256:
 `80515f2b17e8a9e3ca320c50392c9744c1f45ebd485f5c7299e618a56325077a`.
 Canonical local evidence is under `output/cave-full-squad/`:
 
-- `run-full_squad-02`: actual water delivery, 20 original passage crossings,
-  20 formation arrivals, farthest distance 39.916 units, then native exit 42
-  after 49.594 seconds. Captain and all actors were at floor height zero.
-- `run-restore-02`: actual producer transfer and receipt restored 20 Blue Pikmin,
+- `run-full_squad-03`: actual water delivery, 20 original passage crossings,
+  20 formation arrivals, farthest distance 49.238 units, then native exit 42
+  after 50.547 seconds. Captain and all actors were at floor height zero.
+- `run-restore-03`: actual producer transfer and receipt restored 20 Blue Pikmin,
   suppressed the water treasure and preserved bud/receipt state; native exit 0
-  after 3.390 seconds.
-- `run-negative-02`: the same executable exited 86 for captain-down after
-  1.266 seconds with no success marker.
+  after 3.875 seconds.
+- `run-negative-03`: the same executable exited 86 for captain-down after
+  0.984 seconds with no success marker.
 - The first attempt remains in `run-full_squad-01`: it delivered the treasure
   but correctly failed with 19 followers because the carrier remained at the
   pod beyond whistle range. Walking back before whistling resolved this.
+
+The earlier run-02 evidence remains preserved but is superseded for acceptance:
+its runner incorrectly allowed 180 seconds. All three run-03 raw results record
+`timeout_seconds: 60.0`. Eight existing playable-cave tests passed.
 
 The scenario runner returned 0 for each accepted exit contract. Raw supervisor
 results remain unchanged: exit 42 and intentional negative exit 86 are not raw
