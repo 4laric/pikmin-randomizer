@@ -1,4 +1,7 @@
-"""Bounded #1086 controller fixture, ordinary Blue supply and exact exit contracts."""
+"""#1125 Red identity correction: ordinary entry and bounded Blue acquisition.
+
+Historical #1086 species2 was Yellow; preserve its immutable evidence.
+"""
 import argparse
 from dataclasses import asdict
 import hashlib
@@ -40,12 +43,13 @@ def assess(run, mode, manifest):
             rows = re.findall(r'P2_CAVE_RESTORE species=(\d+) maturity=(\d+)', log)
             checks.update(expected_exit=raw.get('exit_code') == 0,
                           fixture_pass='PASS CAVE_COLOR_SUPPLY_RESTORE red=15 blue=5' in log,
-                          mixed_restore=len(rows) == 20 and rows.count(('0','0')) == 5 and rows.count(('2','0')) == 15)
+                          mixed_restore=len(rows) == 20 and rows.count(('0','0')) == 5 and rows.count(('1','0')) == 15)
         else:
-            accepts=re.findall(r'P2_CAVE_BUD_ACCEPT slot=forest_1:f1:bud:0 colour=blue thrown_colour=2 used=(\d+) budget=5',log)
+            accepts=re.findall(r'P2_CAVE_BUD_ACCEPT slot=forest_1:f1:bud:0 colour=blue thrown_colour=1 used=(\d+) budget=5',log)
             sprouts=re.findall(r'P2_CAVE_BUD_SPROUT slot=forest_1:f1:bud:0 colour=blue colour_index=0 plucked=1 natural=1',log)
             checks.update(expected_exit=raw.get('exit_code') == 42,
-                original_red='P2_CAVE_COLOR_SETUP starting=20_red_staged' in log,
+                original_red='P2_CAVE_COLOR_SETUP starting=20_red_ordinary_entry' in log,
+                native_species='P2_CAVE_COLOR_SPECIES red_id=1 yellow_id=2 blue_id=0 red_count=20 yellow_count=0 blue_count=0' in log,
                 mapped_throws='P2_CAVE_COLOR_THROW input=mapped_button' in log,
                 exactly_five_accepts=accepts==['1','2','3','4','5'], five_sprouts=len(sprouts)==5,
                 acquired='P2_CAVE_COLOR_ACQUIRED red=15 blue=5 conversions=5 source=ordinary_controller_throw' in log,
@@ -57,12 +61,12 @@ def assess(run, mode, manifest):
             if (run/'p2-cave-transfer.txt').exists():
                 state=checkpoint((run/'p2-cave-transfer.txt').read_text(),(run/'p2-cave-bud-transfer.txt').read_text(),
                                  (run/'p2-cave-item-receipts.txt').read_text(),manifest,parse_items_text((run/'p2-cave-items.txt').read_text()))
-                checks['valid_transfer']=len(state['squad'])==20 and state['squad'].count([0,0])==5 and state['squad'].count([2,0])==15 and receipts(state['receipts'],parse_items_text((run/'p2-cave-items.txt').read_text()))==[]
+                checks['valid_transfer']=len(state['squad'])==20 and state['squad'].count([0,0])==5 and state['squad'].count([1,0])==15 and receipts(state['receipts'],parse_items_text((run/'p2-cave-items.txt').read_text()))==[]
                 lines=state['buds'].splitlines()
                 checks['bud_budget']=lines[-2:]==['forest_1:f1:bud:0 5','forest_1:f1:bud:1 0']
     outputs={p.name:sha(p) for p in run.iterdir() if p.is_file() and (p.name in ('native.log','run-result.json','run-inputs.json','fixture-inputs.json','staging-disclosure.json','cave.json','capacity.json') or p.name.startswith('p2-cave-'))}
     return dict(mode=mode,passed=all(checks.values()),checks=checks,native_exit=raw.get('exit_code'),raw_supervisor_passed=raw.get('passed'),outputs=outputs,
-                limitations=[('15 Red/5 Blue from actual producer' if mode == 'restore' else '20 Red staged'),'SDL virtual gamepad scripted','production bud auto-pluck','captain-only exit; mixed squad left west','confirmation bypassed','not Yellow supply or mixed hazard traversal']),state
+                limitations=[('15 Red/5 Blue from actual producer' if mode == 'restore' else 'ordinary fresh stage: 20 Red, entry species 1'),'SDL virtual gamepad scripted','production bud auto-pluck','captain-only exit; mixed squad left west','confirmation bypassed','not Yellow supply or mixed hazard traversal']),state
 
 
 def main():
@@ -79,9 +83,7 @@ def main():
     if provenance['status'] != 'built' or provenance['artifacts'][str(args.fixture.resolve())]['sha256'] != sha(args.fixture):
         raise ValueError('Fixture is not the frozen built artifact')
     manifest = create('930')
-    seed = _seed_uint64(manifest['table']['seed'])
-    buds = f'P2_CAVE_BUD_STATE_1\n{seed} forest_1 1 2\nforest_1:f1:bud:0 0\nforest_1:f1:bud:1 0\n'
-    prior = dict(schema=1, fingerprint=fingerprint(manifest), health=1, squad=[[2, 0] for _ in range(20)], buds=buds, receipts='P2_RECEIPTS_1\n')
+    prior = None  # Exercise the ordinary stage default; no injected entry squad.
     if args.mode == 'restore':
         if not args.previous:
             raise ValueError('Restore requires an accepted color-supply producer')
@@ -93,7 +95,11 @@ def main():
                            (previous / 'p2-cave-item-receipts.txt').read_text(), manifest,
                            parse_items_text((previous / 'p2-cave-items.txt').read_text()))
     stage(manifest, args.assets, args.pod, args.production, args.generator, run, 0, prior)
-    (run / 'staging-disclosure.json').write_text(json.dumps(dict(mode=args.mode, starting_species=('15 Red/5 Blue from actual producer transfer' if args.mode == 'restore' else '20 Red staged'), starting_squad=prior['squad'],
+    if prior is None:
+        # The ordinary supervisor initializes the durable ledger before launch.
+        # Fresh stage itself deliberately supplies no checkpoint sidecars.
+        (run / 'p2-cave-item-receipts.txt').write_text('P2_RECEIPTS_1\n')
+    (run / 'staging-disclosure.json').write_text(json.dumps(dict(mode=args.mode, starting_species=('15 Red/5 Blue from actual producer transfer' if args.mode == 'restore' else 'ordinary fresh stage: 20 Red, entry species 1'), starting_squad=(prior['squad'] if prior else [[1, 0]] * 20), entry_override=prior is not None,
         previous=str(args.previous) if args.previous else None, input='SDL virtual gamepad assigned P1 process-locally', position_writes=False,
         velocity_writes=False, species_writes=False, state_writes=False, bud_auto_pluck='existing production behavior', captain_only_exit=True, confirmation_bypassed=True), indent=2))
     env = os.environ.copy()
