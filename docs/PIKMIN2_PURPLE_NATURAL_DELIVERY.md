@@ -7,7 +7,31 @@ merge/admission: `output/purple1071-primary-review01.json`, SHA256
 `a42131c3097eb2b04de213ead8c9f904bbd8c85dca794179881700aa4aab914d`.
 All1071 reports and the user-operated staged smoke remain unchanged.
 
-## Latest status: round04 and live collision correction
+## Latest status: round05 projection correction
+
+Producer `5c5ca307f4660ad024471ae35ae57b33f59e120b` passed Windows36912221783:
+212 tests, eight hashes and no-work. Compiled merge
+`d830c2a30adc0045bbc28a87f5a22e091d1b3590`, tree
+`93bca2dba054054e44ee4944cbc59b844471e4c5`; exact fixture match. Executable
+SHA256 `69e43ff65c4ee30fe711000569840120ab4caabbf53b07cf5fac12afab58d810`.
+All seven initialized guard05 cases PASS, live20/centered960x540/same-frame86.
+
+East05 FAIL26.453s and West05 FAIL26.578s, exit1 without timeout. Both real
+conversions precede a planner rejection; no pluck/cargo or observed contact.
+The all-yaw offset radius and five-unit terrain allowance exclude all32 sampled
+pluck endpoints. This is a fixture false negative, not native placement failure.
+Live captain body/head radii are7.2/8.4 with separate world-space offsets.
+
+Pushed `7172a2d9586ffae60629816d0accfde75bfe245e` projects the observed sphere
+offsets directly, refreshes live geometry, and requires sampled terrain within
+0.1unit of captain ground height. Syntax/diff checks pass; measured East05 geometry
+has11 candidate endpoints with the corrected model versus0 before. This is only
+read-only model evidence. Windows36914100082 and fresh06 runtime remain pending.
+Immutable evidence: `output/purple1128-runtime-summary05.json`, both
+`purple1128-live-route-...05.json` and `purple1128-projection-comparison06.json`.
+No production physics/placement changes. Ordinary delivery/combat/save remain open.
+
+## Round04 and initial live collision correction
 
 Producer `d66bd52de5c04da4d8fde9ccd8aeb6acc5555a98` passed public Windows
 run36908646606: 212 tests, eight artifact hashes and no-work dry-run. Actual
