@@ -9,6 +9,33 @@ All1071 reports and the user-operated staged smoke remain unchanged.
 
 ## Required forward correction: ordinary SDL throw conversion
 
+The separate `sdl_acquire` implementation is published at native
+`a9d73bcddb1478f59a0764fd7b760b5bcfb9d26e`, branch
+`codex/purple-sdl-candidate`. Linux run36938387955 passed238 configured tests
+and the clean-distribution smoke. This general build does not compile or run the
+excluded selected Purple fixture. SDL acquisition runtime remains UNTESTED.
+Independent source review corrected native/SDL axis scaling, gated startup on
+active gameplay, rejected pre-existing Purple sprouts and bound the returned
+follower to the active captain. The private runner requires exactly one Red
+conversion from original Violet UID1347768321 before the new acquisition marker.
+
+Selected Linux preparation uses ordinary OFF: this candidate does not declare
+`PIKMIN_NETPLAY_BUILD`. Helper13 proposes cloning the final production target's
+SOURCES while preserving all registrations and bindings; it is not applied until
+the current CMake owners' scoped agreement is recorded. The compiled guard is
+the fixture-local `p2_fixture_require_captain`, not an included canonical header.
+Its Git-blob function SHA256 is
+`e44a2a57a3b766d5bb938cf0d4fc0b2291b6a3bb1bf1538688a8be03ca8245c3`.
+All seven initialized guard cases require fresh execution with the selected ELF.
+
+Portable staging must replace the Windows-only overlay junction operation via
+an owner-reviewed adapter, preserve original generator bytes/placement and use
+the real NativeRun heartbeat. Campaign20 Reds originate from the disclosed native
+Onion withdrawal fixture; do not append another Hope squad. Each native child
+remains bounded to60 seconds. No checkpoint exists from save07–10; save remains
+FAIL and fresh-process restore remains UNTESTED. Save10's shortened pause input
+missed Sunset, so the observed45/65/125 schedule is restored.
+
 Current `natural_*` acquisition reports explicitly mean native conversion after
 `scripted_throw=1`. `naturalStep` selects an actor, changes it to FreeMode/Flying
 and calls `Navi::throwPiki` with a scripted aim. The controller-driven approach
