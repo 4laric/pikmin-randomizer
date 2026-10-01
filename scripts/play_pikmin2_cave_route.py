@@ -25,10 +25,14 @@ from scripts.stage_pikmin2_cave_route import stage_surface,sha
 def floor_inputs(run):
     required=['p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt',
               'p2-cave-transition.txt','p2-cave-items.txt','p2-cave-rooms.txt',
-              'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe']
+              'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe',
+              'assets/dataDir/stages/chal0.ini','assets/dataDir/stages/chal0/default.gen',
+              'assets/dataDir/courses/pikmin2room/room.ini','assets/dataDir/courses/pikmin2room/room.mod',
+              'assets/dataDir/courses/pikmin2room/pod.mod','assets/dataDir/courses/pikmin2room/treasure.mod']
     for name in required:
         if not (run/name).is_file():raise ValueError('missing route floor input: '+name)
-    return sorted(set(required+[path.name for path in run.glob('p2-*') if path.is_file()]))
+    native=[path.relative_to(run).as_posix() for path in (run/'assets/dataDir/stages/chal0').glob('*.gen')]
+    return sorted(set(required+native+[path.name for path in run.glob('p2-*') if path.is_file()]))
 
 
 def route_inputs(package):

@@ -91,8 +91,12 @@ class RouteTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'p2-cave-entry'):floor_inputs(run)
         names=['p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt',
                'p2-cave-transition.txt','p2-cave-items.txt','p2-cave-rooms.txt',
-               'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe']
-        for name in names:(run/name).write_text('synthetic input')
+               'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe',
+               'assets/dataDir/stages/chal0.ini','assets/dataDir/stages/chal0/default.gen',
+               'assets/dataDir/courses/pikmin2room/room.ini','assets/dataDir/courses/pikmin2room/room.mod',
+               'assets/dataDir/courses/pikmin2room/pod.mod','assets/dataDir/courses/pikmin2room/treasure.mod']
+        for name in names:
+            (run/name).parent.mkdir(parents=True,exist_ok=True);(run/name).write_text('synthetic input')
         self.assertEqual(set(floor_inputs(run)),set(names))
         (run/'p2-cave-transition.txt').unlink()
         with self.assertRaisesRegex(ValueError,'transition'):floor_inputs(run)
