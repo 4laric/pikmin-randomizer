@@ -35,10 +35,37 @@ an exhausted next callback. Existing White extraction/poison tests are run
 separately. Private build evidence is stored under ignored
 `output/white-ivory-budget/`; exact build results and hashes are recorded in #395.
 
-These policy tests do not execute actor allocation, throw controls, discharge
-animations or full gameplay. No fresh runtime acceptance is claimed. A fresh
-fixture must adopt the current 20-Pikmin overlay, centered 960×540 startup and
-captain guard before testing mixed-species conversion in the engine.
+Fresh guarded engine acceptance subsequently passed twice in
+`output/white-ivory-budget/run-03` and `run-04`, using native fixture commit
+`c4c36fac769b8829fa11a70a6fb0f3078d636a9e` and `fixture-03/provenance.json`.
+The fixture observes 20 initial Reds and one bound Ivory UID25 on the P1 practice
+map, without enemies. It injects species and capture attachments, then executes
+the actual production callback, sprout births and input erase-kills:
+
+- Reserve all 100 real sprout-pool entries; the refused replacement returns
+  its living input to play, spends zero slots and preserves 20 bodies.
+- One White input creates one genuine White sprout and spends zero slots.
+- One ordinary Red input creates one White sprout and spends one slot.
+- A mixed batch creates three White sprouts and spends one slot.
+- An exhausted callback releases two living inputs; replay changes nothing.
+
+The final population is 15 actors and five White sprouts, still 20 bodies.
+Both bounded runs exit0 in about4.4 seconds. This establishes native callback,
+allocation and population behavior with injected setup; it does not establish
+natural capture, plucking or controller conversion.
+
+The observed SDL window is960×540 at position373,263 with captainHP100.
+The fixture calls the canonical captain guard immediately after each engine
+idle, before movie/pause/observation/PASS handling. A separate forced-down run
+of the same executable exits86 with `P2_FIXTURE_CAPTAIN_DOWN`, without a PASS.
+The canonical guard's five policy tests also pass.
+
+Earlier failures remain in `run-01` and `run-02`; their coarse baseline assertion
+does not establish which count/binding failed. The diagnostic fixture now prints
+actual actor counts, types and UID before asserting. New staging uses the current
+native reader's little-endian raw generator identity; the successful runs verify
+UID25 and the exact 20-body baseline. Source-derived White assets were freshly
+regenerated from the local disc, with the original audited source hashes.
 
 Campaign conversion receipts, Ivory-instance persistence, ship compartments,
 gas panic/immunity, buried treasure and natural controller/campaign acceptance

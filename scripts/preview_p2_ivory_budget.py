@@ -3,22 +3,24 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from experimental.pikmin2_white import extract
 from scripts.preview_pikmin2_room import generator, overlay, records
 
 
 def prepare(assets, white, pod, output):
     output.mkdir(parents=True, exist_ok=False)
     data=generator(assets)
-    starts=[m.start() for m in __import__('re').finditer(b'    0.0v',data)]
+    starts=[m.start() for m in re.finditer(b'    0.0v',data)]
     rows=[data[a:(starts[i+1] if i+1<len(starts) else len(data))] for i,a in enumerate(starts)]
     rows=[r for r in rows if r[16:48].rstrip(b'\0')!=b'preview dwarf bulborb']
     template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen') if r[72:80]==b'ssob\x02\x00\x00\x00')
-    flower=bytearray(template);struct.pack_into('>I',flower,8,25);flower[16:48]=b'preview ivory'.ljust(32,b'\0')
+    # Native Generator::readID preserves four-byte IDs by swapping readInt;
+    # the Windows integer identity therefore uses little-endian record bytes.
+    flower=bytearray(template);struct.pack_into('<I',flower,8,25);flower[16:48]=b'preview ivory'.ljust(32,b'\0')
     struct.pack_into('>6f',flower,48,-140,0,60,0,0,0);struct.pack_into('>I',flower,80,5|(1<<6));rows.append(bytes(flower))
     data=data[:20]+struct.pack('>I',len(rows))+b''.join(rows)
     empty=b'1.0v'+struct.pack('>4fI',-85,0,0,45,0)
