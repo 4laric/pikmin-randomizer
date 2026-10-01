@@ -10,7 +10,7 @@ from preview_pikmin2_room import overlay,ensure_pikmin_squad
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
- p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive']);p.add_argument('--prepare-only',action='store_true');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--prepare-only',action='store_true');a=p.parse_args()
  canonical=a.canonical_root.resolve();sessiondir=a.session_root.resolve()
  assert sessiondir.is_relative_to(canonical/'output'),'Private output only'
  # This control/save fixture intentionally uses original P1 campaign geometry,
@@ -49,10 +49,11 @@ def main():
  thread=threading.Thread(target=keepalive);thread.start()
  args=['--randomizer-seed',str(run.bootstrap)];marker='PASS P2_CAPTAIN_CAMPAIGN_SAVE' if a.phase=='save' else 'PASS P2_CAPTAIN_CAMPAIGN_RESUME'
  if a.phase!='save':args.append('--resume-phase')
- if a.negative:args.append('--force-captain-down' if a.negative=='active' else '--force-inactive-down')
+ if a.negative:args.append({'active':'--force-captain-down','inactive':'--force-inactive-down','null-state':'--force-null-state','missing-manager':'--force-missing-manager'}[a.negative])
  try:result=guarded.launch(a.exe,run.directory,args,[marker],60,a.exe.resolve().parent)
  finally:done.set();thread.join()
  assert not errors,errors
+ run.poll() # consume the final flushed native journal before comparing rewards
  log=(run.directory/'native.log').read_text(errors='replace');after=snapshot()
  if a.negative:assert result['exit_code']==86 and result['captain_down'] and not result['passed'];return
  assert result['passed'],result
@@ -61,11 +62,12 @@ def main():
   assert len(after)==1 and 'CAMPAIGN_SAVED generation=1' in log
   end=re.search(r'PASS P2_CAPTAIN_CAMPAIGN_SAVE day_before=(\d+) day_after=(\d+)',log);assert end and int(end[2])==int(end[1])+1
   facts=re.search(r'P2_SAVE_SCENE .*?live=(\d+) stored=(\d+)',log);assert facts
-  baseline=dict(cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]))
+  baseline=dict(cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
   (sessiondir/'saved-observation.json').write_text(json.dumps(baseline,indent=2),encoding='utf-8')
  else:
   baseline=json.loads((sessiondir/'saved-observation.json').read_text());assert before==after==baseline['cards'],'committed card mutated on resume'
   facts=re.search(r'P2_SAVE_SCENE phase=resume resumed=1 day=(\d+) live=(\d+) stored=(\d+)',log);assert facts
+  assert sorted(session.data['checked'])==baseline['checked'] and dict(session.inventory)==baseline['inventory'],'duplicate or new reward on unchanged replay path'
   assert int(facts[1])==baseline['day'] and int(facts[2])+int(facts[3])==baseline['total'],'day/population did not conserve through actual card load'
  (run.directory/'phase-verified.json').write_text(json.dumps(dict(passed=True,result=result,before=before,after=after,baseline=baseline),indent=2),encoding='utf-8')
  print(json.dumps(result),flush=True)
