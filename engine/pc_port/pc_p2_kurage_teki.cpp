@@ -481,7 +481,10 @@ void pc_p2_kurage_teki_setup()
         if (ownMode && !b.own.init(t, gen, src, &b.mouth, src == 72 ? pc_p2_kurage_visual_shape_greater("wait") : pc_p2_kurage_visual_shape("wait")))
             if (pc_p2_setup_skip(pc_randomizer_p2_bridge(), "Kurage", "own_init_failed")) return;
         std::printf("P2_KURAGE_TEKI_READY generator=%u type=%d binding=private_adapter\n", gen, type);
-        std::printf("P2_KURAGE_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:kurage:%u\n", gen, gen);
+        if (pc_randomizer_p2_bridge())
+            std::printf("P2_KURAGE_KILL_READY generator=%u source_id=%u carcass=none ledger=kill\n", gen, src);
+        else
+            std::printf("P2_KURAGE_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:kurage:%u\n", gen, gen);
         // bot-deliver (#871): lane-06 ordinary-delivery source bind so
         // GoalItem::suckMe grants onion:p2:57 instead of the P1 bestiary
         // CHECK (Yellow Wollywog). Mirrors Sokkuri/Sarai/ElecBug and proxy

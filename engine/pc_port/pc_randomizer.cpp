@@ -29,6 +29,36 @@
 
 namespace {
 bool noSticks = false, emperorGoal = false, emperorDefeated = false;
+bool thelynk = false;
+unsigned thelynkParts = 0, thelynkBonuses[18] = {}, thelynkUsed[18] = {};
+std::set<unsigned> thelynkEnabled;
+std::string thelynkNames[330];
+const char* thelynkPartNames[30] = {
+    "Pikmin: Bowsprit", "Pikmin: Gluon Drive", "Pikmin: Anti-Dioxin Filter", "Pikmin: Eternal Fuel Dynamo",
+    "Pikmin: Main Engine", "Pikmin: Whimsical Radar", "Pikmin: Interstellar Radio", "Pikmin: Guard Satellite",
+    "Pikmin: Chronos Reactor", "Pikmin: Radiation Canopy", "Pikmin: Geiger Counter", "Pikmin: Sagittarius",
+    "Pikmin: Libra", "Pikmin: Omega Stabilizer", "Pikmin: Ionium Jet 1", "Pikmin: Ionium Jet 2",
+    "Pikmin: Shock Absorber", "Pikmin: Gravity Jumper", "Pikmin: Pilot's Seat", "Pikmin: Nova Blaster",
+    "Pikmin: Automatic Gear", "Pikmin: Zirconium Rotor", "Pikmin: Extraordinary Bolt", "Pikmin: Repair-type Bolt",
+    "Pikmin: Space Float", "Pikmin: Massage Machine", "Pikmin: Secret Safe", "Pikmin: Positron Generator",
+    "Pikmin: Analog Computer", "Pikmin: UV Lamp"
+};
+const char* thelynkModels[30] = {
+    "ust1", "ust2", "ust3", "ust4", "ust5", "uf01", "uf02", "uf03", "uf04", "uf05",
+    "uf06", "uf07", "uf08", "uf09", "uf10", "uf11", "un01", "un02", "un03", "un04",
+    "un05", "un06", "un07", "un08", "un09", "un10", "un11", "un12", "un13", "un14"
+};
+unsigned thelynkId(unsigned index) { return index < 30 ? 71400 + index : 71500 + index - 30; }
+int thelynkIndex(unsigned id) {
+    return id >= 71400 && id < 71430 ? int(id - 71400) : id >= 71500 && id < 71800 ? int(id - 71500 + 30) : -1;
+}
+int thelynkModel(unsigned model) {
+    for (int i = 0; i < 30; ++i) {
+        const auto p = reinterpret_cast<const unsigned char*>(thelynkModels[i]);
+        if (model == (unsigned(p[0]) << 24 | unsigned(p[1]) << 16 | unsigned(p[2]) << 8 | p[3])) return i;
+    }
+    return -1;
+}
 bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false, colorPopulation = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
@@ -125,7 +155,8 @@ void loadCampaignCheckpoint() {
     p2ship::Store restoredShip;
     if (purpleCampaign) valid = valid && restoredShip.read(meta) && restoredShip.counts[1][0] == 0
         && restoredShip.counts[1][1] == 0 && restoredShip.counts[1][2] == 0;
-    if (!valid || !(meta >> hash) || magic != (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    if (thelynk) for (int i = 0; i < 18; ++i) valid = valid && bool(meta >> thelynkUsed[i]) && thelynkUsed[i] <= 330;
+    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != campaignGeneration || (meta >> extra))
         fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
     campaignBlock.resize(32768);
@@ -161,11 +192,74 @@ const char* legacyCheckName(unsigned i) {
     }
 }
 const char* checkName(unsigned i) {
+    if (thelynk) return thelynkNames[i].c_str();
     return resolvedCheckNames.empty() ? legacyCheckName(i) : resolvedCheckNames.at(i).c_str();
 }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
+}
+bool initTheLynk(std::istream& input, const char* bootstrap) {
+    expect(input, "1");
+    expect(input, "SESSION"); input >> token;
+    expect(input, "FINGERPRINT"); input >> fingerprint;
+    if (!hex64(token) || !hex64(fingerprint)) fail("invalid TheLynk identity");
+    thelynk = true; schema = 10; checkCount = 330; startStage = 0;
+    for (unsigned i = 0; i < 30; ++i) thelynkNames[i] = thelynkPartNames[i];
+    const char* colors[] = {"Red", "Yellow", "Blue"};
+    for (unsigned c = 0; c < 3; ++c) for (unsigned n = 1; n <= 100; ++n)
+        thelynkNames[30 + c * 100 + n - 1] = std::string(colors[c]) + " Pikmin: " + std::to_string(n);
+    expect(input, "CHECKS"); unsigned count;
+    if (!(input >> count) || count < 30 || count > 330) fail("invalid TheLynk check count");
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned id; if (!(input >> id)) fail("invalid TheLynk check ID");
+        int slot = thelynkIndex(id);
+        if (slot < 0 || !thelynkEnabled.insert(unsigned(slot)).second) fail("unknown or duplicate TheLynk check");
+    }
+    for (unsigned i = 0; i < 30; ++i) if (!thelynkEnabled.count(i)) fail("missing TheLynk ship-part check");
+    expect(input, "END"); std::string extra;
+    if (input >> extra) fail("trailing TheLynk bootstrap");
+    directory = std::filesystem::absolute(bootstrap).parent_path();
+    campaignDirectory = directory.parent_path().parent_path() / "campaign";
+    saveRoot = (campaignDirectory / "card").generic_string();
+    if (std::filesystem::exists(directory / "hello.txt") || std::filesystem::exists(directory / "checks.txt"))
+        fail("TheLynk run already used");
+    loadCampaignCheckpoint();
+    enabled = true; pc_randomizer_update();
+    std::ofstream hello(directory / "hello.tmp");
+    hello << "THELYNK_HELLO 1 " << token << ' ' << fingerprint << " individual-parts-v1 squad-checks-v1 typed-pikmin-v1 END\n";
+    hello.close(); if (!hello) fail("cannot write TheLynk handshake");
+    std::filesystem::rename(directory / "hello.tmp", directory / "hello.txt");
+    return true;
+}
+void updateTheLynk(std::istream& input) {
+    expect(input, "THELYNK_STATE"); expect(input, "1");
+    std::string session; unsigned active, parts;
+    if (!(input >> session >> active >> parts) || session != token || active > 1 || parts >= (1u << 30)
+        || (parts & thelynkParts) != thelynkParts) fail("invalid/retracted TheLynk inventory");
+    expect(input, "CHECKS"); unsigned count;
+    if (!(input >> count) || count > thelynkEnabled.size()) fail("invalid TheLynk checked count");
+    std::set<unsigned> incoming;
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned id; if (!(input >> id)) fail("invalid TheLynk checked ID");
+        int slot = thelynkIndex(id);
+        if (slot < 0 || !thelynkEnabled.count(unsigned(slot)) || !incoming.insert(unsigned(slot)).second)
+            fail("unknown or duplicate TheLynk checked ID");
+    }
+    expect(input, "BONUSES"); unsigned bonus[18];
+    for (int i = 0; i < 18; ++i) if (!(input >> bonus[i]) || bonus[i] > thelynkEnabled.size()
+        || bonus[i] < thelynkBonuses[i] || bonus[i] < thelynkUsed[i]) fail("invalid/retracted TheLynk bonus");
+    unsigned receipts = 0;
+    for (unsigned i = 0; i < 30; ++i) if (parts & (1u << i)) ++receipts;
+    for (unsigned n : bonus) receipts += n;
+    if (receipts > thelynkEnabled.size()) fail("too many TheLynk receipts");
+    expect(input, "END"); std::string extra;
+    if (input >> extra) fail("trailing TheLynk state");
+    thelynkParts = parts;
+    repairs = 0; for (unsigned i = 0; i < 30; ++i) if (parts & (1u << i)) ++repairs;
+    for (int i = 0; i < 18; ++i) thelynkBonuses[i] = bonus[i];
+    checks.insert(incoming.begin(), incoming.end());
+    ready = active != 0;
 }
 }
 
@@ -184,7 +278,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     p2ProxyTier = false;
     std::ifstream input(bootstrap);
     if (!input) fail("cannot open standalone bootstrap");
-    expect(input, "PIKMIN_RANDOMIZER");
+    std::string magic; input >> magic;
+    if (magic == "PIKMIN_THELYNK") return initTheLynk(input, bootstrap);
+    if (magic != "PIKMIN_RANDOMIZER") fail("unsupported bootstrap contract");
     std::string version; input >> version;
     if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7" && version != "8" && version != "9") fail("unsupported bootstrap version");
     schema = (unsigned)(version[0] - '0');
@@ -497,6 +593,11 @@ void pc_randomizer_update() {
     // Windows may briefly deny opening a file being atomically replaced.
     // Pause and retry; an opened but malformed record still fails closed.
     if (!input.is_open()) { ready = false; return; }
+    if (thelynk) {
+        updateTheLynk(input);
+        lastStamp = stamp; lastFresh = std::chrono::steady_clock::now();
+        return;
+    }
     std::string magic, session, end, extra;
     unsigned version, newReady, newRepairs, newUnlocks, newFlarlic = 0;
     std::set<unsigned> newChecks;
@@ -699,7 +800,21 @@ bool pc_randomizer_p2_receipt_seen(unsigned generatorUid)
     return generatorUid != 0 && p2ReceiptGenerators.count(generatorUid) != 0;
 }
 bool pc_randomizer_resolved_checks() { return !resolvedCheckNames.empty(); }
+namespace {
+// Shared body of the corpse delivery and the kill receipt (#1088). `encounter`
+// is the durable ledger tag ("corpse" or "kill"); `marker` the log line name.
+bool p2SourceReceipt(const void* tekiview, int type, int stage, bool gameplay, const char* encounter,
+                     const char* marker);
+}
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay) {
+    return p2SourceReceipt(tekiview, type, stage, gameplay, "corpse", "P2_ORDINARY_P2_RECEIPT");
+}
+bool pc_randomizer_p2_killed(const void* tekiview, int type, int stage, bool gameplay) {
+    return p2SourceReceipt(tekiview, type, stage, gameplay, "kill", "P2_KILL_P2_RECEIPT");
+}
+namespace {
+bool p2SourceReceipt(const void* tekiview, int type, int stage, bool gameplay, const char* encounter,
+                     const char* marker) {
     if (!enabled || !ready || !gameplay || !tekiview) return false;
     const unsigned sourceId = pc_randomizer_p2_source_for(tekiview);
     if (!sourceId) return false;
@@ -732,8 +847,8 @@ bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage
     // `fingerprint` is the seed-manifest-level identity, stable across process
     // restarts of the same seed; `token` is the run-instance identity fallback.
     const std::string& seed = fingerprint.empty() ? token : fingerprint;
-    const P2DeliveryHostResult result = pc_p2_delivery_host_deliver(p2DeliveryHost, seed.c_str(), sourceId, type, stage, generatorUid, "corpse");
-    std::printf("[Pikmin Randomizer] P2_ORDINARY_P2_RECEIPT seed=%s id=onion:p2:%u:%d generator=%u new=%d\n",
+    const P2DeliveryHostResult result = pc_p2_delivery_host_deliver(p2DeliveryHost, seed.c_str(), sourceId, type, stage, generatorUid, encounter);
+    std::printf("[Pikmin Randomizer] %s seed=%s id=onion:p2:%u:%d generator=%u new=%d\n", marker,
         seed.c_str(), sourceId, stage, generatorUid, int(result == P2DeliveryHostResult::Granted));
     if (result == P2DeliveryHostResult::Granted || result == P2DeliveryHostResult::Duplicate) {
         p2ReceiptGenerators.insert(generatorUid);
@@ -741,6 +856,7 @@ bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage
     // Single-use: consume the binding so the address can be safely recycled.
     pc_randomizer_p2_forget_source(tekiview);
     return true;
+}
 }
 unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id) {
     if (!p2EnemyBridge || !generator_id) return 0;
@@ -883,7 +999,7 @@ int pc_randomizer_enemy_type(int original, bool protectedSpawn) {
     return original;
 }
 bool pc_randomizer_ready() { return ready; }
-bool pc_randomizer_goal() { return enabled && repairs == 25 && (!emperorGoal || emperorDefeated); }
+bool pc_randomizer_goal() { return enabled && repairs == (thelynk ? 30u : 25u) && (!emperorGoal || emperorDefeated); }
 bool pc_randomizer_emperor_available() { return !enabled || !emperorGoal || (ready && repairs == 25); }
 void pc_randomizer_emperor_defeated() {
     if (!enabled || !emperorGoal || !ready || repairs != 25 || emperorDefeated) return;
@@ -926,9 +1042,20 @@ void pc_randomizer_observe_pikmin_death(const void* piki) {
 }
 int pc_randomizer_repairs() { return (int)repairs; }
 const char* pc_randomizer_save_root() { return saveRoot.c_str(); }
-int pc_randomizer_next_day(int day) { return enabled && day >= 28 ? 29 : day + 1; }
+int pc_randomizer_next_day(int day) {
+    if (pc_randomizer_thelynk()) return day >= 29 ? 2 : day + 1;
+    return enabled && day >= 28 ? 29 : day + 1;
+}
 bool pc_randomizer_has(const char* name) {
     if (!enabled || !name) return false;
+    if (thelynk) {
+        if (!std::strcmp(name, "Pikmin: Impact Site Access") || !std::strcmp(name, "Red Onion")) return true;
+        if (!std::strcmp(name, "Pikmin Access") || !std::strcmp(name, "Pikmin: Forest of Hope Access") || !std::strcmp(name, "Yellow Onion")) return repairs >= 1;
+        if (!std::strcmp(name, "Pikmin: Forest Navel Access") || !std::strcmp(name, "Blue Onion")) return repairs >= 5;
+        if (!std::strcmp(name, "Pikmin: Distant Spring Access")) return repairs >= 12;
+        if (!std::strcmp(name, "Pikmin: Final Trial Access")) return repairs >= 29;
+        return false;
+    }
     if (!std::strcmp(name, "Red Onion")) return startColor == 1 || (unlocks & 64u);
     if (startColor == 0 && !std::strcmp(name, "Blue Onion")) return true;
     if (startColor == 2 && !std::strcmp(name, "Yellow Onion")) return true;
@@ -944,11 +1071,13 @@ bool pc_randomizer_has(const char* name) {
 }
 bool pc_randomizer_checked(const char* name) {
     const int slot = index(name);
+    if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return false;
     return slot >= 0 && checks.count(unsigned(slot)) != 0;
 }
 void pc_randomizer_check(const char* name) {
     if (!enabled || !ready) return;
     const int slot = index(name);
+    if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return;
     if (slot < 0) {
         // Main Engine is the synthetic tutorial completion, not a standalone check.
         if (name && !std::strcmp(name, "Pikmin: Main Engine")) return;
@@ -961,7 +1090,7 @@ void pc_randomizer_check(const char* name) {
     if (checks.count(unsigned(slot))) return;
     FILE* file = std::fopen((directory / "checks.txt").string().c_str(), "a");
     if (!file) fail("cannot persist native collection");
-    bool ok = std::fprintf(file, "%d\n", slot) > 0 && std::fflush(file) == 0;
+    bool ok = std::fprintf(file, "%u\n", thelynk ? thelynkId(unsigned(slot)) : unsigned(slot)) > 0 && std::fflush(file) == 0;
 #ifdef _WIN32
     ok = ok && _commit(_fileno(file)) == 0;
 #else
@@ -973,7 +1102,7 @@ void pc_randomizer_check(const char* name) {
     std::printf("[Pikmin Randomizer] CHECK %d %s\n", slot, name);
 }
 
-bool pc_randomizer_expanded() { return enabled && schema >= 2; }
+bool pc_randomizer_expanded() { return enabled && !thelynk && schema >= 2; }
 bool pc_randomizer_color_stats() { return enabled && (configuredStats || progressiveStats); }
 namespace {
 // bot-v4 power mode (TEST-ONLY): PIKMIN_RANDOMIZER_AUTOPLAY_POWER scales Pikmin
@@ -1031,13 +1160,13 @@ void pc_randomizer_observe_population(int activePikmin, bool gameplay) {
         if (activePikmin >= 20 + 10 * i) pc_randomizer_check(randomizerCheckNames[30 + i]);
 }
 void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool gameplay) {
-    if (schema >= 9 && type == 16 && healthDepleted && gameplay && ready && accessibleStage(stage))
+    if (!thelynk && schema >= 9 && type == 16 && healthDepleted && gameplay && ready && accessibleStage(stage))
         pc_randomizer_check("Bestiary: Defeat Puffy Blowhog");
     if (schema >= 7 || !pc_randomizer_expanded() || !healthDepleted || !gameplay || !ready || !accessibleStage(stage)) return;
     for (int i = 0; i < 8; ++i)
         if (type == randomizerEnemyTypes[i]) pc_randomizer_check(randomizerCheckNames[39 + i]);
 }
-bool pc_randomizer_collection_checks() { return enabled && schema >= 7; }
+bool pc_randomizer_collection_checks() { return enabled && !thelynk && schema >= 7; }
 void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gameplay) {
     if (!enabled || !colorPopulation || !gameplay || !ready || color < 0 || color > 2 || totalPikmin < 0) return;
     const char* colors[] = {"Blue", "Red", "Yellow"};
@@ -1118,9 +1247,10 @@ void pc_randomizer_save_campaign(const void* source) {
     std::filesystem::create_directories(campaignDirectory);
     const auto generation = campaignGeneration + 1;
     std::ostringstream meta;
-    meta << (purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     if (purpleCampaign) p2ship::stock.write(meta);
+    if (thelynk) for (int i = 0; i < 18; ++i) meta << ' ' << thelynkUsed[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
     std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;
@@ -1141,4 +1271,30 @@ void pc_randomizer_save_campaign(const void* source) {
     campaignGeneration = generation;
     std::printf("[Pikmin Randomizer] CAMPAIGN_SAVED generation=%llu\n", generation);
     std::fflush(stdout);
+}
+
+bool pc_randomizer_thelynk() { return enabled && thelynk; }
+bool pc_randomizer_thelynk_part(unsigned model, bool received) {
+    int i = thelynkModel(model);
+    return pc_randomizer_thelynk() && i >= 0 && (received ? (thelynkParts & (1u << i)) != 0 : checks.count(unsigned(i)) != 0);
+}
+void pc_randomizer_thelynk_collect(unsigned model) {
+    int i = thelynkModel(model);
+    if (!pc_randomizer_thelynk() || i < 0) return;
+    pc_randomizer_check(thelynkPartNames[i]);
+}
+void pc_randomizer_thelynk_squad(int color, int followers, bool gameplay) {
+    if (!pc_randomizer_thelynk() || !ready || !gameplay || color < 0 || color > 2 || followers < 0 || followers > 100) return;
+    const int c = color == 1 ? 0 : color == 2 ? 1 : 2;
+    for (int n = 1; n <= followers; ++n) {
+        const unsigned slot = 30 + unsigned(c) * 100 + unsigned(n) - 1;
+        if (thelynkEnabled.count(slot)) pc_randomizer_check(thelynkNames[slot].c_str());
+    }
+}
+int pc_randomizer_thelynk_bonus(int kind) {
+    return pc_randomizer_thelynk() && ready && kind >= 0 && kind < 18 && thelynkBonuses[kind] > thelynkUsed[kind]
+        ? (kind % 2 ? 5 : 1) : 0;
+}
+void pc_randomizer_thelynk_consume(int kind) {
+    if (pc_randomizer_thelynk_bonus(kind)) ++thelynkUsed[kind];
 }

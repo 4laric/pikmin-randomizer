@@ -6,6 +6,13 @@ int pc_randomizer_carry_strength(int color);
 // Standalone file-IPC adapter. No game state is touched before validation.
 bool pc_randomizer_init(int argc, char** argv);
 bool pc_randomizer_enabled();
+// Separate, versioned TheLynk AP contract. Physical checks and rewards differ.
+bool pc_randomizer_thelynk();
+bool pc_randomizer_thelynk_part(unsigned model, bool received);
+void pc_randomizer_thelynk_collect(unsigned model);
+void pc_randomizer_thelynk_squad(int color, int followers, bool gameplay);
+int pc_randomizer_thelynk_bonus(int kind);
+void pc_randomizer_thelynk_consume(int kind);
 void pc_randomizer_update();
 bool pc_randomizer_ready();
 bool pc_randomizer_has(const char* name);
@@ -74,6 +81,12 @@ void pc_randomizer_p2_delivery_reset();
 // so a bound P2 corpse is never ALSO credited to the P1-proxy bestiary check.
 bool pc_randomizer_resolved_checks();
 bool pc_randomizer_p2_corpse_delivered(const void* tekiview, int type, int stage, bool gameplay);
+// Kill-based receipt for a bound P2 source that leaves no carcass (#1088: the
+// source species never leaves a corpse, so its check is earned at the kill).
+// Same resolved check, same `onion:p2:<source>:<stage>` identity and the same
+// single-use binding as the corpse delivery (whichever runs first consumes it),
+// so one actor earns its check exactly once. Ledger encounter "kill".
+bool pc_randomizer_p2_killed(const void* tekiview, int type, int stage, bool gameplay);
 // Read-only receipt query for the TEST-ONLY autoplay bot (bot-v2 gap 1):
 // true once this process granted (or saw a durable duplicate of) the Onion
 // corpse receipt for `generatorUid`. Never mutates the ledger.

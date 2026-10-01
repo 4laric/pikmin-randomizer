@@ -246,7 +246,7 @@ void pc_bbft_init(int argc, char** argv) {
 bool pc_bbft_enabled() { return enabled || challengeLevel >= 0 || p2SurfaceTutorial; }
 bool pc_bbft_skip_tutorial() {
     if (challengeLevel >= 0 || p2SurfaceTutorial) return true;
-    if (pc_randomizer_enabled()) return true;
+    if (pc_randomizer_enabled()) return !pc_randomizer_thelynk();
 #ifdef _WIN32
     return enabled && bbft_pikmin_skip_tutorial();
 #else
@@ -400,7 +400,7 @@ bool pc_bbft_checked(const char* name) {
 }
 
 bool pc_bbft_progression() {
-    if (pc_randomizer_enabled()) return true;
+    if (pc_randomizer_enabled()) return !pc_randomizer_thelynk();
 #ifdef _WIN32
     return enabled && bbft_pikmin_progression();
 #else
@@ -416,6 +416,7 @@ bool pc_bbft_has(const char* name) {
 #endif
 }
 bool pc_bbft_color_access(int color) {
+    if (pc_randomizer_thelynk()) return true; // Vanilla discovery owns the Onions.
     // Engine colors: blue=0, red=1, yellow=2.
     if (pc_randomizer_enabled()) return (color == 0 && pc_randomizer_has("Blue Onion"))
         || (color == 1 && pc_randomizer_has("Red Onion")) || (color == 2 && pc_randomizer_has("Yellow Onion"));

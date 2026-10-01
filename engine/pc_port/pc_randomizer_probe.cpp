@@ -31,6 +31,17 @@ int main(int argc, char** argv) {
                 int stage = std::atoi(argv[++i]);
                 pc_randomizer_p2_bind_source(&actor, source, uid);
                 assert(pc_randomizer_p2_corpse_delivered(&actor, 3, stage, true));
+            } else if (!std::strcmp(argv[i], "--kill-p2") && i + 3 < argc) {
+                // #1088 kill receipt: the kill earns the check once and consumes
+                // the binding, so a leftover corpse delivery for the same actor
+                // is not handled (no double count).
+                unsigned source = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                unsigned uid = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                int stage = std::atoi(argv[++i]);
+                pc_randomizer_p2_bind_source(&actor, source, uid);
+                assert(pc_randomizer_p2_killed(&actor, 3, stage, true));
+                assert(!pc_randomizer_p2_killed(&actor, 3, stage, true));
+                assert(!pc_randomizer_p2_corpse_delivered(&actor, 3, stage, true));
             } else if (!std::strcmp(argv[i], "--deliver-p1") && i + 1 < argc) {
                 int type = std::atoi(argv[++i]);
                 pc_randomizer_corpse_delivered(type, 1, true);
