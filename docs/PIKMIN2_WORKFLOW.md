@@ -30,7 +30,10 @@ and handoff validation, final integration writer, WIP and process fences remain.
 
 Agreements freeze lane, issue, generation, actual worker/task/process identities,
 full root/native source records, exact semantic file keys, private checkout
-identities, preservation obligations and hashed evidence. The actor must run inside
+identities, preservation obligations and hashed evidence. Producer checkout references
+are read-only and may name an ordinary or canonical historical checkout. Only the
+integration consumer receives edit access and must use a distinct linked private
+worktree under output/. The actor must run inside
 its live registered process; desktop agents need no fictitious controller launch.
 Describe the coordination basis honestly: `owner-communication` means actual owner
 communication; `user-authorized-legacy-preservation` means explicit user authority

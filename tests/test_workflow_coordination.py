@@ -129,6 +129,30 @@ class CoordinationTests(unittest.TestCase):
         with self.assertRaisesRegex(Rejected, 'private checkout'):
             self.agree()
 
+    def test_readonly_canonical_producer_reference_is_allowed(self):
+        source = copy.deepcopy(self.lane('owner')['root']); source['worktree'] = '.'
+        l = self.lane('owner')
+        self.reg.checkpoint('owner', 1, l['revision'], {'root': source})
+        before = self.lane('owner')
+        row = self.agree()
+        self.amend(row)
+        self.assertEqual(str(self.root), row['participants'][0]['checkouts']['root']['path'])
+        self.assertEqual(before, self.lane('owner'))
+        self.assertEqual(row['id'], self.reg.check_coordination(row['id'])['id'])
+
+    def test_ordinary_producer_checkout_is_readonly_and_cannot_be_consumer(self):
+        ordinary = self.root / 'legacy-checkout'
+        self.git('clone', '--no-hardlinks', str(self.root), str(ordinary))
+        source = copy.deepcopy(self.lane('owner')['root']); source['worktree'] = 'legacy-checkout'
+        l = self.lane('owner')
+        self.reg.checkpoint('owner', 1, l['revision'], {'root': source})
+        row = self.agree()
+        self.amend(row)
+        l = self.lane('integration')
+        self.reg.checkpoint('integration', 1, l['revision'], {'root': source})
+        with self.assertRaisesRegex(Rejected, 'private checkout'):
+            self.agree()
+
     def test_inactive_legacy_owner_does_not_require_new_handoff(self):
         with self.reg.transaction() as s:
             s['lanes']['owner'].update(state='handoff_ready', handoff={'path': 'missing', 'sha256': 'bad'})

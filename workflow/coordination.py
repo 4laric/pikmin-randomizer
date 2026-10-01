@@ -40,14 +40,20 @@ def checkout(reg, lane, repo, *, consumer):
     source = lane.get(repo)
     require(isinstance(source, dict), 'Source record required for ' + repo)
     path = local_path(reg.root, source['worktree'])
-    require(path.is_relative_to(reg.root / 'output') and path != reg.root / 'output',
-            'Coordinated edits require a private checkout under output/')
+    if consumer:
+        require(path.is_relative_to(reg.root / 'output') and path != reg.root / 'output',
+                'Coordinated edits require a private checkout under output/')
     # A missing historical producer checkout is disclosed, not repaired or accepted.
     # The integration consumer always needs a real linked private git worktree.
     if not path.exists():
         require(not consumer, 'Integration checkout missing')
         return dict(path=str(path), git_dir=None, missing=True)
-    require((path / '.git').is_file(), 'Linked private git worktree required')
+    if consumer:
+        require((path / '.git').is_file(), 'Linked private git worktree required')
+    else:
+        # Historical producers may reference the canonical or an ordinary checkout.
+        # This is a read-only identity reference, never permission to edit it.
+        require((path / '.git').exists(), 'Producer git checkout reference required')
     directory = git(path, 'rev-parse', '--absolute-git-dir')
     if consumer:
         require(git(path, 'rev-parse', 'HEAD') == source['head'], 'Integration checkout HEAD differs from source pin')
