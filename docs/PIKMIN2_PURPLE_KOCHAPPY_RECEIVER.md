@@ -54,3 +54,20 @@ bounce/Fit recovery and natural damage/death interruption, that gate stays open.
 Final combination with the latest #1150 source and #1144/#1148 source needs an
 independently reviewed merge and fresh consumers. Feature CI or this document
 does not confer a source receipt, complete gameplay approval or issue completion.
+
+The separate `pikmin_ci_fixture_purple_kochappy` engineering preview uses the
+current twenty-Red overlay and ordinary SDL Violet conversion/approach/pluck,
+then actual Purple throwing. It observes the real animator counter and saved
+motion option while the registered receiver is active, production state-clock
+pause/resume logs, natural recovery and terminal interruption. A preview pass
+cannot close the ordinary tutorial/AP mixed gate: current surface boot refuses
+AP seed sessions and has no ordinary Purple enable/acquisition recipe.
+
+Use `python -m scripts.run_pikmin2_purple_kochappy --help` from this root
+worktree. Supply the exact remote fixture executable and package directory,
+full root/native source pins, its SHA256 and explicit private source banks.
+The runner requires all four manifest-verified CI DLLs beside the executable,
+clears ambient game/co-op settings, creates a fresh save and caps wall time60s.
+Run READY and both exit86 guards before positive mechanics. The focused
+prelaunch tests run with
+`py -3.12 -B -m unittest scripts.test_purple_kochappy_fixture_inputs -v`.
