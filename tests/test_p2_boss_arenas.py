@@ -133,11 +133,11 @@ class DocumentTests(unittest.TestCase):
         self.assertGreaterEqual(len(report["admitted"].get("DangoMushi", [])), 2)
 
     def test_arena_bosses(self):
-        # The pool's arena bosses (94, 73 since #246, and 53 since the wave-3
-        # Emperor lane #289) have a profile; the other lane bosses (30, 66)
-        # carry descriptors and get their profile with pool admission.
+        # The pool's arena bosses (94, 73 since #246, 53 since the wave-3 Emperor
+        # lane #289, 30 since #256 and 66 since the Man-at-Legs port #1012) have a
+        # profile; every descriptor still exists for each boss in the catalogue.
         roster = load_and_validate()
-        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30})
+        self.assertEqual(arena_boss_ids(self.document, roster), {94, 73, 53, 30, 66})
         descriptors = {e["identity"] for e in self.document["encounters"]}
         self.assertEqual(descriptors, set(arenas.BOSS_ENCOUNTERS))
 
@@ -239,7 +239,7 @@ class SeedTests(unittest.TestCase):
     def test_crawbster_only_in_boss_arenas(self):
         used = set()
         for i in range(40):
-            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53, 40)])
+            layout = self.layout(f"arena-{i}", species=[s for s in sorted(PLAYABLE_P2_SPECIES) if s not in (30, 73, 53, 40, 66)])
             block = layout[BOSS_ARENA_KEY]
             for binding in layout["bindings"]:
                 if binding["source_id"] == 94:
@@ -263,23 +263,25 @@ class SeedTests(unittest.TestCase):
         titan_arenas = {"impact_goolix", "navel_beady_long_legs", "navel_puffstool",
                         "spring_cannon_beetle"}
         # The Emperor (53, #289) needs the tongue footprint (175): every measured,
-        # unprotected arena covers it, so it is not a cast list either.
+        # unprotected arena covers it, so it is not a cast list either. Man-at-Legs
+        # (66, #1012) shares the Titan's 250 footprint (houdai_arena, #899).
         king_arenas = titan_arenas | {"hope_snagret_pit", "hope_snagret_part"}
-        seen = {30: set(), 53: set(), 73: set(), 94: set()}
+        seen = {30: set(), 53: set(), 66: set(), 73: set(), 94: set()}
         for i in range(40):
             layout = self.layout(f"arena-{i}", species=DEFAULT_POOL)
             block = layout[BOSS_ARENA_KEY]
             placed = {row["source_id"]: row["arena"] for row in block["placed"]}
-            self.assertEqual(set(placed), {30, 53, 73, 94})
+            self.assertEqual(set(placed), {30, 53, 66, 73, 94})
             self.assertIn(placed[73], titan_arenas)
             self.assertIn(placed[30], titan_arenas)  # Empress footprint 250 (#256)
+            self.assertIn(placed[66], titan_arenas)  # Man-at-Legs footprint 250 (#899)
             self.assertIn(placed[53], king_arenas)
-            self.assertEqual(len(set(placed.values())), 4)
+            self.assertEqual(len(set(placed.values())), 5)
             for source_id, arena in placed.items():
                 seen[source_id].add(arena)
             self.assertNotIn("unplaced", block)
             for binding in layout["bindings"]:
-                if binding["source_id"] in (30, 53, 73, 94):
+                if binding["source_id"] in (30, 53, 66, 73, 94):
                     self.assertIn(binding["target"], self.all_arena)
                 else:
                     self.assertNotIn(binding["target"], self.all_arena)
@@ -288,6 +290,7 @@ class SeedTests(unittest.TestCase):
         self.assertGreater(len(seen[30]), 1)
         self.assertGreater(len(seen[94]), 1)
         self.assertGreater(len(seen[53]), 1)
+        self.assertGreater(len(seen[66]), 1)
 
     def test_ordinary_layout_equals_the_pool_without_bosses(self):
         pool = DEFAULT_POOL
@@ -296,11 +299,11 @@ class SeedTests(unittest.TestCase):
             with_boss = self.layout(f"eq-{i}", species=pool)
             ordinary = dict(with_boss)
             ordinary.pop(BOSS_ARENA_KEY)
-            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (30, 53, 73, 94)]
+            ordinary["bindings"] = [b for b in with_boss["bindings"] if b["source_id"] not in (30, 53, 66, 73, 94)]
             self.assertEqual(ordinary, self.layout(f"eq-{i}", species=without))
 
     def test_boss_free_pool_is_byte_identical_without_the_arenas(self):
-        without = [s for s in DEFAULT_POOL if s not in (30, 53, 73, 94)]
+        without = [s for s in DEFAULT_POOL if s not in (30, 53, 66, 73, 94)]
         stripped = _strip_arenas(self.document)
         for i in range(10):
             new = self.layout(f"id-{i}", species=without)
@@ -326,7 +329,7 @@ class SeedTests(unittest.TestCase):
                             p2_enemies=True, p2_species="playable")
         validate(manifest)
         placed = manifest["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 66, 73, 94])
         from experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
         self.assertLessEqual(len(manifest["p2_layout"]["bindings"]), P2_MAX_BINDINGS)
         # A --p2-purple-campaign seed does not add a fifth arena boss: the Giant Breadbug (40)
@@ -335,7 +338,7 @@ class SeedTests(unittest.TestCase):
                           p2_enemies=True, p2_species="playable", p2_purple_campaign=True)
         validate(purple)
         placed = purple["p2_layout"][BOSS_ARENA_KEY]["placed"]
-        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 73, 94])
+        self.assertEqual(sorted(row["source_id"] for row in placed), [30, 53, 66, 73, 94])
 
     def test_giant_breadbug_is_not_an_arena_boss(self):
         # #958: r9/r11 killed the Giant in an arena but never delivered the corpse, so it has no

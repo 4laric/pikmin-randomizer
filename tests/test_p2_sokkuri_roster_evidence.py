@@ -90,7 +90,10 @@ def test_other_species_and_gates_are_preserved():
     assert entries["9"]["eligibility"] == "excluded"
     # 84 Hana was admitted by the wave 3 mechanics lane (#964).
     assert entries["84"]["gates"]["cleanup_reentry"] == "PASS"
-    assert entries["66"]["eligibility"] != "admitted"
+    # #1041: Man-at-Legs admission records its source-66 Onion receipt;
+    # this later admission does not change the reviewed source-79 evidence.
+    assert entries["66"]["eligibility"] == "admitted"
+    assert "onion:p2:66:3" in entries["66"]["delivery_receipt"]
     assert entries["79"]["gates"]["identity_spawn"] == "PASS"
     assert entries["79"]["gates"]["death_corpse"] == "PASS"
 

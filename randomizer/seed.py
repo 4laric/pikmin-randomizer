@@ -639,6 +639,18 @@ P2_PLAYABLE_POOL = (
                          "(p2-dweevil-actors.txt)",
         },
     },
+    {
+        "source_id": 66,
+        "enum_name": "Houdai",
+        "family": "long_legs",
+        "evidence": {
+            "run": "Bot-driven power-mode campaign c2 (#1012; owner ruling 2026-09-25: power mode admits): own-brain bind (P2HoudaiFsm, disc parms) with the sampled clip rig, IK legs, retail collision tree, Stay->Land->Wait->Walk->Dead on its own generator 1945764764, natural kill, P2 corpse carried, Onion receipt onion:p2:66:3; no-multiplier run b2 (same exe): rises, walks, laser sight sweep, 87 shells",
+            "log": "output/claude-orch/p2-66-own/runs/c2/session/runs/0a737916a5c704ec2cd5ea489d43d5dd3a0ecfd63b9030830219a0187af8d44b/native.log (sha256 9efc43f3e7e35dd2...) L1199 own bind, L1200 delivery bind, L1464 dead, L1575 receipt, L1576 AUTOPLAY_RESULT 1/1/1/1; b2 native.log sha256 ffa4415dd704a644...; native claude/p2-66-man-at-legs 0f84fcc37, exe sha256 7c2f13033f9eba48...; docs/PIKMIN2_HOUDAI_PORT.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 66 -> long_legs "
+                         "(experimental/pikmin2_long_legs_install; rig via pikmin2_houdai_rig)",
+        },
+    },
 )
 
 

@@ -96,12 +96,12 @@ def test_committed_pool_fits_the_constraint_derived_targets():
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == 41  # + Bulborb Larva 31 (#1042)
+    assert len(pool) == 42  # + Bulborb Larva 31 (#1042), Man-at-Legs 66 (#1012)
     assert len(ordinary_slots(document)) == 72
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)
     assert layout["density"] == DENSITY_LEGACY
-    assert arena_bosses(layout) == {30, 53, 73, 94}  # 40 is ordinary-slot only (no arena receipt, #958)
+    assert arena_bosses(layout) == {30, 53, 66, 73, 94}  # 40 is ordinary-slot only (no arena receipt, #958)
     assert "unplaced" not in layout
     assert set(bound) == pool - arena_bosses(layout)
     assert len(bound) == len(ordinary_slots(document))

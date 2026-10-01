@@ -4,6 +4,12 @@ Lane 26 bounded slice: an engine-free, deterministic implementation of the
 shared Long Legs lifecycle and attack scheduling used by Damagumo (56, Beady
 Long Legs), Houdai (66, Man-at-Legs) and BigFoot (69, Raging Long Legs).
 
+> **Man-at-Legs (66) no longer runs this shared schedule.** Since #173 it has its own
+> source brain (`pc_p2_houdai_fsm`), and since #1012 its own rig draw, aimed gun, laser
+> sight and collision tree. This file stays the record of the shared slice for 56 and 69;
+> the current Man-at-Legs behaviour, gaps and evidence are in
+> `docs/PIKMIN2_HOUDAI_PORT.md`.
+
 Implementation owner: Codex via shared account `4laric`. Executing session:
 opencode (deepseek-v4.1-flash), 2026-09-13. Native candidate:
 `opencode/p2-longlegs-fsm` head `a62a8931`, base `f9e139d8` (never pushed to

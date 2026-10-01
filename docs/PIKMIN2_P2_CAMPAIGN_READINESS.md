@@ -40,7 +40,7 @@ A species must clear **three** gates, in this order:
 | 79 | Sokkuri | **no extractor** | `TEKI_Chappy` 3 ✓ | batch2 `ground\|Sokkuri` | blocked on content |
 | 57 | Kurage | **no extractor** | `TEKI_Frog` 0 ✓ | own module, bridge-aware | blocked on content; AI also gated |
 | 78 | MiniHoudai / Groink | **no extractor** | `TEKI_Frog` 0 ✓ | **none in campaign** | no |
-| 66 | Houdai / Man-at-Legs | ✓ `extract_houdai` | `TEKI_Swallow` 4 ✓ | own brain `P2HoudaiFsm` in `pc_p2_long_legs` (native `claude/p2-port-66-houdai` 49e634d17) | natural bot kill/carry/receipt proven (#173 run f4-66); **not admitted**: legs never animate (bind pose), death model (source: no carcass) pending owner ruling, and pool growth past 35 needs #893 |
+| 66 | Houdai / Man-at-Legs | ✓ `extract_houdai` (+ sampled rig, `pikmin2_houdai_rig`) | `TEKI_Swallow` 4 ✓ | own brain `P2HoudaiFsm` + rig draw, aimed gun, laser sight, retail collision tree in `pc_p2_long_legs` (native `claude/p2-66-man-at-legs`, #1012) | admitted as an arena boss on own bot evidence (#1012, `docs/PIKMIN2_HOUDAI_PORT.md`); the carried corpse is the port's, the source leaves no carcass |
 | 1 | Kochappy | **no extractor** | needs 3, **absent** | own module, `_70`-keyed | no |
 | 45 | Snow / YellowKochappy | **no extractor** | needs 3, **absent** | own module, source-blind | no |
 | 58 | BombSarai | ✓ `extract_bombsarai` (#244) | `TEKI_Napkid` 11 ✓ (#244) | OWN module `pc_p2_bombsarai_own_teki.cpp` (#244) | yes — admitted 2026-09-29 on OWN bot evidence (see below) |
