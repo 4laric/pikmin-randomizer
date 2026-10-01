@@ -20,10 +20,14 @@ Linux gameplay, saving and software rendering remain unvalidated.
 - Root documentation base: `9cae7fd5a20e0f0cac470ef4d340563ca6a12bf8`.
 - Accepted native main supplied by integration:
   `77b4c8922cb7740ca2ea182429b4196f1be46b8b`.
-- Combined local production `54743e120` and root export
-  [PR #1113](https://github.com/4laric/pikmin-randomizer/pull/1113), head
-  `0f08ed20c0ad21dd54f61c71fee0cf27cf7652da`, were still a separate integration
-  delivery at handoff. Do not silently substitute an unpinned dirty checkout.
+- Integration subsequently completed root export
+  [PR #1113](https://github.com/4laric/pikmin-randomizer/pull/1113), merged as
+  `89da5c3e574b6ab3fd125d820b27876bea159075`, with clean native production
+  `54743e12003888891d4dc3de249214cb18627fa6` and 4,017 byte-exact exported files.
+  Prefer that root delivery for source setup. Its local Release/no-work and
+  bounded captain checks are Windows evidence. Native main `77b4c892` includes
+  a later White fixture not yet included in that export: record which native
+  source the Linux job actually compiles. Do not silently substitute a dirty checkout.
 - Co-op native PR #103 is a separate line with Linux repairs underway; it is not
   the initial P2-main baseline.
 
