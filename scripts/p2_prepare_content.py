@@ -41,6 +41,8 @@ Existing per-family extractors are reused as-is; nothing here rewrites them:
   ``<out>/Queen/`` (``identity.json``, ``bulblax.json``, ``bank/``); the Queen
   adapter stages the native OWN bank, poses and specular sidecar through
   ``experimental.pikmin2_queen_stage`` (#256).
+* 31 Baby (#1042): ``extract_baby``, the same Bulblax extraction under its own
+  enum -> ``<out>/Baby/``; the shared Queen adapter stages the one bank.
 * 78 MiniHoudai: ``pikmin2_minihoudai_assets.extract`` -> ``<out>/MiniHoudai/``
   (``minihoudai.json`` + ``identity.json`` + ``minihoudai_<clip>_<ii>.mod``);
   the MiniHoudai adapter stages the native Groink source-FSM inputs through
@@ -283,6 +285,7 @@ ENUM_FOR_SOURCE = {
     101: "UmiMushiBlind",
     41: "Fuefuki",
     30: "Queen",
+    31: "Baby",
 }
 
 
@@ -614,7 +617,7 @@ def extract_kogane(iso, dest, pose_limit=DEFAULT_POSE_LIMIT):
     return target
 
 
-def extract_kurage(iso, dest):
+def extract_kurage(iso, dest, pose_limit=None):
     """Build <dest>/Kurage/ via the kurage extractor (identity + manifest + poses).
 
     ``experimental.pikmin2_kurage_assets.extract`` writes ``identity.json`` (the
@@ -632,11 +635,11 @@ def extract_kurage(iso, dest):
     target = dest / "Kurage"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
-    kurage.extract(iso, target)
+    kurage.extract(iso, target, *([] if pose_limit is None else [pose_limit]))
     return target
 
 
-def extract_onikurage(iso, dest):
+def extract_onikurage(iso, dest, pose_limit=None):
     """Build <dest>/OniKurage/ via the onikurage extractor (identity + manifest + poses).
 
     Wave 3 flyers (#960): same layout as :func:`extract_kurage` for the Greater
@@ -651,7 +654,7 @@ def extract_onikurage(iso, dest):
     target = dest / "OniKurage"
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
-    onikurage.extract(iso, target)
+    onikurage.extract(iso, target, *([] if pose_limit is None else [pose_limit]))
     return target
 
 
@@ -902,6 +905,25 @@ def extract_bombotakara(iso, source_repo, dest, pose_limit=6):
 def extract_queen(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
     """Build <dest>/Queen/ for the Empress Bulblax OWN binding (#256).
 
+    See ``_extract_bulblax`` for the tree layout.
+    """
+    return _extract_bulblax(iso, research, dest, pose_limit, "Queen", 30, "extract_queen")
+
+
+def extract_baby(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
+    """Build <dest>/Baby/ for the standalone Bulborb Larva (31, #1042).
+
+    The Bulblax extractor imports the Queen and the Baby together (one disc
+    parm/clip/pose bank), and native ``pc_p2_queen_teki`` binds a seeded 31
+    slot from the same staged bank, so the Baby tree is the Queen tree under
+    its own enum name and identity.
+    """
+    return _extract_bulblax(iso, research, dest, pose_limit, "Baby", 31, "extract_baby")
+
+
+def _extract_bulblax(iso, research, dest, pose_limit, enum_name, source_id, extractor):
+    """Build <dest>/<enum_name>/ for the Bulblax OWN binding (#256, #1042).
+
     Runs the audited Bulblax import (``pikmin2_bulblax_assets.extract``, which
     validates the disc parms, clip registry, key events and carcass config),
     the pose bank (``pikmin2_bulblax_bank.build``) and the Queen material +
@@ -921,10 +943,10 @@ def extract_queen(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
         raise ValueError(f"research checkout not found: {research}")
     if type(pose_limit) is not int or not 2 <= pose_limit <= bulblax_bank.MAX_POSES:
         raise ValueError(f"pose limit must be 2..{bulblax_bank.MAX_POSES}: {pose_limit!r}")
-    target = dest / "Queen"
+    target = dest / enum_name
     if target.exists():
         raise ValueError(f"content dir already exists: {target}")
-    tmp = dest / ".tmp-queen"
+    tmp = dest / f".tmp-{enum_name.lower()}"
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
@@ -938,8 +960,8 @@ def extract_queen(iso, research, dest, pose_limit=DEFAULT_POSE_LIMIT):
         shutil.copytree(tmp / "bank", target / "bank",
                         ignore=shutil.ignore_patterns("KingChappy"))
         (target / "identity.json").write_text(json.dumps(
-            {"schema": 1, "source_id": 30, "enum_name": "Queen",
-             "extractor": "extract_queen", "pose_limit": pose_limit}, indent=2) + "\n",
+            {"schema": 1, "source_id": source_id, "enum_name": enum_name,
+             "extractor": extractor, "pose_limit": pose_limit}, indent=2) + "\n",
             encoding="utf-8")
     except BaseException:
         shutil.rmtree(target, ignore_errors=True)
@@ -1670,6 +1692,7 @@ EXTRACTORS = {
     97: "extract_fminihoudai",
     58: "extract_bombsarai",
     30: "extract_queen",
+    31: "extract_baby",
     12: "extract_uji",
     13: "extract_uji",
     14: "extract_uji",
@@ -1759,10 +1782,10 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extract_demon(iso, out)
             extracted.append(source_id)
         elif source_id == 57:
-            extract_kurage(iso, out)
+            extract_kurage(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 72:
-            extract_onikurage(iso, out)
+            extract_onikurage(iso, out, pose_limit=pose_limit)
             extracted.append(source_id)
         elif source_id == 9:
             extract_kogane(iso, out, pose_limit=pose_limit)
@@ -1908,6 +1931,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
             extracted.append(source_id)
         elif source_id == 30:
             extract_queen(iso, research, out, pose_limit=max(12, min(pose_limit, DEFAULT_POSE_LIMIT)))
+            extracted.append(source_id)
+        elif source_id == 31:
+            extract_baby(iso, research, out, pose_limit=max(12, min(pose_limit, DEFAULT_POSE_LIMIT)))
             extracted.append(source_id)
         elif source_id in PROXY_SOURCE_IDS:
             extract_proxy(iso, out, source_id, pose_limit=proxy_pose_limit)

@@ -110,8 +110,12 @@ def test_iso_extract_and_stage_what_native_opens(tmp_path):
     assert general["fp00"] == 2000.0 and proper["fp06"] == 100.0 and proper["fp04"] == 1000.0 and proper["ip01"] == 1
     parsed = stage.parse_bank((run / "p2-giantbreadbug-bank.txt").read_bytes())
     staged = sorted(p.name for p in (run / stage.ROOM).iterdir())
-    expected = sorted(stage.pose_name(c["name"], i, 40) for c in parsed["clips"].values() for i in range(len(c["poses"])))
+    expected = sorted([stage.pose_name(c["name"], i, 40) for c in parsed["clips"].values()
+                       for i in range(len(c["poses"]))] + [stage.nest_name(40)])
     assert staged == expected and len(staged) == receipt["breadbug"]["poses"] > 0
+    # #1022 lair: same PanHouse model, Giant nest scale 2.0 (oopanmodoki proper fp00).
+    manifest = json.loads((target / "giantbreadbug.json").read_text(encoding="utf-8"))
+    assert manifest["nest"]["file"] == "giantbreadbug_nest.mod" and manifest["nest"]["scale"] == 2.0
     # The Giant's Dead clip carries KEYEVENT_2 (boundEffect) at frame 70.
     assert (70, 2) in parsed["clips"][0]["events"]
     # Pulled loop (type1 5..10) and the carcass hold (type5 10) have poses.

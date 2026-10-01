@@ -35,7 +35,8 @@ LEGACY_FINGERPRINT = "7b99245bc9f541e0ff13d35429c0f244ae787c1716c013d6f2020235a6
 # #901: the held-part layer binds the Puffy Blowhog uf02 holder slot too.
 # #948: the committed document is constraint-derived (72 ordinary slots),
 # so the P2 legacy fingerprint moved with it.
-P2_LEGACY_FINGERPRINT = "0f1178bde1b2a8bc6a149a629654ff0701b96f61625d9fc41af611665c0ef097"
+# #1042: Baby 31 left the boss_helper roster class, which moves the roster revision the P2 seed hashes.
+P2_LEGACY_FINGERPRINT = "b141a5ce53f364eb326aa24188f1692f034a6f5a0251d5512cd8d0a2350a60de"
 
 
 def ordinary_bindings(manifest):

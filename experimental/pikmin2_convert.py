@@ -133,6 +133,31 @@ DEFAULT_ALPHA_STAGE=[7,4,5,7,0,0,0,1,0]  # exporter default: texture alpha x ras
 # APREV (no earlier stage exists) and KONST (no per-stage selector is carried) are refused.
 ALPHA_STAGE_INPUTS=frozenset((1,2,3,4,5,7))
 
+def alpha_tested(m, r):
+    """True when the material's alpha compare can reject a pixel (#1022).
+
+    An opaque (GX_BM_NONE) material with an alpha compare such as
+    GEQUAL 128 cuts out by the TEV alpha, so the exported alpha combiner must
+    be the source's. The Breadbug lair (PanHouse) computes A0 + TEXA*RASA with
+    A0 = 255, i.e. it is solid in P2; the default TEXA*RASA cut its noisy
+    texture alpha into a patchy clump.
+    """
+    at=u32(m,108)
+    if not at: return False
+    at+=u16(m,r+0x146)*8
+    if at+5>len(m): return False
+    comp0,ref0,op,comp1,ref1=m[at:at+5]
+    def always(comp, ref):
+        # GX_NEVER..GX_ALWAYS = 0..7; refs are 0..255
+        return comp==7 or (comp==6 and ref==0) or (comp==3 and ref==255)
+    def never(comp, ref):
+        return comp==0 or (comp==1 and ref==0) or (comp==4 and ref==255)
+    a0,a1=always(comp0,ref0),always(comp1,ref1)
+    if op==0: return not (a0 and a1)       # AND
+    if op==1: return not (a0 or a1)        # OR
+    if op==2: return not ((a0 and never(comp1,ref1)) or (a1 and never(comp0,ref0)))  # XOR
+    return not ((a0 and a1) or (never(comp0,ref0) and never(comp1,ref1)))             # XNOR
+
 def blend_alpha_stage(m, r, slot, has_texture):
     """Source alpha combiner of an alpha-blended material's first TEV stage.
 
@@ -148,7 +173,8 @@ def blend_alpha_stage(m, r, slot, has_texture):
     """
     mode=u32(m,112)+u16(m,r+0x148)*4
     if not all(u32(m,o) for o in (76,80,88,92)) or mode+4>len(m): return None
-    if m[mode]!=1: return None  # GX_BM_BLEND only; opaque/alpha-tested stay unchanged
+    if m[mode]!=1 and not alpha_tested(m, r):
+        return None  # GX_BM_BLEND or alpha-tested only; plain opaque stays unchanged
     if m[u32(m,88)+m[r+4]]<1: return None
     stage=u32(m,92)+u16(m,r+0xe4)*20
     alpha=list(m[stage+10:stage+19])
@@ -395,7 +421,7 @@ def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigi
     return report
 
 
-def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
+def write_model(decoded, output, source, y_offset=0.0, material_colors=None, tev_overrides=None):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decoded; w=Writer()
     states=b['_render_states']
@@ -447,7 +473,24 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.begin(48,len(shapes),len(shapes));w.pad()
     alpha_stages=b.get('_alpha_stages') or [None]*len(mats)
     if len(alpha_stages)!=len(mats): raise ValueError('Expected alpha stage entry for every shape')
-    for tex,alpha_stage in zip(mats,alpha_stages):
+    # tev_overrides: {shape index: dict(regs=[C0,C1,C2 as 4 x s16], konst=16 bytes,
+    # stages=[dict(order=[coord,map,channel], color=[9 bytes], alpha=[9 bytes],
+    # kcolor=, kalpha=)])} writes those source TEV stages verbatim instead of the
+    # single approximate stage (the Jellyfloat two-stage layout; #1027).
+    tev_overrides=tev_overrides or {}
+    for index,(tex,alpha_stage) in enumerate(zip(mats,alpha_stages)):
+        override=tev_overrides.get(index)
+        if override is not None:
+            if tex<0 or not 1<=len(override['stages'])<=8 or len(override['regs'])!=3 or len(override['konst'])!=16:
+                raise ValueError('Invalid TEV override')
+            for reg in override['regs']:w.put('4hIfII',*reg,0,0.,0,0)
+            w.data+=bytes(override['konst']);w.put('I',len(override['stages']))
+            for stage in override['stages']:
+                if len(stage['order'])!=3 or len(stage['color'])!=9 or len(stage['alpha'])!=9:
+                    raise ValueError('Invalid TEV override stage')
+                w.data+=bytes([0,*stage['order'],stage.get('kcolor',0),stage.get('kalpha',0),0,0])
+                w.data+=bytes(list(stage['color'])+[0,0,0])+bytes(list(stage['alpha'])+[0,0,0])
+            continue
         for k in range(3):w.put('4hIfII',*(alpha_stage['regs'][k] if alpha_stage else (255,255,255,255)),0,0.,0,0)
         w.data+=bytes([255])*16;w.put('I',1)
         w.data+=bytes([0,0 if tex>=0 else 255,0 if tex>=0 else 255,4,0,0,0,0])

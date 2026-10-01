@@ -123,7 +123,9 @@ HAZARDS = frozenset({"Hiba", "GasHiba", "ElecHiba"})
 PROJECTILES = frozenset({"Rock", "Stone", "Bomb", "Egg"})
 NESTS = frozenset({"PanHouse", "PanModokiNest", "JigumoNest"})
 MANAGER_BASES = frozenset({"Pom", "UmiMushiBase"})
-BOSS_HELPERS = frozenset({"Baby", "Tyre"})
+# Baby (Bulborb Larva, 31) left this set in #1042: it is spawnable with its own ID and a
+# cave roster entry of its own (BULBLAX_BOSS_AUDIT), so it is a standalone enemy.
+BOSS_HELPERS = frozenset({"Tyre"})
 # IS_ENEMY_BOSS in enemyInfo.h; audited against the source each generation.
 BOSSES = frozenset({
     "Queen", "SnakeCrow", "KingChappy", "Damagumo", "OoPanModoki", "Houdai",

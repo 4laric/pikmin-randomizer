@@ -57,10 +57,28 @@ def main(ap, archive):
         mw = make(options)
         m = mw.worlds[1].manifest()
         validate(m)
+        from pikmin_randomizer.core.enemy_catalog import active_names, NO_CHECK_SPECIES
+        actual_p2 = {b['source_id'] for b in m['p2_layout']['bindings']} - NO_CHECK_SPECIES
+        assert {r['species'] for r in m['enemy_catalog']['checks'] if r['game'] == 'p2'} == actual_p2
+        assert set(active_names(m)) == {loc.name for loc in mw.get_locations(1)}
         assert {b['source_id'] for b in m['p2_layout']['bindings']} == ids
         assert fingerprint(make(options).worlds[1].manifest()) == fingerprint(m)
         distribute_items_restrictive(mw)
         assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        for extra in ({'p2_density': 'sampled'}, {'p2_density': 'bounded_coverage'},
+                      {'p2_species': ['44', '54'], 'p2_density': 'sampled'},
+                      {'starting_flarlic': 1, 'starting_color': 'blue', 'starting_area': 'navel',
+                       'progressive_color_stats': True, 'permanent_checks': True}):
+            varied = make(dict(options, **extra))
+            validate(varied.worlds[1].manifest())
+            distribute_items_restrictive(varied)
+            assert varied.can_beat_game() and not varied.get_unfilled_locations()
+        pair = setup_multiworld([world.PikminRandomizerWorld, world.PikminRandomizerWorld], seed=1046,
+                               options=[dict(options, p2_density='sampled', starting_flarlic=1),
+                                        dict(options, starting_color='yellow')])
+        distribute_items_restrictive(pair)
+        assert pair.can_beat_game() and not pair.get_unfilled_locations()
+        assert any(loc.item and loc.item.player != loc.player for loc in pair.get_locations())
         with tempfile.TemporaryDirectory() as out:
             mw.worlds[1].generate_output(out)
             saved = json.loads(next(Path(out).glob('*.pikmin.json')).read_text())
@@ -75,7 +93,8 @@ def main(ap, archive):
         bound = {b['source_id'] for b in full['p2_layout']['bindings']}
         assert full.get('p2_proxy_tier') == 'proven' and 'p2-proxy-tier-v1' in full['capabilities']
         # With no proven row yet `full` is exactly the playable six on the legacy policy; proxy rows switch it to sampled-v1.
-        assert (full['p2_layout']['density'] == 'sampled-v1') == bool(tier_ids('proven')) and len(full['p2_layout']['bindings']) <= 64
+        from pikmin_randomizer.experimental.pikmin2_seed_bridge import P2_MAX_BINDINGS
+        assert (full['p2_layout']['density'] == 'sampled-v1') == bool(tier_ids('proven')) and len(full['p2_layout']['bindings']) <= P2_MAX_BINDINGS
         assert bound | set(full['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids('proven'))
         assert set(PLAYABLE_P2_SPECIES) <= bound
         assert fingerprint(make({'p2_enemy_randomizer': True, 'p2_enemy_pool': 'full'}).worlds[1].manifest()) == fingerprint(full)
@@ -84,7 +103,9 @@ def main(ap, archive):
         # And the declared tier (every row) resolves too, so the bundled sibling/rows are really reachable.
         from pikmin_randomizer.core.seed import generate as _generate
         declared = _generate('packaged-declared', p2_enemies=True, p2_species='full', p2_proxy_tier='declared')
-        assert len({b['source_id'] for b in declared['p2_layout']['bindings']}) == len(declared['p2_layout']['bindings']) >= 35
+        declared_bound = {b['source_id'] for b in declared['p2_layout']['bindings']}
+        assert declared_bound | set(declared['p2_layout'].get('unplaced', [])) == set(PLAYABLE_P2_SPECIES) | set(tier_ids('declared'))
+        assert len(declared['p2_layout']['bindings']) <= P2_MAX_BINDINGS
         assert 'randomizer' not in sys.modules and 'experimental' not in sys.modules
         print('PASS: isolated zip imports, normal AP, invalid/denied placement, deterministic P2 fill, full proxy pool, output roundtrip')
         print('Real admitted placement fill passed; runtime acceptance is separate.')

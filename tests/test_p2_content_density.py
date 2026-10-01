@@ -44,7 +44,7 @@ def test_translucent_species_need_the_converter_revision(tmp_path):
     assert not density.entry_is_current(tmp_path, "Kurage")
     density.write_entry_marker(tmp_path / "Kurage", 24)
     assert density.entry_is_current(tmp_path, "Kurage")
-    assert density.entry_revisions(tmp_path, "Kurage") == (density.TRANSLUCENT_REVISION,)
+    assert density.entry_revisions(tmp_path, "Kurage") == (density.BANK_REVISION, density.TRANSLUCENT_REVISION)
     density.write_entry_marker(tmp_path / "OniKurage", 24, revisions=())
     assert not density.entry_is_current(tmp_path, "OniKurage")
     # a species with no requirement is always current, marker or not

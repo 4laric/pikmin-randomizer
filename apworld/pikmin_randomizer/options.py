@@ -44,17 +44,13 @@ class CampaignEnemies(Toggle):
 
 
 class P2EnemyRandomizer(Toggle):
-    """Experimental: place admitted Pikmin 2 source enemies in the randomizer through the versioned admission bridge. Off by default. When enabled, the admitted cohort is placed on the committed accepted-placement document (docs/PIKMIN2_ADMITTED_PLACEMENT.json); an empty or unaccepted admission set still fails closed with a clear error, and no P1 enemy is ever substituted."""
+    """Place admitted Pikmin 2 enemies in accepted P1 campaign slots. Adds delivery checks for actually placed P2 identities and retains surviving P1 checks. Requires the matching native enemy-check catalog capability. Off by default; imports join the pool after admission and production corpse metadata are recorded."""
     display_name = 'Pikmin 2 Enemy Bridge (experimental)'
     default = 0
 
 
 class P2EnemyPool(Choice):
-    """Which admitted Pikmin 2 enemies the bridge may place. playable: only species the
-    launcher can stage and run today (Blue Kochappy, Mamuta, the four elemental Otakara);
-    slots only other species could fill stay vanilla. all: every admitted species.
-    full: every proven proxy species (Pikmin 2 models over Pikmin 1 enemy behaviour,
-    never six-gate P2 identities) plus the playable six."""
+    """playable: the current admitted production cohort with launcher support. all: every admitted species. full: the production cohort plus proven model proxies; proxies do not earn source-behavior delivery checks. Each seed stores its resolved encounter/check catalog."""
     display_name = 'Pikmin 2 enemy pool'
     option_playable = 0
     option_all = 1
@@ -63,11 +59,25 @@ class P2EnemyPool(Choice):
 
 
 class P2Placement(OptionDict):
-    """Experimental lane-04 p2-placement-v1 document. Required when enabling
-    P2 enemies. Supply reviewed placement evidence; empty or denied placements
-    fail generation. This option never grants enemy admission."""
+    """Reviewed p2-placement-v1 override. Empty uses the bundled accepted placement. Denied placements fail generation; this option never grants enemy admission. Resolved AP checks currently require canonical campaign generator targets."""
     display_name = 'Pikmin 2 placement document'
     default = {}
+
+
+class P2Density(Choice):
+    """Default preserves the pool's existing placement policy. all_targets fills all legal targets; bounded_coverage seats the selected cohort with bounded extras; sampled chooses per-seed identities and records sampled-out species. Proxy pools require sampled."""
+    display_name = 'Pikmin 2 encounter density'
+    option_default = 0
+    option_all_targets = 1
+    option_bounded_coverage = 2
+    option_sampled = 3
+    default = 0
+
+
+class P2Species(OptionSet):
+    """Optional retail source IDs, for example 44, 54, 79. Empty selects the pool above. Explicit IDs must be admitted and supported; generation reports incompatible density or missing production check metadata."""
+    display_name = 'Pikmin 2 source species'
+    default = frozenset()
 
 
 class GroupSpawnEnemies(Toggle):
@@ -259,6 +269,8 @@ class PikminOptions(PerGameCommonOptions):
     p2_enemy_randomizer: P2EnemyRandomizer
     p2_enemy_pool: P2EnemyPool
     p2_placement: P2Placement
+    p2_density: P2Density
+    p2_species: P2Species
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies

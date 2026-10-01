@@ -40,9 +40,13 @@ MARKER = "density.json"
 # listed here is reused only when its marker records every listed revision;
 # otherwise it is re-extracted like a sparse entry.
 TRANSLUCENT_REVISION = "translucent-973"
+# #972: Jellyfloat entries carry the sampled pose bank (<clip>_<NN>.mod + per-pose
+# Proom rows) beside the static fallback visuals; an entry extracted before it
+# animates from one static mesh per clip.
+BANK_REVISION = "bank-972"
 REQUIRED_REVISIONS = {
-    "Kurage": (TRANSLUCENT_REVISION,),
-    "OniKurage": (TRANSLUCENT_REVISION,),
+    "Kurage": (TRANSLUCENT_REVISION, BANK_REVISION),
+    "OniKurage": (TRANSLUCENT_REVISION, BANK_REVISION),
     "MiniHoudai": (TRANSLUCENT_REVISION,),
 }
 POSE_RE = re.compile(r"^(?P<stem>.+)_(?P<idx>\d+)\.mod$")

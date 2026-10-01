@@ -8,6 +8,7 @@ from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
                            active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS)
 from .core.seed import generate, fingerprint
+from .core.enemy_catalog import all_location_ids as p2_location_ids
 from .core.stats import UPGRADE_ITEMS
 from .core.benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS, TRAP, TRAP_ITEMS
 
@@ -24,7 +25,7 @@ class PikminRandomizerWorld(World):
     game = GAME
     options_dataclass = PikminOptions
     item_name_to_id = ITEM_IDS
-    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **MODERN_LOCATION_IDS}
+    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **MODERN_LOCATION_IDS, **p2_location_ids()}
     required_client_version = (0, 6, 0)
     # Universal Tracker: the manifest depends on the room seed, so a local
     # regeneration must reuse the authoritative manifest from slot_data.
@@ -37,12 +38,20 @@ class PikminRandomizerWorld(World):
     def create_regions(self):
         menu = Region("Menu", self.player, self.multiworld)
         self.multiworld.regions.append(menu)
+        resolved_checks = {r['name'] for r in self.manifest().get('enemy_catalog', {}).get('checks', [])}
+        if resolved_checks:
+            bestiary = Region("Bestiary", self.player, self.multiworld)
+            self.multiworld.regions.append(bestiary)
+            menu.connect(bestiary)
+            for name in active_names(self.manifest()):
+                if name in resolved_checks:
+                    bestiary.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], bestiary))
         for _, area, _ in START_AREAS.values():
             region = Region(area, self.player, self.multiworld)
             self.multiworld.regions.append(region)
             menu.connect(region)
             for name in active_names(self.manifest()):
-                if check_area(name) == area:
+                if name not in resolved_checks and check_area(name) == area:
                     region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
 
     def create_item(self, name):
@@ -83,14 +92,21 @@ class PikminRandomizerWorld(World):
                     raise ValueError('Universal Tracker slot_data manifest does not match its fingerprint')
                 self._manifest = manifest
                 return manifest
+            selected_p2 = None
+            if self.options.p2_enemy_randomizer and self.options.p2_species.value:
+                try:
+                    selected_p2 = sorted({int(value) for value in self.options.p2_species.value})
+                except (TypeError, ValueError):
+                    raise ValueError('p2_species must contain retail numeric source IDs') from None
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             combined_captain=bool(self.options.collection_checks or self.options.permanent_checks or self.options.progressive_color_stats or self.options.per_spawn_enemies or self.options.group_spawn_enemies or self.options.miniboss_enemies or self.options.campaign_enemies or self.options.bomb_rock_weight.value or self.options.bomb_trap_weight.value or self.options.progg_trap_weight.value or self.options.prerelease_trap_weight.value or self.options.goal.value), goal_mode=("repairs", "emperor_bulblax")[self.options.goal.value],
                             expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value, bomb_trap_weight=self.options.bomb_trap_weight.value, progg_trap_weight=self.options.progg_trap_weight.value, prerelease_trap_weight=self.options.prerelease_trap_weight.value,
                             death_link=bool(self.options.death_link), death_link_pikmin=self.options.death_link_pikmin.value,
                             progressive_maturity=True, progressive_day_length=self.options.progressive_day_length.value, day_length_step=self.options.day_length_increment.value // 5 * 5, whistle_pluck_item=bool(self.options.whistle_pluck_item),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks),                             per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies), p2_enemies=bool(self.options.p2_enemy_randomizer), p2_species=('playable' if self.options.p2_enemy_randomizer and self.options.p2_enemy_pool.value == 0 else 'full' if self.options.p2_enemy_randomizer and self.options.p2_enemy_pool.value == 2 else None),
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks),                             per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies), p2_enemies=bool(self.options.p2_enemy_randomizer), p2_checks=bool(self.options.p2_enemy_randomizer), p2_species=(selected_p2 if selected_p2 is not None else 'playable' if self.options.p2_enemy_randomizer and self.options.p2_enemy_pool.value == 0 else 'full' if self.options.p2_enemy_randomizer and self.options.p2_enemy_pool.value == 2 else None),
                             p2_proxy_tier=('proven' if self.options.p2_enemy_randomizer and self.options.p2_enemy_pool.value == 2 else None),
+                            p2_density=((None, 'all-targets-v1', 'bounded-coverage-v1', 'sampled-v1')[self.options.p2_density.value] if self.options.p2_enemy_randomizer else None),
                             p2_placement=(self.options.p2_placement.value or None),
                             random_start_areas=self.options.random_start_areas.value,
                             initial_stat_bounds={stat: [getattr(self.options, 'initial_' + stat + '_min').value, getattr(self.options, 'initial_' + stat + '_max').value] for stat in ('damage', 'movement', 'attack_rate')},

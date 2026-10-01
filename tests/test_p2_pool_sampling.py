@@ -96,7 +96,7 @@ def test_committed_pool_fits_the_constraint_derived_targets():
     roster = load_and_validate()
     pool = set(admitted_ids(roster))
     document = committed_document()
-    assert len(pool) == 41  # + Man-at-Legs 66 (#1012)
+    assert len(pool) == 42  # + Bulborb Larva 31 (#1042), Man-at-Legs 66 (#1012)
     assert len(ordinary_slots(document)) == 72
     layout = resolve_placement_layout("committed", "Player1", document, roster)
     bound = ordinary_bound(layout)

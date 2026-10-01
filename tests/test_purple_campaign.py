@@ -172,6 +172,22 @@ class PurpleCampaignTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 bank_files(bank, motion)
 
+    def test_legacy_session_cannot_silently_gain_combat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); bank, motion = banks(root)
+            session = root / 'session'
+            manifest = {'p2_layout': {'bindings': []}}
+            bind_campaign_mode(session, manifest, bank, motion)
+            marker = session / 'purple-campaign.json'
+            current = json.loads(marker.read_text())
+            self.assertEqual(current['combat'], 'adult-direct-v2')
+            legacy = dict(current, version=1)
+            legacy.pop('combat')
+            marker.write_text(json.dumps(legacy))
+            with self.assertRaisesRegex(ValueError, 'fresh session'):
+                bind_campaign_mode(session, manifest, bank, motion)
+            self.assertEqual(json.loads(marker.read_text()), legacy)
+
     def test_no_retroactive_enable_or_half_optin(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); bank, motion = banks(root)
@@ -201,7 +217,7 @@ class PurpleCampaignTests(unittest.TestCase):
                     path = dest / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(value)
             with patch('scripts.preview_pikmin2_room.overlay', side_effect=copy_overlay):
                 result = stage_campaign(run, assets, bank, motion,
-                                        {'p2_layout': True, 'profile': 'foh-day2', 'starting_color': 'blue'})
+                                        {'p2_layout': {'bindings': []}, 'profile': 'foh-day2', 'starting_color': 'blue'})
             self.assertEqual(staged.read_bytes()[24:len(existing)], existing[24:])
             self.assertEqual((assets / 'dataDir/stages/stage1/default.gen').read_bytes(), generator())
             self.assertEqual((run / 'purple-base-assets/dataDir/stages/stage1/default.gen').read_bytes(), existing)

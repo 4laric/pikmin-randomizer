@@ -132,6 +132,10 @@ IDENTITY_FAMILY = {
     # inputs (disc parms + clip/key-event/pose bank, poses, BTK specular);
     # the seeded actor rides TEKI_Swallow and pc_p2_queen_teki drives it.
     30: 'queen', 'queen': 'queen',
+    # #1042: the standalone Bulborb Larva (Baby, 31) shares the Bulblax bank and the
+    # queen installer (one staged bank holds both species); a seed carrying both 30 and
+    # 31 installs the family once.
+    31: 'queen', 'baby': 'queen',
     # inst-misc lane (#871): Catfish (26, Water Dumple) reuses the existing
     # shared-contract aquatic installer (p2-aquatic-actors.txt/bank) rather
     # than forking it; the source dir holds the full aquatic import.
@@ -1199,9 +1203,25 @@ def _adapt_bombsarai(source, run, actors):
     except (BombSaraiStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'BombSarai OWN staging failed: {error}') from error
     return dict(receipt, own=own)
+BULBLAX_SPECIES = {'Queen': 30, 'Baby': 31}
+
+
+def _bulblax_enum(source):
+    """Enum of a Bulblax extractor tree: ``Queen`` (30) or ``Baby`` (31, #1042)."""
+    path = Path(source) / 'identity.json'
+    try:
+        enum_name = json.loads(path.read_text(encoding='utf-8')).get('enum_name')
+    except (OSError, json.JSONDecodeError, ValueError, AttributeError) as error:
+        raise StagingError(f'unreadable identity source for Bulblax content: {path}') from error
+    if enum_name not in BULBLAX_SPECIES:
+        raise StagingError(f'identity source mismatch for Bulblax content: {path}')
+    return enum_name
+
+
 def _validate_queen(source):
-    """Pre-flight check for Queen (Empress Bulblax, source 30) content."""
-    _read_identity_source(source, 30, 'Queen')
+    """Pre-flight check for Queen (Empress Bulblax, 30) / Baby (Bulborb Larva, 31) content."""
+    enum_name = _bulblax_enum(source)
+    _read_identity_source(source, BULBLAX_SPECIES[enum_name], enum_name)
     from experimental.pikmin2_queen_stage import QueenStageError, plan
     try:
         plan(source)
@@ -1210,24 +1230,33 @@ def _validate_queen(source):
 
 
 def _adapt_queen(source, run, actors):
-    """Adapter for Queen (source 30): native OWN bank, poses and specular.
+    """Adapter for Queen (source 30) and Baby (31, #1042): native OWN bank, poses and specular.
 
-    The campaign (bridge) setup binds every seeded 30 actor from the seed
-    itself, so no per-generator sidecar is written.
+    The campaign (bridge) setup binds every seeded 30 and 31 actor from the seed
+    itself, so no per-generator sidecar is written. Both species share one staged
+    bank (the Queen extractor tree holds the Queen and the Baby clips), so the
+    family installs once from either source tree.
     """
     from experimental.pikmin2_queen_stage import QueenStageError, stage_from
-    _read_identity_source(source, 30, 'Queen')
+    enum_name = _bulblax_enum(source)
+    _read_identity_source(source, BULBLAX_SPECIES[enum_name], enum_name)
     generators = [int(generator) for generator, _species in actors]
     for _, species in actors:
-        if species != 'Queen':
-            raise StagingError(f'Queen adapter got non-Queen species: {species!r}')
+        if species not in BULBLAX_SPECIES:
+            raise StagingError(f'Queen adapter got non-Bulblax species: {species!r}')
     if not generators:
         raise StagingError('Queen install requires at least one generator')
     try:
         receipt = stage_from(Path(source), Path(run))
     except (QueenStageError, OSError, KeyError, ValueError) as error:
         raise StagingError(f'Queen staging failed: {error}') from error
-    return dict(species='Queen', source_id=30, generators=sorted(set(generators)), queen=receipt)
+    species = sorted({s for _, s in actors})
+    if species == ['Baby']:
+        return dict(species='Baby', source_id=31, generators=sorted(set(generators)), queen=receipt)
+    if species == ['Queen']:
+        return dict(species='Queen', source_id=30, generators=sorted(set(generators)), queen=receipt)
+    return dict(species='Queen', source_id=30, generators=sorted(set(generators)), queen=receipt,
+                species_bound=species)
 
 
 def _adapt_cannon_projectile(source, run, actors):
