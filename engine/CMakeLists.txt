@@ -253,6 +253,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_generated_placement.cpp
     pc_port/pc_p2_campaign_goal_probe.cpp
     pc_port/pc_bbft.cpp
+    pc_port/pc_p2_surface_topology.cpp
     # Challenge host-mode engine runtime bridge (#722, ported from #710
     # db245877; #186 review before shared-line landing): the per-tick runtime
     # bridge plus the landed host-state module, linked into pikmin_pc so the
@@ -2480,3 +2481,6 @@ add_test(NAME p2_purple_combat_bindings_test COMMAND p2_purple_combat_bindings_t
 
 # Issue1074 bounded local scene reentry; CI builds only.
 pikmin_add_ci_fixture(captain_reentry tools/p2_captain_reentry_runtime.cpp)
+
+# #1079 local native card save/resume acceptance, built only on CI.
+pikmin_add_ci_fixture(captain_campaign_resume tools/p2_captain_campaign_resume_runtime.cpp)

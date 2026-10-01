@@ -14,6 +14,9 @@
 #include "PikiState.h"
 #include "RopeCreature.h"
 #include "sysMath.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_surface_topology.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -289,16 +292,24 @@ void Creature::moveNew(f32 deltaTime, bool applyGravity)
 		resetCreatureFlag(CF_IsOnGround);
 		if (mPreviousTriangle) {
 			int planeIdx = -1;
+			int crossingEdge = -1;
 			f32 minDist  = 12800.0f;
 
 			for (int i = 0; i < 3; i++) {
 				f32 dist = mPreviousTriangle->mEdgePlanes[i].dist(mSRT.t);
 				if (dist <= minDist) {
 					planeIdx = mPreviousTriangle->mAdjacentTriIndices[i];
+					crossingEdge = i;
 					minDist  = dist;
 				}
 			}
 
+#if defined(PIKI_PC_PORT)
+			if (pc_p2_surface_topology_owns(mapMgr->mMapModel, mPreviousTriangle)) {
+				auto crossing = pc_p2_surface_continuation(mapMgr->mMapModel, mPreviousTriangle, crossingEdge, mSRT.t);
+				planeIdx = crossing.kind == p2surface::Kind::Unique ? crossing.face : -1;
+			}
+#endif
 			if (planeIdx < 0) {
 				jumpCallback();
 			} else {
@@ -398,14 +409,24 @@ CollTriInfo* Creature::checkForward(immut Vector3f& direction, f32 magnitude, f3
 CollTriInfo* Creature::getNextTri(CollTriInfo* tri, immut Vector3f& pos, int& nextTriIdx)
 {
 	int triIdx  = -1;
+	int crossingEdge = -1;
 	f32 minDist = 12800.0f;
 	for (int i = 0; i < 3; i++) {
 		f32 dist = tri->mEdgePlanes[i].dist(pos);
 		if (dist <= minDist && dist < 0.0f) {
 			triIdx  = tri->mAdjacentTriIndices[i];
+			crossingEdge = i;
 			minDist = dist;
 		}
 	}
+#if defined(PIKI_PC_PORT)
+	if (pc_p2_surface_topology_owns(mapMgr->mMapModel, tri)) {
+		auto crossing = pc_p2_surface_continuation(mapMgr->mMapModel, tri, crossingEdge, pos);
+		// checkForward consumes this output as an edge-plane index, not a face ID.
+		nextTriIdx = crossingEdge;
+		return crossing.kind == p2surface::Kind::Unique ? &mapMgr->mMapModel->mTriList[crossing.face] : nullptr;
+	}
+#endif
 	nextTriIdx = triIdx;
 
 	if (triIdx != -1) {

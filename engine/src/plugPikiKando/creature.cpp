@@ -29,6 +29,7 @@
 #include "timers.h"
 #include <math.h>
 #include "pc_p2_preview.h"
+#include "pc_p2_surface_topology.h"
 #include "pc_p2_purple.h"
 
 static CollTriInfo* triList[0x200];
@@ -1101,11 +1102,11 @@ static void recTraceShadowTris(Graphics& gfx, immut Vector3f& vec, CollTriInfo* 
 
 	for (int i = 0; i < 3; i++) {
 		if (tri->mEdgePlanes[i].dist(vec) < checkRadius) {
-			int idx = tri->mAdjacentTriIndices[i];
-			if (idx < 0) {
-				continue;
-			}
-
+			const auto* incidents = pc_p2_surface_incidents(mapMgr->mMapModel, tri, i);
+			const int count = incidents ? int(incidents->size()) : 1;
+			for (int incident = 0; incident < count; ++incident) {
+			int idx = incidents ? (*incidents)[incident].face : tri->mAdjacentTriIndices[i];
+			if (idx < 0) continue;
 			CollTriInfo* currTri = &mapMgr->mMapModel->mTriList[idx];
 			if (baseTri->mTriangle.mNormal.DP(currTri->mTriangle.mNormal) > 0.5f) {
 				bool check = false;
@@ -1119,6 +1120,7 @@ static void recTraceShadowTris(Graphics& gfx, immut Vector3f& vec, CollTriInfo* 
 					triList[numTris++] = currTri;
 					recTraceShadowTris(gfx, vec, currTri);
 				}
+			}
 			}
 		}
 	}
