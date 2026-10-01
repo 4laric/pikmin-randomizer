@@ -59,9 +59,10 @@ def main():
  args=['--randomizer-seed',str(run.bootstrap)];marker='PASS P2_CAPTAIN_CAMPAIGN_SAVE' if a.phase=='save' else 'PASS P2_CAPTAIN_CAMPAIGN_RESUME'
  if a.phase!='save':args.append('--resume-phase')
  if a.negative:args.append({'active':'--force-captain-down','inactive':'--force-inactive-down','null-state':'--force-null-state','missing-manager':'--force-missing-manager'}[a.negative])
- try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,a.exe.resolve().parent)
+ try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout)
  finally:done.set();thread.join()
  assert not errors,errors
+ assert result.get('launched',True),result  # Preserve preflight failure before inspecting an absent native log.
  run.poll() # consume the final flushed native journal before comparing rewards
  log=(run.directory/'native.log').read_text(errors='replace');after=snapshot()
  if a.negative:assert result['exit_code']==86 and result['captain_down'] and not result['passed'];return
