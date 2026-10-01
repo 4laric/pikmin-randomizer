@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--expected-exe-sha256', required=True)
-    parser.add_argument('--assets', type=Path, default=Path(os.environ['APPDATA'])/'PikminRandomizer/game-data/assets')
+    parser.add_argument('--assets', type=Path, default=Path(os.environ.get('APPDATA', Path.home()))/'PikminRandomizer/game-data/assets')
     parser.add_argument('--bundle', type=Path, default=WORKSPACE/'output/p2-level-imports/tutorial-09')
     parser.add_argument('--seconds', type=int, default=60)
     args = parser.parse_args()
@@ -62,7 +62,10 @@ def main():
                   elapsed_seconds=round(time.monotonic()-started,3), exit_code=code,
                   bounded_stop=timed_out, human_judgment_recorded=False, gameplay_admission=False)
     (run/'manual-run.json').write_text(json.dumps(record, indent=2)+'\n')
-    return 86 if code == 86 else 0
+    if not timed_out and code != 0:
+        print(f'Game exited with code {code}; inspect {run/"native.log"}', flush=True)
+        return code if 0 < code < 256 else 1
+    return 0
 
 
 if __name__ == '__main__':
