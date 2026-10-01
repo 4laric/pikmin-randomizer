@@ -1,5 +1,16 @@
 # Native source provenance
 
+The current private co-op/P2 source candidate is native
+`d26b1f630ea1cbcb4ed6f2ded88b5964a2a1df59`, exported from the clean
+`output/native-coop-p2-source-combination` worktree under #1144. The export
+copies 4,249 tracked source/resource files and skips 53 Android/touch binaries;
+the two desktop icon resources are retained. Every copied file was prevalidated
+and checked against the native working-tree bytes after export. It preserves the
+accepted tutorial source and adds reviewed protocol helpers, packaged consumers,
+and ElecBug contact handling. Fresh combination build, full ordinary paired
+gameplay, mixed Purple/White cave acquisition and final player acceptance remain
+open. See [the candidate and its limits](docs/PIKMIN2_COOP_P2_COMBINATION_1144.md).
+
 The current private second-batch engine source snapshot is native
 `38b19c5f6bef44954319cc69769ee44f9e4aa7c8`, exported from the clean
 `output/native-p2-acceptance-batch-two` worktree under #1142 into private root

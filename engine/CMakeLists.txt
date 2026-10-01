@@ -2961,14 +2961,14 @@ function(pikmin_add_ci_fixture name source)
         message(FATAL_ERROR "Invalid explicit CI fixture: ${name} ${source}")
     endif()
     set(target "pikmin_ci_fixture_${name}")
-    set(sources ${PC_PORT_SOURCES})
+    # Clone the final production source set, including late-added NETPLAY
+    # ICE/launcher/session/HUD TUs, platform resources and libm object binding.
+    # PC_PORT_SOURCES predates those additions. Cloning it omitted real symbols;
+    # attaching libm separately here would duplicate its existing object source.
+    get_target_property(sources ${NECTAR_GAME} SOURCES)
     list(REMOVE_ITEM sources pc_port/pc_main.cpp)
     list(APPEND sources "${source}")
     add_executable(${target} EXCLUDE_FROM_ALL ${sources})
-    # Deterministic libm is attached separately to production, not in PC_PORT_SOURCES.
-    if(TARGET pc_netplay_libm_obj)
-        target_sources(${target} PRIVATE $<TARGET_OBJECTS:pc_netplay_libm_obj>)
-    endif()
     # Copy final production settings, including platform libraries and IPO.
     # Inherited directory includes/definitions and source properties also apply.
     foreach(prop COMPILE_OPTIONS COMPILE_DEFINITIONS INCLUDE_DIRECTORIES LINK_LIBRARIES LINK_OPTIONS INTERPROCEDURAL_OPTIMIZATION)
@@ -2988,6 +2988,14 @@ pikmin_add_ci_fixture(captain_switch tools/p2_captain_switch_runtime.cpp)
 pikmin_add_ci_fixture(captain_combined_sdl tools/p2_captain_combined_sdl_fixture.cpp)
 if(TARGET pikmin_ci_fixture_captain_combined_sdl)
     target_include_directories(pikmin_ci_fixture_captain_combined_sdl PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+# #1148 ordinary paired SDL/AP acceptance. Explicit compile-only target; the
+# NETPLAY=OFF profile cannot substitute for its deterministic consumer linkage.
+if(PIKMIN_NETPLAY_BUILD)
+    pikmin_add_ci_fixture(coop_state_protocol tools/p2_coop_state_protocol_runtime.cpp)
+    if(TARGET pikmin_ci_fixture_coop_state_protocol)
+        target_include_directories(pikmin_ci_fixture_coop_state_protocol PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+    endif()
 endif()
 add_executable(p2_bomb_telegraph_test tools/p2_bomb_telegraph_test.cpp)
 target_include_directories(p2_bomb_telegraph_test PRIVATE pc_port)

@@ -2667,6 +2667,40 @@ void outbox_flush_client(const std::vector<pc_rand_outbox::Entry>& entries) {
         case pc_rand_outbox::Kind::CheckApplied: {
             if (!outbox_io().mirrorChecked.insert(e.slot).second) break;
             const char* name = e.slot < checkCount ? checkName(e.slot) : nullptr;
+            // External location names belong only to the client mirror protocol.
+            static const char* const thelynkMirrorPartNames[30] = {
+                "TDS - Bowsprit",
+                "TDS - Gluon Drive",
+                "TFN - Anti-Dioxin Filter",
+                "TFoH - Eternal Fuel Dynamo",
+                "TIS - Main Engine",
+                "TFoH - Whimsical Radar",
+                "TDS - Interstellar Radio",
+                "TFN - Guard Satellite",
+                "TDS - Chronos Reactor",
+                "TFoH - Radiation Canopy",
+                "TFoH - Geiger Counter",
+                "TFoH - Sagittarius",
+                "TFN - Libra",
+                "TFN - Omega Stabilizer",
+                "TFN - #1 Ionium Jet",
+                "TDS - #2 Ionium Jet",
+                "TFoH - Shock Absorber",
+                "TFN - Gravity Jumper",
+                "TDS - Pilot's Seat",
+                "TFoH - Nova Blaster",
+                "TFN - Automatic Gear",
+                "TDS - Zirconium Rotor",
+                "TFoH - Extraordinary Bolt",
+                "TDS - Repair-type Bolt",
+                "TFN - Space Float",
+                "TDS - Massage Machine",
+                "TFT - Secret Safe",
+                "TIS - Positron Generator",
+                "TFN - Analog Computer",
+                "TDS - UV Lamp",
+            };
+            if (thelynk && e.slot < 30) name = thelynkMirrorPartNames[e.slot];
             const std::string line = pc_rand_outbox::mirror_checked(mirror_frame(frame), name);
             if (line.empty()) std::printf("[netplay] mirror skip CHECKED slot=%u: name not expressible\n", e.slot);
             else lines.push_back(line);

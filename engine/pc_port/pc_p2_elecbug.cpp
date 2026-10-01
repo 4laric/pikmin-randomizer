@@ -579,23 +579,17 @@ const char* pc_p2_elecbug_state_name(const BTeki* actor) {
     return stateName(it->second.state);
 }
 
-// Natural press adaptation (#165): source ElecBug::pressCallBack is reached by a
-// thrown/hipdropped Pikmin landing (velocity.y<0 in PikiFlyingState collision).
-// The P1 host has no Pikmin->enemy InteractPress routing for a Chappy-vehicle
-// enemy, so this probe detects a descending Purple Pikmin overlapping the adult
-// ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to the source-equivalent press receiver.
-// Constant press radius 30 is a documented P1-derived adaptation (source uses the
-// collision searchDistance/height), not a retail-faithful proximity.
 // Natural press adaptation (#165, inst-bugs #871): the source
 // ElecBug::pressCallBack fires when a thrown Pikmin lands on the beetle
 // (PikiFlyingState/PikiHipDropState collision, velocity.y<0), for ANY Pikmin
 // color - the P1 host routes no Pikmin->enemy InteractPress, so this
-// family-local probe detects a descending Pikmin overlapping a registered
+// family-local probe detects a descending Pikmin colliding with a registered
 // ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to
 // pc_p2_elecbug_pressed. Purple hipdrops satisfy the same probe; the color is
-// logged for evidence. Without this, a red-only squad (Forest of Hope day 2)
-// can never flip the beetle out of its retail invulnerability and the
-// campaign kill->carry->Onion loop stalls with zero damage.
+// logged for evidence. Use the engine collision-part query, not an XZ radius:
+// proximity alone let a descending Pikmin far above/below the beetle flip it
+// before contact (#1159). The query supplies geometry only; it does not apply
+// its returned push vector or change ordinary collision response.
 void pc_p2_elecbug_check_landing_press(BTeki* actor) {
     if (!ready || !pikiMgr) return;
     ElecBug* s = lookup(actor);
@@ -604,13 +598,14 @@ void pc_p2_elecbug_check_landing_press(BTeki* actor) {
     // not re-flip it the moment it stands up.
     if (!s || s->state == ELEC_DEAD || s->state == ELEC_REVERSE || s->state == ELEC_RETURN) return;
 
-    const Vector3f pos = actor->getPosition();
+    if (!actor->mCollInfo || !actor->mCollInfo->hasInfo()) return;
     Iterator it(pikiMgr);
     CI_LOOP(it) {
         Piki* p = static_cast<Piki*>(*it);
         if (!p || !p->isAlive()) continue;
         if (p->mVelocity.y >= -0.01f) continue;  // ascending / grounded
-        if (distXZ(p->getPosition(), pos) > 30.0f) continue;
+        Vector3f pushVector;
+        if (!actor->mCollInfo->checkCollision(p, pushVector)) continue;
         std::printf("P2_ELECBUG_NATURAL_PRESS generator=%u species=%d source_id=28 state=%s\n",
                     genOf(actor), pc_p2_species(p), stateName(s->state));
         std::fflush(stdout);
