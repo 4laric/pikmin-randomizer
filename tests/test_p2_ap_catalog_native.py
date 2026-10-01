@@ -15,6 +15,30 @@ OUTPUT = os.environ.get('PIKMIN_TEST_OUTPUT')
 
 @unittest.skipUnless(PROBE, 'Set PIKMIN_CATALOG_PROBE to the paired native probe')
 class NativeCatalogTests(unittest.TestCase):
+    def test_kill_and_leftover_corpse_share_one_durable_receipt(self):
+        from randomizer.enemy_catalog import P2_KILL_CHECK_SPECIES
+        for sid in sorted(P2_KILL_CHECK_SPECIES):
+            for corpse_first in (False, True):
+                with self.subTest(species=sid, corpse_first=corpse_first), tempfile.TemporaryDirectory(dir=OUTPUT) as directory:
+                    session, run = self.make(directory)
+                    row = next(r for r in session.manifest['enemy_catalog']['checks'] if r['game'] == 'p2' and r['species'] == sid)
+                    uid = row['sources'][0]
+                    stage = next(s['stage'] for s in session.manifest['enemy_catalog']['sources'] if s['uid'] == uid)
+                    kill, corpse = ['--kill-p2', sid, uid, stage], ['--deliver-p2', sid, uid, stage]
+                    first, other = (corpse, kill) if corpse_first else (kill, corpse)
+                    result = self.run_probe(run, *first, *kill, *other)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    run.poll()
+                    self.assertEqual(session.data['checked'], [row['name']])
+                    before = (run.directory/'checks.txt').read_bytes()
+                    next_run = NativeRun(session)
+                    again = self.run_probe(next_run, *kill, *corpse)
+                    self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+                    next_run.poll()
+                    self.assertFalse((next_run.directory/'checks.txt').exists())
+                    self.assertEqual((run.directory/'checks.txt').read_bytes(), before)
+                    self.assertEqual(Session(session.manifest, directory).data['checked'], [row['name']])
+
     def run_probe(self, run, *args):
         run.write_state(True)
         return subprocess.run([PROBE, '--randomizer-seed', str(run.bootstrap),

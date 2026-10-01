@@ -15,14 +15,18 @@ CAPABILITY = "resolved-enemy-checks-v1"
 # item IDs start at +0x1000. P2 source IDs are retail stable identities (0..101).
 P2_LOCATION_OFFSET = 0x600
 NO_CHECK_SPECIES = frozenset((9, 10, 11, 16))  # Owner decision #888.
+# Owner ruling #1088: "nah get rid of the jellyfloat corpses and the larva
+# corpses let's stay P2-accurate"; extended to 66/69 ("yeah thanks").
+# Preserve location names/IDs for existing AP worlds; new checks earn on defeat.
+P2_KILL_CHECK_SPECIES = frozenset((31, 57, 66, 69, 72))
 # Production corpse minima: pc_p2_campaign_policy.h selects these P1 vehicles;
 # catalog.BESTIARY_WEIGHTS/NEW_BESTIARY contain the loaded pellet audit.
 # Queen/Dango and Fuefuki replace that config in their own native modules.
 P2_CARRY_MIN = {
     2: 10, 15: 3, 25: 7, 26: 5, 27: 1, 28: 3, 30: 20, 32: 3,
-    31: 1, 33: 10, 34: 3, 35: 10, 38: 3, 40: 3, 41: 3, 43: 10, 44: 3,
-    53: 10, 54: 8, 57: 7, 58: 3, 59: 3, 60: 3, 61: 3, 62: 3,
-    63: 3, 66: 10, 67: 3, 68: 3, 69: 3, 70: 3, 71: 3, 72: 7, 73: 10,
+    33: 10, 34: 3, 35: 10, 38: 3, 40: 3, 41: 3, 43: 10, 44: 3,
+    53: 10, 54: 8, 58: 3, 59: 3, 60: 3, 61: 3, 62: 3,
+    63: 3, 67: 3, 68: 3, 70: 3, 71: 3, 73: 10,
     75: 30, 76: 3, 78: 7, 79: 3, 84: 3, 93: 3, 94: 20, 101: 3,
 }
 
@@ -123,11 +127,12 @@ def resolve(manifest, placement, roster, *, proxy_ids=()):
                                native_index=native_index, sources=[row["uid"] for row in available]))
     placed = sorted({row["species"] for row in sources if row["game"] == "p2"} - NO_CHECK_SPECIES)
     for source_id in placed:
-        if source_id not in P2_CARRY_MIN:
-            raise ValueError(f"P2 {source_id} needs production corpse/logic metadata for AP checks")
+        kill_check = source_id in P2_KILL_CHECK_SPECIES
+        if not kill_check and source_id not in P2_CARRY_MIN:
+            raise ValueError(f"P2 {source_id} needs metadata in P2_CARRY_MIN or in P2_KILL_CHECK_SPECIES for AP checks")
         checks.append(dict(name=p2_check_name(entries[source_id]), id=p2_location_id(source_id),
-                           game="p2", species=source_id, event="delivery", native_index=None,
-                           carry_min=P2_CARRY_MIN[source_id],
+                           game="p2", species=source_id, event="defeat" if kill_check else "delivery", native_index=None,
+                           carry_min=1 if kill_check else P2_CARRY_MIN[source_id],
                            sources=[row["uid"] for row in sources
                                     if row["game"] == "p2" and row["species"] == source_id]))
     return dict(version=VERSION, sources=sources, checks=checks)
@@ -168,7 +173,7 @@ def validate(catalog, manifest=None):
                     or row["event"] != ("defeat" if "Defeat " in row["name"] else "delivery")):
                 raise ValueError("invalid P1 resolved check identity")
         elif (species in NO_CHECK_SPECIES or row["id"] != p2_location_id(species)
-              or row["native_index"] is not None or row["event"] != "delivery"
+              or row["native_index"] is not None
               or not row["name"].startswith("Bestiary: Deliver P2 ")):
             raise ValueError("invalid P2 resolved check identity")
         supplier = 10 if game == "p1" and species == 13 else species

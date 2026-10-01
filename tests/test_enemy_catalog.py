@@ -155,6 +155,36 @@ class EnemyCatalogTests(unittest.TestCase):
         inventory[BLUE] = 0
         self.assertFalse(can_reach_manifest(heavy['name'], inventory, manifest))
 
+    def test_every_playable_species_has_delivery_or_kill_metadata(self):
+        from randomizer.seed import PLAYABLE_P2_SPECIES
+        self.assertFalse(set(PLAYABLE_P2_SPECIES) - (catalog.P2_CARRY_MIN.keys() | catalog.P2_KILL_CHECK_SPECIES))
+        self.assertFalse(catalog.P2_CARRY_MIN.keys() & catalog.P2_KILL_CHECK_SPECIES)
+
+    def test_no_carcass_checks_defeat_with_stable_ids_and_legacy_snapshots(self):
+        manifest = self.build()
+        rows = [r for r in manifest['enemy_catalog']['checks']
+                if r['game'] == 'p2' and r['species'] in catalog.P2_KILL_CHECK_SPECIES]
+        self.assertEqual({r['species'] for r in rows}, catalog.P2_KILL_CHECK_SPECIES)
+        for row in rows:
+            self.assertEqual((row['event'], row['carry_min']), ('defeat', 1))
+            self.assertEqual(row['id'], catalog.p2_location_id(row['species']))
+            self.assertTrue(row['name'].startswith('Bestiary: Deliver P2 '))
+        old = copy.deepcopy(manifest['enemy_catalog'])
+        for row in old['checks']:
+            if row['game'] == 'p2' and row['species'] in catalog.P2_KILL_CHECK_SPECIES:
+                row.update(event='delivery', carry_min=7)
+        self.assertEqual(catalog.validate(old, manifest), old)
+
+    def test_defeat_checks_need_colors_and_stage_access_but_no_carry_upgrade(self):
+        from randomizer.catalog import ITEM_IDS, FLARLIC, BLUE
+        manifest = self.build(starting_flarlic=1)
+        row = next(r for r in manifest['enemy_catalog']['checks'] if r['game'] == 'p2' and r['event'] == 'defeat')
+        inventory = {name: 1 for name in ITEM_IDS}
+        inventory[FLARLIC] = 0
+        self.assertTrue(catalog.can_reach(row['name'], inventory, manifest))
+        inventory[BLUE] = 0
+        self.assertFalse(catalog.can_reach(row['name'], inventory, manifest))
+
 
 if __name__ == "__main__":
     unittest.main()
