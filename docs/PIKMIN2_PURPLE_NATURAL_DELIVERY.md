@@ -91,3 +91,39 @@ new Windows custom-fixture artifact, then seven field20 initialized guard cases
 and original east197 natural acquisition/haul. Current private Linux validation
 cannot produce that Windows artifact. Optional remote dispatch remains on hold
 pending the coordinator's runner transition notice. No live build was cancelled.
+
+## Corrected artifact and initialized guard results
+
+Pushed nativef067a3e88f818b75cd86e79eab4b2c187dd57251/rootdea06942 on verified
+GitHub codex/purple-natural branches. Public Windows36895349196 passed212 tests,
+eight file hashes and no-work. Actual compiled merge6a6b15512158edd2c8085dbafc07a731b264a843,
+treedb37ec7b02c5a8d6c1ef8b06f832d70ca8839fb6, mainfdbd374146f9fc7ffeb2f19743654764f73a95fc.
+The fixture file matches the producer. Windows fixture SHA256:
+61ca586332d21eeb956312f80ebf130ddf52c77b5be04d711a93b056a33c5fa1.
+
+All seven initialized guard02 cases PASS: health, manager death, global death,
+native dead state, missing manager, health during pause and missing manager during
+movie. Each first observes a healthy active captain/20 live Pikmin, then raw86 in
+that same frame without a positive PASS, in8.64–8.80seconds. Failure01 remains
+preserved. Full evidence: output/purple1128-guards02.json and each per-case report.
+
+Original east197 natural02 FAIL at60.093seconds. Active gameplay8.416s, native
+throw15.985s, repeated17.981s, actual Violet witness/conversion observed. No pluck
+request/acquisition/cargo occurred. No captain relocation. Current blocker is
+captain approach to the real sprout; the cargo route has not yet been exercised
+by this corrected natural fixture. Do not infer route clearance from this run.
+
+Read-only initial Violet telemetry:12 collision parts,45.024-unit maximum
+horizontal collision extent and50-unit bounding sphere. Seventeen footprint
+samples are flat grass at-37.722; this does not certify continuous terrain or
+cargo clearance. Version2 marker and generator bytes match across old/fresh scenes.
+
+Follow-up native8f617f7e515d6828dfe399927a84816e93cc2dd0 adds only observed
+captain/sprout coordinates, controller port/stick/frozen state and sprout readiness,
+plus checking collision info is initialized before traversing it. Syntax passes.
+Intermediate be97bb689 failed syntax (missing concrete Kontroller header) and was
+inadvertently pushed by a non-stopping PowerShell command; corrected forward with
+no rewrite. Its failed/cancelled builds are not validation. Windows36896932976
+is pending/running for the corrected follow-up; no new runtime claim yet.
+Summary receipt: output/purple1128-runtime-summary02.json. Public CI is unaffected
+by the latest optional private project=pikmin routing hold. No private dispatch.
