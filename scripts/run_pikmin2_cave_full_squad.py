@@ -27,7 +27,7 @@ def sha(path):
 def assess(run, mode, manifest):
     raw = json.loads((run / 'run-result.json').read_text())
     log = (run / 'native.log').read_text(errors='replace')
-    safe = not raw.get('timed_out') and 'FOCUS_HOLD' not in log
+    safe = not raw.get('timed_out') and 'FOCUS_HOLD' not in log and 'P2_AUTOPLAY' not in log
     checks = dict(bounded=safe)
     state = None
     if mode == 'negative':
@@ -51,14 +51,14 @@ def assess(run, mode, manifest):
                           checkpoint='P2_CAVE_FULL_SQUAD_CHECKPOINT survivors=20 following=20 crossed=20' in log)
             crosses = re.findall(r'P2_CAVE_FULL_SQUAD_CROSSED actor=(\d+)', log)
             checks['every_actor_crossed'] = len(crosses) == 20 and set(map(int, crosses)) == set(range(20))
-            arrival = re.search(r'P2_CAVE_FULL_SQUAD_ARRIVED alive=20 following=20 crossed=20 farthest=([\d.]+) captain_x=([\d.-]+) captain_z=([\d.-]+)', log)
-            actors = re.findall(r'P2_CAVE_FULL_SQUAD_AT_EXIT actor=(\d+) species=(\d+) x=([\d.-]+) z=([\d.-]+) mode=(\d+)', log)
+            arrival = re.search(r'P2_CAVE_FULL_SQUAD_ARRIVED alive=20 following=20 crossed=20 farthest=([\d.]+) captain_x=([\d.-]+) captain_y=([\d.-]+) captain_z=([\d.-]+)', log)
+            actors = re.findall(r'P2_CAVE_FULL_SQUAD_AT_EXIT actor=(\d+) species=(\d+) x=([\d.-]+) y=([\d.-]+) z=([\d.-]+) mode=(\d+)', log)
             checks['physical_arrival'] = bool(arrival) and len(actors) == 20 and {int(a[0]) for a in actors} == set(range(20))
             if arrival:
-                far, x, z = map(float, arrival.groups())
-                checks['physical_arrival'] &= far <= 120.01 and math.hypot(x - 800, z - 100) <= 40
-                checks['physical_arrival'] &= all(s == '0' and mode == '1' and math.hypot(float(px) - x, float(pz) - z) <= 120.01
-                                                  for _, s, px, pz, mode in actors)
+                far, x, y, z = map(float, arrival.groups())
+                checks['physical_arrival'] &= far <= 120.01 and abs(y) <= 30 and math.hypot(x - 800, z - 100) <= 40
+                checks['physical_arrival'] &= all(s == '0' and mode == '1' and abs(float(py)) <= 30 and math.dist((float(px),float(py),float(pz)),(x,y,z)) <= 120.01
+                                                  for _, s, px, py, pz, mode in actors)
             placement = parse_items_text((run / 'p2-cave-items.txt').read_text())
             entry = next(e for e in placement['items'] if e['item'] == 'treasure_water')
             expected = (f"P2_CAVE_ITEM_RECEIPT id=treasure:forest_1:f1:{entry['slot_id']} item=treasure_water "
@@ -70,7 +70,7 @@ def assess(run, mode, manifest):
                                    (run / 'p2-cave-item-receipts.txt').read_text(), manifest, placement)
                 checks['valid_transfer'] = len(state['squad']) == 20 and all(s == 0 for s, _ in state['squad']) and receipts(state['receipts'], placement) == [NAMES[0]]
     outputs = {p.name: sha(p) for p in run.iterdir() if p.is_file() and
-               (p.name in ('native.log', 'run-result.json', 'run-inputs.json') or p.name.startswith('p2-cave-'))}
+               (p.name in ('native.log', 'run-result.json', 'run-inputs.json', 'fixture-inputs.json', 'staging-disclosure.json', 'cave.json', 'capacity.json') or p.name.startswith('p2-cave-'))}
     report = dict(mode=mode, passed=all(checks.values()), checks=checks, native_exit=raw.get('exit_code'),
                   raw_supervisor_passed=raw.get('passed'), outputs=outputs,
                   limitations=['20 Blue staged', 'native controller scripted', 'checkpoint confirmation bypassed', 'not natural color supply or full campaign'])
@@ -110,8 +110,9 @@ def main():
         velocity_writes=False, confirmation_bypassed=True), indent=2))
     env = os.environ.copy()
     for key in list(env):
-        if key.startswith(('PIKMIN_CAVE_', 'PIKMIN_P2_', 'P2_CAVE_')):
+        if key.startswith(('PIKMIN_CAVE_', 'PIKMIN_P2_', 'P2_CAVE_', 'PIKMIN_RANDOMIZER_AUTOPLAY')):
             del env[key]
+    env['PIKMIN_RANDOMIZER_AUTOPLAY'] = '0'
     apply_test_run_env(env, workspace)
     env['P2_CAVE_TEST_SCENARIO'] = 'restore' if args.mode == 'restore' else 'full_squad'
     if args.mode == 'negative':
@@ -126,7 +127,7 @@ def main():
     command = [sys.executable, str(workspace / 'scripts/run_pikmin2_fixture.py'), '--exe', str(args.fixture.resolve()),
                '--run-dir', str(run), '--arg=--experimental-pikmin2-room', '--pass-marker', marker, '--timeout', '180']
     (run / 'fixture-inputs.json').write_text(json.dumps(dict(command=command, fixture_sha256=sha(args.fixture),
-        native_head=provenance['expected_native_head'], inputs={p.name: sha(p) for p in run.iterdir() if p.is_file()}), indent=2))
+        native_head=provenance['expected_native_head'], autoplay_disabled=True, inputs={p.name: sha(p) for p in run.iterdir() if p.is_file()}), indent=2))
     subprocess.run(command, cwd=workspace, env=env, check=False)
     report, state = assess(run, args.mode, manifest)
     if args.mode == 'restore':

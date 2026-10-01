@@ -14,11 +14,16 @@ not prove natural Blue supply. Exit confirmation remains bypassed through the
 existing native checkpoint API, followed by the actual native exit code 42.
 
 Acceptance requires all 20 original actors observed in the 100-unit water passage
-and then east of it, all 20 in formation within 120 units of the captain at the
-hole for 30 observations, a durable real water receipt, and 20 checkpointed
+and then east of it, all 20 in formation within 120 three-dimensional units of
+the captain at the hole for 30 observations, a durable real water receipt, and 20 checkpointed
 survivors. Per-actor positions are logged before saving. A fresh process must
 consume the actual transfer/receipt, restore the squad and suppress the delivered
 treasure. The forced captain-down control must exit 86 with no success marker.
+Positions must be finite and within 30 units of the floor height for passage and
+arrival. The captain walks a small diamond inside the hole's interaction radius
+to regroup through ordinary controls. Intermediate waits allow a 170-unit trailing
+formation; the final 120-unit arrival criterion remains unchanged. Inherited
+autoplay settings are cleared, with the master switch explicitly disabled.
 
 Use `scripts/run_pikmin2_cave_full_squad.py` with explicit paths for the canonical
 `--workspace`, frozen `--fixture`, private `--production` executable, local
