@@ -317,6 +317,33 @@ static const char* bbftPartName(u32 id) {
 
 void PlayerState::reconcileBbftParts()
 {
+    if (pc_randomizer_thelynk()) {
+        static const int stages[30] = {3,3,2,1,0,1,3,2,3,1,1,1,2,2,2,3,1,2,3,1,2,3,1,3,2,3,4,0,2,3};
+        // TheLynk's normal day-cycle mode normalizes day 1 and >29 to day 2.
+        if (gameflow.mWorldClock.mCurrentDay == 1 || gameflow.mWorldClock.mCurrentDay > 29)
+            gameflow.mWorldClock.mCurrentDay = 2;
+        mCurrParts = pc_randomizer_repairs();
+        mRequiredUfoPartCount = 0;
+        mShipEffectPartFlag = 0;
+        for (int stage = 0; stage < STAGE_COUNT; ++stage) mStagePartsCollected[stage] = 0;
+        for (int i = 0; i < 30; ++i) {
+            const u32 id = PelletMgr::getUfoIDFromIndex(i);
+            const bool received = pc_randomizer_thelynk_part(id, true);
+            if (pc_randomizer_thelynk_part(id, false)) ++mStagePartsCollected[stages[i]];
+            if (received && i != 19 && i != 24 && i != 25 && i != 26 && i != 29) ++mRequiredUfoPartCount;
+            if (received && i == 5) mShipEffectPartFlag |= 1;
+            if (received && i == 14) mShipEffectPartFlag |= 2;
+            if (received && i == 15) mShipEffectPartFlag |= 4;
+            UfoParts* part = findUfoParts(id);
+            if (part && part != mCurrentRepairingPart)
+                part->mPartVisType = received ? (part->mPelletShape ? PARTVIS_Visible : PARTVIS_Invisible) : PARTVIS_Uncollected;
+        }
+        mShipUpgradeLevel = mCurrParts >= 30 ? 5 : mCurrParts >= 29 ? 4 : mCurrParts >= 12 ? 3 : mCurrParts >= 5 ? 2 : mCurrParts ? 1 : 0;
+        const int thresholds[5] = {0, 1, 5, 12, 29};
+        for (int stage = 0; stage < 5; ++stage)
+            if (mCurrParts >= thresholds[stage]) gameflow.mPlayState.openStage(stage);
+        return;
+    }
     if (!pc_bbft_progression()) return;
     // Retail/AP area membership, indexed by UfoPartIndex. Tutorial parts are
     // excluded. Reconciliation must not attribute remote parts to today's area.
@@ -363,6 +390,10 @@ void PlayerState::reconcileBbftParts()
 
 bool PlayerState::isBbftRestoredPart(u32 id)
 {
+    if (pc_randomizer_thelynk()) {
+        UfoParts* part = findUfoParts(id);
+        return pc_randomizer_thelynk_part(id, false) && (!part || part != mCurrentRepairingPart);
+    }
     if (!pc_bbft_progression()) return false;
     bool replayed = false;
     for (int i = 0; i < 30; ++i) if (PelletMgr::getUfoIDFromIndex(i) == id) replayed = bbftReplayedParts[i];
@@ -404,6 +435,11 @@ static void pcCheatGiveOnions(PlayerState* ps)
 
 bool PlayerState::courseOpen(int courseID)
 {
+    if (pc_randomizer_thelynk()) {
+        const char* areas[] = {"Pikmin: Impact Site Access", "Pikmin: Forest of Hope Access", "Pikmin: Forest Navel Access",
+                               "Pikmin: Distant Spring Access", "Pikmin: Final Trial Access"};
+        return courseID >= 0 && courseID < 5 && pc_randomizer_has(areas[courseID]);
+    }
 #if defined(PIKI_PC_PORT)
 	if (pc_unlock_all_stages() && courseID >= STAGE_START && courseID <= STAGE_TESTMAP) return true;
 	pcCheatGiveOnions(this);
@@ -815,6 +851,7 @@ void PlayerState::init()
  */
 bool PlayerState::hasUfoParts(u32 idx)
 {
+    if (pc_randomizer_thelynk()) return pc_randomizer_thelynk_part(idx, false);
 	for (int i = 0; i < mTotalParts; i++) {
 		if (idx == mUfoParts[i].mModelID) {
 			return mUfoParts[i].mPartVisType != PARTVIS_Uncollected;
@@ -1264,6 +1301,25 @@ void PlayerState::startUfoPartsMotion(u32 id, int anim, bool wantPassiveMotion)
  */
 void PlayerState::getUfoParts(u32 partID, bool isInvisiblePart)
 {
+    if (pc_randomizer_thelynk()) {
+        const bool already = pc_randomizer_thelynk_part(partID, false);
+        pc_randomizer_thelynk_collect(partID);
+        if (already) return;
+        UfoParts* part = findUfoParts(partID);
+        if (!part || (!isInvisiblePart && !part->mPelletShape)) {
+            std::fprintf(stderr, "TheLynk collection has no loaded part model\n"); std::abort();
+        }
+        // Keep the normal absorption/repair animation, without granting a reward.
+        part->mPartVisType = isInvisiblePart ? PARTVIS_Invisible : PARTVIS_Visible;
+        mCurrentRepairingPart = isInvisiblePart ? nullptr : part;
+        if (!isInvisiblePart) {
+            if (part->mPelletShape->isMotionFlag(PelletMotionFlags::UsePiston))
+                part->startMotion(PelletMotion::Appear, PelletMotion::Piston);
+            else part->startMotion(PelletMotion::Appear);
+            part->setMotionSpeed(0.0f);
+        }
+        return;
+    }
     if (partID == UFOID_PositronGenerator && pc_randomizer_enabled() && pc_randomizer_has("Pikmin: Impact Site Access"))
         pc_randomizer_check("Pikmin: Positron Generator");
     if (pc_bbft_progression() && flowCont.mCurrentStage && courseOpen(flowCont.mCurrentStage->mStageID)) {

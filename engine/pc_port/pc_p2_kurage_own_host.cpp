@@ -9,6 +9,7 @@
 #include "pc_p2_navi_select.h"
 #include "pc_p2_sfx.h"
 #include "Collision.h"
+#include "EffectMgr.h"
 #include "Interactions.h"
 #include "MapMgr.h"
 #include "Navi.h"
@@ -48,6 +49,7 @@ bool P2KurageOwn::init(BTeki* actor, unsigned generator, unsigned source, CollPa
     if (!actor || !mouth) return false;
     mActive = true;
     mEscaped = false;
+    mBurst = false;
     mGenerator = generator;
     mSource = source;
     mVariant = source == 72 ? p2kurage::Variant::Greater : p2kurage::Variant::Lesser;
@@ -564,6 +566,26 @@ void P2KurageOwn::sourceTick(BTeki* actor)
         else if (e.type >= 1 && e.type <= 3) mPendingKey = p2kurageown::keyFor(e.type);
     });
 
+    if (out.bodyBomb && !mBurst) {
+        // #1088 StateDead Key3 (KurageState.cpp:75 / OniKurageState.cpp:80-88):
+        // deathProcedure, createBodyBombEffect and the burst SE. The source
+        // leaves no carcass; the body bursts here and is removed at the clip
+        // END below. The P1 enemy death burst (wave, glow, smoke) at the bell
+        // stands in for the P2 particle set (Man-at-Legs precedent).
+        mBurst = true;
+        const Vector3f at = stomachAnchor(actor);
+        if (effectMgr) {
+            const bool big = greater();
+            for (int effect : {int(big ? EffectMgr::EFF_Teki_DeathWaveL : EffectMgr::EFF_Teki_DeathWaveM),
+                               int(big ? EffectMgr::EFF_Teki_DeathGlowL : EffectMgr::EFF_Teki_DeathGlowM),
+                               int(big ? EffectMgr::EFF_Teki_DeathSmokeL : EffectMgr::EFF_Teki_DeathSmokeM)})
+                effectMgr->create(static_cast<EffectMgr::effTypeTable>(effect), at, nullptr, nullptr);
+        }
+        pc_p2_sfx(mSource, mGenerator, p2sfx::Event::Burst, actor);
+        std::printf("P2_KURAGE_OWN_BURST generator=%u source_id=%u x=%.1f y=%.1f z=%.1f carcass=none\n", mGenerator,
+                    mSource, at.x, at.y, at.z);
+        std::fflush(stdout);
+    }
     if (out.kill && !mEscaped) {
         // StateDead KEYEVENT_END -> kill(): the host death funnel births the
         // LeaveCorpse pellet (dieSoon only runs inside the suppressed doAI, so

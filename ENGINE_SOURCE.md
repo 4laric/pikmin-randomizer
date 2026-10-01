@@ -1,11 +1,14 @@
 # Native source provenance
 
-The current built P2 integration snapshot is native
-`2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b`, exported byte-exactly from the clean
-private `output/native-p2-combined-1118` worktree under #1118. It includes the
-reviewed White refund/pluck, White checkpoint, shared P2 death-combat and generated
-Archipelago delivery support. See
-[the combined source and acceptance limits](docs/PIKMIN2_COMBINED_ACCEPTANCE_1118.md).
+The current P2 source-delivery snapshot is native
+`9a76a11d9d65529690237e2ed55344302cb29b13`, exported from the clean private
+`output/native-p2-acceptance-wave` worktree under #1131. It adds independently
+reviewed native Red cave identity, White ingestion and durable enemy receipt
+handling, plus a physical-input smoke companion. See
+[the frozen batch and acceptance limits](docs/PIKMIN2_ACCEPTANCE_WAVE_1131.md).
+The preceding #1118 snapshot remains recorded at
+`2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b` in
+[its combined acceptance report](docs/PIKMIN2_COMBINED_ACCEPTANCE_1118.md).
 The preceding frozen #1105 snapshot remains recorded at
 `54743e12003888891d4dc3de249214cb18627fa6`; its evidence is preserved.
 The preceding combined baselines remain recorded under #1073 and #1087.

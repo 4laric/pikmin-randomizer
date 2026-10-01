@@ -64,8 +64,18 @@ P2DeliveryHostResult pc_p2_delivery_host_deliver(P2DeliveryHostHandle handle, co
 		return P2DeliveryHostResult::Error;
 	}
 	try {
+		// Kill and corpse are two endpoints of the same ordinary actor receipt.
+		// Preserve legacy rows without rewriting the journal: either old tag
+		// consumes this actor, while new grants use the original corpse tag.
+		const std::string endpoint(encounter);
+		const bool actorEndpoint = endpoint == "kill" || endpoint == "corpse";
+		if (actorEndpoint
+		    && (host->receiver->delivered(seed, sourceId, tekiType, stage, generatorToken, "corpse", false)
+		        || host->receiver->delivered(seed, sourceId, tekiType, stage, generatorToken, "kill", false))) {
+			return P2DeliveryHostResult::Duplicate;
+		}
 		return host->receiver->deliver(seed, sourceId, tekiType, stage, generatorToken,
-			encounter, /*p1Proxy=*/false)
+			actorEndpoint ? "corpse" : encounter, /*p1Proxy=*/false)
 		    ? P2DeliveryHostResult::Granted : P2DeliveryHostResult::Duplicate;
 	} catch (...) {
 		return P2DeliveryHostResult::Error;

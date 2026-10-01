@@ -341,6 +341,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_king.cpp
     pc_port/pc_p2_king_teki.cpp
     pc_port/pc_p2_queen_teki.cpp
+    pc_port/pc_p2_no_carcass.cpp
     pc_port/pc_p2_breadbug_actor.cpp
     pc_port/pc_p2_breadbug_contest_host.cpp
     pc_port/pc_p2_giant_breadbug_actor.cpp
@@ -1434,6 +1435,12 @@ add_executable(p2_campaign_policy_test
 target_include_directories(p2_campaign_policy_test PRIVATE pc_port)
 target_compile_options(p2_campaign_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_campaign_policy_test COMMAND p2_campaign_policy_test)
+
+add_executable(p2_no_carcass_policy_test
+    pc_port/pc_p2_no_carcass_policy_test.cpp)
+target_include_directories(p2_no_carcass_policy_test PRIVATE pc_port)
+target_compile_options(p2_no_carcass_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_no_carcass_policy_test COMMAND p2_no_carcass_policy_test)
 
 add_executable(p2_kurage_bank_test
     pc_port/pc_p2_kurage_bank_test.cpp)

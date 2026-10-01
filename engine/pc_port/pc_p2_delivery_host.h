@@ -19,7 +19,9 @@ const char* pc_p2_delivery_host_path(P2DeliveryHostHandle handle);
 enum class P2DeliveryHostResult { Error = -1, Duplicate = 0, Granted = 1 };
 
 // Ordinary P2 delivery over the handle's ledger: always p1Proxy=false and a
-// non-zero bound source id. Grants exactly once per (seed, identity, slot, encounter).
+// non-zero bound source id. Kill/corpse endpoints share one actor grant across
+// restart; either legacy tag consumes it, and new rows retain the corpse tag.
+// Other encounters still grant once per (seed, identity, slot, encounter).
 P2DeliveryHostResult pc_p2_delivery_host_deliver(P2DeliveryHostHandle handle, const char* seed,
 	unsigned sourceId, int tekiType, int stage, unsigned generatorToken, const char* encounter);
 

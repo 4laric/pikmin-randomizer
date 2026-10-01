@@ -3,6 +3,7 @@
 #include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_queen_teki.h"
+#include "pc_p2_no_carcass.h"
 #include "pc_p2_umimushi.h"
 #include "pc_p2_jigumo.h"
 #include "pc_p2_snakejoint.h"
@@ -488,7 +489,7 @@ public:
 	int getParameterI(int idx) {
 		const int value=mTekiParams->getI(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		if(idx==TPI_CorpseType)return pc_p2_queen_teki_corpse_type(this,pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value)));
+		if(idx==TPI_CorpseType)return pc_p2_no_carcass_corpse_type(this,pc_p2_queen_teki_corpse_type(this,pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value))));
 #endif
 		return value;
 	} // see TekiIntParams enum

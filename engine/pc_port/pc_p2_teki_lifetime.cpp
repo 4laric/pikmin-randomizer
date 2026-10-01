@@ -69,6 +69,7 @@
 #include "pc_p2_kabuto_fsm.h"
 #include "pc_p2_waterwraith_register.h"
 #include "pc_p2_hardlanes.h"
+#include "pc_p2_no_carcass.h"
 
 // Family registrations released before death teardown or manager-slot reuse.
 void pc_p2_forget_teki(BTeki* actor)
@@ -77,6 +78,9 @@ void pc_p2_forget_teki(BTeki* actor)
 		return;
 	}
 
+	// #1088: a killed no-carcass source earns its check here, before any
+	// family forget releases the source binding.
+	pc_p2_no_carcass_forget(actor);
 	pc_p2_white_poison_forget(actor);
 	pc_p2_purple_direct_forget(actor);
 	pc_p2_demon_manager_forget(actor);

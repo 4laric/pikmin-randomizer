@@ -80,6 +80,7 @@ private:
 
     bool mActive = false;
     bool mEscaped = false;
+    bool mBurst = false;  // #1088 Dead Key3 burst played once
     unsigned mGenerator = 0;
     unsigned mSource = 57;
     p2kurage::Variant mVariant = p2kurage::Variant::Lesser;

@@ -1566,9 +1566,10 @@ void houdaiTick(BTeki* actor, ActorState& state, float dt) {
         state.damageable = out.damageRate > 0.0f;
         state.bitterImmune = after == P2LongLegsState::Stay || after == P2LongLegsState::Land;
         if (out.deadEnd && !state.deadEscapeDone) {
-            // Source StateDead END: throwupItem + dead bomb + kill. The port
-            // keeps the accepted 56/69 precedent: the host teardown births the
-            // carriable corpse (owner decision pending, #173).
+            // Source StateDead END (HoudaiState.cpp:55-62): throwupItem + dead
+            // bomb + kill, no carcass (Houdai.cpp:71). #1088 owner ruling: no
+            // corpse; the host teardown runs with the vehicle corpse suppressed
+            // (pc_p2_no_carcass_corpse_type) and the kill earns the check.
             state.deadEscapeDone = true;
             houdaiDropShells(actor, "owner_dead");
             houdaiSightEnd(state, "dead");
@@ -1986,8 +1987,9 @@ void bigfootTick(BTeki* actor, ActorState& state, float dt) {
             std::printf("P2_LONG_LEGS_BIRTH species=BigFoot generator=%u count=30\n", state.generator);
         }
         if (out.deadEnd && !state.deadEscapeDone) {
-            // StateDead END: kill. The port keeps the accepted 56/69 precedent: the
-            // host teardown births the carriable corpse for the ordinary delivery.
+            // StateDead: kill, no carcass (BigFoot.cpp:69). #1088 owner ruling: no
+            // corpse; the host teardown runs with the vehicle corpse suppressed
+            // (pc_p2_no_carcass_corpse_type) and the kill earns the check.
             state.deadEscapeDone = true;
             bigfootRestoreColl(actor, state);
             std::printf("P2_LONG_LEGS_ESCAPE species=BigFoot generator=%u native=host_escape_now dead_clip_frames=%d\n",

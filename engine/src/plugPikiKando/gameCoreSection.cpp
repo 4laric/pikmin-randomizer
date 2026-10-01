@@ -3034,6 +3034,35 @@ void GameCoreSection::updateAI()
     const bool shipActive = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
         && !gameflow.mIsUIOverlayActive && !playerState->mInDayEnd && shipNavi && shipNavi->mHealth > 1.0f;
     pc_p2_ship_tick(shipNavi, shipActive);
+    if (pc_randomizer_thelynk()) {
+        // These are current followers, excluding Onion stock, sprouts and workers.
+        const bool active = pc_randomizer_ready() && mNavi && mNavi->isAlive() && !playerState->mInDayEnd
+            && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive;
+        AICONST.mMaxPikisOnField(100);
+        if (active && pikiMgr && itemMgr) {
+            int followers[3] = {};
+            Iterator it(pikiMgr);
+            CI_LOOP(it) {
+                Piki* piki = static_cast<Piki*>(*it);
+                if (piki && piki->isAlive() && piki->mNavi == mNavi && piki->mMode == PikiMode::FormationMode
+                    && piki->mColor >= 0 && piki->mColor < 3) ++followers[piki->mColor];
+            }
+            for (int color = 0; color < 3; ++color) pc_randomizer_thelynk_squad(color, followers[color], true);
+            for (int kind = 0; kind < 18; ++kind) {
+                const int amount = pc_randomizer_thelynk_bonus(kind);
+                if (!amount) continue;
+                const int c = kind / 6, color = c == 0 ? Red : c == 1 ? Yellow : Blue, stage = (kind % 6) / 2;
+                // Persistent stock may arrive before an Onion is discovered.
+                pikiInfMgr.mPikiCounts[color][stage] += amount;
+                if (GoalItem* onion = itemMgr->getContainer(color)) onion->mHeldPikis[stage] += amount;
+                GameStat::containerPikis.add(color, amount);
+                playerState->mTotalBornPikiNum += amount;
+                playerState->mLivingPikiNum += amount;
+                pc_randomizer_thelynk_consume(kind);
+                GameStat::update();
+            }
+        }
+    }
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll

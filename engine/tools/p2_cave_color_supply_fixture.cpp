@@ -1,5 +1,6 @@
 // #1086: controller Blue-bud supply and mixed-squad persistence.
-// Staged20Red, scripted native pad input, exit confirmation bypassed.
+// #1125 corrected species namespace: ordinary fresh stage Red=1.
+// SDL virtual controller input; exit confirmation bypassed.
 // No gameplay actor position/velocity/species/mode or attachment writes.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
@@ -133,7 +134,7 @@ class CaveColorSupplyApp final : public PlugPikiApp {
     const std::string scenario=std::getenv("P2_CAVE_TEST_SCENARIO")?std::getenv("P2_CAVE_TEST_SCENARIO"):"supply";
     void require(bool yes,const char* why){if(!yes){std::printf("FAIL CAVE_COLOR_SUPPLY %s\n",why);std::fflush(nullptr);std::_Exit(1);}}
     int colour(int species){int count=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==species)++count;}return count;}
-    void mixed(){require(alivePikis()==20&&colour(0)==5&&colour(2)==15,"mixed squad changed");}
+    void mixed(){require(alivePikis()==20&&colour(P2SpeciesBlue)==5&&colour(P2SpeciesRed)==15,"mixed squad changed");}
     bool aimAt(Navi* n,float x,float z,unsigned buttons=0){
         const float dx=x-n->mCursorWorldPos.x,dz=z-n->mCursorWorldPos.z,d=std::sqrt(dx*dx+dz*dz);
         int sx=0,sy=0;require(n->controlCamera()!=nullptr,"aim camera missing");
@@ -183,14 +184,15 @@ class CaveColorSupplyApp final : public PlugPikiApp {
             std::puts("PASS CAVE_COLOR_SUPPLY_RESTORE red=15 blue=5");std::fflush(nullptr);std::_Exit(0);
         }
         require(scenario=="supply","unknown scenario");
-        if(!started){require(alivePikis()==20&&colour(2)==20&&colour(0)==0,"requires20Redentry");started=true;phaseTick=observed;
-            std::puts("P2_CAVE_COLOR_SETUP starting=20_red_staged input=SDL_virtual_gamepad position_writes=0 velocity_writes=0 species_writes=0 state_writes=0 bud_auto_pluck=production confirmation=bypassed");}
+        if(!started){require(alivePikis()==20&&colour(P2SpeciesRed)==20&&colour(P2SpeciesBlue)==0&&colour(P2SpeciesYellow)==0,"requires ordinary20Red and noYellow entry");started=true;phaseTick=observed;
+            std::printf("P2_CAVE_COLOR_SPECIES red_id=%d yellow_id=%d blue_id=%d red_count=%d yellow_count=%d blue_count=%d\n",P2SpeciesRed,P2SpeciesYellow,P2SpeciesBlue,colour(P2SpeciesRed),colour(P2SpeciesYellow),colour(P2SpeciesBlue));
+            std::puts("P2_CAVE_COLOR_SETUP starting=20_red_ordinary_entry input=SDL_virtual_gamepad position_writes=0 velocity_writes=0 species_writes=0 state_writes=0 bud_auto_pluck=production confirmation=bypassed");}
         Vector3f bud;require(pc_p2_cave_bud_position("blue",bud),"blue bud missing");
-        if(observed%120==0){std::printf("P2_CAVE_COLOR_PROGRESS phase=%d point=%d red=%d blue=%d alive=%d following=%d conversions=%d pending=%d navi=%.2f,%.2f cursor=%.2f,%.2f\n",phase,point,colour(2),colour(0),alivePikis(),following(),pc_p2_cave_bud_conversions(),int(pc_p2_cave_bud_pending()),n->mSRT.t.x,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.z);std::fflush(nullptr);}
+        if(observed%120==0){std::printf("P2_CAVE_COLOR_PROGRESS phase=%d point=%d red=%d blue=%d alive=%d following=%d conversions=%d pending=%d navi=%.2f,%.2f cursor=%.2f,%.2f\n",phase,point,colour(P2SpeciesRed),colour(P2SpeciesBlue),alivePikis(),following(),pc_p2_cave_bud_conversions(),int(pc_p2_cave_bud_pending()),n->mSRT.t.x,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.z);std::fflush(nullptr);}
         if(phase==0){static const float path[][2]={{0,-100},{-100,-100},{-100,20}};
             if(walkTo(n,path[point][0],path[point][1])){if(point==2&&following()!=20){gatherAtCursor(n);return;}if(++point==3){phase=1;phaseTick=observed;point=0;}}return;}
         if(phase==1){
-            if(colour(0)==5&&pc_p2_cave_bud_conversions()==5&&!pc_p2_cave_bud_pending()){
+            if(colour(P2SpeciesBlue)==5&&pc_p2_cave_bud_conversions()==5&&!pc_p2_cave_bud_pending()){
                 mixed();fixturePad(0);phase=2;phaseTick=observed;std::puts("P2_CAVE_COLOR_ACQUIRED red=15 blue=5 conversions=5 source=ordinary_controller_throw");std::fflush(nullptr);return;}
             require(observed-phaseTick<720,"controller conversion timeout");
             // Aim in the classic low-stick band, then press/release the mapped
