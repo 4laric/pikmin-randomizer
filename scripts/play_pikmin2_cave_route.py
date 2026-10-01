@@ -22,6 +22,15 @@ from scripts.stage_pikmin2_playable_cave import stage
 from scripts.stage_pikmin2_cave_route import stage_surface,sha
 
 
+def floor_inputs(run):
+    required=['p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt',
+              'p2-cave-transition.txt','p2-cave-items.txt','p2-cave-rooms.txt',
+              'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe']
+    for name in required:
+        if not (run/name).is_file():raise ValueError('missing route floor input: '+name)
+    return sorted(set(required+[path.name for path in run.glob('p2-*') if path.is_file()]))
+
+
 def route_inputs(package):
     meta,journey=package_inputs(package);route=read_json(package/'route-package.json')
     if route.get('schema')!=1:raise ValueError('unsupported route package')
@@ -63,9 +72,7 @@ def main(package,agent_test=False,max_phases=4):
                 for name,digest in meta['blueprints'][str(n)].items():
                     if sha(run/name)!=digest:raise ValueError('floor geometry changed: '+name)
                 token=fingerprint(floor['descriptor'])[:32]
-                inputs=['p2-cave-entry.txt','p2-cave-items.txt','p2-cave-buds.txt','p2-cave-exit.txt','nectar.exe']
-                # Pin every local checkpoint sidecar that stage actually supplied.
-                inputs=[name for name in inputs if (run/name).is_file()]
+                inputs=floor_inputs(run)
                 inputs+=list(meta['blueprints'][str(n)])
                 args=['--arg=--experimental-pikmin2-room'];marker='P2_CAVE_RESTORE'
             route.begin(run,state,token,inputs)

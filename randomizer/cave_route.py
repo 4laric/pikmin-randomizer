@@ -103,7 +103,11 @@ class Route:
         run=Path(run).resolve()
         if not self.valid_run(run) or not run.is_dir():raise ValueError('foreign route run')
         if len(token)!=32 or any(c not in '0123456789abcdef' for c in token):raise ValueError('invalid launch token')
-        hashes={name:hashlib.sha256((run/name).read_bytes()).hexdigest() for name in inputs}
+        hashes={}
+        for name in inputs:
+            path=(run/name).resolve()
+            if not path.is_relative_to(run) or not path.is_file():raise ValueError('foreign pending input')
+            hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
         atomic_write(self.pending_path,encoded(dict(schema=1,identity=self.identity,phase=state['phase'],revision=state['revision'],token=token,run=str(run),inputs=hashes))+'\n')
 
     def valid_run(self,run):
@@ -126,7 +130,7 @@ class Route:
         pending=read_json(self.pending_path);run=Path(pending['run']).resolve()
         if (pending.get('identity')!=self.identity or pending.get('schema')!=1
             or not self.valid_run(run)):raise ValueError('foreign pending route')
-        if any(Path(p).resolve()==run for p in live_paths):raise ValueError('route child still live')
+        if any(Path(p).resolve() in (run,run/'nectar.exe') for p in live_paths):raise ValueError('route child still live')
         for name,digest in pending['inputs'].items():
             if not (run/name).resolve().is_relative_to(run) or not (run/name).is_file():raise ValueError('foreign pending input')
             if hashlib.sha256((run/name).read_bytes()).hexdigest()!=digest:raise ValueError('route run input changed')

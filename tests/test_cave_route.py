@@ -22,7 +22,9 @@ class RouteTests(unittest.TestCase):
         (run/'input.txt').write_text('synthetic unit-test input')
         token='a'*32 if state['phase']=='surface' else fingerprint(self.route.manifests[int(state['phase'][-1])])[:32]
         self.route.begin(run,state,token,['input.txt'])
-        if state['phase']=='surface':(run/'p2-cave-surface-transfer.txt').write_text('P2_CAVE_ROUTE_TRANSFER_1 '+token+' -210 80 1160 .75 3 1 2 0 1 2 0')
+        if state['phase']=='surface':
+            party=state['surface'] if state['visit'] else dict(health=.75,squad=[[1,2],[0,1],[2,0]])
+            (run/'p2-cave-surface-transfer.txt').write_text('P2_CAVE_ROUTE_TRANSFER_1 '+token+' -210 80 1160 '+str(party['health'])+' '+str(len(party['squad']))+' '+ ' '.join(str(x) for p in party['squad'] for x in p))
         else:
             n=int(state['phase'][-1]);(run/'p2-cave-transfer.txt').write_text(f'P2_CAVE_TRANSFER_1 {token} {n} .5 2 1 2 0 1')
             (run/'p2-cave-bud-transfer.txt').write_text(zero_buds(self.route.manifests[n]))
@@ -32,6 +34,12 @@ class RouteTests(unittest.TestCase):
         for name,phase in [('enter','floor1'),('descend','floor2'),('exit','surface'),('reenter','floor1')]:
             self.stage_run(self.state,name);self.state,changed=self.route.recover()
             self.assertTrue(changed);self.assertEqual(self.state['phase'],phase)
+            if name in ('descend','reenter'):
+                self.assertEqual(self.state['entry']['squad'],[[1,2],[0,1]])
+                self.assertEqual(self.state['entry']['health'],.5)
+            if name=='exit':
+                self.assertEqual(self.state['surface']['squad'],[[1,2],[0,1]])
+                self.assertEqual(self.state['surface']['health'],.5)
         self.assertEqual(self.state['visit'],2);self.assertEqual(self.state['revision'],4)
         self.assertEqual(self.route.ledger(1),'P2_RECEIPTS_1\n')
 
@@ -47,7 +55,7 @@ class RouteTests(unittest.TestCase):
 
     def test_live_child_and_input_change_do_not_commit(self):
         run=self.stage_run(self.state,'enter')
-        with self.assertRaisesRegex(ValueError,'still live'):self.route.recover([run])
+        with self.assertRaisesRegex(ValueError,'still live'):self.route.recover([run/'nectar.exe'])
         (run/'input.txt').write_text('changed')
         with self.assertRaisesRegex(ValueError,'input changed'):self.route.recover()
         self.assertEqual(self.route.load(),self.state)
@@ -76,6 +84,26 @@ class RouteTests(unittest.TestCase):
     def test_invalid_surface_wire(self):
         for text in ['P2_CAVE_ROUTE_TRANSFER_1 a 0 0 0 nan 1 1 0','P2_CAVE_ROUTE_TRANSFER_1 a 0 0 0 1 1 5 0','P2_CAVE_ROUTE_TRANSFER_1 a 0 0 0 1 101']:
             with self.assertRaises(ValueError):cave_route.surface_transfer(text,'a')
+
+    def test_floor_launch_requires_actual_semantic_sidecars(self):
+        from scripts.play_pikmin2_cave_route import floor_inputs
+        run=self.route.directory/'floor-inputs';run.mkdir()
+        with self.assertRaisesRegex(ValueError,'p2-cave-entry'):floor_inputs(run)
+        names=['p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt',
+               'p2-cave-transition.txt','p2-cave-items.txt','p2-cave-rooms.txt',
+               'p2-cave-gates.txt','p2-cave-barriers.txt','p2-cave-floor.txt','p2-pod.txt','nectar.exe']
+        for name in names:(run/name).write_text('synthetic input')
+        self.assertEqual(set(floor_inputs(run)),set(names))
+        (run/'p2-cave-transition.txt').unlink()
+        with self.assertRaisesRegex(ValueError,'transition'):floor_inputs(run)
+
+    def test_checkpoint_semantic_input_change_refuses_recovery(self):
+        self.stage_run(self.state,'enter');state,_=self.route.recover()
+        run=self.route.directory/'runs/descend';run.mkdir(parents=True)
+        (run/'p2-cave-bud-entry.txt').write_text('synthetic pinned budget')
+        self.route.begin(run,state,fingerprint(self.route.manifests[1])[:32],['p2-cave-bud-entry.txt'])
+        (run/'p2-cave-bud-entry.txt').write_text('changed budget')
+        with self.assertRaisesRegex(ValueError,'input changed'):self.route.recover()
 
 
 if __name__=='__main__':unittest.main()

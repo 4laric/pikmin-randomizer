@@ -35,21 +35,33 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token):
             if len(templates)!=20:raise ValueError('current twenty-Red surface template required')
             rows=[row for row in rows if row[72:76]!=b'ikip']
             for i,(species,maturity) in enumerate(surface['squad']):
-                row=bytearray(templates[0]);struct.pack_into('<I',row,8,1000+i)
+                baseline=(surface==dict(position=[220.,96.0442,1000.],health=1.,squad=[[1,0]]*20))
+                row=bytearray(templates[i] if baseline else templates[0]);struct.pack_into('<I',row,8,1000+i)
                 # First visit retains the existing dry-bank baseline. Reentry
                 # places actual survivors on that same audited bank.
-                struct.pack_into('>3f',row,48,-190+(i%5)*8,80,1140+(i//5)*8)
+                if not baseline:struct.pack_into('>3f',row,48,-190+(i%5)*8,80,1140+(i//5)*8)
                 struct.pack_into('>i',row,84,1);struct.pack_into('>i',row,92,species)
                 rows.append(row)
             header=blob[:starts[0]];struct.pack_into('>I',header,20,len(rows));blob=header+b''.join(rows)
         path.write_bytes(blob)
+    terrain_path=run/'full-surface-inputs.json';terrain=json.loads(terrain_path.read_text())
+    terrain['files']={name:sha(run/'assets'/name) for name in terrain['files']}
+    terrain.update(starting_pikmin=len(surface['squad']),checkpoint_roster=True,captain_start_xz=[surface['position'][0],surface['position'][2]])
+    terrain_path.write_text(json.dumps(terrain,indent=2)+'\n')
+    water_path=run/'surface-water-inputs.json';water=json.loads(water_path.read_text())
+    water.update(generators_sha256={name:sha(directory/name) for name in ('default.gen','init.gen','plants.gen','day.gen')},
+                 starting_squad=surface['squad'],captain_spawn_y=surface['position'][1],
+                 captain_start_xz=[surface['position'][0],surface['position'][2]])
+    water_path.write_text(json.dumps(water,indent=2)+'\n')
     config='P2_CAVE_ROUTE_SURFACE_1 '+token+' -210 80 1160 60 '+str(surface['health'])+' '+str(len(surface['squad']))+'\n'
     config+=''.join(f'{species} {maturity}\n' for species,maturity in surface['squad'])
     (run/'p2-cave-route-surface.txt').write_text(config)
     shutil.copy2(exe,run/'nectar.exe')
     for dll in exe.parent.glob('*.dll'):shutil.copy2(dll,run/dll.name)
     inputs=['p2-cave-route-surface.txt','nectar.exe','full-surface-inputs.json','surface-water-inputs.json']
-    inputs+=['assets/dataDir/stages/p2_tutorial/'+name for name in ('default.gen','init.gen','plants.gen','day.gen')]
+    inputs+=['assets/'+name for name in terrain['files']]
+    inputs+=['assets/dataDir/courses/p2tutorial/full.water','surface-water.json','assets/dataDir/stages/p2_tutorial/day.gen']
+    inputs=sorted(set(inputs))
     (run/'route-surface-inputs.json').write_text(json.dumps(dict(schema=1,receipt_identity=identity,
         starting_party=surface,anchor=[-210,80,1160,60],files={name:sha(run/name) for name in inputs},
         limitations=['Imported terrain and static water; no retail generator actors.',
