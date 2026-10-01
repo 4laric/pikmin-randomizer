@@ -13,16 +13,17 @@ from randomizer.cave_route import Route
 from scripts.stage_pikmin2_cave_journey import stage_package as stage_journey
 from scripts.stage_pikmin2_surface_water import prepare
 from scripts.stage_pikmin2_playable_cave import (read_species_banks, install_species_banks,
-    pin_species_banks, seal_surface_species)
+    pin_species_banks, seal_surface_species, stage)
 
 ROUTE_START=[-210.,90.,1350.]
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage_surface(assets,bundle,identity,output,exe,surface,token,species_banks=None,route_identity=None):
+def stage_surface(assets,bundle,identity,output,exe,surface,token,species_banks=None,route_identity=None,*,destination=None):
     Route.validate_surface(surface)
     if len(token)!=32 or any(c not in '0123456789abcdef' for c in token):raise ValueError('invalid route token')
+    if destination not in (None,'forest_2/f_02'):raise ValueError('unsupported explicit surface destination')
     # All route banks must be admissible before staging, including unselected
     # banks: the route scope has no Purple impact auxiliary asset bank.
     banks=read_species_banks(species_banks,surface=True)
@@ -73,6 +74,11 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token,species_banks=
     config=f'P2_CAVE_ROUTE_SURFACE_{version} '+token+' -210 80 1160 60 '+str(surface['health'])+' '+str(len(surface['squad']))+'\n'
     config+=''.join(f'{species} {maturity}\n' for species,maturity in surface['squad'])
     (run/'p2-cave-route-surface.txt').write_text(config)
+    destination_files=[]
+    if destination is not None:
+        (run/'p2-cave-route-destination.txt').write_text(
+            f'P2_CAVE_ROUTE_DESTINATION_1 {token} {destination}\n',encoding='ascii')
+        destination_files=['p2-cave-route-destination.txt']
     species_files=install_species_banks(run,banks)
     if requested:species_files=seal_surface_species(run,token,route_identity,species_files,requested)
     shutil.copy2(exe,run/'nectar.exe')
@@ -81,27 +87,71 @@ def stage_surface(assets,bundle,identity,output,exe,surface,token,species_banks=
     inputs+=['assets/'+name for name in terrain['files']]
     inputs+=['assets/dataDir/courses/p2tutorial/full.water','surface-water.json','assets/dataDir/stages/p2_tutorial/day.gen']
     inputs+=species_files
+    inputs+=destination_files
     inputs=sorted(set(inputs))
-    (run/'route-surface-inputs.json').write_text(json.dumps(dict(schema=1,receipt_identity=identity,
+    surface_meta=dict(schema=1,receipt_identity=identity,
         starting_party=surface,anchor=[-210,80,1160,60],files={name:sha(run/name) for name in inputs},
         limitations=['Imported terrain and static water; no retail generator actors.',
-                     'Versioned living survivors are checkpointed; gathering is not enforced.']),indent=2)+'\n')
+                     'Versioned living survivors are checkpointed; gathering is not enforced.'])
+    if destination is not None:surface_meta['destination']=destination
+    (run/'route-surface-inputs.json').write_text(json.dumps(surface_meta,indent=2)+'\n')
     return run,inputs+['route-surface-inputs.json']
 
 
-def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,workspace,species_banks=None):
-    read_species_banks(species_banks,surface=True)  # fail before creating a partial runnable package
-    stage_journey(seed,slot,assets,pod,exe,generator,output,workspace)
+def stage_wfg_journey(seed,slot,assets,pod,exe,generator,output,workspace,species_banks):
+    """Separate opt-in package; legacy two-floor packager stays unchanged."""
+    from randomizer.cave_journey import create_wfg_route,identity,initial_entry
+    if output.exists():raise ValueError('use a fresh private WFG package')
+    output=output.resolve();workspace=workspace.resolve()
+    if not output.is_relative_to(workspace/'output'):raise ValueError('private output WFG package required')
+    journey=create_wfg_route(seed,slot);output.mkdir(parents=True)
+    files={};blueprints={}
+    for index,spec in enumerate(journey['floors']):
+        directory=output/f'floor-{index}';descriptor=spec['descriptor']
+        checkpoint=initial_entry(descriptor,wire_schema=2 if index==0 else None)
+        meta=stage(descriptor,assets,pod,exe,generator,directory,spec['salt'],checkpoint,species_banks)
+        for name,digest in meta['files'].items():files[f'floor-{index}/{name}']=digest
+        files[f'floor-{index}/package.json']=sha(directory/'package.json')
+        names=('cave.json','layout.json','render.mod','collision.json',
+               'assets/dataDir/courses/pikmin2room/room.mod',
+               'assets/dataDir/stages/chal0/default.gen')
+        for name in names:files[f'floor-{index}/{name}']=sha(directory/name)
+        blueprints[str(index)]={name:files[f'floor-{index}/{name}'] for name in names if 'default.gen' not in name}
+    for source,name in ((exe,'nectar.exe'),(generator,'cave-generator.exe')):shutil.copy2(source,output/name)
+    for dll in exe.parent.glob('*.dll'):shutil.copy2(dll,output/dll.name)
+    (output/'journey.json').write_text(json.dumps(journey,indent=2)+'\n')
+    for path in output.iterdir():
+        if path.is_file():files[path.name]=sha(path)
+    meta=dict(schema=4,policy=journey['policy'],fingerprint=identity(journey),
+        assets=str(assets.resolve()),pod=str(pod.resolve()),workspace=str(workspace),files=files,blueprints=blueprints,
+        limitations=['Source White Flower Garden identity; original engineering acquisition geometry.',
+                     'Full ordinary PW acquisition and route gameplay remain UNTESTED.'])
+    (output/'package.json').write_text(json.dumps(meta,indent=2)+'\n')
+    return meta
+
+
+def stage_package(seed,slot,assets,pod,exe,generator,bundle,identity,output,workspace,species_banks=None,*,wfg_acquisition=False):
+    banks=read_species_banks(species_banks,surface=True)  # fail before creating a partial runnable package
+    if type(wfg_acquisition) is not bool:raise ValueError('WFG opt-in must be boolean')
+    if wfg_acquisition:
+        if set(banks)!={3,4}:raise ValueError('WFG route requires both Purple and White banks')
+        stage_wfg_journey(seed,slot,assets,pod,exe,generator,output,workspace,species_banks)
+    else:stage_journey(seed,slot,assets,pod,exe,generator,output,workspace)
     # Short connected approach: source ground rises50->80 at z1350->1240.
     # Shoreline220,1000 is separated by a ledge and needs a much longer route.
     surface=dict(position=ROUTE_START,health=1.,squad=[[1,0]]*20)
-    _,inputs=stage_surface(assets,bundle,identity,output/'surface-blueprint',exe,surface,'0'*32)
+    if wfg_acquisition:
+        _,inputs=stage_surface(assets,bundle,identity,output/'surface-blueprint',exe,surface,'0'*32,destination='forest_2/f_02')
+    else:_,inputs=stage_surface(assets,bundle,identity,output/'surface-blueprint',exe,surface,'0'*32)
     run=output/'surface-blueprint/run'
-    record=dict(schema=1,bundle=str(bundle.resolve()),receipt_identity=identity,
+    record=dict(schema=2 if wfg_acquisition else 1,bundle=str(bundle.resolve()),receipt_identity=identity,
                 surface=surface,files={name:sha(run/name) for name in inputs},
                 geometry={name:sha(run/name) for name in ('assets/dataDir/courses/p2tutorial/full.mod',
                     'assets/dataDir/courses/p2tutorial/full.water')})
     if species_banks:record['species_banks']=pin_species_banks(output,species_banks)
+    if wfg_acquisition:
+        record.update(profile='wfg-pw-acquisition-route-v1',first_destination='forest_2/f_02',
+                      later_destination='forest_1',acquisition_index=0)
     (output/'route-package.json').write_text(json.dumps(record,indent=2)+'\n')
     launcher=Path(__file__).with_name('play_pikmin2_cave_route.py')
     (output/'PlayRoute.cmd').write_text('@echo off\npy -3.12 "'+str(launcher)+'" "'+str(output)+'"\npause\n')
@@ -113,5 +163,6 @@ if __name__=='__main__':
     for name in ('assets','pod','exe','generator','bundle','output','workspace'):p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--identity',required=True);p.add_argument('--seed',default='1154');p.add_argument('--slot',default='Player1')
     p.add_argument('--purple-bank',type=Path);p.add_argument('--white-bank',type=Path)
+    p.add_argument('--wfg-acquisition',action='store_true')
     a=p.parse_args();banks={s:path for s,path in ((3,a.purple_bank),(4,a.white_bank)) if path is not None}
-    print(json.dumps(stage_package(a.seed,a.slot,a.assets,a.pod,a.exe,a.generator,a.bundle,a.identity,a.output,a.workspace,banks or None),indent=2))
+    print(json.dumps(stage_package(a.seed,a.slot,a.assets,a.pod,a.exe,a.generator,bundle=a.bundle,identity=a.identity,output=a.output,workspace=a.workspace,species_banks=banks or None,wfg_acquisition=a.wfg_acquisition),indent=2))

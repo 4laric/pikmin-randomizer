@@ -88,6 +88,13 @@ class SpeciesBankTests(unittest.TestCase):
                               dict(position=ROUTE_START,health=1,squad=[[1,0]]), 'a'*32,{3:source})
             prepare.assert_not_called()
         self.assertEqual(config.read_bytes(),original)
+        from randomizer.cave_floor import create_wfg_acquisition
+        from scripts.stage_pikmin2_playable_cave import stage
+        white=self.bank(4);output=self.root/'direct-wfg'
+        with self.assertRaisesRegex(ValueError,'unsupported surface auxiliary bank'):
+            stage(create_wfg_acquisition('1161'),self.root,self.root,self.root,self.root,output,
+                  species_banks={3:source,4:white})
+        self.assertFalse(output.exists())
 
     def test_private_install_does_not_change_shared_hardlink(self):
         import os
@@ -133,8 +140,22 @@ class SpeciesBankTests(unittest.TestCase):
         self.assertEqual(result,run)
         self.assertFalse((run/'p2-cave-route-species.txt').exists())
         self.assertFalse((run/'p2-purple.txt').exists())
+        self.assertFalse((run/'p2-cave-route-destination.txt').exists())
         self.assertFalse(any('purple' in name for name in inputs))
         self.assertTrue((run/'p2-cave-route-surface.txt').read_text().startswith('P2_CAVE_ROUTE_SURFACE_2 '))
+        token='b'*32
+        with patch('scripts.stage_pikmin2_cave_route.prepare',return_value=run):
+            result,inputs=stage_surface(self.root,self.root,'c'*64,self.root/'output',exe,surface,token,
+                                       destination='forest_2/f_02')
+        sidecar=run/'p2-cave-route-destination.txt'
+        self.assertEqual(sidecar.read_text(),f'P2_CAVE_ROUTE_DESTINATION_1 {token} forest_2/f_02\n')
+        self.assertIn(sidecar.name,inputs)
+        recorded=json.loads((run/'route-surface-inputs.json').read_text())
+        self.assertEqual(recorded['destination'],'forest_2/f_02')
+        self.assertEqual(recorded['files'][sidecar.name],hashlib.sha256(sidecar.read_bytes()).hexdigest())
+        sidecar.write_text('foreign token')
+        self.assertNotEqual(recorded['files'][sidecar.name],hashlib.sha256(sidecar.read_bytes()).hexdigest())
+
 
     def test_surface_activation_seals_actual_party_config_and_identity(self):
         from scripts.stage_pikmin2_playable_cave import read_species_banks,install_species_banks,seal_surface_species
@@ -216,6 +237,257 @@ def fixture_layout():
         edges.append([[first, last][row['segment']], row['slot_id']])
     return dict(schema='p2-cave-observed-layout/1', source='fixture', cave='forest_1',
                 floor=1, seed=930, nodes=nodes, edges=edges, entrance=first, hole=last)
+
+
+class WfgAcquisitionTests(unittest.TestCase):
+    """Synthetic policy fixtures; none is native generation or runtime evidence."""
+    def fixture(self):
+        from randomizer.cave_floor import create_wfg_acquisition
+        from experimental.pikmin2_cave_lane41_generator import _seed_uint64
+        descriptor=create_wfg_acquisition('1161')
+        table=descriptor['table']; nodes=[]; edges=[]
+        for row in table['segments']:
+            nodes.append(dict(id=row['slot_id'],kind='segment',segment_index=row['index'],hazard='none',items=[]))
+        for row in table['buds']:
+            nodes.append(dict(id=row['slot_id'],kind='bud',segment_index=row['segment'],
+                              hazard='none' if row['species']=='purple' else 'poison',items=[]))
+            edges.append([table['segments'][row['segment']]['slot_id'],row['slot_id']])
+        edges.append([table['segments'][0]['slot_id'],table['segments'][1]['slot_id']])
+        layout=dict(schema='p2-cave-observed-layout/1',source='engine',cave='forest_2',floor=1,
+                    seed=_seed_uint64(table['seed']),nodes=nodes,edges=edges,
+                    entrance=table['segments'][0]['slot_id'],hole=table['segments'][1]['slot_id'])
+        return descriptor,layout
+
+    def test_optin_namespace_preserves_exact_legacy_descriptor_bytes(self):
+        from randomizer.cave_floor import create_journey_floor,create_wfg_acquisition,fingerprint
+        self.assertEqual(fingerprint(create('930')),'f4ac3b78b6ff81adbe0aad75398e35af9f89a49ad326a4bfaef646bf7078f54c')
+        self.assertEqual(fingerprint(create_journey_floor('930','Player1',1)),
+                         'b72abf88d58841b35f06bea920034f42e421cb4053f8b7d12dae4aed36414cf4')
+        descriptor=create_wfg_acquisition('1161');self.assertEqual(descriptor,validate(copy.deepcopy(descriptor)))
+        self.assertEqual(descriptor['source_course'],'forest_2/f_02')
+        self.assertEqual([b['species'] for b in descriptor['table']['buds']],['purple','white'])
+        self.assertNotEqual(fingerprint(descriptor),fingerprint(create_wfg_acquisition('1162')))
+        bad=copy.deepcopy(descriptor);bad['table']['cave_id']='forest_1'
+        with self.assertRaises(ValueError):validate(bad)
+
+    def test_room_bridge_requires_exact_optin_capability_binding(self):
+        from experimental.pikmin2_cave_rooms import rooms_from_layout
+        descriptor,layout=self.fixture()
+        with self.assertRaises(ValueError):rooms_from_layout(layout)
+        rooms=rooms_from_layout(layout,acquisition_descriptor=descriptor)
+        self.assertEqual(next(u for u in rooms['units'] if u['id'].endswith('bud:0'))['hazard'],'none')
+        for alter in ('seed','cave','duplicate','species','edge'):
+            bad=copy.deepcopy(layout)
+            if alter=='seed':bad['seed']+=1
+            elif alter=='cave':bad['cave']='forest_1'
+            elif alter=='duplicate':bad['nodes'].append(copy.deepcopy(bad['nodes'][-1]))
+            elif alter=='species':bad['nodes'][2]['hazard']='poison'
+            else:bad['edges'][0]=bad['edges'][1]
+            with self.assertRaises(ValueError):rooms_from_layout(bad,acquisition_descriptor=descriptor)
+
+    @patch('scripts.stage_pikmin2_playable_cave.is_windows',return_value=True)
+    def test_wfg_stage_pins_real_body_inputs_and_entry2_red_baseline(self,_platform):
+        import struct
+        from scripts.stage_pikmin2_playable_cave import stage,SPECIES_MODEL_DIR
+        descriptor,layout=self.fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);helper=SpeciesBankTests();helper.root=root
+            purple=helper.bank(3);white=helper.bank(4)
+            config=white/'p2-white.txt';config.write_bytes(config.read_bytes().replace(
+                b'ivory_generators 2 25 4294967295',b'ivory_generators 1 25'))
+            original=config.read_bytes()
+            assets=root/'assets';(assets/'dataDir/stages/chal0').mkdir(parents=True)
+            (assets/'dataDir/stages/chal0/default.gen').write_bytes(b'policy template')
+            (assets/'dataDir/stages/chal0.ini').write_bytes(b'map_file source.mod\nnavi_start 0 0\n')
+            pod=root/'pod';pod.mkdir()
+            for name in ('pod.mod','treasure.mod','p2-pod.txt'):(pod/name).write_bytes(b'policy '+name.encode())
+            exe=root/'source.exe';exe.write_bytes(b'MZ'+bytes(1024))
+            rows=[]
+            for uid,label,kind in ((1,'preview red onion',b'goal'),(2,'preview ship',b'goal'),
+                                   (3,'preview treasure bolt',b'cargo'),(4,'preview red pikmin',b'ikip')):
+                row=bytearray(96);row[:8]=b'    0.0v';struct.pack_into('<I',row,8,uid)
+                row[16:48]=label.encode().ljust(32,b'\0');row[72:76]=kind
+                if kind==b'ikip':struct.pack_into('>I',row,92,1)
+                rows.append(row)
+            blob=b'1.0v'+struct.pack('>4fI',0,0,0,0,len(rows))+b''.join(rows)
+            pom=bytearray(96);pom[:8]=b'    0.0v';pom[72:76]=b'ssob';pom[76:80]=b'\x02\x00\x00\x00'
+            def private_overlay(source,dest,overrides):
+                dest.mkdir(parents=True)
+                for name,data in overrides.items():
+                    path=dest/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+            def native_policy_fixture(tool,table,out):
+                out.write_text(json.dumps(layout));return {'layout':layout}
+            output=root/'run'
+            with patch('scripts.stage_pikmin2_playable_cave.run_native_generator',side_effect=native_policy_fixture), \
+                 patch('scripts.stage_pikmin2_playable_cave.generator',return_value=blob), \
+                 patch('scripts.stage_pikmin2_playable_cave.records',return_value=[bytes(pom)]), \
+                 patch('scripts.stage_pikmin2_playable_cave.mesh',return_value=(b'policy model',b'policy routes')) as mesh, \
+                 patch('scripts.stage_pikmin2_playable_cave.overlay',side_effect=private_overlay):
+                meta=stage(descriptor,assets,pod,exe,exe,output,species_banks={3:purple,4:white})
+            self.assertIn('p2-cave-route-pom.txt',meta['files'])
+            self.assertIn('p2-white.txt',meta['files'])
+            self.assertFalse(mesh.call_args.kwargs['flower_markers'])
+            self.assertEqual((output/'p2-white.txt').read_bytes(),original)
+            self.assertEqual((output/SPECIES_MODEL_DIR/'white_wait_00.mod').read_bytes(),(white/'white_wait_00.mod').read_bytes())
+            entry=(output/'p2-cave-entry.txt').read_text().splitlines()
+            self.assertEqual(entry[0].split()[0],'P2_CAVE_ENTRY_2');self.assertEqual(entry[-20:],['1 0']*20)
+            self.assertIn('not retail White Flower Garden',meta['geometry'])
+
+    def test_explicit_three_phase_package_api_and_immutable_acquisition_inputs(self):
+        from scripts.stage_pikmin2_cave_route import stage_package
+        from scripts.play_pikmin2_cave_route import route_inputs,capture_package_pins,verify_package_pins,verify_copied_inputs
+        from randomizer.cave_floor import WFG_POLICY
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);helper=SpeciesBankTests();helper.root=root
+            banks={3:helper.bank(3),4:helper.bank(4)}
+            exe=root/'source.exe';exe.write_bytes(b'policy executable');workspace=root
+            def stage_policy(descriptor,assets,pod,exe,generator,out,salt,checkpoint,bank_paths):
+                out.mkdir(parents=True)
+                names=['p2-cave-floor.txt','p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt',
+                       'p2-cave-items.txt','p2-cave-transition.txt','p2-cave-rooms.txt','p2-cave-gates.txt',
+                       'p2-cave-barriers.txt','p2-pod.txt','p2-purple.txt','p2-white.txt']
+                if descriptor['policy']==WFG_POLICY:names+=['p2-cave-route-pom.txt']
+                for name in names:(out/name).write_text('policy '+name)
+                (out/'cave.json').write_text(json.dumps(descriptor))
+                for name in ('layout.json','render.mod','collision.json','assets/dataDir/courses/pikmin2room/room.mod',
+                             'assets/dataDir/stages/chal0/default.gen'):
+                    path=out/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'policy geometry')
+                (out/'package.json').write_text('{}')
+                return {'files':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.is_file()}}
+            def surface_policy(assets,bundle,identity,out,exe,surface,token,**options):
+                run=out/'run';run.mkdir(parents=True)
+                names=['assets/dataDir/courses/p2tutorial/full.mod','assets/dataDir/courses/p2tutorial/full.water']
+                for name in names:
+                    path=run/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'policy terrain')
+                self.assertEqual(options['destination'],'forest_2/f_02')
+                sidecar='p2-cave-route-destination.txt'
+                (run/sidecar).write_text(f'P2_CAVE_ROUTE_DESTINATION_1 {token} forest_2/f_02\n')
+                return run,names+[sidecar]
+            package=root/'output/package'
+            with patch('scripts.stage_pikmin2_cave_route.stage',side_effect=stage_policy), \
+                 patch('scripts.stage_pikmin2_cave_route.stage_surface',side_effect=surface_policy):
+                spec=stage_package('1161','Player1',root,root,exe,exe,root,'c'*64,package,workspace,banks,wfg_acquisition=True)
+            self.assertEqual(spec['schema'],2)
+            meta,journey,spec=route_inputs(package)
+            self.assertEqual([f['descriptor']['table']['floor'] for f in journey['floors']],[1,1,2])
+            self.assertEqual([f['descriptor']['table']['cave_id'] for f in journey['floors']],['forest_2','forest_1','forest_1'])
+            pins=capture_package_pins(package,meta,spec)
+            run=root/'copied';run.mkdir();(run/'nectar.exe').write_bytes(exe.read_bytes());(run/'cave-generator.exe').write_bytes(exe.read_bytes())
+            for name in pins:
+                if name.startswith('floor-0/p2-') and Path(name).name not in ('p2-cave-entry.txt','p2-cave-bud-entry.txt','p2-cave-item-receipts.txt'):
+                    (run/Path(name).name).write_bytes((package/name).read_bytes())
+            self.assertIn('p2-cave-route-pom.txt',verify_copied_inputs(run,pins,'acquisition',0))
+            (package/'floor-0/p2-cave-route-pom.txt').write_text('tampered actual body binding')
+            with self.assertRaisesRegex(ValueError,'original package input changed'):verify_package_pins(package,pins)
+            with patch('scripts.stage_pikmin2_cave_route.stage_wfg_journey') as stage:
+                with self.assertRaisesRegex(ValueError,'both Purple and White'):
+                    stage_package('1161','Player1',root,root,exe,exe,root,'c'*64,root/'output/refuse',workspace,{3:banks[3]},wfg_acquisition=True)
+                stage.assert_not_called()
+
+    def test_immutable_generator_allows_party_count_but_refuses_body_or_template_changes(self):
+        import struct
+        from scripts.play_pikmin2_cave_route import generator_invariants
+        def record(kind,uid):
+            row=bytearray(96);row[:8]=b'    0.0v';row[72:76]=kind;struct.pack_into('<I',row,8,uid)
+            return row
+        body=record(b'ssob',25);piki=record(b'ikip',1000)
+        def blob(rows):return b'1.0v'+struct.pack('>4fI',0,0,0,0,len(rows))+b''.join(rows)
+        original=blob([body,piki]);changed=bytearray(piki)
+        struct.pack_into('<I',changed,8,1001);struct.pack_into('>3f',changed,48,10,0,20)
+        self.assertEqual(generator_invariants(original),generator_invariants(blob([body,piki,changed])))
+        bad_body=bytearray(body);bad_body[80]=99
+        self.assertNotEqual(generator_invariants(original),generator_invariants(blob([bad_body,piki])))
+        bad_piki=bytearray(piki);bad_piki[92]=99
+        self.assertNotEqual(generator_invariants(original),generator_invariants(blob([body,bad_piki])))
+        with self.assertRaises(ValueError):generator_invariants(blob([body,piki,bad_piki]))
+        bad_uid=bytearray(piki);struct.pack_into('<I',bad_uid,8,999)
+        with self.assertRaisesRegex(ValueError,'ID differs'):generator_invariants(blob([body,bad_uid]))
+
+    def test_linux_staging_requires_elf_and_inspects_both_binaries_at_actual_cwd(self):
+        from scripts.stage_pikmin2_playable_cave import stage
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);assets=root/'assets';(assets/'dataDir/stages/chal0').mkdir(parents=True)
+            (assets/'dataDir/stages/chal0/default.gen').write_bytes(b'policy asset')
+            (assets/'dataDir/stages/chal0.ini').write_bytes(b'policy stage')
+            pod=root/'pod';pod.mkdir()
+            for name in ('pod.mod','treasure.mod','p2-pod.txt'):(pod/name).write_bytes(b'policy')
+            exe=root/'native';tool=root/'generator';exe.write_bytes(b'MZ'+bytes(1024));tool.write_bytes(b'\x7fELF'+bytes(128))
+            output=root/'run'
+            with patch('scripts.stage_pikmin2_playable_cave.is_windows',return_value=False), \
+                 patch('scripts.stage_pikmin2_playable_cave.runtime_evidence') as evidence:
+                with self.assertRaisesRegex(ValueError,'requires ELF'):stage(create('930'),assets,pod,exe,tool,output)
+                evidence.assert_not_called();self.assertFalse(output.exists())
+            exe.write_bytes(b'\x7fELF'+bytes(128))
+            def evidence_check(binary,**kwargs):
+                self.assertTrue(output.is_dir());self.assertEqual(kwargs['cwd'],output)
+                self.assertIsInstance(kwargs['env'],dict)
+                return {'policy_only':True,'path':str(binary)}
+            with patch('scripts.stage_pikmin2_playable_cave.is_windows',return_value=False), \
+                 patch('scripts.stage_pikmin2_playable_cave.runtime_evidence',side_effect=evidence_check) as evidence, \
+                 patch('scripts.stage_pikmin2_playable_cave.portable_generator',side_effect=ValueError('stop before policy geometry')) as generate, \
+                 patch('scripts.stage_pikmin2_playable_cave.run_native_generator') as windows:
+                with self.assertRaisesRegex(ValueError,'stop before'):stage(create('930'),assets,pod,exe,tool,output)
+                self.assertEqual([call.args[0] for call in evidence.call_args_list],[exe,tool])
+                self.assertEqual(generate.call_args.args[3],output);windows.assert_not_called()
+                self.assertTrue((output/'platform-inputs.json').is_file())
+
+    def test_linux_generator_uses_fixed_argv_cwd_and_owned_cleanup(self):
+        from scripts.stage_pikmin2_playable_cave import portable_generator
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);tool=root/'generator';tool.write_bytes(b'policy');table=root/'table';table.write_text('policy')
+            layout=root/'layout.json';layout.write_text(json.dumps(dict(schema='p2-cave-observed-layout/1',source='engine')))
+            child=MagicMock();child.communicate.return_value=('P2_CAVE_GEN policy-only\n','');child.returncode=0
+            with patch('scripts.stage_pikmin2_playable_cave.subprocess.Popen',return_value=child) as spawn, \
+                 patch('scripts.stage_pikmin2_playable_cave.owned_process_options',return_value={'start_new_session':True}), \
+                 patch('scripts.stage_pikmin2_playable_cave.terminate_owned_process') as retire:
+                portable_generator(tool,table,layout,root,{'SAFE':'1'})
+                self.assertEqual(spawn.call_args.args[0],[str(tool.resolve()),str(table.resolve()),str(layout.resolve())])
+                self.assertEqual(spawn.call_args.kwargs['cwd'],root.resolve());self.assertTrue(spawn.call_args.kwargs['start_new_session'])
+                retire.assert_called_once_with(child)
+
+    def test_linux_controller_recipe_fails_closed_before_any_foreign_provider(self):
+        from scripts.play_pikmin2_cave_route import require_controller_recipe,fixture_child,ROOT
+        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=False):
+            with self.assertRaisesRegex(RuntimeError,'pinned root'):require_controller_recipe(ROOT/'foreign')
+            with self.assertRaisesRegex(RuntimeError,'not catalogued'):require_controller_recipe(ROOT)
+            with self.assertRaisesRegex(RuntimeError,'not catalogued'):fixture_child(ROOT/'native',ROOT/'output/run',[],
+                                                                                       'PASS',ROOT,ROOT/'output')
+        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=True):require_controller_recipe(ROOT/'legacy-workspace')
+
+    def test_dry_pads_and_actual_body_binding_do_not_force_party(self):
+        import struct
+        from scripts.stage_pikmin2_playable_cave import physical_layout,wfg_pom_bodies,read_species_banks
+        descriptor,layout=self.fixture();rooms,tiles,water=physical_layout(layout,0,acquisition_descriptor=descriptor)
+        self.assertFalse(water)
+        for unit in rooms['units']:
+            if unit['kind']=='bud':
+                cx,cz=unit['gx']//100,unit['gz']//100
+                self.assertTrue(all((cx+x,cz+z) in tiles for x in range(-5,6) for z in range(-5,6)))
+        with tempfile.TemporaryDirectory() as tmp:
+            helper=SpeciesBankTests();helper.root=Path(tmp)
+            banks=read_species_banks({3:helper.bank(3),4:helper.bank(4)})
+            # Byte policy templates only, not asserted to be renderable source assets.
+            template=bytearray(96);template[72:76]=b'ssob';template[76:80]=b'\x02\x00\x00\x00'
+            rows=[]
+            for uid in range(1000,1020):
+                row=bytearray(96);row[72:76]=b'ikip';struct.pack_into('<I',row,8,uid);rows.append(row)
+            original=[bytes(row) for row in rows]
+            # Exact one-generator binding required; preserve supplied bytes.
+            config=banks[4]['p2-white.txt'];banks[4]['p2-white.txt']=config.replace(b'ivory_generators 2 25 4294967295',b'ivory_generators 1 25')
+            with patch('scripts.stage_pikmin2_playable_cave.records',return_value=[bytes(template)]):
+                text=wfg_pom_bodies(Path(tmp),rows,descriptor,rooms,banks)
+            self.assertEqual([bytes(row) for row in rows[:20]],original)
+            self.assertEqual(len(rows),22)
+            self.assertIn('forest_2:f1:bud:0 2000 3 0 0 800 5',text)
+            self.assertIn('forest_2:f1:bud:1 25 4 1600 0 800 5',text)
+            self.assertEqual(struct.unpack_from('<I',rows[-1],8)[0],25)
+            self.assertEqual(rows[-1][8:12],b'\x19\x00\x00\x00')
+            self.assertEqual(struct.unpack_from('>I',rows[-1],80)[0],5|(1<<6))
+            with patch('scripts.stage_pikmin2_playable_cave.records',return_value=[bytes(template)]):
+                with self.assertRaisesRegex(ValueError,'colliding'):wfg_pom_bodies(Path(tmp),rows,descriptor,rooms,banks)
+            banks[4]['p2-white.txt']=config
+            with self.assertRaisesRegex(ValueError,'exactly one'):wfg_pom_bodies(Path(tmp),[],descriptor,rooms,banks)
 
 
 class BoundedCaveTests(unittest.TestCase):

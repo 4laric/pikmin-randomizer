@@ -49,10 +49,36 @@ at the entrance. Death/burial/swallowing/stuck actors, pending buds, sprouts and
 unsupported species refuse the transaction. Online F6 remains disabled. A linked
 netplay build must be tested before claiming online refusal validation.
 
-The current first compile slice supports native base colors Blue0/Red1/Yellow2.
-Purple/White preservation remains required follow-up work, and #1154 gameplay
-acceptance remains open. Unsupported parties are rejected as a whole, never
-silently shortened. This restriction is not the final playable-P2 target.
+Purple/White checkpoint preservation and complete-bank authorization are
+implemented. Unsupported parties are rejected as a whole. Natural acquisition
+and full mixed-party gameplay acceptance remain open under #1161.
+
+An explicit `--wfg-acquisition --purple-bank PATH --white-bank PATH` package
+selects the separately versioned WFG route: tutorial surface, White Flower Garden
+(`forest_2/f_02`, actual floor 1), unchanged `forest_1` floors 1 and 2, then surface
+return/reentry. Both complete legal model/config banks are required. The initial
+party is twenty Red leaves; the route never grants Purple/White stock. The WFG
+geometry is an original dry engineering arena, with two real native Pom bodies
+bound to exact generator IDs, positions, seed and entry token. It is not retail
+WFG room geometry or full campaign progression.
+
+Native conversion allocates typed sprouts before consuming their living inputs,
+uses five nonmatching inputs per bud with same-species refunds while capacity
+remains, and leaves sprouts for ordinary player plucking. Unsupported mode,
+nonempty real ship storage, malformed bindings and species caps refuse before
+checkpoint party restoration. The first runtime tick arms the bodies only in the
+validated new scene. A retained White boundary requires both an actual living
+White and spent White-bud budget; mere bank presence or carried White does not
+create first-acquisition evidence. This bounded journal is not a campaign met flag.
+
+WFG uses journey version 2, Route container 2 and package version 4; legacy
+two-floor packages keep their formats. Each launch checks frozen package hashes,
+the entire copied Pom/scaffold generator payload, actual phase/floor identity and
+byte-identical bank inventory. Linux staging uses ELF/dependency checks at its
+actual private cwd and independent overlay copies. The Linux multi-phase route
+controller currently refuses before journal creation because a fixed brokered
+cave SDL recipe has not been deployed. Generic Linux compilation/CTest is not
+natural conversion, plucking or mixed-party traversal proof.
 
 An OS session lock excludes concurrent launchers. A pending launch pins the actual
 private inputs. Recovery consumes an actual native boundary once, including an
