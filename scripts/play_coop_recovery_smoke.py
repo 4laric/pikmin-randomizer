@@ -13,7 +13,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--exe', type=Path, required=True)
     p.add_argument('--assets', type=Path, default=Path(os.environ.get('APPDATA', '')) / 'PikminRandomizer/game-data/assets')
-    p.add_argument('--out', type=Path, default=Path(__file__).resolve().parent / 'smoke-runs')
+    p.add_argument('--out', type=Path, default=None)
     p.add_argument('--hidden', action='store_true', help='Automation only; no human judgement')
     p.add_argument('--seconds', type=int, default=20, help='Play time before the disposable partner disconnects')
     a = p.parse_args()
@@ -22,10 +22,30 @@ def main():
     exe, assets = a.exe.resolve(strict=True), a.assets.resolve(strict=True)
     if not (assets / 'dataDir').is_dir():
         p.error('The game data folder is incomplete.')
-    run = a.out.resolve() / uuid.uuid4().hex
+    run = (a.out or exe.parent / 'smoke-runs').resolve() / uuid.uuid4().hex
     run.mkdir(parents=True)
     stage = run / 'game'
     stage.mkdir()
+    subprocess.run(['cmd', '/c', 'mklink', '/J', str(stage / 'assets'), str(assets)], check=True, capture_output=True)
+    # Keep the recovery actions usable in this disposable game's folder.
+    (stage / 'host.bat').write_text('''@echo off
+setlocal
+cd /d "%~dp0"
+set "CONTINUE="
+set "ANSWER="
+set /p "ANSWER=Continue saved campaign? [y/N] "
+if /i "%ANSWER%"=="y" set "CONTINUE=--continue"
+echo Send your offer code to your partner. Paste their answer here and press Enter.
+"%~dp0nectar.exe" --netplay-host-ice %CONTINUE% %*
+pause
+''')
+    (stage / 'join.bat').write_text('''@echo off
+setlocal
+cd /d "%~dp0"
+echo Copy the host's whole offer code first. Send your answer code back to the host.
+"%~dp0nectar.exe" --netplay-join-ice @clipboard %*
+pause
+''')
     for name in ('nectar.exe', 'SDL2.dll', 'libstdc++-6.dll', 'libgcc_s_seh-1.dll', 'libwinpthread-1.dll'):
         import shutil
         src = exe if name == 'nectar.exe' else exe.parent / name
