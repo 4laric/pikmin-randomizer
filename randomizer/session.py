@@ -86,6 +86,14 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
+            # The seed-bound captain extension is last, after optional Purple.
+            # Never infer opt-in from a journal belonging to a legacy manifest.
+            if manifest.get('p2_second_captain'):
+                if fields[-3:] != ['CAPTAINS', '2', 'END']:
+                    raise ValueError('native journal second-captain mode mismatch')
+                fields = fields[:-3] + ['END']
+            if 'CAPTAINS' in fields:
+                raise ValueError('native journal second-captain mode mismatch')
             # Purple is a pinned session option, not a seed schema extension.
             # Normalize only its exact native suffix before the legacy count
             # check; unknown modes and non-P2 seeds must still fail closed.
