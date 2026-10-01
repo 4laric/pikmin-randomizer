@@ -108,13 +108,15 @@ def observe(audit, session, run, fixture, workspace, negative=False):
     if provenance['status']!='built' or provenance['artifacts'][str(fixture.resolve())]['sha256']!=digest(fixture):
         raise ValueError('Use the exact built replacement-main fixture')
     env=os.environ.copy()
+    removed_env={}
     for key in list(env):
-        if key.startswith(('PIKMIN_RANDOMIZER_AUTOPLAY','PIKMIN_P2_','P2_GENERATED_')):
-            del env[key]
+        if key.startswith(('PIKMIN_','P2_')) and key not in ('PIKMIN_WATCH_RUNS','PIKMIN_WORKFLOW_DIR'):
+            removed_env[key]=env.pop(key)
     env['PIKMIN_RANDOMIZER_AUTOPLAY']='0'
     env.pop('PIKMIN_RANDOMIZER_MANUAL_START',None)
     apply_test_run_env(env,workspace)
     if negative:env['P2_GENERATED_FORCE_CAPTAIN_DOWN']='1'
+    (Path(audit['game'])/'test-environment.json').write_text(json.dumps({'removed_game_environment':removed_env,'effective_game_environment':{k:v for k,v in env.items() if k.startswith(('PIKMIN_','P2_'))},'input_source':'SDL virtual P1 through native polling; no input-script calls'},indent=2)+'\n')
     command=[sys.executable,str(workspace/'scripts/run_pikmin2_fixture.py'),'--exe',str(fixture.resolve()),
              '--run-dir',audit['game'],'--arg=--randomizer-seed','--arg='+str(run.bootstrap.resolve()),
              '--pass-marker','PASS P2_GENERATED_DELIVERY','--timeout','60']
