@@ -15,7 +15,9 @@ ONION_UID = 0x50324F01
 ENEMY_POSITION = (-1153.361206, 47.871529, 2231.686035)
 ONION_POSITION = (-225.018997, 0.0, 2784.604980)
 # Only starting captain/squad are engineering placements; retail actors stay exact.
-START = (-1023.361206, 87.871529, 2231.686035)
+# Engineering start outside notice range plus startup squad-wandering margin;
+# original retail enemy/Onion positions remain unchanged. Approach is SDL-only.
+START = (-893.361206, 87.871529, 2231.686035)
 
 
 def source_selection(bundle, day):
