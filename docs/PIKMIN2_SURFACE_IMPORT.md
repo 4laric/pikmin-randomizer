@@ -72,8 +72,23 @@ hashes and verified every bundle member:
 
 Valley geometry, planes, raw mapcodes, routes, bounds and acceleration count match
 the existing decoder with the audited Valley translation policy. Its default
-generator parse matches the existing Valley importer. Pool and Wild each retain
-one unsupported generator-file parse; all source bytes stay in the bundle.
+generator parse matches the existing Valley importer.
+
+Pool's `nonloop/20-29.txt` declares one generator but serializes two records;
+Wild's `nonloop/0-1.txt` declares zero but serializes twenty. This is dormant
+retail data. Read-only decomp revision
+`632af93787b9c95b63f0c13be32b161375ce3a96`,
+`native/pikmin2-research/src/plugProjectKandoU/gameGenerator.cpp:636`,
+`GeneratorMgr::read` (address `0x801ABC18`) reads exactly `mGeneratorCount`
+records. The importer-local adapter mirrors that declared prefix. Pool gains its
+one active parsed actor; Wild correctly exports no active actors from that file.
+`declared_count`, `serialized_count` and `ignored_records` inventory the dormant
+rows without promoting them into actor schedules. Raw generator bytes remain
+unchanged and hash-bound, and `generator_warnings` makes this boundary visible.
+Negative counts, insufficient declared rows, unclosed braces and malformed
+records still fail. The shared Valley parser remains unchanged. Original
+PR #1055 bundles/receipts retain their original interpretation; generate fresh
+bundles with this follow-up source rather than rewriting old evidence.
 
 Run `py -3.12 -m unittest tests.test_pikmin2_surface_import
 tests.test_pikmin2_surface_physics tests.test_pikmin2_surface_topology

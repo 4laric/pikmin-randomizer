@@ -9,7 +9,8 @@ from unittest.mock import patch
 from experimental.pikmin2_collision import plane
 from experimental.pikmin2_surface_import import (COURSES, digest, import_surface,
                                                 read_member, safe_path, surface_topology,
-                                                verify_bundle)
+                                                source_generators, verify_bundle)
+from experimental.pikmin2_surface_pocket import generators
 
 
 class SurfaceImportTests(unittest.TestCase):
@@ -163,6 +164,48 @@ class SurfaceImportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'water box'):
             self.extract()
         self.assertFalse((self.root/'bundle').exists())
+
+
+class DeclaredGeneratorTests(unittest.TestCase):
+    def record(self, x=0, version='v0.1'):
+        return ('{ {'+version+'} 5 3 '+'0 '*32+f'{x} 0 0 0 0 0 '
+                +'{teki} {0005} 76 }')
+
+    def manager(self, count, rows):
+        return '{v0.1} 0 0 0 0 '+str(count)+' '+' '.join(rows)
+
+    def test_count_zero_does_not_enable_dormant_rows(self):
+        text = self.manager(0, [self.record(1), self.record(2)])
+        definition = source_generators(text)
+        self.assertEqual(definition['actors'], [])
+        self.assertEqual(definition['declared_count'], 0)
+        self.assertEqual(definition['serialized_count'], 2)
+        self.assertEqual([row['file_record_index'] for row in definition['ignored_records']], [0,1])
+        with self.assertRaises(ValueError):
+            generators(text)
+
+    def test_only_declared_prefix_is_active(self):
+        text = self.manager(1, [self.record(1), self.record(2, 'v0.3')])
+        definition = source_generators(text)
+        self.assertEqual(len(definition['actors']), 1)
+        self.assertEqual(definition['actors'][0]['position'], [1,0,0])
+        self.assertEqual(definition['ignored_records'], [dict(file_record_index=1, version='v0.3')])
+
+    def test_exact_count_preserves_existing_valley_result(self):
+        text = self.manager(1, [self.record(1)])
+        self.assertEqual(source_generators(text), generators(text))
+
+    def test_negative_or_insufficient_declared_count_refused(self):
+        for count in (-1, 2):
+            with self.subTest(count=count), self.assertRaisesRegex(ValueError, 'declared generator count'):
+                source_generators(self.manager(count, [self.record()]))
+
+    def test_malformed_declared_and_dormant_rows_refused(self):
+        for text in (self.manager(1, ['{ {v0.1} 5 }']),
+                     self.manager(0, ['scalar']), self.manager(0, ['{ {v0.1} 5 }']),
+                     self.manager(1, [self.record()])[:-1]):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                source_generators(text)
 
 
 if __name__ == '__main__':
