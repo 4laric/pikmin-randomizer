@@ -45,6 +45,7 @@ claim an uninterrupted single-Purple delivery. Recall count is reported.
 | haul01 | `502a1ed4f4ceee2eeacf8b55aec2e479f06bf528` | FAIL: idle helpers joined before the Red control. No delivery acceptance. |
 | haul02 | `f9c7d562ae1313bd78bd7fd5c38d2ddb91243d35` | FAIL after 82.687 s: Red control and Purple approach/lift/movement passed, but an extra carrier joined before Onion uptake. Captain remained healthy. |
 | haul03 | `5fe10ae877df4f23a4e17380d4a3394b8a4d4b9d` | FAIL: 180.125 s wall-clock timeout. Continuous recalls preserved the single-Purple test; acquisition, Red control and native movement passed, but no Onion uptake or reward. Healthy captain; route diagnosis pending. |
+| haul04 | candidate `1d2c1a3c9518bbe634a21ddca54125fdf005ba74`; actual CI merge below | FAIL: standard 60-second bound, terminated at 60.110 s. Acquisition, Red control and movement passed; Red Onion selected, but no uptake/reward. |
 
 The second failure exposed incomplete fixture isolation: a one-time formation
 gather prevents free-mode volunteering, but `Piki::collisionCallback` can assign
@@ -81,6 +82,46 @@ Haul03 log SHA-256 is
 Its timeout must not be relabeled as delivery acceptance or assumed to be a
 production defect without route/destination evidence.
 
+## Latest standard run and next slice
+
+Windows run `36853188764` built actual PR merge
+`44764d805ec4d05bc8a6d4ef1af21fb19b9fd7a5`, combining candidate
+`1d2c1a3c9518bbe634a21ddca54125fdf005ba74` with main
+`03fa75bd4bd304a13950cf5dbc285223bcb69d99`.
+The tested Git tree is `4c9af77eaea2b820c6e1c2f181e6d9423170df90`.
+Artifact names/BUILD_INFO identify the candidate, while the Actions checkout log
+identifies this actual merged production source; these pins are not conflated.
+Windows passed all 211 selected tests, all seven artifact hashes match, and the
+build dry run reports no work. The private CI build directory is
+`D:/a/Open-Nectar---Pikmin-Native-PC-Port/Open-Nectar---Pikmin-Native-PC-Port/build`.
+No local heavy build or maintained export was performed.
+
+Fixture SHA-256:
+`8fda6824b357d6147959f4667eb0467360d2542c498373e12f4bbff8b75e3edf`.
+Guard04 used the canonical 60-second limit and correctly exited86 in0.422s with
+captain-down, no timeout and no delivery PASS. Haul04 used a fresh session and the
+same 60-second limit. It logged the centered960x540 window at373,263, field20,
+native acquisition, the Red negative control and10.33units of Purple cargo travel.
+Its log SHA-256 is
+`6f7e537af892ee8b8dfc09311c4ae95b1a06de0813fdfc2fc6fd4ff74a7f6164`.
+
+Telemetry establishes the intended Red Onion destination and computed native
+speed17.328. Cargo starts at(-197.66,-37.72,2235.66), with the Red Onion at
+(-377.66,-37.72,2155.66), waypoint67. That is about197units apart: even an ideal
+straight haul at that speed takes over11seconds, before uptake and the90-tick
+reward stability check. The acquisition/settling/control sequence leaves only the
+initial few seconds of actual carrying within this monolithic60-second run.
+
+Delivery remains **unaccepted**. The concrete next fixture slice is to separate
+native acquisition/setup from the timed haul, using an ordinary saved state or
+another independently validated setup phase without injecting identity or carrier
+slots. Then use the route telemetry to reproduce and locate the longer diagnostic
+run's unresolved stall. The60-second run confirms goal selection, but does not
+explain the earlier180-second timeout; do not infer that a longer timer fixes it.
+Only after locating that failure should a new production repair scope and file
+ownership be claimed. Native91/root1090 remain drafts; this report is diagnostic
+evidence for integration review, not a completed delivery handoff.
+
 ## Reproduction and evidence boundaries
 
 Use a fresh legal-asset campaign stage, current roster validation and the bounded
@@ -89,8 +130,11 @@ correlation helpers are `output/purple1071-stage.py` and
 `output/purple1071-run.py`. They stage from the clean private root baseline
 `fe7d772fcc69dddbcb1a774649f68c67acc43451` with an explicit source-2 binding.
 This is a fixture manifest and local state heartbeat, not a live AP connection.
-Standard launch uses `PIKMIN_P2_ROOM_WINDOW=960x540` and a 180-second wall-clock
-limit. Every executable revision also gets a separate forced captain-down run.
+Standard acceptance uses `PIKMIN_P2_ROOM_WINDOW=960x540` and a 60-second
+wall-clock limit for both the positive run and separate forced captain-down run.
+The earlier 180-second attempts are diagnostic runs, never standard acceptance;
+their delivery gate remains UNTESTED/failed, as recorded above. Longer diagnostic
+runs cannot be promoted to standard acceptance even if they eventually deliver.
 
 Full delivery remains unaccepted until the current exact-head runtime produces
 the Onion-uptake, actual-population and delivery PASS markers. Compilation and
