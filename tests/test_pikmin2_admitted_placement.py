@@ -20,67 +20,41 @@ import pytest
 
 from randomizer import p2_placement
 from randomizer import p2_placement_catalog as catalog
-from randomizer.seed import generate
+from randomizer.seed import generate, PLAYABLE_P2_SPECIES
 from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
 from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_placement_layout
 
 ADMITTED_PLACEMENT_DOC = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "docs/PIKMIN2_ADMITTED_PLACEMENT.json"
 
-IDENTITY_BY_SOURCE = {
-    9: 'Kogane',
-    23: 'Sarai',
-    44: 'BlueKochappy',
-    54: 'Miulin',
-    57: 'Kurage',
-    59: 'FireOtakara',
-    60: 'WaterOtakara',
-    61: 'GasOtakara',
-    62: 'ElecOtakara',
-    78: 'MiniHoudai',
-    79: 'Sokkuri',
-}
-
-
 def admitted_set():
     roster = load_and_validate()
     admitted = admitted_ids(roster)
-    assert admitted == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
+    assert admitted == sorted(PLAYABLE_P2_SPECIES)
     return roster, admitted
 
 
 def accepted_document():
-    """The real catalog with accepted evidence stamped for the admitted cohort.
+    """Current generated constraint profiles, including bosses and water species."""
+    from randomizer.p2_admitted_placement import build_admitted_document
+    return build_admitted_document()
 
-    Labelled test-fixture acceptance: it does not claim a native run accepted the
-    slots, only that the accepted-placement mechanism binds the admitted cohort.
-    """
-    document = json.loads(json.dumps(catalog.build_muse_document()))
-    ground = [slot for slot in document['slots'] if slot['terrain'] == 'ground']
-    assert ground
-    uids = sorted(slot['uid'] for slot in ground)
-    for slot in ground:
-        slot.setdefault('evidence', {})
-        for key in p2_placement.EVIDENCE_KEYS:
-            slot['evidence'][key] = True
-    names = set(IDENTITY_BY_SOURCE.values())
-    for profile in document['profiles']:
-        if profile['identity'] in names:
-            profile['accepted_gates'] = ['test-fixture']
-            profile['accepted_slot_uids'] = list(uids)
-    return p2_placement.validate_document(document)
 
 
 def test_catalog_recognizes_every_admitted_source():
     _, admitted = admitted_set()
     # No "not a non-boss lane-04 candidate" membership error any more.
-    targets = catalog.binding_targets_for_sources(admitted)
-    assert targets
+    identities = catalog.identities_for_sources(admitted, accepted_document())
+    assert len(identities) == len(admitted)
 
 
 def test_default_deny_document_fails_closed_with_honest_reason():
     roster, _ = admitted_set()
+    document = accepted_document()
+    for profile in document['profiles']:
+        profile['accepted_gates'] = []
+        profile['accepted_slot_uids'] = []
     with pytest.raises(SeedBridgeError) as exc:
-        resolve_placement_layout('lane04-deny', 'Player1', catalog.build_document(), roster)
+        resolve_placement_layout('lane04-deny', 'Player1', document, roster)
     message = str(exc.value)
     assert 'accepted placement evidence' in message
     assert 'not a non-boss lane-04 candidate' not in message
@@ -88,8 +62,8 @@ def test_default_deny_document_fails_closed_with_honest_reason():
 
 def test_accepted_slot_uids_restrict_a_profile():
     document = accepted_document()
-    profile = next(p for p in document['profiles'] if p['identity'] == 'Sarai')
-    inside = next(s for s in document['slots'] if s['terrain'] == 'ground')
+    profile = next(p for p in document['profiles'] if p['identity'] == 'Chappy')
+    inside = next(s for s in document['slots'] if s['uid'] in profile['accepted_slot_uids'])
     assert p2_placement.evaluate(inside, profile)['status'] == 'legal'
     outside = dict(inside)
     outside['uid'] = 999_999_999

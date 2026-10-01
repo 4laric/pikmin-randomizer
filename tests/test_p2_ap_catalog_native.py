@@ -15,6 +15,39 @@ OUTPUT = os.environ.get('PIKMIN_TEST_OUTPUT')
 
 @unittest.skipUnless(PROBE, 'Set PIKMIN_CATALOG_PROBE to the paired native probe')
 class NativeCatalogTests(unittest.TestCase):
+    def test_kill_and_leftover_corpse_share_one_durable_receipt(self):
+        from randomizer.enemy_catalog import P2_KILL_CHECK_SPECIES
+        for sid in sorted(P2_KILL_CHECK_SPECIES):
+            for corpse_first in (False, True):
+                with self.subTest(species=sid, corpse_first=corpse_first), tempfile.TemporaryDirectory(dir=OUTPUT) as directory:
+                    session, run = self.make(directory)
+                    row = next(r for r in session.manifest['enemy_catalog']['checks'] if r['game'] == 'p2' and r['species'] == sid)
+                    uid = row['sources'][0]
+                    stage = next(s['stage'] for s in session.manifest['enemy_catalog']['sources'] if s['uid'] == uid)
+                    kill, corpse = ['--kill-p2', sid, uid, stage], ['--deliver-p2', sid, uid, stage]
+                    first, other = (corpse, kill) if corpse_first else (kill, corpse)
+                    result = self.run_probe(run, *first)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    run.poll()
+                    self.assertEqual(session.data['checked'], [row['name']])
+                    before = (run.directory/'checks.txt').read_bytes()
+                    journal = session.directory/'campaign'/'p2-delivery-receipts.txt'
+                    self.assertTrue(journal.exists(), result.stdout + result.stderr)
+                    persisted = journal.read_bytes()
+                    self.assertEqual(len(persisted.splitlines()), 2)
+                    fields = persisted.decode('ascii').splitlines()[1].split()
+                    self.assertEqual(fields[:3], [session.fingerprint, f'onion:p2:{sid}:{stage}', f'g{uid}'])
+                    next_run = NativeRun(session)
+                    again = self.run_probe(next_run, *other, *first, *other)
+                    self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+                    next_run.poll()
+                    self.assertEqual(journal.read_bytes(), persisted, again.stdout + again.stderr)
+                    self.assertIn('new=0', again.stdout)
+                    self.assertNotIn('new=1', again.stdout)
+                    self.assertFalse((next_run.directory/'checks.txt').exists())
+                    self.assertEqual((run.directory/'checks.txt').read_bytes(), before)
+                    self.assertEqual(Session(session.manifest, directory).data['checked'], [row['name']])
+
     def run_probe(self, run, *args):
         run.write_state(True)
         return subprocess.run([PROBE, '--randomizer-seed', str(run.bootstrap),
@@ -26,6 +59,7 @@ class NativeCatalogTests(unittest.TestCase):
         settings.update(options)
         manifest = generate('native-ap-1046', **settings)
         session = Session(manifest, directory)
+        (session.directory/'campaign').mkdir(exist_ok=True)
         return session, NativeRun(session)
 
     def test_delivery_separates_source_from_host_and_replays_once(self):

@@ -30,6 +30,9 @@ from experimental.pikmin2_enemy_roster import (
     validate_roster,
 )
 from scripts.audit_pikmin2_roster import categorize_inventory_tokens
+from randomizer.seed import PLAYABLE_P2_SPECIES
+
+EXPECTED_ADMITTED = tuple(sorted(PLAYABLE_P2_SPECIES))
 
 SYNTHETIC_HEADER = """
 struct EnemyTypeID {
@@ -82,10 +85,10 @@ def test_known_identities_and_relationships():
 def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
-    assert candidates == {2, 15, 17, 45}
+    assert candidates == {45}
     admitted = {entry.source_id for entry in roster if entry.eligibility == "admitted"}
-    assert admitted == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
-    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates | admitted)
+    assert admitted == set(EXPECTED_ADMITTED)
+    assert all(entry.eligibility in ("denied", "excluded") for entry in roster if entry.source_id not in candidates | admitted)
 
 
 def test_synthetic_pipeline_round_trips():
@@ -175,9 +178,9 @@ def test_identity_roles_real_roster():
 def test_admission_defaults_deny_except_reviewed_pair():
     roster = load_and_validate()
     admission = admission_set(roster)
-    assert admission.admitted == (9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79)
-    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
-    assert set(admission.candidates) == {2, 15, 17, 45}
+    assert admission.admitted == EXPECTED_ADMITTED
+    assert admitted_ids(roster) == list(EXPECTED_ADMITTED)  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert set(admission.candidates) == {45}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 45)
@@ -188,9 +191,9 @@ def test_admitted_ids_env_has_no_override(monkeypatch):
     # override was removed; the strict contract is canonical and env-inert.
     roster = load_and_validate()
     monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "79")
-    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
+    assert admitted_ids(roster) == list(EXPECTED_ADMITTED)
     monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
-    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
+    assert admitted_ids(roster) == list(EXPECTED_ADMITTED)
 
 
 def test_admission_set_admits_only_seedable_randomizable():
@@ -251,7 +254,7 @@ def test_committed_overlay_reviewed_cohort_and_native_modules():
     assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
     assert roster[44].eligibility == "admitted" and roster[44].native_module == "pc_p2_dwarf_orange"
     assert roster[44].owner_lane == "13"
-    assert admitted_ids(load_and_validate()) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert admitted_ids(load_and_validate()) == list(EXPECTED_ADMITTED)  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
 
 
 def test_opt_in_requires_reviewed_seedable_identity():
@@ -277,7 +280,7 @@ def test_opt_in_validation_cohort_validates_and_does_not_admit():
     cohort = opt_in_validation_cohort(roster, [44, 45])
     assert cohort == [44, 45]
     # The private validation path never mutates the global admission set.
-    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert admitted_ids(roster) == list(EXPECTED_ADMITTED)  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
     with pytest.raises(RosterError):
         require_admitted(roster, 45)
 
@@ -310,8 +313,23 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     assert {binding["source_id"] for binding in layout["bindings"]} == {44, 45}
     # Normal generation stays deny-by-default: the product entry point seeds only the
     # admitted set (Sarai 23, Dwarf Orange 44 + Otakara 59-62 since 2026-09-15), never the private cohort's Snow 45.
-    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
-    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{c}" for c in "abcdefghijk"), roster)
-    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
+    assert admitted_ids(roster) == list(EXPECTED_ADMITTED)
+    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{i}" for i in range(len(EXPECTED_ADMITTED))), roster)
+    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == set(EXPECTED_ADMITTED)
 
 
+
+
+def test_no_carcass_kill_evidence_preserves_historical_delivery_citations():
+    payload = json.loads((ROSTER_PATH.parent / 'PIKMIN2_ENEMY_ROSTER_EVIDENCE.json').read_text(encoding='utf-8'))
+    old_stages = {31: 1, 57: 3, 66: 3, 69: 3, 72: 3}
+    for source, old_stage in old_stages.items():
+        entry = payload['entries'][str(source)]
+        # Historical transport admitted the species. A new kill run must not
+        # overwrite its stage, runtime-log citation or evidence description.
+        assert f'onion:p2:{source}:{old_stage}' in entry['delivery_receipt']
+        assert 'native.log' in entry['delivery_receipt']
+        assert 'P2_KILL_P2_RECEIPT' not in entry['delivery_receipt']
+        assert f'onion:p2:{source}:1' in entry['kill_receipt']
+        assert 'P2_KILL_P2_RECEIPT' in entry['kill_receipt']
+        assert f'codex-1088-death-{source}-2/native.log' in entry['kill_receipt']

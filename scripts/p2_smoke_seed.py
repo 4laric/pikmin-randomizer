@@ -575,7 +575,7 @@ def build(args):
     manifest = generate(args.seed, 'solo', 'Player1', starting_area=starting_area,
                         collection_checks=True, starting_flarlic=1, bomb_rock_weight=1,
                         goal_mode='emperor_bulblax', combined_captain=True,
-                        p2_enemies=True, p2_placement=override,
+                        p2_enemies=True, p2_checks=True, p2_placement=override,
                         p2_species=pool, p2_purple_campaign=bool(needs_purple),
                         progressive_maturity=True)
     validate(manifest)

@@ -702,7 +702,8 @@
       "source": [
         "PIKMIN2_BULBLAX_BOSS_AUDIT.md",
         "PIKMIN2_BULBLAX_RUNTIME.md",
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_NO_CARCASS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
@@ -713,7 +714,10 @@
         "cleanup_reentry": "PASS"
       },
       "delivery_receipt": "onion:p2:31:1 (P2_LARVA_CARCASS then P2_ORDINARY_P2_RECEIPT new=1) output/larva-evidence/nat2/runs/00bd993b66d9f927e4c4f7b9bbd3ee83e5fd5feeee02db0f20ceadad68e18f82/native.log:L1612 receipt on generator 4222852521 (sha256 b1e471019c9390a3aa79ff9201d70be0d8833399748679285ed5e9f73147633c)",
+      "kill_receipt": "onion:p2:31:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-31-2/native.log (sha256 4106a1d36c572adfcfc4877342cc80fa01b73173c05fcd401d0af9527370e776; native d703218cae578376338fd292aed8477949a661b4)",
       "notes": [
+        "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
+        "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
         "Admission follows owner ruling 2026-10-01 (typed to the coordinator): 'queue larva, it should be pretty free since it's already thoroughly tested as part of the empress encounter'. The Empress encounter larva behaviour was owner-passed (#256: 'larva are a huge improvement', 'spawning of larva is good'). Issue #1042.",
         "Reuse, not reimplementation: pc_p2_queen_teki.cpp already ran Baby 31 as real teki driven by pc_p2_queen_own.h Baby (BabyState.cpp FSM). #1042 adds bindLarva() (a seeded slot becomes a standalone larva, same FSM and same attack/eat/swallow code), the campaign placement row p2campaign::hostType 31 -> 4 (TEKI_Swallow at larva scale 0.35, as the Queen-born larvae), the life gauge fp27 row (50, baby/enemyparm.txt) and the regenerated roster revision header.",
         "Source citations (pikmin2-research src/plugProjectNishimuraU): Baby.cpp:36-48 onInit (EB_Cullable and EB_LeaveCarcass disabled, starts in BABY_Born); Baby.cpp:114-137 pressCallBack and hipdropCallBack (any press past Born is an instant Press death); Baby.cpp:202-210 one mouth slot 'kamu' radius 20; Baby.cpp:262-279 moveNoTarget (no idle wander outside zukan mode); BabyState.cpp:20-100 StateDead/StatePress (kill() at KEYEVENT_END, lines 41 and 80); BabyState.cpp:146-186 StateMove (nearest Pikmin or captain within sight 800 and view 180, quarter speed while turning, Attack inside 30 and 45 degrees); BabyState.cpp:516-540 StateAttack (key 2 attackNavi plus eatPikmin, AttackFail when the mouth is empty; key 3 swallowPikmin).",
@@ -1102,7 +1106,8 @@
       "source": [
         "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
         "PIKMIN2_KURAGE_MATERIAL.md",
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_NO_CARCASS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
@@ -1113,7 +1118,10 @@
         "cleanup_reentry": "PASS"
       },
       "delivery_receipt": "onion:p2:57:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) final exe bin-b12 output/claude-orch/p2-w3-flyers/runs/f3-57/session/runs/5a6ad2d410947cb8ad338bde02798df8dead912cedb39e5cdfb8460c22e5300e/native.log:L13487 receipt (sha256 117eb8ac47d65821447738af3068f1e54f6ed0716622d84e587b967bc17f464a); first-admission run k6 output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log:L9247 receipt (sha256 a3ff30c09e624b62829ef4cfe339f6940943be29e3f955cf59e7d554490836e6) (exe not recorded, attributed to b5)",
+      "kill_receipt": "onion:p2:57:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-57-2/native.log (sha256 8c3c3adc1345ab4158aa6050ec23d58cdfa2f23cf51f333dc91ab869f34071ba; native d703218cae578376338fd292aed8477949a661b4)",
       "notes": [
+        "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
+        "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
         "Kurage (Lesser Spotted Jellyfloat): #960 OWN port. Native 4laric/Open-Nectar claude/p2-wave3-flyers f599fe03a (fork main bbb9821f7 + 1 commit): pc_p2_kurage_own_host (KurageState.cpp transcribed FSM, retail parms, ten retail clips through the retail event player, getSearchedTarget/isSuck/suckPikmin/flick), P1 Frog actor AI suppressed with a stored-damage drain, retail enemycoll tree on the actor (pc_p2_flyer_coll), multi-owner suction receiver, onion:p2:57 delivery bind, P1-approximation SFX.",
         "Flyer targeting rule: P2 EnemyBase::isFlying() is EB_Untargetable, mirrored onto CF_IsFlying (pc_p2_flyer.h). Hovering states are untargetable, so ground Pikmin skip the body (P1 flyer behaviour unchanged, no edit to generic Piki AI) while thrown Pikmin latch onto the retail collision spheres and stuck Pikmin keep biting; Fall/Land/Ground clear the flag so a fallen body is attackable by the whole squad.",
         "Campaign evidence, bot-driven power-mode run k6 (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 57, all on the species' own generator (exe: k6's run-inputs.json records only the gdbexe.cmd wrapper, sha256 c3a7868b5c49d2e3e0f92531aa72cf3655efd76b0c50a1053be9523d3c939822, which now hard-codes bin-b9, so the underlying exe hash was not recorded; by timestamps bin-b5, nectar.exe sha256 e929736321f3be3763f7aae2432726c8244a11e0ba9d75db120d52d05c253bfe built 04:20:30, was the newest build when k6 started at 04:20:34, and k7 and r1 record b5 explicitly, so k6 is attributed to b5 by inference; it is NOT the shipped exe): output/claude-orch/p2-w3-flyers/runs/k6-57/session/runs/224c4a3aa5e9821ad910eeeb95f232a3fad7e86cb0ccf1b2b1de73ba619e47bb/native.log (sha256 a3ff30c09e624b62829ef4cfe339f6940943be29e3f955cf59e7d554490836e6) L1387 P2_KURAGE_OWN_BIND retail_parms=1 coll=1, L4276 first airborne latch, L4417 FlyFlick (P2_KURAGE_OWN_FLICK stick=4 flicked=4), 60 latches, 151 monotone P2_KURAGE_OWN_DAMAGE lines 2485 to 10, L8098 P2_KURAGE_OWN_DEAD, L8209 P2_KURAGE_OWN_ESCAPE, L8212 CORPSE_DRAW dead1, L9247 receipt onion:p2:57:3 new=1, L9249 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1 seconds=147.",
@@ -1296,9 +1304,11 @@
       "source": [
         "PIKMIN2_HOUDAI_PORT.md",
         "PIKMIN2_LONG_LEGS_AUDIT.md",
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_NO_CARCASS.md"
       ],
       "delivery_receipt": "onion:p2:66:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) output/claude-orch/p2-66-own/runs/c2/session/runs/0a737916a5c704ec2cd5ea489d43d5dd3a0ecfd63b9030830219a0187af8d44b/native.log:L1575 (sha256 9efc43f3e7e35dd224166cccb1ffb0b1a2c0216fa3bd63febdbafcdc78933635)",
+      "kill_receipt": "onion:p2:66:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-66-2/native.log (sha256 bda13f508e336d0d1c33ac4807d0e3926ce1cfca9b91a78300e99fa946c4180c; native d703218cae578376338fd292aed8477949a661b4)",
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
@@ -1308,6 +1318,8 @@
         "cleanup_reentry": "PASS"
       },
       "notes": [
+        "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
+        "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
         "Pins: native 4laric/Open-Nectar fork claude/p2-66-man-at-legs 0f84fcc37 (fork main 7a9f7dcab merged), exe nectar.exe sha256 7c2f13033f9eba487d0139687cce31d4a51293e82dbac5920d5e74168b2e5935 (Ninja, MinGW, private build dir output/native-66-build, -j 2). Root claude/p2-66-man-at-legs on origin/main plus this admission diff. Content: output/p2-content-dense/Houdai with rig/ (pikmin2_houdai_rig, 239 poses: landing 52, wait 40, flick 49, attack 50, dead 48).",
         "Run c2 (power x30, seed man-at-legs-ev2, slot 1945764764 via p2_smoke_seed --slot-uids, smoke any-slot marker only): L1199 P2_HOUDAI_OWN_BIND health=2800 parms=disc, L1200 delivery bind source_id=66, L1203 P2_HOUDAI_RIG status=ready, L1211 COLL_BIND (retail tree, tama the only stickable part), L1357 IK_START pose=clip, Stay->Land->Wait->Walk->Dead, L1464 P2_LONG_LEGS_DEAD prior_health 71.88, L1478 ESCAPE, L1479 corpse register, L1575 receipt, L1576 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1 in 104 s. No setup skip, no fatal line. A first run on the same exe (c1) killed it but the bot's carry did not start (carriers=0); bot variance, not a receipt claim.",
         "No-multiplier run b2 (no damage multiplier, same exe and package): native.log sha256 ffa4415dd704a644da5fde92e46b4b0ba283f06fc6536ebbe7bcef33b4777bcb. Stay->Land->Wait->Walk and Wait->Shot->Walk cycles; P2_HOUDAI_POSE_DIAG shows the body at kosi 114 above the ground in Wait (the draw rises), L1593 laser sight start, 2 sight sessions of 277 ticks, 87 shells fired, 9 accepted Pikmin hits, floor ends. Owner playtest 2026-09-30 reported the boss stuck crouched in the ground: the cause was the resident-mesh cache keeping the first pose drawn (pc_gfx_mark_dynamic_vertex_range was missing on the private mesh); fixed in this exe and shown in frame dumps (body and legs standing, walking).",
@@ -1352,10 +1364,14 @@
         "cleanup_reentry": "PASS"
       },
       "delivery_receipt": "onion:p2:69:3 (P2_LONG_LEGS_DEAD then P2_ORDINARY_P2_RECEIPT new=1) C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log:L1810 receipt (sha256 0fbcb5d984defcdf...)",
+      "kill_receipt": "onion:p2:69:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-69-2/native.log (sha256 e5320bfd7091a5ba56898cc583a4c847f9a87402601fc4cb3100b38cbaccbbf4; native d703218cae578376338fd292aed8477949a661b4)",
       "source": [
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_NO_CARCASS.md"
       ],
       "notes": [
+        "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 4222852521. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
+        "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
         "Lane campaign evidence: Bot-driven power-mode campaign inst-legs-69b (owner ruling 2026-09-25: power mode admits): campaign bind, flick-shake fight, P2_LONG_LEGS_DEAD on its own generator, P2 corpse carried, Onion receipt onion:p2:69:3 Bind/dead/receipt on the own generator token (L1586 bind on own generator 1945764764, L1751 dead, L1810 receipt); experimental/pikmin2_family_install.py IDENTITY_FAMILY 69 -> long_legs (experimental/pikmin2_long_legs_install). Log C:/cop/botcamp-inst-legs-69b-69-BigFoot/session/runs/d7683ffb7f6a225e090df66ee446cec0cffa9bc09a8c35ba0051a265354d5a3f/native.log (sha256 0fbcb5d984defcdf...) L1586 bind (own token 1945764764; DELIVERY_BIND L1581; L1585 BIND is sibling generator 1787125272 and is not cited), L1751 dead, L1810 receipt.",
         "Natural power-mode campaign gameplay per the 2026-09-25 owner ruling (mechanics evidence, not balance); no state was written by the runs."
       ]
@@ -1413,7 +1429,8 @@
       "source": [
         "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
         "PIKMIN2_KURAGE_MATERIAL.md",
-        "PIKMIN2_PLAYABLE_POOL.md"
+        "PIKMIN2_PLAYABLE_POOL.md",
+        "PIKMIN2_NO_CARCASS.md"
       ],
       "gates": {
         "identity_spawn": "PASS",
@@ -1424,6 +1441,8 @@
         "cleanup_reentry": "PASS"
       },
       "notes": [
+        "#1088 current endpoint PASS: bot-driven power x30 combat and test-only setup teleport; source death animation/burst completes, no carcass markers, exactly one kill receipt on generator 2049888785. This does not revalidate normal player combat, corpse routes, nectar/Mitite drops or full scene re-entry.",
+        "Owner ruling #1088 (2026-10-01): no carcass or Pikmin seed yield; earn the check on kill, with stable onion:p2 identity and legacy AP location name. Historical transport evidence below predates this ruling. See PIKMIN2_NO_CARCASS.md for current kill-receipt validation and source citations.",
         "OniKurage (Greater Spotted Jellyfloat): #960 OWN port on the same module as the Kurage (pc_p2_kurage_own_host, Variant::Greater). Native 4laric/Open-Nectar claude/p2-wave3-flyers 272f3807d (fork main bbb9821f7 + 6 commits): retail OniKurage parms (life 4500, speed 75, territory and sight 500, attack range 60, flight 75, rise 5, suck 20), the retail radius-55/40/25 collision tree, ten retail clips through the retail event player, OniKurageState speed factors (0 everywhere), captain suction through the shared demon captain bridge (suckNavi, mouth slot offsets, Attack to Drop, flickStickNavi from GroundFlick and Dead), P1 Frog actor AI suppressed with a stored-damage drain, onion:p2:72 delivery bind, P1-approximation SFX.",
         "Flyer targeting rule: P2 EnemyBase::isFlying() is EB_Untargetable, mirrored onto CF_IsFlying (pc_p2_flyer.h, docs/PIKMIN2_FLYER_TARGETING.md). Hovering states are untargetable, so ground Pikmin skip the body (P1 flyer behaviour unchanged) while thrown Pikmin latch onto the retail collision spheres and stuck Pikmin keep biting; Drop/Fall/Land/Ground clear the flag so a fallen body is attackable by the whole squad.",
         "Campaign evidence on the final exe (nectar.exe sha256 1620698f169f0b82cf5c9749424d5edea556fce30aa972f20afe97cf1aafc59a = bin-b12, native 272f3807d), bot-driven power-mode runs (owner ruling 2026-09-25: power mode admits), red squad, target spring_init_7002 (1945764764) rebound to 72, all on the species' own generator. Run e4: output/claude-orch/p2-w3-flyers/runs/e4-72/session/runs/53c07bad63e6497e7c645e535c95c96ed998e6a1f15be153c369be2044de8f62/native.log (sha256 979cabe4436712d69a435fd5d2166d17329cfe893242dee6578fc8b65424f67f) L1338 P2_KURAGE_OWN_BIND source_id=72 retail_parms=1 coll=1, L4555 P2_ONIKURAGE_MOUTH_READY, L4626 Attack to Drop (state 11, alt 58.8, health 4065), L4659 P2_KURAGE_OWN_LAND, the grounded squad attack, L5072 P2_KURAGE_OWN_DEAD, L5179 ESCAPE, L5181 CORPSE_DRAW dead1, L6018 receipt onion:p2:72:3 new=1, L6020 AUTOPLAY_RESULT damaged=1 killed=1 carried=1 received=1 seconds=54. Run e5: output/claude-orch/p2-w3-flyers/runs/e5-72/session/runs/5519bd34c0b87ca921c27c0aa99dd46c065c0b91e43d097257ed67e3d5f27669/native.log (sha256 fb34a858220abfa42ae01e480a4f3574b813bab58a73f83928f4fb62efde3db9) repeats it: Drop L4703, Land L4742, DEAD L5007, receipt L5909, seconds=53. Neither run captured the captain (no P2_ONIKURAGE_CAPTURE line); the captain suction, mouth hold and GroundFlick release were observed on the earlier exe 3b5eef6a... (b10, native 4bf690473) in run e1 (output/claude-orch/p2-w3-flyers/runs/e1-72/session/runs/e2f2cb1bf7b8cc89a27386b517eeda002bb58620299f784149be3efcfb057967/native.log, sha256 8a49bb81feb1d7e8cf364773e3196f716013a2b95d11aa659641907413daa3b9): L4413 P2_ONIKURAGE_CAPTURE captain=1 slot=0, L4428 MOUTH_READY, L4495 Attack to Drop, L4709 P2_ONIKURAGE_RELEASE reason=groundflick drop=1 accepted=1, L5054 dead, L6020 receipt.",
@@ -1431,7 +1450,8 @@
         "cleanup_reentry: the real day cycle (PIKMIN_P2_TEST_DAY_CYCLE=time:100,time:100) on the final exe b12, normal 20-squad run r5 (no power mode, so the Greater Jellyfloat stays alive): output/claude-orch/p2-w3-flyers/runs/r5-72/session/runs/c0ea02ab04b2b16e4e2be1eca3351f2dba180409da1ec72115a9fd168ddb743a/native.log (sha256 3cb9842f89c2121a0b152f961ef0c3d20dbb412b9ec279578e68687b6c2b3266). The 72 (generator 1945764764) is bound at L1338 (day 2), fought (Drop, Land, grounded attack, TakeOff cycles; health 4500 down to 4430 by the day-2 sunset), alive at L6634 SUNSET (P2_KURAGE_TEKI_FORGET bound=1 remaining=0 at L6643/L6647), re-entered at L6972 (MAPSELECT day=3), bound again at L7770, alive at L13605 SUNSET (FORGET L13614/L13618), re-entered at L13938 (day=4), bound a third time at L14734, and P2_TEST_DAY_CYCLE_DONE day=4 prints at L19210; the 72 is still alive (health 4090 at L38325) when the harness stopped the run, no crash across three stage loads. (The earlier r3 on b10 is not cited: there the 72 died and was delivered at L4970/L5899 before the first sunset, and every later bind and FORGET line was the Lesser 57. Run r2 on b8 also kept a live 72 across three loads but on a superseded exe.)",
         "Accommodations (owner ruling 2026-09-29: a carryable corpse is acceptable): the P1 Frog actor's collision/pellet config stands in for the body (the corpse carry weight comes from the Frog carcass config), the body joint is the rest-mesh centroid, the captain suction is one captain (the shared demon captain bridge is single-binding, so a second co-op captain is not sucked), the vomit is the demon FallMeck drop with the fp24 damage rather than the InteractFlick plus InteractBomb pair, and the receipt evidence is power mode as the owner allows (no claim is made about whether a normal squad can kill it in a day: run n2 on b11 killed it with a 20-squad, r5 on b12 fought it to about 4100 HP by the harness stop, and the earlier n1 log was cut off mid-run before any sunset)."
       ],
-      "delivery_receipt": "onion:p2:72:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) final exe bin-b12 output/claude-orch/p2-w3-flyers/runs/e4-72/session/runs/53c07bad63e6497e7c645e535c95c96ed998e6a1f15be153c369be2044de8f62/native.log:L6018 receipt (sha256 979cabe4436712d69a435fd5d2166d17329cfe893242dee6578fc8b65424f67f)"
+      "delivery_receipt": "onion:p2:72:3 (P2_KURAGE_OWN_DEAD then P2_ORDINARY_P2_RECEIPT new=1) final exe bin-b12 output/claude-orch/p2-w3-flyers/runs/e4-72/session/runs/53c07bad63e6497e7c645e535c95c96ed998e6a1f15be153c369be2044de8f62/native.log:L6018 receipt (sha256 979cabe4436712d69a435fd5d2166d17329cfe893242dee6578fc8b65424f67f)",
+      "kill_receipt": "onion:p2:72:1; kill receipt P2_KILL_P2_RECEIPT in output/codex-1088-death-72-2/native.log (sha256 5dc4b9e73ecf6e45ae2a4bc6e93f0609e22a428edf4c44118bf29d58b13e0654; native d703218cae578376338fd292aed8477949a661b4)"
     },
     "73": {
       "native_module": "pc_p2_bigtreasure",
