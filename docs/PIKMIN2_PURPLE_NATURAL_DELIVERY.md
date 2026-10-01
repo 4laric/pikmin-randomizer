@@ -51,3 +51,43 @@ and a versioned placement/session policy so old seeds are not silently moved.
 The current child first establishes guard correctness and where natural startup,
 conversion/pluck, approach and haul spend their60-second budget. A staged
 Purple cannot replace the natural acquisition/delivery gate.
+
+## Preparation follow-up (2026-10-01)
+
+Expanded scope recorded before production edits in #1128 comment5936136031 and
+canonical registry revision4: `randomizer/purple_campaign.py` and its main tests
+are now owned by this lane. No production placement edit has been made. Version2
+sessions must retain exact generator bytes/UID/positions; fresh placement needs
+versioned session/staging identity, mismatch rejection and compatibility review.
+Only stage1 may change after measured clearance; other stages stay unverified.
+
+Windows run36882527234 passed211 CTests and no-work; eight artifact hashes verified.
+Actual compiled merge is67fec12acc4a550a5a74061d075a5b0d80d1bc64 on main
+eb8b887bf3f2a0dd5eef2916b4a69d221b5ec881, distinct from producer46d203e0.
+Fixture SHA4921a6ae3171b18bcf74668f122079b83d1d2327f2988b5a5a4c7d2c86d0ad8e.
+
+The first initialized-health test exited86 in the same frame, but injected at
+tick2 with field0 and an active startup movie, so the required guard acceptance
+FAILED. The corrected source waits for20 live Pikmin and active gameplay before
+negative injection; the real guard remains unconditional before early returns.
+
+A west197 timing diagnostic was explicitly interrupted at28.922seconds after
+review identified inherited captain relocation in its upcoming pluck path.
+No pluck relocation marker occurred in that run. It is neither timeout evidence
+nor accepted natural delivery. Preserved milestones: active gameplay12.083s,
+input selection/native throw19.247/19.248s. Full timings remain unknown.
+
+Candidate natural acquisition now approaches via controller input and requests
+plucking with A; it no longer teleports the captain or forces a pluck state.
+Scripted native throw/transport assignment remain disclosed fixture actions.
+The unrelated adult-combat mode retains its separately labeled historical setup.
+Read-only telemetry now reports the full selected route, dynamic Violet/cargo
+bounding and collision-part spheres, plus terrain triangle/height samples.
+Samples are diagnostic and cannot by themselves certify continuous clearance.
+Corrected source passes MinGW syntax checking; runtime is UNTESTED.
+
+Immutable follow-up: `output/purple1128-preparation02.json`. Next dependency is a
+new Windows custom-fixture artifact, then seven field20 initialized guard cases
+and original east197 natural acquisition/haul. Current private Linux validation
+cannot produce that Windows artifact. Optional remote dispatch remains on hold
+pending the coordinator's runner transition notice. No live build was cancelled.
