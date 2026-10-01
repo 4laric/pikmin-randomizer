@@ -19,6 +19,8 @@ def prepare(assets, white, pod, room, output):
     rows=[r for r in rows if r[16:48].rstrip(b'\0')!=b'preview dwarf bulborb']
     # P1 Starting walks from the ship; stage it beside the initial squad.
     for i,r in enumerate(rows):
+        if r[16:48].rstrip(b'\0')==b'preview treasure bolt':
+            row=bytearray(r);struct.pack_into('>6f',row,48,250,0,-250,0,0,0);rows[i]=bytes(row)
         if r[16:48].rstrip(b'\0')==b'preview red onion':
             row=bytearray(r);struct.pack_into('>6f',row,48,250,0,250,0,0,0);rows[i]=bytes(row)
         if r[16:48].rstrip(b'\0')==b'preview ship':
