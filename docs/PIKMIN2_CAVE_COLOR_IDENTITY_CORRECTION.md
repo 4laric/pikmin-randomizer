@@ -7,6 +7,10 @@ Blue=0, Red=1, Yellow=2. Cave startup restores these IDs through
 `pc_p2_set_species`. The ordinary fresh stage default `[[1,0]] * 20` is already
 20 Red leaves and must remain unchanged.
 
+The preview generator writes 2 to the formation-state parameter and 1 to the
+color parameter. The rejected interpretation confused state with color; it
+does not establish a separate Red=2 cave-entry color namespace.
+
 ## Historical evidence correction
 
 The frozen #1086 fixture counted `pc_p2_species()==2` while printing `red`.
