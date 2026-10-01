@@ -297,6 +297,40 @@ def balloon_patch(mb, decoded):
     return overrides, billboards
 
 
+# Bomb seam material (Bomb enemy.bmd 'bombmat1', #1066): one stage
+# C0 + TEXC * RASC (x4) with C0 = (255, 30, -70), the red-hot glow of the bomb
+# rock's seams. The approximate stage drew TEXC * RASC only, a dull grey rock.
+# Written verbatim (registers, konst, order, scale) like the balloon stages.
+SEAM_STAGE = dict(color=[15, 8, 10, 2, 0, 0, 2, 1, 0], alpha=[7, 4, 5, 7, 0, 0, 0, 1, 0], order=[0, 0, 4])
+
+
+def seam_patch(mb, decoded):
+    """TEV overrides for shapes whose material is the audited glowing-seam stage."""
+    _, _, shapes, mats = decoded
+    m = mb['MAT3']
+    u32 = lambda at: struct.unpack_from('>I', m, at)[0]
+    u16 = lambda at: struct.unpack_from('>H', m, at)[0]
+    mapping = _material_of_shapes(mb)
+    overrides = {}
+    for si in range(len(shapes)):
+        if mats[si] < 0:
+            continue
+        r = u32(0x0C) + u16(u32(0x10) + 2 * mapping[si]) * 332
+        if m[u32(0x58) + m[r + 4]] != 1:
+            continue
+        stage = u32(0x5C) + u16(r + 0xE4) * 20
+        order = u32(0x4C) + u16(r + 0xBC) * 4
+        if (list(m[stage + 1:stage + 10]) != SEAM_STAGE['color'] or list(m[stage + 10:stage + 19]) != SEAM_STAGE['alpha']
+                or list(m[order:order + 3]) != SEAM_STAGE['order']):
+            continue
+        regs = [list(struct.unpack_from('>4h', m, u32(0x50) + u16(r + 0xDC + 2 * k) * 8)) for k in range(3)]
+        konst = b''.join(m[u32(0x54) + u16(r + 0x94 + 2 * k) * 4:][:4] for k in range(4))
+        overrides[si] = dict(regs=regs, konst=konst,
+                             stages=[dict(order=SEAM_STAGE['order'], color=SEAM_STAGE['color'],
+                                          alpha=SEAM_STAGE['alpha'], kcolor=m[r + 0x9C], kalpha=m[r + 0xAC])])
+    return overrides
+
+
 def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                   prefix, report, reference):
     """Write enemy.bmd and the sampled pose bank; return (clips, reference)."""
@@ -337,12 +371,15 @@ def _convert_bank(species, model, mb, names, motions, rows, root, pose_limit,
                                          draw_matrices=matrices, **TOLERANCES)
                         name = f'{prefix}_{species}_{stem}_{number:02}.mod'
                         overrides, billboards = balloon_patch(mb, decoded)
+                        seams = seam_patch(mb, decoded)
                         conversion = write_model(decoded, root / name, 'enemy.bmd',
-                                                 tev_overrides=overrides)
+                                                 tev_overrides={**seams, **overrides})
                         conversion.update(source='enemy.bmd', output=name)
                         if billboards:
                             conversion['billboard_vertex_ranges'] = billboards
                             conversion['balloon_tev_shapes'] = sorted(overrides)
+                        if seams:
+                            conversion['seam_tev_shapes'] = sorted(seams)
                         data = (root / name).read_bytes()
                         resources = resource_chunks(data)
                         if reference is not None and resources != reference:
