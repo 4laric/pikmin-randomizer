@@ -145,3 +145,36 @@ weights, generic ten-strength obstacles, live AP checks, or a complete campaign.
 Prior Purple adult-direct and save/restart evidence stays separate and immutable.
 Natural quake/stun/crush combat and ordinary controller gameplay remain separate
 acceptance work; this slice must not be cited as their completion.
+
+## Split controls and staged companion (2026-10-01)
+
+At native dada102701a560d5fb8d0f87e02e6055dc777ae6, the separate ordinary Red
+control passed in 23.86 seconds: one Red could not move/deliver the weight-ten
+pellet, no population reward appeared, and it released normally. Natural positive
+haul05 timed out at 60.187 seconds after native Violet acquisition and 10.09 units
+of cargo travel. Red Onion waypoint67 and computed speed17.328 were correct;
+the observed route initially curved away from the Onion. Uptake remains unproved.
+Immutable aggregate: output/purple1071-split05-evidence.json.
+
+Staged06 at native c142e05650fce0069773b71e5cbaaaeec541a1e5 timed out before
+carrier selection. No acquisition, cargo movement or delivery acceptance follows
+from that attempt. Captain state17 is ordinary Idle. Preserve its original log
+and transport-acceptance.json in output/purple1071-runtime-staged06.
+
+The follow-up fixture candidate 062518de434cd52430701f20fdff6cb2ca366270 includes
+integration-approved native a0e93cbf80a3b8b08a76e2310afbf2e02588a79a. It adds
+starting-squad counters and explicitly gathers a normal Red for staged/manual
+modes without resetting its position. The natural positive/control paths retain
+their separate acceptance requirements. Manual mode withdraws the initial20
+through native Onion exit when ordinary visible startup keeps them stored.
+Its reset key is F7; F6 already requests cave entry in production controls.
+
+The manual companion deliberately changes one starting Red to Purple and spawns
+one red ten-pellet at the same route origin. Other Reds are recalled if they try
+to help. It does not assign transport to the Purple: the player selects/throws
+it and observes pickup, travel and Onion absorption. A reset exits this fixture
+and the launcher creates a fresh private session. It never resets a player save.
+The prepared Play.cmd/Reset.cmd under output/purple1071-manual-smoke remain
+DISABLED pending setup/reset and staged route validation. Staged identity,
+scripted gathering/withdrawal and cargo placement cannot establish native Purple
+acquisition, ordinary controls, campaign progression or save continuity.
