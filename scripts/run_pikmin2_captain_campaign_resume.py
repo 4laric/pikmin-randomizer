@@ -6,7 +6,7 @@ sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'scripts'))
 from randomizer.seed import generate,validate
 from randomizer.session import Session
 from randomizer.runner import NativeRun
-from preview_pikmin2_room import overlay,ensure_pikmin_squad
+from preview_pikmin2_room import overlay
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
@@ -24,15 +24,14 @@ def main():
   if a.timeout==60:assert json.loads((sessiondir/'saved-observation.json').read_text()).get('acceptance') is True,'acceptance resume requires an accepted60-second save'
  session=Session(m,sessiondir);run=NativeRun(session);run.write_state(True)
  assert m.get("p2_second_captain") is True and "CAPTAINS 2\n" in run.bootstrap.read_text(),"generated captain choice required"
- # Preserve production practice terrain/generators, append only a legal 20-red
- # fixture squad using the current helper (explicit campaign-stage equivalent).
- data=(a.assets/'dataDir/stages/practice/1.gen').read_bytes();assert data.count(b'ikip')==0
- staged=ensure_pikmin_squad(a.assets,data);assert staged.count(b'ikip')==20
- expected_field=20 if a.phase=='save' else 0
- overrides={'dataDir/stages/practice/1.gen':staged};overlay(a.assets,run.directory/'assets',overrides)
+ # Original campaign assets in every phase. Production TEST_BACKGROUND fresh
+ # startup and the disclosed native resume fixture withdraw20 from real stock.
+ data=(a.assets/'dataDir/stages/practice/default.gen').read_bytes();assert data.count(b'ikip')==0
+ expected_field=20
+ overlay(a.assets,run.directory/'assets',{})
  snapshot=lambda:{f.name:digest(f) for f in sorted((sessiondir/'campaign').glob('*.sav'))} if (sessiondir/'campaign').exists() else {}
  before=snapshot();assert len(before)==(0 if a.phase=='save' else 1)
- adoption=dict(diagnostic=a.timeout!=60,acceptance_eligible=a.timeout==60,wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=expected_field,starting_baseline="fresh20field plus native stock" if a.phase=="save" else "actual saved stock; no fresh fixture Pikmin on resume",geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/1.gen'),default_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),fixture_schedule='identical day2-only1.gen overlay in everyphase; day3 uses original2.gen',saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='generated manifest p2_second_captain=True and CAPTAINS 2 bootstrap; native randomizer ignores ambient opt-in',before_cards=before)
+ adoption=dict(diagnostic=a.timeout!=60,acceptance_eligible=a.timeout==60,wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=expected_field,starting_baseline="20live from actual Onion withdrawal; no appended generators",geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/1.gen'),default_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),fixture_schedule='identical original generators everyphase; actual production stock withdrawal supplies20live',saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='generated manifest p2_second_captain=True and CAPTAINS 2 bootstrap; native randomizer ignores ambient opt-in',before_cards=before)
  info=a.exe.resolve().parent/'BUILD_INFO.txt'
  if info.exists():adoption['CI_build_info']=dict(path=str(info),sha256=digest(info),text=info.read_text(encoding='utf-8'))
  (run.directory/'adoption-inputs.json').write_text(json.dumps(adoption,indent=2),encoding='utf-8')
