@@ -24,9 +24,14 @@ class Deadline:
             raise ValueError("overall deadline must be within60seconds")
         self.end = time.monotonic() + seconds
 
-    def check(self):
-        if time.monotonic() >= self.end:
+    def remaining(self):
+        seconds = self.end - time.monotonic()
+        if seconds <= 0:
             raise TimeoutError("60second overall pair ceiling reached")
+        return seconds
+
+    def check(self):
+        self.remaining()
 
 
 class SdlCommand:
@@ -59,10 +64,11 @@ class OwnedChildren:
         self.children = []
         self.streams = []
 
-    def spawn(self, command, cwd, env, log):
+    def spawn(self, command, cwd, env, log, deadline):
         stream = log.open("wb")
         self.streams.append(stream)
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        deadline.check()  # Immediately before actual process creation, after log/staging work.
         child = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                  stdout=stream, stderr=subprocess.STDOUT, creationflags=flags)
         self.children.append(child)
@@ -124,13 +130,13 @@ def observed_start(log):
     for captain, alive, hp in re.findall(r"COOP_PROTOCOL_OBSERVE .*captain=(\d+) alive=(\d+) state=\d+ hp=([0-9.]+)", text):
         if int(alive) == 20 and float(hp) > 0:
             captains.add(int(captain))
-    return captains == {0, 1} and "COOP_PROTOCOL_INVENTORY" in text and "COOP_PROTOCOL_FIXTURE_WINDOW 960x540 windowed centered" in text
+    return captains == {0, 1} and "COOP_PROTOCOL_INVENTORY" in text and "COOP_PROTOCOL_FIXTURE_WINDOW measured=1 width=960 height=540 centered=1 windowed=1" in text
 
 
 def scrubbed_environment():
     env = dict(os.environ)
     for key in list(env):
-        if key.startswith(("PIKMIN_NETPLAY_", "PIKMIN_COOP_", "PIKMIN_RANDOMIZER_")) or key in ("NECTAR_SAVE_DIR", "BBFT_PORT"):
+        if key.upper().startswith(("PIKMIN_", "P2_")) or key.upper() in ("NECTAR_SAVE_DIR", "BBFT_PORT"):
             env.pop(key)
     env.update(SDL_AUDIODRIVER="dummy", PIKMIN_RANDOMIZER_TEST_BACKGROUND="1",
                PIKMIN_NETPLAY_UDP_BIND="127.0.0.1", PIKMIN_NETPLAY_ICE_BIND="127.0.0.1",
@@ -138,28 +144,74 @@ def scrubbed_environment():
     return env
 
 
+DLLS = ("SDL2.dll", "libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll")
+
+
+def artifact_preflight(exe, directory, native_sha):
+    """Require actual selected ON CI artifact identity and every runtime byte."""
+    exe, directory = exe.resolve(), directory.resolve()
+    if exe.parent != directory or not re.fullmatch(r"[0-9a-f]{40}", native_sha):
+        raise ValueError("fixture executable and DLLs require one pinned CI artifact directory")
+    info_path, hashes_path = directory / "BUILD_INFO.txt", directory / "sha256.txt"
+    info = info_path.read_text(encoding="utf-8")
+    required = (f"compiled_commit {native_sha}", "profile netplay=ON",
+                f"selected_target {exe.stem}",
+                "guard_root 36ac5ddd2877b9308276f96b28a81e137ae58c5a",
+                "guard_sha256 ee2bfeaba96020f4f0ae310f9cf98dfabbd824353d20de6fb78fec17001f3ff9")
+    lines = info.splitlines()
+    if any(lines.count(line) != 1 for line in required):
+        raise ValueError("CI compiled source/profile/selected fixture/guard identity mismatch")
+    trees = [line for line in lines if line.startswith("compiled_tree ")]
+    if len(trees) != 1 or not re.fullmatch(r"compiled_tree [0-9a-f]{40}", trees[0]):
+        raise ValueError("CI compiled tree identity absent")
+    declared = {}
+    for line in hashes_path.read_text(encoding="ascii").splitlines():
+        match = re.fullmatch(r"([0-9a-f]{64})  (?:\./)?([^/\\]+)", line)
+        if not match or match[2] in declared:
+            raise ValueError("CI hash manifest malformed/duplicate")
+        declared[match[2]] = match[1]
+    verified = {}
+    for name in (exe.name, *DLLS):
+        path = directory / name
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if declared.get(name) != actual:
+            raise ValueError(f"CI byte mismatch or absent hash: {name}")
+        verified[name] = actual
+    return {"native_sha": native_sha, "build_info": info,
+            "build_info_sha256": hashlib.sha256(info_path.read_bytes()).hexdigest(),
+            "manifest_sha256": hashlib.sha256(hashes_path.read_bytes()).hexdigest(), "files": verified}
+
+
 def capture(args):
     # The deadline starts before staging/spawn/ICE pre-init, not engine idle.
     if not 4 < args.timeout <= 60:
         raise ValueError("capture needs a deadline within(4,60]seconds including4seconds for owned cleanup")
     deadline = Deadline(args.timeout - 4)
+    preflight = artifact_preflight(args.exe, args.runtime_dir, args.native_sha)
+    actual_root = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.python_root, text=True, timeout=deadline.remaining()).strip()
+    root_dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=args.python_root, text=True, timeout=deadline.remaining()).strip()
+    if actual_root != args.root_sha or root_dirty:
+        raise ValueError("Python consumer must be exact clean requested source")
+    deadline.check()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     owned = OwnedChildren()
     result = {"slice_passed": False, "gameplay_accepted": False, "mode": "capture-only",
               "remaining": "Ordinary gameplay/AP ReceivedItem, save/reconnect, legacy negotiation and guarded negative case oracles pending."}
-    started = time.monotonic()
+    started = deadline.end - (args.timeout - 4)
+    result["artifact_preflight"] = preflight
+    result["staging"] = "Caller-provided bootstrap/manifest are hashed here. Linked assets require the separately frozen actual stage/hash receipt recorded in inputs; this runner does not hash linked asset contents. No claim of natural population or gameplay from readiness. Deadline includes artifact verification, staging, startup and owned cleanup."
     try:
         result["inputs"] = {str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest()
-                            for path in (args.exe, args.bootstrap, args.manifest, Path(__file__))}
+                            for path in (args.exe, args.bootstrap, args.manifest, args.stage_receipt, Path(__file__))}
         result["runtime_dlls"] = {dll.name: hashlib.sha256(dll.read_bytes()).hexdigest()
-                                  for dll in args.runtime_dir.glob("*.dll")}
+                                  for dll in (args.runtime_dir / name for name in DLLS)}
         result["python_source"] = {
-            "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.python_root, text=True).strip(),
-            "dirty": subprocess.check_output(["git", "status", "--porcelain"], cwd=args.python_root, text=True).strip()}
+            "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=args.python_root, text=True, timeout=deadline.remaining()).strip(),
+            "dirty": subprocess.check_output(["git", "status", "--porcelain"], cwd=args.python_root, text=True, timeout=deadline.remaining()).strip()}
         executable = out / args.exe.name
         shutil.copy2(args.exe, executable)
-        for dll in args.runtime_dir.glob("*.dll"):
+        for dll in (args.runtime_dir / name for name in DLLS):
             shutil.copy2(dll, out / dll.name)
         offer, answer = out / "offer.txt", out / "answer.txt"
         base = scrubbed_environment()
@@ -186,7 +238,7 @@ def capture(args):
                 if args.p2_assets:
                     command += ["--netplay-p2-assets", str(args.p2_assets.resolve())]
             log = stage / "native.log"
-            peers.append(owned.spawn(command, stage, env, log))
+            peers.append(owned.spawn(command, stage, env, log, deadline))
             logs.append(log)
             commands.append(feed)
         for role in (0, 1):
@@ -200,7 +252,7 @@ def capture(args):
             command += [str(args.manifest.resolve()), "--session-dir", str(run / "session"),
                         "--attach-native-run", str(native_token)]
             command += ["--server", args.server] if role == 0 else ["--netplay-client"]
-            owned.spawn(command, args.python_root.resolve(), base, out / f"helper-{role}.log")
+            owned.spawn(command, args.python_root.resolve(), base, out / f"helper-{role}.log", deadline)
             if (native_token / "bootstrap.txt").read_bytes() != bootstrap_before:
                 raise RuntimeError("native bootstrap changed during Python attach")
             result[f"native_run_{role}"] = str(run)
@@ -238,8 +290,10 @@ def capture(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--capture-only", action="store_true", required=True)
-    for name in ("exe", "runtime-dir", "assets", "bootstrap", "manifest", "python-root", "output"):
+    for name in ("exe", "runtime-dir", "assets", "bootstrap", "manifest", "python-root", "stage-receipt", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--native-sha", required=True)
+    parser.add_argument("--root-sha", required=True)
     parser.add_argument("--case", choices=("p1", "p2", "thelynk"), required=True)
     parser.add_argument("--server", required=True)
     parser.add_argument("--p2-assets", type=Path)
