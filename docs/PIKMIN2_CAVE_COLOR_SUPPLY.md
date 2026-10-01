@@ -1,8 +1,8 @@
 # Ordinary Blue-bud supply and mixed persistence (#1086)
 
 This fixture starts with a disclosed 20 Red Pikmin. It walks to the Blue bud,
-aims the cursor and presses/releases the mapped throw button through the native
-P1 scripted controller interface. No direct throw API, AI transition, actor
+aims the cursor and presses/releases the mapped throw button through an SDL virtual
+gamepad explicitly assigned to P1 by instance ID in this process. No direct throw API, AI transition, actor
 position, velocity, species or attachment writes are used. Existing production
 bud behavior consumes airborne actors and immediately plucks its real sprouts;
 this does not prove player-operated plucking or UI input.
@@ -30,5 +30,5 @@ pod and new private run paths; restore also takes the accepted producer path.
 Runtime acceptance pending. No Blue/Yellow entry staging or terrain changes
 are permitted. Initial20Red, scripted native controller input, production
 auto-pluck, captain-only exit and checkpoint-confirmation bypass remain explicit.
-Natural Yellow supply, mixed hazard gameplay, actual UI/gamepad integration,
+Natural Yellow supply, mixed hazard gameplay, actual checkpoint UI integration,
 hand-play F6, full campaign/AP/supervisor and maintained export remain open.

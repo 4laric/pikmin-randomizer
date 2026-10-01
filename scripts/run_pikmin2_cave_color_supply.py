@@ -27,7 +27,7 @@ def sha(path):
 def assess(run, mode, manifest):
     raw = json.loads((run / 'run-result.json').read_text())
     log = (run / 'native.log').read_text(errors='replace')
-    checks = dict(bounded=raw.get('timeout_seconds') == 60 and not raw.get('timed_out') and 'FOCUS_HOLD' not in log and 'AUTOPLAY_' not in log and 'P2_AUTOPLAY' not in log)
+    checks = dict(gamepad=bool(re.search(r'P2_CAVE_COLOR_GAMEPAD instance=\d+ player=1 assigned=1 input=SDL_virtual process_local=1 navi_override=0',log)), bounded=raw.get('timeout_seconds') == 60 and not raw.get('timed_out') and 'FOCUS_HOLD' not in log and 'AUTOPLAY_' not in log and 'P2_AUTOPLAY' not in log)
     state = None
     if mode == 'negative':
         checks.update(expected_exit=raw.get('exit_code') == 86, captain_guard=raw.get('captain_down') is True,
@@ -62,7 +62,7 @@ def assess(run, mode, manifest):
                 checks['bud_budget']=lines[-2:]==['forest_1:f1:bud:0 5','forest_1:f1:bud:1 0']
     outputs={p.name:sha(p) for p in run.iterdir() if p.is_file() and (p.name in ('native.log','run-result.json','run-inputs.json','fixture-inputs.json','staging-disclosure.json','cave.json','capacity.json') or p.name.startswith('p2-cave-'))}
     return dict(mode=mode,passed=all(checks.values()),checks=checks,native_exit=raw.get('exit_code'),raw_supervisor_passed=raw.get('passed'),outputs=outputs,
-                limitations=['20 Red staged','native controller scripted','production bud auto-pluck','captain-only exit; mixed squad left west','confirmation bypassed','not Yellow supply or mixed hazard traversal']),state
+                limitations=[('15 Red/5 Blue from actual producer' if mode == 'restore' else '20 Red staged'),'SDL virtual gamepad scripted','production bud auto-pluck','captain-only exit; mixed squad left west','confirmation bypassed','not Yellow supply or mixed hazard traversal']),state
 
 
 def main():
@@ -93,8 +93,8 @@ def main():
                            (previous / 'p2-cave-item-receipts.txt').read_text(), manifest,
                            parse_items_text((previous / 'p2-cave-items.txt').read_text()))
     stage(manifest, args.assets, args.pod, args.production, args.generator, run, 0, prior)
-    (run / 'staging-disclosure.json').write_text(json.dumps(dict(mode=args.mode, starting_species='20 Red staged',
-        previous=str(args.previous) if args.previous else None, input='native scripted controller', position_writes=False,
+    (run / 'staging-disclosure.json').write_text(json.dumps(dict(mode=args.mode, starting_species=('15 Red/5 Blue from actual producer transfer' if args.mode == 'restore' else '20 Red staged'), starting_squad=prior['squad'],
+        previous=str(args.previous) if args.previous else None, input='SDL virtual gamepad assigned P1 process-locally', position_writes=False,
         velocity_writes=False, species_writes=False, state_writes=False, bud_auto_pluck='existing production behavior', captain_only_exit=True, confirmation_bypassed=True), indent=2))
     env = os.environ.copy()
     for key in list(env):
