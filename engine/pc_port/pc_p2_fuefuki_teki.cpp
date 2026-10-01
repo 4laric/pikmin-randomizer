@@ -974,7 +974,7 @@ bool pc_p2_fuefuki_teki_flying_press(BTeki* t, Piki* presser, bool descending)
 {
     if (sBound.empty()) return false;
     Binding* b = find(t);
-    if (!b || b->escaped || !t->isAlive()) return false;
+    if (!b || b->escaped || !t->isHostAlive()) return false;
     if (!descending) {
         // Source: InteractFlyCollision only (Fuefuki has no flyCollisionCallBack
         // override -> false), so the Pikmin latches as usual.

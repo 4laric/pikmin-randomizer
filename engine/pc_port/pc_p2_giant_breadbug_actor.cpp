@@ -126,7 +126,7 @@ void pc_p2_giant_breadbug_actor_tick(){
  for(auto& entry:nests){
   Nest& nest=entry.second;BTeki* actor=entry.first;
   if(!nest.born){nest.born=true;std::printf("P2_GIANT_NEST_BIRTH generator=%u xyz=%.3f,%.3f,%.3f\n",nest.id,actor->mSRT.t.x,actor->mSRT.t.y,actor->mSRT.t.z);}
-  if(!nest.dead&&!actor->isAlive()){nest.dead=true;std::printf("P2_GIANT_NEST_DEATH generator=%u\n",nest.id);}
+  if(!nest.dead&&!actor->isHostAlive()){nest.dead=true;std::printf("P2_GIANT_NEST_DEATH generator=%u\n",nest.id);}
  }
  for(auto& entry:giants){
   Giant& giant=entry.second;BTeki* actor=entry.first;
@@ -161,18 +161,18 @@ void pc_p2_giant_breadbug_actor_tick(){
    }
    giant.lastState=state;
   }
-  if(!actor->isAlive())defeat(actor,giant);
+  if(!actor->isHostAlive())defeat(actor,giant);
  }
 }
 bool pc_p2_giant_breadbug_actor_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view){
  auto boundNest=nests.find(actor);
  if(boundNest!=nests.end()){
-  if(!actor->isAlive()||!gfx.mCamera||!nestShape)return false;
+  if(!actor->isHostAlive()||!gfx.mCamera||!nestShape)return false;
   Matrix4f world,scaled;world.makeSRT(actor->mSRT.s,actor->mSRT.r,actor->mSRT.t);view.multiplyTo(world,scaled);
   nestShape->updateAnim(gfx,scaled,nullptr,nullptr);nestShape->drawshape(gfx,*gfx.mCamera,nullptr);
   return true;
  }
- auto found=giants.find(actor);if(found==giants.end()||!actor->isAlive()||!gfx.mCamera)return false;
+ auto found=giants.find(actor);if(found==giants.end()||!actor->isHostAlive()||!gfx.mCamera)return false;
  auto& giant=found->second;
  if(actor->mStateID==9){return true;} // hidden underground: draw nothing (P1 hides natively)
  const int kind=actor->mVelocity.x*actor->mVelocity.x+actor->mVelocity.z*actor->mVelocity.z>1.f?1:0;

@@ -82,7 +82,7 @@ void pc_p2_onikurage_teki_tick(BTeki* t)
 {
     auto i = s.find(t);
     if (i == s.end()) return;
-    if (!t->isAlive()) { revoke(t); return; }
+    if (!t->isHostAlive()) { revoke(t); return; }
     refresh(t, i->second);
     // Pikmin suction reuses the shared receiver: OniKurage's Pikmin loop is
     // Kurage's loop verbatim (interactPiki InteractSuikomi_Test on 'suck').

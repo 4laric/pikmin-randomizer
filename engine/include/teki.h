@@ -361,7 +361,11 @@ public:
 	virtual bool isVisible() { return getTekiOption(TEKI_OPTION_VISIBLE) != 0; }         // _74
 	virtual bool isOrganic() { return getTekiOption(TEKI_OPTION_ORGANIC) != 0; }         // _78
 	virtual bool isAtari() { return getTekiOption(TEKI_OPTION_ATARI) != 0; }             // _84
-	virtual bool isAlive() { return getTekiOption(TEKI_OPTION_ALIVE) != 0; }             // _88
+	virtual bool isAlive();                                                          // _88
+	// Actor lifetime continues through a P2 death animation. Combat lifetime does not.
+	bool isHostAlive() { return getTekiOption(TEKI_OPTION_ALIVE) != 0; }
+	bool isP2Dying();
+	void releaseP2DeathStickers();
 	virtual bool needShadow() { return getTekiOption(TEKI_OPTION_SHADOW_VISIBLE) != 0; } // _90
 
 	void prepareEffects();

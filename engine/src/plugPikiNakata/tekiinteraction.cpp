@@ -46,6 +46,7 @@ TekiInteractionKey::TekiInteractionKey(int type, immut Interaction* interaction)
 bool InteractAttack::actTeki(Teki* teki) immut
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if (teki->isP2Dying()) return false;
 	if (pc_p2_hana_rejects_attack(teki)) return true;
 	// Dweevil family (59-62): OtakaraBase::damageCallBack damages only through a collision part
 	// (OtakaraBase.cpp:190-197); the partless ground punch is refused. -1 = not a registered Dweevil.

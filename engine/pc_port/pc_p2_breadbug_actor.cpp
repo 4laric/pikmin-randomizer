@@ -124,7 +124,7 @@ void pc_p2_breadbug_actor_tick(){
  for(auto& entry:actors){
   BTeki* actor=entry.first;auto& state=entry.second;
   Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;
-  if(actor->mDeadState || !actor->isAlive()){
+  if(actor->mDeadState || !actor->isHostAlive()){
    if(!state.deathLogged){
     state.deathLogged=true;
     // Residual death observation: the real funnel (BTeki::doKill) erases this
@@ -231,7 +231,7 @@ void pc_p2_breadbug_actor_tick(){
 int pc_p2_breadbug_actor_tracked_count(){int n=0;for(auto& entry:actors){BTeki* actor=entry.first;if(actor&&!actor->mDeadState&&actor->isAlive())++n;}return n;}
 bool pc_p2_breadbug_actor_is_tracked(BTeki* actor){return actor&&actors.find(actor)!=actors.end();}
 bool pc_p2_breadbug_actor_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view){
- auto found=actors.find(actor);if(found==actors.end()||!actor->isAlive()||!gfx.mCamera)return false;
+ auto found=actors.find(actor);if(found==actors.end()||!actor->isHostAlive()||!gfx.mCamera)return false;
  auto& state=found->second;
  if(cargoEnabled){
   int nativeState=actor->mStateID;auto* anim=actor->mTekiAnimator;

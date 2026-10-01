@@ -510,7 +510,7 @@ void pc_p2_kurage_teki_tick(BTeki* t)
     corpseTail(t);
     auto i = s.find(t);
     if (i == s.end()) return;
-    if (!t->isAlive()) {
+    if (!t->isHostAlive()) {
         corpses[t] = i->second.generator;
         if (i->second.source == 72) corpsesGreater.insert(t);
         if (i->second.own.motion() == p2kurage::Motion::DeadGround) corpsesGround.insert(t);

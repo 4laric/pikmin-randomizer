@@ -4,6 +4,7 @@
 #include "port/audio_sink.h"
 #endif
 #include "pc_window.h"
+#include "pc_background_virtual_pad.h"
 #include "pc_bbft.h"
 #include "pc_p2_cave.h"
 #include "pc_dev_console.h"
@@ -840,6 +841,17 @@ static bool pc_window_read_gamepad(SDL_GameController* ctl, u16& button, s8& sti
         || abs(rx) > noticeZone || abs(ry) > noticeZone;
 }
 
+// Confirm the specifically routed controller is virtual; a name/GUID is insufficient.
+static bool pc_window_selected_p1_is_virtual() {
+    if (!sPlayerDeviceExplicit || sPlayerDevice[0].kind != PC_INPUT_DEV_GAMEPAD || !sController) return false;
+    SDL_Joystick* joystick = SDL_GameControllerGetJoystick(sController);
+    if (!joystick || SDL_JoystickInstanceID(joystick) != sPlayerDevice[0].id) return false;
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_JoystickGetDeviceInstanceID(i) == sPlayerDevice[0].id) return SDL_JoystickIsVirtual(i) == SDL_TRUE;
+    }
+    return false;
+}
+
 void pc_window_poll_events(PADStatus* pad) {
     const bool bbftHeld = pc_bbft_hold();
     pc_audio_set_bbft_held(bbftHeld);
@@ -1245,6 +1257,20 @@ void pc_window_poll_events(PADStatus* pad) {
         pad[0].stickX = pad[0].stickY = 0;
         pad[0].substickX = pad[0].substickY = 0;
         pad[0].triggerLeft = pad[0].triggerRight = 0;
+        sSwarmHeld = false;
+        // Background scripted-input proof only. Repoll the selected virtual pad
+        // from zero: keyboard/mouse/physical input above must never leak through.
+        if (pc_background_virtual_pad_allowed(0, pc_bbft_test_background(),
+                pc_randomizer_enabled() && pc_randomizer_ready(), sPlayerDeviceExplicit,
+                pc_window_selected_p1_is_virtual())) {
+            pc_window_read_gamepad(sController, pad[0].button, pad[0].stickX, pad[0].stickY,
+                pad[0].substickX, pad[0].substickY, pad[0].triggerLeft, pad[0].triggerRight, sSwarmHeld);
+            static SDL_JoystickID reportedVirtual = -1;
+            if (reportedVirtual != sPlayerDevice[0].id) {
+                reportedVirtual = sPlayerDevice[0].id;
+                std::printf("P2_TEST_VIRTUAL_P1_INPUT instance=%d input_source=SDL explicit_virtual=1 keyboard_mouse=0 physical_pad=0\n", int(reportedVirtual));
+            }
+        }
     }
 
     // Pad 1 = segundo mando físico (P2 en cooperativo). Solo mando: nada de

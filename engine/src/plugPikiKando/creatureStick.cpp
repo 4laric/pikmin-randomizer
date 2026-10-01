@@ -145,6 +145,12 @@ void Creature::adjustStickObject(immut Vector3f& adjust)
  */
 void Creature::startStickMouth(Creature* mouthOwner, CollPart* mouthPart)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// A death-race refusal is expected, rather than the fatal broken-link case
+	// handled below. Preserve any existing attachment on a refused request.
+	if (isPiki() && mouthOwner && mouthOwner->isTeki()
+	    && static_cast<BTeki*>(mouthOwner)->isP2Dying()) return;
+#endif
 	resetCreatureFlag(CF_StuckToMouth);
 	if (mStickTarget) {
 		PRINT("startStickMouth::already stuck to %s : endStick\n", mStickPart->mCollInfo->mId.mStringID);
@@ -334,6 +340,11 @@ const char* _standType[] = { "GROUND", "TEKIPLAT", "PLAT", "AIR" };
  */
 bool Creature::startStick(Creature* stickTarget, CollPart* stickPart)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Protect every attachment entrypoint, including direct thrown-Pikmin calls.
+	if (isPiki() && stickTarget && stickTarget->isTeki()
+	    && static_cast<BTeki*>(stickTarget)->isP2Dying()) return false;
+#endif
 	mStickPart = nullptr;
 	resetCreatureFlag(CF_StuckToObject);
 	if (mStickTarget) {

@@ -523,6 +523,7 @@ void BTeki::startAI(int)
  */
 void BTeki::update()
 {
+	releaseP2DeathStickers();
 	Creature::update();
 	pc_p2_demon_manager_update_actor(this);
 	pc_p2_sarai_manager_update_actor(this);
@@ -575,6 +576,7 @@ void BTeki::update()
 	// Shared P2 body collision: fitted spheres on the drawn mesh (after every species tick).
 	pc_p2_body_coll_update(this);
 #endif
+	releaseP2DeathStickers();
 	if (mDeadState == 0) {
 		updateTimers();
 		if (mHealth > 0.0f) {
@@ -590,6 +592,36 @@ void BTeki::update()
 #ifdef PIKI_PC_PORT
 	pc_p2_life_gauge_update(this);
 #endif
+}
+
+bool BTeki::isP2Dying()
+{
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	return pc_randomizer_p2_source_for(static_cast<PelletView*>(this)) != 0
+	    && (mHealth <= 0.0f || mDeadState != 0);
+#else
+	return false;
+#endif
+}
+
+bool BTeki::isAlive()
+{
+	return isHostAlive() && !isP2Dying();
+}
+
+void BTeki::releaseP2DeathStickers()
+{
+	if (!isP2Dying()) return;
+	// Detachment mutates the intrusive list. Save the next link before removing
+	// each Pikmin; leave held pellets and other non-Pikmin attachments alone.
+	for (Creature* sticker = mStickListHead; sticker;) {
+		Creature* next = sticker->mNextSticker;
+		if (sticker->isPiki()) {
+			if (sticker->isStickToMouth()) sticker->endStickMouth();
+			else sticker->endStickObject();
+		}
+		sticker = next;
+	}
 }
 
 /**
@@ -2088,6 +2120,7 @@ void BTeki::wallCallback(immut Plane& wallPlane, DynCollObject*)
 bool BTeki::interact(immut TekiInteractionKey& key)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if (key.mInteractionType == TekiInteractType::Attack && isP2Dying()) return false;
 	// #246 OWN: a campaign Titan Dweevil owns every Pikmin hit (source
 	// damageCallBack routes it by the hit CollPart of the Titan's own
 	// collision tree to a weapon or, unarmed, the body). The P1 host

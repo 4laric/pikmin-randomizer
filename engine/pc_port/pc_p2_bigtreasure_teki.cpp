@@ -1083,7 +1083,7 @@ void pc_p2_bigtreasure_teki_tick(BTeki* t) {
     if (i == s.end()) {
         // Late spawn (respawn / later generator): bind on its first live tick
         // after setup. Each actor lifetime is considered once.
-        if (!sSetupDone || !t || t->mTekiType != TEKI_Swallow || t->mDeadState != 0 || !t->isAlive()) return;
+        if (!sSetupDone || !t || t->mTekiType != TEKI_Swallow || t->mDeadState != 0 || !t->isHostAlive()) return;
         if (!sConsidered.insert(t).second) return;
         if (!t->mGenerator || pc_p2_campaign_source(t) != 73) return;
         if (!prepare(pc_randomizer_p2_bridge())) return;

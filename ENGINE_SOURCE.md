@@ -1,9 +1,13 @@
 # Native source provenance
 
-The current tested P2 integration snapshot is native
-`54743e12003888891d4dc3de249214cb18627fa6`, exported from the clean private
-`output/native-p2-acceptance-1105` worktree under #1105. See
-[the accepted source and runtime limits](docs/PIKMIN2_PLAYABLE_ACCEPTANCE_INTEGRATION.md).
+The current built P2 integration snapshot is native
+`2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b`, exported byte-exactly from the clean
+private `output/native-p2-combined-1118` worktree under #1118. It includes the
+reviewed White refund/pluck, White checkpoint, shared P2 death-combat and generated
+Archipelago delivery support. See
+[the combined source and acceptance limits](docs/PIKMIN2_COMBINED_ACCEPTANCE_1118.md).
+The preceding frozen #1105 snapshot remains recorded at
+`54743e12003888891d4dc3de249214cb18627fa6`; its evidence is preserved.
 The preceding combined baselines remain recorded under #1073 and #1087.
 The release descriptions below are historical provenance.
 
@@ -13,7 +17,7 @@ Upstream: https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port (itse
 
 Original `LICENSE.MD`, `LEGAL.md`, and per-file notices are preserved. The inherited engine README and BBFT notes describe upstream or historical workflows; the root README is authoritative for building and running this randomizer.
 
-The export copies only Git-tracked text files, excluding the upstream portable archive, formatter executable, CI workflows and editor settings. It never copies extracted assets, untracked runtime files, saves, build outputs or nested Git history. `scripts/export_native_source.py` refreshes this snapshot from the maintainer's ignored `native/` checkout; it is not required to build a public checkout. Review deletions manually when refreshing a later snapshot.
+The export copies Git-tracked source files and permitted desktop build resources under `packaging/icon/`, excluding the upstream portable archive, formatter executable, CI workflows and editor settings. Android/touch binary assets are skipped. It never copies extracted game assets, untracked runtime files, saves, build outputs or nested Git history. `scripts/export_native_source.py` refreshes this snapshot from the maintainer's ignored `native/` checkout or an explicitly selected private worktree; it is not required to build a public checkout. Review deletions manually when refreshing a later snapshot.
 
 Graphics integration (#48): Original/Enhanced/Custom presets preserve existing settings; Enhanced selects FXAA, 8x anisotropy and subtle bloom. Unsaved previews revert on menu close. Post-processing now sets and restores GL color-write masks. See engine/tools/GRAPHICS_VALIDATION.md for the focused renderer/menu/scene validation workflow.
 
