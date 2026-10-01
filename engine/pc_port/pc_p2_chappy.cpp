@@ -2277,7 +2277,7 @@ void pc_p2_chappy_update(BTeki* actor)
     // like Qurione/Kurage do. Re-applied every tick because Creature::init resets it.
     // The Emperor keeps its own path.
     // Policy and reasons: p2chappy::keepUpdatingOffGrid (pc_p2_chappy_policy.h).
-    if (p2chappy::keepUpdatingOffGrid(int(s.family), actor->isAlive(), s.family == p2chappyfsm::FAMILY_ADULT && s.state == p2chappy::ADULT_SLEEP)) {
+    if (p2chappy::keepUpdatingOffGrid(int(s.family), actor->isHostAlive(), s.family == p2chappyfsm::FAMILY_ADULT && s.state == p2chappy::ADULT_SLEEP)) {
         actor->setInsideView();
     } else if (s.family != p2chappyfsm::FAMILY_KING) {
         actor->setOutsideView();
