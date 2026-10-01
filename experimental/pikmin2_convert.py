@@ -421,7 +421,7 @@ def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigi
     return report
 
 
-def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
+def write_model(decoded, output, source, y_offset=0.0, material_colors=None, tev_overrides=None):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decoded; w=Writer()
     states=b['_render_states']
@@ -473,7 +473,24 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.begin(48,len(shapes),len(shapes));w.pad()
     alpha_stages=b.get('_alpha_stages') or [None]*len(mats)
     if len(alpha_stages)!=len(mats): raise ValueError('Expected alpha stage entry for every shape')
-    for tex,alpha_stage in zip(mats,alpha_stages):
+    # tev_overrides: {shape index: dict(regs=[C0,C1,C2 as 4 x s16], konst=16 bytes,
+    # stages=[dict(order=[coord,map,channel], color=[9 bytes], alpha=[9 bytes],
+    # kcolor=, kalpha=)])} writes those source TEV stages verbatim instead of the
+    # single approximate stage (the Jellyfloat two-stage layout; #1027).
+    tev_overrides=tev_overrides or {}
+    for index,(tex,alpha_stage) in enumerate(zip(mats,alpha_stages)):
+        override=tev_overrides.get(index)
+        if override is not None:
+            if tex<0 or not 1<=len(override['stages'])<=8 or len(override['regs'])!=3 or len(override['konst'])!=16:
+                raise ValueError('Invalid TEV override')
+            for reg in override['regs']:w.put('4hIfII',*reg,0,0.,0,0)
+            w.data+=bytes(override['konst']);w.put('I',len(override['stages']))
+            for stage in override['stages']:
+                if len(stage['order'])!=3 or len(stage['color'])!=9 or len(stage['alpha'])!=9:
+                    raise ValueError('Invalid TEV override stage')
+                w.data+=bytes([0,*stage['order'],stage.get('kcolor',0),stage.get('kalpha',0),0,0])
+                w.data+=bytes(list(stage['color'])+[0,0,0])+bytes(list(stage['alpha'])+[0,0,0])
+            continue
         for k in range(3):w.put('4hIfII',*(alpha_stage['regs'][k] if alpha_stage else (255,255,255,255)),0,0.,0,0)
         w.data+=bytes([255])*16;w.put('I',1)
         w.data+=bytes([0,0 if tex>=0 else 255,0 if tex>=0 else 255,4,0,0,0,0])

@@ -36,6 +36,10 @@ BOMB_PARMS_TXT = 'p2-bombsarai-bomb-parms.txt'
 BANK_TXT = 'p2-bombsarai-own-bank.txt'
 BANK_HEADER = 'P2_BOMBSARAI_OWN_BANK_1'
 TEKI_TXT = 'p2-bombsarai-teki.txt'
+# #1027: camera-facing balloon vertex ranges (J3D billboard shapes); the native
+# draw turns them toward the camera. Absent when the extraction predates it.
+BILLBOARD_TXT = 'p2-bombsarai-billboard.txt'
+BILLBOARD_HEADER = 'P2_BOMBSARAI_BILLBOARD_1'
 TEKI_HEADER = 'P2_BOMBSARAI_TEKI_1'
 HOST_TYPE = 11  # TEKI_Napkid
 ROOM = 'assets/dataDir/courses/pikmin2room'
@@ -263,7 +267,7 @@ def plan(source):
     clips = info.get('clips', [])
     if [c.get('name') for c in clips] != list(CLIPS):
         raise BombSaraiStageError(f'unexpected clip order: {[c.get("name") for c in clips]!r}')
-    rows = []
+    rows, billboards = [], None
     for anim, clip in enumerate(clips):
         name = clip['name']
         raw = (species_dir / f'{name}.bca').read_bytes()
@@ -276,6 +280,13 @@ def plan(source):
             if not data or len(data) > MESH_BYTES or hashlib.sha256(data).hexdigest() != pose['sha256']:
                 raise BombSaraiStageError(f'pose mesh mismatch: {pose["file"]}')
             pose_rows.append((int(pose['frame']), _pose_number(pose['file'], 'BombSarai', name), kamu))
+            record = species_dir / Path(pose['file']).with_suffix('.json')
+            ranges = (json.loads(record.read_text(encoding='utf-8')).get('billboard_vertex_ranges')
+                      if record.is_file() else None)
+            if billboards is None:
+                billboards = ranges or []
+            elif (ranges or []) != billboards:
+                raise BombSaraiStageError(f'billboard ranges differ in {pose["file"]}')
         rows.append(dict(anim_id=anim, name=name, frames=frames,
                          events=[(int(f), int(t)) for f, t in clip.get('events', [])], poses=pose_rows))
     bombs, room = [], []
@@ -304,8 +315,22 @@ def plan(source):
             raise BombSaraiStageError(f'missing retail parameter file {rel}')
         parms[target] = path.read_bytes()
     return dict(bank=bank_text(rows, bombs), room=room, parms=parms,
+                billboard=billboard_text(billboards or []),
                 poses=sum(len(r['poses']) for r in rows),
                 bomb_poses=sum(len(b['poses']) for b in bombs))
+
+
+def billboard_text(ranges):
+    """``P2_BOMBSARAI_BILLBOARD_1 <n>`` then ``<first_position> <positions>
+    <first_normal> <normals>`` per billboard shape; None when there are none."""
+    if not ranges:
+        return None
+    rows = [f'{BILLBOARD_HEADER} {len(ranges)}']
+    for row in ranges:
+        if len(row) != 4 or any(type(v) is not int or v < 0 for v in row) or not row[1] or not row[3]:
+            raise BombSaraiStageError(f'bad billboard range {row!r}')
+        rows.append(' '.join(str(v) for v in row))
+    return ('\n'.join(rows) + '\n').encode('ascii')
 
 
 def teki_text(generator):
@@ -333,6 +358,8 @@ def stage(source, run, generators):
     for name, data in sorted(staged['parms'].items()):
         _write_new_or_same(run / name, data)
     _write_new_or_same(run / BANK_TXT, staged['bank'])
+    if staged['billboard']:
+        _write_new_or_same(run / BILLBOARD_TXT, staged['billboard'])
     for name, data in staged['room']:
         _write_new_or_same(room / name, data)
     placeholder = sorted(set(int(g) for g in generators))[0]
@@ -341,4 +368,5 @@ def stage(source, run, generators):
     return dict(bank=hashlib.sha256(staged['bank']).hexdigest(), poses=staged['poses'],
                 bomb_poses=staged['bomb_poses'], parms=sorted(staged['parms']),
                 teki_config_sha256=hashlib.sha256(teki).hexdigest(), placeholder_generator=True,
+                billboard=hashlib.sha256(staged['billboard']).hexdigest() if staged['billboard'] else None,
                 host_type=HOST_TYPE)
