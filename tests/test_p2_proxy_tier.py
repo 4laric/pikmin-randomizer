@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from randomizer.p2_proxy import NO_CHECK_SOURCE_IDS, load_rows, tier_ids
+from randomizer.p2_proxy import NO_CHECK_SOURCE_IDS, WITHDRAWN_SOURCE_IDS, load_rows, tier_ids
 from randomizer.seed import PLAYABLE_P2_SPECIES, generate, validate
 
 
@@ -37,7 +37,8 @@ def test_tier_ids_declared_vs_proven():
     rows = load_rows()
     declared = tier_ids("declared")
     assert declared == sorted(row["source_id"] for row in rows
-                              if row["source_id"] not in NO_CHECK_SOURCE_IDS)
+                              if row["source_id"] not in NO_CHECK_SOURCE_IDS
+                                  and row["source_id"] not in WITHDRAWN_SOURCE_IDS)
     assert {42} <= set(declared)
     # #888: unkillable species (Wealthy 10, Fart 11, Qurione 16) carry no check.
     assert not NO_CHECK_SOURCE_IDS & set(declared)
@@ -46,7 +47,8 @@ def test_tier_ids_declared_vs_proven():
     # Proven is exactly the rows that carry a probe evidence block.
     assert tier_ids("proven") == sorted(row["source_id"] for row in rows
                                         if "evidence" in row
-                                        and row["source_id"] not in NO_CHECK_SOURCE_IDS)
+                                        and row["source_id"] not in NO_CHECK_SOURCE_IDS
+                                        and row["source_id"] not in WITHDRAWN_SOURCE_IDS)
     assert set(tier_ids("proven")) <= set(declared)
     with pytest.raises(ValueError):
         tier_ids("bogus")

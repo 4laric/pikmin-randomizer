@@ -105,3 +105,20 @@ def test_every_pool_id_maps_in_the_placement_catalog():
         targets = catalog.binding_targets_for_sources(
             [row["source_id"]], document=document)
         assert targets, row["source_id"]
+
+
+def test_p1_duplicates_are_withdrawn_everywhere():
+    # Owner ruling 2026-10-01: "i rule the duplicates are withdrawals".
+    # 0 Pelplant, 1 Kochappy, 29 Mar and the red/yellow/blue Candypop Buds
+    # (3/4/5) duplicate P1; purple/white/random buds (6/7/8) do not.
+    from randomizer.p2_proxy import WITHDRAWN_SOURCE_IDS, tier_ids
+
+    assert WITHDRAWN_SOURCE_IDS == {0, 1, 3, 4, 5, 29}
+    roster = by_id(load_and_validate())
+    for source_id in WITHDRAWN_SOURCE_IDS:
+        assert roster[source_id].eligibility == "excluded", source_id
+        assert source_id not in PLAYABLE_P2_SPECIES, source_id
+    for source_id in (6, 7, 8):
+        assert roster[source_id].eligibility != "excluded", source_id
+    for tier in ("proven", "declared"):
+        assert not WITHDRAWN_SOURCE_IDS & set(tier_ids(tier)), tier

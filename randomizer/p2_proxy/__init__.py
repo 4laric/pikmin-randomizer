@@ -223,18 +223,25 @@ def _validate_evidence(document, path_name):
 # that death, so they are never staged in any tier.
 NO_CHECK_SOURCE_IDS = frozenset({9, 10, 11, 16})
 
+# Owner ruling 2026-10-01 ("i rule the duplicates are withdrawals"): P2 species
+# that duplicate a P1 enemy are withdrawn, never admitted or proxy-staged.
+# Only 29 Mar (Puffy Blowhog) has a proxy declaration; its row stays as
+# history but is never returned by any tier.
+WITHDRAWN_SOURCE_IDS = frozenset({0, 1, 3, 4, 5, 29})
+
 
 def tier_ids(tier, directory=None):
     """Sorted proxy source ids for one opt-in tier.
 
     ``"proven"`` returns only rows carrying a valid evidence block;
     ``"declared"`` returns every declared row. Anything else raises
-    ``ValueError``. :data:`NO_CHECK_SOURCE_IDS` are never returned.
+    ``ValueError``. :data:`NO_CHECK_SOURCE_IDS` and :data:`WITHDRAWN_SOURCE_IDS` are never returned.
     """
     if tier not in ("proven", "declared"):
         raise ValueError(f"unknown proxy tier {tier!r}; expected 'proven' or 'declared'")
     rows = [row for row in load_rows(directory=directory)
-            if row["source_id"] not in NO_CHECK_SOURCE_IDS]
+            if row["source_id"] not in NO_CHECK_SOURCE_IDS
+            and row["source_id"] not in WITHDRAWN_SOURCE_IDS]
     if tier == "declared":
         return sorted(row["source_id"] for row in rows)
     return sorted(row["source_id"] for row in rows if row.get("evidence") is not None)
