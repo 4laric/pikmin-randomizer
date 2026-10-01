@@ -213,3 +213,47 @@ native Violet conversion/pluck and all actual uptake/population/release oracles.
 Manual readiness/reset tests exercise native withdrawal through MANUAL_START;
 manual play uses west197 only after its own validation. No production placement
 or transport code was changed. Windows CI36876547819 and fresh08 runs are pending.
+
+## Validated staged smoke and remaining natural gate (final08)
+
+Windows36876547819 and Linux36876548026 pass. Windows ran211tests, verified
+all eight artifact hashes and reports `ninja: no work to do`. The producer is
+3c51b312760dc944fed92069a434ff2e00b4bb6f, clean. Actual CI tested merge
+22f52c4e281946e8e149c00ad824894ba1edb1fb on main2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b;
+its tree143391dadc4e9edbf43f0911144662783d11c27b differs from the producer by
+current-main background virtual-pad fixes and the generated-delivery fixture.
+Do not conflate those pins. ExecutableSHA:
+3a56ae7ddbbe1904482d2b578dc3ab8819bcca9f9fea7cb31dae9e72fc9cc3b4.
+
+| Fresh canonical60-second run | Result |
+|---|---|
+| guard08 | PASS negative guard, exit86 in0.219s, no positive marker |
+| redwest08 | PASS22.781s, one Red cannot move/deliver; no reward/population change |
+| stagedwest08 | PASS38.078s, native uptake, reward10 and population+10, live leaf Purple released,90 stable ticks/no duplicates |
+| manualready08 | PASS11.875s, native withdrawal20, staged Purple, no transport assignment |
+| manualreset08 | PASS11.985s, ready then reset-request exit90, no transport/reward |
+| haulwest08 | FAIL60.093s timeout; actual Violet acquisition and movement, no uptake; final cargo approximately46units from goal |
+
+The staged west route retains the Violet and all original map/route data. Its
+success does not establish natural acquisition, ordinary controller operation,
+full campaign progression or the east route. Native Violet conversion/pluck
+passes separately inside haulwest08, but the combined bounded delivery remains
+open. No production transport/placement fix is included, and no runtime was
+manually operated by Codex.
+
+The user-operated companion is now enabled at
+`output/purple1071-manual-smoke/Play.cmd`; `Reset.cmd` or F7 requests a fresh
+private session. README.txt explains selection/throw, pickup, turns and actual
+Onion uptake. Setup explicitly withdraws20, changes one Red to Purple at its
+existing position and places one red ten-pellet on west197. The script recalls
+non-test Reds but never assigns the Purple to transport. Audio is muted by the
+bounded diagnostic runner. The reset-file path is automated-tested; physical F7
+and gameplay feel remain user feedback. Existing saves are separate.
+
+Immutable aggregate `output/purple1071-final08-evidence.json` SHA256:
+28f969bc7024b68041b3e1904d93f72bc435437c2063f13b5c21da2eca26466a.
+It contains all exact run/report/setup/log hashes and raw results. Prior06/07
+failures and the omitted-Violet A/B are retained. Native91/root1090 stay draft.
+Next production follow-up is a coordinated Violet placement/return-route audit;
+next natural acceptance work must fit acquisition plus real delivery within the
+bound without synthetic identity, accelerated production or cargo relocation.
