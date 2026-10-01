@@ -27,7 +27,7 @@ def sha(path):
 def assess(run, mode, manifest):
     raw = json.loads((run / 'run-result.json').read_text())
     log = (run / 'native.log').read_text(errors='replace')
-    safe = not raw.get('timed_out') and 'FOCUS_HOLD' not in log and 'P2_AUTOPLAY' not in log
+    safe = not raw.get('timed_out') and 'FOCUS_HOLD' not in log and 'AUTOPLAY_' not in log and 'P2_AUTOPLAY' not in log
     checks = dict(bounded=safe)
     state = None
     if mode == 'negative':
