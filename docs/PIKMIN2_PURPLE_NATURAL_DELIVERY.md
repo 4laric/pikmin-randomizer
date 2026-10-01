@@ -127,3 +127,40 @@ no rewrite. Its failed/cancelled builds are not validation. Windows36896932976
 is pending/running for the corrected follow-up; no new runtime claim yet.
 Summary receipt: output/purple1128-runtime-summary02.json. Public CI is unaffected
 by the latest optional private project=pikmin routing hold. No private dispatch.
+
+## Current validated artifact and measured remaining blocker
+
+Windows36896932976 passed212 tests, eight artifact hashes and no-work. Producer
+8f617f7e515d6828dfe399927a84816e93cc2dd0; actual compiled merge
+bbf0ecd0c60023030656187c2d538ed140357986, tree
+f30b802e2e8c17775361033bdeb965461a1cfc5e, integration parent
+208914127ae40ed34377d8b0da5205606020f83e. The fixture matches the producer.
+Executable SHA256452d1a1054d3659d3c4372edc12ad76c48173689ab5c7c4dd598fb411dd9114a.
+All seven fresh guard03 cases PASS again on this exact executable: healthy captain,
+field20, same-frame raw86, no positive PASS, including pause/movie (8.56–8.83s).
+
+Natural east03 FAIL60.094s. Active8.362s, native throw15.753s, actual conversion,
+then a pullable Purple sprout at(-215.754,-37.722,2058.509). The captain moves to
+(-257.256,-37.722,2054.807) and remains41.666units away, with zero displacement
+across the last five samples despite unfrozen P1 input(-6,32). No pluck, acquired
+Purple, cargo spawn, hauling or reward. Old and new failures remain immutable.
+
+The exact private naviMgr.bin decodes ground radius8.5 and dead zone0.1. The p62
+pluck-distance entry is absent, retaining native default15; the fixture's stop20
+would also need correction once approach succeeds. Sparse body observations put
+the captain near a Violet tip (about0.93 horizontal gap after the loaded ground
+radius), supporting an obstruction hypothesis without claiming a collision callback
+proof. Do not change physics or teleport actors to pass this case.
+
+Next bounded work: controller-only detour around the measured Violet body and
+approach within the actual native pluck distance, then repeat original east197
+natural acquisition/hauling under60seconds. Cargo-body evidence is separately
+available from the earlier artifact's Red control (22.734s PASS; bound35, ground
+radius13.5, flatgrass samples). This is not Purple delivery acceptance.
+
+No production placement changed and no version3 position was selected. Preserve
+version2 bytes; require full route/cargo/body/terrain evidence before selecting a
+stage1-only versioned placement. Root draftPR1139 is based on PR1090's branch to
+isolate this evidence document; nativePR111 remains draft. Full immutable current
+receipt: output/purple1128-runtime-summary03.json. This is progress evidence, not
+an integrated source or full gameplay handoff.
