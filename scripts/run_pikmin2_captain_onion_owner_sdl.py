@@ -44,7 +44,7 @@ def main():
  runtime=runtime_evidence(a.exe,a.runtime_dir,cwd=run.directory)
  snapshot=lambda:{f.name:digest(f) for f in sorted((sessiondir/'campaign').glob('*.sav'))} if (sessiondir/'campaign').exists() else {}
  before=snapshot();assert len(before)==(0 if a.phase=='save' else 1)
- adoption=dict(diagnostic=a.timeout!=60,acceptance_eligible=a.timeout==60,wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=expected_field,expected_owned_field=20,manual_start=(a.phase=='save'),starting_baseline="0field20stock, then ordinary UI withdrawal to20live; no appended generators",geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/1.gen'),default_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),fixture_schedule='identical original generators everyphase; actual production stock withdrawal supplies20live',saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='generated manifest p2_second_captain=True and CAPTAINS 2 bootstrap; native randomizer ignores ambient opt-in',before_cards=before)
+ adoption=dict(diagnostic=a.timeout!=60,acceptance_eligible=a.timeout==60,wall_timeout_seconds=a.timeout,phase=a.phase,root_head=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),root_dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).strip(),root_worktree=str(ROOT),exe=str(a.exe.resolve()),exe_sha256=digest(a.exe),bootstrap_sha256=digest(run.bootstrap),expected_initial_field=expected_field,expected_owned_field=20,manual_start=(a.phase=='save'),initial_approach_frame_limit=180,initial_withdrawal_frame_limit=180,phase_budget_contract='separate approach180 plus withdrawal180; process60s unchanged',starting_baseline="0field20stock, then ordinary UI withdrawal to20live; no appended generators",geometry='unaltered P1 practice campaign terrain',fixture_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/1.gen'),default_generator_sha256=digest(run.directory/'assets/dataDir/stages/practice/default.gen'),fixture_schedule='identical original generators everyphase; actual production stock withdrawal supplies20live',saved_card_bytes_injected=False,day_or_population_state_injected=False,second_captain_binding='generated manifest p2_second_captain=True and CAPTAINS 2 bootstrap; native randomizer ignores ambient opt-in',before_cards=before)
  adoption['runtime_directory']=str(runtime_dir) if runtime_dir else None
  adoption['runtime']=runtime
  if is_windows():adoption['runtime_dlls_sha256']=runtime_hashes
@@ -76,10 +76,15 @@ def main():
  for stage in ('withdraw_complete','switched_to0','switched_back1','whistle1','before_sunset_or_resume_exit'):
   assert f'P2_ONION_OWNER stage={stage} owner0=0 owner1=20 plate0=0 plate1=20 live=20 stored=0 input_player=1 switched_captain=1' in log,stage
  assert run.handshaken,'actual production handshake required'
- if a.phase!='save':assert 'P2_ONION_MANUAL_START' not in log and 'P2_ONION_INITIAL_UI_WITHDRAW' not in log and 'P2_ONION_STARTUP_ACQUIRE' not in log and 'P2_ONION_INITIAL_HISTORY' not in log,'resume must not execute fresh setup'
+ if a.phase!='save':assert 'P2_ONION_MANUAL_START' not in log and 'P2_ONION_INITIAL_UI_WITHDRAW' not in log and 'P2_ONION_STARTUP_ACQUIRE' not in log and 'P2_ONION_INITIAL_HISTORY' not in log and 'P2_ONION_APPROACH_BOUNDARY' not in log,'resume must not execute fresh setup'
  if a.phase=='save':
   assert log.count('[Pikmin Randomizer] START_ONION_HELD stage=0 color=1 stored=20')==1,'actual production stock-held start required'
   assert len(re.findall(r'^P2_ONION_MANUAL_START live=0 stored=20 owner0=0 owner1=0 plate0=0 plate1=0 ordinary_UI_next=1\r?$',log,re.MULTILINE))==1,'one actual initial stock boundary'
+  approach=re.findall(r'^P2_ONION_APPROACH_BOUNDARY frames=([1-9][0-9]*) limit=180 selected=0 live=0 stored=20 history_bodies=0 history_events=0 neutral=1 eligible=1 distance=([0-9]+\.[0-9]+) radius=([0-9]+\.[0-9]+) centre=-?[0-9]+\.[0-9]+,-?[0-9]+\.[0-9]+,-?[0-9]+\.[0-9]+\r?$',log,re.MULTILINE)
+  assert len(approach)==1 and len(re.findall(r'^P2_ONION_APPROACH_BOUNDARY\b',log,re.MULTILINE))==1,'one explicit approach boundary'
+  approach_frames,distance,radius=approach[0]
+  assert int(approach_frames)<=180 and 0<float(radius) and float(distance)<=float(radius)+0.001,'bounded natural interaction eligibility'
+  assert 0<=log.find('P2_ONION_MANUAL_START')<log.find('P2_ONION_APPROACH_BOUNDARY')<log.find('P2_ONION_INITIAL_UI_WITHDRAW'),'phase order'
   initial=re.findall(r'^P2_ONION_INITIAL_UI_WITHDRAW frames=([1-9][0-9]*) unique=20 live=20 stored=0 owner0=20 owner1=0 plate0=20 plate1=0 input_player=1 whistle=0\r?$',log,re.MULTILINE)
   assert len(initial)==1 and int(initial[0])<=180 and len(re.findall(r'^P2_ONION_INITIAL_UI_WITHDRAW\b',log,re.MULTILINE))==1,'bounded ordinary initial20 UI withdrawal'
   history=re.findall(r'^P2_ONION_INITIAL_HISTORY bodies=20 exit_entries=20 formed=20 unexpected=0 events=([1-9][0-9]*) continuous=1\r?$',log,re.MULTILINE)
@@ -120,7 +125,7 @@ def main():
   baseline=dict(acceptance=a.timeout==60,save_wall_timeout_seconds=a.timeout,cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
   (sessiondir/'saved-observation.json').write_text(json.dumps(baseline,indent=2),encoding='utf-8')
  else:
-  assert 'P2_ONION_STARTUP_ACQUIRE' not in log and 'P2_ONION_INITIAL_HISTORY' not in log,'resume must not recruit with setup whistle'
+  assert 'P2_ONION_STARTUP_ACQUIRE' not in log and 'P2_ONION_INITIAL_HISTORY' not in log and 'P2_ONION_APPROACH_BOUNDARY' not in log,'resume must not recruit with setup whistle'
   baseline=json.loads((sessiondir/'saved-observation.json').read_text());assert before==after==baseline['cards'],'committed card mutated on resume'
   facts=re.search(r'P2_SAVE_SCENE phase=resume resumed=1 day=(\d+) live=(\d+) stored=(\d+)',log);assert facts
   assert sorted(session.data['checked'])==baseline['checked'] and dict(session.inventory)==baseline['inventory'],'duplicate or new reward on unchanged replay path'
