@@ -126,7 +126,7 @@ public:CampaignInput():Kontroller(1){}
     if(walk||phaseTick%10==0){float dx=walk?bx:goal.x-n->mCursorWorldPos.x,dz=walk?bz:goal.z-n->mCursorWorldPos.z;float length=std::sqrt(dx*dx+dz*dz);
      if(length>(walk?15.f:3.f)){const auto& axis=n->mNaviCamera->mViewXAxis;float strength=walk?65.f:22.f;stickX=strength*(dx*axis.x+dz*axis.z)/length;stickY=strength*(dx*axis.z-dz*axis.x)/length;}}
    }
-   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:keys=KBBTN_DPAD_DOWN;break;case WhiteSaveIntent::Up:keys=KBBTN_DPAD_UP;break;case WhiteSaveIntent::Reveal:keys=KBBTN_B;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
+   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:stickY=-65.f;break;case WhiteSaveIntent::Up:stickY=65.f;break;case WhiteSaveIntent::Reveal:keys=KBBTN_B;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
   }
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_A,int((keys&KBBTN_A)!=0));
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_B,int((keys&KBBTN_B)!=0));
@@ -162,7 +162,8 @@ public:int idle()override{
  if(phase==20){
   sunsetSeen=sunsetSeen||gameflow.mIsDayEndActive;dayAdvanced=sunsetSeen&&gameflow.mWorldClock.mCurrentDay==expectedDay;
   require(gameflow.mWorldClock.mCurrentDay<=expectedDay&&flowCont.mGameEndFlag==GAMEEND_None,"unexpected day/endgame transition");
-  auto pause=pc_pause_observe();auto save=pc_save_ui_observe();saveIntent=white_save_intent(saveRequested,dayAdvanced,pause,pc_diary_observe(),save);
+  auto pause=pc_pause_observe();auto save=pc_save_ui_observe();const auto diary=pc_diary_observe();saveIntent=white_save_intent(saveRequested,dayAdvanced,pause,diary,save);
+  if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_SAVE_UI frame=%d phase_tick=%d day=%d expected_day=%d requested=%d sunset=%d advanced=%d intent=%d pause_available=%d pause_state=%d main_ready=%d main_selection=%d sub_ready=%d sub_selection=%d diary=%d save_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d memory_available=%d outer_memory_routed=%d default_available=%d memory_state=%d default_state=%d successful=%d typing_complete=%d confirmation_ready=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d file_selection=%d\n",frame,phaseTick,gameflow.mWorldClock.mCurrentDay,expectedDay,int(saveRequested),int(sunsetSeen),int(dayAdvanced),int(saveIntent),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.memoryAvailable),int(save.outerMemoryRouted),int(save.defaultFile.available),save.defaultFile.memoryState,save.defaultFile.state,int(save.defaultFile.successful),int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState,int(save.fileSelection));
   require(saveIntent!=WhiteSaveIntent::Refuse,"unexpected actual native save UI choice");
   if(pause.available)saveRequested=true;
   conservedBudget();require(whiteStock()==15&&p2whitetreasure::ledger.total()==180,"stock/budget/receipt changed during native day SAVE");
