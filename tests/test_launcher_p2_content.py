@@ -44,8 +44,8 @@ def test_gui_keeps_flag_values_out_of_seed_argument(monkeypatch):
     gui = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gui)
     monkeypatch.setattr(sys, "platform", "linux")
-    import tkinter
-    monkeypatch.setattr(tkinter, "Tk", lambda: object())
+    from types import SimpleNamespace
+    monkeypatch.setitem(sys.modules, "tkinter", SimpleNamespace(Tk=lambda: object()))
     observed = []
     def app(*args, **kwargs):
         observed.append(args)
