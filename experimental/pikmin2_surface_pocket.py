@@ -1,6 +1,7 @@
 """Local Valley of Repose source preparation, not a playable surface or cropped map."""
 import argparse
 from collections import Counter
+from copy import deepcopy
 import hashlib
 import json
 import math
@@ -35,7 +36,11 @@ def generators(text):
         position, offset = vector(row[35:38]), vector(row[38:41])
         if not isinstance(row[41], list) or len(row[41]) != 1:
             raise ValueError('Invalid generator kind')
+        if not isinstance(row[42], list) or len(row[42]) != 1:
+            raise ValueError('Invalid generator object version')
         actor = dict(index=index, label=label_bytes.decode('cp932'), kind=row[41][0],
+                     record_version=row[0][0], object_version=row[42][0],
+                     source_payload=deepcopy(row[43:]),
                      reserved=int(row[1]), respawn_days=int(row[2]), position=position, offset=offset,
                      effective_position=[a+b for a,b in zip(position,offset)])
         if actor['kind'] == 'item':

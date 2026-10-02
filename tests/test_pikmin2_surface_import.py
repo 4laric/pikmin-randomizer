@@ -195,6 +195,37 @@ class DeclaredGeneratorTests(unittest.TestCase):
         text = self.manager(1, [self.record(1)])
         self.assertEqual(source_generators(text), generators(text))
 
+    def test_actor_specific_payload_survives_without_translation(self):
+        from experimental.pikmin2_cave import tree
+        payloads = {
+            'piki': '{ {p000} 4 1 {p001} 4 20 {p002} 4 0 {_eof} }',
+            'teki': '33 0 1 0 1 0 0 841 0 10 1 1 .7 {????} { {_eof} }',
+            'pelt': '{ 3 0 0 0 {0000} 47 } { {_eof} }',
+            'item': '{ {onyn} 0 0 0 {0002} 1 0 } { {_eof} }',
+            'future': '{ {unknown} 123 { nested data } }',
+        }
+        for kind, payload in payloads.items():
+            with self.subTest(kind=kind):
+                row = ('{ {v0.3} 5 3 '+'0 '*32+'0 0 0 0 0 0 '
+                       +'{'+kind+'} {0005} '+payload+' }')
+                actor = source_generators(self.manager(1, [row]))['actors'][0]
+                self.assertEqual(actor['record_version'], 'v0.3')
+                self.assertEqual(actor['object_version'], '0005')
+                self.assertEqual(actor['source_payload'], tree(payload))
+
+    def test_identical_payloads_keep_distinct_record_indices(self):
+        definition = source_generators(self.manager(2, [self.record(), self.record()]))
+        first, second = definition['actors']
+        self.assertEqual([first['index'], second['index']], [0, 1])
+        self.assertEqual(first['source_payload'], second['source_payload'])
+        first['source_payload'].append('changed')
+        self.assertEqual(second['source_payload'], ['76'])
+
+    def test_malformed_object_version_is_refused(self):
+        for version in ('0005', '{0005 extra}', '{}'):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, 'object version'):
+                source_generators(self.manager(1, [self.record().replace('{0005}', version)]))
+
     def test_negative_or_insufficient_declared_count_refused(self):
         for count in (-1, 2):
             with self.subTest(count=count), self.assertRaisesRegex(ValueError, 'declared generator count'):
