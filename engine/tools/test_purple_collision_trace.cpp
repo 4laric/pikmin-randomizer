@@ -7,6 +7,16 @@
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
     int captain=0, partner=0;
+    check(pcPurpleCursorBandSafe(.2f,.1f,.5f,0.f),"ordinary cursor-band input stays movement neutral");
+    check(!pcPurpleCursorBandSafe(.1f,.1f,.5f,0.f),"neutral boundary cannot guarantee turning");
+    check(pcPurpleCursorBandSafe(.5f,.1f,.5f,0.f),"exact cursor upper boundary remains movement neutral");
+    check(!pcPurpleCursorBandSafe(.50001f,.1f,.5f,0.f),"outside cursor band refused");
+    check(!pcPurpleCursorBandSafe(.2f,.1f,.5f,.000001f),"any modeled movement target refused");
+    check(!pcPurpleCursorBandSafe(std::numeric_limits<float>::quiet_NaN(),.1f,.5f,0.f),"nonfinite cursor input refused");
+    PcPurplePoseProbeBudget probeBudget;
+    for(unsigned frame=0;frame<64;++frame)check(probeBudget.take(),"finite pose probe capacity");
+    for(unsigned repeat=0;repeat<4;++repeat)check(!probeBudget.take(),"budget exhausted cannot restart");
+    check(probeBudget.frames()==64,"pose budget stable after refusal");
     for(int axis:{-8,8})check(pcPurpleSdlPulseSampleAxis(axis,8)==0,"exact default dead-zone boundary suppressed");
     for(int axis:{-9,9})check(pcPurpleSdlPulseSampleAxis(axis,8)==axis,"outside default boundary preserved");
     check(pcPurpleSdlPulseSampleAxis(-6,8)==0 && pcPurpleSdlPulseSampleAxis(64,8)==64,

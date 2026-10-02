@@ -115,7 +115,7 @@ static bool pluckInputModelValid(const SdlPluckInputModel& m) {
         &&std::fabs(std::hypot(m.cameraX,m.cameraZ)-1.f)<.001f
         &&m.deadZone>=0 && m.deadZone<=127;
 }
-static SdlPluckPoint pluckInputTarget(int x,int y,const SdlPluckInputModel& m) {
+static float pluckInputMagnitude(int x,int y,const SdlPluckInputModel& m,float& angle) {
     // ordinaryInput(nativeAxisUnits=true) -> strict per-axis loaded SDL dead
     // zone -> SDL axis /256 -> Controller /74.
     // Navi bins the CAMERA-space direction before rotating it into world space.
@@ -125,11 +125,15 @@ static SdlPluckPoint pluckInputTarget(int x,int y,const SdlPluckInputModel& m) {
     float magnitude=std::sqrt(sx*sx+sz*sz),theta=std::atan2(sx,sz);
     if(theta<0.f)theta+=2.f*pi;
     const float width=pi/180.f*m.binDegrees;
-    const float angle=width*int((theta+width*.5f)/width);
+    angle=width*int((theta+width*.5f)/width);
     const float remainder=angle-int(angle/quarter)*quarter;
     const float length=std::sin(quarter)/(std::sin(remainder)+std::sin(quarter-remainder));
     magnitude*=1.f/length;
     if(magnitude>=m.clamp)magnitude=1.f;
+    return magnitude;
+}
+static SdlPluckPoint pluckInputTarget(int x,int y,const SdlPluckInputModel& m) {
+    float angle=0.f,magnitude=pluckInputMagnitude(x,y,m,angle);
     if(magnitude<m.neutral || magnitude<=m.cursor)magnitude=0.f;
     const float localX=magnitude*std::sin(angle),localZ=magnitude*std::cos(angle);
     return {(m.cameraX*localX-m.cameraZ*localZ)*m.speed,
@@ -311,6 +315,9 @@ class PurpleCombatApp : public PlugPikiApp {
     int sdlPulseFrames=0;
     SdlPluckState sdlPulseBefore;
     SdlPluckPoint sdlPulseCommand;
+    bool sdlPoseProbeActive=false;
+    PcPurplePoseProbeBudget sdlPoseProbeBudget;
+    SdlPluckPoint sdlPoseProbeOrigin;
 
     PikiHeadItem* routedHead=nullptr;
     Vector3f routedHeadPosition;
@@ -386,7 +393,7 @@ class PurpleCombatApp : public PlugPikiApp {
             unsigned(pluckRouteIndex),unsigned(pluckRoute.size()),unsigned(pluckObstacles.size()),clearance,int(contact),
             captainPart?unsigned(captainPart->getID().mId):0,violetPart?unsigned(violetPart->getID().mId):0,push.x,push.y,push.z,int(n->isAtari()),int(violet->isAtari()));
     }
-    void planPluckRoute(Navi* n,PikiHeadItem* head,Pom* violet,float pluckRange) {
+    bool planPluckRoute(Navi* n,PikiHeadItem* head,Pom* violet,float pluckRange) {
         require(violet && violet->mCollInfo && violet->mCollInfo->hasInfo(),"Violet collision data required for ordinary approach");
         pluckObstacles.clear();pluckRoute.clear();pluckRouteIndex=0;
         refreshPluckObstacles(n,violet);
@@ -449,6 +456,7 @@ class PurpleCombatApp : public PlugPikiApp {
                 ticks,unsigned(count),goals,reachable,end,int(pluckSegmentClear(n->mSRT.t,n->mSRT.t)));
             if(end<0)pluckTrace("plan_failure",n,head,violet);
         }
+        if(end<0 && sdlAcquisitionMode())return false;
         require(end>=0,"no collision-clear controller approach to native pluck range");
         for(int i=end;i>0;i=parent[i]) {require(parent[i]>=0,"invalid pluck route");pluckRoute.push_back(nodes[i]);}
         std::reverse(pluckRoute.begin(),pluckRoute.end());
@@ -468,6 +476,7 @@ class PurpleCombatApp : public PlugPikiApp {
         routedHead=head;routedHeadPosition=head->mSRT.t;
         std::printf("P2_PURPLE_PLUCK_ROUTE length=%.3f waypoints=%u collision_parts=%u loaded_range=%.3f ground_collision_radius=%.3f live_part_pairs=1 scripted_controller_only=1\n",
             cost[end],unsigned(pluckRoute.size()),unsigned(pluckObstacles.size()),pluckRange,n->mCollisionRadius);
+        return true;
     }
     int ticks=0, phase=0, phaseTicks=0, startingField=0, pluckAttempts=0;
     int combatTicks=0, observedTicks=0, throwAttempts=0, throwTick=0;
@@ -1064,6 +1073,57 @@ class PurpleCombatApp : public PlugPikiApp {
         return true;
     }
 
+    void sdlPoseProbeClear(Navi* n,Pom* violet) {
+        require(pluckLength(pluckSub(sdlPoint(n->mSRT.t),sdlPoseProbeOrigin))<.1f
+            && pluckLength(sdlPoint(n->mVelocity))<=1.f && pluckLength(sdlPoint(n->mTargetVelocity))==0.f,
+            "cursor pose probe moved captain");
+        require(pluckSegmentClear(n->mSRT.t,n->mSRT.t),"cursor pose probe refreshed parts overlap");
+        CollPart* self=nullptr;CollPart* other=nullptr;Vector3f push;
+        require(!n->mCollInfo->checkCollision(violet->mCollInfo,&self,&other,push),"cursor pose probe native contact");
+        require(sdlPulseTerrainClear(sdlPoint(n->mSRT.t),sdlPoint(n->mSRT.t),n->mSRT.t.y,.1f),
+            "cursor pose probe terrain changed");
+        // A conservative all-yaw envelope of the CAPTURED current pose. This
+        // does not certify an unobserved animation sweep. The next refreshed
+        // actual parts must pass the same checks before any further input.
+        std::vector<CollPart*> captainParts,violetParts;
+        collectCaptainParts(n->mCollInfo->getBoundingSphere(),captainParts);
+        collectCaptainParts(violet->mCollInfo->getBoundingSphere(),violetParts);
+        float envelope=0.f;
+        for(CollPart* part:captainParts) {
+            const Vector3f offset=part->mCentre-n->mSRT.t;
+            require(std::isfinite(part->mRadius) && part->mRadius>0.f,"cursor pose invalid captain radius");
+            envelope=std::max(envelope,std::sqrt(offset.x*offset.x+offset.y*offset.y+offset.z*offset.z)+part->mRadius);
+        }
+        require(std::isfinite(envelope)&&envelope>0.f,"cursor pose invalid captured envelope");
+        for(CollPart* part:violetParts) {
+            const Vector3f offset=part->mCentre-n->mSRT.t;
+            const float separation=std::sqrt(offset.x*offset.x+offset.y*offset.y+offset.z*offset.z);
+            require(std::isfinite(separation) && std::isfinite(part->mRadius) && part->mRadius>0.f
+                && separation>envelope+part->mRadius+1.f,"cursor pose captured yaw envelope blocked");
+        }
+    }
+    void sdlProbePose(Navi* n,Pom* violet,float tau) {
+        if(!sdlPoseProbeActive) {sdlPoseProbeOrigin=sdlPoint(n->mSRT.t);sdlPoseProbeActive=true;}
+        sdlPoseProbeClear(n,violet);
+        require(sdlPoseProbeBudget.take(),"finite cursor pose probe budget exhausted");
+        if(sdlCancelOwnedCollision(n,tau))return;
+        const SdlPluckInputModel model=sdlPulseModel(n,tau);
+        const float bearing=float((sdlPoseProbeBudget.frames()-1)/8)*6.283185307f/8.f;
+        int selectedX=0,selectedY=0;bool found=false;
+        for(int power=1;power<=74&&!found;++power) {
+            const int x=int(std::lround(power*std::cos(bearing))),y=int(std::lround(power*std::sin(bearing)));
+            float angle=0.f;const float magnitude=pluckInputMagnitude(x,y,model,angle);
+            if(pcPurpleCursorBandSafe(magnitude,model.neutral,model.cursor,pluckLength(pluckInputTarget(x,y,model))))
+                {selectedX=x;selectedY=y;found=true;}
+        }
+        require(found,"loaded settings have no movement-neutral cursor probe");
+        acquisitionInput(0,selectedX,selectedY);
+        std::printf("P2_PURPLE_PLUCK_POSE_PROBE tick=%d auth_tick=%llu frame=%u raw=%d,%d face=%.9g "
+            "origin=%.9g,%.9g target_velocity=0 captured_current_pose_clear=1 next_pose_requires_observation=1 actor_writes=0\n",
+            ticks,static_cast<unsigned long long>(pc_render_tick_serial()),sdlPoseProbeBudget.frames(),
+            selectedX,selectedY,n->mFaceDirection,sdlPoseProbeOrigin.x,sdlPoseProbeOrigin.z);
+    }
+
     bool approachAndPluck(Navi* n,PikiHeadItem* head,Pom* violet) {
         // Ordinary controller movement/pluck. Never relocate the captain or
         // sprout, or force a plucking state to satisfy natural acceptance.
@@ -1094,6 +1154,13 @@ class PurpleCombatApp : public PlugPikiApp {
             refreshPluckObstacles(n,violet);
             pluckTrace("motion_snapshot",n,head,violet);
             require(pluckSegmentClear(n->mSRT.t,n->mSRT.t),"SDL pluck captain starts inside live collision bounds");
+            if(sdlPoseProbeActive) {
+                sdlPoseProbeClear(n,violet);
+                if(sdlCancelOwnedCollision(n,pluckTau)) {
+                    require(sdlPoseProbeBudget.take(),"finite cursor pose probe budget exhausted");return false;
+                }
+                (void)sdlPulseModel(n,pluckTau);
+            }
             if(sdlPulseActive) {
                 sdlObservePulse(n,head,violet,pluckTau,pluckDt);
                 return false;
@@ -1133,7 +1200,15 @@ class PurpleCombatApp : public PlugPikiApp {
                     ticks,pluckSpeed,pluckTargetSpeed,pluckTau,pluckDt);
                 return false;
             }
-            if(needsPlan) planPluckRoute(n,head,violet,pluckRange);
+            if(needsPlan && !planPluckRoute(n,head,violet,pluckRange)) {
+                require(sdlAcquisitionMode(),"no collision-clear controller approach to native pluck range");
+                sdlProbePose(n,violet,pluckTau);return false;
+            }
+            if(sdlPoseProbeActive) {
+                // Release the ordinary cursor input; measure the ensuing native
+                // pose again before starting a movement forecast.
+                acquisitionInput();sdlPoseProbeActive=false;return false;
+            }
             while(pluckRouteIndex+1<pluckRoute.size() && planarDistance(n->mSRT.t,pluckRoute[pluckRouteIndex])<4.f
                 && (!sdlAcquisitionMode() || sdlPluckAtRest(pluckSpeed,pluckTargetSpeed))
                 && pluckSegmentClear(n->mSRT.t,pluckRoute[pluckRouteIndex+1])) ++pluckRouteIndex;
@@ -1148,7 +1223,7 @@ class PurpleCombatApp : public PlugPikiApp {
                     // Quantized movement may stop short of a geometric corner.
                     // Replan ONCE from the observed rest point; the nearby-node
                     // exclusion prevents endlessly selecting that same corner.
-                    planPluckRoute(n,head,violet,pluckRange);
+                    if(!planPluckRoute(n,head,violet,pluckRange)) {sdlProbePose(n,violet,pluckTau);return false;}
                     require(!pluckRoute.empty() && sdlBeginPulse(n,head,violet,pluckRoute[0],pluckTau,pluckDt,pluckRange),
                         "no eligible quantized pulse after stopped route replan");
                 }
@@ -1643,7 +1718,7 @@ public:
         // during an existing pulse so ordinary startup collisions do not fill
         // the trace before the failing approach; retain the force guard below.
         pc_purple_collision_trace_context(naviMgr ? naviMgr->getNavi() : nullptr,
-            (sdlPulseActive || sdlPluckBraking) && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
+            (sdlPulseActive || sdlPluckBraking || sdlPoseProbeActive) && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
         const int result=PlugPikiApp::idle();
         Navi* n=naviMgr?naviMgr->getNavi():nullptr;
         // Injection modifies the initialized runtime, never an engine-free stand-in.
