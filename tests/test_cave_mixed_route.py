@@ -9,7 +9,7 @@ from randomizer.cave_floor import create,fingerprint
 from experimental.pikmin2_cave_items import parse_items_text,items_from_layout,items_text
 from scripts.play_pikmin2_cave import checkpoint
 from scripts.run_pikmin2_cave_mixed_route import validate_boundary
-from test_playable_cave import fixture_layout
+from tests.test_playable_cave import fixture_layout
 
 class BoundaryTests(unittest.TestCase):
     def fixture(self):
