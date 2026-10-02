@@ -262,6 +262,10 @@ void ActTransport::init(Creature* target)
 	mGoal             = nullptr;
 	setSlotIndex();
 	mCanCarry = false;
+#if defined(PIKI_PC_PORT)
+    if(pc_worker_observer_enabled)pc_worker_task_begin(reinterpret_cast<uintptr_t>(this),pcTransportObservation());
+#endif
+
 	mPiki->startMotion(PaniMotionInfo(PIKIANIM_Walk), PaniMotionInfo(PIKIANIM_Walk));
 }
 
@@ -445,11 +449,19 @@ bool ActTransport::gotoLiftPos()
 		mSlotIndex       = pellet->getNearestFreeSlotIndex(mPiki->mSRT.t);
 		if (previousSlot == mSlotIndex) {
 			mPiki->mEmotion = PikiEmotion::Sad;
+#if defined(PIKI_PC_PORT)
+            pc_worker_slot_failure(reinterpret_cast<uintptr_t>(mPiki),1);
+#endif
+
 			return false;
 		}
 
 		if (mSlotIndex == -1) {
 			mPiki->mEmotion = PikiEmotion::Sad;
+#if defined(PIKI_PC_PORT)
+            pc_worker_slot_failure(reinterpret_cast<uintptr_t>(mPiki),2);
+#endif
+
 			return false;
 		}
 
@@ -474,6 +486,10 @@ bool ActTransport::gotoLiftPos()
 			mSlotIndex = pellet->getNearestFreeSlotIndex(mPiki->mSRT.t);
 			if (mSlotIndex == -1) {
 				mPiki->mEmotion = PikiEmotion::Sad;
+#if defined(PIKI_PC_PORT)
+                pc_worker_slot_failure(reinterpret_cast<uintptr_t>(mPiki),3);
+#endif
+
 				return false;
 			}
 
@@ -529,6 +545,10 @@ bool ActTransport::gotoLiftPos()
 			mSlotIndex = pellet->getNearestFreeSlotIndex(mPiki->mSRT.t);
 			if (mSlotIndex == -1) {
 				mPiki->mEmotion = PikiEmotion::Sad;
+#if defined(PIKI_PC_PORT)
+                pc_worker_slot_failure(reinterpret_cast<uintptr_t>(mPiki),4);
+#endif
+
 				return false;
 			}
 
@@ -1112,6 +1132,10 @@ void ActTransport::decideGoal(Creature* cargo)
  */
 void ActTransport::cleanup()
 {
+#if defined(PIKI_PC_PORT)
+    pc_worker_task_end(reinterpret_cast<uintptr_t>(mPiki));
+#endif
+
 	mPiki->endStickObject();
 	Pellet* pel = mPellet.getPtr();
 	if (pel) {
@@ -1700,3 +1724,21 @@ int ActTransport::moveToWayPoint()
 
 	STACK_PAD_VAR(1);
 }
+
+#if defined(PIKI_PC_PORT)
+PcTransportObservation ActTransport::pcTransportObservation() const
+{
+    PcTransportObservation result;result.actor=reinterpret_cast<uintptr_t>(mPiki);
+    const Pellet* target=mPellet.mPtr;result.target=reinterpret_cast<uintptr_t>(target);result.state=mState;
+    if(!target || !pelletMgr)return result;
+    Iterator it(pelletMgr);CI_LOOP(it){
+        Pellet* current=static_cast<Pellet*>(*it);
+        if(current!=target)continue; // Compare only before dereference; reject stale non-member pointers.
+        result.member=true;result.alive=current->isAlive();result.pellet=current->mObjType==OBJTYPE_Pellet;
+        result.generator=current->getGeneratorID();result.visible=current->isVisible();result.atGoal=current->getState()==PELSTATE_Goal;
+        const Vector3f pos=current->getPosition();result.x=pos.x;result.y=pos.y;result.z=pos.z;
+        return result;
+    }
+    return result;
+}
+#endif

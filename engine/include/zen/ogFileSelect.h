@@ -9,6 +9,9 @@
 #include "zen/SpectrumCursorMgr.h"
 #include "zen/ogSub.h"
 #include <string.h>
+#if defined(PIKI_PC_PORT)
+#include <cmath>
+#endif
 
 class Controller;
 class CardQuickInfo;
@@ -113,6 +116,12 @@ public:
 	void draw(Graphics& gfx);
 #if defined(PIKI_PC_PORT)
 	void drawFxOnly(Graphics& gfx);
+	int pcSaveInputSlot() const
+	{
+		return mSaveMode && mOperation == Normal && mSelectState == Continue
+		    && std::isfinite(mMainInteractTimer) && mMainInteractTimer > 1.0f
+		    && mCurrSlotIdx >= 0 && mCurrSlotIdx < 3 ? mCurrSlotIdx : -1;
+	}
 #endif
 	void quit();
 

@@ -14,6 +14,13 @@
 #include "touch/pc_touch.h"
 #endif
 #include "zen/ogSave.h"
+#if defined(PIKI_PC_PORT)
+#include "zen/ogNitaku.h"
+#include "zen/ogFileChkSel.h"
+#include "zen/ogFileSelect.h"
+#include "zen/ogMemChk.h"
+#include "zen/DrawSave.h"
+#endif
 #include "zen/ogSub.h"
 
 
@@ -32,6 +39,55 @@ DEFINE_PRINT("OgResultSection")
 namespace zen {
 
 #if defined(PIKI_PC_PORT)
+PcSaveUiSnapshot ogScrResultMgr::pcSaveUiSnapshot() const
+{
+    PcSaveUiSnapshot value;
+#if !defined(VERSION_GPIE01_01)
+    // Only the audited retail US save branch is supported by this observer.
+    return value;
+#else
+    value.available = true;
+    value.resultState = mStatus;
+    // Other result branches must not inspect a dormant save manager.
+    if (mStatus != RESULT_Active || !mSaveMgr) return value;
+    const ogSaveMgr* save = mSaveMgr;
+    value.saveState = save->mStatus;
+    value.resultsInputReady = save->mStatus == ogSaveMgr::Inactive;
+    if (value.resultsInputReady) return value;
+    value.fileSelection = save->mFileChkSelected;
+    // update() can return before either Nitaku is updated. Observe all three gates.
+    const DrawSaveFailure* failure = save->mSaveFail;
+    const ogScrFileChkSelMgr* file = save->mFileChkSelMgr;
+    const ogScrMemChkMgr* memory = save->mMemCheckMgr;
+    // First-save slot selection lives inside this save manager, not the title UI.
+    // The outer memory checker can remain Finished while file selection updates.
+    if (save->mStatus == ogSaveMgr::PreparingSave && value.fileSelection
+        && failure && failure->pcInactive() && file && file->mIsSaveOperation
+        && file->mState == ogScrFileChkSelMgr::MemoryCheckInProgress && file->mIsScreenVisible) {
+        const ogScrMemChkMgr* slotMemory = file->mMemChkMgr;
+        const ogScrFileSelectMgr* slots = file->mFileSelectMgr;
+        if (slotMemory && slotMemory->pcInactive() && slots) {
+            value.cardSlot = slots->pcSaveInputSlot();
+            value.cardSlotInputReady = value.cardSlot >= 0;
+        }
+    }
+    value.nestedUiBlocked = !failure || !failure->pcInactive() || !file
+        || file->mState != ogScrFileChkSelMgr::Null || !memory || !memory->pcInactive()
+        || value.fileSelection;
+    if (value.nestedUiBlocked) return value;
+    if (save->mStatus == ogSaveMgr::MainSelectionActive) {
+        const ogNitakuMgr* prompt = save->mPrimaryNikatuMgr;
+        value.primaryInputReady = prompt && prompt->pcInputReady();
+        if (value.primaryInputReady) value.primaryYes = prompt->pcSelectedYes();
+    } else if (save->mStatus == ogSaveMgr::SecondarySelectionActive) {
+        const ogNitakuMgr* prompt = save->mSecondaryNikatuMgr;
+        value.secondaryInputReady = prompt && prompt->pcInputReady();
+        if (value.secondaryInputReady) value.secondaryYes = prompt->pcSelectedYes();
+    }
+    return value;
+#endif
+}
+
 PcDiaryAction ogScrResultMgr::pcDiaryAction() const
 {
 	return pc_diary_result_action(mStatus == RESULT_DiaryMessage, mMesgScreen);

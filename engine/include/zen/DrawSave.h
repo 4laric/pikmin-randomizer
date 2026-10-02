@@ -34,6 +34,9 @@ public:
 	bool update(Controller*);
 	void draw(Graphics&);
 	void open(f32);
+#if defined(PIKI_PC_PORT)
+	bool pcInactive() const { return mMode == MODE_Unk0; }
+#endif
 	void init();
 
 protected:

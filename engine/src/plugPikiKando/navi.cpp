@@ -1,3 +1,6 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_whistle_observer.h"
+#endif
 #include "pc_p2_mamuta_rules.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
@@ -1709,6 +1712,27 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		    && state != PIKISTATE_Nukare && state != PIKISTATE_Swallowed && state != PIKISTATE_Drown && state != PIKISTATE_Absorb
 		    && state != PIKISTATE_LookAt && state != PIKISTATE_Pressed && dist < radius) {
 			if (!piki->isDamaged() && state != PIKISTATE_Flick && state != PIKISTATE_GrowUp) {
+#if defined(PIKI_PC_PORT)
+                PcWorkerRecallEvent workerEvent;
+                if(pc_worker_observer_enabled && piki->mMode==PikiMode::TransportMode){
+                    workerEvent.actor=reinterpret_cast<uintptr_t>(piki);workerEvent.captain=mNaviID;
+                    workerEvent.mode=piki->mMode;workerEvent.state=state;
+                    auto* top=piki->mActiveAction;
+                    workerEvent.action=top?top->mCurrActionIdx:-1;
+                    if(top && top->mChildActions && top->mCurrActionIdx==PikiAction::Transport && top->mCurrActionIdx<top->mChildCount){
+                        const Action* action=top->mChildActions[top->mCurrActionIdx].mAction;
+                        if(action && action->mPiki==piki)if(auto* transport=dynamic_cast<const ActTransport*>(action)){workerEvent.target=transport->pcTransportObservation();workerEvent.episode=pc_worker_task_ensure(reinterpret_cast<uintptr_t>(transport),workerEvent.target);}
+                    }
+                    workerEvent.held=mKontroller && mKontroller->keyDown(KBBTN_B);workerEvent.heldSeconds=mWhistleTimer;
+                    workerEvent.recall=recallWorkers;workerEvent.radius=radius;workerEvent.distance=dist;
+                    workerEvent.vs=pc_vs_active();workerEvent.alive=piki->isAlive();workerEvent.callable=piki->mIsCallable;
+                    workerEvent.buried=piki->isBuried();workerEvent.kinoko=piki->isKinoko();workerEvent.fired=piki->isFired();
+                    workerEvent.damaged=piki->isDamaged();workerEvent.rope=piki->mRope!=nullptr;
+                    workerEvent.instant=pc_settings_get_instant_whistle();
+                    const Vector3f pos=piki->getPosition();workerEvent.x=pos.x;workerEvent.y=pos.y;workerEvent.z=pos.z;
+                    workerEvent.cursorX=mCursorWorldPos.x;workerEvent.cursorY=mCursorWorldPos.y;workerEvent.cursorZ=mCursorWorldPos.z;
+                }
+#endif
 				if (piki->isFired() && !pc_p2_has_red_immunity(piki)) {
 					piki->endFire();
 				}
@@ -1742,10 +1766,16 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 					if (piki->getState() != PIKISTATE_Normal) {
 						piki->mFSM->transit(piki, PIKISTATE_Normal);
 					}
+#if defined(PIKI_PC_PORT)
+                    workerEvent.afterMode=piki->mMode;workerEvent.afterState=piki->getState();pc_worker_observer_record(workerEvent);
+#endif
 					continue;
 				}
 #endif
 				piki->mFSM->transit(piki, PIKISTATE_LookAt);
+#if defined(PIKI_PC_PORT)
+                workerEvent.afterMode=piki->mMode;workerEvent.afterState=piki->getState();pc_worker_observer_record(workerEvent);
+#endif
 			} else {
 				pc_crowd_handover::abandonSquadBeforeHandover(piki, this);
 				piki->mNavi             = this;

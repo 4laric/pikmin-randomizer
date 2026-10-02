@@ -60,6 +60,9 @@ public:
 	MemChkStatus update(Controller*);
 	void start();
 	void DebugStart(int);
+#if defined(PIKI_PC_PORT)
+	bool pcInactive() const { return mStatus == Inactive; }
+#endif
 
 private:
 	void SetNitaku_Y_N();

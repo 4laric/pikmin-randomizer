@@ -1,5 +1,8 @@
 #ifndef _PIKIAI_H
 #define _PIKIAI_H
+#if defined(PIKI_PC_PORT)
+#include "pc_whistle_observer.h"
+#endif
 
 #include "PaniAnimator.h"
 #include "Piki.h"
@@ -1997,6 +2000,9 @@ public:
 	};
 
 	ActTransport(Piki*);
+#if defined(PIKI_PC_PORT)
+	PcTransportObservation pcTransportObservation() const;
+#endif
 
 	virtual void draw(Graphics&); // _40
 	virtual ~ActTransport() { }   // _44

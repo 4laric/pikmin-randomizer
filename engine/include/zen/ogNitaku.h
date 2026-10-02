@@ -38,6 +38,10 @@ public:
 	void start();
 	NitakuStatus update(Controller*);
 	void stop();
+#if defined(PIKI_PC_PORT)
+	bool pcInputReady() const { return mStatus == Status_3; }
+	bool pcSelectedYes() const { return mIsYes; }
+#endif
 
 private:
 	void MoveCursorYes(f32);

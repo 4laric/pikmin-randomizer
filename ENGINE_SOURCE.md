@@ -1,6 +1,26 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
+`a4894d5a1a191a711027827b44a2a06576f41c57`, exported from the clean
+`output/native-coop-p2-source-combination` worktree under #1144. All 4,263 copied
+tracked source/resource files were prevalidated and compared byte-for-byte with
+the native working-tree state; 53 audited Android/touch binaries are skipped
+and both desktop icons retained. This export combines the reviewed full Purple
+natural acquisition/day-save fixture and save UI observers with the full captain
+Onion ownership/day-save fixture and passive startup/transport observers. The
+accepted White fixture and repaired tutorial traversal source remain preserved.
+Linux Actions run 37000851208 passed all 284 compiled tests and the clean Debian
+12 packaged loader/help smoke. Its production executable SHA-256 is
+`736a74d0630756f326b47c946979ae515ebe67d51884a025efa4553de2c7ba71`.
+Archive, all 53 ELF hashes and full Actions evidence were independently verified;
+workflow checkout provenance does not independently attest a compiled fixture SDK.
+Windows production coverage remains at native `7d98bcdd6625cd403d65ebd564505697283d8aba`.
+Ordinary Purple day-save/one fresh resume, captain day-save/two fresh resumes,
+imported traversal, cave journey, paired gameplay and human sign-off remain open.
+Build, package and source export checks do not establish gameplay acceptance.
+See [the candidate and its limits](docs/PIKMIN2_COOP_P2_COMBINATION_1144.md).
+
+The current private co-op/P2 source candidate is native
 `ef527bac11f36bf337efdcb805e7f9a95659ea29`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. Every one of
 4,259 copied tracked source/resource files was prevalidated and checked against

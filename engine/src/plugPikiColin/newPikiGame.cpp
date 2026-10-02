@@ -51,6 +51,10 @@
 #include "zen/ogMemChk.h"
 #include "zen/ogMenu.h"
 #include "zen/ogPause.h"
+#if defined(PIKI_PC_PORT)
+#include "zen/DrawMenu.h"
+#include "pc_campaign_ui_observer.h"
+#endif
 #include "zen/ogResult.h"
 #include "zen/ogTotalScore.h"
 #include "zen/ogTutorial.h"
@@ -127,6 +131,32 @@ static zen::ogScrPauseMgr* pauseWindow;
 static zen::ogScrResultMgr* resultWindow;
 
 #if defined(PIKI_PC_PORT)
+PcPauseSnapshot pc_pause_observe()
+{
+    PcPauseSnapshot value;
+    const zen::ogScrPauseMgr* pause = pauseWindow;
+    if (!pause || !pause->mIsActive) return value;
+    value.available = true;
+    value.state = pause->mState;
+    const zen::DrawMenu* main = pause->mMainMenu;
+    const zen::DrawMenu* sub = pause->mSubMenu;
+    if (pause->mState == zen::ogScrPauseMgr::PAUSE_Active && main) {
+        value.mainState = main->getStatusFlag();
+        value.mainSelection = main->getSelectMenu();
+        value.mainInputReady = main->pcInputReady();
+    } else if (pause->mState == zen::ogScrPauseMgr::PAUSE_SunsetSubmenu && sub) {
+        value.subState = sub->getStatusFlag();
+        value.subSelection = sub->getSelectMenu();
+        value.sunsetInputReady = sub->pcInputReady();
+    }
+    return value;
+}
+PcSaveUiSnapshot pc_save_ui_observe()
+{
+    const zen::ogScrResultMgr* result = resultWindow;
+    return result ? result->pcSaveUiSnapshot() : PcSaveUiSnapshot{};
+}
+
 PcDiaryAction pc_diary_observe()
 {
 	return pc_diary_window_action(resultWindow);
