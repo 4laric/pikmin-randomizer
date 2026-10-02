@@ -79,7 +79,15 @@ public:CampaignInput():Kontroller(1){}
   if(!humanMode||phase!=30){
    if(phase==0&&frame%30<8)keys=KBBTN_A;
    if(phase==1&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   if(phase==3&&phaseTick%60<15)keys=KeyConfig::_instance->mThrowKey.mBind;
+   if(phase==3){
+    // Ordinary A: keep the pending grab held, release only after actual Hanged.
+    if(walking)keys=KeyConfig::_instance->mThrowKey.mBind;
+    else if(n&&n->getCurrState()&&n->getCurrState()->getID()==NAVISTATE_ThrowWait){
+     auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
+     keys=KeyConfig::_instance->mThrowKey.mBind;
+     if(grab->mHeldThrowPiki&&grab->mIsHoldingThrowPiki&&grab->mHeldThrowPiki->getState()==PIKISTATE_Hanged)keys=0;
+    }
+   }
    if(phase==13&&walking&&phaseTick%30<15)keys=KeyConfig::_instance->mDisbandKey.mBind;
    if(phase==5&&phaseTick%60<45)keys=KeyConfig::_instance->mThrowKey.mBind;
    if(phase==14&&walking&&phaseTick%30<15)keys=KBBTN_DPAD_RIGHT;
@@ -151,6 +159,12 @@ public:int idle()override{
  Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){auto* p=static_cast<PikiHeadItem*>(*sprouts);if(!p->isAlive())continue;require(pc_p2_species(p)==P2SpeciesWhite,"unexpected sprout species");++heads;if(p->canPullout()&&!head)head=p;}
  Iterator pellets(pelletMgr);int pelletCount=0;CI_LOOP(pellets){auto* p=static_cast<Pellet*>(*pellets);if(p==cargo)cargoSlot=true;if(p->isAlive())++pelletCount;}
  if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_OBSERVATION frame=%d phase=%d red=%d white=%d heads=%d stock=%d spent=%d followers=%d carriers=%d pokos=%d nstate=%d\n",frame,phase,red,white,heads,whiteStock(),spent(),whiteFollowers,carriers,p2whitetreasure::ledger.total(),n->getCurrState()->getID());
+ if(phase==3&&frame%60==0){
+  auto* grab=n->getCurrState()->getID()==NAVISTATE_ThrowWait?static_cast<NaviThrowWaitState*>(n->getCurrState()):nullptr;
+  Piki* heldRed=grab?grab->mHeldThrowPiki:nullptr;Piki* pendingRed=grab?grab->mPendingThrowPiki:nullptr;
+  std::printf("P2_WHITE_CAMPAIGN_ACQUIRE_INPUT frame=%d nstate=%d n_x=%.4f n_z=%.4f cursor_x=%.4f cursor_z=%.4f red_formation=%d held_uid=%u held_state=%d pending_uid=%u pending_state=%d actual_holding=%d\n",frame,n->getCurrState()->getID(),n->mSRT.t.x,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.z,followers-whiteFollowers,heldRed&&heldRed->mGenerator?uid(heldRed):0,heldRed?heldRed->getState():-1,pendingRed&&pendingRed->mGenerator?uid(pendingRed):0,pendingRed?pendingRed->getState():-1,grab?int(grab->mIsHoldingThrowPiki):0);
+  Iterator redBodies(pikiMgr);CI_LOOP(redBodies){auto* p=static_cast<Piki*>(*redBodies);if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed)continue;std::printf("P2_WHITE_CAMPAIGN_RED_BODY uid=%u mode=%d state=%d owned=%d x=%.4f y=%.4f z=%.4f\n",uid(p),p->mMode,p->getState(),int(p->mNavi==n),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);}
+ }
  if(phase==0){
   if(n->getCurrState()->getID()==NAVISTATE_Starting)return result;
   int width,height,x,y;auto* window=SDL_GL_GetCurrentWindow();SDL_GetWindowSize(window,&width,&height);SDL_GetWindowPosition(window,&x,&y);SDL_Rect bounds{};SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(window),&bounds);
