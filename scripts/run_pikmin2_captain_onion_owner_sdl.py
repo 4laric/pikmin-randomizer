@@ -79,16 +79,27 @@ def main():
   assert len(acquisition)==1 and len(re.findall(r'^P2_ONION_STARTUP_ACQUIRED\b',log,re.MULTILINE))==1,'one complete anchored startup acquisition marker required'
   acquisition_frames,*acquisition_flags=map(int,acquisition[0])
   assert 1<=acquisition_frames<=180 and tuple(acquisition_flags) in ((0,0,0,0,0),(1,1,1,1,1)),'startup acquisition observation flags must agree'
-  worker=re.findall(r'^P2_ONION_WORKER_SETUP needed=(\d+) observed=(\d+) original_unique=20\r?$',log,re.MULTILINE)
-  assert len(worker)==1 and len(re.findall(r'^P2_ONION_WORKER_SETUP\b',log,re.MULTILINE))==1 and worker[0][0]==worker[0][1] and int(worker[0][0])<=20,'one exact worker observation summary'
-  events=re.findall(r'^P2_ONION_WORKER_RECALL body_token=(\d+) target_token=(\d+) held_seconds=([0-9.]+) distance=([0-9.]+) radius=([0-9.]+) instant=([01]) after_mode=(\d+) after_state=(\d+) accepted=1\r?$',log,re.MULTILINE)
-  assert len(re.findall(r'^P2_ONION_WORKER_RECALL\b',log,re.MULTILINE))==len(events),'malformed worker event'
-  begun=re.findall(r'^P2_ONION_WORKER_SETUP_BEGIN body_token=(\d+) .* disclosed_worker_recall=1\r?$',log,re.MULTILINE)
-  assert len(begun)==len(set(begun))==int(worker[0][0]) and set(begun)=={e[0] for e in events},'worker body set matches setup'
-  assert len(events)==int(worker[0][0]) and len({e[0] for e in events})==len(events),'unique call-time worker events'
-  for token,target,held,distance,radius,instant,mode,state in events:
-   assert 0<=int(token)<20 and int(target)>0 and float(held)>=.6 and 0<=float(distance)<float(radius),'worker call-time range/hold proof'
+  worker=re.findall(r'^P2_ONION_WORKER_SETUP needed=(\d+) observed=(\d+) recalls=(\d+) natural=(\d+) original_unique=20\r?$',log,re.MULTILINE)
+  assert len(worker)==1 and len(re.findall(r'^P2_ONION_WORKER_SETUP\b',log,re.MULTILINE))==1,'one exact worker summary'
+  needed,observed,recalls,natural=map(int,worker[0]);assert needed==observed==recalls+natural and needed<=64
+  begun=re.findall(r'^P2_ONION_WORKER_EPISODE episode=(\d+) body_token=(\d+) target_token=(\d+)\r?$',log,re.MULTILINE)
+  assert len(begun)==needed and len(re.findall(r'^P2_ONION_WORKER_EPISODE\b',log,re.MULTILINE))==needed
+  assert [int(e[0]) for e in begun]==list(range(1,needed+1)),'ordered unique native task episodes'
+  starts={int(ep):(int(body),int(target)) for ep,body,target in begun}
+  assert all(0<=body<20 and target>0 for body,target in starts.values())
+  events=re.findall(r'^P2_ONION_WORKER_RECALL episode=(\d+) body_token=(\d+) target_token=(\d+) held_seconds=([0-9.]+) distance=([0-9.]+) radius=([0-9.]+) instant=([01]) after_mode=(\d+) after_state=(\d+) accepted=1\r?$',log,re.MULTILINE)
+  natural_events=re.findall(r'^P2_ONION_WORKER_NATURAL episode=(\d+) body_token=(\d+) target_token=(\d+) reason=([1-4]) result=1 before_visible=1 after_visible=1 before_goal=0 after_goal=0 captain=0 mode=1 joined=1 accepted=1\r?$',log,re.MULTILINE)
+  assert len(events)==recalls==len(re.findall(r'^P2_ONION_WORKER_RECALL\b',log,re.MULTILINE))
+  assert len(natural_events)==natural==len(re.findall(r'^P2_ONION_WORKER_NATURAL\b',log,re.MULTILINE))
+  resolved=[]
+  for ep,token,target,held,distance,radius,instant,mode,state in events:
+   ep=int(ep);assert starts.get(ep)==(int(token),int(target))
+   assert float(held)>=.6 and 0<=float(distance)<float(radius),'worker call-time range/hold proof'
    assert (int(mode)==1 and int(state)==0) if instant=='1' else int(state)==26,'actual native whistle path'
+   resolved.append(ep)
+  for ep,token,target,reason in natural_events:
+   ep=int(ep);assert starts.get(ep)==(int(token),int(target));resolved.append(ep)
+  assert len(set(resolved))==len(resolved) and set(resolved)==set(starts),'one exact resolution for each task episode'
   assert session.names[50]=='Population: 10 total Red Pikmin','fixed manifest initial check mapping'
   allowed={session.names[50]}
   assert set(session.data['checked'])==allowed and Counter(session.inventory)==Counter(session.rewards[n] for n in allowed),'fresh loop forbids extra work rewards'
