@@ -1,5 +1,25 @@
 # Current combined captain SDL save/reload (#1130)
 
+For CI-packaged Windows runs, pass `--runtime-dir` pointing to the verified
+artifact directory containing the executable's matching MinGW DLLs and
+`SDL2.dll`. The runner records their hashes; mixing executable-local DLLs with
+a different toolchain is rejected before launch. `--prepare-only` stages inputs
+and records provenance without running the game.
+
+Linux omits `--runtime-dir` and records ELF, loader and shared-library evidence
+from the staged native run directory, so relative loader paths resolve from the
+correct cwd. Pass `--development-launch` for private execution under the current
+direct-coordination policy (#1195/#1198). The common launcher retains runtime,
+private-path, machine-capacity and bounded process cleanup checks; its optional
+controller path remains available without that flag. These options preserve
+the sixty-second phase bound and all save, card, population and captain guards.
+
+Even when linked with `PIKMIN_NETPLAY_BUILD=ON`, this replacement-main fixture
+runs an offline two-captain session. It does not execute production netplay
+startup; the runner clears inherited `PIKMIN_`, `P2_` and `COOP_` settings.
+Record the linked profile without claiming online co-op gameplay acceptance.
+The results below remain historical evidence pinned to their original builds.
+
 Codex through shared account 4laric. This bounded consumer uses the accepted
 combined native `2e6efbb1b841c1889d1bbd3b656e44ba6ae3629b` and root
 `22a2a5bc6718b809c4a29cf68d85d32a3659f68a` production foundation. Its only native

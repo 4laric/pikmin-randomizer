@@ -75,7 +75,7 @@ class PortableCaptainWiringTests(unittest.TestCase):
         self.probes = []
         self.launches = []
 
-    def invoke(self, prepare_only):
+    def invoke(self, prepare_only, development_launch=False):
         class Run:
             def __init__(self, session):
                 self.directory = session.directory / 'runs' / 'token'
@@ -106,6 +106,7 @@ class PortableCaptainWiringTests(unittest.TestCase):
         args = ['captain', '--canonical-root', str(self.root), '--session-root', str(self.session),
                 '--assets', str(self.assets), '--exe', str(self.exe), '--phase', 'save']
         if prepare_only: args.append('--prepare-only')
+        if development_launch: args.append('--development-launch')
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(sys, 'argv', args))
             stack.enter_context(patch.dict(captain.os.environ, {}, clear=False))
@@ -139,9 +140,20 @@ class PortableCaptainWiringTests(unittest.TestCase):
 
     def test_launch_uses_pinned_helper_and_context_rejects_before_log_read(self):
         directory = self.invoke(False)
-        self.assertEqual(self.launches, [(directory, 60, dict(toolchain=None, canonical_root=self.root, session_root=self.session))])
+        self.assertEqual(self.launches, [(directory, 60, dict(toolchain=None, canonical_root=self.root, session_root=self.session, development_launch=False))])
         self.assertFalse((directory / 'native.log').exists())
         self.assertFalse((directory / 'phase-verified.json').exists())
+
+    def test_development_launch_preserves_context_bound_and_refusal(self):
+        directory = self.invoke(False, development_launch=True)
+        self.assertEqual(self.launches, [(directory, 60, dict(toolchain=None, canonical_root=self.root,
+                                                            session_root=self.session, development_launch=True))])
+        self.assertFalse((directory / 'native.log').exists())
+        self.assertFalse((directory / 'phase-verified.json').exists())
+
+    def test_development_prepare_only_still_does_not_launch(self):
+        self.invoke(True, development_launch=True)
+        self.assertEqual(self.launches, [])
 
 
 if __name__ == '__main__':
