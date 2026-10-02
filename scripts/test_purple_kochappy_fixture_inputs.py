@@ -44,4 +44,44 @@ class Inputs(unittest.TestCase):
         e=controlled_environment({'P2_PURPLE_KOCHAPPY_FORCE_DOWN':'ambient'},self.exe,self.source,self.base/'save','paused-down')
         self.assertNotIn('P2_PURPLE_KOCHAPPY_FORCE_DOWN',e);self.assertEqual(e['P2_PURPLE_KOCHAPPY_PAUSED_DOWN'],'1')
 
+class LinuxInputs(unittest.TestCase):
+    """Mocked refusal boundaries only; these responses are never broker evidence."""
+    def setUp(self):
+        import copy
+        from unittest.mock import patch
+        import scripts.run_pikmin2_purple_kochappy as runner
+        self.runner=runner;self.patch=patch;self.copy=copy
+        self.proof={'exe_sha256':'a'*64,'target':'pikmin_ci_fixture_purple_kochappy','source':'tools/p2_purple_kochappy_runtime.cpp','pins':{'PIKMIN_SHA':'b'*40,'NATIVE_SHA':'c'*40,'FIXTURE_SOURCE_SHA256':'d'*64,'FIXTURE_SUITE':'purple-kochappy-runtime'}}
+        self.dependencies={'executable':{'sha256':'a'*64}}
+    def inputs(self):
+        return self.runner.linux_runtime_inputs('unused exe','unused root','unused session','unused run',{},'b'*40,'c'*40,'d'*64)
+    def test_compile_proof_cannot_authorize_runtime(self):
+        self.proof['pins']['FIXTURE_SUITE']='purple-kochappy-build'
+        with self.patch.object(self.runner,'runtime_evidence',return_value=self.dependencies),self.patch.object(self.runner,'linux_admission',return_value=self.proof):
+            with self.assertRaisesRegex(ValueError,'runtime recipe'):self.inputs()
+    def test_actual_broker_refusal_propagates(self):
+        with self.patch.object(self.runner,'runtime_evidence',return_value=self.dependencies),self.patch.object(self.runner,'linux_admission',side_effect=ValueError('actual broker refusal')):
+            with self.assertRaisesRegex(ValueError,'actual broker refusal'):self.inputs()
+    def test_dependency_refusal_precedes_admission(self):
+        with self.patch.object(self.runner,'runtime_evidence',side_effect=ValueError('ELF dependency refusal')),self.patch.object(self.runner,'linux_admission') as admission:
+            with self.assertRaisesRegex(ValueError,'ELF dependency refusal'):self.inputs()
+            admission.assert_not_called()
+    def test_source_target_and_executable_drift_rejected(self):
+        for field in ('exe_sha256','target','source'):
+            with self.subTest(field=field):
+                p=self.copy.deepcopy(self.proof);p[field]='wrong'
+                with self.patch.object(self.runner,'runtime_evidence',return_value=self.dependencies),self.patch.object(self.runner,'linux_admission',return_value=p):
+                    with self.assertRaises(ValueError):self.inputs()
+        for field in ('PIKMIN_SHA','NATIVE_SHA','FIXTURE_SOURCE_SHA256'):
+            with self.subTest(pin=field):
+                p=self.copy.deepcopy(self.proof);p['pins'][field]='e'*len(p['pins'][field])
+                with self.patch.object(self.runner,'runtime_evidence',return_value=self.dependencies),self.patch.object(self.runner,'linux_admission',return_value=p):
+                    with self.assertRaisesRegex(ValueError,'source pins'):self.inputs()
+    def test_posix_environment_path_and_all_prefix_filtering(self):
+        with self.patch.object(self.runner.os,'pathsep',':'):
+            e=self.runner.controlled_environment({'Path':'/usr/bin:/bin','p2_other':'poison','NECTAR_SETTINGS_PATH':'poison'},Path('fixture'),None,Path('private-save'),'positive')
+        self.assertTrue(e['PATH'].endswith(':/usr/bin:/bin'));self.assertNotIn('None',e['PATH'])
+        self.assertNotIn('p2_other',e);self.assertNotIn('NECTAR_SETTINGS_PATH',e)
+        self.assertEqual(e['PIKMIN_P2_TEST_START_DAY'],'5');self.assertEqual(e['PIKMIN_P2_ROOM_WINDOW'],'960x540')
+
 if __name__=='__main__':unittest.main()
