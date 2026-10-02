@@ -10,6 +10,7 @@ import stat
 import struct
 import subprocess
 import sys
+import time
 
 WINDOWS_DLLS = ('libstdc++-6.dll', 'libgcc_s_seh-1.dll', 'libwinpthread-1.dll')
 
@@ -189,21 +190,117 @@ def copy_private_tree(source, destination, overrides=None):
 
 
 def owned_process_options():
-    return {} if is_windows() else {'start_new_session': True}
+    if is_windows():
+        return {}
+    if not all(hasattr(os, name) for name in ('waitid', 'WNOWAIT', 'WNOHANG', 'WEXITED', 'P_PID')):
+        raise RuntimeError('POSIX fixture supervision requires non-reaping waitid')
+    if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+        raise RuntimeError('POSIX fixture supervision requires default SIGCHLD and sole child reaping')
+    return {'start_new_session': True}
+
+
+def _owned_exit(proc, deadline):
+    """Observe our unreaped child; ECHILD/unknown ownership never authorizes a signal.
+
+    The supervisor is the sole reaper. Default SIGCHLD must remain unchanged for
+    its lifetime. WNOWAIT retains the child even after exit, pinning its PID and
+    session/group number until the one retirement attempt has completed.
+    """
+    if proc.returncode is not None:
+        raise RuntimeError('Owned group leader was already reaped; refusing numeric group signal')
+    if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+        raise RuntimeError('SIGCHLD ownership policy changed during fixture supervision')
+    while True:
+        try:
+            result = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            break
+        except InterruptedError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Owned-child observation interrupted past its deadline')
+            continue
+        except ChildProcessError as error:
+            raise RuntimeError('Owned child identity lost; refusing numeric group signal') from error
+    if result is None:
+        return None
+    if result.si_pid != proc.pid:
+        raise RuntimeError('Unexpected waitid child identity')
+    if result.si_code == os.CLD_EXITED:
+        return result.si_status
+    if result.si_code in (os.CLD_KILLED, os.CLD_DUMPED):
+        return -result.si_status
+    raise RuntimeError('Unexpected waitid exit status')
+
+
+def wait_owned_process(proc, timeout):
+    if is_windows():
+        return proc.wait(timeout=timeout)
+    deadline = time.monotonic() + max(0, timeout)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+        try:
+            code = _owned_exit(proc, deadline)
+        except TimeoutError as error:
+            raise subprocess.TimeoutExpired(proc.args, timeout) from error
+        if code is not None:
+            return code  # Observe only; do not release the session leader yet.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(proc.args, timeout)
+        time.sleep(min(.01, remaining))
 
 
 def terminate_owned_process(proc):
-    """On POSIX retire the owned group even if its leader already exited."""
+    """Retire a POSIX group exactly once while its kernel child identity is held.
+
+    A repeated cleanup returns the original receipt (or failure) without another
+    signal. After reaping we only probe for absence; we never signal that number
+    again. Escaped sessions require the separate broker cgroup containment gate.
+    """
     if is_windows():
         if proc.poll() is None:
             proc.kill()
-    else:
+        if proc.poll() is None:
+            proc.wait(timeout=10)
+        return {'child_reaped': proc.returncode is not None, 'platform': 'windows'}
+    previous = getattr(proc, '_fixture_cleanup', None)
+    if previous is not None:
+        if previous.get('error'):
+            raise RuntimeError(previous['error'])
+        return previous
+    receipt = {'platform': 'posix', 'owned_group': proc.pid, 'signal_attempts': 0,
+               'child_reaped': False, 'group_absent': False}
+    proc._fixture_cleanup = receipt
+    try:
+        deadline = time.monotonic() + 2
+        _owned_exit(proc, deadline)  # Still our kernel child, including a retained zombie.
+        if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+            raise RuntimeError('Owned child is not its original private session/group leader')
+        receipt['leader_retained_until_signal'] = True
+        receipt['signal_attempts'] = 1
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
-            pass
-    if proc.poll() is None:
-        proc.wait(timeout=10)
+            # A retained session leader should still exist. Unknown disappearance
+            # is a failure, never a successful descendant retirement witness.
+            raise RuntimeError('Owned group disappeared before retirement')
+        # Signal first, then release the leader. We cannot safely repeat killpg
+        # after this wait(), even if descendants linger or the number is reused.
+        proc.wait(timeout=max(0, deadline - time.monotonic()))
+        receipt['child_reaped'] = True
+        while True:
+            try:
+                os.killpg(proc.pid, 0)  # Observation only, never a post-reap kill.
+            except ProcessLookupError:
+                receipt['group_absent'] = True
+                return receipt
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Retired group absence not witnessed within cleanup budget')
+            time.sleep(.01)
+    except BaseException as error:
+        receipt['error'] = str(error) or type(error).__name__
+        raise
 
 
 def linux_admission(exe, canonical_root, session_root, run_directory):
