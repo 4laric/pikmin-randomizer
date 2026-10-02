@@ -42,7 +42,16 @@ def modal_descendant(pid,child):
     return False
 
 
+def child_deadline_seconds(scenario):
+    # Actual Cave08 reached the far traversal at 60s after one physical
+    # delivery and two successful Blue-only separations; the complete route
+    # needs its own finite budget. Restore performs no traversal.
+    require(scenario in ('route','restore'),'unknown native scenario')
+    return 120 if scenario=='route' else 60
+
+
 def launch(run,scenario,receipt_path,token):
+    limit_seconds=child_deadline_seconds(scenario)
     env=dict(os.environ)
     for key in list(env):
         if key.startswith(('PIKMIN_CAVE_','PIKMIN_P2_','P2_CAVE_','LD_')):del env[key]
@@ -52,14 +61,14 @@ def launch(run,scenario,receipt_path,token):
     (run/'pikmin_settings.conf').write_text('debugKeys=0\nwindowWidth=960\nwindowHeight=540\ndisplayMode=0\n')
     backend=X11Input();baseline={w['window'] for w in backend.windows()}
     child=None;modal_fd=None;events=[];begin=None;end=None;pressed=False;ready=False;error=None;raw=[];cleanup=None;exit_code=None
-    deadline=time.monotonic()+60
+    started=time.monotonic();deadline=started+limit_seconds
     try:
         child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,
                                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,**owned_process_options())
         os.set_blocking(child.stdout.fileno(),False);selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
         pending=b''
         while True:
-            require(time.monotonic()<deadline,'60-second owned-child deadline exceeded')
+            require(time.monotonic()<deadline,str(limit_seconds)+'-second owned-child deadline exceeded')
             for key,mask in selector.select(.02):
                 data=os.read(child.stdout.fileno(),65536)
                 if data:pending+=data
@@ -111,7 +120,7 @@ def launch(run,scenario,receipt_path,token):
             if modal_fd is not None:os.close(modal_fd)
             backend.close()
             (run/'native.log').write_text('\n'.join(raw)+'\n')
-            (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'cleanup':cleanup,'observed_exit_code':exit_code,'elapsed_seconds':60-(deadline-time.monotonic())},indent=2)+'\n')
+            (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'cleanup':cleanup,'observed_exit_code':exit_code,'deadline_seconds':limit_seconds,'elapsed_seconds':time.monotonic()-started},indent=2)+'\n')
 
 
 

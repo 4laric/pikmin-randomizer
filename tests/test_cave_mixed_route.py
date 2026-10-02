@@ -8,10 +8,16 @@ import unittest
 from randomizer.cave_floor import create,fingerprint
 from experimental.pikmin2_cave_items import parse_items_text,items_from_layout,items_text
 from scripts.play_pikmin2_cave import checkpoint
-from scripts.run_pikmin2_cave_mixed_route import validate_boundary
+from scripts.run_pikmin2_cave_mixed_route import validate_boundary,child_deadline_seconds
 from tests.test_playable_cave import fixture_layout
 
 class BoundaryTests(unittest.TestCase):
+    def test_finite_route_and_restore_deadlines_unknown_scenario_refused(self):
+        self.assertEqual(child_deadline_seconds('route'),120)
+        self.assertEqual(child_deadline_seconds('restore'),60)
+        with self.assertRaisesRegex(ValueError,'unknown native scenario'):
+            child_deadline_seconds('campaign')
+
     def fixture(self):
         manifest=create('930','Player1')
         placement={'seed':7989240218121528064,'items':[{'slot_id':'forest_1:f1:leaf:0','host':'forest_1:f1:leaf:0','item':'treasure_water'}]}
