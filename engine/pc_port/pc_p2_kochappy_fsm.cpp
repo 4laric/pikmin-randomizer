@@ -51,6 +51,7 @@
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_kochappy_stun.h"
 #include "Pellet.h"
 #include "pc_p2_white.h"
 #include "pc_bbft.h"
@@ -64,6 +65,7 @@
 #include "Generator.h"
 #include "Stickers.h"
 #include "system.h"
+#include "nlib/System.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -106,6 +108,9 @@ struct FsmActor {
 	bool itemsSpawned     = false;
 	bool died             = false;
 	bool healthAsserted   = false;
+	bool stunPaused       = false;
+	bool stunManualMotion = false;
+	float stunMotionSpeed = 0.0f;
 	float logTimer        = 0.0f;
 	// #884: the Pikmin stuck into each source mouth slot; compared against the
 	// live mouth-sticker set only, never dereferenced.
@@ -434,8 +439,22 @@ int motionFor(State state)
 	}
 }
 
+void finishStun(BTeki* actor, FsmActor& state)
+{
+	if (!state.stunPaused) return;
+	actor->mMotionSpeed = state.stunMotionSpeed;
+	if (!state.stunManualMotion) actor->clearTekiOption(TEKIOPT_ManualAnimation);
+	state.stunPaused = false;
+	std::printf("P2_KOCHAPPY_STUN_RESUME generator=%u source_id=%d state=%s state_time=%.3f\n",
+	            pc_p2_campaign_token(actor), state.sourceId, p2kochappyfsm::stateName(state.state), state.stateTime);
+}
+
 void enter(BTeki* actor, FsmActor& state, State next)
 {
+	if (next == p2kochappyfsm::STATE_DEAD || next == p2kochappyfsm::STATE_PRESS) {
+		finishStun(actor, state);
+		pc_p2_kochappy_stun_interrupt(actor);
+	}
 	state.state        = next;
 	state.stateTime    = 0.0f;
 	state.attackFired  = false;
@@ -466,6 +485,8 @@ void pc_p2_kochappy_fsm_reset()
 
 void pc_p2_kochappy_fsm_forget(BTeki* actor)
 {
+	auto found = actors.find(static_cast<PelletView*>(actor));
+	if (found != actors.end()) finishStun(actor, found->second);
 	if (actors.erase(static_cast<PelletView*>(actor)) != 0) {
 		std::printf("P2_KOCHAPPY_FSM_FORGET registered=1\n");
 		std::fflush(stdout);
@@ -475,6 +496,29 @@ void pc_p2_kochappy_fsm_forget(BTeki* actor)
 bool pc_p2_kochappy_fsm_enabled()
 {
 	return ready;
+}
+
+bool pc_p2_kochappy_fsm_stun_eligible(const BTeki* actor)
+{
+	if (!ready || !actor) return false;
+	auto found = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+	return found != actors.end() && actor->mHealth > 0.0f
+	    && found->second.state != p2kochappyfsm::STATE_DEAD
+	    && found->second.state != p2kochappyfsm::STATE_PRESS;
+}
+
+void pc_p2_kochappy_fsm_begin_stun(BTeki* actor)
+{
+	auto found = actors.find(static_cast<PelletView*>(actor));
+	if (found == actors.end() || found->second.stunPaused) return;
+	FsmActor& state = found->second;
+	state.stunPaused = true;
+	state.stunManualMotion = actor->getTekiOption(TEKIOPT_ManualAnimation);
+	state.stunMotionSpeed = actor->mMotionSpeed;
+	actor->setTekiOption(TEKIOPT_ManualAnimation);
+	actor->mMotionSpeed = 0.0f; // Source stopMotion; preserve the animator counter/event flags.
+	std::printf("P2_KOCHAPPY_STUN_PAUSE generator=%u source_id=%d state=%s state_time=%.3f\n",
+	            pc_p2_campaign_token(actor), state.sourceId, p2kochappyfsm::stateName(state.state), state.stateTime);
 }
 
 void pc_p2_kochappy_fsm_setup()
@@ -542,6 +586,20 @@ bool pc_p2_kochappy_fsm_suppress_ai(const BTeki* actor)
 	return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
 }
 
+PcKochappyFsmSnapshot pc_p2_kochappy_fsm_observe(const BTeki* actor)
+{
+ PcKochappyFsmSnapshot value;
+ if(!ready||!actor)return value;
+ const auto found=actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+ if(found==actors.end())return value;
+ const auto& state=found->second;
+ value.available=true;value.state=int(state.state);value.stateTime=state.stateTime;
+ value.attackFired=state.attackFired;value.swallowFired=state.swallowFired;value.flickFired=state.flickFired;
+ value.stunPaused=state.stunPaused;
+ value.terminal=state.state==p2kochappyfsm::STATE_DEAD||state.state==p2kochappyfsm::STATE_PRESS;
+ return value;
+}
+
 // Source Obj::pressCallBack transitions to Press (health 0, type1 anim, then
 // the terminal Demo kill). No in-engine P1 Chappy press callback is wired to
 // this P2 actor, so callers that own a bounded squash event may invoke this.
@@ -586,6 +644,15 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 	if (actor->mHealth <= 0.0f && state.state != p2kochappyfsm::STATE_DEAD
 	    && state.state != p2kochappyfsm::STATE_PRESS) {
 		enter(actor, state, p2kochappyfsm::STATE_DEAD);
+	}
+	// EnemyBase Earthquake/Fit suspends doUpdate and the current motion. Keep
+	// this source FSM's state clock and one-shot events frozen while its existing
+	// registered receiver consumes bounce/Fit. Natural damage/death above still
+	// runs, and source Red10s/Orange5s remain owned by stun registration.
+	if (state.stunPaused) {
+		const float roll = pc_p2_kochappy_stun_needs_fit_roll(actor) ? NSystem::random() : 1.0f;
+		if (!pc_p2_kochappy_stun_step(actor, dt, roll)) return;
+		finishStun(actor, state);
 	}
 	state.stateTime += dt;
 
