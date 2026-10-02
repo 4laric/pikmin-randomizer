@@ -115,25 +115,56 @@ void setupVirtualPad(){
 class CaveMixedRouteApp final : public PlugPikiApp {
     int frames=0, observed=0, phase=0, point=0, phaseTick=0, throwTick=0, aimed=0;
     bool entrySeen=false,captainSeen=false,started=false,picked=false;
-    int separated=0;bool cycle=false;
+    int separated=0,selectionQuiet=0;Piki* selectedBlue=nullptr;
+    std::vector<Piki*> originalBlues,blueFlights;
     const std::string scenario=std::getenv("P2_CAVE_TEST_SCENARIO")?std::getenv("P2_CAVE_TEST_SCENARIO"):"route";
     void require(bool yes,const char* why){if(!yes){std::printf("FAIL CAVE_MIXED_ROUTE %s\n",why);std::fflush(nullptr);std::_Exit(1);}}
     int colour(int species){int count=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==species)++count;}return count;}
     void mixed(){require(alivePikis()==20&&colour(P2SpeciesBlue)==1&&colour(P2SpeciesYellow)==1&&colour(P2SpeciesRed)==18,"mixed squad changed");}
     int followers(int species){int count=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&p->mMode==PikiMode::FormationMode&&pc_p2_species(p)==species)++count;}return count;}
-    void next(int value){phase=value;point=0;phaseTick=observed;throwTick=0;aimed=0;fixturePad(0);}
+    void next(int value){phase=value;point=0;phaseTick=observed;throwTick=0;aimed=0;selectionQuiet=0;selectedBlue=nullptr;if(value==3)blueFlights.clear();fixturePad(0);}
     void f6(){for(int down=1;down>=0;--down){SDL_Event event{};event.type=down?SDL_KEYDOWN:SDL_KEYUP;event.key.windowID=SDL_GetWindowID(SDL_GL_GetCurrentWindow());event.key.state=down?SDL_PRESSED:SDL_RELEASED;event.key.keysym.scancode=SDL_SCANCODE_F6;event.key.keysym.sym=SDLK_F6;require(SDL_PushEvent(&event)==1,"F6 SDL event rejected");}std::puts("P2_CAVE_MIXED_F6 path=SDL_event confirmation=external_native_dialog");std::fflush(nullptr);}
     bool blueIdle(float& x,float& z){int count=0;x=z=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue&&p->mMode!=PikiMode::FormationMode){x+=p->mSRT.t.x;z+=p->mSRT.t.z;++count;}}if(count){x/=count;z/=count;}return count>0;}
-    void mappedThrow(Navi* n,float x,float z,bool selectBlue=false){
-        if(!throwTick){if(aimAt(n,x,z)&&++aimed>=15){throwTick=1;aimed=0;}return;}
-        unsigned buttons=0;
-        if(throwTick<=20)buttons=KeyConfig::_instance->mThrowKey.mBind;
-        if(selectBlue && throwTick<=20 && n->mNextThrowPiki && pc_p2_species(n->mNextThrowPiki)!=P2SpeciesBlue){
-            // Holding mapped A grabs; D-pad cycles real production throw selection.
-            cycle=!cycle;if(cycle)buttons|=KBBTN_DPAD_RIGHT;
-            aimAt(n,x,z,buttons);return;
+    bool originalBlue(Piki* p){for(Piki* actor:originalBlues)if(actor==p)return true;return false;}
+    void selectedBlueThrow(Navi* n,float x,float z){
+        const int state=n->getCurrState()->getID();
+        if(observed%30==0){auto* grab=state==NAVISTATE_ThrowWait?static_cast<NaviThrowWaitState*>(n->getCurrState()):nullptr;
+            Piki* actual=grab?(grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki):nullptr;
+            std::printf("P2_CAVE_MIXED_THROW_OBSERVE phase=%d nstate=%d step=%d preferred_class=%d expected_Blue_class=%d quiet=%d cursor=%.2f,%.2f target=%.2f,%.2f max_cursor=%.2f throw_min=%.2f throw_max=%.2f actual=%p actual_species=%d actual_state=%d held=%d selected=%p selected_state=%d flights=%d\n",phase,state,throwTick,pc_preferred_throw_color_for(n),int(Blue),selectionQuiet,n->mCursorWorldPos.x,n->mCursorWorldPos.z,x,z,C_NAVI_PARM(n,mCursorMaxRadius),C_NAVI_PARM(n,mThrowMinDistance),C_NAVI_PARM(n,mThrowMaxDistance),static_cast<void*>(actual),actual?pc_p2_species(actual):-1,actual?actual->getState():-1,grab?int(grab->mIsHoldingThrowPiki):0,static_cast<void*>(selectedBlue),selectedBlue?selectedBlue->getState():-1,int(blueFlights.size()));std::fflush(nullptr);
         }
-        aimAt(n,x,z,buttons);if(++throwTick>=85)throwTick=0;
+        if(selectedBlue && selectedBlue->getState()==PIKISTATE_Flying){
+            bool seen=false;for(Piki* actor:blueFlights)if(actor==selectedBlue)seen=true;
+            if(!seen){blueFlights.push_back(selectedBlue);std::printf("P2_CAVE_MIXED_BLUE_FLIGHT actor=%p ordinal=%d source=ordinary_release x=%.2f z=%.2f\n",static_cast<void*>(selectedBlue),int(blueFlights.size()),selectedBlue->mSRT.t.x,selectedBlue->mSRT.t.z);std::fflush(nullptr);}
+            fixturePad(0);return;
+        }
+        if(throwTick==2){fixturePad(0);if(selectedBlue && selectedBlue->getState()==PIKISTATE_Normal){selectedBlue=nullptr;throwTick=0;selectionQuiet=0;}return;}
+        if(state==NAVISTATE_ThrowWait){
+            auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
+            Piki* actual=grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki;
+            if(actual){require(actual->isAlive()&&originalBlue(actual)&&pc_p2_species(actual)==P2SpeciesBlue,"actual pending/held is not an original Blue");
+                if(!selectedBlue)selectedBlue=actual;require(selectedBlue==actual,"actual grab identity changed");}
+            if(actual && grab->mHeldThrowPiki==actual && grab->mIsHoldingThrowPiki && actual->getState()==PIKISTATE_Hanged){
+                aimAt(n,x,z,0);throwTick=2;std::printf("P2_CAVE_MIXED_BLUE_RELEASE actor=%p actual_Hanged=1 preferred_class=%d\n",static_cast<void*>(actual),pc_preferred_throw_color_for(n));std::fflush(nullptr);
+            }else aimAt(n,x,z,KeyConfig::_instance->mThrowKey.mBind);
+            return;
+        }
+        if(state!=NAVISTATE_Walk){fixturePad(0);return;}
+        // Production selection uses GlobalGameOptions::Blue (0), as returned
+        // by pc_throw_selection_class. Keep the named enum, not a guessed ID.
+        // D-pad selection happens before A. The HUD is only a preview eligibility
+        // check; actual pending/held membership above governs the release.
+        if(pc_preferred_throw_color_for(n)!=int(Blue)){
+            selectionQuiet=0;aimAt(n,x,z,(observed-phaseTick)%30<2?KBBTN_DPAD_RIGHT:0);return;
+        }
+        ++selectionQuiet;Piki* preview=n->mNextThrowPiki;
+        const bool eligible=preview&&originalBlue(preview)&&preview->isAlive()&&preview->mNavi==n&&preview->mMode==PikiMode::FormationMode&&preview->getState()==PIKISTATE_Normal&&preview->isThrowable();
+        const bool aimedAt=aimAt(n,x,z);
+        if(selectionQuiet>=10&&eligible&&aimedAt){aimAt(n,x,z,KeyConfig::_instance->mThrowKey.mBind);throwTick=1;}
+    }
+    void mappedThrow(Navi* n,float x,float z,bool selectBlue=false){
+        if(selectBlue){selectedBlueThrow(n,x,z);return;}
+        if(!throwTick){if(aimAt(n,x,z)&&++aimed>=15){throwTick=1;aimed=0;}return;}
+        aimAt(n,x,z,throwTick<=20?KeyConfig::_instance->mThrowKey.mBind:0);if(++throwTick>=85)throwTick=0;
     }
     bool aimAt(Navi* n,float x,float z,unsigned buttons=0){
         const float dx=x-n->mCursorWorldPos.x,dz=z-n->mCursorWorldPos.z,d=std::sqrt(dx*dx+dz*dz);
@@ -192,14 +223,14 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         require(observed-phaseTick<900,"ordinary route phase timeout");
         if(phase==0){static const float path[][2]={{0,-100},{-100,-100},{-100,20}};if(walkTo(n,path[point][0],path[point][1])){if(point==2&&following()!=20){gatherAtCursor(n);return;}if(++point==3)next(1);}return;}
         if(phase==1){Vector3f bud;require(pc_p2_cave_bud_position("blue",bud),"Blue bud missing");
-            if(colour(P2SpeciesBlue)==2&&!pc_p2_cave_bud_pending()){require(colour(P2SpeciesRed)==18,"Blue conversion mismatch");std::puts("P2_CAVE_MIXED_ACQUIRED red=18 blue=2");next(2);return;}
+            if(colour(P2SpeciesBlue)==2&&!pc_p2_cave_bud_pending()){require(colour(P2SpeciesRed)==18,"Blue conversion mismatch");Iterator blues(pikiMgr);CI_LOOP(blues){Piki* p=static_cast<Piki*>(*blues);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue)originalBlues.push_back(p);}require(originalBlues.size()==2,"original Blue identities missing");std::puts("P2_CAVE_MIXED_ACQUIRED red=18 blue=2");next(2);return;}
             require(colour(P2SpeciesBlue)<=2,"excess Blue conversion");
             if(pc_p2_cave_bud_pending()){fixturePad(0);return;}mappedThrow(n,bud.x,bud.z);return;}
         if(phase==2){if(following()!=20){gatherAtCursor(n);return;}if(walkTo(n,-100,-100)){separated=0;next(3);}return;}
         // At a dry point, ordinary Blue-only throws separate actors from Red squad.
         // Dismiss leaves Reds at the captain; whistle from the remote landing side.
         if(phase==3){int landed=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue&&p->mMode!=PikiMode::FormationMode&&p->getState()==PIKISTATE_Normal&&p->mSRT.t.x>20)++landed;}
-            if(landed==2){next(4);return;}mappedThrow(n,60,-100,true);return;}
+            if(landed==2){require(blueFlights.size()==2,"two original Blue ordinary flights not observed");next(4);return;}mappedThrow(n,60,-100,true);return;}
         if(phase==4){fixturePad(observed-phaseTick==1?KeyConfig::_instance->mDisbandKey.mBind:0);if(observed-phaseTick>30)next(5);return;}
         if(phase==5){if(walkTo(n,60,-180))next(6);return;}
         if(phase==6){require(followers(P2SpeciesRed)==0,"whistle gathered Reds; refusing water traversal");
