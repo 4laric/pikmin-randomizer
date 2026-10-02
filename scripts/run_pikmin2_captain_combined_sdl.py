@@ -11,7 +11,7 @@ from fixture_platform import is_windows, runtime_dependencies, runtime_evidence
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
- p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--runtime-dir',type=Path,help='Verified runtime DLL directory; use the matching CI artifact directory for packaged fixtures');p.add_argument('--prepare-only',action='store_true');p.add_argument('--timeout',type=int,choices=[60],default=60);a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--runtime-dir',type=Path,help='Verified runtime DLL directory; use the matching CI artifact directory for packaged fixtures');p.add_argument('--prepare-only',action='store_true');p.add_argument('--timeout',type=int,choices=[60],default=60);p.add_argument('--development-launch',action='store_true',help='Private development execution with existing runtime/capacity checks; no controller proof');a=p.parse_args()
  canonical=a.canonical_root.resolve();sessiondir=a.session_root.resolve()
  # Preserve Windows package preflight. Linux ELF/RPATH evidence must wait
  # until the exact native run cwd exists, not resolve from the caller cwd.
@@ -53,7 +53,7 @@ def main():
  (sessiondir/(a.phase+'-run.json')).write_text(json.dumps(dict(directory=str(run.directory)),indent=2),encoding='utf-8')
  print(run.directory,flush=True)
  if a.prepare_only:return
- # The pinned common launcher owns platform admission and admission.json.
+ # The common launcher verifies runtime/private context and owns bounded cleanup.
  (run.directory/'test-environment.json').write_text(json.dumps(dict(removed=removed,effective={k:v for k,v in os.environ.items() if k.startswith(('PIKMIN_','P2_','SDL_JOYSTICK'))}),indent=2))
  import importlib.util
  spec=importlib.util.spec_from_file_location('captain_guarded_runner',ROOT/'scripts/run_pikmin2_fixture.py');guarded=importlib.util.module_from_spec(spec);spec.loader.exec_module(guarded)
@@ -66,7 +66,7 @@ def main():
  args=['--randomizer-seed',str(run.bootstrap)];marker='PASS P2_CAPTAIN_CAMPAIGN_SAVE' if a.phase=='save' else 'PASS P2_CAPTAIN_CAMPAIGN_RESUME'
  if a.phase!='save':args.append('--resume-phase')
  if a.negative:args.append({'active':'--force-captain-down','inactive':'--force-inactive-down','null-state':'--force-null-state','missing-manager':'--force-missing-manager'}[a.negative])
- try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,toolchain=runtime_dir,canonical_root=canonical,session_root=sessiondir)
+ try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,toolchain=runtime_dir,canonical_root=canonical,session_root=sessiondir,development_launch=a.development_launch)
  finally:done.set();thread.join()
  assert not errors,errors
  assert result.get('launched',True),result  # Preserve preflight failure before inspecting an absent native log.
