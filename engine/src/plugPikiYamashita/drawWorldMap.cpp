@@ -1937,6 +1937,26 @@ public:
 		return id;
 	}
 
+#if defined(PIKI_PC_PORT)
+	void pcNavigationSnapshot(PcWorldMapSnapshot& value) {
+		if(mMode!=CoursePointMode::Operation||!mSelectedPoint)return;
+		bool selectedOwned=false;
+		for(int i=0;i<5;++i)if(mSelectedPoint==&mCoursePoints[i])selectedOwned=true;
+		if(!selectedOwned)return;
+		for(int direction=0;direction<4;++direction) {
+			auto* link=mSelectedPoint->getLinkCoursePointPtr(static_cast<WorldMapCoursePoint::linkFlag>(direction));
+			if(!link)continue;
+			bool owned=false;for(int i=0;i<5;++i)if(link==&mCoursePoints[i])owned=true;
+			if(!owned)return; // No foreign link dereference or partial snapshot.
+			const int course=link->getNumber();
+			if(course<0||course>=STAGE_COUNT)return;
+			value.navigationCourse[direction]=course;
+			value.navigationOpen[direction]=link->getOpenSw()&&playerState&&playerState->courseOpen(course);
+		}
+		value.navigationAvailable=true;
+	}
+#endif
+
 	bool update(Controller* controller, bool p2)
 	{
 		// Access can arrive while the player is parked on this screen.
@@ -2491,6 +2511,8 @@ PcWorldMapSnapshot zen::DrawWorldMap::pcInputSnapshot() const
 	    && playerState->courseOpen(value.selectedCourse);
 	if (mCurrentMode==DrawWorldMapMode::Operation && mCursorMgr)
 		value.cursorMoveReady=mCursorMgr->isMoveOK();
+	if (mCurrentMode==DrawWorldMapMode::Operation && mCoursePointMgr)
+		mCoursePointMgr->pcNavigationSnapshot(value);
 	// Never inspect a dormant confirmation selection outside its owning mode.
 	if (mCurrentMode==DrawWorldMapMode::Confirm && mConfirmMgr) {
 		value.confirmationActive=mConfirmMgr->pcInputReady();

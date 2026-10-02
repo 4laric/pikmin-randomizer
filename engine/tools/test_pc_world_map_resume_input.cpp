@@ -16,6 +16,43 @@ PcWorldMapSnapshot ready(std::uint64_t frame=1) {
 }
 int main() {
     using I=PcWorldMapInput;
+    auto closedDefault=ready();closedDefault.courseOpen=false;closedDefault.navigationAvailable=true;
+    closedDefault.navigationCourse[2]=1;closedDefault.navigationOpen[2]=true;
+    PcWorldMapResumeInput navigate;
+    CHECK(navigate.observe(closedDefault,1,1)==I::Left && navigate.navigationEdges()==1 && navigate.keyEdges()==0);
+    closedDefault.observedFrame=2;CHECK(navigate.observe(closedDefault,2,1)==I::Neutral); // actual stick key-up
+    auto arrived=ready(3);arrived.selectedCourse=1;
+    CHECK(navigate.observe(arrived,3,1)==I::Confirm && navigate.keyEdges()==1);
+    arrived.observedFrame=4;arrived.mode=4;CHECK(navigate.observe(arrived,4,1)==I::Neutral);
+    arrived.observedFrame=5;arrived.confirmationActive=true;arrived.confirmationYes=true;
+    CHECK(navigate.observe(arrived,5,1)==I::Confirm && navigate.keyEdges()==2);
+    arrived.observedFrame=6;arrived.mode=8;arrived.returnStatus=1;CHECK(navigate.observe(arrived,6,1)==I::Neutral);
+    for(int fault=0;fault<4;++fault){auto bad=closedDefault;bad.observedFrame=1;
+        if(fault==0)bad.navigationAvailable=false;
+        if(fault==1)bad.navigationOpen[2]=false;
+        if(fault==2){bad.navigationCourse[0]=1;bad.navigationOpen[0]=true;}
+        if(fault==3){bad.selectedCourse=1;bad.courseOpen=false;}
+        PcWorldMapResumeInput refused;CHECK(refused.observe(bad,1,1)==I::Refuse && refused.navigationEdges()==0);
+    }
+    auto delayed=closedDefault;delayed.observedFrame=1;delayed.cursorMoveReady=false;
+    PcWorldMapResumeInput waiting;CHECK(waiting.observe(delayed,1,1)==I::Neutral && waiting.navigationEdges()==0);
+    PcWorldMapResumeInput lost;closedDefault.observedFrame=1;CHECK(lost.observe(closedDefault,1,1)==I::Left);
+    auto unexpected=ready(2);unexpected.selectedCourse=2;CHECK(lost.observe(unexpected,2,1)==I::Refuse);
+    PcWorldMapResumeInput noMovement;CHECK(noMovement.observe(closedDefault,1,1)==I::Left);
+    for(unsigned frame=2;frame<=121;++frame){closedDefault.observedFrame=frame;CHECK(noMovement.observe(closedDefault,frame,1)==I::Neutral);}
+    closedDefault.observedFrame=122;CHECK(noMovement.observe(closedDefault,122,1)==I::Refuse && noMovement.navigationEdges()==1);
+    PcWorldMapResumeInput changed;auto first=ready();CHECK(changed.observe(first,1,0)==I::Confirm);
+    CHECK(changed.observe(ready(2),2,1)==I::Refuse);
+    for(int invert=0;invert<4;++invert){int x=0,y=0;
+        CHECK(pc_world_map_stick_command(I::Left,invert,8,true,false,x,y));
+        CHECK(((invert&1)?-x:x)==-74 && y==0);
+        CHECK(pc_world_map_stick_command(I::Up,invert,73,true,false,x,y));
+        CHECK(((invert&2)?-y:y)==74 && x==0);
+    }
+    for(int fault=0;fault<4;++fault){int x=123,y=456;
+        CHECK(!pc_world_map_stick_command(I::Left,fault==0?4:0,fault==1?74:8,fault!=2,fault==3,x,y));
+        CHECK(x==0 && y==0);
+    }
     for(int mode=-1;mode<=1;++mode) {
         PcWorldMapResumeInput initial;auto fresh=ready();fresh.mode=mode;fresh.selectedCourse=-1;fresh.courseOpen=false;fresh.returnStatus=-1;
         CHECK(initial.observe(fresh,1)==I::Neutral && initial.keyEdges()==0);

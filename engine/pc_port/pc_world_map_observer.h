@@ -46,18 +46,35 @@ struct PcWorldMapSnapshot {
     bool coursePointOperation=false, cursorMoveReady=false;
     bool confirmationActive=false, confirmationYes=false;
     int mode=-1, returnStatus=-1, selectedCourse=-1;
+    bool navigationAvailable=false, navigationOpen[4]={};
+    int navigationCourse[4]={-1,-1,-1,-1}; // Actual owned Up/Down/Left/Right links.
     std::uint64_t sectionIdentity=0, setupIdentity=0, menuIdentity=0, observedFrame=0;
 };
 PcWorldMapSnapshot pc_world_map_observe();
 
-enum class PcWorldMapInput { Neutral, Confirm, Refuse };
+enum class PcWorldMapInput { Neutral, Confirm, Refuse, Up, Down, Left, Right };
+inline bool pc_world_map_stick_command(PcWorldMapInput input,int invert,int deadZone,bool directionLive,bool extraAction,int& x,int& y) {
+    x=0;y=0;
+    if(invert<0||invert>3||deadZone<0||deadZone>=74||!directionLive||extraAction)return false;
+    switch(input){case PcWorldMapInput::Up:y=74;break;case PcWorldMapInput::Down:y=-74;break;
+        case PcWorldMapInput::Left:x=-74;break;case PcWorldMapInput::Right:x=74;break;default:return false;}
+    if(invert&1)x=-x;
+    if(invert&2)y=-y;
+    return true;
+}
 class PcWorldMapResumeInput {
     std::uint64_t section=0, setup=0, menu=0, lastFrame=0;
     unsigned phase=0, edges=0;
     bool sampled=false, release=false;
+    int target=-1, navigationFrom=-1;
+    bool navigationIssued=false, navigationPending=false;
+    std::uint64_t navigationFrame=0;
 public:
     unsigned keyEdges() const { return edges; }
-    PcWorldMapInput observe(const PcWorldMapSnapshot& s,std::uint64_t currentFrame) {
+    unsigned navigationEdges() const { return navigationIssued?1:0; }
+    PcWorldMapInput observe(const PcWorldMapSnapshot& s,std::uint64_t currentFrame,int expectedCourse=0) {
+        if(expectedCourse<0||expectedCourse>=5||(target>=0&&target!=expectedCourse))return PcWorldMapInput::Refuse;
+        target=expectedCourse;
         if (s.available && (s.observedFrame!=currentFrame || !s.contextReady
             || !s.sectionIdentity || !s.setupIdentity || !s.menuIdentity)) return PcWorldMapInput::Refuse;
         if (sampled && currentFrame<lastFrame) return PcWorldMapInput::Refuse;
@@ -69,11 +86,31 @@ public:
                 return PcWorldMapInput::Refuse;
             // Initial native appearance may precede selected/open/return
             // readiness. Observe the same typed live owners, emit no input.
-            if (phase==0 && (s.mode==-1 || s.mode==0 || s.mode==1)) return PcWorldMapInput::Neutral;
+            if (phase==0 && !navigationIssued && (s.mode==-1 || s.mode==0 || s.mode==1)) return PcWorldMapInput::Neutral;
             if (s.mode==-1 || s.mode==0 || s.mode==1) return PcWorldMapInput::Refuse;
-            if (s.selectedCourse!=0 || !s.courseOpen
-                || !(s.returnStatus==5 || (phase==2 && s.mode==8 && s.returnStatus==0)))
+            if (!(s.returnStatus==5 || (phase==2 && s.mode==8 && s.returnStatus==target)))
                 return PcWorldMapInput::Refuse;
+            if(navigationPending) {
+                if(currentFrame-navigationFrame>120)return PcWorldMapInput::Refuse;
+                if(s.selectedCourse==target&&s.courseOpen)navigationPending=false;
+                else if(s.selectedCourse!=navigationFrom)return PcWorldMapInput::Refuse;
+            }
+            if(s.mode==2&&phase==0&&s.selectedCourse!=target) {
+                if(s.selectedCourse<0||s.selectedCourse>=5)return PcWorldMapInput::Refuse;
+                if(release){release=false;return PcWorldMapInput::Neutral;}
+                if(navigationPending)return PcWorldMapInput::Neutral;
+                if(navigationIssued||!s.navigationAvailable)return PcWorldMapInput::Refuse;
+                if(!s.coursePointOperation||!s.cursorMoveReady)return PcWorldMapInput::Neutral;
+                int direction=-1;
+                for(int i=0;i<4;++i)if(s.navigationCourse[i]==target&&s.navigationOpen[i]) {
+                    if(direction!=-1)return PcWorldMapInput::Refuse;
+                    direction=i;
+                }
+                if(direction<0)return PcWorldMapInput::Refuse;
+                navigationFrom=s.selectedCourse;navigationFrame=currentFrame;navigationIssued=true;navigationPending=true;release=true;
+                return direction==0?PcWorldMapInput::Up:direction==1?PcWorldMapInput::Down:direction==2?PcWorldMapInput::Left:PcWorldMapInput::Right;
+            }
+            if(s.selectedCourse!=target||!s.courseOpen)return PcWorldMapInput::Refuse;
         }
         if (release) {release=false;return PcWorldMapInput::Neutral;}
         if (!s.available) return PcWorldMapInput::Neutral;

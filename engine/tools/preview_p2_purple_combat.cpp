@@ -18,6 +18,7 @@
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
 #include "pc_world_map_observer.h"
+#include "pc_pad_bindings.h"
 #include "pc_purple_save_budget.h"
 #include "system.h"
 #include "App.h"
@@ -229,6 +230,22 @@ static void ordinaryInput(unsigned buttons=0,int y=0,int x=0,bool nativeAxisUnit
     SDL_JoystickSetVirtualAxis(ordinaryPad,SDL_CONTROLLER_AXIS_LEFTX,Sint16(nativeAxisUnits?x*256:x*32767/74));
     SDL_JoystickSetVirtualAxis(ordinaryPad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(nativeAxisUnits?-y*256:-y*32767/74));
     SDL_JoystickUpdate();
+}
+static void ordinaryMapNavigation(PcWorldMapInput input) {
+    const int invert=pc_window_get_stick_invert(),deadZone=pc_window_get_stick_dead_zone();
+    int x=0,y=0;
+    require(pc_world_map_stick_command(input,invert,deadZone,true,false,x,y),"loaded map stick dead zone/inversion unsupported");
+    int bindings[PC_KEY_ACT_COUNT];
+    for(int i=0;i<PC_KEY_ACT_COUNT;++i)bindings[i]=pc_window_get_gamepad_binding(i);
+    PcPadRoute route;pc_pad_route_build(bindings,&route,invert,pc_window_get_cstick_invert());
+    PcPadRaw raw={};raw.axis[SDL_CONTROLLER_AXIS_LEFTX]=x*256;raw.axis[SDL_CONTROLLER_AXIS_LEFTY]=-y*256;
+    const int nativeX=(invert&1)?-x:x,nativeY=(invert&2)?-y:y;
+    const bool live=pc_pad_route_stick_live(route.stick,nativeX?nativeX:nativeY,nativeX==0);
+    bool extra=false;
+    for(int i=0;i<PC_KEY_ACT_COUNT;++i)if((i<PC_KEY_ACT_STICK_UP||i>PC_KEY_ACT_STICK_RIGHT)&&pc_pad_raw_bind_held(raw,route.bind[i]))extra=true;
+    require(pc_world_map_stick_command(input,invert,deadZone,live,extra,x,y),"loaded map stick cleared or bound to extra action");
+    ordinaryInput(0,y,x,true);
+    std::printf("P2_PURPLE_ORDINARY_RESUME_NAV native_x=%d native_y=%d SDL_x=%d SDL_y=%d invert=%d dead_zone=%d extra_action=0 settings_writes=0\n",nativeX,nativeY,x*256,-y*256,invert,deadZone);
 }
 static void ordinaryController() {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");
@@ -1830,7 +1847,8 @@ public:
         if(mode("persistence_resume")) pc_p2_input_script_set(1,(!n || gameflow.mIsUIOverlayActive) && ticks%20<4?KBBTN_A:0,0,0);
         if(mode("natural_resume")) {
             const PcWorldMapSnapshot map=pc_world_map_observe();
-            const PcWorldMapInput intent=ordinaryResumeMapInput.observe(map,gsys->mTotalFrames);
+            const int expectedCourse=pc_randomizer_start_stage(); // Parsed from the actual seed profile, never a UI write.
+            const PcWorldMapInput intent=ordinaryResumeMapInput.observe(map,gsys->mTotalFrames,expectedCourse);
             if(intent==PcWorldMapInput::Refuse) {
                 ordinaryInput();
                 std::printf("P2_PURPLE_ORDINARY_RESUME_MAP_REFUSAL available=%d context=%d frame=%llu observed=%llu mode=%d return=%d course=%d open=%d coursepoint=%d cursor=%d confirm=%d yes=%d section=%llu setup=%llu menu=%llu challenge=%d pause=%d overlay=%d tutorial=%d movie=%d read_only=1\n",
@@ -1840,7 +1858,8 @@ public:
                     int(gameflow.mIsChallengeMode),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mIsTutorialTextActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive));
             }
             require(intent!=PcWorldMapInput::Refuse,"ordinary resume map identity/readiness/selection refused");
-            ordinaryInput(intent==PcWorldMapInput::Confirm?KBBTN_A:0);
+            if(intent==PcWorldMapInput::Up||intent==PcWorldMapInput::Down||intent==PcWorldMapInput::Left||intent==PcWorldMapInput::Right)ordinaryMapNavigation(intent);
+            else ordinaryInput(intent==PcWorldMapInput::Confirm?KBBTN_A:0);
             if(intent==PcWorldMapInput::Confirm) std::printf(
                 "P2_PURPLE_ORDINARY_RESUME_MAP edge=%u frame=%llu mode=%d course=%d open=%d cursor_ready=%d confirm_ready=%d yes=%d scene_identity=%llu setup_identity=%llu menu_identity=%llu observer_read_only=1 SDL_input=1 area_day_injected=0\n",
                 ordinaryResumeMapInput.keyEdges(),static_cast<unsigned long long>(map.observedFrame),map.mode,map.selectedCourse,
