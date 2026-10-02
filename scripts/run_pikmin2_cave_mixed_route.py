@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import selectors
+import shutil
 import signal
 import subprocess
 import sys
@@ -110,6 +111,12 @@ def main():
     for name in ('assets','pod','fixture','generator','output'):parser.add_argument('--'+name,type=Path,required=True)
     args=parser.parse_args();require(os.name!='nt','Linux supervised route entrypoint')
     output=args.output.resolve();require(not output.exists(),'fresh output required');output.mkdir(parents=True)
+    asset_bytes=sum(p.stat().st_size for p in args.assets.rglob('*') if p.is_file())
+    pod_bytes=sum(p.stat().st_size for p in args.pod.rglob('*') if p.is_file())
+    needed=2*(asset_bytes+pod_bytes+args.fixture.stat().st_size+args.generator.stat().st_size)+256*1024*1024
+    free=shutil.disk_usage(output).free
+    (output/'disk-preflight.json').write_text(json.dumps({'available_bytes':free,'required_bytes':needed,'two_fresh_asset_copies':True},indent=2)+'\n')
+    require(free>=needed,'insufficient free disk for two fresh cave stages: '+str(free)+' available, '+str(needed)+' required')
     manifest=create('930','Player1');token=fingerprint(manifest)[:32]
     receipt_path=output/'receipts.txt';receipt_path.write_text('P2_RECEIPTS_1\n')
     initial=output/'route';stage(manifest,args.assets,args.pod,args.fixture,args.generator,initial)
