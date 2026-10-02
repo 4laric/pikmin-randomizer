@@ -303,6 +303,43 @@ def terminate_owned_process(proc):
         raise
 
 
+def linux_development_context(exe, canonical_root, session_root, run_directory, runtime):
+    """Actual private-run evidence, without a controller authorization claim.
+
+    Callers opt in explicitly and still use runtime_evidence() and the owned
+    supervisor. This context is never interchangeable with linux_admission().
+    """
+    root, session, exe, run = (Path(p).resolve(strict=True) for p in
+                              (canonical_root, session_root, exe, run_directory))
+    if (session == root / 'output' or not session.is_relative_to(root / 'output')
+            or not run.is_relative_to(session)):
+        raise ValueError('Development fixture requires a private output session/run')
+    if (runtime.get('platform') != 'linux' or runtime.get('executable', {}).get('path') != str(exe)
+            or runtime['executable'].get('sha256') != digest(exe)):
+        raise ValueError('Executable changed or differs from inspected Linux runtime')
+    values = {}
+    for line in Path('/proc/meminfo').read_text().splitlines():
+        fields = line.split()
+        if fields and fields[0] in ('MemTotal:', 'MemAvailable:'):
+            if len(fields) != 3 or fields[2] != 'kB' or not fields[1].isdecimal():
+                raise ValueError('Unreadable Linux memory capacity')
+            values[fields[0][:-1]] = int(fields[1]) * 1024
+    total, available = values.get('MemTotal', 0), values.get('MemAvailable', -1)
+    if not 0 <= available <= total or total <= 0:
+        raise ValueError('Unreadable Linux memory capacity')
+    used = 100 * (1 - available / total)
+    if used > 95:
+        raise ValueError('Linux development fixture exceeds 95% physical RAM ceiling')
+    return {'schema': 1, 'mode': 'development', 'controller_proof_used': False,
+            'root': str(root), 'session': str(session), 'run': str(run),
+            'executable': dict(runtime['executable']),
+            'helper_source': {'path': str(Path(__file__).resolve()), 'sha256': digest(__file__)},
+            'capacity': {'source': '/proc/meminfo', 'total_bytes': total,
+                         'available_bytes': available, 'used_percent': used, 'ceiling_percent': 95,
+                         'cpu_count': os.cpu_count()},
+            'scope': 'Private development execution evidence; no admission or compiled-source attestation'}
+
+
 def linux_admission(exe, canonical_root, session_root, run_directory):
     """Consult the fixed controller proof, never a caller-selected authorization."""
     helper = Path('/srv/game-ci/production/fixture_admission_proof.py')
