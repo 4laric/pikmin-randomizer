@@ -59,6 +59,8 @@ def test_static_proposal_reconstructs_source_and_excludes_finite_food(manifest, 
     monkeypatch.setattr(supply, "STATIC_BOOTSTRAPS", {"red": dict(version="onion-retrieval-v1",
                           evidence="model fixture only", requires=[])})
     saved = supply.resolve_static(manifest)
+    assert saved["bootstrap_proofs"] == supply.STATIC_BOOTSTRAPS
+    assert saved["bootstrap_proofs"] is not supply.STATIC_BOOTSTRAPS
     assert supply.validate_snapshot(json.loads(json.dumps(saved)), manifest)
     assert supply.static_can_reach_population(saved, manifest, {}, 100, "red")
     assert not supply.static_can_reach_population(saved, manifest, {"Blue Onion": 1}, 25, "blue")
@@ -71,6 +73,28 @@ def test_static_proposal_reconstructs_source_and_excludes_finite_food(manifest, 
     monkeypatch.setattr(supply, "STATIC_ROUTES", {uid: model_branch() for uid in HOPE_DWARFS})
     with pytest.raises(ValueError, match="renewable supplier"):
         supply.resolve_static(manifest)
+
+
+def test_bootstrap_proofs_are_strict_and_saved_not_consumable(manifest, monkeypatch):
+    import randomizer.population_supply as supply
+    posies = [row["uid"] for row in INPUTS["generators"] if row["stage"] == 1
+              and row["kind"] == "teki" and row["species"] == 7
+              and row["schedule"]["mode"] == "every-visit"]
+    monkeypatch.setattr(supply, "STATIC_ROUTES", {uid: model_branch(allows_fully_grown_posy=True) for uid in posies})
+    proof = dict(version="onion-retrieval-v1", evidence="model-only retrieval fixture", requires=[])
+    for change in (dict(requires=["Pikmin Delivery (10)"]), dict(evidence=True),
+                   dict(evidence="  "), dict(count=999), dict(requires=[{}]),
+                   dict(requires=["Blue Onion", "Blue Onion"])):
+        monkeypatch.setattr(supply, "STATIC_BOOTSTRAPS", {"red": {**proof, **change}})
+        with pytest.raises(ValueError, match="Onion retrieval"):
+            supply.resolve_static(manifest)
+    monkeypatch.setattr(supply, "STATIC_BOOTSTRAPS", {"red": proof})
+    saved = supply.resolve_static(manifest)
+    supply.STATIC_BOOTSTRAPS["red"]["requires"] = ["Blue Onion"]
+    with pytest.raises(ValueError, match="reviewed source snapshot"):
+        supply.validate_snapshot(saved, manifest)
+    with pytest.raises(ValueError, match="reviewed source snapshot"):
+        supply.static_can_reach_population(saved, manifest, {"Blue Onion": 1}, 50, "red")
 
 
 def model_branch(**changes):

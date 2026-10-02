@@ -65,6 +65,14 @@ progression proof; separate successful count queries cannot reuse a consumed bod
 
 ## Exact-owner integration proposal
 
+The static proposal saves `bootstrap_proofs` alongside supplier routes. Both
+reconstruct from the code-owned registries during validation, so a changed Onion
+retrieval prerequisite invalidates the old snapshot rather than silently changing
+reachability under its saved fingerprint. Retrieval proofs accept exact version,
+nonempty textual evidence and unique permanent progression requirements only;
+delivery filler, unknown fields and malformed values are rejected. Empty reviewed
+registries still refuse activation. These are source controls, not route proofs.
+
 The current seed owner should review the source snapshot and bounded logical
 branches before enabling it. Required hooks belong to the genuine seed/catalog,
 AP/session and native owners:

@@ -198,12 +198,30 @@ def resolve_static(manifest):
     """Production proposal: renewable food only, with code-owned route proofs."""
     if not STATIC_ROUTES or not STATIC_BOOTSTRAPS:
         raise ValueError("population supply has no reviewed renewable/bootstrap witnesses")
+    from .catalog import UNLOCKS, FLARLIC
+    from .stats import UPGRADE_ITEMS
+    allowed = set(UNLOCKS) | set(UPGRADE_ITEMS) | {FLARLIC}
+    if type(STATIC_BOOTSTRAPS) is not dict:
+        raise ValueError("invalid reviewed Onion retrieval witness")
+    for destination, proof in STATIC_BOOTSTRAPS.items():
+        if (destination not in COLORS or type(proof) is not dict
+                or set(proof) != {"version", "evidence", "requires"}
+                or proof["version"] != "onion-retrieval-v1"
+                or type(proof["evidence"]) is not str or not proof["evidence"].strip()
+                or type(proof["requires"]) is not list
+                or any(type(item) is not str or item not in allowed for item in proof["requires"])
+                or len(proof["requires"]) != len(set(proof["requires"]))):
+            raise ValueError("invalid reviewed Onion retrieval witness")
     snapshot = resolve(manifest, STATIC_ROUTES)
     witnessed = {row["uid"]: row for row in snapshot["suppliers"] if row["logic_route"]}
     if set(witnessed) != set(STATIC_ROUTES) or any(
             row["suppressed"] or not row["repeatable_at_cap"] or row["count"] <= 0
             or not any(row["yields"].values()) for row in witnessed.values()):
         raise ValueError("static population witness is not an admitted renewable supplier")
+    # Retrieval prerequisites are part of saved immutable logic, too. Changing
+    # the code-owned bootstrap registry must invalidate an old snapshot instead
+    # of silently changing reachability while keeping its fingerprint unchanged.
+    snapshot["bootstrap_proofs"] = copy.deepcopy(STATIC_BOOTSTRAPS)
     return snapshot
 
 
@@ -228,10 +246,7 @@ def static_can_reach_population(snapshot, manifest, inventory, count, color=None
     from .catalog import color_inventory, starting_color
     owned = color_inventory(inventory, manifest)
     carriers = {}
-    for destination, proof in STATIC_BOOTSTRAPS.items():
-        if (destination not in COLORS or proof.get("version") != "onion-retrieval-v1"
-                or not proof.get("evidence") or type(proof.get("requires")) is not list):
-            raise ValueError("invalid reviewed Onion retrieval witness")
+    for destination, proof in snapshot["bootstrap_proofs"].items():
         if owned.get(destination.title() + " Onion", 0) and all(
                 owned.get(item, 0) for item in proof["requires"]):
             carriers[destination] = 20 if destination == starting_color(manifest) else 5
