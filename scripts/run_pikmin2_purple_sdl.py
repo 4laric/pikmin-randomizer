@@ -283,7 +283,8 @@ def execute(a, m):
         require(git(a.root, 'rev-parse', 'HEAD') == a.root_pin, 'Root pin changed')
         require(not git(a.root, 'status', '--porcelain', '--untracked-files=no'), 'Root tracked files changed')
         require(all(digest(a.root / name) == value for name, value in code_inputs.items()), 'Imported code changed')
-        report['source_binding'] = ('controller native/root commit pins+native source digest+target/source path+executable hash and exact SDL mode; native_source_sha256 separately recorded artifact provenance'
+        report['source_binding'] = ('Private development launch: executable hash verified; native/root/source pins are metadata qualified by separate build provenance'
+                                    if getattr(a, 'development_launch', False) else 'controller native/root commit pins+native source digest+target/source path+executable hash and exact SDL mode; native_source_sha256 separately recorded artifact provenance'
                                     if os.name != 'nt' else 'Windows artifact/source provenance requires separate reviewed receipt; log fields alone do not certify source')
         report.update(passed=True, reason='Bounded initialized guard PASS' if a.mode in GUARDS else 'Bounded SDL acquisition PASS')
     except Exception as error:
