@@ -1,4 +1,7 @@
 #pragma once
+inline bool pcPurpleDismissInitialModes(unsigned formation,unsigned free) {
+    return formation<=19 && free==19-formation;
+}
 enum class PcPurpleDismissInput { Neutral, Press, Done, Refuse };
 class PcPurpleDismissPolicy {
 public:

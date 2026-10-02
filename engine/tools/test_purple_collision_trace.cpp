@@ -8,6 +8,11 @@
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
     int captain=0, partner=0;
+    for(unsigned formation=0;formation<=19;++formation)
+        check(pcPurpleDismissInitialModes(formation,19-formation),"legitimate mixed Free/Formation initial roster");
+    check(!pcPurpleDismissInitialModes(19,1),"extra initial body refused");
+    check(!pcPurpleDismissInitialModes(18,0),"missing initial body refused");
+    check(!pcPurpleDismissInitialModes(20,0),"extra Formation roster refused without unsigned underflow");
     PcPurpleDismissPolicy dismiss;
     check(dismiss.observe(false,true,false,false)==PcPurpleDismissInput::Neutral,"walking dismiss establishes released edge");
     check(dismiss.observe(false,true,false,false)==PcPurpleDismissInput::Press,"ordinary loaded button press");

@@ -1344,7 +1344,10 @@ class PurpleCombatApp : public PlugPikiApp {
         }
         require(sdlThrowObserved&&current.size()==19&&heads==1,"ordinary dismiss population conservation");
         if(!sdlDismissHead) {
-            require(formation==19&&free==0&&KeyConfig::_instance,"ordinary dismiss initial formation");
+            std::printf("P2_PURPLE_SDL_DISMISS_INITIAL tick=%d formation=%u free=%u bodies=19 heads=1 total=20 "
+                "owner_verified=1 actor_writes=0\n",ticks,formation,free);
+            require(pcPurpleDismissInitialModes(formation,free),"ordinary dismiss initial mode conservation");
+            require(KeyConfig::_instance,"ordinary dismiss loaded key configuration missing");
             const KeyConfig* keys=KeyConfig::_instance;
             const unsigned bind=unsigned(keys->mDisbandKey.mBind);
             // X is the supported ordinary SDL/wake path. Do not guess another
