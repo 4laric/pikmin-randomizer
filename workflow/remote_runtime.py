@@ -206,6 +206,11 @@ def validate_remote_runtime(root, data, paths, refs):
                 proof['admitted'] is True and proof['session'] == directory,
                 'Phase admission mismatch')
         require(proof['target'] == result['selected_target'] and proof['guard_sha256'] == result['canonical_root_guard']['sha256'] and proof['controller_sha256'] == result['controller_sha256'] and proof['job'] == job and proof['unit'] == admission['unit'], 'Phase compiled profile mismatch')
+        source = phase_load('source-inputs.json')
+        require(source['root'] == data['root']['head'] and source['root_dirty'] == '' and source['native'] == data['native']['head'] and source['fixture_source_sha256'] == result['requested_source_sha256'] and source['mode'] == phase['mode'] and source['timeout'] == 60 and source['human_launched'] is False, 'Phase source provenance mismatch')
+        assessment = phase_load('acceptance-assessment.json')
+        require(assessment['raw'] == run and assessment['admission'] == proof and assessment['mode'] == phase['mode'] and assessment['passed'] is True and assessment['human_launched'] is False, 'Phase assessment binding mismatch')
+        require(run['captain_down'] == (expected == 86) and run['passed'] == (expected == 0), 'Initialized captain phase result mismatch')
         inputs = phase_load('run-inputs.json')
         require(inputs['exe'] == executable['path'] and inputs['exe_sha256'] == executable['sha256'] and
                 inputs['cwd'] == directory, 'Phase input mismatch')
