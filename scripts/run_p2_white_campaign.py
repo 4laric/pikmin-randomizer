@@ -577,11 +577,15 @@ class PipeRPC:
 
 class OwnedX11Client:
     """Supervisor holds only bounded pipes; all synchronous Xlib is in child."""
-    def __init__(self,*,native_pid,xvfb_pid,display,executable_sha256,deadline,cleanup_deadline,clock):
+    def __init__(self,*,native_pid,xvfb_pid,display,executable_sha256,deadline,cleanup_deadline,clock,diagnostic_path=None):
         import os,subprocess
         self.clock=clock;self.cleanup_deadline=cleanup_deadline;self.closed=False;self.pressed_keys=set()
-        self.process=subprocess.Popen([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--x11-helper'],
-            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+        diagnostic=Path(diagnostic_path).open('xb') if diagnostic_path is not None else None
+        try:
+            self.process=subprocess.Popen([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--x11-helper'],
+                stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=diagnostic if diagnostic is not None else subprocess.DEVNULL)
+        finally:
+            if diagnostic is not None:diagnostic.close()
         self.start=OwnedX11Keys.process(self.process.pid,live=False)[1]
         self.rpc=PipeRPC(self.process,deadline=deadline,clock=clock)
         try:
@@ -658,7 +662,9 @@ def x11_helper():
             except Exception as exc:
                 print(json.dumps({'seq':sequence,'ok':False,'error':str(exc)[:512]}),flush=True)
                 return 1
-    except Exception:return 1
+    except Exception as exc:
+        print('X11 helper startup/protocol error: '+str(exc)[:512],file=sys.stderr,flush=True)
+        return 1
     finally:
         # A stalled native Xlib call may stall this finally too. The separate
         # parent kills this child and the entire owned display, making keys
@@ -788,7 +794,8 @@ def _run_phase_worker(exe,stage,session_directory,run_directory,*,mode,root_pin,
                 if mode not in ('positive','resume'):raise ValueError('Unexpected native key request in guard/ready')
                 if backend is None:
                     backend=OwnedX11Client(native_pid=native_process.pid,xvfb_pid=xvfb.pid,display=display,
-                        executable_sha256=proof['exe_sha256'],deadline=work_deadline,cleanup_deadline=cleanup_deadline,clock=time.monotonic)
+                        executable_sha256=proof['exe_sha256'],deadline=work_deadline,cleanup_deadline=cleanup_deadline,clock=time.monotonic,
+                        diagnostic_path=Path(run_directory)/'x11-helper.log')
                     protocol=ShipKeyProtocol(backend,time.monotonic,resume=mode=='resume',started=started,phase_budget=phase_budget)
             if protocol:protocol.line(line)
         while selector.get_map():
