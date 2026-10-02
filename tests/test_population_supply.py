@@ -40,6 +40,39 @@ def test_actual_usable_carriers_required_even_with_unlocked_onion(manifest):
         _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"purple": 20})
 
 
+def test_production_proposal_refuses_missing_reviewed_registry(manifest):
+    from randomizer.population_supply import resolve_static, validate_snapshot
+    with pytest.raises(ValueError, match="reviewed renewable/bootstrap"):
+        resolve_static(manifest)
+    saved = resolve(manifest, {uid: model_branch() for uid in HOPE_DWARFS})
+    with pytest.raises(ValueError, match="reviewed renewable/bootstrap"):
+        validate_snapshot(saved, manifest)
+
+
+def test_static_proposal_reconstructs_source_and_excludes_finite_food(manifest, monkeypatch):
+    import randomizer.population_supply as supply
+    posies = [row["uid"] for row in INPUTS["generators"] if row["stage"] == 1
+              and row["kind"] == "teki" and row["species"] == 7
+              and row["schedule"]["mode"] == "every-visit"]
+    # These registries are synthetic for validator tests, not production proof.
+    monkeypatch.setattr(supply, "STATIC_ROUTES", {uid: model_branch(allows_fully_grown_posy=True) for uid in posies})
+    monkeypatch.setattr(supply, "STATIC_BOOTSTRAPS", {"red": dict(version="onion-retrieval-v1",
+                          evidence="model fixture only", requires=[])})
+    saved = supply.resolve_static(manifest)
+    assert supply.validate_snapshot(json.loads(json.dumps(saved)), manifest)
+    assert supply.static_can_reach_population(saved, manifest, {}, 100, "red")
+    assert not supply.static_can_reach_population(saved, manifest, {"Blue Onion": 1}, 25, "blue")
+    for mutate in (lambda rows: rows.pop(), lambda rows: rows.append(copy.deepcopy(rows[0])),
+                   lambda rows: rows[0].update(count=True), lambda rows: rows[0].update(file_sha256="0" * 64)):
+        corrupt = copy.deepcopy(saved)
+        mutate(corrupt["suppliers"])
+        with pytest.raises(ValueError, match="reviewed source snapshot"):
+            supply.validate_snapshot(corrupt, manifest)
+    monkeypatch.setattr(supply, "STATIC_ROUTES", {uid: model_branch() for uid in HOPE_DWARFS})
+    with pytest.raises(ValueError, match="renewable supplier"):
+        supply.resolve_static(manifest)
+
+
 def model_branch(**changes):
     return dict(version="source-backed-logic-v1", evidence="model-only branch fixture; no physical route acceptance",
                 requires=[], carrier_colors=["red", "yellow", "blue"], **changes)

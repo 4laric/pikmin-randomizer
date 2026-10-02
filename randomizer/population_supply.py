@@ -7,9 +7,14 @@ decoded coordinates alone do not establish a route or a gameplay guarantee.
 from __future__ import annotations
 
 import copy
+import json
 
 VERSION = "final-population-supply-v1"
 COLORS = ("blue", "red", "yellow")  # Loaded PelletConfig color enum.
+# Genuine owners must install independently reviewed, immutable UID route and
+# Onion retrieval proofs here. Saved manifests/YAML cannot create these proofs.
+STATIC_ROUTES = {}
+STATIC_BOOTSTRAPS = {}
 # Audited P1 native corpse identities; never applied to a P2 host vehicle.
 P1_CORPSE_CONFIG = {3: "tkch", 4: "tksw", 8: "tkco", 9: "tkki", 11: "tkna",
                     15: "tkta", 17: "tkbe", 18: "tkka", 19: "tkkb", 20: "tkkc",
@@ -187,3 +192,52 @@ def can_reach_population(snapshot, manifest, inventory, count, color=None, **sta
     bounds = [growth_bound(snapshot, manifest, inventory, destination, **state)
               for destination in ((color,) if color else COLORS)]
     return max(bounds) >= count - initial
+
+
+def resolve_static(manifest):
+    """Production proposal: renewable food only, with code-owned route proofs."""
+    if not STATIC_ROUTES or not STATIC_BOOTSTRAPS:
+        raise ValueError("population supply has no reviewed renewable/bootstrap witnesses")
+    snapshot = resolve(manifest, STATIC_ROUTES)
+    witnessed = {row["uid"]: row for row in snapshot["suppliers"] if row["logic_route"]}
+    if set(witnessed) != set(STATIC_ROUTES) or any(
+            row["suppressed"] or not row["repeatable_at_cap"] or row["count"] <= 0
+            or not any(row["yields"].values()) for row in witnessed.values()):
+        raise ValueError("static population witness is not an admitted renewable supplier")
+    return snapshot
+
+
+def validate_snapshot(snapshot, manifest):
+    """Reconstruct immutable input/route facts; reject any saved-field change."""
+    expected = resolve_static(manifest)
+    if (type(snapshot) is not dict
+            or json.dumps(snapshot, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            != json.dumps(expected, sort_keys=True, separators=(",", ":"), allow_nan=False)):
+        raise ValueError("population supply differs from reviewed source snapshot")
+    return True
+
+
+def static_can_reach_population(snapshot, manifest, inventory, count, color=None):
+    """Monotone AP proposal, distinct from observations of current living bodies.
+
+    Only reviewed renewable food can justify growth, so separate milestones
+    cannot overcommit the same finite body. Bootstrap proofs must establish
+    stock withdrawal and route usability, not merely Onion ownership.
+    """
+    validate_snapshot(snapshot, manifest)
+    from .catalog import color_inventory, starting_color
+    owned = color_inventory(inventory, manifest)
+    carriers = {}
+    for destination, proof in STATIC_BOOTSTRAPS.items():
+        if (destination not in COLORS or proof.get("version") != "onion-retrieval-v1"
+                or not proof.get("evidence") or type(proof.get("requires")) is not list):
+            raise ValueError("invalid reviewed Onion retrieval witness")
+        if owned.get(destination.title() + " Onion", 0) and all(
+                owned.get(item, 0) for item in proof["requires"]):
+            carriers[destination] = 20 if destination == starting_color(manifest) else 5
+    renewable = copy.deepcopy(snapshot)
+    for row in renewable["suppliers"]:
+        if not row["repeatable_at_cap"]:
+            row["logic_route"] = None
+    return can_reach_population(renewable, manifest, inventory, count, color,
+                                usable_carriers=carriers)
