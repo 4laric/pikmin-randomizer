@@ -258,7 +258,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         if(phase==3){int landed=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue&&p->mMode!=PikiMode::FormationMode&&p->getState()==PIKISTATE_Normal&&p->mSRT.t.x>20)++landed;}
             if(landed==2){require(blueFlights.size()==2,"two original Blue ordinary flights not observed");next(4);return;}mappedThrow(n,60,-100,true);return;}
         if(phase==4){fixturePad(observed-phaseTick==1?KeyConfig::_instance->mDisbandKey.mBind:0);if(observed-phaseTick>30)next(5);return;}
-        if(phase==5){if(walkTo(n,60,-180))next(6);return;}
+        if(phase==5){if(walkTo(n,30,-180))next(6);return;} // Inside the water-leaf corridor walls at x=+/-50.
         if(phase==6){require(followers(P2SpeciesRed)==0,"whistle gathered Reds; refusing water traversal");
             if(followers(P2SpeciesBlue)==2){std::puts("P2_CAVE_MIXED_BLUE_ONLY followers=2 red_followers=0");next(separated?11:7);return;}
             float x,z;require(blueIdle(x,z),"missing idle Blue");aimAt(n,x,z,KeyConfig::_instance->mSetCursorKey.mBind);return;}
