@@ -289,9 +289,9 @@ public:int idle()override{
  if(phase==15&&held->getState()==PIKISTATE_Flying&&carriers==14){
   require(red==5&&followers-whiteFollowers==5,"all five original Reds must follow before ordinary separation");
   // The final projectile is already in native flight. Move the captain and
-  // Red squad toward unchanged source route5 while cargo takes its own route.
-  separatingReds=true;goal.set(110.f,0.f,-110.f);
-  std::printf("P2_WHITE_CAMPAIGN_SEPARATION_BEGIN frame=%d original_red=5 red_formation=5 flying_natural_white=1 attached_white=14 source_route=5 target_x=110 target_z=-110 captain_x=%.4f captain_z=%.4f\n",frame,n->mSRT.t.x,n->mSRT.t.z);
+  // Red squad toward the same receiver-relative separation while cargo hauls.
+  separatingReds=true;goal=destination;goal.x+=150.f;goal.z-=230.f;
+  std::printf("P2_WHITE_CAMPAIGN_SEPARATION_BEGIN frame=%d original_red=5 red_formation=5 flying_natural_white=1 attached_white=14 receiver_relative_separation=1 target_x=%.4f target_z=%.4f captain_x=%.4f captain_z=%.4f\n",frame,goal.x,goal.z,n->mSRT.t.x,n->mSRT.t.z);
  }
  if(phase==15&&(held->getState()==PIKISTATE_Flying||held->getStickObject()==cargo))next(9);
  if(phase==9&&held->getStickObject()==cargo){if(carriers==15){require(separatingReds,"final natural White flight not observed before separation");next(10);}else next(14);}
