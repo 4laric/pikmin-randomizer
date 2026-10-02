@@ -221,6 +221,11 @@ void PlayerState::initGame()
  */
 PlayerState::PlayerState()
 {
+#if defined(PIKI_PC_PORT)
+	// Defined fresh-game defaults before setup/card/day-end overrides.
+	_186 = 0;
+	mLivingPikiNum = 0;
+#endif
 	int i;
 	for (i = 0; i < MAX_DAYS; i++) {
 		mPartsCollectedByDay[i] = 0;
