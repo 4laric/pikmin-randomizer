@@ -129,7 +129,7 @@ class PairedHarnessSafetyTests(unittest.TestCase):
         module = self.harness()
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "command.txt"
-            command = module.SdlCommand(path)
+            command = module.SdlCommand(path, module.Deadline(60))
             self.assertTrue(command.publish(1, (-32768, 32767, 0, 0)))
             previous = path.read_bytes()
             self.assertEqual(previous, b"SDL1 1 1 -32768 32767 0 0 END\n")
@@ -137,7 +137,7 @@ class PairedHarnessSafetyTests(unittest.TestCase):
                                    (0, (32768, 0, 0, 0)), (0, (0, 0, 0))]:
                 with self.assertRaises(ValueError): command.publish(buttons, axes)
                 self.assertEqual(path.read_bytes(), previous)
-            with mock_patch.object(module.os, "replace", side_effect=PermissionError):
+            with mock_patch.object(module, "replace_complete_command", side_effect=PermissionError):
                 self.assertFalse(command.publish())
             self.assertEqual(path.read_bytes(), previous)
             self.assertFalse(path.with_suffix(".pending").exists())
