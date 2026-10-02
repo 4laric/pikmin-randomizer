@@ -166,6 +166,33 @@ def linux_preflight(exe, run, args, env):
             "platform_helper_sha256": args.platform_helper_sha256, "supervisor_sha256": args.supervisor_sha256}
 
 
+def private_environment(inherited, run, exe, scene):
+    """Keep runner transport context, isolate game overrides and writable state."""
+    roots = {
+        "APPDATA": "private-appdata", "LOCALAPPDATA": "private-localappdata",
+        "HOME": "private-home", "USERPROFILE": "private-home",
+        "XDG_CONFIG_HOME": "private-config", "XDG_CACHE_HOME": "private-cache",
+        "XDG_DATA_HOME": "private-data", "XDG_STATE_HOME": "private-state",
+    }
+    # Case-fold before filtering: Windows environment names are case-insensitive.
+    blocked = set(roots) | {"HOMEDRIVE", "HOMEPATH"}
+    env = {k: v for k, v in inherited.items()
+           if k.upper() not in blocked
+           and not k.upper().startswith(("PIKMIN_", "P2_", "BBFT_", "NECTAR_", "SDL_"))}
+    for key, name in roots.items():
+        directory = run / name
+        directory.mkdir(exist_ok=True)
+        env[key] = str(directory)
+    private_save = run / "private-save"
+    private_save.mkdir()
+    env.update(NECTAR_SAVE_DIR=str(private_save), NECTAR_EXECUTABLE_PATH=str(exe),
+               PIKMIN_SETTINGS_PATH=str(run / "private-config" / "pikmin-settings.ini"),
+               SDL_AUDIODRIVER="dummy", SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="1",
+               PIKMIN_RANDOMIZER_TEST_BACKGROUND="1", PIKMIN_P2_ROOM_WINDOW="960x540",
+               P2_ELECBUG_MODE=scene)
+    return env
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ("exe", "assets", "content", "output"):
@@ -197,17 +224,7 @@ def main():
     if sys.platform not in ("win32", "linux"):
         raise ValueError("Unsupported fixture platform")
     run = prepare(a.assets, a.content, a.output / uuid.uuid4().hex, white=a.white, pod=a.pod)
-    private_save = run / "private-save"
-    private_save.mkdir()
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("P2_ELECBUG_", "PIKMIN_RANDOMIZER_", "PIKMIN_NETPLAY_TEST_"))}
-    env.update(NECTAR_SAVE_DIR=str(private_save), NECTAR_EXECUTABLE_PATH=str(exe),
-               SDL_AUDIODRIVER="dummy", SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="1",
-               PIKMIN_RANDOMIZER_TEST_BACKGROUND="1", PIKMIN_P2_ROOM_WINDOW="960x540", P2_ELECBUG_MODE=scene)
-    if sys.platform == "linux":
-        for key, name in (("HOME", "private-home"), ("XDG_CONFIG_HOME", "private-config"), ("XDG_CACHE_HOME", "private-cache")):
-            directory = run / name
-            directory.mkdir()
-            env[key] = str(directory)
+    env = private_environment(os.environ, run, exe, scene)
     if a.mode == "negative":
         env["P2_ELECBUG_GUARD_MASK"] = a.guard_mask
     if a.mode == "ready":
