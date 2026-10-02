@@ -1,4 +1,5 @@
 #include "pc_p2_candypop.h"
+#include "pc_p2_cave_bud_actor.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
 #include "DebugLog.h"
@@ -75,7 +76,7 @@ void PomAi::initAI(Pom* pom)
     if(pc_p2_violet(mPom)) {
         mMaxSeedCount=5; // Violet counts non-Purple inputs; same-color slots refund.
     }
-    if(int candypopBudget=pc_p2_candypop_budget(mPom)) {
+    if(int candypopBudget=pc_p2_cave_bud_body_profile() ? 0 : pc_p2_candypop_budget(mPom)) {
         // Lane-23 real-engine colour bud: source ip01 budget, fp01 close wait,
         // any-colour entry, and own-colour refund handled in createPikiHead.
         PomProp* props=static_cast<PomProp*>(mPom->mProps);
@@ -331,6 +332,15 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    if (pc_p2_cave_bud_body_profile()) {
+        const int species = pc_p2_cave_bud_body_species(mPom);
+        const int remaining = pc_p2_cave_bud_body_remaining(mPom);
+        if (species == 3) pc_p2_convert_violet(mPom,remaining);
+        else if (species == 4) pc_p2_convert_ivory(mPom,remaining);
+        // Never fall through to a legacy conversion on an unbound body.
+        if (species == 3 || species == 4) playSound(3);
+        return;
+    }
     // Lane-23 real-engine colour Candypop takes precedence when this Pom is a
     // sidecar-bound BluePom/RedPom/YellowPom; returns -1 for every other Pom.
     int candypopUsed=pc_p2_convert_candypop(mPom,mMaxSeedCount-mReleasedSeedCount);
@@ -461,6 +471,8 @@ bool PomAi::isMotionFinishTransit()
  */
 bool PomAi::deadTransit()
 {
+    if (pc_p2_cave_bud_body_profile())
+        return pc_p2_cave_bud_body_species(mPom) >= 0 && pc_p2_cave_bud_body_remaining(mPom) == 0;
 	return mReleasedSeedCount >= ((pc_p2_violet(mPom) || pc_p2_ivory(mPom)) ? 5 : mMaxSeedCount);
 }
 
@@ -492,8 +504,8 @@ bool PomAi::petalShakeTransit()
  */
 bool PomAi::petalCloseTransit()
 {
-	f32 closeWait = pc_p2_ivory(mPom) ? 1.0f : (pc_p2_violet(mPom) ? 5.0f : C_POM_PARM(mPom, mCloseWaitTime));
-    const int capacity = (pc_p2_violet(mPom) || pc_p2_ivory(mPom)) ? 5 : C_POM_PARM(mPom, mMaxPikiPerCycle);
+	f32 closeWait = pc_p2_cave_bud_body_profile() ? 1.0f : (pc_p2_ivory(mPom) ? 1.0f : (pc_p2_violet(mPom) ? 5.0f : C_POM_PARM(mPom, mCloseWaitTime)));
+    const int capacity = (pc_p2_cave_bud_body_profile() || pc_p2_violet(mPom) || pc_p2_ivory(mPom)) ? 5 : C_POM_PARM(mPom, mMaxPikiPerCycle);
 #if defined(PIKI_PC_PORT)
 	// Retail waits 30 seconds; keep short/custom and disabled timers intact.
 	if (closeWait > 5.0f) closeWait = 5.0f;
@@ -646,7 +658,10 @@ void PomAi::dieState()
 {
 	if (mPom->getMotionFinish()) {
 		if (mPom->getAttackTimer() > 1.0f) {
+            const bool bodyProfile = pc_p2_cave_bud_body_profile();
+            if (bodyProfile) pc_p2_cave_bud_body_retire(mPom);
 			mPom->doKill();
+            if (bodyProfile) return; // The manager has returned this body to its free pool.
 		}
 		mPom->addAttackTimer(gsys->getFrameTime());
 	}
@@ -702,6 +717,9 @@ void PomAi::dischargeState()
  */
 void PomAi::update()
 {
+    // Bodies exist before generator attachment and scene activation. They may
+    // not run legacy capture/death/output while the explicit profile is fenced.
+    if (pc_p2_cave_bud_body_profile() && pc_p2_cave_bud_body_species(mPom) < 0) return;
 	setEveryFrame();
 	switch (mPom->getCurrentState()) {
 	case 0:

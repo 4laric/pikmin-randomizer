@@ -3,6 +3,8 @@
 #include "pc_p2_ivory_budget.h"
 #include "pc_p2_species.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_cave.h"
+#include "pc_p2_cave_bud_actor.h"
 #include "pc_bbft.h"
 #include "Piki.h"
 #include "PikiHeadItem.h"
@@ -44,7 +46,7 @@ Shape* loadShape(const std::string& name) {
 }
 }
 
-bool pc_p2_whites_enabled(){return pc_pikipelago_room_preview() && enabled;}
+bool pc_p2_whites_enabled(){return (pc_pikipelago_room_preview() || pc_p2_cave_route_species_requested(P2SpeciesWhite)) && enabled;}
 bool pc_p2_is_white(const Piki* piki){return pc_p2_whites_enabled() && pc_p2_species(piki)==P2SpeciesWhite;}
 void pc_p2_make_white(Piki* piki){
     if(!pc_p2_whites_enabled() || !pc_p2_set_species(piki,P2SpeciesWhite))std::abort();
@@ -59,9 +61,10 @@ float pc_p2_white_carry_max_factor(){return stats.baseRunSpeed*stats.carryMaxFac
 
 void pc_p2_white_setup(){
     enabled=false;clips.clear();ivoryGenerators.clear();
-    if(!pc_pikipelago_room_preview())return;
-    std::ifstream in("p2-white.txt");if(!in)return;
-    std::string word;if(!(in>>word) || word!="P2_WHITE_1" || !pc_p2_preview_goal())std::abort();
+    const bool route=pc_p2_cave_route_species_requested(P2SpeciesWhite);
+    if(!pc_pikipelago_room_preview() && !route)return;
+    std::ifstream in("p2-white.txt");if(!in){if(route)std::abort();return;}
+    std::string word;if(!(in>>word) || word!="P2_WHITE_1" || (!route && !pc_p2_preview_goal()))std::abort();
     if(!(in>>word>>stats.movement>>stats.attack>>stats.scale>>stats.carryPower>>stats.budBonus>>stats.flowerBonus>>stats.carryMaxFactor>>stats.carryMinFactor>>stats.baseRunSpeed) || word!="stats" || !p2_white_stats_valid(stats))std::abort();
     int generatorCount=0;if(!(in>>word>>generatorCount)||word!="ivory_generators"||generatorCount<1||generatorCount>32)std::abort();
     for(int i=0;i<generatorCount;++i){unsigned id;if(!(in>>id)||!ivoryGenerators.insert(id).second)std::abort();}
@@ -91,19 +94,24 @@ bool pc_p2_draw_white(Piki* piki,Graphics& gfx){
 }
 
 bool pc_p2_ivory(const Pom* pom){
+    if(pc_p2_cave_bud_body_profile())return pom && pc_p2_whites_enabled() && pc_p2_cave_bud_body_species(pom)==P2SpeciesWhite;
     return pom && pc_p2_whites_enabled() && pom->mGenerator && ivoryGenerators.count(pom->mGenerator->_70);
 }
 
 int pc_p2_convert_ivory(Pom* pom,int remaining){
     if(!pc_p2_ivory(pom))return -1;
+    const bool body=pc_p2_cave_bud_body_profile();
+    if(body)remaining=pc_p2_cave_bud_body_remaining(pom);
     Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};
     CI_LOOP(it){Creature* creature=*it;if(!creature||!creature->isAlive()||!creature->isPiki())continue;Piki* p=static_cast<Piki*>(creature);
         const bool alreadyWhite=pc_p2_is_white(p);
-        if(!budget.accepts(alreadyWhite)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if((body && budget.slots>=remaining) || !budget.accepts(alreadyWhite)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
         if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);pc_p2_set_species(sprout,P2SpeciesWhite);
-        float angle=budget.births*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
-        p->setEraseKill();p->kill(false);it.dec();budget.completed(alreadyWhite);}
+        float angle=budget.births*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;
+        sprout->mVelocity.set(horizontal*std::sin(angle),vertical,horizontal*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
+        p->setEraseKill();p->kill(false);it.dec();budget.completed(alreadyWhite);
+        if(body)pc_p2_cave_bud_body_output(pom,alreadyWhite);}
     std::printf("P2_IVORY_CONVERT count=%d slots=%d\n",budget.births,budget.slots);return budget.slots;
 }

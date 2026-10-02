@@ -7,6 +7,9 @@
 #include "pc_p2_purple_motion.h"
 #include "pc_p2_white.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_cave.h"
+#include "pc_p2_cave_bud_actor.h"
+#include "pc_p2_species.h"
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
 #include "Piki.h"
@@ -56,7 +59,7 @@ Shape* shape(const std::string& name) {
     return result;
 }
 }
-bool pc_p2_purples_enabled(){return (pc_pikipelago_room_preview() || pc_randomizer_purple_campaign()) && enabled;}
+bool pc_p2_purples_enabled(){return (pc_pikipelago_room_preview() || pc_randomizer_purple_campaign() || pc_p2_cave_route_species_requested(P2SpeciesPurple)) && enabled;}
 bool pc_p2_is_purple(const Piki* p){return pc_p2_purples_enabled() && p && p->mP2Purple;}
 void pc_p2_make_purple(Piki* p) {
     if(!pc_p2_purples_enabled())std::abort();
@@ -78,10 +81,11 @@ float pc_p2_transport_speed(Pellet* pellet,float fallback) {
 }
 void pc_p2_purple_setup() {
     enabled=false;clips.clear();pc_p2_purple_impact_reset();pc_p2_purple_direct_reset();
-    if(!pc_pikipelago_room_preview() && !pc_randomizer_purple_campaign())return;
+    const bool route=pc_p2_cave_route_species_requested(P2SpeciesPurple);
+    if(!pc_pikipelago_room_preview() && !pc_randomizer_purple_campaign() && !route)return;
     if(pc_randomizer_purple_campaign())(void)campaignConfig();
-    std::ifstream in("p2-purple.txt");if(!in){if(pc_randomizer_purple_campaign())std::abort();return;}
-    std::string word;in>>word;if(word!="P2_PURPLE_1" || (!pc_randomizer_purple_campaign() && !pc_p2_preview_goal()))std::abort();
+    std::ifstream in("p2-purple.txt");if(!in){if(pc_randomizer_purple_campaign() || route)std::abort();return;}
+    std::string word;in>>word;if(word!="P2_PURPLE_1" || (!route && !pc_randomizer_purple_campaign() && !pc_p2_preview_goal()))std::abort();
     if(!(in>>word) || word!="stats")std::abort();
     for(float& value:stats)if(!(in>>value) || !std::isfinite(value) || value<0 || value>1000)std::abort();
     for(const char* expected:{"wait","walk","attack1"}) {
@@ -130,6 +134,7 @@ bool pc_p2_draw_purple(Piki* p,Graphics& gfx) {
 }
 bool pc_p2_violet(const Pom* pom){
     if(!pom)return false;
+    if(pc_p2_cave_bud_body_profile())return pc_p2_purples_enabled() && pc_p2_cave_bud_body_species(pom)==P2SpeciesPurple;
     if(pc_randomizer_purple_campaign())return pom->mGenerator && flowCont.mCurrentStage
         && campaignConfig().matches(flowCont.mCurrentStage->mStageID,pom->mGenerator->_70);
     if(!pc_pikipelago_room_preview())return false;
@@ -138,6 +143,8 @@ bool pc_p2_violet(const Pom* pom){
 }
 int pc_p2_convert_violet(Pom* pom, int remaining) {
     if(!pc_p2_violet(pom))return -1;
+    const bool body=pc_p2_cave_bud_body_profile();
+    if(body)remaining=pc_p2_cave_bud_body_remaining(pom);
     // Allocate each replacement first: capacity failure must never eat a Pikmin.
     Stickers stickers(pom);Iterator it(&stickers);int converted=0,used=0;
     CI_LOOP(it) {
@@ -145,7 +152,7 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
         Piki* p=static_cast<Piki*>(creature);
         const char* input=pc_p2_is_purple(p)?"purple":p->mColor==Red?"red":p->mColor==Blue?"blue":p->mColor==Yellow?"yellow":"unknown";
         bool sameColor=pc_p2_is_purple(p);
-        if(used>=remaining && !sameColor){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if(used>=remaining && (body || !sameColor)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         // One-for-one replacement may reserve one transient slot at the field
         // limit, exactly like native burying. Restore the manager flag even when
         // the pool is exhausted; the living input is retained on allocation failure.
@@ -154,11 +161,15 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
         PikiHeadMgr::buryMode = oldBuryMode;
         if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
-        Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);sprout->setColor(Red);sprout->mP2Purple=true;
-        float angle=converted*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));
+        Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);
+        if(body){if(!pc_p2_set_species(sprout,P2SpeciesPurple))std::abort();}
+        else{sprout->setColor(Red);sprout->mP2Purple=true;}
+        float angle=converted*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;
+        sprout->mVelocity.set(horizontal*std::sin(angle),vertical,horizontal*std::cos(angle));
         sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
         p->setEraseKill();p->kill(false);it.dec();++converted;
         if(!sameColor)++used;
+        if(body)pc_p2_cave_bud_body_output(pom,sameColor);
         // Diagnostic only: sequence is process-local, not a durable Pikmin identity.
         std::printf("P2_VIOLET_WITNESS sequence=%llu generator=%u input=%s\n",++conversionSequence,
                     pom->mGenerator?static_cast<unsigned>(pom->mGenerator->_70):0u,input);
@@ -168,6 +179,9 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
 void pc_p2_purple_status() {
     if(!pc_p2_purples_enabled())return;
     int purple=0,other=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p && p->isAlive()){if(pc_p2_is_purple(p))++purple;else ++other;}}
+    if(pc_p2_cave_route_species_requested(P2SpeciesPurple)){
+        std::printf("P2_ROUTE_PURPLE_FIELD purple=%d other=%d\n",purple,other);return;
+    }
     if(SDL_Window* window=SDL_GL_GetCurrentWindow()) {
         std::string title=(pc_randomizer_purple_campaign()?"Pikipelago - Purple campaign: ":"Pikipelago - Purple preview: ")+std::to_string(purple)+" Purple, "+std::to_string(other)+" other field Pikmin | "+std::to_string(pc_p2_preview_pokos())+" Pokos";
         SDL_SetWindowTitle(window,title.c_str());

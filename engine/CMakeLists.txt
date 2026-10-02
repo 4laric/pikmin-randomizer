@@ -330,6 +330,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_white.cpp
     pc_port/pc_p2_white_poison.cpp
     pc_port/pc_p2_cave.cpp
+    pc_port/pc_p2_cave_dialog_window.cpp
     pc_port/pc_p2_cave_generate.cpp
     pc_port/pc_p2_cave_generator.cpp
     pc_port/pc_p2_cave_rooms.cpp
@@ -2987,6 +2988,12 @@ endfunction()
 
 # #928 opt-in captain switching acceptance (requires local assets to run).
 pikmin_add_ci_fixture(captain_switch tools/p2_captain_switch_runtime.cpp)
+
+# #1154/#1161 ordinary natural WFG acquisition and cave party route; build only.
+pikmin_add_ci_fixture(cave_route tools/p2_cave_route_runtime.cpp)
+if(TARGET pikmin_ci_fixture_cave_route)
+    target_include_directories(pikmin_ci_fixture_cave_route PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
 # #1157 matched captain combined SDL fixture; opt-in compile/package only.
 pikmin_add_ci_fixture(captain_combined_sdl tools/p2_captain_combined_sdl_fixture.cpp)
 if(TARGET pikmin_ci_fixture_captain_combined_sdl)
@@ -3064,4 +3071,10 @@ endforeach()
 pikmin_add_ci_fixture(tutorial_encounter tools/p2_tutorial_encounter_runtime.cpp)
 if(TARGET pikmin_ci_fixture_tutorial_encounter)
     target_include_directories(pikmin_ci_fixture_tutorial_encounter PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1177 compile-only ordinary all-roster upper-terrain traversal.
+pikmin_add_ci_fixture(tutorial_upper_traversal tools/p2_tutorial_upper_traversal_runtime.cpp)
+if(TARGET pikmin_ci_fixture_tutorial_upper_traversal)
+    target_include_directories(pikmin_ci_fixture_tutorial_upper_traversal PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
 endif()
