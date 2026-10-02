@@ -154,7 +154,7 @@ def oracle(mode, result, log, handshaken, errors):
     require(not errors, 'Heartbeat failed: ' + repr(errors))
     require(handshaken, 'Actual NativeRun capability handshake missing')
     require('P2_FIXTURE_WINDOW width=960 height=540' in log, 'Window adoption evidence missing')
-    require(not result.get('timed_out'), '60-second child timed out')
+    require(not result.get('timed_out'), 'Bounded native child timed out')
     if mode == 'sdl_acquire':
         marker = 'P2_PURPLE_SDL_ACQUISITION_PASS'
         require(result.get('passed') and not result.get('captain_down'), 'Bounded positive failed')
@@ -362,20 +362,43 @@ def genuine_card(session_dir, *, fingerprint, maturity, benefit_count, check_cou
     return dict(data, path=str(card), fingerprint=fingerprint, maturity=maturity)
 
 
-def native_success(result, log, handshaken, errors):
+def native_success(result, log, handshaken, errors, *, timeout_seconds=60):
     require(not errors and handshaken, 'Actual handshake/heartbeat failed')
     require(result.get('passed') and result.get('exit_code') == 0 and not result.get('timed_out')
         and not result.get('captain_down'), 'Native phase did not finish successfully')
-    require(result.get('timeout_seconds') == 60 and 0 < result.get('elapsed_seconds', 0) <= 60,
-        'Native phase exceeded strict60 budget')
+    require(result.get('timeout_seconds') == timeout_seconds and 0 < result.get('elapsed_seconds', 0) <= timeout_seconds,
+        'Native phase exceeded its qualified whole budget')
     require(type(result.get('pid')) is int and result['pid'] > 0, 'Native process identity missing')
     if os.name != 'nt':
         require(result.get('owned_process_group') == result['pid'], 'Native owned process group missing')
     require('P2_FIXTURE_WINDOW width=960 height=540' in log, 'Window evidence missing')
 
 
+def save_budget_observations(log):
+    transition = fields(log, 'P2_PURPLE_SAVE_BUDGET_TRANSITION')
+    finished = fields(log, 'P2_PURPLE_SAVE_BUDGET_FINISHED')
+    for data in (transition, finished):
+        require(all(data.get(k) == v for k, v in {'acquisition_limit': '60', 'save_limit': '60',
+                'whole_limit': '120', 'monotonic': '1'}.items()), 'Wrong native phase budget')
+    require(transition.get('verified_acquisition') == '1' and finished.get('movie_skip') == '0',
+        'Unverified acquisition or movie skip')
+    acquisition = float(transition['acquisition_seconds'])
+    saved_acquisition, save, whole = (float(finished[k]) for k in
+        ('acquisition_seconds', 'save_seconds', 'whole_seconds'))
+    require(0 < acquisition < 60 and acquisition == saved_acquisition and 0 <= save < 60
+        and 0 < whole < 120 and abs(whole - acquisition - save) <= .000002,
+        'Acquisition/save hard phase deadline or monotonic closure failed')
+    markers = ('P2_PURPLE_SAVE_BUDGET_TRANSITION ', 'P2_PURPLE_SDL_ACQUISITION_PASS ',
+        'P2_PURPLE_ORDINARY_SAVE_BEGIN ', 'P2_PURPLE_SAVE_BUDGET_FINISHED ', 'P2_PURPLE_ORDINARY_SAVE_PASS ')
+    positions = [log.index(marker) for marker in markers]
+    require(positions == sorted(positions), 'Phase transition/finish out of order')
+    return {'acquisition_seconds': acquisition, 'save_seconds': save, 'whole_seconds': whole,
+        'acquisition_limit': 60, 'save_limit': 60, 'whole_limit': 120, 'movie_skip': False}
+
+
 def save_observations(result, log, handshaken, errors):
-    native_success(result, log, handshaken, errors)
+    native_success(result, log, handshaken, errors, timeout_seconds=120)
+    budget = save_budget_observations(log)
     acquisition = oracle('sdl_acquire', result, log, handshaken, errors)
     require(acquisition.get('selection') == '4' and acquisition.get('strength') == '10', 'Acquired Purple identity/strength missing')
     begin = fields(log, 'P2_PURPLE_ORDINARY_SAVE_BEGIN')
@@ -395,7 +418,7 @@ def save_observations(result, log, handshaken, errors):
                '[Pikmin Randomizer] CAMPAIGN_SAVED generation=1', 'P2_PURPLE_ORDINARY_SAVE_PASS ']
     require([log.index(p) for p in markers] == sorted(log.index(p) for p in markers), 'Save markers out of order')
     require(not re.search(r'^P2_PURPLE_(?:PERSIST|SCRIPTED_THROW)', log, re.M), 'Legacy persistence/scripted route forbidden')
-    return {'acquisition': acquisition, 'begin': begin, 'saved': saved, 'day': day, 'maturity': maturity}
+    return {'acquisition': acquisition, 'budget': budget, 'begin': begin, 'saved': saved, 'day': day, 'maturity': maturity}
 
 
 def resume_observations(result, log, handshaken, errors, expected):
@@ -429,7 +452,8 @@ def stage_save_run(a, m, manifest, session):
 
 
 def launch_save_phase(a, m, run, frozen, mode, expected=None):
-    report = {'mode': mode, 'passed': False, 'run': str(run.directory), 'timeout_seconds': 60}
+    timeout = 120 if mode == 'sdl_dayend' else 60
+    report = {'mode': mode, 'passed': False, 'run': str(run.directory), 'timeout_seconds': timeout}
     stop, errors = threading.Event(), []
     # Clear inherited expectations/injections. Never copy a predecessor's process environment blindly.
     saved_env = {k: v for k, v in os.environ.items() if k.startswith('P2_PURPLE_') or k == 'P2_FIXTURE_FORCE_CAPTAIN_DOWN'}
@@ -452,7 +476,7 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
         markers = ['P2_PURPLE_SDL_ACQUISITION_PASS', 'P2_PURPLE_ORDINARY_SAVE_PASS'] if mode == 'sdl_dayend' else ['P2_PURPLE_ORDINARY_RESUME_PASS']
         try:
             result = m['run_pikmin2_fixture'].launch(a.exe, run.directory, ['--randomizer-seed', str(run.bootstrap)],
-                markers, 60, toolchain=a.exe.parent if os.name == 'nt' else None, canonical_root=a.root, session_root=a.session,
+                markers, timeout, toolchain=a.exe.parent if os.name == 'nt' else None, canonical_root=a.root, session_root=a.session,
                 development_launch=getattr(a, 'development_launch', False))
         finally:
             stop.set()
@@ -524,7 +548,9 @@ def record_checkpoint_boundary(a, report, session, run, boundary, schema, card):
 
 def execute_save_resume(a, m):
     a.session.mkdir(parents=True, exist_ok=False)
-    report = {'passed': False, 'mode': a.mode, 'profile': a.profile, 'timeout_seconds_per_native_child': 60,
+    report = {'passed': False, 'mode': a.mode, 'profile': a.profile,
+        'timeout_seconds_per_native_child': {'sdl_dayend': 120, 'natural_resume': 60},
+        'save_phase_limits_seconds': {'verified_acquisition': 60, 'ordinary_save': 60},
         'root_pin': a.root_pin, 'native_pin': a.native_pin, 'native_source_sha256': a.native_source_sha256,
         'exe_sha256': a.exe_sha256, 'phases': [], 'checkpoint_boundaries': [], 'live_AP_server': False, 'saved_bytes_injected': False,
         'scope': 'SDL acquisition/native day-save/fresh-process same-card resume; initial withdrawal fixture-assisted; no combat/delivery/ordinary withdrawal/live AP/human acceptance'}
