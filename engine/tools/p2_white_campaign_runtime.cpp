@@ -71,6 +71,17 @@ static int whiteStock(){const auto& c=p2ship::stock.counts[1];return c[0]+c[1]+c
 static int spent(){int total=0;for(unsigned id:flowerIds)total+=p2whitecampaign::budget.get({0,id});return total;}
 static void conservedBudget(){for(unsigned id:flowerIds)require(p2whitecampaign::budget.get({0,id})==5,"three lifetime budgets not exactly five");}
 static void keyRequest(int sequence,const char* key){std::printf("P2_WHITE_NATIVE_KEY_REQUEST seq=%d key=%s actual_SDL_keyboard_required=1\n",sequence,key);std::fflush(stdout);}
+// Whistle radius also reaches non-target bodies. Let ordinary throws/captures
+// finish before any regroup whistle, even when the intended target is grounded.
+static bool unsettledAcquisition(){
+ if(!pikiMgr)return true;
+ Iterator actors(pikiMgr);CI_LOOP(actors){auto* p=static_cast<Piki*>(*actors);
+  if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed)continue;
+  const int state=p->getState();
+  if(state==PIKISTATE_Flying||state==PIKISTATE_Swallowed||state==PIKISTATE_GoHang||state==PIKISTATE_Hanged)return true;
+ }
+ return false;
+}
 class CampaignInput:public Kontroller {
 public:CampaignInput():Kontroller(1){}
  void update()override{
@@ -93,8 +104,8 @@ public:CampaignInput():Kontroller(1){}
    if(phase==14&&walking&&phaseTick%30<15)keys=KBBTN_DPAD_RIGHT;
    if(phase==8)keys=KeyConfig::_instance->mThrowKey.mBind;
    if(phase==11&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   if(phase==16&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=phase==2||phase==4||phase==7||phase==11||phase==16||phase==17||phase==25;
+   if(phase==16&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
+   const bool move=phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||phase==17||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
     bool walk=phase==4||phase==17||phase==25||bx*bx+bz*bz>10000;
@@ -200,7 +211,7 @@ public:int idle()override{
  }
  // A natural conversion can leave original Reds free; whistle the actual
  // unjoined body under the cursor before attempting another ordinary grab.
- if((phase==16||(phase==3&&n->getCurrState()->getID()==NAVISTATE_Walk))&&followers-whiteFollowers<red){
+ if((phase==16||(phase==3&&n->getCurrState()->getID()==NAVISTATE_Walk&&!unsettledAcquisition()))&&followers-whiteFollowers<red){
   Iterator unjoined(pikiMgr);CI_LOOP(unjoined){auto* p=static_cast<Piki*>(*unjoined);if(p->isAlive()&&pc_p2_species(p)==P2SpeciesRed&&p->mMode==PikiMode::FreeMode&&p->getState()==PIKISTATE_Normal){goal=p->mSRT.t;if(phase==3)next(16);break;}}
  }
  if(phase==16&&followers-whiteFollowers==red){goal=flowers[budIndex]->mSRT.t;next(2);}
