@@ -15,6 +15,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -27,7 +28,7 @@ from experimental.pikmin2_cave_items import items_from_layout, items_text
 from experimental.pikmin2_cave_gates import build_gates, gates_text
 from scripts.preview_pikmin2_room import generator, overlay, records
 from scripts.fixture_platform import (is_windows, runtime_evidence, owned_process_options,
-                                     terminate_owned_process)
+                                     terminate_owned_process, wait_owned_process)
 
 
 SPECIES_NAMES = {3: 'purple', 4: 'white'}
@@ -362,12 +363,16 @@ def wfg_pom_bodies(assets, rows, manifest, rooms, banks):
 def portable_generator(tool,table,layout_out,directory,env):
     """The Linux generator uses its actual private staging cwd and owned group."""
     argv=[str(Path(tool).resolve(strict=True)),str(Path(table).resolve(strict=True)),str(Path(layout_out).resolve())]
-    proc=subprocess.Popen(argv,cwd=Path(directory).resolve(strict=True),env=env,
-                          stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,**owned_process_options())
-    try:
-        stdout,stderr=proc.communicate(timeout=60)
-        if proc.returncode:raise ValueError(f'native generator failed (rc={proc.returncode}): {stderr.strip()}')
-    finally:terminate_owned_process(proc)
+    with tempfile.TemporaryFile(mode='w+') as out,tempfile.TemporaryFile(mode='w+') as err:
+        proc=subprocess.Popen(argv,cwd=Path(directory).resolve(strict=True),env=env,
+                              stdout=out,stderr=err,text=True,**owned_process_options())
+        try:code=wait_owned_process(proc,timeout=60)
+        finally:
+            cleanup=terminate_owned_process(proc)
+            if not cleanup['child_reaped'] or not cleanup['group_absent']:
+                raise ValueError('generator process group cleanup unverified')
+        out.seek(0);err.seek(0);stdout=out.read();stderr=err.read()
+        if code:raise ValueError(f'native generator failed (rc={code}): {stderr.strip()}')
     marker=next((line for line in stdout.splitlines() if line.startswith('P2_CAVE_GEN')),'')
     if not marker:raise ValueError('native generator emitted no P2_CAVE_GEN marker')
     layout=json.loads(Path(layout_out).read_text(encoding='utf8'))
