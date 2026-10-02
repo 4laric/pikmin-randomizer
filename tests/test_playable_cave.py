@@ -448,12 +448,28 @@ class WfgAcquisitionTests(unittest.TestCase):
 
     def test_linux_controller_recipe_fails_closed_before_any_foreign_provider(self):
         from scripts.play_pikmin2_cave_route import require_controller_recipe,fixture_child,ROOT
-        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=False):
-            with self.assertRaisesRegex(RuntimeError,'pinned root'):require_controller_recipe(ROOT/'foreign')
-            with self.assertRaisesRegex(RuntimeError,'not catalogued'):require_controller_recipe(ROOT)
-            with self.assertRaisesRegex(RuntimeError,'not catalogued'):fixture_child(ROOT/'native',ROOT/'output/run',[],
-                                                                                       'PASS',ROOT,ROOT/'output')
-        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=True):require_controller_recipe(ROOT/'legacy-workspace')
+        exe=ROOT/'output/recipe-test/run/nectar.exe'
+        session=ROOT/'output/recipe-test';run=session/'run'
+        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=False), \
+             patch('scripts.pikmin2_cave_linux_runtime.recipe_admission',
+                   side_effect=RuntimeError('synthetic fixed recipe rejection')) as admission, \
+             patch('scripts.pikmin2_cave_linux_runtime.launch_linux_fixture') as launch:
+            with self.assertRaisesRegex(RuntimeError,'pinned root'):
+                require_controller_recipe(ROOT/'foreign',exe,session,run)
+            admission.assert_not_called()
+            with self.assertRaisesRegex(RuntimeError,'actual copied executable/session/run'):
+                require_controller_recipe(ROOT)
+            admission.assert_not_called()
+            with self.assertRaisesRegex(RuntimeError,'fixed recipe rejection'):
+                require_controller_recipe(ROOT,exe,session,run)
+            admission.assert_called_once_with(exe,ROOT,session,run)
+            admission.reset_mock()
+            with self.assertRaisesRegex(RuntimeError,'fixed recipe rejection'):
+                fixture_child(exe,run,[],'PASS',ROOT,session)
+            admission.assert_called_once_with(exe,ROOT,session,run)
+            launch.assert_not_called()
+        with patch('scripts.play_pikmin2_cave_route.is_windows',return_value=True):
+            require_controller_recipe(ROOT/'legacy-workspace')
 
     def test_dry_pads_and_actual_body_binding_do_not_force_party(self):
         import struct
