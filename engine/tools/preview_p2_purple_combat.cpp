@@ -975,7 +975,22 @@ class PurpleCombatApp : public PlugPikiApp {
         }
         return true;
     }
+    bool sdlCancelOwnedCollision(Navi* n,float tau) {
+        const unsigned mask=pluckForceGuardMask(sdlPoint(n->_B0),sdlPoint(n->mVolatileVelocity),tau);
+        if(mask==0) return false;
+        // The old forecast has been invalidated by a proven ordinary native
+        // collision. Never accept it or edit the queued engine force. Unknown
+        // forces and acceleration/tau anomalies retain the existing refusal.
+        require(mask==2 && pc_purple_collision_owned_queued_force(n,static_cast<std::uint64_t>(ticks)),
+            "pulse forecast external force or acceleration");
+        acquisitionInput();sdlPulseActive=false;sdlPulseCommand={};sdlPluckBraking=true;pluckRoute.clear();
+        std::printf("P2_PURPLE_PLUCK_PULSE_CANCEL tick=%d auth_tick=%llu reason=owned_formation_collision "
+            "forecast_accepted=0 SDL_neutral=1 actor_writes=0\n",ticks,
+            static_cast<unsigned long long>(pc_render_tick_serial()));
+        return true;
+    }
     void sdlObservePulse(Navi* n,PikiHeadItem* head,Pom* violet,float tau,float dt) {
+        if(sdlCancelOwnedCollision(n,tau)) return;
         (void)head;(void)violet;sdlPulseModel(n,tau);
         SdlPluckState predicted=sdlPulseBefore;require(pluckPulseStep(predicted,sdlPulseCommand,dt,tau),"invalid pulse observation step");
         const SdlPluckState actual=sdlPulseSnapshot(n);
@@ -1085,6 +1100,7 @@ class PurpleCombatApp : public PlugPikiApp {
             }
             if(sdlPluckBraking) {
                 acquisitionInput();
+                if(sdlCancelOwnedCollision(n,pluckTau)) return false;
                 std::printf("P2_PURPLE_PLUCK_BRAKE tick=%d reason=settling speed=%.6f target_speed=%.6f tau=%.6f dt=%.9f SDL_neutral=1 actor_writes=0\n",
                     ticks,pluckSpeed,pluckTargetSpeed,pluckTau,pluckDt);
                 if(!sdlPluckAtRest(pluckSpeed,pluckTargetSpeed)) return false;
@@ -1618,7 +1634,7 @@ public:
         // during an existing pulse so ordinary startup collisions do not fill
         // the trace before the failing approach; retain the force guard below.
         pc_purple_collision_trace_context(naviMgr ? naviMgr->getNavi() : nullptr,
-            sdlPulseActive && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
+            (sdlPulseActive || sdlPluckBraking) && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
         const int result=PlugPikiApp::idle();
         Navi* n=naviMgr?naviMgr->getNavi():nullptr;
         // Injection modifies the initialized runtime, never an engine-free stand-in.

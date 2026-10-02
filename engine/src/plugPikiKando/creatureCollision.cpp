@@ -11,6 +11,12 @@
 #include <cstring>
 namespace {
 PcPurpleCollisionTraceWindow purpleCollisionTrace;
+PcPurpleCollisionClosure purpleCollisionClosure;
+PcPurpleQueuedForce purpleForce(const Vector3f& v) { return {v.x,v.y,v.z}; }
+bool purpleAcquisitionMode() {
+    const char* mode=std::getenv("P2_PURPLE_COMBAT_MODE");
+    return mode && std::strcmp(mode,"sdl_acquire")==0;
+}
 bool purpleCollisionTraceEnabled() {
     static const bool enabled = [] {
         const char* flag = std::getenv("P2_PURPLE_COLLISION_TRACE");
@@ -23,8 +29,12 @@ void purpleCollisionTraceEmit(Creature* actor, Creature* partner, const Vector3f
                               const Vector3f& point, const char* side) {
     const Vector3f after = actor->mVolatileVelocity;
     const bool changed = before.x != after.x || before.y != after.y || before.z != after.z;
-    if (!pc_render_is_authoritative() || !purpleCollisionTrace.take(actor, changed)) return;
     Piki* piki = partner->mObjType == OBJTYPE_Piki ? static_cast<Piki*>(partner) : nullptr;
+    purpleCollisionClosure.record(actor,pc_render_is_authoritative()?pc_render_tick_serial():0,
+        piki && piki->isAlive() && piki->getState()==PIKISTATE_Normal
+            && piki->mMode==PikiMode::FormationMode && piki->mNavi==actor,
+        purpleForce(before),purpleForce(after));
+    if (!pc_render_is_authoritative() || !purpleCollisionTrace.take(actor, changed)) return;
     std::printf("P2_PURPLE_COLLISION_PROVENANCE fixture_tick=%llu auth_tick=%llu sequence=%u "
                 "side=%s captain=%p captain_index=%d partner=%p partner_type=%d "
                 "partner_piki_state=%d partner_piki_mode=%d partner_navi=%p "
@@ -43,6 +53,14 @@ void purpleCollisionTraceEmit(Creature* actor, Creature* partner, const Vector3f
 void pc_purple_collision_trace_context(const Creature* captain, bool active, std::uint64_t fixtureTick) {
     const bool enabled = purpleCollisionTraceEnabled();
     const bool valid = captain && captain->mObjType == OBJTYPE_Navi;
+    const PcPurpleQueuedForce initial=valid?purpleForce(captain->mVolatileVelocity):PcPurpleQueuedForce{};
+    // update() consumes and clears the previous queue before postUpdate()
+    // separation writes. Permit that previous queue only when its exact value
+    // and preceding fixture/auth ticks already have complete owned provenance.
+    // The new closure still requires the FIRST actual write to start at zero;
+    // any intervening force or failure to clear it invalidates this tick.
+    purpleCollisionClosure.beginIdle(purpleAcquisitionMode() && active && valid,
+        captain,fixtureTick,pc_render_tick_serial(),initial);
     purpleCollisionTrace.begin(enabled, active && valid, captain, fixtureTick);
     if (!enabled || !active || !valid || !purpleCollisionTrace.eligible(captain)) return;
     std::printf("P2_PURPLE_COLLISION_CONTEXT fixture_tick=%llu preceding_auth_tick=%llu "
@@ -50,6 +68,10 @@ void pc_purple_collision_trace_context(const Creature* captain, bool active, std
                 static_cast<unsigned long long>(fixtureTick), static_cast<unsigned long long>(pc_render_tick_serial()),
                 static_cast<const void*>(captain), static_cast<const Navi*>(captain)->getNaviIndex(),
                 captain->mVolatileVelocity.x, captain->mVolatileVelocity.y, captain->mVolatileVelocity.z);
+}
+bool pc_purple_collision_owned_queued_force(const Creature* captain,std::uint64_t fixtureTick) {
+    return captain && captain->mObjType==OBJTYPE_Navi && purpleCollisionClosure.matches(captain,
+        fixtureTick,pc_render_tick_serial(),purpleForce(captain->mVolatileVelocity));
 }
 #endif
 
@@ -171,8 +193,8 @@ void Creature::respondColl(Creature* other, f32, CollPart* selfCollider, CollPar
 				f32 sepSpeedOther = distance * sepRatioOther / gsys->getFrameTime();
 
 #if defined(PIKI_PC_PORT)
-                const bool traceSelf = purpleCollisionTrace.eligible(this);
-                const bool traceOther = purpleCollisionTrace.eligible(other);
+                const bool traceSelf = purpleCollisionTrace.eligible(this) || purpleCollisionClosure.watches(this);
+                const bool traceOther = purpleCollisionTrace.eligible(other) || purpleCollisionClosure.watches(other);
                 Vector3f traceBeforeSelf, traceBeforeOther;
                 if (traceSelf) traceBeforeSelf = mVolatileVelocity;
                 if (traceOther) traceBeforeOther = other->mVolatileVelocity;
