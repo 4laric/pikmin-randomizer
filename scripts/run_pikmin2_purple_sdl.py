@@ -396,6 +396,19 @@ def save_budget_observations(log):
         'acquisition_limit': 60, 'save_limit': 60, 'whole_limit': 120, 'movie_skip': False}
 
 
+def reject_legacy_routes(log):
+    # boundAdult() emits these read-only binding/catalog diagnostics in both
+    # ordinary save and fresh resume. They do not select the old scripted path.
+    # Admit only exact diagnostic names; every other persistence marker remains
+    # forbidden, including unknown future routes and similarly named prefixes.
+    for line in log.splitlines():
+        if line.startswith('P2_PURPLE_SCRIPTED_THROW'):
+            raise ValueError('Legacy persistence/scripted route forbidden')
+        if line.startswith('P2_PURPLE_PERSIST'):
+            require(line.startswith(('P2_PURPLE_PERSIST_BINDING ', 'P2_PURPLE_PERSIST_CATALOG ')),
+                    'Legacy persistence/scripted route forbidden')
+
+
 def save_observations(result, log, handshaken, errors):
     native_success(result, log, handshaken, errors, timeout_seconds=120)
     budget = save_budget_observations(log)
@@ -417,7 +430,7 @@ def save_observations(result, log, handshaken, errors):
                'P2_PURPLE_SDL_ACQUISITION_PASS ', 'P2_PURPLE_ORDINARY_SAVE_BEGIN ',
                '[Pikmin Randomizer] CAMPAIGN_SAVED generation=1', 'P2_PURPLE_ORDINARY_SAVE_PASS ']
     require([log.index(p) for p in markers] == sorted(log.index(p) for p in markers), 'Save markers out of order')
-    require(not re.search(r'^P2_PURPLE_(?:PERSIST|SCRIPTED_THROW)', log, re.M), 'Legacy persistence/scripted route forbidden')
+    reject_legacy_routes(log)
     return {'acquisition': acquisition, 'budget': budget, 'begin': begin, 'saved': saved, 'day': day, 'maturity': maturity}
 
 
@@ -429,8 +442,9 @@ def resume_observations(result, log, handshaken, errors, expected):
             'direct_stock_helpers': '0', 'withdrawal_ui_validated': '0', 'saved_bytes_injected': '0'}.items():
         require(data.get(key) == value, 'Resume mismatch: ' + key)
     require('CAMPAIGN_SAVED' not in log and 'P2_PURPLE_SDL_ACQUISITION_PASS' not in log
-        and 'P2_VIOLET_WITNESS' not in log and 'P2_VIOLET_CONVERT' not in log
-        and not re.search(r'^P2_PURPLE_(?:PERSIST|SCRIPTED_THROW)', log, re.M), 'Resume unexpectedly reacquired or wrote a save')
+        and 'P2_VIOLET_WITNESS' not in log and 'P2_VIOLET_CONVERT' not in log,
+        'Resume unexpectedly reacquired or wrote a save')
+    reject_legacy_routes(log)
     return data
 
 
