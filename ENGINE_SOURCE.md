@@ -1,3 +1,28 @@
+# Current diagnostic source provenance
+
+Native `0eec43b0fa410f863a9fffd2034fe3f5a8ceb3af` is exported from clean
+`output/native-coop-p2-source-combination` under #1144. All 4,272 copied
+tracked files match actual native working-tree bytes; 53 audited non-desktop
+binary resources are skipped. This adds only two reviewed fixture diagnostics:
+Purple1128 end-idle force/acceleration/tau guard operands and Tutorial1177
+ordinary movement/contact snapshots. Exact Git LF fixture hashes are
+`f5763b65a4f1aae132eb09709c891e107edcafa127ce87e0c56e42aaf916ea75`
+and `2fa3c6574d53f3e2f21d531a89f35445de2710bc3312b8bdf80f5dd57306ef1d`.
+Primary exact forward/full inverse proofs and whole independent reviews were
+verified; supported genuine producer agreement ae5baf9f was consumed before
+adoption. Production actor state, physics, input, route, window and save behavior,
+original failure guards and gameplay acceptance checks remain unchanged.
+
+Original Purple360 and Tutorial299 failures remain unresolved. Diagnostics do
+not identify collision origin or prove a movement repair. Fresh matching selected
+fixture compilation and separately admitted bounded runtime runs remain required.
+The preceding Captain281f Windows run37043049008 and Linux run37039439292
+both succeeded, but compile older source without settings1190 or these diagnostics.
+Purple, White, Captain, cave, imported-level gameplay and mid-day Save & Quit
+acceptance remain open. No executable/playability proof follows from this export.
+
+## Previous export provenance (historical)
+
 # Current combined native source provenance
 
 Native `a403261bbb787ab1124fdedb6deae8dc1fb91f89` is exported from clean

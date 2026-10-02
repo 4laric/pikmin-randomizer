@@ -148,6 +148,25 @@ static bool pluckPulseSettled(const SdlPluckState& s) {
 }
 // END SDL PLUCK PULSE POLICY
 
+// BEGIN SDL PLUCK FORCE DIAGNOSTIC
+// Exactly the existing planar-force/tau admission predicate, separated only
+// to identify its failing operand. A queued post-movement collision impulse is
+// NOT declared safe or discarded; the original fail-closed policy is retained.
+static unsigned pluckForceGuardMask(SdlPluckPoint acceleration, SdlPluckPoint transient, float tau) {
+    unsigned mask=0;
+    if(!(pluckLength(acceleration)<.0001f)) mask|=1u;
+    if(!(pluckLength(transient)<.0001f)) mask|=2u;
+    if(!(std::isfinite(tau) && tau>=1.f/30.f)) mask|=4u;
+    return mask;
+}
+struct SdlPluckForceSample {
+    float acceleration[3]={},transient[3]={};
+    float tau=0.f;
+    int tick=-1;
+};
+// END SDL PLUCK FORCE DIAGNOSTIC
+
+
 static const auto fixtureStarted=std::chrono::steady_clock::now();
 static void milestone(const char* name,int tick) {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
@@ -280,6 +299,7 @@ class PurpleCombatApp : public PlugPikiApp {
     std::vector<Vector3f> pluckRoute;
     size_t pluckRouteIndex=0;
     bool sdlPluckBraking=false;
+    SdlPluckForceSample sdlPreviousForceSample;
     bool sdlPulseActive=false;
     int sdlPulseFrames=0;
     SdlPluckState sdlPulseBefore;
@@ -862,7 +882,7 @@ class PurpleCombatApp : public PlugPikiApp {
     SdlPluckState sdlPulseSnapshot(Navi* n) const {
         return {sdlPoint(n->mSRT.t),sdlPoint(n->mVelocity),sdlPoint(n->mFixedPosition),n->isCreatureFlag(CF_IsPositionFixed)};
     }
-    SdlPluckInputModel sdlPulseModel(Navi* n,float tau) const {
+    SdlPluckInputModel sdlPulseModel(Navi* n,float tau) {
         require(n->controlCamera() && n->mPlateMgr && n->mKontroller,"pulse controller dependencies");
         const int state=n->getCurrState()->getID();
         require(state==NAVISTATE_Walk || state==NAVISTATE_Idle,"pulse requires ordinary walking state");
@@ -875,8 +895,28 @@ class PurpleCombatApp : public PlugPikiApp {
             && !n->mIsBeingDamaged && !n->mIsFrozen && !n->mKontroller->mIsControllerFrozen
             && !n->mCollPlatform && !n->mRope && !n->mStickTarget
             && n->mHoldingCreature.isNull(),"pulse forecast unsupported movement state");
-        require(pluckLength(sdlPoint(n->_B0))<.0001f && pluckLength(sdlPoint(n->mVolatileVelocity))<.0001f
-            && std::isfinite(tau) && tau>=1.f/30.f,"pulse forecast external force or acceleration");
+        // This sample is after PlugPikiApp::idle: movement and collision
+        // postUpdate have both completed. Previous is the preceding model-check
+        // sample, NOT a pre-collision measurement. Do not infer impulse origin.
+        const unsigned forceMask=pluckForceGuardMask(sdlPoint(n->_B0),sdlPoint(n->mVolatileVelocity),tau);
+        const auto& previous=sdlPreviousForceSample;
+        std::printf("P2_PURPLE_PLUCK_FORCE_SAMPLE tick=%d phase=%s sample=end_idle state=%d "
+            "B0=%.9g,%.9g,%.9g volatile=%.9g,%.9g,%.9g tau=%.9g "
+            "mask=%u mask_B0=1 mask_volatile=2 mask_tau=4 "
+            "previous_tick=%d previous_B0=%.9g,%.9g,%.9g previous_volatile=%.9g,%.9g,%.9g previous_tau=%.9g "
+            "velocity=%.9g,%.9g,%.9g target=%.9g,%.9g,%.9g anchor=%.9g,%.9g,%.9g fixed=%d "
+            "ground_normal=%.9g,%.9g,%.9g dt=%.9g read_only=1 force_origin_unproven=1\n",
+            ticks,sdlPulseActive?"observe":"begin",state,
+            n->_B0.x,n->_B0.y,n->_B0.z,n->mVolatileVelocity.x,n->mVolatileVelocity.y,n->mVolatileVelocity.z,tau,
+            forceMask,previous.tick,previous.acceleration[0],previous.acceleration[1],previous.acceleration[2],
+            previous.transient[0],previous.transient[1],previous.transient[2],previous.tau,
+            n->mVelocity.x,n->mVelocity.y,n->mVelocity.z,n->mTargetVelocity.x,n->mTargetVelocity.y,n->mTargetVelocity.z,
+            n->mFixedPosition.x,n->mFixedPosition.y,n->mFixedPosition.z,int(n->isCreatureFlag(CF_IsPositionFixed)),
+            n->mGroundTriangle->mTriangle.mNormal.x,n->mGroundTriangle->mTriangle.mNormal.y,n->mGroundTriangle->mTriangle.mNormal.z,
+            gsys->getFrameTime());
+        sdlPreviousForceSample={{n->_B0.x,n->_B0.y,n->_B0.z},
+            {n->mVolatileVelocity.x,n->mVolatileVelocity.y,n->mVolatileVelocity.z},tau,ticks};
+        require(forceMask==0,"pulse forecast external force or acceleration");
         Stickers stickers(n);const float drag=std::max(.1f,1.f-.08f*stickers.getNumStickers());
         const Vector3f& axis=n->controlCamera()->mViewXAxis;
         const float yaw=std::atan2(axis.z,axis.x);

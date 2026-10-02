@@ -28,6 +28,7 @@
 #include "Generator.h"
 #include "MapMgr.h"
 #include "Collision.h"
+#include "MapCode.h"
 #include "Shape.h"
 #include "Route.h"
 #include "GameStat.h"
@@ -93,6 +94,25 @@ class UpperApp:public PlugPikiApp {
    require(current[uid]->mNavi==n&&current[uid]->mMode==PikiMode::FormationMode,"actual plate ownership/mode mismatch");joined[uid]=true;++members;
   }
   require(members==n->getPlatePikis(),"actual plate count mismatch");return members==20;
+ }
+ void approach_telemetry(Navi* n) {
+  if(phase!=2||tick%15)return;
+  const Vector3f& a=n->controlCamera()->mViewXAxis;
+  const Vector3f zero(0.f,0.f,0.f);
+  const Vector3f& ground=n->mGroundTriangle?n->mGroundTriangle->mTriangle.mNormal:zero;
+  const Vector3f& wall=n->mWallPlane?n->mWallPlane->mNormal:zero;
+  const Vector3f& last=n->mCollNormal?*n->mCollNormal:zero;
+  int groundFace=-1;
+  for(int i=0;n->mGroundTriangle&&i<mapMgr->mMapModel->mTriCount;++i)
+   if(n->mGroundTriangle==&mapMgr->mMapModel->mTriList[i]){groundFace=i;break;}
+  std::printf("P2_UPPER_APPROACH tick=%d phase=%d age=%d goal=%.3f,1000 xyz=%.3f,%.3f,%.3f camera_x=%.7f,%.7f,%.7f world_transformed_stick=%.7f,%.7f,%.7f target_velocity=%.7f,%.7f,%.7f velocity=%.7f,%.7f,%.7f force_B0=%.7f,%.7f,%.7f volatile=%.7f,%.7f,%.7f ground_face=%d ground_normal=%.7f,%.7f,%.7f ground_mapcode=%u ground_slip=%d wall_present=%d wall_normal=%.7f,%.7f,%.7f last_collision_present=%d last_collision_normal=%.7f,%.7f,%.7f collision_radius=%.7f feet_offset=%.7f ordinary_SDL=1 actor_writes=0 collision_events=UNOBSERVED\n",
+   tick,phase,tick-phaseAge,target,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,a.x,a.y,a.z,
+   n->mMainStick.x,n->mMainStick.y,n->mMainStick.z,n->mTargetVelocity.x,n->mTargetVelocity.y,n->mTargetVelocity.z,
+   n->mVelocity.x,n->mVelocity.y,n->mVelocity.z,n->_B0.x,n->_B0.y,n->_B0.z,
+   n->mVolatileVelocity.x,n->mVolatileVelocity.y,n->mVolatileVelocity.z,groundFace,ground.x,ground.y,ground.z,
+   n->mGroundTriangle?unsigned(n->mGroundTriangle->mMapCode):0u,MapCode::getSlipCode(n->mGroundTriangle),
+   int(n->mWallPlane!=nullptr),wall.x,wall.y,wall.z,int(n->mCollNormal!=nullptr),last.x,last.y,last.z,n->mCollisionRadius,n->mGroundOffset);
+  std::fflush(stdout);
  }
  void recruitment_telemetry(Navi* n,const std::array<Piki*,20>& current,const std::array<bool,20>& joined){
   if(tick%15&&lastTelemetryPhase==phase)return;lastTelemetryPhase=phase;
@@ -227,6 +247,7 @@ public:
   bool allSettled=true;for(int i=0;i<21;++i)if(!observe(roster[i],i))allSettled=false;
   require(tick-phaseAge<1000,"finite phase budget exceeded");
   std::array<bool,20> joined{};bool allJoined=plate_membership(n,current,joined);recruitment_telemetry(n,current,joined);
+  approach_telemetry(n);
   bool gathered=regroup(n,current,joined,allJoined);
   if(!gathered){settle=0;return result;}
   if(phase==1){neutral_input();if(tick-phaseAge>=60){phase=2;phaseAge=tick;target=-115.f;}return result;}
