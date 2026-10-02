@@ -1,5 +1,9 @@
 """Acceptance-result refusals; synthetic inputs do not prove native gameplay."""
 import copy
+import os
+import subprocess
+import sys
+import time
 import unittest
 from randomizer.cave_floor import create,fingerprint
 from experimental.pikmin2_cave_items import parse_items_text,items_from_layout,items_text
@@ -32,5 +36,28 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'water receipt'):validate_boundary(state,m,p)
         state,m,p=self.fixture();state['receipts']+=state['receipts'].splitlines()[1]+'\n'
         with self.assertRaisesRegex(ValueError,'duplicate'):validate_boundary(state,m,p)
+
+class ActualOwnedGroupTests(unittest.TestCase):
+    @unittest.skipIf(os.name=='nt','actual POSIX retained process-group control')
+    def test_retained_exit_and_timeout_cleanup(self):
+        from scripts.fixture_platform import owned_process_options,wait_owned_process,terminate_owned_process
+        for natural_exit in (True,False):
+            with self.subTest(natural_exit=natural_exit):
+                script='import os,time; pid=os.fork();\nif pid==0: time.sleep(30)\nelse: time.sleep(.1 if '+str(natural_exit)+' else 30)'
+                child=subprocess.Popen([sys.executable,'-c',script],**owned_process_options())
+                unrelated=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
+                try:
+                    if natural_exit:self.assertEqual(wait_owned_process(child,2),0)
+                    else:
+                        with self.assertRaises(subprocess.TimeoutExpired):wait_owned_process(child,.1)
+                    self.assertIsNone(child.returncode) # kernel leader has not been reaped
+                    receipt=terminate_owned_process(child)
+                    self.assertTrue(receipt['child_reaped']);self.assertTrue(receipt['group_absent'])
+                    self.assertTrue(receipt['leader_retained_until_signal']);self.assertEqual(receipt['signal_attempts'],1)
+                    self.assertIs(terminate_owned_process(child),receipt)
+                    self.assertIsNone(unrelated.poll())
+                finally:
+                    terminate_owned_process(child)
+                    unrelated.terminate();unrelated.wait(timeout=3)
 
 if __name__=='__main__':unittest.main()
