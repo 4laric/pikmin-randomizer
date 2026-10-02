@@ -1,3 +1,35 @@
+# Current execution policy: direct coordination (2026-10-02, #1195)
+
+The user authorized retiring the inherited workflow when it impedes progress.
+This policy supersedes conflicting execution rules below and in historical
+runbooks. Implementation owner: Codex through shared GitHub account `4laric`.
+
+- Coordinate directly with affected agents and chats. Use assigned GitHub issues
+  and PRs for scope, ownership, progress and relevant build/gameplay evidence.
+- The workflow registry, lane generations, file-claim agreements, resource leases,
+  controller launch identities, mandatory handoff/consumer-verification receipts,
+  and separate administrative runtime-admission packets are optional tooling.
+  They must not block authorized implementation, private tests or integration.
+  Do not invent records to satisfy legacy APIs. Keep existing records as history.
+- Work in private worktrees and build directories; never build concurrently in
+  the same directory. Use the GitHub runner for supported heavy builds and
+  coordinate its dispatch directly with the runner owner. Serialize maintained
+  source integration/export writes. Keep verified remote and branch push rules.
+- Preserve practical machine-capacity checks and bounded cleanup of processes
+  actually owned by the test. Never kill unrelated games or builds. Administrative
+  workflow approval is not needed for a development test within the user's scope.
+- Fix, review and rerun tests as normal development work; preserve prior failure
+  logs. A consumed diagnostic packet does not prohibit a new test after a fix.
+  Test changed behavior and material risks, without cascading manifests or review
+  receipts for unchanged inputs. Build success still does not prove gameplay.
+- Keep legal assets private, saves/logs under ignored output, and the 20-Pikmin,
+  960x540 centered fixture baseline. Ordinary gameplay acceptance still requires
+  the actual mechanic, including save/resume where specified; synthetic controls
+  cannot substitute for it. Prepare short direct-gameplay scripts for human tests.
+
+Do not delete active runtime/build state or disable unrelated services as part of
+this retirement. The remaining workflow documentation is historical reference.
+
 # Lane, orchestrator and watchdog operating contract
 
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
