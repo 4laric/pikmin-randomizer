@@ -68,5 +68,15 @@ class Inputs(unittest.TestCase):
         self.assertTrue(assess('forced-down', neg, 'P2_FIXTURE_CAPTAIN_DOWN'))
         self.assertFalse(assess('forced-down', neg, 'P2_FIXTURE_CAPTAIN_DOWN\n'+ready))
 
+    def test_positive_requires_current_authored_route_and_original_squad(self):
+        raw = dict(passed=True, exit_code=0, captain_down=False, timed_out=False)
+        ready = 'P2_UPPER_WINDOW size=960x540 centered=1\nP2_UPPER_READY live=20 faces=5332 waters=3 start=west_bank gameplay_pass=0\n'
+        result = 'PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 route=retail_bank_20_19 high_ridge=UNPROVEN ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED'
+        self.assertTrue(assess('positive', raw, ready + result))
+        for before, after in [('all_returned=21', 'all_returned=20'),
+                              ('route=retail_bank_20_19 high_ridge=UNPROVEN ', ''),
+                              ('high_ridge=UNPROVEN', 'high_ridge=PASS')]:
+            self.assertFalse(assess('positive', raw, ready + result.replace(before, after)))
+
 
 if __name__ == '__main__': unittest.main()

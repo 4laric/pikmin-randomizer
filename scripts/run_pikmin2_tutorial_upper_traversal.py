@@ -67,7 +67,7 @@ def assess(mode, raw, text):
     marker = 'P2_UPPER_READY live=20 faces=5332 waters=3 start=west_bank gameplay_pass=0'
     if marker not in text or 'P2_UPPER_WINDOW size=960x540 centered=1' not in text:
         return False
-    return mode == 'ready' or 'PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED' in text
+    return mode == 'ready' or 'PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 route=retail_bank_20_19 high_ridge=UNPROVEN ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED' in text
 
 
 @contextmanager
