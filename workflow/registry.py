@@ -66,9 +66,10 @@ from .delivery import DeliveryMixin
 from .scheduling import SchedulingMixin
 from .batching import BatchingMixin
 from .coordination import CoordinationMixin
+from .owner_identity import OwnerIdentityMixin
 
 
-class Registry(CoordinationMixin, SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, RemoteMixin):
+class Registry(OwnerIdentityMixin, CoordinationMixin, SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, RemoteMixin):
     def __init__(self, path, root, *, clock=time.time, process_probe=probe):
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
