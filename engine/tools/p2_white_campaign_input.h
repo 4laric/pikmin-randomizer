@@ -13,6 +13,14 @@ inline WhiteSaveIntent white_save_intent(bool requested,bool advanced,const PcPa
  if(diary==PcDiaryAction::RevealPage)return WhiteSaveIntent::Reveal;
  if(diary==PcDiaryAction::AdvancePage)return WhiteSaveIntent::Advance;
  if(save.resultsInputReady)return WhiteSaveIntent::Confirm;
+ if(save.defaultFile.available){
+  // Actual outer memory default-file route, before first-save slot selection.
+  // The const observer reports success only in AwaitingConfirmation/Success.
+  if(!save.available||!save.outerMemoryRouted||!save.memoryAvailable||!save.failureAvailable||!save.failureInactive||!save.fileAvailable||save.fileSelection)return WhiteSaveIntent::Refuse;
+  if(!save.defaultFile.successful)return WhiteSaveIntent::Neutral;
+  if(save.defaultFile.confirmationReady!=save.defaultFile.typingComplete)return WhiteSaveIntent::Refuse;
+  return save.defaultFile.confirmationReady?WhiteSaveIntent::Confirm:WhiteSaveIntent::Neutral;
+ }
  if(save.cardSlotInputReady)return save.cardSlot==0?WhiteSaveIntent::Confirm:WhiteSaveIntent::Refuse;
  if(save.secondaryInputReady)return WhiteSaveIntent::Refuse;
  if(save.primaryInputReady)return save.primaryYes?WhiteSaveIntent::Confirm:WhiteSaveIntent::Up;

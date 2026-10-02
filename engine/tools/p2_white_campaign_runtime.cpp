@@ -126,7 +126,7 @@ public:CampaignInput():Kontroller(1){}
     if(walk||phaseTick%10==0){float dx=walk?bx:goal.x-n->mCursorWorldPos.x,dz=walk?bz:goal.z-n->mCursorWorldPos.z;float length=std::sqrt(dx*dx+dz*dz);
      if(length>(walk?15.f:3.f)){const auto& axis=n->mNaviCamera->mViewXAxis;float strength=walk?65.f:22.f;stickX=strength*(dx*axis.x+dz*axis.z)/length;stickY=strength*(dx*axis.z-dz*axis.x)/length;}}
    }
-   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:keys=KBBTN_DPAD_DOWN;break;case WhiteSaveIntent::Up:keys=KBBTN_DPAD_UP;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Reveal:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
+   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:keys=KBBTN_DPAD_DOWN;break;case WhiteSaveIntent::Up:keys=KBBTN_DPAD_UP;break;case WhiteSaveIntent::Reveal:keys=KBBTN_B;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
   }
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_A,int((keys&KBBTN_A)!=0));
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_B,int((keys&KBBTN_B)!=0));
