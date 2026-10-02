@@ -205,6 +205,150 @@ class CoordinationTests(unittest.TestCase):
         with self.assertRaisesRegex(Rejected, 'lane issue'):
             self.agree(request)
 
+    def extend_unclaimed(self, additions=None, agreements=None, **overrides):
+        request = dict(key='integration', generation=1, revision=self.lane('integration')['revision'],
+                       agreement_ids=[] if agreements is None else agreements,
+                       additions=['unclaimed.py'] if additions is None else additions,
+                       scope='Issue 1144: bounded unclaimed source extension', chain=self.chain)
+        request.update(overrides)
+        return self.reg.amend_scope(**request)
+
+    def native_checkout(self):
+        repo = self.root / 'native'; self.git('init', str(repo))
+        self.git('-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.test',
+                 'commit', '--allow-empty', '-m', 'native baseline')
+        head = self.git('-C', str(repo), 'rev-parse', 'HEAD').strip()
+        self.git('-C', str(repo), 'worktree', 'add', '--detach', str(self.root / 'output/native-integration'), head)
+        with self.reg.transaction() as state:
+            state['lanes']['integration']['native'] = dict(base=head, head=head, commits=[], dirty='',
+                                                          worktree='output/native-integration')
+        return head
+
+    def test_unclaimed_extension_preserves_other_owners_and_acceptance(self):
+        before = self.reg.snapshot()
+        amended = self.extend_unclaimed(['new.py', 'sub/new.py'])
+        after = self.reg.snapshot()
+        self.assertEqual(before['lanes']['owner'], after['lanes']['owner'])
+        self.assertEqual(before['leases'], after['leases'])
+        self.assertEqual(before['lanes']['integration']['revision'] + 1, amended['revision'])
+        self.assertEqual([], amended['coordination'][-1]['agreements'])
+        self.assertEqual(before['lanes']['integration']['owned_files'] + ['new.py', 'sub/new.py'], amended['owned_files'])
+        for field in ('state', 'handoff', 'integrated_at', 'acceptance', 'root', 'native'):
+            self.assertEqual(before['lanes']['integration'][field], amended[field])
+        self.assertEqual({}, after.get('coordination_agreements', {}))
+        self.assertEqual({}, after.get('approvals', {}))
+
+    def test_empty_agreements_cannot_take_unfinished_local_claim(self):
+        for key in ('shared.py', 'SHARED.PY'):
+            with self.subTest(key=key), self.assertRaisesRegex(Rejected, 'Uncoordinated'):
+                self.extend_unclaimed([key])
+        self.assertNotIn('shared.py', self.lane('integration')['owned_files'])
+
+    def test_remote_claim_and_same_issue_are_never_waived(self):
+        for issue, files in ((1194, ['directory']), (1144, ['other-remote.py'])):
+            with self.subTest(issue=issue):
+                with self.reg.transaction() as state:
+                    state.setdefault('remote', {})['jobs'] = {'real-test-job': dict(id='real-test-job', state='queued',
+                                                                                 issue=issue, owned_files=files)}
+                before = self.lane('integration')
+                with self.assertRaisesRegex(Rejected, 'reserved by remote'):
+                    self.extend_unclaimed(['directory/new.py'])
+                self.assertEqual(before, self.lane('integration'))
+
+    def test_unclaimed_extension_rejects_malformed_agreements(self):
+        for value in (None, 'id', {}, 1, [None], [{}], [1], [''], ['   ']):
+            with self.subTest(value=value), self.assertRaisesRegex(Rejected, 'agreement IDs'):
+                self.extend_unclaimed(agreement_ids=value)
+        with self.assertRaisesRegex(Rejected, 'Unknown or mismatched'):
+            self.extend_unclaimed(agreements=['unknown'])
+
+    def test_unclaimed_extension_keeps_normalized_keys_and_scope_required(self):
+        for value in ([], '../escape.py', ['../escape.py'], ['/absolute.py'], ['a\\b'], ['a//b'], ['x', 'X'], [None]):
+            with self.subTest(value=value), self.assertRaises(Rejected):
+                self.extend_unclaimed(value)
+        for scope in ('', '   ', None, 7):
+            with self.subTest(scope=scope), self.assertRaisesRegex(Rejected, 'issue-backed scope'):
+                self.extend_unclaimed(scope=scope)
+
+    def test_unclaimed_extension_requires_live_actor_ancestry_and_current_fences(self):
+        for changes, message in ((dict(chain=[]), 'registered integration process'),
+                                 (dict(generation=2), 'Stale ownership generation'),
+                                 (dict(revision=1), 'Stale lane revision')):
+            with self.subTest(changes=changes), self.assertRaisesRegex(Rejected, message):
+                self.extend_unclaimed(**changes)
+        self.reg.probe = lambda _: 'dead'
+        with self.assertRaisesRegex(Rejected, 'Live integration actor'):
+            self.extend_unclaimed()
+        self.reg.probe = lambda _: 'alive'
+        with self.reg.transaction() as state:
+            state['lanes']['integration']['state'] = 'blocked'
+        with self.assertRaisesRegex(Rejected, 'Live integration actor'):
+            self.extend_unclaimed()
+
+    def test_unclaimed_extension_keeps_worker_wip_limit(self):
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['worker_id'] = 'integration'
+        with self.assertRaisesRegex(Rejected, 'one active slice'):
+            self.extend_unclaimed()
+
+    def test_unclaimed_extension_checks_actual_root_head(self):
+        self.git('-C', str(self.root / 'output/integration'), '-c', 'user.name=Test',
+                 '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-m', 'head drift')
+        with self.assertRaisesRegex(Rejected, 'HEAD differs'):
+            self.extend_unclaimed()
+
+    def test_unclaimed_extension_checks_missing_and_maintained_checkout(self):
+        for tree, message in (('output/absent', 'checkout missing'), ('.', 'private checkout')):
+            with self.reg.transaction() as state:
+                state['lanes']['integration']['root']['worktree'] = tree
+            with self.subTest(tree=tree), self.assertRaisesRegex(Rejected, message):
+                self.extend_unclaimed()
+
+    def test_unclaimed_extension_rejects_ordinary_or_redirected_git_checkout(self):
+        clone = self.root / 'output/ordinary'
+        self.git('clone', '--no-hardlinks', str(self.root), str(clone))
+        with self.reg.transaction() as state:
+            state['lanes']['integration']['root']['worktree'] = 'output/ordinary'
+        with self.assertRaisesRegex(Rejected, 'Linked private git worktree'):
+            self.extend_unclaimed()
+        forged = self.root / 'output/redirected'; forged.mkdir()
+        (forged / '.git').write_text('gitdir: ' + str(self.root / '.git'))
+        with self.reg.transaction() as state:
+            state['lanes']['integration']['root']['worktree'] = 'output/redirected'
+        with self.assertRaisesRegex(Rejected, 'worktree identity'):
+            self.extend_unclaimed()
+
+    def test_unclaimed_native_extension_requires_source_and_actual_head(self):
+        for key in ('native/pc_port/new.h', 'NATIVE/pc_port/new.h'):
+            with self.subTest(key=key), self.assertRaisesRegex(Rejected, 'Source record required for native'):
+                self.extend_unclaimed([key])
+        self.native_checkout()
+        amended = self.extend_unclaimed(['native/pc_port/new.h'])
+        self.assertIn('native/pc_port/new.h', amended['owned_files'])
+        self.git('-C', str(self.root / 'output/native-integration'), '-c', 'user.name=Test',
+                 '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-m', 'native drift')
+        with self.assertRaisesRegex(Rejected, 'HEAD differs'):
+            self.extend_unclaimed(['native/pc_port/second.h'])
+
+    def test_mixed_extension_checks_each_repository_even_with_agreement(self):
+        row = self.agree()
+        with self.assertRaisesRegex(Rejected, 'Source record required for native'):
+            self.extend_unclaimed(['shared.py', 'native/pc_port/new.h'], agreements=[row['id']])
+        self.assertNotIn('shared.py', self.lane('integration')['owned_files'])
+        self.native_checkout()
+        # Updating the source identity makes the former agreement stale; genuine
+        # current communication must be recorded again instead of reusing it.
+        with self.assertRaisesRegex(Rejected, 'Unknown or mismatched'):
+            self.extend_unclaimed(['shared.py', 'native/pc_port/new.h'], agreements=[row['id']])
+        amended = self.extend_unclaimed(['shared.py', 'native/pc_port/new.h'], agreements=[self.agree()['id']])
+        self.assertIn('shared.py', amended['owned_files'])
+
+    def test_unclaimed_mixed_extension_checks_root_and_native(self):
+        self.native_checkout()
+        amended = self.extend_unclaimed(['root-new.py', 'native/pc_port/new.h'])
+        self.assertIn('root-new.py', amended['owned_files'])
+        self.assertIn('native/pc_port/new.h', amended['owned_files'])
+
 
 if __name__ == '__main__':
     unittest.main()

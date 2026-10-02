@@ -56,6 +56,14 @@ def checkout(reg, lane, repo, *, consumer):
         require((path / '.git').exists(), 'Producer git checkout reference required')
     directory = git(path, 'rev-parse', '--absolute-git-dir')
     if consumer:
+        # A .git text file alone can redirect to an ordinary/shared git directory.
+        # A linked checkout also has its own metadata pointing back to this path.
+        backlink = Path(directory) / 'gitdir'
+        target = Path(backlink.read_text().strip()) if backlink.is_file() else None
+        if target is not None and not target.is_absolute():
+            target = backlink.parent / target
+        require(target is not None and target.resolve() == path / '.git',
+                'Linked private git worktree identity required')
         require(git(path, 'rev-parse', 'HEAD') == source['head'], 'Integration checkout HEAD differs from source pin')
     return dict(path=str(path), git_dir=str(Path(directory).resolve()), missing=False)
 
@@ -143,10 +151,15 @@ class CoordinationMixin:
         chain = ancestry() if chain is None else chain
         files(additions)
         require(nonempty(scope), 'Updated issue-backed scope required')
-        require(isinstance(agreement_ids, list) and agreement_ids, 'Coordination agreements required')
+        require(isinstance(agreement_ids, list) and all(nonempty(v) for v in agreement_ids),
+                'Coordination agreement IDs must be a list of nonempty strings')
         with self.transaction() as state:
             lane = actor(self, state, key, generation, chain)
             self.lane(state, key, generation, revision)
+            # Unclaimed files need no producer agreement, but they still require
+            # an actual private checkout at the pinned HEAD for every touched repo.
+            for repo in {'native' if f.casefold().startswith('native/') else 'root' for f in additions}:
+                checkout(self, lane, repo, consumer=True)
             covered = set()
             for agreement_id in agreement_ids:
                 row = state.get('coordination_agreements', {}).get(agreement_id)

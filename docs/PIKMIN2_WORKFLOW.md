@@ -71,6 +71,14 @@ them. A commit advancing the integration checkout requires its normal source
 checkpoint and a fresh agreement before further coordinated edits. Refresh at new
 pins rather than relabeling old evidence. Only the actor's own scope changes.
 
+For issue-backed additions with no unfinished local owner, `agreement_ids: []`
+is supported (#1194); no producer participant or editing agreement is invented.
+The same live actor, caller ancestry, generation/revision, WIP and normalized-key
+checks still apply. Every touched repository must have an actual linked private
+checkout at the actor's recorded HEAD, even when no agreement is supplied. Local
+overlaps require genuine current agreements, and remote issue/file claims are
+always checked and never waived. A stale request must be refreshed from status.
+
 These operations never repair legacy handoffs, mutate producer states, resolve
 pending shared reviews or manufacture receipt evidence. Source acceptance still
 requires the actual combined diff, affected consumers, exact-head build/CI,
