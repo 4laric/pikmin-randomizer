@@ -14,7 +14,7 @@ import run_pikmin2_fixture as guarded
 
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def main():
- p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--runtime-dir',type=Path,help='Verified runtime DLL directory; use the matching CI artifact directory for packaged fixtures');p.add_argument('--prepare-only',action='store_true');p.add_argument('--prepared-card',type=Path,help='Accepted ordinary native blank-card initialization receipt; positive SAVE only');p.add_argument('--timeout',type=int,choices=[60],default=60);a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--canonical-root',type=Path,required=True);p.add_argument('--session-root',type=Path,required=True);p.add_argument('--assets',type=Path,required=True);p.add_argument('--exe',type=Path,required=True);p.add_argument('--phase',choices=['save','resume1','resume2'],required=True);p.add_argument('--negative',choices=['active','inactive','null-state','missing-manager']);p.add_argument('--runtime-dir',type=Path,help='Verified runtime DLL directory; use the matching CI artifact directory for packaged fixtures');p.add_argument('--prepare-only',action='store_true');p.add_argument('--prepared-card',type=Path,help='Accepted ordinary native blank-card initialization receipt; positive SAVE only');p.add_argument('--timeout',type=int,choices=[60],default=60);p.add_argument('--development-launch',action='store_true',help='Use the explicit private development launcher');a=p.parse_args()
  canonical=a.canonical_root.resolve();sessiondir=a.session_root.resolve()
  if a.prepared_card and (a.phase!='save' or a.negative or a.prepare_only):raise ValueError('Prepared card is for an actual positive SAVE only')
  if canonical!=ROOT.resolve():raise ValueError('Runner must use its own pinned root checkout')
@@ -74,7 +74,7 @@ def main():
  args=['--randomizer-seed',str(run.bootstrap)];marker='PASS P2_CAPTAIN_ONION_OWNER_SAVE' if a.phase=='save' else 'PASS P2_CAPTAIN_ONION_OWNER_RESUME'
  if a.phase!='save':args.append('--resume-phase')
  if a.negative:args.append({'active':'--force-captain-down','inactive':'--force-inactive-down','null-state':'--force-null-state','missing-manager':'--force-missing-manager'}[a.negative])
- try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,toolchain=runtime_dir,canonical_root=canonical,session_root=sessiondir)
+ try:result=guarded.launch(a.exe,run.directory,args,[marker],a.timeout,toolchain=runtime_dir,canonical_root=canonical,session_root=sessiondir,development_launch=a.development_launch)
  finally:done.set();thread.join()
  assert not errors,errors
  assert result.get('launched',True),result  # Preserve preflight failure before inspecting an absent native log.
