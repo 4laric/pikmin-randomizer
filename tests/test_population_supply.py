@@ -6,12 +6,38 @@ import json
 import pytest
 
 from randomizer.seed import generate
-from randomizer.population_supply import resolve, growth_bound, can_reach_population
+from randomizer.population_supply import resolve, growth_bound as _growth_bound, can_reach_population as _can_reach_population
 from randomizer.population_supply_data import INPUTS, INPUTS_SHA256
 from scripts.audit_population_supply import loose_pellets, pellet_configs
 
 HOPE_DWARFS = (312577052, 837882317, 1165161781, 1630257208,
                2146533423, 2271980013, 2893364421)
+
+
+def growth_bound(*args, **state):
+    # Explicit model fixture, not evidence that a newly unlocked Onion has
+    # withdrawn its stored stock or delivered a living field squad.
+    state.setdefault("usable_carriers", {color: 20 for color in ("red", "blue", "yellow")})
+    return _growth_bound(*args, **state)
+
+
+def can_reach_population(*args, **state):
+    state.setdefault("usable_carriers", {color: 20 for color in ("red", "blue", "yellow")})
+    return _can_reach_population(*args, **state)
+
+
+def test_actual_usable_carriers_required_even_with_unlocked_onion(manifest):
+    saved = resolve(manifest, {uid: model_branch() for uid in HOPE_DWARFS})
+    inventory = {"Blue Onion": 1, "Pikmin Delivery (10)": 999}
+    assert _growth_bound(saved, manifest, inventory, "blue") == 0
+    assert _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"blue": 2}) == 0
+    assert _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"blue": 3}) == 36
+    assert _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"red": 20}) == 0
+    for value in (True, -1, 1.5):
+        with pytest.raises(ValueError, match="usable carrier"):
+            _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"blue": value})
+    with pytest.raises(ValueError, match="usable carrier"):
+        _growth_bound(saved, manifest, inventory, "blue", usable_carriers={"purple": 20})
 
 
 def model_branch(**changes):

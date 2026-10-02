@@ -112,16 +112,24 @@ def resolve(manifest, reviewed_routes=None, inputs=None):
                 qualification="reviewed logical branches required; physical gameplay acceptance separate")
 
 
-def growth_bound(snapshot, manifest, inventory, color, *, day=29, consumed=None, activated=()):
+def growth_bound(snapshot, manifest, inventory, color, *, day=29, consumed=None, activated=(),
+                 usable_carriers=None):
     """Guaranteed unconsumed gross sprouts; infinity only for usable repeated food.
 
     Consumption is supplied by the caller; no save/reconnect call manufactures
     sources or clears consumed food. Finite initial waves are counted once.
+    Usable carriers are an explicit per-color witness, not Onion ownership,
+    stored stock, delivery items or the field capacity. Missing evidence is zero.
     """
     if snapshot.get("version") != VERSION or snapshot.get("day_policy") != "repeat-day29-v1":
         raise ValueError("unsupported saved population supply")
     if color not in COLORS or type(day) is not int or not 1 <= day <= 29:
         raise ValueError("invalid population color/day")
+    if usable_carriers is None:
+        usable_carriers = {}
+    if (type(usable_carriers) is not dict or not set(usable_carriers) <= set(COLORS)
+            or any(type(value) is not int or value < 0 for value in usable_carriers.values())):
+        raise ValueError("invalid usable carrier counts")
     from .catalog import color_inventory, field_capacity, START_AREAS
     from .stats import current_profiles
     owned = color_inventory(inventory, manifest)
@@ -155,7 +163,7 @@ def growth_bound(snapshot, manifest, inventory, color, *, day=29, consumed=None,
         if row.get("requires_fully_grown") and not branch.get("allows_fully_grown_posy"):
             continue
         minimum = (row["carry_min"] + strength - 1) // strength
-        if minimum > min(row["carrier_slots"], capacity):
+        if minimum > min(row["carrier_slots"], capacity, usable_carriers.get(color, 0)):
             continue
         if row["repeatable_at_cap"]:
             return float("inf")

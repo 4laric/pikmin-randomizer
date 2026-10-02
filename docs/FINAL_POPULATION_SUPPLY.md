@@ -48,11 +48,20 @@ are clearly identified as synthetic logic fixtures, not physical acceptance.
 
 `growth_bound` checks area access, target Onion, the actual saved color carry
 profile and field capacity, finite consumed counts, activation and expiration.
+It also requires explicit `usable_carriers` counts for the destination color;
+missing counts mean zero. Neither an unlocked Onion, delivery items, stored stock
+nor the capacity limit establishes a living, available squad. At native a489,
+`GameCoreSection.cpp` 4196–4226 grants five stored Leaf Pikmin once for each newly
+unlocked nonstarting Onion. Withdrawal and route usability still need a witness.
 It keeps unavailable/delayed/expired food out. Consumption and activation state
 are explicit caller inputs; reconstructing the JSON snapshot cannot reset food.
 `can_reach_population` keeps starting20 and needs actual food above that. Total
 population uses one destination-color witness rather than double-counting finite
 food across different Onions.
+These are individual gross-growth bounds, not a global allocation of finite
+food among progression milestones. Production activation must either provide
+reviewed renewable witnesses or allocate finite food once across the entire
+progression proof; separate successful count queries cannot reuse a consumed body.
 
 ## Exact-owner integration proposal
 
