@@ -3102,3 +3102,6 @@ pikmin_add_ci_fixture(elecbug_contact tools/p2_elecbug_contact_runtime.cpp)
 if(TARGET pikmin_ci_fixture_elecbug_contact)
     target_include_directories(pikmin_ci_fixture_elecbug_contact PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
 endif()
+
+# #1166 separately bounded ordinary blank-card initialization; opt-in only.
+pikmin_add_ci_fixture(blank_card_sdl tools/p2_blank_card_sdl_fixture.cpp)

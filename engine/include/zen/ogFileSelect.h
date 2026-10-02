@@ -116,6 +116,19 @@ public:
 	void draw(Graphics& gfx);
 #if defined(PIKI_PC_PORT)
 	void drawFxOnly(Graphics& gfx);
+    bool pcBlankFileReady() const {
+#if defined(VERSION_GPIE01_01)
+        return !mSaveMode && mOperation==Normal && mSelectState==Continue
+            && std::isfinite(mMainInteractTimer) && mMainInteractTimer>1.0f
+            && mCurrSlotIdx>=0 && mCurrSlotIdx<3;
+#else
+        return false;
+#endif
+    }
+    int pcBlankSlotStatus(int slot) const {
+        return pcBlankFileReady() && slot>=0 && slot<3 ? mCardInfo[slot].mSaveStatus : -1;
+    }
+
 	int pcSaveInputSlot() const
 	{
 		return mSaveMode && mOperation == Normal && mSelectState == Continue

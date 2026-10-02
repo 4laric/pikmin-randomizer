@@ -52,6 +52,8 @@ PcSaveUiSnapshot ogScrResultMgr::pcSaveUiSnapshot() const
     if (mStatus != RESULT_Active || !mSaveMgr) return value;
     const ogSaveMgr* save = mSaveMgr;
     value.saveState = save->mStatus;
+    // update() resets terminal states before any nested manager is reached.
+    if (save->mStatus >= ogSaveMgr::ExitFailure) return value;
     value.resultsInputReady = save->mStatus == ogSaveMgr::Inactive;
     if (value.resultsInputReady) return value;
     value.fileSelection = save->mFileChkSelected;
@@ -59,6 +61,11 @@ PcSaveUiSnapshot ogScrResultMgr::pcSaveUiSnapshot() const
     const DrawSaveFailure* failure = save->mSaveFail;
     const ogScrFileChkSelMgr* file = save->mFileChkSelMgr;
     const ogScrMemChkMgr* memory = save->mMemCheckMgr;
+    value.failureAvailable = failure != nullptr;
+    value.failureInactive = failure && failure->pcInactive();
+    value.fileAvailable = file != nullptr;
+    if (file) value.fileState = file->mState;
+    value.memoryAvailable = memory != nullptr;
     // First-save slot selection lives inside this save manager, not the title UI.
     // The outer memory checker can remain Finished while file selection updates.
     if (save->mStatus == ogSaveMgr::PreparingSave && value.fileSelection
@@ -71,6 +78,12 @@ PcSaveUiSnapshot ogScrResultMgr::pcSaveUiSnapshot() const
             value.cardSlotInputReady = value.cardSlot >= 0;
         }
     }
+    // update() reaches the outer memory checker only after these prefix gates.
+    // A blocked failure/file selector must not expose a dormant default-file prompt.
+    value.outerMemoryRouted = failure && failure->pcInactive() && file
+        && file->mState == ogScrFileChkSelMgr::Null && !value.fileSelection && memory;
+    if (value.outerMemoryRouted)
+        value.defaultFile = memory->pcDefaultFileSnapshot();
     value.nestedUiBlocked = !failure || !failure->pcInactive() || !file
         || file->mState != ogScrFileChkSelMgr::Null || !memory || !memory->pcInactive()
         || value.fileSelection;

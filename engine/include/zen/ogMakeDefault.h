@@ -2,6 +2,9 @@
 #define _ZEN_OGMAKEDEFAULT_H
 
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_campaign_ui_observer.h"
+#endif
 
 class Controller;
 class Graphics;
@@ -38,6 +41,9 @@ public:
 	void start();
 	MakeDefaultStatus update(Controller*);
 	void draw(Graphics&);
+#if defined(PIKI_PC_PORT)
+	PcDefaultFileSnapshot pcDefaultFileSnapshot() const;
+#endif
 
 private:
 	bool checkTypingAll();

@@ -6702,3 +6702,9 @@ PcNavEdges pc_settings_read_nav_edges(void) {
 }
 
 void pc_settings_touch_drag(float dy) { sTouchDragY += dy; }
+
+// Read-only readiness for the separately bounded blank-card title fixture.
+bool pc_blank_captain_ready() {
+    return sCaptainPromptOpen && SDL_GetTicks()>=sCaptainPromptIgnoreUntil;
+}
+int pc_blank_captain_choice() { return sCaptainPromptOpen ? sCaptainPromptChoice : -1; }

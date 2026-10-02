@@ -226,6 +226,9 @@ public:
 
 	// DLL inlines to do:
 	EnumPCTextStat check() { return mState; };
+#if defined(PIKI_PC_PORT)
+	bool pcTypingComplete() const { return mState == STATE_Complete; }
+#endif
 
 private:
 	EnumPCTextStat mState;        // _00

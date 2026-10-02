@@ -2,6 +2,9 @@
 #define _ZEN_OGMEMCHK_H
 
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_campaign_ui_observer.h"
+#endif
 
 class Controller;
 class Graphics;
@@ -62,6 +65,7 @@ public:
 	void DebugStart(int);
 #if defined(PIKI_PC_PORT)
 	bool pcInactive() const { return mStatus == Inactive; }
+	PcDefaultFileSnapshot pcDefaultFileSnapshot() const;
 #endif
 
 private:

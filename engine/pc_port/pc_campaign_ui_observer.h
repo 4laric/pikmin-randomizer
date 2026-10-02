@@ -13,6 +13,15 @@ struct PcPauseSnapshot {
     bool mainInputReady = false;
     bool sunsetInputReady = false;
 };
+// Copied from the actual outer memory-check/default-file update path only.
+struct PcDefaultFileSnapshot {
+    bool available = false;
+    int memoryState = -1;
+    int state = -1;
+    bool successful = false;
+    bool typingComplete = false;
+    bool confirmationReady = false;
+};
 struct PcSaveUiSnapshot {
     bool available = false;
     int resultState = -1;
@@ -26,6 +35,13 @@ struct PcSaveUiSnapshot {
     bool cardSlotInputReady = false;
     int cardSlot = -1; // meaningful only when cardSlotInputReady; save-mode selector only
     bool nestedUiBlocked = true;
+    bool failureAvailable = false;
+    bool failureInactive = false;
+    bool fileAvailable = false;
+    int fileState = -1;
+    bool memoryAvailable = false;
+    bool outerMemoryRouted = false;
+    PcDefaultFileSnapshot defaultFile;
 };
 PcPauseSnapshot pc_pause_observe();
 PcSaveUiSnapshot pc_save_ui_observe();

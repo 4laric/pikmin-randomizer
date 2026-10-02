@@ -33,7 +33,18 @@
 #include "KeyConfig.h"
 #include "pc_coop.h"
 #include "pc_diary_observer.h"
-#include "p2_purple_save_input.h" // Existing pure campaign UI intent policy; no UI writes.
+#include "p2_purple_save_input.h"
+// Captain-only extension. The shared Purple policy and its live fixture stay unchanged.
+static PurpleSaveInput captain_save_input(bool dayAdvanced, const PcPauseSnapshot& pause,
+                                         PcDiaryAction diary, const PcSaveUiSnapshot& save)
+{
+    const PurpleSaveInput original = purple_save_input(dayAdvanced, pause, diary, save);
+    if (original != PurpleSaveInput::Neutral) return original;
+    if (dayAdvanced && save.available && save.outerMemoryRouted && save.defaultFile.available
+        && save.defaultFile.successful && save.defaultFile.typingComplete
+        && save.defaultFile.confirmationReady) return PurpleSaveInput::Confirm;
+    return PurpleSaveInput::Neutral;
+}
 #include "pc_whistle_observer.h"
 #include "pc_onion_start_observer.h"
 #include "Node.h"
@@ -462,12 +473,12 @@ public:
             const PcPauseSnapshot pause=pc_pause_observe();
             const PcDiaryAction diary=confirming?pc_diary_observe():PcDiaryAction::Unavailable;
             const PcSaveUiSnapshot save=confirming?pc_save_ui_observe():PcSaveUiSnapshot{};
-            const PurpleSaveInput intent=purple_save_input(confirming,pause,diary,save);
+            const PurpleSaveInput intent=captain_save_input(confirming,pause,diary,save);
             require(intent!=PurpleSaveInput::Unexpected,"unexpected pause/save selection refuses ordinary confirmation");
             ++menuFrames;
             { // Every observed frame, including neutral transitions and nested waits.
-                std::printf("P2_ONION_SAVE_UI frame=%d day_advanced=%d pause_available=%d pause_state=%d main_ready=%d main_selected=%d sunset_ready=%d sunset_selected=%d diary=%d result_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d nested_blocked=%d intent=%d release=%d\n",
-                    menuFrames,int(confirming),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.nestedUiBlocked),int(intent),int(releaseDiaryInput));
+                std::printf("P2_ONION_SAVE_UI frame=%d day_advanced=%d pause_available=%d pause_state=%d main_ready=%d main_selected=%d sunset_ready=%d sunset_selected=%d diary=%d result_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d memory_available=%d memory_routed=%d memory_state=%d default_available=%d default_state=%d default_success=%d default_typing=%d default_ready=%d intent=%d release=%d\n",
+                    menuFrames,int(confirming),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState,int(save.memoryAvailable),int(save.outerMemoryRouted),save.defaultFile.memoryState,int(save.defaultFile.available),save.defaultFile.state,int(save.defaultFile.successful),int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(intent),int(releaseDiaryInput));
                 elapsed("ordinary_save_ui_observed");
             }
             if(!confirming&&!pauseEvidenceCaptured){

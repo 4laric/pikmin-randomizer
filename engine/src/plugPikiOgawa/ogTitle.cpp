@@ -798,3 +798,17 @@ void zen::ogScrTitleMgr::DispBarSE(bool isSelected)
 		}
 	}
 }
+
+#if defined(PIKI_PC_PORT)
+bool zen::ogScrTitleMgr::pcBlankStoryReady() const {
+#if defined(VERSION_GPIE01_01)
+    return mStatus==STATUS_Active && mCurrentMenuID==MENU_MainMenu
+        && mMainMenu && mMainMenu->pcInputReady();
+#else
+    return false;
+#endif
+}
+int zen::ogScrTitleMgr::pcBlankStorySelection() const {
+    return pcBlankStoryReady() ? mMainMenu->getSelectMenu() : -1;
+}
+#endif

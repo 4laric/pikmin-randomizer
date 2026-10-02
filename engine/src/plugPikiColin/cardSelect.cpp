@@ -17,6 +17,9 @@
 #include "zen/ogFileChkSel.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include "pc_blank_card_observer.h"
+#include "zen/ogMemChk.h"
+#include "zen/ogFileSelect.h"
 #include "pc_permadeath.h"
 #include "pc_coop.h"
 #include "mods/pc_vs_arena.h"
@@ -135,6 +138,29 @@ struct CardSelectSetupSection : public Node {
 
 	virtual void update() // _10 (weak)
 	{
+#if defined(PIKI_PC_PORT)
+        auto blankObservation=pc_blank_card_after([&] {
+            PcBlankCardSnapshot s; s.card=true; s.active=mState==Active;
+            s.captainPrompt=mAwaitingCaptain && pc_captain_prompt_active();
+            s.captainReady=s.captainPrompt && pc_blank_captain_ready();
+            s.captainChoice=s.captainPrompt ? pc_blank_captain_choice() : -1;
+            s.foreignPrompt=mAwaitingPlayerCount || mAwaitingDevAssign || mAwaitingVsRules || mAwaitingNewGameChoice;
+            if(s.active && memcardWindow) {
+                s.fileState=memcardWindow->mState;
+                s.fileVisible=memcardWindow->mIsScreenVisible;
+                if(memcardWindow->mMemChkMgr) {
+                    s.defaults=memcardWindow->mMemChkMgr->pcDefaultFileSnapshot();
+                    s.memoryState=s.defaults.memoryState;
+                    if(memcardWindow->mMemChkMgr->pcInactive() && s.fileVisible && memcardWindow->mFileSelectMgr) {
+                        s.fileReady=memcardWindow->mFileSelectMgr->pcBlankFileReady();
+                        for(int i=0;i<3;++i)s.slots[i]=memcardWindow->mFileSelectMgr->pcBlankSlotStatus(i);
+                    }
+                }
+            }
+            pc_blank_card_publish(s);
+        });
+#endif
+
 		mController->update();
 #if defined(PIKI_PC_PORT)
 		if (mAwaitingCaptain) {

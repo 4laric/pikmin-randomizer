@@ -22,6 +22,7 @@
 #include "zen/ogTitle.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include "pc_blank_card_observer.h"
 #endif
 
 class TitleSetupSection;
@@ -294,6 +295,18 @@ public:
 	/// Updates the current title screen state, handling menu and submenu transitions, and triggering overall game section
 	virtual void update() // _10
 	{
+#if defined(PIKI_PC_PORT)
+        auto blankObservation=pc_blank_card_after([&] {
+            PcBlankCardSnapshot s; s.title=true; s.active=mState==STATE_Active;
+            s.pressStart=s.active && startWindowOn && !titleWindowOn && !totalWindowOn && !mActiveDebugMenu;
+            if(s.active && titleWindowOn && !totalWindowOn && !mActiveDebugMenu && titleWindow) {
+                s.titleReady=titleWindow->pcBlankStoryReady();
+                s.titleSelection=titleWindow->pcBlankStorySelection();
+            }
+            pc_blank_card_publish(s);
+        });
+#endif
+
 		mController->update();
 
 		// handle PRESS START
