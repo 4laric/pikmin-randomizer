@@ -1,3 +1,9 @@
+# Current ordinary White fixture source
+
+Native `c00b6006ae54603762eb2efc8b8a9be9c8ccf5ad` exported from clean private source; 4274 files verified byte-for-byte, 53 audited binary exclusions. Adds the reviewed opt-in `pikmin_ci_fixture_white_campaign` target and its two reviewed C++ files (trailing whitespace normalized). Current-header syntax passed. No production actor/physics change or blocked Python supervision was imported. Matching runner build and ordinary acquisition, carry, delivery, native save/resume acceptance remain open. #1195 direct coordination applies; no administrative runtime packet is required.
+
+## Previous provenance (historical)
+
 # Current diagnostic source provenance
 
 Native `0eec43b0fa410f863a9fffd2034fe3f5a8ceb3af` is exported from clean
