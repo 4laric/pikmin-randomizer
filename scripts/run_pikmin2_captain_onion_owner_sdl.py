@@ -74,6 +74,11 @@ def main():
   assert f'P2_ONION_OWNER stage={stage} owner0=0 owner1=20 plate0=0 plate1=20 live=20 stored=0 input_player=1 switched_captain=1' in log,stage
  assert run.handshaken,'actual production handshake required'
  if a.phase=='save':
+  acquisition=re.findall(r'^P2_ONION_STARTUP_ACQUIRED frames=([1-9][0-9]*) unique=20 live=20 stored=0 owner0=20 owner1=0 plate0=20 plate1=0 acquisition_needed=([01]) observed_B=([01]) observed_Gather=([01]) observed_recruitment=([01]) via_ordinary_SDL=([01])\r?$',log,re.MULTILINE)
+  assert len(acquisition)==1 and len(re.findall(r'^P2_ONION_STARTUP_ACQUIRED\b',log,re.MULTILINE))==1,'one complete anchored startup acquisition marker required'
+  acquisition_frames,*acquisition_flags=map(int,acquisition[0])
+  assert 1<=acquisition_frames<=180 and tuple(acquisition_flags) in ((0,0,0,0,0),(1,1,1,1,1)),'startup acquisition observation flags must agree'
+  assert 'P2_ONION_DEPOSIT_BOUNDARY live=0 stored=20 owner0=0 owner1=0 plate0=0 plate1=0 startup_whistle_ended=1' in log,'actual deposit boundary required'
   assert len(after)==1 and 'CAMPAIGN_SAVED generation=1' in log
   assert 'P2_ONION_DIARY input=B observed=1' in log and 'P2_ONION_DIARY input=A observed=2' in log,'actual eligible diary inputs required'
   end=re.search(r'PASS P2_CAPTAIN_ONION_OWNER_SAVE day_before=(\d+) day_after=(\d+)',log);assert end and int(end[2])==int(end[1])+1
@@ -81,6 +86,7 @@ def main():
   baseline=dict(acceptance=a.timeout==60,save_wall_timeout_seconds=a.timeout,cards=after,day=int(end[2]),total=int(facts[1])+int(facts[2]),checked=sorted(session.data['checked']),inventory=dict(session.inventory))
   (sessiondir/'saved-observation.json').write_text(json.dumps(baseline,indent=2),encoding='utf-8')
  else:
+  assert 'P2_ONION_STARTUP_ACQUIRE' not in log,'resume must not recruit with setup whistle'
   baseline=json.loads((sessiondir/'saved-observation.json').read_text());assert before==after==baseline['cards'],'committed card mutated on resume'
   facts=re.search(r'P2_SAVE_SCENE phase=resume resumed=1 day=(\d+) live=(\d+) stored=(\d+)',log);assert facts
   assert sorted(session.data['checked'])==baseline['checked'] and dict(session.inventory)==baseline['inventory'],'duplicate or new reward on unchanged replay path'
