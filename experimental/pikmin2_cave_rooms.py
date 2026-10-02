@@ -69,11 +69,48 @@ def _bfs_order(layout, adjacency):
     return order, depth
 
 
-def rooms_from_layout(layout, salt=0, cell=48, origin=(0, 0)) -> dict:
-    try:
-        validate_layout(layout)
-    except CaveSpikeError as exc:
-        raise CaveRoomsError(str(exc)) from exc
+def validate_wfg_layout(layout, descriptor):
+    """Admit capability buds only against an exact opt-in canonical descriptor."""
+    from randomizer.cave_floor import validate, WFG_POLICY
+    from experimental.pikmin2_cave_lane41_generator import _seed_uint64
+    validate(descriptor)
+    _require(descriptor['policy']==WFG_POLICY,'WFG descriptor required')
+    table=descriptor['table']
+    _require(layout.get('schema')=='p2-cave-observed-layout/1' and layout.get('source')=='engine'
+             and layout.get('cave')=='forest_2' and type(layout.get('floor')) is int
+             and layout['floor']==1 and type(layout.get('seed')) is int
+             and layout['seed']==_seed_uint64(table['seed']),'foreign WFG layout identity')
+    segments=table['segments']; buds=table['buds']
+    expected={s['slot_id']:('segment',s['index'],'none') for s in segments}
+    expected.update({b['slot_id']:('bud',b['segment'],'none' if b['species']=='purple' else 'poison') for b in buds})
+    nodes=layout.get('nodes')
+    _require(type(nodes) is list and len(nodes)==len(expected),'WFG layout node inventory')
+    seen=set()
+    for node in nodes:
+        _require(type(node) is dict and node.get('id') in expected and node['id'] not in seen,
+                 'foreign or duplicate WFG node')
+        seen.add(node['id']); kind,segment,hazard=expected[node['id']]
+        _require(node.get('kind')==kind and type(node.get('segment_index')) is int
+                 and node['segment_index']==segment and (node.get('hazard') or 'none')==hazard
+                 and node.get('items',[])==[],'WFG node differs from descriptor')
+    edges=layout.get('edges')
+    wanted={frozenset((segments[0]['slot_id'],segments[1]['slot_id']))}
+    wanted.update(frozenset((segments[b['segment']]['slot_id'],b['slot_id'])) for b in buds)
+    _require(type(edges) is list and len(edges)==len(wanted)
+             and all(type(e) is list and len(e)==2 and all(type(v) is str for v in e) for e in edges)
+             and {frozenset(e) for e in edges}==wanted,'WFG layout edges differ from descriptor')
+    _require(layout.get('entrance')==segments[0]['slot_id'] and layout.get('hole')==segments[1]['slot_id'],
+             'WFG entrance or hole differs from descriptor')
+
+
+def rooms_from_layout(layout, salt=0, cell=48, origin=(0, 0), *, acquisition_descriptor=None) -> dict:
+    if acquisition_descriptor is not None:
+        validate_wfg_layout(layout,acquisition_descriptor)
+    else:
+        try:
+            validate_layout(layout)
+        except CaveSpikeError as exc:
+            raise CaveRoomsError(str(exc)) from exc
 
     _require(_is_int(salt) and salt >= 0, "salt must be a non-negative integer")
     _require(_is_int(cell) and cell >= 8, "cell must be an integer >= 8")
