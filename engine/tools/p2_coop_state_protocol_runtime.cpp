@@ -13,6 +13,12 @@
 #include <sstream>
 #include <cstdint>
 #include <iterator>
+#include <cmath>
+#include "Controller.h"
+#include "Kontroller.h"
+#include "KeyConfig.h"
+#include "pc_coop.h"
+#include "pc_p2_fuefuki_teki.h"
 #include "Navi.h"
 #include "NaviMgr.h"
 #include "NaviState.h"
@@ -93,6 +99,102 @@ class CoopProtocolFixtureApp : public PlugPikiApp {
     unsigned mButtons = 0;
     int mAxes[4] = {0, 0, 0, 0};
     std::string mInputPath;
+
+    // #1148 read-only post-idle facts, before parsing the next SDL command.
+    // These snapshots are not the pre-callPikis state or an eligibility oracle.
+    bool mPreviousGatherObservation = false;
+    bool mRecruitSchemaEmitted = false;
+    unsigned mRecruitBatch = 0;
+
+    void observeRecruitment() {
+        bool gather = false;
+        for (int captain = 0; captain < 2; ++captain) {
+            Navi* n = naviMgr ? naviMgr->getNavi(captain) : nullptr;
+            gather = gather || (n && n->getCurrState() && n->getCurrState()->getID() == NAVISTATE_Gather);
+        }
+        const bool emit = gather || mPreviousGatherObservation || mFrames % 15 == 0;
+        mPreviousGatherObservation = gather;
+        if (!emit) return;
+        if (!mRecruitSchemaEmitted) {
+            std::printf("COOP_PROTOCOL_RECRUIT_META schema=1 phase=post_idle_pre_reader cadence=15_gather_terminal max_entries=4096 eligibility_oracle=0 call_time_oracle=0\n");
+            mRecruitSchemaEmitted = true;
+        }
+        fixture_require(mRecruitBatch < 5000, "recruitment batch ceiling");
+        const unsigned batch = ++mRecruitBatch;
+        const unsigned frame = pc_netplay_current_frame();
+        std::printf("COOP_PROTOCOL_RECRUIT_BEGIN schema=1 batch=%u sim_frame=%u role=%d captains=2 piki_mgr_present=%d paused=%d vs=%d phase=post_idle_pre_reader\n",
+            batch, frame, mLocalRole, int(pikiMgr != nullptr), int(gameflow.mPauseAll != 0), int(pc_vs_active()));
+        for (int captain = 0; captain < 2; ++captain) {
+            Navi* n = naviMgr ? naviMgr->getNavi(captain) : nullptr;
+            const bool stateValid = n && n->getCurrState();
+            const int state = stateValid ? n->getCurrState()->getID() : -1;
+            const bool active = stateValid && state == NAVISTATE_Gather;
+            const float radius = active ? static_cast<NaviGatherState*>(n->getCurrState())->mWhistleCallRadius : 0.f;
+            const bool radiusValid = active && std::isfinite(radius) && radius > 0.f;
+            float minimum = 0.f, maximum = 0.f, neutral = 0.f, cursorThreshold = 0.f;
+            float clamp = 0.f, shake = 0.f, speed = 0.f, cursorMax = 0.f;
+            bool paramsValid = n && n->mProps;
+            if (paramsValid) {
+                minimum = C_NAVI_PARM(n, mWhistleMinRadius);
+                maximum = C_NAVI_PARM(n, mWhistleMaxRadius);
+                neutral = C_NAVI_PARM(n, mNeutralStickThreshold);
+                cursorThreshold = C_NAVI_PARM(n, mCursorMoveStickThreshold);
+                clamp = C_NAVI_PARM(n, mClampStickToMaxThreshold);
+                shake = C_NAVI_PARM(n, mShakePreventionAngle);
+                speed = C_NAVI_PARM(n, mCursorMoveSpeed);
+                cursorMax = C_NAVI_PARM(n, mCursorMaxRadius);
+                paramsValid = std::isfinite(minimum) && std::isfinite(maximum)
+                    && std::isfinite(neutral) && std::isfinite(cursorThreshold)
+                    && std::isfinite(clamp) && std::isfinite(shake) && std::isfinite(speed) && std::isfinite(cursorMax);
+            }
+            const bool whistleValid = n && n->mKontroller && KeyConfig::_instance;
+            const int whistleDown = whistleValid ? int(n->mKontroller->keyDown(KeyConfig::_instance->mSetCursorKey.mBind)) : -1;
+            const int whistleUp = whistleValid ? int(n->mKontroller->keyUp(KeyConfig::_instance->mSetCursorKey.mBind)) : -1;
+            const int tapRecall = active ? int(static_cast<NaviGatherState*>(n->getCurrState())->mTapState.recallWorkers) : -1;
+            const float benefit = pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
+            float yawSin = 0.f, yawCos = 1.f;
+            const bool yawValid = n && pc_netplay_control_yaw(n->mNaviID, &yawSin, &yawCos);
+            std::printf("COOP_PROTOCOL_RECRUIT_NAVI schema=1 batch=%u sim_frame=%u role=%d captain=%d present=%d state_valid=%d state=%d hp=%.3f followers=%d "
+                "xyz=%.3f,%.3f,%.3f cursor=%.3f,%.3f,%.3f gather_active=%d radius_valid=%d radius=%.7f held_timer=%.7f "
+                "params_valid=%d whistle_min=%.7f whistle_max=%.7f benefit_valid=%d benefit=%.7f neutral_threshold=%.7f cursor_threshold=%.7f clamp_threshold=%.7f shake_angle=%.7f cursor_speed=%.7f cursor_max=%.7f "
+                "yaw_valid=%d yaw_sin=%.7f yaw_cos=%.7f reader_sequence_before_next_parse=%llu whistle_input_valid=%d whistle_down=%d whistle_up=%d tap_recall_valid=%d tap_recall_workers=%d\n",
+                batch, frame, mLocalRole, captain, int(n != nullptr), int(stateValid), state,
+                n ? n->mHealth : 0.f, n && n->mPlateMgr ? n->getPlatePikis() : -1,
+                n ? n->mSRT.t.x : 0.f, n ? n->mSRT.t.y : 0.f, n ? n->mSRT.t.z : 0.f,
+                n ? n->mCursorWorldPos.x : 0.f, n ? n->mCursorWorldPos.y : 0.f, n ? n->mCursorWorldPos.z : 0.f,
+                int(active), int(radiusValid), radius, n ? n->mWhistleTimer : 0.f,
+                int(paramsValid), minimum, maximum, int(std::isfinite(benefit)), benefit, neutral, cursorThreshold, clamp, shake, speed, cursorMax,
+                int(yawValid), yawSin, yawCos, static_cast<unsigned long long>(mInputSequence), int(whistleValid), whistleDown, whistleUp, int(active), tapRecall);
+        }
+        unsigned count = 0, validAlive = 0, invalidState = 0;
+        if (pikiMgr) {
+            Iterator it(pikiMgr);
+            CI_LOOP(it) {
+                fixture_require(count < 4096, "recruitment iterator ceiling");
+                Piki* p = static_cast<Piki*>(*it);
+                const bool stateValid = p && p->getCurrState();
+                const int state = stateValid ? p->getState() : -1;
+                const int alive = stateValid ? int(p->isAlive()) : -1;
+                if (!stateValid) ++invalidState;
+                if (alive == 1) ++validAlive;
+                int owner = -1;
+                if (p && p->mNavi && naviMgr && p->mNavi == naviMgr->getNavi(0)) owner = 0;
+                else if (p && p->mNavi && naviMgr && p->mNavi == naviMgr->getNavi(1)) owner = 1;
+                std::printf("COOP_PROTOCOL_RECRUIT_PIKI schema=1 batch=%u sim_frame=%u role=%d index=%u present=%d state_valid=%d state=%d alive_valid=%d alive=%d "
+                    "color=%d maturity=%d mode=%d owner=%d owner_null=%d player_id=%d xyz=%.3f,%.3f,%.3f is_callable=%d is_buried=%d is_kinoko=%d is_damaged=%d is_fired=%d beetle_block=%d whistle_pending=%d\n",
+                    batch, frame, mLocalRole, count++, int(p != nullptr), int(stateValid), state, int(stateValid), alive,
+                    p ? int(p->mColor) : -1, p ? p->mHappa : -1, p ? int(p->mMode) : -1, owner, p ? int(p->mNavi == nullptr) : -1,
+                    p ? p->mPlayerId : -1, p ? p->mSRT.t.x : 0.f, p ? p->mSRT.t.y : 0.f, p ? p->mSRT.t.z : 0.f,
+                    stateValid ? int(p->mIsCallable) : -1, stateValid ? int(p->isBuried()) : -1,
+                    stateValid ? int(p->isKinoko()) : -1, stateValid ? int(p->isDamaged()) : -1,
+                    stateValid ? int(p->isFired()) : -1, stateValid ? int(pc_p2_fuefuki_follower_blocks_recruit(p)) : -1,
+                    stateValid ? int(p->mIsWhistlePending) : -1);
+            }
+        }
+        std::printf("COOP_PROTOCOL_RECRUIT_END schema=1 batch=%u sim_frame=%u role=%d captain_count=2 iterator_count=%u emitted_count=%u valid_alive_count=%u invalid_state_count=%u\n",
+            batch, frame, mLocalRole, count, count, validAlive, invalidState);
+        std::fflush(nullptr);
+    }
 
     void input() {
         if (!mInputPath.empty()) {
@@ -208,6 +310,7 @@ public:
         }
         fixture_require(SDL_GetTicks64() - mStarted < 60000, "60 second local ceiling");
         fixture_require(mFrames < 5000, "frame ceiling");
+        observeRecruitment();
         input();
         // UI and world counts are sampled on every authoritative engine frame,
         // including closing animation. Reading never refreshes their counters.
@@ -261,7 +364,7 @@ public:
                 }
             }
             int alive = 0;
-            if (pikiMgr) { Iterator it(pikiMgr); CI_LOOP(it) { if (static_cast<Piki*>(*it)->isAlive()) ++alive; } }
+            if (pikiMgr) { Iterator it(pikiMgr); CI_LOOP(it) { Piki* p = static_cast<Piki*>(*it); if (p && p->getCurrState() && p->isAlive()) ++alive; } }
             for (int captain = 0; captain < 2; ++captain) {
             Navi* p1 = naviMgr ? naviMgr->getNavi(captain) : nullptr;
             if (p1 && p1->getCurrState() && p1->controlCamera()) {
@@ -290,11 +393,11 @@ public:
                 CI_LOOP(it) {
                     Piki* p = static_cast<Piki*>(*it);
                     int owner = -1;
-                    if (naviMgr && p->mNavi == naviMgr->getNavi(0)) owner = 0;
-                    else if (naviMgr && p->mNavi == naviMgr->getNavi(1)) owner = 1;
+                    if (p && naviMgr && p->mNavi == naviMgr->getNavi(0)) owner = 0;
+                    else if (p && naviMgr && p->mNavi == naviMgr->getNavi(1)) owner = 1;
                     std::printf("COOP_PROTOCOL_PIKI sim_frame=%u role=%d index=%d alive=%d color=%u maturity=%d owner=%d xyz=%.3f,%.3f,%.3f\n",
-                        pc_netplay_current_frame(), mLocalRole, index++, int(p->isAlive()),
-                        unsigned(p->mColor), p->mHappa, owner, p->mSRT.t.x, p->mSRT.t.y, p->mSRT.t.z);
+                        pc_netplay_current_frame(), mLocalRole, index++, p && p->getCurrState() ? int(p->isAlive()) : -1,
+                        p ? unsigned(p->mColor) : 0u, p ? p->mHappa : -1, owner, p ? p->mSRT.t.x : 0.f, p ? p->mSRT.t.y : 0.f, p ? p->mSRT.t.z : 0.f);
                 }
             }
             std::fflush(nullptr);
