@@ -256,7 +256,12 @@ public:
    require(!pc_settings_get_no_trip()&&!pc_settings_get_instant_whistle()&&!pc_settings_get_all_flowers(),"follower settings changed ordinary baseline");
    require(pc_settings_get_whistle_radius_pct()==100&&pc_settings_get_navi_health_pct()==100,"captain upgrades changed ordinary baseline");
    roster[0].actor=n;for(int i=0;i<20;++i)roster[i+1].actor=current[i];
-   for(int i=0;i<21;++i)require(observe(roster[i],i),"READY requires original settled source contacts");
+   bool originalContacts=true;
+   for(int i=0;i<21;++i)if(!observe(roster[i],i))originalContacts=false;
+   // Native actors settle asynchronously on overlapping source faces. Keep
+   // the exact contact predicate and bounded startup; wait for all originals
+   // instead of accepting or rejecting one arbitrary readiness sample.
+   if(!originalContacts){neutral_input();return result;}
    require(n->mSRT.t.x<-230.f&&std::fabs(n->mSRT.t.z-1000.f)<20.f,"wrong disclosed bank start");
    require(KeyConfig::_instance&&n->mKontroller&&n->mPlateMgr&&n->mProps,"loaded ordinary control/plate missing");
    whistleBind=KeyConfig::_instance->mSetCursorKey.mBind;
