@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--runtime-dir', type=Path)
     parser.add_argument('--timeout', type=int, choices=[60], default=60)
+    parser.add_argument('--development-launch', action='store_true', help='Use the explicit private development launcher')
     args = parser.parse_args()
     canonical = args.canonical_root.resolve(strict=True)
     require(canonical == ROOT.resolve(), 'Runner must use its own pinned root checkout')
@@ -52,7 +53,7 @@ def main():
                       ('NECTAR_SAVE_DIR', 'PIKMIN_SETTINGS_PATH', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'APPDATA', 'LOCALAPPDATA', 'PIKMIN_SHADER_CACHE')})
     (run / 'blank-card-inputs.json').write_text(json.dumps(inputs, indent=2) + '\n', encoding='utf-8')
     result = guarded.launch(exe, run, argv[1:], [MARKER], 60, toolchain=runtime_dir,
-                            canonical_root=canonical, session_root=session)
+                            canonical_root=canonical, session_root=session, development_launch=args.development_launch)
     # launch returns only after its owned child/group cleanup. No retry in this session.
     require(result.get('launched', True), 'Blank-card launch refused; preserve failed session')
     log = (run / 'native.log').read_text(errors='replace')
