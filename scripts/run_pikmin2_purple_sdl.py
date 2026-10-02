@@ -55,6 +55,8 @@ def parser():
     p.add_argument('--mode', choices=('sdl_acquire', 'sdl_save_resume', *GUARDS), required=True)
     p.add_argument('--profile', choices=('ordinary-off',), required=True)
     p.add_argument('--preflight-only', action='store_true')
+    p.add_argument('--development-launch', action='store_true',
+                   help='Use the owned private development launcher without controller admission')
     return p
 
 
@@ -252,12 +254,13 @@ def execute(a, m):
         try:
             result = m['run_pikmin2_fixture'].launch(a.exe, run.directory, ['--randomizer-seed', str(run.bootstrap)],
                 markers, 60, toolchain=a.exe.parent if os.name == 'nt' else None,
-                canonical_root=a.root, session_root=a.session)
+                canonical_root=a.root, session_root=a.session,
+                development_launch=getattr(a, 'development_launch', False))
         finally:
             stop.set()
             thread.join()
         report['raw_run'] = result
-        if os.name != 'nt':
+        if os.name != 'nt' and not getattr(a, 'development_launch', False):
             proof = json.loads((run.directory / 'admission.json').read_text())
             require(proof['pins']['NATIVE_SHA'] == a.native_pin, 'Admitted native commit mismatch')
             require(proof['pins']['PIKMIN_SHA'] == a.root_pin, 'Admitted root commit mismatch')
@@ -448,12 +451,13 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
         markers = ['P2_PURPLE_SDL_ACQUISITION_PASS', 'P2_PURPLE_ORDINARY_SAVE_PASS'] if mode == 'sdl_dayend' else ['P2_PURPLE_ORDINARY_RESUME_PASS']
         try:
             result = m['run_pikmin2_fixture'].launch(a.exe, run.directory, ['--randomizer-seed', str(run.bootstrap)],
-                markers, 60, toolchain=a.exe.parent if os.name == 'nt' else None, canonical_root=a.root, session_root=a.session)
+                markers, 60, toolchain=a.exe.parent if os.name == 'nt' else None, canonical_root=a.root, session_root=a.session,
+                development_launch=getattr(a, 'development_launch', False))
         finally:
             stop.set()
             thread.join()
         report['raw_run'] = result
-        if os.name != 'nt':
+        if os.name != 'nt' and not getattr(a, 'development_launch', False):
             proof_path = run.directory / 'admission.json'
             proof = json.loads(proof_path.read_text())
             for key, value in {'NATIVE_SHA': a.native_pin, 'PIKMIN_SHA': a.root_pin, 'FIXTURE_SOURCE_SHA256': a.native_source_sha256}.items():
