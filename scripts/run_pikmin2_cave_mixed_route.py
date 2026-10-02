@@ -90,7 +90,12 @@ def launch(run,scenario,receipt_path,token):
     except BaseException as exc:
         error=repr(exc);raise
     finally:
-        if child is not None:stop_owned_child(child)
+        if child is not None:
+            stop_owned_child(child)
+            if child.stdout is not None:
+                tail=child.stdout.read()
+                if tail:raw.extend(tail.decode(errors='replace').splitlines())
+                child.stdout.close()
         if modal_fd is not None:
             try:signal.pidfd_send_signal(modal_fd,signal.SIGTERM)
             except ProcessLookupError:pass
