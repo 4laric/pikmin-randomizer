@@ -2,6 +2,7 @@
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,10 @@ class ManualLauncherTests(unittest.TestCase):
 
     @unittest.skipIf(os.name=='nt','actual Linux /proc control')
     def test_linux_owned_process_paths(self):
-        self.assertIn(str(Path(sys.executable).resolve()),linux_runtime_paths())
+        with tempfile.TemporaryDirectory() as tmp:
+            executable=Path(tmp)/'nectar.exe';shutil.copy2(Path(sys.executable).resolve(),executable)
+            child=subprocess.Popen([str(executable),'-c','import time;time.sleep(30)'])
+            try:self.assertIn(str(executable),linux_runtime_paths())
+            finally:stop_owned_child(child)
 
 if __name__=='__main__':unittest.main()

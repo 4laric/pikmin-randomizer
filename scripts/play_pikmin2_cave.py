@@ -83,6 +83,7 @@ def linux_runtime_paths(proc_root=Path('/proc')):
         if not directory.name.isdigit(): continue
         try:
             if directory.stat().st_uid != os.getuid(): continue
+            if (directory/'comm').read_text().strip() not in {'nectar','nectar.exe','nectar.real'}: continue
             paths.append(os.readlink(directory/'exe'))
         except (FileNotFoundError,ProcessLookupError):
             continue  # exited during enumeration
