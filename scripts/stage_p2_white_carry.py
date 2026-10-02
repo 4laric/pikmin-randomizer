@@ -23,7 +23,7 @@ def prepare(assets, bundle, output):
         elif name==b'preview ship':uid=24
         elif name==b'preview ivory':uid=25
         elif name==b'preview treasure bolt':
-            uid=26;struct.pack_into('>3f',row,48,-170,0,-90)
+            uid=26;struct.pack_into('>3f',row,48,170,0,200)
         else:raise ValueError('Unexpected generator source')
         struct.pack_into('<I',row,8,uid);rewritten.append(bytes(row))
     if pikmin!=20:raise ValueError('Exactly20 original Red records required')
@@ -31,7 +31,7 @@ def prepare(assets, bundle, output):
     # Production preview loads this immutable setup profile before gameplay.
     (Path(output)/'p2-pod.txt').write_bytes(b'P2_POD_1 white_carry_smoke 1 1 1 Kochappy 0\n')
     files=[stage,Path(output)/'p2-pod.txt',Path(output)/'p2-white.txt',Path(output)/'assets/dataDir/courses/pikmin2room/room.mod',Path(output)/'assets/dataDir/courses/pikmin2room/room.ini']
-    evidence=dict(engineering_profile=True,cargo=dict(uid=26,xyz=[-170,0,-90],weight=1,capacity=1,value=1),pod=dict(uid=23,xyz=[-40,0,120]),original_red_uids=list(range(1,21)),ivory_uid=25,geometry='Unmodified inherited capped imported room and prototype routes',hashes={str(p.relative_to(output)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
+    evidence=dict(engineering_profile=True,cargo=dict(uid=26,xyz=[170,0,200],weight=1,capacity=1,value=1),pod=dict(uid=23,xyz=[-40,0,120]),original_red_uids=list(range(1,21)),ivory_uid=25,geometry='Unmodified inherited capped imported room and prototype routes',hashes={str(p.relative_to(output)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
     (Path(output)/'white-carry-inputs.json').write_text(json.dumps(evidence,indent=2)+'\n')
     return Path(output)
 
