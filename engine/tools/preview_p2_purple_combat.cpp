@@ -1309,10 +1309,20 @@ class PurpleCombatApp : public PlugPikiApp {
             "ordinary restored checkpoint/day/stock/maturity mismatch");
         if(++resumeReady<60) return;
         boundAdult(false);GameStat::update();
+        int registryRed=0,registryYellow=0,registryBlue=0,registryOther=0;
         Iterator bodies(pikiMgr);CI_LOOP(bodies) {
             Piki* p=static_cast<Piki*>(*bodies);
             require(!p || !p->isAlive() || !pc_p2_is_purple(p),"ordinary restore duplicate field Purple");
+            if(p&&p->isAlive()) {
+                if(p->mColor==Red)++registryRed;else if(p->mColor==Yellow)++registryYellow;
+                else if(p->mColor==Blue)++registryBlue;else ++registryOther;
+            }
         }
+        std::printf("P2_PURPLE_ORDINARY_RESUME_POPULATION registry_red=%d registry_yellow=%d registry_blue=%d registry_other=%d map_red=%d map_yellow=%d map_blue=%d container_red=%d container_yellow=%d container_blue=%d all_red=%d all_yellow=%d all_blue=%d p2_stock=%d expected_total=20 read_only=1\n",
+            registryRed,registryYellow,registryBlue,registryOther,
+            GameStat::mapPikis[Red],GameStat::mapPikis[Yellow],GameStat::mapPikis[Blue],
+            GameStat::containerPikis[Red],GameStat::containerPikis[Yellow],GameStat::containerPikis[Blue],
+            GameStat::allPikis[Red],GameStat::allPikis[Yellow],GameStat::allPikis[Blue],p2ship::stock.total());
         require(int(GameStat::allPikis)+p2ship::stock.total()==20,"ordinary saved starting population conservation");
         ordinaryInput();milestone("ordinary_checkpoint_restored",ticks);
         std::printf("P2_PURPLE_ORDINARY_RESUME_PASS day=%d maturity=%d stock=1 field=%d native_population=20 generations=1 checkpoint_resumed=1 direct_stock_helpers=0 withdrawal_ui_validated=0 saved_bytes_injected=0\n",
