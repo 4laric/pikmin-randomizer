@@ -205,6 +205,117 @@ class CoordinationTests(unittest.TestCase):
         with self.assertRaisesRegex(Rejected, 'lane issue'):
             self.agree(request)
 
+    def amend_unowned(self, **overrides):
+        request = dict(key='integration', generation=1,
+                       revision=self.lane('integration')['revision'], agreement_ids=[],
+                       additions=['new.py'], scope='Issue 1144: unowned private additions', chain=self.chain)
+        request.update(overrides)
+        return self.reg.amend_scope(**request)
+
+    def assert_unowned_refused(self, message, **overrides):
+        before = self.reg.snapshot()
+        with self.assertRaisesRegex(Rejected, message):
+            self.amend_unowned(**overrides)
+        self.assertEqual(before, self.reg.snapshot(), 'Refusal must roll back all registry changes')
+
+    def test_unowned_empty_agreements_preserve_owners_leases_and_acceptance(self):
+        before = self.reg.snapshot()
+        amended = self.amend_unowned(additions=['new.py', 'second.py'])
+        after = self.reg.snapshot()
+        self.assertEqual(before['lanes']['owner'], after['lanes']['owner'])
+        self.assertEqual(before['leases'], after['leases'])
+        self.assertEqual(before.get('coordination_agreements', {}), after.get('coordination_agreements', {}))
+        self.assertEqual(['integration.py', 'new.py', 'second.py'], amended['owned_files'])
+        self.assertEqual(before['lanes']['integration']['revision'] + 1, amended['revision'])
+        self.assertEqual([], amended['coordination'][-1]['agreements'])
+        for key in ('state', 'acceptance', 'handoff', 'integrated_at'):
+            self.assertEqual(before['lanes']['integration'][key], amended[key])
+
+    def test_unowned_empty_agreements_refuse_active_and_inactive_casefold_overlap(self):
+        for state in ('running', 'blocked', 'handoff_ready', 'review_ready', 'integrating'):
+            with self.subTest(state=state):
+                with self.reg.transaction() as s:
+                    s['lanes']['owner']['state'] = state
+                self.assert_unowned_refused('Uncoordinated', additions=['new.py', 'SHARED.PY'])
+
+    def test_unowned_done_historical_owner_is_excluded_without_mutation(self):
+        with self.reg.transaction() as s:
+            s['lanes']['owner']['state'] = 'done'
+        owner = self.lane('owner')
+        self.amend_unowned(additions=['SHARED.PY'])
+        self.assertEqual(owner, self.lane('owner'))
+
+    def test_unowned_remote_file_and_issue_claims_refused(self):
+        from workflow.remote import REPOSITORIES
+        self.reg.remote_enqueue('remote-test', 999, ['remote-dir'], ['Tooling controls'],
+                                'Prepare remote tooling only', ['python-tests'],
+                                {'root': dict(url=REPOSITORIES['root'], commit=self.sha, ref='refs/heads/codex/test')})
+        self.assert_unowned_refused('reserved by remote', additions=['REMOTE-DIR/child.py'])
+        with self.reg.transaction() as s:
+            s['remote']['jobs']['remote-test']['issue'] = 1144
+        self.assert_unowned_refused('reserved by remote')
+
+    def test_unowned_actor_process_generation_revision_and_liveness_fences(self):
+        self.assert_unowned_refused('registered integration process', chain=[])
+        self.assert_unowned_refused('generation', generation=2)
+        self.assert_unowned_refused('Stale lane revision', revision=1)
+        self.reg.probe = lambda _: 'dead'
+        self.assert_unowned_refused('Live integration actor')
+
+    def test_unowned_actual_head_drift_refused(self):
+        self.git('-C', str(self.root / 'output/integration'), '-c', 'user.name=Test',
+                 '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-m', 'drift')
+        self.assert_unowned_refused('HEAD differs')
+
+    def test_unowned_nonprivate_checkout_refused(self):
+        with self.reg.transaction() as s:
+            s['lanes']['integration']['root']['worktree'] = '.'
+        self.assert_unowned_refused('private checkout')
+
+    def test_unowned_missing_native_source_refused(self):
+        for prefix in ('native', 'Native', 'NATIVE'):
+            with self.subTest(prefix=prefix):
+                self.assert_unowned_refused('Source record required for native', additions=[prefix + '/new.cpp'])
+
+    def test_unowned_root_and_native_checkouts_are_both_checked(self):
+        with self.reg.transaction() as s:
+            source = copy.deepcopy(s['lanes']['integration']['root'])
+            source['worktree'] = 'output/other'
+            s['lanes']['integration']['native'] = source
+        self.amend_unowned(additions=['new.py', 'native/new.cpp'])
+        self.git('-C', str(self.root / 'output/other'), '-c', 'user.name=Test',
+                 '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-m', 'native drift')
+        for prefix in ('native', 'Native', 'NATIVE'):
+            with self.subTest(prefix=prefix):
+                self.assert_unowned_refused('HEAD differs', additions=['another.py', prefix + '/another.cpp'])
+
+    def test_unowned_worker_wip_is_not_bypassed(self):
+        self.reg.register(self.data('other'))
+        self.reg.checkpoint('other', 1, 1, {'state': 'running'})
+        with self.reg.transaction() as s:
+            s['lanes']['other']['worker_id'] = 'integration'
+        self.assert_unowned_refused('one active slice')
+
+    def test_unowned_malformed_agreement_containers_refused(self):
+        for value in (None, '', (), {}, False):
+            with self.subTest(value=value):
+                self.assert_unowned_refused('agreement list', agreement_ids=value)
+
+    def test_unowned_supplied_unknown_or_stale_agreements_not_ignored(self):
+        self.assert_unowned_refused('Unknown or mismatched', agreement_ids=['missing'])
+        row = self.agree()
+        with self.reg.transaction() as s:
+            s['lanes']['owner']['task_id'] = 'different-session'
+        self.assert_unowned_refused('Stale coordination', agreement_ids=[row['id']])
+
+    def test_unowned_coordinate_still_requires_actual_participants(self):
+        request = self.request()
+        request['participants'] = []
+        before = self.reg.snapshot()
+        with self.assertRaisesRegex(Rejected, 'producer participants'):
+            self.agree(request)
+        self.assertEqual(before, self.reg.snapshot())
+
 
 if __name__ == '__main__':
     unittest.main()

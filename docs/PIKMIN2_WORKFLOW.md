@@ -64,8 +64,16 @@ For example, the scope request contains:
  "scope":"Issue-backed private combination preserving the agreed behavior"}
 ```
 
-Every unfinished owner of an overlapping key must be covered. An intervening drift
-refuses amendment without partial claims. Check agreements before coordinated edits:
+Every unfinished owner of an overlapping key must be covered.
+For wholly unowned additions, `agreement_ids: []` is supported: do not invent a
+producer or an agreement. The amendment still checks the live actor, generation,
+revision, pinned linked private checkout and every local unfinished or remote
+claim. Supplied agreements always receive full current identity/evidence checks;
+`agree` still requires actual nonempty producer participants. Amendment records
+editing scope only and changes no other owner, lease or acceptance evidence.
+
+An intervening drift refuses amendment without partial claims. Check agreements
+before coordinated edits:
 source/task/generation/process or checkout drift and changed evidence invalidate
 them. A commit advancing the integration checkout requires its normal source
 checkpoint and a fresh agreement before further coordinated edits. Refresh at new
