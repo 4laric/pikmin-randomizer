@@ -1,3 +1,25 @@
+# Current White retail source provenance
+
+Native `fb0a4ab56df604ee0abbd0138daafd82c1a8969b` is exported from clean
+`output/native-coop-p2-source-combination` under #1144. All4,266 copied tracked
+files match actual native working-tree bytes;53 audited non-desktop resources
+are skipped. Exactly five reviewed White1191 treasure10 files add explicit
+WHITE_TREASURE1 opt-in ordinary retail diamond180/minimum15/maximum25 delivery,
+source descriptor/assets identity and once-delivered ledger in the same hashed
+native-card generation. Whole source review38dac/all1137refs and88engine-free
+controls/eight stager/two real-header syntax passes are qualified source evidence.
+Genuine producer12/original1148consent174 plus explicitlyqualified legacy
+Tutorial1150/TheLynk1158 preservation were consumed through coordination8496d759.
+No legacy owner consent, claimrelease or gameplay proof is invented.
+
+Prior Purplepulse375f and Captainc16 fixtures remain unchanged. Matching production
+compilation/package evidence for this source is pending. Natural fifteenWhite
+acquisition/retail hauling/suction/poison/ship and dayUI/nativeSAVE/freshprocess
+resume/human gameplay remain open. No defaultseed or onlineWhite support claim.
+Settings1190/co-op151 successor and owned White runtime fixture are not included.
+
+## Previous export provenance (historical)
+
 # Current native source provenance
 
 Native `4ab0b3c3a2eb7dfd3b186252d065ea5c9d9fa287` is exported from clean

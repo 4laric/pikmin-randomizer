@@ -1,5 +1,6 @@
 #include "pc_p2_ship_store.h"
 #include "pc_p2_white_campaign_policy.h"
+#include "pc_p2_white_treasure_policy.h"
 #include "pc_p2_campaign_policy.h"
 #include "pc_p2_boss_arena_policy.h"
 #include "pc_p2_proxy.h"
@@ -174,6 +175,7 @@ unsigned long long campaignGeneration = 0;
 bool campaignResumed = false;
 bool purpleCampaign = false;
 bool whiteCampaign = false;
+bool whiteTreasureCampaign = false;
 bool secondCaptain = false;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
@@ -206,6 +208,7 @@ struct CkptScan {
     unsigned used[7] = {};
     p2ship::Store ship;
     p2whitecampaign::Budget whiteBudget;
+    p2whitetreasure::Ledger whiteTreasure;
     unsigned thelynkUsed[18] = {};
 };
 CkptScanStatus scanCampaignCheckpoint(CkptScan& s) {
@@ -231,8 +234,12 @@ CkptScanStatus scanCampaignCheckpoint(CkptScan& s) {
         p2whitecampaign::Config config; std::ifstream cfg("p2-white-campaign.txt");
         valid = valid && p2whitecampaign::parse(cfg, config) && s.whiteBudget.read(meta, config);
     }
+    if (whiteTreasureCampaign) {
+        p2whitetreasure::Config config;
+        valid = valid && p2whitetreasure::read_config(config) && s.whiteTreasure.read(meta,config);
+    }
     if (thelynk) for (int i = 0; i < 18; ++i) valid = valid && bool(meta >> s.thelynkUsed[i]) && s.thelynkUsed[i] <= 330;
-    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != s.generation || (meta >> extra))
         return kCkptMismatch;
     s.block.resize(32768);
@@ -258,6 +265,7 @@ void loadCampaignCheckpoint() {
     for (int i=0; i<7; ++i) consumedBenefits[i] = s.used[i];
     p2ship::stock = s.ship;
     p2whitecampaign::budget = s.whiteBudget;
+    p2whitetreasure::ledger = s.whiteTreasure;
     for (int i = 0; i < 18; ++i) thelynkUsed[i] = s.thelynkUsed[i];
     campaignResumed = true;
 }
@@ -490,7 +498,7 @@ uint16_t net_features() {
     return (maturityItems ? 1 : 0) | (dayLengthItems ? 2 : 0) | (whistlePluckItem ? 4 : 0)
         | (p2EnemyBridge ? 8 : 0) | (purpleCampaign ? 16 : 0) | (secondCaptain ? 32 : 0)
         | (progressiveStats ? 64 : 0) | (benefitItems ? 128 : 0) | (deathLinkUnit ? 256 : 0)
-        | (emperorGoal ? 512 : 0) | (whiteCampaign ? 1024 : 0);
+        | (emperorGoal ? 512 : 0) | (whiteCampaign ? 1024 : 0) | (whiteTreasureCampaign ? 2048 : 0);
 }
 void require_net_state_schema() {
     if (checkCount > pc_randstate::kCheckSlots) fail("netplay randomizer catalog exceeds wire capacity");
@@ -1008,6 +1016,15 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (!p2EnemyBridge || !purpleCampaign || thelynk || !(input >> version) || version != 1)
             fail("White requires Purple/P2 campaign bridge and version 1");
         whiteCampaign = true;
+        input >> end;
+    }
+    if (end == "WHITE_TREASURE") {
+        unsigned version;
+        if (!whiteCampaign || !purpleCampaign || !p2EnemyBridge || thelynk || !(input >> version) || version != 1)
+            fail("White retail treasure requires White/Purple/P2 campaign and version 1");
+        whiteTreasureCampaign = true;
+        p2whitetreasure::Config config;
+        if (!p2whitetreasure::read_config(config)) fail("White retail descriptor/assets invalid");
         input >> end;
     }
     if (end == "CAPTAINS") {
@@ -2240,6 +2257,7 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 // Immutable generations keep the last committed day intact if a write is interrupted.
 bool pc_randomizer_purple_campaign() { return enabled && purpleCampaign; }
 bool pc_randomizer_white_campaign() { return enabled && whiteCampaign; }
+bool pc_randomizer_white_treasure_campaign() { return enabled && whiteTreasureCampaign; }
 bool pc_randomizer_second_captain() { return enabled && secondCaptain; }
 bool pc_randomizer_resumed() { return enabled && campaignResumed; }
 bool pc_randomizer_load_campaign(void* destination) {
@@ -2264,10 +2282,15 @@ bool write_campaign_checkpoint(const void* source, unsigned long long generation
         if (ec) return false;
     }
     std::ostringstream meta;
-    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     if (purpleCampaign) p2ship::stock.write(meta);
     if (whiteCampaign) p2whitecampaign::budget.write(meta);
+    if (whiteTreasureCampaign) {
+        p2whitetreasure::Config config;
+        if (!p2whitetreasure::read_config(config)) {if(fatal)fail("White retail save descriptor/assets invalid");return false;}
+        p2whitetreasure::ledger.write(meta,config);
+    }
     if (thelynk) for (int i = 0; i < 18; ++i) meta << ' ' << thelynkUsed[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
@@ -2591,6 +2614,7 @@ bool pc_randomizer_adopt_checkpoint() {
     for (unsigned& used : thelynkUsed) used = 0;
     p2ship::stock = p2ship::Store();
     p2whitecampaign::budget = p2whitecampaign::Budget();
+    p2whitetreasure::ledger = p2whitetreasure::Ledger();
     loadCampaignCheckpoint();
     if (campaignResumed) {
         std::printf("[Pikmin Randomizer] CAMPAIGN_RESUMED generation=%llu\n", campaignGeneration);
