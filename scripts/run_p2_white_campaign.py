@@ -103,6 +103,29 @@ def phase_limit(mode):
     return 240 if mode=='positive' else 60
 
 
+def assess_save_counter(text, save, generation):
+    ready = rows(text,'P2_WHITE_CAMPAIGN_SAVE_READY')
+    defaults = rows(text,'P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY')
+    if len(ready)!=1 or ready[0].get('source_notice_ready')!='1' or int(ready[0].get('backup_slot','0')) not in (1,2,3,4):
+        raise ValueError('One actual ready-to-save baseline required')
+    initial=int(save['native_save_index_before']);baseline=int(save['native_save_ready_index'])
+    if (int(ready[0]['initial_index'])!=initial or int(ready[0]['measured_index'])!=baseline
+            or int(ready[0]['generation_before'])!=generation-1
+            or int(save['native_save_index_after'])!=baseline+1):
+        raise ValueError('Exactly one native card save after measured baseline required')
+    if ready[0].get('default_created')=='1':
+        if (len(defaults)!=1 or defaults[0].get('native_successful_default_observer')!='1'
+                or int(defaults[0]['initial_index'])!=initial or int(defaults[0]['measured_index'])!=baseline
+                or baseline!=initial+4):
+            raise ValueError('Actual successful four-area first-file initialization required')
+    elif ready[0].get('default_created')!='0' or defaults or baseline!=initial:
+        raise ValueError('Unexplained native card baseline change')
+    if text.index('P2_WHITE_CAMPAIGN_SAVE_READY')>text.index('P2_WHITE_CAMPAIGN_SAVE_PASS'):
+        raise ValueError('Measured native save baseline must precede completion')
+    if defaults and text.index('P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY')>text.index('P2_WHITE_CAMPAIGN_SAVE_READY'):
+        raise ValueError('Default initialization must precede actual save baseline')
+
+
 def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_proof, phase_budget=60):
     if phase_budget not in (60,240):raise ValueError('Fixed positive assessment budget required')
     if (exit_code!=0 or timed_out or not math.isfinite(elapsed) or not 0<elapsed<=phase_budget
@@ -139,7 +162,7 @@ def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_p
     if len(save)!=1 or any(save[0].get(k)!=v for k,v in {'stock':'15','white_leaf':'15','spent':'15','pokos':'180','external_CAMPAIGN_SAVED_required':'1','fresh_process_resume_pending':'1'}.items()):raise ValueError('Actual day UI SAVE witness required')
     generation=int(save[0]['generation'])
     if generation<1 or int(save[0]['day'])!=int(save[0]['day_before'])+1:raise ValueError('One ordinary day/generation required')
-    if int(save[0]['native_save_index_after'])!=int(save[0]['native_save_index_before'])+1:raise ValueError('Actual native card save index must advance')
+    assess_save_counter(text, save[0], generation)
     before=rows(text,'P2_WHITE_CAMPAIGN_P1_BEFORE_STOCK');saved=rows(text,'P2_WHITE_CAMPAIGN_P1_SAVE_STOCK')
     keys=['b_leaf','b_bud','b_flower','r_leaf','r_bud','r_flower','y_leaf','y_bud','y_flower']
     if len(before)!=1 or len(saved)!=1 or set(before[0])!=set(keys) or set(saved[0])!=set(keys):
