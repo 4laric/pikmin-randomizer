@@ -137,7 +137,16 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             if(!seen){blueFlights.push_back(selectedBlue);std::printf("P2_CAVE_MIXED_BLUE_FLIGHT actor=%p ordinal=%d source=ordinary_release x=%.2f z=%.2f\n",static_cast<void*>(selectedBlue),int(blueFlights.size()),selectedBlue->mSRT.t.x,selectedBlue->mSRT.t.z);std::fflush(nullptr);}
             fixturePad(0);return;
         }
-        if(throwTick==2){fixturePad(0);if(selectedBlue && selectedBlue->getState()==PIKISTATE_Normal){selectedBlue=nullptr;throwTick=0;selectionQuiet=0;}return;}
+        if(throwTick==2){
+            fixturePad(0);bool observedFlight=false;for(Piki* actor:blueFlights)if(actor==selectedBlue)observedFlight=true;
+            // Hanged exits to Normal during NaviThrow wind-up, before its
+            // KEY_Action0 starts Flying. Normal alone is not a landing witness.
+            if(selectedBlue && selectedBlue->getState()==PIKISTATE_Normal){
+                if(observedFlight){selectedBlue=nullptr;throwTick=0;selectionQuiet=0;}
+                else if(observed%10==0){std::printf("P2_CAVE_MIXED_BLUE_FLIGHT_PENDING actor=%p nstate=%d preflight_Normal=1 input=neutral\n",static_cast<void*>(selectedBlue),state);std::fflush(nullptr);}
+            }
+            return;
+        }
         if(state==NAVISTATE_ThrowWait){
             auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
             Piki* actual=grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki;
