@@ -2913,6 +2913,10 @@ target_compile_options(p2_groink_teki_sidecar PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_dependencies(p2_groink_teki_test p2_groink_teki_sidecar)
 
 # Opt-in Purple and White policy regressions.
+add_executable(p2_purple_collision_trace_test tools/test_purple_collision_trace.cpp)
+target_include_directories(p2_purple_collision_trace_test PRIVATE pc_port)
+target_compile_options(p2_purple_collision_trace_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_purple_collision_trace_test COMMAND p2_purple_collision_trace_test)
 add_executable(p2_purple_direct_policy_test tools/p2_purple_direct_policy_test.cpp)
 target_include_directories(p2_purple_direct_policy_test PRIVATE pc_port)
 target_compile_options(p2_purple_direct_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)

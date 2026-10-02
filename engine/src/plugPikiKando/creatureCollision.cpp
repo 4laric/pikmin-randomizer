@@ -2,6 +2,56 @@
 #include "DebugLog.h"
 #include "Piki.h"
 #include "PikiState.h"
+#if defined(PIKI_PC_PORT)
+#include "Navi.h"
+#include "pc_purple_collision_trace.h"
+#include "timing/pc_render_phase.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+namespace {
+PcPurpleCollisionTraceWindow purpleCollisionTrace;
+bool purpleCollisionTraceEnabled() {
+    static const bool enabled = [] {
+        const char* flag = std::getenv("P2_PURPLE_COLLISION_TRACE");
+        const char* mode = std::getenv("P2_PURPLE_COMBAT_MODE");
+        return flag && std::strcmp(flag, "1") == 0 && mode && std::strcmp(mode, "sdl_acquire") == 0;
+    }();
+    return enabled;
+}
+void purpleCollisionTraceEmit(Creature* actor, Creature* partner, const Vector3f& before,
+                              const Vector3f& point, const char* side) {
+    const Vector3f after = actor->mVolatileVelocity;
+    const bool changed = before.x != after.x || before.y != after.y || before.z != after.z;
+    if (!pc_render_is_authoritative() || !purpleCollisionTrace.take(actor, changed)) return;
+    Piki* piki = partner->mObjType == OBJTYPE_Piki ? static_cast<Piki*>(partner) : nullptr;
+    std::printf("P2_PURPLE_COLLISION_PROVENANCE fixture_tick=%llu auth_tick=%llu sequence=%u "
+                "side=%s captain=%p captain_index=%d partner=%p partner_type=%d "
+                "partner_piki_state=%d partner_piki_mode=%d partner_navi=%p "
+                "before=%.9g,%.9g,%.9g after=%.9g,%.9g,%.9g delta=%.9g,%.9g,%.9g "
+                "point=%.9g,%.9g,%.9g dt=%.9g native_path=respondColl_separation read_only=1\n",
+                static_cast<unsigned long long>(purpleCollisionTrace.tick()),
+                static_cast<unsigned long long>(pc_render_tick_serial()), purpleCollisionTrace.sequence(),
+                side, static_cast<void*>(actor), static_cast<Navi*>(actor)->getNaviIndex(),
+                static_cast<void*>(partner), int(partner->mObjType), piki ? piki->getState() : -1,
+                piki ? int(piki->mMode) : -1, piki ? static_cast<void*>(piki->mNavi) : nullptr,
+                before.x, before.y, before.z, after.x, after.y, after.z,
+                after.x-before.x, after.y-before.y, after.z-before.z,
+                point.x, point.y, point.z, gsys->getFrameTime());
+}
+}
+void pc_purple_collision_trace_context(const Creature* captain, bool active, std::uint64_t fixtureTick) {
+    const bool enabled = purpleCollisionTraceEnabled();
+    const bool valid = captain && captain->mObjType == OBJTYPE_Navi;
+    purpleCollisionTrace.begin(enabled, active && valid, captain, fixtureTick);
+    if (!enabled || !active || !valid || !purpleCollisionTrace.eligible(captain)) return;
+    std::printf("P2_PURPLE_COLLISION_CONTEXT fixture_tick=%llu preceding_auth_tick=%llu "
+                "captain=%p captain_index=%d before_idle_volatile=%.9g,%.9g,%.9g read_only=1\n",
+                static_cast<unsigned long long>(fixtureTick), static_cast<unsigned long long>(pc_render_tick_serial()),
+                static_cast<const void*>(captain), static_cast<const Navi*>(captain)->getNaviIndex(),
+                captain->mVolatileVelocity.x, captain->mVolatileVelocity.y, captain->mVolatileVelocity.z);
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -120,6 +170,14 @@ void Creature::respondColl(Creature* other, f32, CollPart* selfCollider, CollPar
 				f32 sepSpeedSelf  = distance * sepRatioSelf / gsys->getFrameTime();
 				f32 sepSpeedOther = distance * sepRatioOther / gsys->getFrameTime();
 
+#if defined(PIKI_PC_PORT)
+                const bool traceSelf = purpleCollisionTrace.eligible(this);
+                const bool traceOther = purpleCollisionTrace.eligible(other);
+                Vector3f traceBeforeSelf, traceBeforeOther;
+                if (traceSelf) traceBeforeSelf = mVolatileVelocity;
+                if (traceOther) traceBeforeOther = other->mVolatileVelocity;
+#endif
+
 				if (mObjType != OBJTYPE_Navi) {
 					mVolatileVelocity.x = sepSpeedSelf * separationVector.x * horizontalScale;
 					mVolatileVelocity.z = sepSpeedSelf * separationVector.z * horizontalScale;
@@ -139,6 +197,11 @@ void Creature::respondColl(Creature* other, f32, CollPart* selfCollider, CollPar
 					other->mVolatileVelocity.z += -sepSpeedOther * separationVector.z * horizontalScale;
 					other->mVolatileVelocity.y += -sepSpeedOther * separationVector.y * verticalScale;
 				}
+
+#if defined(PIKI_PC_PORT)
+                if (traceSelf) purpleCollisionTraceEmit(this, other, traceBeforeSelf, point, "self");
+                if (traceOther) purpleCollisionTraceEmit(other, this, traceBeforeOther, point, "other");
+#endif
 
 				if (!isFixed()) {
 					mHasCollChangedVelocity = 1;

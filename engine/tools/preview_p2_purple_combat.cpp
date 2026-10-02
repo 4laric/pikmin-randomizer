@@ -10,6 +10,8 @@
 #include <GL/gl.h>
 #include "Graphics.h"
 #include "pc_gfx.h"
+#include "pc_purple_collision_trace.h"
+#include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
 #include "system.h"
@@ -900,13 +902,13 @@ class PurpleCombatApp : public PlugPikiApp {
         // sample, NOT a pre-collision measurement. Do not infer impulse origin.
         const unsigned forceMask=pluckForceGuardMask(sdlPoint(n->_B0),sdlPoint(n->mVolatileVelocity),tau);
         const auto& previous=sdlPreviousForceSample;
-        std::printf("P2_PURPLE_PLUCK_FORCE_SAMPLE tick=%d phase=%s sample=end_idle state=%d "
+        std::printf("P2_PURPLE_PLUCK_FORCE_SAMPLE tick=%d auth_tick=%llu captain=%p phase=%s sample=end_idle state=%d "
             "B0=%.9g,%.9g,%.9g volatile=%.9g,%.9g,%.9g tau=%.9g "
             "mask=%u mask_B0=1 mask_volatile=2 mask_tau=4 "
             "previous_tick=%d previous_B0=%.9g,%.9g,%.9g previous_volatile=%.9g,%.9g,%.9g previous_tau=%.9g "
             "velocity=%.9g,%.9g,%.9g target=%.9g,%.9g,%.9g anchor=%.9g,%.9g,%.9g fixed=%d "
             "ground_normal=%.9g,%.9g,%.9g dt=%.9g read_only=1 force_origin_unproven=1\n",
-            ticks,sdlPulseActive?"observe":"begin",state,
+            ticks,static_cast<unsigned long long>(pc_render_tick_serial()),static_cast<void*>(n),sdlPulseActive?"observe":"begin",state,
             n->_B0.x,n->_B0.y,n->_B0.z,n->mVolatileVelocity.x,n->mVolatileVelocity.y,n->mVolatileVelocity.z,tau,
             forceMask,previous.tick,previous.acceleration[0],previous.acceleration[1],previous.acceleration[2],
             previous.transient[0],previous.transient[1],previous.transient[2],previous.tau,
@@ -1611,6 +1613,12 @@ public:
         }
     }
     int idle() override {
+        // Borrow the actual current captain for this one idle only. The engine
+        // trace is explicitly acquisition-only, bounded, and read-only. Arm
+        // during an existing pulse so ordinary startup collisions do not fill
+        // the trace before the failing approach; retain the force guard below.
+        pc_purple_collision_trace_context(naviMgr ? naviMgr->getNavi() : nullptr,
+            sdlPulseActive && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
         const int result=PlugPikiApp::idle();
         Navi* n=naviMgr?naviMgr->getNavi():nullptr;
         // Injection modifies the initialized runtime, never an engine-free stand-in.
