@@ -1,5 +1,7 @@
 """Exercise the actual runner isolation function without importing game/staging modules."""
 import ast
+import math
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,15 +9,33 @@ import unittest
 RUNNER = Path(__file__).resolve().parents[1] / 'scripts/run_elecbug_contact_runtime.py'
 
 
-def actual_environment():
+def actual_function(name):
     tree = ast.parse(RUNNER.read_text())
-    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'private_environment')
-    namespace = {}
+    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    namespace = {'math': math, 're': re}
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(RUNNER), 'exec'), namespace)
-    return namespace['private_environment']
+    return namespace[name]
+
+
+def actual_environment():
+    return actual_function('private_environment')
 
 
 class Isolation(unittest.TestCase):
+    def test_only_inactive_guard_requests_second_captain(self):
+        for mask in (None, 'active', 'inactive', 'null-state', 'missing-manager'):
+            with self.subTest(mask=mask), tempfile.TemporaryDirectory() as tmp:
+                env = actual_environment()({'PIKMIN_P2_SECOND_CAPTAIN': '1',
+                        'pikmin_p2_second_captain': '1', 'PIKMIN_COOP': '1'},
+                        Path(tmp), Path('/exe'), 'landing', guard_mask=mask)
+                self.assertEqual(env.get('PIKMIN_P2_SECOND_CAPTAIN'), '1' if mask == 'inactive' else None)
+                self.assertNotIn('pikmin_p2_second_captain', env)
+                self.assertNotIn('PIKMIN_COOP', env)
+
+    def test_unknown_guard_cannot_change_startup(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(ValueError):
+            actual_environment()({}, Path(tmp), Path('/exe'), 'landing', guard_mask='typo')
+
     def test_hostile_game_overrides_and_settings_cannot_escape(self):
         for platform in ('windows', 'linux'):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as tmp:
@@ -69,6 +89,37 @@ class Isolation(unittest.TestCase):
             self.assertNotIn('P2_ELECBUG_GUARD_MASK', env)
             self.assertNotIn('P2_ELECBUG_READY_ONLY', env)
             self.assertEqual(env['PIKMIN_P2_ROOM_WINDOW'], '960x540')
+
+
+class InactiveGuardEvidence(unittest.TestCase):
+    good = '\n'.join((
+        'P2_ELECBUG_STARTUP second_captain=1 capacity=2 guard=inactive',
+        'P2_ELECBUG_CAPTAIN_INITIALIZED slot=0 active=1 hp=100.000 frame=40',
+        'P2_ELECBUG_CAPTAIN_INITIALIZED slot=1 active=0 hp=100.000 frame=40',
+        'P2_ELECBUG_GUARD_OBSERVATION mask=inactive injected=1 slot=1 active=0 frame=40',
+    ))
+
+    def test_supported_startup_and_matching_initialized_slot(self):
+        self.assertTrue(actual_function('inactive_guard_witness')(self.good))
+
+    def test_rejects_missing_or_unrelated_initialization(self):
+        lines = self.good.splitlines()
+        cases = ['\n'.join(lines[:i] + lines[i+1:]) for i in range(len(lines))]
+        cases += [self.good.replace('injected=1 slot=1', 'injected=1 slot=0'),
+                  self.good.replace('active=0 frame=40', 'active=0 frame=41'),
+                  self.good.replace('slot=0 active=1', 'slot=0 active=0'),
+                  self.good.replace('slot=1 active=0 hp=', 'slot=1 active=1 hp='),
+                  '\n'.join([lines[0], lines[1], lines[3], lines[2]]),
+                  '\n'.join([lines[1], lines[0], lines[2], lines[3]]),
+                  '\n'.join([lines[0], lines[1], lines[2], lines[2], lines[3]])]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertFalse(actual_function('inactive_guard_witness')(text))
+
+    def test_rejects_unhealthy_or_malformed_initial_health(self):
+        for hp in ('0', '1', '-3', 'nan', 'inf', '1.2.3'):
+            with self.subTest(hp=hp):
+                self.assertFalse(actual_function('inactive_guard_witness')(self.good.replace('100.000', hp)))
 
 
 if __name__ == '__main__':

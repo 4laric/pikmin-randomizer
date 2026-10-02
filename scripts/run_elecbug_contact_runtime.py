@@ -166,8 +166,10 @@ def linux_preflight(exe, run, args, env):
             "platform_helper_sha256": args.platform_helper_sha256, "supervisor_sha256": args.supervisor_sha256}
 
 
-def private_environment(inherited, run, exe, scene):
+def private_environment(inherited, run, exe, scene, *, guard_mask=None):
     """Keep runner transport context, isolate game overrides and writable state."""
+    if guard_mask not in (None, "active", "inactive", "null-state", "missing-manager"):
+        raise ValueError("unknown isolated guard mask")
     roots = {
         "APPDATA": "private-appdata", "LOCALAPPDATA": "private-localappdata",
         "HOME": "private-home", "USERPROFILE": "private-home",
@@ -190,7 +192,40 @@ def private_environment(inherited, run, exe, scene):
                SDL_AUDIODRIVER="dummy", SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS="1",
                PIKMIN_RANDOMIZER_TEST_BACKGROUND="1", PIKMIN_P2_ROOM_WINDOW="960x540",
                P2_ELECBUG_MODE=scene)
+    if guard_mask == "inactive":
+        # Public standalone preview option: GameCoreSection owns real birth/init.
+        env["PIKMIN_P2_SECOND_CAPTAIN"] = "1"
     return env
+
+
+def inactive_guard_witness(text):
+    """Require ordinary two-captain startup and an observation of that live slot."""
+    startup = "P2_ELECBUG_STARTUP second_captain=1 capacity=2 guard=inactive"
+    lines = text.splitlines()
+    if lines.count(startup) != 1:
+        return False
+    start = lines.index(startup)
+    initialized = {}
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"P2_ELECBUG_CAPTAIN_INITIALIZED slot=([01]) active=([01]) hp=(\S+) frame=([0-9]+)", line)
+        if match and index > start:
+            slot, active, hp, frame = match.groups()
+            try:
+                health = float(hp)
+            except ValueError:
+                return False
+            if not math.isfinite(health) or health <= 1 or slot in initialized:
+                return False
+            initialized[slot] = (active, int(frame))
+        match = re.fullmatch(r"P2_ELECBUG_GUARD_OBSERVATION mask=inactive injected=1 slot=([01]) active=0 frame=([0-9]+)", line)
+        if match:
+            slot, frame = match.groups()
+            other = str(1 - int(slot))
+            return (slot in initialized and other in initialized
+                    and initialized[slot][0] == "0" and initialized[other][0] == "1"
+                    and initialized[slot][1] == int(frame)
+                    and initialized[other][1] <= int(frame))
+    return False
 
 
 def main():
@@ -224,7 +259,7 @@ def main():
     if sys.platform not in ("win32", "linux"):
         raise ValueError("Unsupported fixture platform")
     run = prepare(a.assets, a.content, a.output / uuid.uuid4().hex, white=a.white, pod=a.pod)
-    env = private_environment(os.environ, run, exe, scene)
+    env = private_environment(os.environ, run, exe, scene, guard_mask=a.guard_mask)
     if a.mode == "negative":
         env["P2_ELECBUG_GUARD_MASK"] = a.guard_mask
     if a.mode == "ready":
@@ -236,6 +271,7 @@ def main():
                       stage_sha256=sha(run / "elecbug-contact-inputs.json"),
                       guard_sha256=sha(ROOT / "scripts/p2_fixture_captain_guard.h"),
                       scene=scene, guard_mask=a.guard_mask,
+                      second_captain_requested=env.get("PIKMIN_P2_SECOND_CAPTAIN") == "1",
                       dlls={p.name: sha(p) for p in exe.parent.glob("*.dll")} if sys.platform == "win32" else {},
                       injected="negative captain-down signal only" if a.mode == "negative" else "none")
     if sys.platform == "linux":
@@ -249,6 +285,9 @@ def main():
     if a.mode == "negative":
         passed = passed and "PASS P2_ELECBUG" not in text and "P2_ELECBUG_CONTACT_CANDIDATE" not in text
         passed = passed and f"P2_ELECBUG_GUARD_OBSERVATION mask={a.guard_mask} injected=1 " in text
+        if a.guard_mask == "inactive":
+            passed = passed and inactive_guard_witness(text)
+
     else:
         passed = passed and "P2_FIXTURE_CAPTAIN_DOWN" not in text
         passed = passed and not any(line.startswith("P2_ELECBUG_GUARD_OBSERVATION ") and "injected=1" in line for line in text.splitlines())
