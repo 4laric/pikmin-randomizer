@@ -1,5 +1,6 @@
 """Bounded real native campaign save/resume; fixture setup is never a save file."""
 from pathlib import Path
+from collections import Counter
 import argparse,hashlib,json,os,re,struct,sys,threading,subprocess
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'scripts'))
@@ -78,6 +79,19 @@ def main():
   assert len(acquisition)==1 and len(re.findall(r'^P2_ONION_STARTUP_ACQUIRED\b',log,re.MULTILINE))==1,'one complete anchored startup acquisition marker required'
   acquisition_frames,*acquisition_flags=map(int,acquisition[0])
   assert 1<=acquisition_frames<=180 and tuple(acquisition_flags) in ((0,0,0,0,0),(1,1,1,1,1)),'startup acquisition observation flags must agree'
+  worker=re.findall(r'^P2_ONION_WORKER_SETUP needed=(\d+) observed=(\d+) original_unique=20\r?$',log,re.MULTILINE)
+  assert len(worker)==1 and len(re.findall(r'^P2_ONION_WORKER_SETUP\b',log,re.MULTILINE))==1 and worker[0][0]==worker[0][1] and int(worker[0][0])<=20,'one exact worker observation summary'
+  events=re.findall(r'^P2_ONION_WORKER_RECALL body_token=(\d+) target_token=(\d+) held_seconds=([0-9.]+) distance=([0-9.]+) radius=([0-9.]+) instant=([01]) after_mode=(\d+) after_state=(\d+) accepted=1\r?$',log,re.MULTILINE)
+  assert len(re.findall(r'^P2_ONION_WORKER_RECALL\b',log,re.MULTILINE))==len(events),'malformed worker event'
+  begun=re.findall(r'^P2_ONION_WORKER_SETUP_BEGIN body_token=(\d+) .* disclosed_worker_recall=1\r?$',log,re.MULTILINE)
+  assert len(begun)==len(set(begun))==int(worker[0][0]) and set(begun)=={e[0] for e in events},'worker body set matches setup'
+  assert len(events)==int(worker[0][0]) and len({e[0] for e in events})==len(events),'unique call-time worker events'
+  for token,target,held,distance,radius,instant,mode,state in events:
+   assert 0<=int(token)<20 and int(target)>0 and float(held)>=.6 and 0<=float(distance)<float(radius),'worker call-time range/hold proof'
+   assert (int(mode)==1 and int(state)==0) if instant=='1' else int(state)==26,'actual native whistle path'
+  assert session.names[50]=='Population: 10 total Red Pikmin','fixed manifest initial check mapping'
+  allowed={session.names[50]}
+  assert set(session.data['checked'])==allowed and Counter(session.inventory)==Counter(session.rewards[n] for n in allowed),'fresh loop forbids extra work rewards'
   assert 'P2_ONION_DEPOSIT_BOUNDARY live=0 stored=20 owner0=0 owner1=0 plate0=0 plate1=0 startup_whistle_ended=1' in log,'actual deposit boundary required'
   assert len(after)==1 and 'CAMPAIGN_SAVED generation=1' in log
   assert 'P2_ONION_DIARY input=B observed=1' in log and 'P2_ONION_DIARY input=A observed=2' in log,'actual eligible diary inputs required'
