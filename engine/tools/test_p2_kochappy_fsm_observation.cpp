@@ -1,8 +1,24 @@
 #include "pc_p2_kochappy_fsm.h"
+#include "pc_kochappy_gather_input.h"
 #include <cstdio>
 #include <limits>
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"FSM observation check failed: %s line%d\n",#x,__LINE__);return 1;}}while(false)
 int main(){
+ using G=PcKochappyGatherInput;
+ CHECK(pc_kochappy_gather_input(240,100,90,.1f,.65f)==G::Walk); // actual stalled target outside coverage
+ CHECK(pc_kochappy_gather_input(145,100,90,.1f,.65f)==G::Cursor);
+ CHECK(pc_kochappy_gather_input(145.01f,100,90,.1f,.65f)==G::Walk);
+ CHECK(pc_kochappy_gather_input(0,100,90,.1f,.65f)==G::Cursor);
+ CHECK(pc_kochappy_gather_input(200,150,120,.1f,.65f)==G::Cursor); // loaded radii, no hardcoded90
+ CHECK(pc_kochappy_gather_input(240,100,90,.1f,65.f/74.f)==G::Refuse);
+ CHECK(pc_kochappy_gather_input(240,100,90,22.f/74.f,.65f)==G::Refuse);
+ CHECK(pc_kochappy_gather_input(240,100,90,.1f,.2f)==G::Refuse);
+ CHECK(pc_kochappy_gather_input(-1,100,90,.1f,.65f)==G::Refuse);
+ CHECK(pc_kochappy_gather_input(240,20,90,.1f,.65f)==G::Refuse);
+ CHECK(pc_kochappy_gather_input(240,100,0,.1f,.65f)==G::Refuse);
+ const float nan=std::numeric_limits<float>::quiet_NaN();
+ for(int i=0;i<5;++i){float v[5]={240,100,90,.1f,.65f};v[i]=nan;
+  CHECK(pc_kochappy_gather_input(v[0],v[1],v[2],v[3],v[4])==G::Refuse);}
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;

@@ -42,6 +42,7 @@
 #include "pc_gpu_preference.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_kochappy_fsm.h"
+#include "pc_kochappy_gather_input.h"
 #include "pc_p2_surface_water.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_kochappy_stun.h"
@@ -545,12 +546,20 @@ public:
    // cursor can leave alive free Pikmin outside its circle indefinitely.
    // Keep the exact20-follower approach gate and all mechanic oracles below.
    if(n->getPlatePikis()<20){
-    Piki* gather=nullptr;Iterator idle(pikiMgr);CI_LOOP(idle){Piki* p=static_cast<Piki*>(*idle);
-     if(p&&p->isAlive()&&p->mColor==Red&&!pc_p2_is_purple(p)&&p->mMode==PikiMode::FreeMode){gather=p;break;}}
+    Piki* gather=nullptr;float nearest=1e30f;Iterator idle(pikiMgr);CI_LOOP(idle){Piki* p=static_cast<Piki*>(*idle);
+     if(!p||!p->isAlive()||p->mColor!=Red||pc_p2_is_purple(p)||p->mMode!=PikiMode::FreeMode||!p->mIsCallable)continue;
+     int slot=-1;for(int i=0;i<initialBodyCount;++i)if(initialBodies[i]==p){slot=i;break;}
+     require(slot>=0&&p->mGenerator&&unsigned(p->mGenerator->_70)==initialGeneratorIds[slot],"gather current original roster identity");
+     const float d=distance(n->mSRT.t,p->mSRT.t);require(std::isfinite(d),"gather target distance finite");
+     if(d<nearest){nearest=d;gather=p;}}
     if(gather){
      if(age%30==0)std::printf("P2_PURPLE_KOCHAPPY_GATHER_CURSOR age=%d followers=%d target_generator=%u target_callable=%d target_state=%d target_xyz=%.4f,%.4f,%.4f cursor_xyz=%.4f,%.4f,%.4f loaded_whistle_min=%.4f loaded_whistle_max=%.4f whistle_timer=%.4f SDL_aim=1 actor_writes=0\n",
       age,n->getPlatePikis(),gather->mGenerator?unsigned(gather->mGenerator->_70):0,int(gather->mIsCallable),gather->getState(),gather->mSRT.t.x,gather->mSRT.t.y,gather->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.y,n->mCursorWorldPos.z,C_NAVI_PARM(n,mWhistleMinRadius),C_NAVI_PARM(n,mWhistleMaxRadius),n->mWhistleTimer);
-     point(n,gather->mSRT.t,false,KeyConfig::_instance->mSetCursorKey.mBind);return result;
+     const float whistle=C_NAVI_PARM(n,mWhistleMaxRadius);
+     const auto plan=pc_kochappy_gather_input(nearest,radius,whistle,C_NAVI_PARM(n,mNeutralStickThreshold),C_NAVI_PARM(n,mCursorMoveStickThreshold));
+     require(plan!=PcKochappyGatherInput::Refuse,"loaded ordinary gather input bands invalid");
+     if(age%30==0)std::printf("P2_PURPLE_KOCHAPPY_GATHER_INPUT age=%d target_generator=%u captain_target_xz=%.4f cursor_target_xz=%.4f loaded_whistle_max=%.4f loaded_cursor_max=%.4f walk=%d native_recruitment_strict_xz=1 actor_writes=0\n",age,unsigned(gather->mGenerator->_70),nearest,distance(n->mCursorWorldPos,gather->mSRT.t),whistle,radius,int(plan==PcKochappyGatherInput::Walk));
+     point(n,gather->mSRT.t,plan==PcKochappyGatherInput::Walk,KeyConfig::_instance->mSetCursorKey.mBind,radius+whistle*.5f);return result;
     }
    }
    if(age%30==0){
