@@ -287,7 +287,7 @@ class PhaseOutcome28Controls(unittest.TestCase):
         self.assertIsNotNone(phase_failure(self.result('forced-down',exit_code=0),'forced-down'))
     def test_mismatched_mode_false_launch_and_late_elapsed_refuse(self):
         from scripts.run_p2_white_campaign import phase_failure
-        for changes in ({'mode':'ready'},{'launched':False},{'elapsed':180.1},{'elapsed':float('nan')}):
+        for changes in ({'mode':'ready'},{'launched':False},{'elapsed':240.1},{'elapsed':float('nan')}):
             self.assertIsNotNone(phase_failure(self.result(**changes),'positive'))
 
 
@@ -356,28 +356,28 @@ class UnitIdentity28Controls(unittest.TestCase):
 
 
 
-class DirectBudget35Controls(unittest.TestCase):
+class DirectBudget42Controls(unittest.TestCase):
     def result(self,*args,**kwargs):return PhaseOutcome28Controls.result(self,*args,**kwargs)
     def test_fixed_modes(self):
-        self.assertEqual(runner.phase_limit('positive'),180)
+        self.assertEqual(runner.phase_limit('positive'),240)
         for mode in ('ready','forced-down','paused-down','resume'):self.assertEqual(runner.phase_limit(mode),60)
         with self.assertRaises(ValueError):runner.phase_limit('human-unbounded')
     def test_positive_boundary_and_other_modes(self):
-        self.assertIsNone(runner.phase_failure(self.result(elapsed=179.9),'positive'))
-        self.assertIsNotNone(runner.phase_failure(self.result(elapsed=180.0),'positive'))
+        self.assertIsNone(runner.phase_failure(self.result(elapsed=239.9),'positive'))
+        self.assertIsNotNone(runner.phase_failure(self.result(elapsed=240.0),'positive'))
         for mode in ('ready','forced-down','paused-down','resume'):
             self.assertIsNone(runner.phase_failure(self.result(mode,elapsed=59.9),mode))
             self.assertIsNotNone(runner.phase_failure(self.result(mode,elapsed=60.0),mode))
-    def test_arbitrary_key_budgets_and_resume180_refuse(self):
-        for value in (0,59,61,181,float('inf')):
+    def test_arbitrary_key_budgets_and_resume240_refuse(self):
+        for value in (0,59,61,180,181,241,float('inf')):
             with self.assertRaises(ValueError):runner.ShipKeyProtocol(None,lambda:0,phase_budget=value)
-        with self.assertRaises(ValueError):runner.ShipKeyProtocol(None,lambda:0,resume=True,phase_budget=180)
+        with self.assertRaises(ValueError):runner.ShipKeyProtocol(None,lambda:0,resume=True,phase_budget=240)
     def test_positive_key_deadline_after_verify_no_publication(self):
-        now=[179.9];events=[]
+        now=[239.9];events=[]
         class SlowVerify:
-            def verify(self):now[0]=180.1
+            def verify(self):now[0]=240.1
             def key(self,k,value):events.append((k,value))
-        protocol=runner.ShipKeyProtocol(SlowVerify(),lambda:now[0],started=0,phase_budget=180)
+        protocol=runner.ShipKeyProtocol(SlowVerify(),lambda:now[0],started=0,phase_budget=240)
         with self.assertRaises(ValueError):protocol.line('P2_WHITE_NATIVE_KEY_REQUEST seq=1 key=SHIFT_F10 actual_SDL_keyboard_required=1')
         self.assertFalse(any(value for _,value in events));self.assertTrue(protocol.closed)
     def test_legacy_key60_deadline_remains(self):

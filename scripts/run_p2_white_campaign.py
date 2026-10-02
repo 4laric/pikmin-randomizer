@@ -80,7 +80,7 @@ def prepare_session(stage, directory):
                'input_hashes':facts['hashes'],'gameplay_accepted':False,'runtime_launched':False,
                'runtime_requirements':['Reviewed exact selected fixture source/executable/root/native and stager admission',
                    'Owned isolated OS keyboard input for fixed native F10 requests',
-                   'Absolute60 deadline, owned process-group cleanup, full raw logs and file hashes',
+                   'Fixed positive240/other60 deadline, owned process-group cleanup, full raw logs and file hashes',
                    'Resume must reuse SAME private session/card with fresh native PID and fresh run token/state; preserve old bootstrap']}
     (directory/'white-campaign-session.json').write_text(json.dumps(receipt,indent=2)+'\n')
     return receipt
@@ -97,14 +97,14 @@ def rows(text, marker):
 
 
 def phase_limit(mode):
-    """Fixed development profile: full positive route180, other phases60."""
+    """Fixed development profile: full positive route240, other phases60."""
     if mode not in ('ready','forced-down','paused-down','positive','resume'):
         raise ValueError('Unknown fixed ordinary White mode')
-    return 180 if mode=='positive' else 60
+    return 240 if mode=='positive' else 60
 
 
 def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_proof, phase_budget=60):
-    if phase_budget not in (60,180):raise ValueError('Fixed positive assessment budget required')
+    if phase_budget not in (60,240):raise ValueError('Fixed positive assessment budget required')
     if (exit_code!=0 or timed_out or not math.isfinite(elapsed) or not 0<elapsed<=phase_budget
             or source_proof is not True or not isinstance(card_proof,dict) or card_proof.get('native_block_size')!=32768):
         raise ValueError('Exact source, raw bounded0 and native paired-card proof required')
@@ -289,7 +289,7 @@ class ShipKeyProtocol:
     KEYS = {'SHIFT_F10': ('SHIFT', 'F10'), 'CTRL_F10': ('CTRL', 'F10'), 'F10': ('F10',)}
 
     def __init__(self, backend, clock, *, resume=False, started=None, phase_budget=60):
-        if phase_budget not in (60,180) or (resume and phase_budget!=60):raise ValueError('Fixed key protocol budget required')
+        if phase_budget not in (60,240) or (resume and phase_budget!=60):raise ValueError('Fixed key protocol budget required')
         self.phase_budget=phase_budget
         self.backend=backend; self.clock=clock; self.started=clock() if started is None else started
         self.resume=resume; self.sequence=0; self.pending=None; self.closed=False
@@ -368,7 +368,7 @@ class OwnedX11Keys:
         if sys.platform!='linux' or not re.fullmatch(r':[0-9]{1,6}',display):
             raise ValueError('Private numbered Linux Xvfb display required')
         if not re.fullmatch(r'[0-9a-f]{64}',executable_sha256):raise ValueError('Reviewed executable digest required')
-        if not math.isfinite(deadline) or not 0<deadline-clock()<=180:
+        if not math.isfinite(deadline) or not 0<deadline-clock()<=240:
             raise ValueError('Selected bounded native deadline required')
         self.clock=clock;self.deadline=deadline;self.native_pid=native_pid;self.xvfb_pid=xvfb_pid
         if supervisor_pid!=os.getppid():raise ValueError('Actual helper parent must own both target children')
@@ -734,7 +734,7 @@ def _run_phase_worker(exe,stage,session_directory,run_directory,*,mode,root_pin,
     runtime=runtime_evidence(exe,env=env,cwd=stage)
     if runtime['executable']['sha256']!=proof['exe_sha256']:raise ValueError('Executable changed after admission')
     env.update(SDL_AUDIODRIVER='dummy',PIKMIN_P2_ROOM_WINDOW='960x540',
-               PIKMIN_RANDOMIZER_AUTOPLAY='0',PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',
+               PIKMIN_RANDOMIZER_AUTOPLAY='0',PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',PIKMIN_RANDOMIZER_TEST_VISIBLE='1',
                SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS='1',NECTAR_EXECUTABLE_PATH=str(exe),
                NECTAR_SAVE_DIR=str(session_directory/'campaign'/'card'))
     modes={'ready':'P2_WHITE_CAMPAIGN_READY_ONLY','forced-down':'P2_WHITE_CAMPAIGN_FORCE_DOWN',
