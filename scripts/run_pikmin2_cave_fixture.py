@@ -11,7 +11,7 @@ import math
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fixture_platform import (is_windows, copy_private_tree, fresh_destination,
-                              owned_process_options, terminate_owned_process,
+                              owned_process_options, wait_owned_process, terminate_owned_process,
                               runtime_evidence, linux_admission)
 
 
@@ -83,27 +83,38 @@ def supervise(argv, directory, timeout=60, env=None, required_markers=None):
             if not is_windows():
                 record['owned_process_group'] = proc.pid
             try:
-                record['exit_code'] = proc.wait(timeout=timeout)
+                record['exit_code'] = wait_owned_process(proc, timeout=max(0, timeout - (time.monotonic() - start)))
                 record['timed_out'] = False
             except subprocess.TimeoutExpired:
                 record['timed_out'] = True
-                terminate_owned_process(proc)
+            record['cleanup'] = terminate_owned_process(proc)
+            if record['timed_out']:
                 record['exit_code'] = proc.returncode
-            terminate_owned_process(proc)
         text = log_path.read_text(errors='replace')
         record['markers'] = {marker: marker in text for marker in
                              (MARKERS if required_markers is None else required_markers)}
         record['captain_down'] = 'P2_FIXTURE_CAPTAIN_DOWN' in text
         record['passed'] = (not record['timed_out'] and record['exit_code'] == 0
-                            and all(record['markers'].values()) and not record['captain_down'])
+                            and all(record['markers'].values()) and not record['captain_down']
+                            and record['cleanup']['child_reaped']
+                            and (is_windows() or record['cleanup']['group_absent']))
     except BaseException as error:
         record['error'] = str(error)
         raise
     finally:
-        if proc is not None:
-            terminate_owned_process(proc)
-        record['elapsed_seconds'] = round(time.monotonic() - start, 3)
-        (directory / 'run-result.json').write_text(json.dumps(record, indent=2) + '\n')
+        try:
+            if proc is not None:
+                record['cleanup'] = terminate_owned_process(proc)
+        except BaseException as error:
+            record['passed'] = False
+            record['cleanup_error'] = str(error) or type(error).__name__
+            receipt = getattr(proc, '_fixture_cleanup', None)
+            if isinstance(receipt, dict):
+                record['cleanup'] = dict(receipt)
+            raise
+        finally:
+            record['elapsed_seconds'] = round(time.monotonic() - start, 3)
+            (directory / 'run-result.json').write_text(json.dumps(record, indent=2) + '\n')
     return record
 
 

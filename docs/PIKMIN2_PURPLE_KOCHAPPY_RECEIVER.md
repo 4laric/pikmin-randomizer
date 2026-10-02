@@ -71,3 +71,15 @@ clears ambient game/co-op settings, creates a fresh save and caps wall time60s.
 Run READY and both exit86 guards before positive mechanics. The focused
 prelaunch tests run with
 `py -3.12 -B -m unittest scripts.test_purple_kochappy_fixture_inputs -v`.
+
+POSIX supervision observes its child with `waitid(WNOWAIT)` and retains the
+session leader until a single group retirement, before reaping it. Cleanup is
+idempotent and never kills a numeric group after leader reaping. It records actual
+child reaping and group absence before success; unknown ownership or missing
+cleanup witnesses fail. This requires default SIGCHLD and sole child reaping for
+the supervisor's lifetime. The native execution budget is60s; retirement/reaping
+and absence observation have a separate bounded cleanup budget. This group
+supervisor does not contain descendants that deliberately escape their session
+or survive an abrupt supervisor death; the separately admitted broker cgroup
+must contain those cases. Harmless Python process controls do not admit a native
+fixture or close the natural/AP gameplay gate.
