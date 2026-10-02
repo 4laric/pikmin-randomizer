@@ -1,10 +1,22 @@
 #include "pc_purple_collision_trace.h"
+#include "pc_purple_sdl_axis_policy.h"
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
+#include <initializer_list>
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
     int captain=0, partner=0;
+    for(int axis:{-8,8})check(pcPurpleSdlPulseSampleAxis(axis,8)==0,"exact default dead-zone boundary suppressed");
+    for(int axis:{-9,9})check(pcPurpleSdlPulseSampleAxis(axis,8)==axis,"outside default boundary preserved");
+    check(pcPurpleSdlPulseSampleAxis(-6,8)==0 && pcPurpleSdlPulseSampleAxis(64,8)==64,
+        "captured command -6,64 samples actual 0,64");
+    check(pcPurpleSdlPulseSampleAxis(-6,0)==-6,"zero dead-zone preserves captured minor axis");
+    for(int deadZone:{0,3,8,12,64,127})for(int axis=-74;axis<=74;++axis) {
+        const int sdlAxis=axis*256;
+        const int sampled=std::abs(sdlAxis)>deadZone*256 ? sdlAxis/256 : 0;
+        check(pcPurpleSdlPulseSampleAxis(axis,deadZone)==sampled,"native-unit model matches actual SDL sampling equation");
+    }
     check(pcPurpleCollisionAcquisitionMode("sdl_acquire"),"direct acquisition mode captures typed evidence");
     check(pcPurpleCollisionAcquisitionMode("sdl_dayend"),"ordinary dayend acquisition captures typed evidence");
     const char* unrelatedModes[]={nullptr,"","sdl_health","sdl_resume","ordinary","sdl_acquire_extra"};

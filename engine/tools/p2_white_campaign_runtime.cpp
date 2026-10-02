@@ -251,5 +251,5 @@ int main(int argc,char** argv){
  virtualPad=SDL_JoystickOpen(device);require(virtualPad,"virtual pad open failed");pc_window_input_assign(0,PC_INPUT_DEV_GAMEPAD,SDL_JoystickInstanceID(virtualPad));pc_window_input_assign(1,PC_INPUT_DEV_NONE,-1);pc_window_set_stick_invert(0);pc_window_set_cstick_invert(0);
  const int actions[]={PC_KEY_ACT_A,PC_KEY_ACT_B,PC_KEY_ACT_X,PC_KEY_ACT_Y,PC_KEY_ACT_START,PC_KEY_ACT_DPAD_UP,PC_KEY_ACT_DPAD_DOWN,PC_KEY_ACT_DPAD_RIGHT};
  const int buttons[]={SDL_CONTROLLER_BUTTON_A,SDL_CONTROLLER_BUTTON_B,SDL_CONTROLLER_BUTTON_X,SDL_CONTROLLER_BUTTON_Y,SDL_CONTROLLER_BUTTON_START,SDL_CONTROLLER_BUTTON_DPAD_UP,SDL_CONTROLLER_BUTTON_DPAD_DOWN,SDL_CONTROLLER_BUTTON_DPAD_RIGHT};for(int i=0;i<8;++i)pc_window_set_gamepad_binding(actions[i],buttons[i]);
- input=new CampaignInput();std::puts("P2_WHITE_CAMPAIGN_INPUT SDL_virtual_gamepad=1 ship_actual_OS_keyboard_requests=1 repair_writes=0 native_process_deadline60_required=1");gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new CampaignApp());return 0;
+ input=new CampaignInput();std::puts("P2_WHITE_CAMPAIGN_INPUT SDL_virtual_gamepad=1 ship_actual_OS_keyboard_requests=1 repair_writes=0 bounded_native_process_deadline_required=1");gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new CampaignApp());return 0;
 }

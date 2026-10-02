@@ -11,6 +11,7 @@
 #include "Graphics.h"
 #include "pc_gfx.h"
 #include "pc_purple_collision_trace.h"
+#include "pc_purple_sdl_axis_policy.h"
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
@@ -104,19 +105,23 @@ struct SdlPluckState { SdlPluckPoint position,velocity,anchor; bool fixed=false;
 struct SdlPluckInputModel {
     float speed=0.f,binDegrees=0.f,clamp=0.f,neutral=0.f,cursor=0.f;
     float cameraX=1.f,cameraZ=0.f;
+    int deadZone=0;
 };
 static bool pluckInputModelValid(const SdlPluckInputModel& m) {
     return std::isfinite(m.speed)&&m.speed>0.f&&std::isfinite(m.binDegrees)&&m.binDegrees>0.f&&m.binDegrees<=180.f
         &&std::isfinite(m.clamp)&&m.clamp>0.f&&m.clamp<=1.f&&std::isfinite(m.neutral)&&m.neutral>=0.f
         &&std::isfinite(m.cursor)&&m.cursor>=m.neutral&&m.cursor<m.clamp
         &&std::isfinite(m.cameraX)&&std::isfinite(m.cameraZ)
-        &&std::fabs(std::hypot(m.cameraX,m.cameraZ)-1.f)<.001f;
+        &&std::fabs(std::hypot(m.cameraX,m.cameraZ)-1.f)<.001f
+        &&m.deadZone>=0 && m.deadZone<=127;
 }
 static SdlPluckPoint pluckInputTarget(int x,int y,const SdlPluckInputModel& m) {
-    // ordinaryInput(nativeAxisUnits=true) -> SDL axis /256 -> Controller /74.
+    // ordinaryInput(nativeAxisUnits=true) -> strict per-axis loaded SDL dead
+    // zone -> SDL axis /256 -> Controller /74.
     // Navi bins the CAMERA-space direction before rotating it into world space.
     const float pi=3.14159265358979323846f,quarter=pi*.25f;
-    const float sx=x/74.f,sz=-y/74.f;
+    const float sx=pcPurpleSdlPulseSampleAxis(x,m.deadZone)/74.f;
+    const float sz=-pcPurpleSdlPulseSampleAxis(y,m.deadZone)/74.f;
     float magnitude=std::sqrt(sx*sx+sz*sz),theta=std::atan2(sx,sz);
     if(theta<0.f)theta+=2.f*pi;
     const float width=pi/180.f*m.binDegrees;
@@ -923,6 +928,7 @@ class PurpleCombatApp : public PlugPikiApp {
         const Vector3f& axis=n->controlCamera()->mViewXAxis;
         const float yaw=std::atan2(axis.z,axis.x);
         SdlPluckInputModel model;
+        model.deadZone=pc_window_get_stick_dead_zone();
         model.speed=(n->mPlateMgr->canNaviRunFast()?C_NAVI_PARM(n,mRunSpeed):C_NAVI_PARM(n,mMoveSpeed))
             *drag*pc_randomizer_captain_movement_multiplier()*pc_settings_get_navi_speed_scale();
         model.binDegrees=C_NAVI_PARM(n,mShakePreventionAngle);
@@ -1050,8 +1056,11 @@ class PurpleCombatApp : public PlugPikiApp {
         if(!std::isfinite(bestScore))return false;
         sdlPulseBefore=start;sdlPulseCommand=pluckInputTarget(bestX,bestY,model);sdlPulseFrames=0;sdlPulseActive=true;
         acquisitionInput(0,bestX,bestY);
-        std::printf("P2_PURPLE_PLUCK_PULSE_BEGIN tick=%d raw=%d,%d target=%.6f,%.6f predicted_landing=%.6f,%.6f dt=%.9f tau=%.6f native_fix_position=1 actor_writes=0\n",
-            ticks,bestX,bestY,sdlPulseCommand.x,sdlPulseCommand.z,bestEnd.position.x,bestEnd.position.z,dt,tau);
+        std::printf("P2_PURPLE_PLUCK_PULSE_BEGIN tick=%d raw=%d,%d target=%.6f,%.6f predicted_landing=%.6f,%.6f dt=%.9f tau=%.6f "
+            "dead_zone=%d sampled=%d,%d camera_axis=%.9g,%.9g bin_degrees=%.9g native_fix_position=1 actor_writes=0\n",
+            ticks,bestX,bestY,sdlPulseCommand.x,sdlPulseCommand.z,bestEnd.position.x,bestEnd.position.z,dt,tau,
+            model.deadZone,pcPurpleSdlPulseSampleAxis(bestX,model.deadZone),pcPurpleSdlPulseSampleAxis(bestY,model.deadZone),
+            model.cameraX,model.cameraZ,model.binDegrees);
         return true;
     }
 
