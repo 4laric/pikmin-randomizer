@@ -6,6 +6,7 @@ acceptance. Each supported suite must retain its existing phase/oracle contract.
 import hashlib
 import json
 import re
+import os
 import posixpath
 import subprocess
 from pathlib import PurePosixPath
@@ -59,12 +60,7 @@ def committed_manifest(worktree, head):
         require(actual == oid and kind == b'blob', 'Committed blob identity mismatch')
         position = end + 1
         content = batch.stdout[position:position + int(size)]
-        hashes = {hashlib.sha256(content).hexdigest()}
-        # Git checkout may apply declared text EOL conversion. Binary bytes stay exact.
-        if b'\x00' not in content:
-            lf = content.replace(b'\r\n', b'\n')
-            hashes.update((hashlib.sha256(lf).hexdigest(), hashlib.sha256(lf.replace(b'\n', b'\r\n')).hexdigest()))
-        result[name] = hashes
+        result[name] = {hashlib.sha256(content).hexdigest()}
         position += int(size) + 1
     require(position == len(batch.stdout), 'Committed blob closure mismatch')
     for name, oid in symlinks:
@@ -75,6 +71,24 @@ def committed_manifest(worktree, head):
         if resolved in result:
             result[name] = result[resolved]
     return result
+
+
+@lru_cache(maxsize=128)
+def checkout_digest(worktree, head, name):
+    # Ask Git to apply the committed attributes with the Linux recipe's LF
+    # defaults. Never guess text from absence of NUL or convert -text assets.
+    env=dict(os.environ, GIT_ATTR_SOURCE=head, GIT_CONFIG_NOSYSTEM='1',
+             GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS='0')
+    command=['git','-C',worktree,'-c','core.autocrlf=false','-c','core.eol=lf',
+             '-c','core.fsmonitor=false']
+    attr=subprocess.run(command+['check-attr','--source='+head,'-z','filter','--',name],
+                        capture_output=True,timeout=30,env=env)
+    require(attr.returncode==0 and attr.stdout.split(b'\0')[2] in (b'unspecified',b'unset'),
+            'External checkout filters are unsupported')
+    result=subprocess.run(command+['cat-file','--filters',head+':'+name],
+                          capture_output=True,timeout=30,env=env)
+    require(result.returncode==0,'Committed checkout mapping unavailable')
+    return hashlib.sha256(result.stdout).hexdigest()
 
 
 def validate_remote_runtime(root, data, paths, refs):
@@ -143,7 +157,7 @@ def validate_remote_runtime(root, data, paths, refs):
         require(digest(paths[raw['job--' + repo + '-source-manifest.json']]) ==
                 result[repo + '_source_manifest_sha256'], 'Compiled source manifest mismatch')
         expected_manifest = committed_manifest(str(local_path(root, data[repo]['worktree'])), data[repo]['head'])
-        require(set(source_manifest) == set(expected_manifest) and all(source_manifest[k] in expected_manifest[k] for k in source_manifest), 'Remote compiled tree content mismatch')
+        require(set(source_manifest) == set(expected_manifest) and all(source_manifest[k] in expected_manifest[k] or source_manifest[k] == checkout_digest(str(local_path(root, data[repo]['worktree'])), data[repo]['head'], k) for k in source_manifest), 'Remote compiled tree content mismatch')
         selected = result['selected_source'] if repo == 'native' else result['canonical_root_guard']
         name = selected['path']
         require(not PurePosixPath(name).is_absolute() and '..' not in PurePosixPath(name).parts and
