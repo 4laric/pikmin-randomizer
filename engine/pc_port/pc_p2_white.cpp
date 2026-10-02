@@ -120,16 +120,34 @@ int pc_p2_white_campaign_spent(const Pom* pom){
     return p2whitecampaign::budget.get({flowCont.mCurrentStage->mStageID,generator->_70});
 }
 
+// Refused inputs still belong to the player. Release the mouth linkage and
+// discharge the existing body above the bud, then let native airborne physics
+// and landing recovery run. Never leave a normal/free body at the swallowed Y.
+static void releaseIvoryInput(Pom* pom,Piki* p,int index){
+    p->endStickMouth();
+    Vector3f position=pom->mSRT.t;position.y+=50.f;
+    p->resetPosition(position);
+    p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());
+    const float angle=float(index)*1.256637f;
+    p->mVelocity.set(120.f*std::sin(angle),500.f,120.f*std::cos(angle));
+    p->mTargetVelocity=p->mVelocity;
+    // Native thrown-flight lands without the knockback state's random
+    // deflowering. Disable intentional sticking for this discharged input.
+    p->mFSM->transit(p,PIKISTATE_Flying);
+    p->mWantToStick=false;
+    std::printf("P2_IVORY_INPUT_RELEASE uid=%u species=%d x=%.4f y=%.4f z=%.4f state=%d\n",p->mGenerator?p->mGenerator->_70:0,int(pc_p2_species(p)),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,p->getState());
+}
+
 int pc_p2_convert_ivory(Pom* pom,int remaining){
     if(!pc_p2_ivory(pom))return -1;
     const bool body=pc_p2_cave_bud_body_profile();
     if(body)remaining=pc_p2_cave_bud_body_remaining(pom);
-    Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};
+    Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};int released=0;
     CI_LOOP(it){Creature* creature=*it;if(!creature||!creature->isAlive()||!creature->isPiki())continue;Piki* p=static_cast<Piki*>(creature);
         const bool alreadyWhite=pc_p2_is_white(p);
-        if((body && budget.slots>=remaining) || !budget.accepts(alreadyWhite)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if((body && budget.slots>=remaining) || !budget.accepts(alreadyWhite)){releaseIvoryInput(pom,p,released++);it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
-        if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if(!sprout){releaseIvoryInput(pom,p,released++);it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);pc_p2_set_species(sprout,P2SpeciesWhite);
         float angle=budget.births*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;
         sprout->mVelocity.set(horizontal*std::sin(angle),vertical,horizontal*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
