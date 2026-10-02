@@ -63,9 +63,9 @@ void publish_input(int x,int y,bool whistle){
  SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_LEFTX,Sint16(x*256));
  SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(-y*256));SDL_JoystickUpdate();
 }
-void input(Navi* n,float gx,bool whistle=false) {
+void input(Navi* n,float gx,bool whistle=false,float gz=1000.f) {
  int x=0,y=0;
- float dx=gx-n->mSRT.t.x,dz=1000.f-n->mSRT.t.z,d=std::sqrt(dx*dx+dz*dz);
+ float dx=gx-n->mSRT.t.x,dz=gz-n->mSRT.t.z,d=std::sqrt(dx*dx+dz*dz);
  if(d>12.f){const Vector3f& a=n->controlCamera()->mViewXAxis;
   x=int(std::lround(65.f*(dx*a.x+dz*a.z)/d));y=int(std::lround(65.f*(dx*a.z-dz*a.x)/d));}
  publish_input(x,y,whistle); // Faithful SDL/PAD256 and GC74 domain.
@@ -74,12 +74,18 @@ void input(Navi* n,float gx,bool whistle=false) {
 void neutral_input() {
  publish_input(0,0,false);
 }
+// Actual retail cave entrance and route vertices 20/19; the high ridge is
+// a source cliff, not an authored captain travel corridor.
+struct Waypoint {float x,z,floor;};
+constexpr std::array<Waypoint,3> route{{{-190.f,1160.f,80.f},
+ {-257.914246f,1351.235229f,50.f},{-434.148010f,1271.501343f,50.f}}};
 struct Track {Creature* actor=nullptr;int outbound=0,back=0;};
 class UpperApp:public PlugPikiApp {
  std::array<Track,21> roster{};
  std::array<bool,2> initializedBefore{};
  int tick=0,ready=0,phase=0,phaseAge=0,settle=0;
- float target=-250.f;
+ float target=-250.f,targetZ=1000.f;
+ int routeStep=0;
  bool bankReady=false;
  int gatherStage=0,gatherSince=0,gatherUid=0,lastTelemetryPhase=-1;
  bool plate_membership(Navi* n,const std::array<Piki*,20>& current,std::array<bool,20>& joined){
@@ -105,8 +111,8 @@ class UpperApp:public PlugPikiApp {
   int groundFace=-1;
   for(int i=0;n->mGroundTriangle&&i<mapMgr->mMapModel->mTriCount;++i)
    if(n->mGroundTriangle==&mapMgr->mMapModel->mTriList[i]){groundFace=i;break;}
-  std::printf("P2_UPPER_APPROACH tick=%d phase=%d age=%d goal=%.3f,1000 xyz=%.3f,%.3f,%.3f camera_x=%.7f,%.7f,%.7f world_transformed_stick=%.7f,%.7f,%.7f target_velocity=%.7f,%.7f,%.7f velocity=%.7f,%.7f,%.7f force_B0=%.7f,%.7f,%.7f volatile=%.7f,%.7f,%.7f ground_face=%d ground_normal=%.7f,%.7f,%.7f ground_mapcode=%u ground_slip=%d wall_present=%d wall_normal=%.7f,%.7f,%.7f last_collision_present=%d last_collision_normal=%.7f,%.7f,%.7f collision_radius=%.7f feet_offset=%.7f ordinary_SDL=1 actor_writes=0 collision_events=UNOBSERVED\n",
-   tick,phase,tick-phaseAge,target,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,a.x,a.y,a.z,
+  std::printf("P2_UPPER_APPROACH tick=%d phase=%d age=%d goal=%.3f,%.3f xyz=%.3f,%.3f,%.3f camera_x=%.7f,%.7f,%.7f world_transformed_stick=%.7f,%.7f,%.7f target_velocity=%.7f,%.7f,%.7f velocity=%.7f,%.7f,%.7f force_B0=%.7f,%.7f,%.7f volatile=%.7f,%.7f,%.7f ground_face=%d ground_normal=%.7f,%.7f,%.7f ground_mapcode=%u ground_slip=%d wall_present=%d wall_normal=%.7f,%.7f,%.7f last_collision_present=%d last_collision_normal=%.7f,%.7f,%.7f collision_radius=%.7f feet_offset=%.7f ordinary_SDL=1 actor_writes=0 collision_events=UNOBSERVED\n",
+   tick,phase,tick-phaseAge,target,targetZ,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,a.x,a.y,a.z,
    n->mMainStick.x,n->mMainStick.y,n->mMainStick.z,n->mTargetVelocity.x,n->mTargetVelocity.y,n->mTargetVelocity.z,
    n->mVelocity.x,n->mVelocity.y,n->mVelocity.z,n->_B0.x,n->_B0.y,n->_B0.z,
    n->mVolatileVelocity.x,n->mVolatileVelocity.y,n->mVolatileVelocity.z,groundFace,ground.x,ground.y,ground.z,
@@ -175,15 +181,13 @@ class UpperApp:public PlugPikiApp {
   bool sourceContact=contactContains&&below&&std::fabs(contactPoint.y-floor)<.1f&&std::fabs(feet-floor)<12.f;
   std::printf("P2_UPPER_ACTOR tick=%d phase=%d uid=%d xyz=%.3f,%.3f,%.3f feet=%.3f source_face=%d below_height=%.3f contact_matches=%d water=%d out=%d back=%d\n",
    tick,phase,uid,p.x,p.y,p.z,feet,face,floor,int(sourceContact),water,t.outbound,t.back);
-  if(p.x>=-130.f&&p.x<=115.f&&std::fabs(p.z-1000.f)<=35.f&&face>=0)
-   require(floor>60.f&&feet>60.f,"lower floor contact inside upper corridor");
-  if(sourceContact&&std::fabs(p.z-1000.f)<=35.f){
-   if(phase==2){if(t.outbound==0&&p.x>=-130.f&&p.x<=-95.f)t.outbound=1;
-    if(t.outbound==1&&p.x>=-8.f&&p.x<=35.f)t.outbound=2;
-    if(t.outbound==2&&p.x>=88.f)t.outbound=3;}
-   if(phase==3&&t.outbound==3){if(t.back==0&&p.x<=8.f&&p.x>=-35.f)t.back=1;
-    if(t.back==1&&p.x<=-115.f&&p.x>=-150.f)t.back=2;
-    if(t.back==2&&p.x<=-230.f)t.back=3;}
+  if(sourceContact){
+   auto at=[&](const Waypoint& q){float dx=p.x-q.x,dz=p.z-q.z;
+    return dx*dx+dz*dz<=50.f*50.f&&std::fabs(floor-q.floor)<=12.f;};
+   // Every original body must independently make actual source contact at
+   // all three anchors in order; arrival by the captain alone never advances.
+   if(phase==2&&t.outbound<3&&at(route[t.outbound]))++t.outbound;
+   if(phase==3&&t.outbound==3&&t.back<3&&at(route[2-t.back]))++t.back;
   }
   return sourceContact;
  }
@@ -250,20 +254,24 @@ public:
   approach_telemetry(n);
   bool gathered=regroup(n,current,joined,allJoined);
   if(!gathered){settle=0;return result;}
-  if(phase==1){neutral_input();if(tick-phaseAge>=60){phase=2;phaseAge=tick;target=-115.f;}return result;}
-  if(phase==2){input(n,target,false);
-   if(std::fabs(n->mSRT.t.x-target)<12.f&&std::fabs(n->mSRT.t.z-1000.f)<15.f){
-    if(target==-115.f)target=0.f;else if(target==0.f)target=160.f;}
-   if(std::all_of(roster.begin(),roster.end(),[](const Track& t){return t.outbound==3;})){
-    phase=3;phaseAge=tick;target=0.f;}return result;}
-  if(phase==3){input(n,target,false);
-   if(std::fabs(n->mSRT.t.x-target)<12.f&&std::fabs(n->mSRT.t.z-1000.f)<15.f){
-    if(target==0.f)target=-125.f;else if(target==-125.f)target=-300.f;}
-   if(std::all_of(roster.begin(),roster.end(),[](const Track& t){return t.back==3;})){
-    phase=4;phaseAge=tick;}return result;}
-  input(n,-250.f,false);
+  if(phase==1){neutral_input();if(tick-phaseAge>=60){phase=2;phaseAge=tick;routeStep=0;target=route[0].x;targetZ=route[0].z;}return result;}
+  if(phase==2){input(n,target,false,targetZ);
+   if(std::all_of(roster.begin(),roster.end(),[&](const Track& t){return t.outbound>routeStep;})){
+    if(++routeStep==3){phase=3;phaseAge=tick;routeStep=0;target=route[2].x;targetZ=route[2].z;}
+    else {target=route[routeStep].x;targetZ=route[routeStep].z;}}
+   return result;}
+  if(phase==3){input(n,target,false,targetZ);
+   if(std::all_of(roster.begin(),roster.end(),[&](const Track& t){return t.back>routeStep;})){
+    if(++routeStep==3){phase=4;phaseAge=tick;target=-250.f;targetZ=1025.f;}
+    else {target=route[2-routeStep].x;targetZ=route[2-routeStep].z;}}
+   return result;}
+  input(n,target,false,targetZ);
+  const bool atBank=std::all_of(roster.begin(),roster.end(),[](const Track& t){
+   const Vector3f& p=t.actor->mSRT.t;float dx=p.x+250.f,dz=p.z-1025.f;
+   return dx*dx+dz*dz<=50.f*50.f&&std::fabs(p.y-t.actor->mGroundOffset-80.f)<=12.f;});
+  if(!atBank){settle=0;return result;}
   if(n->getPlatePikis()!=20||n->getCurrState()->getID()!=NAVISTATE_Walk||!n->mKontroller->keyUp(whistleBind)||!allSettled){settle=0;return result;}
-  if(++settle>=90){std::puts("PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED");std::fflush(nullptr);std::_Exit(0);}
+  if(++settle>=90){std::puts("PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 route=retail_bank_20_19 high_ridge=UNPROVEN ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED");std::fflush(nullptr);std::_Exit(0);}
   std::fflush(stdout);return result;
  }
 };
