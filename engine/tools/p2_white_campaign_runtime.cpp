@@ -56,6 +56,7 @@ static const unsigned flowerIds[]={25,28,29};
 static int phase=0,phaseTick=0,frame=0,budIndex=0;
 static Vector3f goal;
 static SDL_Joystick* virtualPad=nullptr;
+static int nativeFrameLimit=5000;
 static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false;
 static WhiteSaveIntent saveIntent=WhiteSaveIntent::Neutral;
 static Piki* held=nullptr;
@@ -147,7 +148,7 @@ class CampaignApp:public PlugPikiApp {
  Vector3f haulStart,destination,resumeStart;float initialDistance=0;
  void next(int value){phase=value;phaseTick=0;}
 public:int idle()override{
- input->update();const int result=PlugPikiApp::idle();++frame;++phaseTick;require(frame<5000,"absolute native frame bound");
+ input->update();const int result=PlugPikiApp::idle();++frame;++phaseTick;require(frame<nativeFrameLimit,"absolute native frame bound");
  Navi* n=naviMgr?naviMgr->getNavi():nullptr;
  if(n&&n->getCurrState()){
   initialized=true;if(std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))gameflow.mPauseAll=true; // Negative-only.
@@ -294,6 +295,7 @@ int main(int argc,char** argv){
  setvbuf(stdout,nullptr,_IONBF,0);SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");SDL_SetMainReady();pc_gpu_preference_apply();pc_bbft_init(argc,argv);
  require(pc_randomizer_enabled()&&pc_randomizer_white_campaign()&&pc_randomizer_white_treasure_campaign()&&!pc_pikipelago_room_preview(),"explicit ordinary White/retail seed required");
  resumeMode=std::getenv("P2_WHITE_CAMPAIGN_RESUME")!=nullptr;humanMode=std::getenv("P2_WHITE_CAMPAIGN_HUMAN")!=nullptr;require(!(resumeMode&&humanMode),"fixed modes exclusive");
+ if(!resumeMode&&!humanMode&&!std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")&&!std::getenv("P2_WHITE_CAMPAIGN_FORCE_DOWN")&&!std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))nativeFrameLimit=6500;
  if(!pc_window_init("White retail campaign acceptance",960,540))return 3;pc_settings_init();pc_window_set_control_mode(PC_CONTROL_CLASSIC);pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(960,540);pc_window_center();std::puts("Experimental preview window set to 960x540 windowed and centered");
  int device=SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,SDL_CONTROLLER_AXIS_MAX,SDL_CONTROLLER_BUTTON_MAX,0);require(device>=0,"ordinary virtual pad attach failed");
  char guid[64];SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(device),guid,sizeof(guid));std::string mapping=std::string(guid)+",White campaign pad,a:b0,b:b1,x:b2,y:b3,back:b4,guide:b5,start:b6,leftstick:b7,rightstick:b8,leftshoulder:b9,rightshoulder:b10,dpup:b11,dpdown:b12,dpleft:b13,dpright:b14,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,";require(SDL_GameControllerAddMapping(mapping.c_str())>=0,"ordinary virtual pad mapping failed");

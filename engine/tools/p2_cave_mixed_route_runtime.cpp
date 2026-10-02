@@ -226,7 +226,8 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             if(colour(P2SpeciesBlue)==2&&!pc_p2_cave_bud_pending()){require(colour(P2SpeciesRed)==18,"Blue conversion mismatch");Iterator blues(pikiMgr);CI_LOOP(blues){Piki* p=static_cast<Piki*>(*blues);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue)originalBlues.push_back(p);}require(originalBlues.size()==2,"original Blue identities missing");std::puts("P2_CAVE_MIXED_ACQUIRED red=18 blue=2");next(2);return;}
             require(colour(P2SpeciesBlue)<=2,"excess Blue conversion");
             if(pc_p2_cave_bud_pending()){fixturePad(0);return;}mappedThrow(n,bud.x,bud.z);return;}
-        if(phase==2){if(following()!=20){gatherAtCursor(n);return;}if(walkTo(n,-100,-100)){separated=0;next(3);}return;}
+        if(phase==2){if(following()!=20){gatherAtCursor(n);return;}if(walkTo(n,-20,-100)){separated=0;next(3);}return;}
+        // The loaded cursor radius is 100: walk within reach of target (60,-100).
         // At a dry point, ordinary Blue-only throws separate actors from Red squad.
         // Dismiss leaves Reds at the captain; whistle from the remote landing side.
         if(phase==3){int landed=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue&&p->mMode!=PikiMode::FormationMode&&p->getState()==PIKISTATE_Normal&&p->mSRT.t.x>20)++landed;}
@@ -244,7 +245,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         if(phase==10){static const float path[][2]={{0,-400},{0,-300},{0,-200},{0,-100},{0,0}};
             if(point<5){if(walkTo(n,path[point][0],path[point][1]))++point;return;}
             if(following()!=20){gatherAtCursor(n);return;}
-            if(walkTo(n,-100,-100)){separated=1;next(3);}return;}
+            if(walkTo(n,-20,-100)){separated=1;next(3);}return;}
         if(phase==11){require(followers(P2SpeciesRed)==0,"Red following through Blue choke");static const float path[][2]={{100,-100},{100,0},{200,0},{300,0},{400,0},{500,0},{600,0},{700,0},{800,0},{900,20}};
             if(walkTo(n,path[point][0],path[point][1])&&++point==10){require(followers(P2SpeciesBlue)==2,"Blue followers lost at far side");std::puts("P2_CAVE_MIXED_BLUE_CHOKE physical_controller_traversal=1");next(12);}return;}
         if(phase==12){Vector3f bud;require(pc_p2_cave_bud_position("yellow",bud),"Yellow bud missing");
