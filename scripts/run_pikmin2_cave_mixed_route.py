@@ -85,7 +85,12 @@ def launch(run,scenario,receipt_path,token):
                         elif record.get('event')=='end':
                             require(begin is not None,'dialog ended without begin');validate_end(record,begin,pressed);end=record
             if begin and not pressed:
-                modal=matching_modal(backend.windows(),begin,baseline)
+                windows=backend.windows()
+                try:modal=matching_modal(windows,begin,baseline)
+                except ValueError as exc:
+                    events.append({'event':'actual-X11-modal-refusal','error':str(exc),
+                                   'baseline_windows':sorted(baseline),'windows':windows})
+                    raise
                 if modal:
                     owner=modal['owner_pid'];require(modal_descendant(owner,child.pid),'native modal not owned by this child')
                     modal_fd=os.pidfd_open(owner);backend.press_return(modal['window']);pressed=True
