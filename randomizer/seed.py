@@ -778,8 +778,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
         if legacy_checks: raise ValueError("P2 enemies require modern checks")
-        if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
-            raise ValueError("P2 enemies are mutually exclusive with P1 enemy layouts")
+        combined_enemies = bool(enemy_shuffle or per_spawn_enemies or campaign_enemies)
+        # New combinations require one authoritative final check/source catalog.
+        if combined_enemies:
+            p2_checks = True
         collection_checks = True
     if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
     if goal_mode == "emperor_bulblax": collection_checks = True
@@ -942,6 +944,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                                                        density=p2_density,
                                                        proxy_rows=proxy_rows,
                                                        proxy_document=proxy_document)
+        combined_enemies = bool(result.get('enemy_mask') or 'spawn_layout' in result or 'campaign_layout' in result)
+        if combined_enemies:
+            result['enemy_composition'] = 'p1-then-p2-v1'
+            result['capabilities'].append('combined-enemies-v1')
         result['capabilities'].append('p2-enemy-bridge-v1')
         if p2_purple_campaign:
             result['p2_purple_campaign'] = True
@@ -1099,14 +1105,24 @@ def validate(m):
         expected.add('p2_purple_campaign')
         if m['p2_purple_campaign'] is not True or 'p2_layout' not in m:
             raise ValueError('invalid p2_purple_campaign')
+    if type(m) is dict and 'enemy_composition' in m:
+        expected.add('enemy_composition')
+        if (m['enemy_composition'] != 'p1-then-p2-v1' or m.get('schema') != 9
+                or 'p2_layout' not in m or 'enemy_catalog' not in m
+                or not (m.get('enemy_shuffle') == 'families-v1'
+                        or 'spawn_layout' in m or 'campaign_layout' in m)):
+            raise ValueError('invalid combined enemy composition')
     if type(m) is dict and 'p2_layout' in m:
         expected.add('p2_layout')
         from experimental.pikmin2_enemy_roster import load_and_validate
         from experimental.pikmin2_seed_bridge import (SeedBridgeError, admitted_ids,
                                                       validate_layout as validate_p2_layout)
-        if (m.get('schema') != 9 or m.get('enemy_mask') != 0
+        combined = m.get('enemy_composition') == 'p1-then-p2-v1'
+        if m.get('schema') != 9:
+            raise ValueError('p2_layout requires schema 9')
+        if not combined and (m.get('enemy_mask') != 0
                 or any(key in m for key in ('spawn_layout', 'group_layout', 'campaign_layout'))):
-            raise ValueError('p2_layout is mutually exclusive with P1 enemy layouts and requires schema 9')
+            raise ValueError('mixed enemy layouts require versioned enemy composition')
         if 'p2-enemy-bridge-v1' not in m.get('capabilities', []):
             raise ValueError('p2_layout requires the p2-enemy-bridge-v1 capability')
         try:
@@ -1222,6 +1238,7 @@ def validate(m):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
+    if m.get('enemy_composition'): fixed['capabilities'].append('combined-enemies-v1')
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     if m.get('enemy_catalog'): fixed['capabilities'].append('resolved-enemy-checks-v1')
