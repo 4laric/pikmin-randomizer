@@ -2,12 +2,37 @@
 #include "pc_purple_sdl_axis_policy.h"
 #include "pc_purple_dismiss_policy.h"
 #include "pc_purple_save_budget.h"
+#include "p2_purple_save_input.h"
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
 #include <initializer_list>
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
+    PcSaveUiSnapshot saveUi;
+    saveUi.available=true;saveUi.outerMemoryRouted=true;saveUi.memoryAvailable=true;
+    saveUi.failureAvailable=true;saveUi.failureInactive=true;saveUi.fileAvailable=true;
+    saveUi.defaultFile.available=true;saveUi.defaultFile.successful=true;
+    saveUi.defaultFile.typingComplete=true;saveUi.defaultFile.confirmationReady=true;
+    check(saveUi.nestedUiBlocked && purple_save_input(true,{},PcDiaryAction::Unavailable,saveUi)==PurpleSaveInput::Confirm,
+        "routed successful complete default-file prompt receives ordinary confirm while memory owns UI");
+    for(bool PcSaveUiSnapshot::*gate : {&PcSaveUiSnapshot::available,&PcSaveUiSnapshot::outerMemoryRouted,
+        &PcSaveUiSnapshot::memoryAvailable,&PcSaveUiSnapshot::failureAvailable,&PcSaveUiSnapshot::failureInactive,&PcSaveUiSnapshot::fileAvailable}) {
+        PcSaveUiSnapshot blocked=saveUi;blocked.*gate=false;
+        check(purple_save_input(true,{},PcDiaryAction::Unavailable,blocked)==PurpleSaveInput::Unexpected,
+            "default-file prefix route gate cannot be omitted");
+    }
+    PcSaveUiSnapshot selected=saveUi;selected.fileSelection=true;
+    check(purple_save_input(true,{},PcDiaryAction::Unavailable,selected)==PurpleSaveInput::Unexpected,"default-file cannot consume nested slot-selection input");
+    PcSaveUiSnapshot typing=saveUi;typing.defaultFile.typingComplete=false;typing.defaultFile.confirmationReady=false;
+    check(purple_save_input(true,{},PcDiaryAction::Unavailable,typing)==PurpleSaveInput::Neutral,"default-file text must finish naturally");
+    PcSaveUiSnapshot failed=saveUi;failed.defaultFile.successful=false;
+    check(purple_save_input(true,{},PcDiaryAction::Unavailable,failed)==PurpleSaveInput::Neutral,"failed creation cannot be confirmed as success");
+    PcSaveUiSnapshot dormant=saveUi;dormant.defaultFile.available=false;
+    check(purple_save_input(true,{},PcDiaryAction::Unavailable,dormant)==PurpleSaveInput::Neutral,"dormant default-file manager cannot receive input");
+    PcSaveUiSnapshot incomplete=saveUi;incomplete.defaultFile.typingComplete=false;
+    check(purple_save_input(true,{},PcDiaryAction::Unavailable,incomplete)==PurpleSaveInput::Unexpected,"inconsistent typing-ready evidence refused");
+    check(purple_save_input(false,{},PcDiaryAction::Unavailable,saveUi)==PurpleSaveInput::Neutral,"default-file input cannot precede actual day advance");
     PcPurpleSaveBudget budget;
     check(budget.observe(0) && budget.observe(59.9),"acquisition has original hard60");
     check(budget.acquired(59.9,true) && budget.saving(),"verified late acquisition starts save once");

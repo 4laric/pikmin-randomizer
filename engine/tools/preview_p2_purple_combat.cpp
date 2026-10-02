@@ -638,6 +638,14 @@ class PurpleCombatApp : public PlugPikiApp {
         const PcPauseSnapshot pause=pc_pause_observe();
         const PcDiaryAction diary=pc_diary_observe();
         const PcSaveUiSnapshot save=pc_save_ui_observe();
+        if((ordinaryMenuFrames+ordinaryDiaryFrames)%120==0) {
+            const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
+            std::printf("P2_PURPLE_SAVE_UI_WAIT wall_seconds=%.6f day_advanced=%d available=%d results=%d save=%d memory_available=%d outer_memory_routed=%d default_available=%d memory_state=%d default_state=%d successful=%d typing_complete=%d confirmation_ready=%d file_selection=%d slot_ready=%d slot=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d observer_read_only=1\n",
+                now,int(confirming),int(save.available),save.resultState,save.saveState,int(save.memoryAvailable),int(save.outerMemoryRouted),
+                int(save.defaultFile.available),save.defaultFile.memoryState,save.defaultFile.state,int(save.defaultFile.successful),
+                int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(save.fileSelection),int(save.cardSlotInputReady),save.cardSlot,
+                int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState);
+        }
         const PurpleSaveInput action=purple_save_input(confirming,pause,diary,save);
         require(action!=PurpleSaveInput::Unexpected,"unexpected ordinary save menu/slot/secondary prompt");
         if(action==PurpleSaveInput::Neutral) {ordinaryInput();return;}

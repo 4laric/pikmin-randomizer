@@ -21,6 +21,19 @@ inline PurpleSaveInput purple_save_input(bool dayAdvanced, const PcPauseSnapshot
     if (diary == PcDiaryAction::RevealPage) return PurpleSaveInput::RevealDiary;
     if (diary == PcDiaryAction::AdvancePage) return PurpleSaveInput::AdvanceDiary;
     if (save.resultsInputReady) return PurpleSaveInput::Confirm;
+    if (save.defaultFile.available) {
+        // First-save creation owns the outer memory update, before slot selection.
+        // The existing const observer exposes success only in the real native
+        // AwaitingConfirmation branch, and eligibility only after text completes.
+        // nestedUiBlocked is expected while memory owns this routed prompt.
+        if (!save.available || !save.outerMemoryRouted || !save.memoryAvailable
+            || !save.failureAvailable || !save.failureInactive || !save.fileAvailable
+            || save.fileSelection) return PurpleSaveInput::Unexpected;
+        if (!save.defaultFile.successful) return PurpleSaveInput::Neutral;
+        if (save.defaultFile.confirmationReady != save.defaultFile.typingComplete)
+            return PurpleSaveInput::Unexpected;
+        return save.defaultFile.confirmationReady ? PurpleSaveInput::Confirm : PurpleSaveInput::Neutral;
+    }
     if (save.cardSlotInputReady)
         return save.cardSlot == 0 ? PurpleSaveInput::Confirm : PurpleSaveInput::Unexpected;
     if (save.secondaryInputReady) return PurpleSaveInput::Unexpected; // exits without saving
