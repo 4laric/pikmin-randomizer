@@ -437,14 +437,17 @@ class WfgAcquisitionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);tool=root/'generator';tool.write_bytes(b'policy');table=root/'table';table.write_text('policy')
             layout=root/'layout.json';layout.write_text(json.dumps(dict(schema='p2-cave-observed-layout/1',source='engine')))
-            child=MagicMock();child.communicate.return_value=('P2_CAVE_GEN policy-only\n','');child.returncode=0
-            with patch('scripts.stage_pikmin2_playable_cave.subprocess.Popen',return_value=child) as spawn, \
+            child=MagicMock()
+            def spawn_child(*args,**kwargs):kwargs['stdout'].write('P2_CAVE_GEN policy-only\n');kwargs['stdout'].flush();return child
+            with patch('scripts.stage_pikmin2_playable_cave.subprocess.Popen',side_effect=spawn_child) as spawn, \
                  patch('scripts.stage_pikmin2_playable_cave.owned_process_options',return_value={'start_new_session':True}), \
-                 patch('scripts.stage_pikmin2_playable_cave.terminate_owned_process') as retire:
+                 patch('scripts.stage_pikmin2_playable_cave.wait_owned_process',return_value=0) as observe, \
+                 patch('scripts.stage_pikmin2_playable_cave.terminate_owned_process',return_value={'child_reaped':True,'group_absent':True}) as retire:
                 portable_generator(tool,table,layout,root,{'SAFE':'1'})
                 self.assertEqual(spawn.call_args.args[0],[str(tool.resolve()),str(table.resolve()),str(layout.resolve())])
                 self.assertEqual(spawn.call_args.kwargs['cwd'],root.resolve());self.assertTrue(spawn.call_args.kwargs['start_new_session'])
-                retire.assert_called_once_with(child)
+                observe.assert_called_once_with(child,timeout=60);retire.assert_called_once_with(child)
+                child.communicate.assert_not_called();child.poll.assert_not_called()
 
     def test_linux_controller_recipe_fails_closed_before_any_foreign_provider(self):
         from scripts.play_pikmin2_cave_route import require_controller_recipe,fixture_child,ROOT
