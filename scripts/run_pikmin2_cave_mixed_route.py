@@ -15,7 +15,8 @@ import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from randomizer.cave_floor import create,fingerprint,ITEMS
 from scripts.stage_pikmin2_playable_cave import stage
-from scripts.play_pikmin2_cave import checkpoint,receipts,stop_owned_child
+from scripts.play_pikmin2_cave import checkpoint,receipts
+from scripts.fixture_platform import owned_process_options,wait_owned_process,terminate_owned_process
 from experimental.pikmin2_cave_items import parse_items_text
 from scripts.pikmin2_cave_linux_runtime import X11Input,matching_modal,validate_end
 
@@ -50,11 +51,11 @@ def launch(run,scenario,receipt_path,token):
                SDL_VIDEODRIVER='x11',PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',PIKMIN_RANDOMIZER_TEST_HEADLESS='0')
     (run/'pikmin_settings.conf').write_text('debugKeys=0\nwindowWidth=960\nwindowHeight=540\ndisplayMode=0\n')
     backend=X11Input();baseline={w['window'] for w in backend.windows()}
-    child=None;modal_fd=None;events=[];begin=None;end=None;pressed=False;ready=False;error=None;raw=[]
+    child=None;modal_fd=None;events=[];begin=None;end=None;pressed=False;ready=False;error=None;raw=[];cleanup=None;exit_code=None
     deadline=time.monotonic()+60
     try:
         child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,
-                               stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+                               stdout=subprocess.PIPE,stderr=subprocess.STDOUT,**owned_process_options())
         os.set_blocking(child.stdout.fileno(),False);selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
         pending=b''
         while True:
@@ -80,30 +81,38 @@ def launch(run,scenario,receipt_path,token):
                     owner=modal['owner_pid'];require(modal_descendant(owner,child.pid),'native modal not owned by this child')
                     modal_fd=os.pidfd_open(owner);backend.press_return(modal['window']);pressed=True
                     events.append({'event':'actual-X11-Return','window':modal['window'],'owner_pid':owner})
-            if child.poll() is not None:
+            try:exit_code=wait_owned_process(child,timeout=.001)
+            except subprocess.TimeoutExpired:exit_code=None
+            if exit_code is not None:
                 # Drain any remaining kernel pipe bytes before evaluating markers.
                 data=child.stdout.read()
                 if data:pending+=data
                 if pending:raw.extend(pending.decode(errors='replace').splitlines())
                 break
-        if scenario=='route':require(child.returncode==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
-        else:require(child.returncode==0 and any('PASS CAVE_MIXED_ROUTE_RESTORE' in line for line in raw),'actual native reload failed')
+        if scenario=='route':require(exit_code==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
+        else:require(exit_code==0 and any('PASS CAVE_MIXED_ROUTE_RESTORE' in line for line in raw),'actual native reload failed')
     except BaseException as exc:
         error=repr(exc);raise
     finally:
-        if child is not None:
-            stop_owned_child(child)
-            if child.stdout is not None:
-                tail=child.stdout.read()
-                if tail:raw.extend(tail.decode(errors='replace').splitlines())
-                child.stdout.close()
-        if modal_fd is not None:
-            try:signal.pidfd_send_signal(modal_fd,signal.SIGTERM)
-            except ProcessLookupError:pass
-            os.close(modal_fd)
-        backend.close()
-        (run/'native.log').write_text('\n'.join(raw)+'\n')
-        (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'elapsed_seconds':60-(deadline-time.monotonic())},indent=2)+'\n')
+        try:
+            if child is not None:
+                try:
+                    cleanup=terminate_owned_process(child)
+                    require(cleanup['child_reaped'] and cleanup['group_absent'],'owned process group cleanup unverified')
+                except BaseException as exc:
+                    cleanup=dict(getattr(child,'_fixture_cleanup',{}));error=error or repr(exc)
+                    raise
+                finally:
+                    if child.stdout is not None:
+                        tail=child.stdout.read()
+                        if tail:raw.extend(tail.decode(errors='replace').splitlines())
+                        child.stdout.close()
+        finally:
+            if modal_fd is not None:os.close(modal_fd)
+            backend.close()
+            (run/'native.log').write_text('\n'.join(raw)+'\n')
+            (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'cleanup':cleanup,'observed_exit_code':exit_code,'elapsed_seconds':60-(deadline-time.monotonic())},indent=2)+'\n')
+
 
 
 def main():
