@@ -206,7 +206,23 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             sx=int(std::lround(30*(dx*axis.x+dz*axis.z)/distance));
             sy=int(std::lround(30*(dx*axis.z-dz*axis.x)/distance));
         }
+        if((phase==2 || phase==10) && observed%30==0){
+            std::printf("P2_CAVE_MIXED_GATHER phase=%d point=%d followers=%d target=%.2f,%.2f cursor=%.2f,%.2f aim_distance=%.2f max_cursor=%.2f\n",phase,point,following(),x/count,z/count,n->mCursorWorldPos.x,n->mCursorWorldPos.z,distance,C_NAVI_PARM(n,mCursorMaxRadius));
+            Iterator idle(pikiMgr);CI_LOOP(idle){Piki* p=static_cast<Piki*>(*idle);if(p && p->isAlive() && p->mMode!=PikiMode::FormationMode)
+                std::printf("P2_CAVE_MIXED_IDLE actor=%p species=%d state=%d mode=%d x=%.2f z=%.2f\n",static_cast<void*>(p),pc_p2_species(p),p->getState(),int(p->mMode),p->mSRT.t.x,p->mSRT.t.z);}
+            std::fflush(nullptr);
+        }
         fixturePad(KeyConfig::_instance->mSetCursorKey.mBind,sx,sy);
+    }
+    void drySeparationApproach(Navi* n,int base,int round){
+        // Gather before and after walking, rather than aborting a dry walking
+        // leg whenever a following actor temporarily leaves formation.
+        if(point==base){if(following()!=20){gatherAtCursor(n);return;}fixturePad(0);++point;return;}
+        if(point==base+1){if(walkTo(n,-100,-100))++point;return;}
+        if(point==base+2){if(walkTo(n,-20,-100))++point;return;}
+        require(point==base+3,"invalid dry separation approach stage");
+        if(following()!=20){gatherAtCursor(n);return;}
+        separated=round;next(3);
     }
     void scenarioTick(Navi* n){
         if(observed<60)return;
@@ -226,7 +242,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             if(colour(P2SpeciesBlue)==2&&!pc_p2_cave_bud_pending()){require(colour(P2SpeciesRed)==18,"Blue conversion mismatch");Iterator blues(pikiMgr);CI_LOOP(blues){Piki* p=static_cast<Piki*>(*blues);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue)originalBlues.push_back(p);}require(originalBlues.size()==2,"original Blue identities missing");std::puts("P2_CAVE_MIXED_ACQUIRED red=18 blue=2");next(2);return;}
             require(colour(P2SpeciesBlue)<=2,"excess Blue conversion");
             if(pc_p2_cave_bud_pending()){fixturePad(0);return;}mappedThrow(n,bud.x,bud.z);return;}
-        if(phase==2){if(following()!=20){gatherAtCursor(n);return;}if(walkTo(n,-20,-100)){separated=0;next(3);}return;}
+        if(phase==2){drySeparationApproach(n,0,0);return;}
         // The loaded cursor radius is 100: walk within reach of target (60,-100).
         // At a dry point, ordinary Blue-only throws separate actors from Red squad.
         // Dismiss leaves Reds at the captain; whistle from the remote landing side.
@@ -244,8 +260,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         if(phase==9){fixturePad(0);if(pc_p2_cave_items_delivered()==1){require(picked,"receipt without attachment");std::puts("P2_CAVE_MIXED_DELIVERED once=1 source=physical_Pod");next(10);}return;}
         if(phase==10){static const float path[][2]={{0,-400},{0,-300},{0,-200},{0,-100},{0,0}};
             if(point<5){if(walkTo(n,path[point][0],path[point][1]))++point;return;}
-            if(following()!=20){gatherAtCursor(n);return;}
-            if(walkTo(n,-20,-100)){separated=1;next(3);}return;}
+            drySeparationApproach(n,5,1);return;}
         if(phase==11){require(followers(P2SpeciesRed)==0,"Red following through Blue choke");static const float path[][2]={{100,-100},{100,0},{200,0},{300,0},{400,0},{500,0},{600,0},{700,0},{800,0},{900,20}};
             if(walkTo(n,path[point][0],path[point][1])&&++point==10){require(followers(P2SpeciesBlue)==2,"Blue followers lost at far side");std::puts("P2_CAVE_MIXED_BLUE_CHOKE physical_controller_traversal=1");next(12);}return;}
         if(phase==12){Vector3f bud;require(pc_p2_cave_bud_position("yellow",bud),"Yellow bud missing");
