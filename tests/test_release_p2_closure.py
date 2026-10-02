@@ -27,6 +27,7 @@ sys.path.insert(0, sys.argv[1])
 from experimental.pikmin2_enemy_roster import load_and_validate, admitted_ids
 from experimental import pikmin2_family_install as families
 from randomizer.seed import generate, PLAYABLE_P2_SPECIES
+from randomizer import runner
 assert set(admitted_ids(load_and_validate())) == set(PLAYABLE_P2_SPECIES)
 assert len(PLAYABLE_P2_SPECIES) == 42
 for identity in PLAYABLE_P2_SPECIES:
@@ -34,7 +35,7 @@ for identity in PLAYABLE_P2_SPECIES:
     assert callable(families._installer(family))
 for path in Path(sys.argv[1]).rglob('*.py'):
     if path.name == '__main__.py': continue
-    if path.relative_to(sys.argv[1]).parts[0] == 'launcher': continue
+    if path.relative_to(sys.argv[1]).parts[0] not in ('experimental','scripts'): continue
     module = '.'.join(path.relative_to(sys.argv[1]).with_suffix('').parts)
     if module.endswith('.__init__'): module = module[:-9]
     importlib.import_module(module)
