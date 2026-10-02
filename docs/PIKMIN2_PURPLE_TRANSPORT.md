@@ -1,5 +1,16 @@
 # Purple native approach and Onion delivery
 
+> Historical diagnostics, reviewed 2026-10-02. The staged delivery and setup
+> controls below passed; natural acquisition plus delivery remains unaccepted.
+> This document records those results and can be merged independently of native
+> PR91. Historical instructions to keep root1090 draft, obtain workflow admission,
+> or use a particular timing profile describe their original runs; they do not
+> block current development under the direct-coordination policy in AGENTS.md.
+> Preserve the original results when selecting a new bounded test profile.
+> Current ordinary SDL acquisition and save/resume work is tracked in
+> [#1128](https://github.com/4laric/pikmin-randomizer/issues/1128).
+
+
 Tracking: [#1071](https://github.com/4laric/pikmin-randomizer/issues/1071).
 Owner: Codex through shared account `4laric`.
 Native candidate: [PR91](https://github.com/4laric/Open-Nectar---Pikmin-Native-PC-Port/pull/91).
