@@ -32,7 +32,7 @@
 #include "pc_gpu_preference.h"
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
-#include "C:/Users/alari/pikmin-randomizer/scripts/p2_fixture_captain_guard.h"
+#include "p2_fixture_captain_guard.h"
 
 static void require(bool ok,const char* reason) {
     if(!ok){std::printf("P2_IVORY_BUDGET_FAIL %s\n",reason);std::fflush(nullptr);std::_Exit(1);}
@@ -115,7 +115,7 @@ public:
 };
 int main(int argc,char**argv){
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetMainReady();pc_gpu_preference_apply();
-    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
+    SDL_setenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1",1);pc_bbft_init(argc,argv);
     require(pc_pikipelago_room_preview(),"requires experimental room");
     if(!pc_window_init("Ivory budget acceptance",960,540))return 3;
     pc_settings_init();pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(960,540);pc_window_center();

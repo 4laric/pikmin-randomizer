@@ -53,22 +53,31 @@ int whistle_action(unsigned binding){
  if(binding==KBBTN_X)return PC_KEY_ACT_X;if(binding==KBBTN_Y)return PC_KEY_ACT_Y;
  require(false,"unsupported loaded whistle action");return -1;
 }
-void publish_input(int x,int y,bool whistle){
+void publish_input(int x,int y,bool whistle,int rx=0,int ry=0){
  pc_window_input_assign(0,PC_INPUT_DEV_GAMEPAD,SDL_JoystickInstanceID(pad));
  pc_window_input_assign(1,PC_INPUT_DEV_NONE,-1);
  require(x>=-74&&x<=74&&y>=-74&&y<=74,"ordinary GC axis domain");
+ require(rx>=-74&&rx<=74&&ry>=-74&&ry<=74,"ordinary GC squad axis domain");
  for(int button=0;button<SDL_CONTROLLER_BUTTON_MAX;++button)SDL_JoystickSetVirtualButton(pad,button,0);
  if(whistle){require(whistleButton>=0&&whistleButton<SDL_CONTROLLER_BUTTON_MAX,"unadmitted whistle button");SDL_JoystickSetVirtualButton(pad,whistleButton,1);}
  requestedX=x;requestedY=y;requestedWhistle=whistle;
  SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_LEFTX,Sint16(x*256));
- SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(-y*256));SDL_JoystickUpdate();
+ SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(-y*256));
+ SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_RIGHTX,Sint16(rx*256));
+ SDL_JoystickSetVirtualAxis(pad,SDL_CONTROLLER_AXIS_RIGHTY,Sint16(-ry*256));SDL_JoystickUpdate();
 }
-void input(Navi* n,float gx,bool whistle=false,float gz=1000.f) {
- int x=0,y=0;
+void input(Navi* n,float gx,bool whistle=false,float gz=1000.f,float squadX=0.f,float squadZ=0.f) {
+ int x=0,y=0,rx=0,ry=0;
  float dx=gx-n->mSRT.t.x,dz=gz-n->mSRT.t.z,d=std::sqrt(dx*dx+dz*dz);
  if(d>12.f){const Vector3f& a=n->controlCamera()->mViewXAxis;
   x=int(std::lround(65.f*(dx*a.x+dz*a.z)/d));y=int(std::lround(65.f*(dx*a.z-dz*a.x)/d));}
- publish_input(x,y,whistle); // Faithful SDL/PAD256 and GC74 domain.
+ if(d<=12.f&&!whistle){
+  const float length=std::sqrt(squadX*squadX+squadZ*squadZ);
+  if(length>1.f){const Vector3f& a=n->controlCamera()->mViewXAxis;
+   rx=int(std::lround(65.f*(squadX*a.x+squadZ*a.z)/length));
+   ry=int(std::lround(65.f*(squadX*a.z-squadZ*a.x)/length));}
+ }
+ publish_input(x,y,whistle,rx,ry); // Faithful SDL/PAD256 and GC74 domain.
 }
 // Release previously published alignment input without dereferencing actors/camera.
 void neutral_input() {
@@ -88,6 +97,19 @@ class UpperApp:public PlugPikiApp {
  int routeStep=0;
  bool bankReady=false;
  int gatherStage=0,gatherSince=0,gatherUid=0,lastTelemetryPhase=-1;
+ void route_input(Navi* n,bool outbound){
+  const int index=outbound?routeStep:2-routeStep;
+  float fromX,fromZ;
+  if(outbound&&index==0){fromX=-250.f;fromZ=1025.f;}
+  else if(!outbound&&index==2){fromX=2*route[2].x-route[1].x;fromZ=2*route[2].z-route[1].z;}
+  else{const int previous=outbound?index-1:index+1;fromX=route[previous].x;fromZ=route[previous].z;}
+  // Once the captain arrives, use the ordinary C-stick to guide the existing
+  // formation across this exact checkpoint; no actor or plate writes.
+  input(n,target,false,targetZ,route[index].x-fromX,route[index].z-fromZ);
+  if(tick%15==0)std::printf("P2_UPPER_SQUAD_INPUT tick=%d checkpoint=%d requested_next_SDL_right=%d,%d observed_tick_native_sub=%d,%d observed_tick_world_cstick=%.6f,%.6f,%.6f ordinary_SDL=1 actor_writes=0\n",
+   tick,index,int(SDL_JoystickGetAxis(pad,SDL_CONTROLLER_AXIS_RIGHTX)),int(SDL_JoystickGetAxis(pad,SDL_CONTROLLER_AXIS_RIGHTY)),
+   int(n->mKontroller->mSubStickX),int(n->mKontroller->mSubStickY),n->mCStick.x,n->mCStick.y,n->mCStick.z);
+ }
  bool plate_membership(Navi* n,const std::array<Piki*,20>& current,std::array<bool,20>& joined){
   joined.fill(false);int members=0;
   // PC occupied slots are authoritative immediately after Pikmin update.
@@ -255,14 +277,16 @@ public:
   bool gathered=regroup(n,current,joined,allJoined);
   if(!gathered){settle=0;return result;}
   if(phase==1){neutral_input();if(tick-phaseAge>=60){phase=2;phaseAge=tick;routeStep=0;target=route[0].x;targetZ=route[0].z;}return result;}
-  if(phase==2){input(n,target,false,targetZ);
+  if(phase==2){route_input(n,true);
    if(std::all_of(roster.begin(),roster.end(),[&](const Track& t){return t.outbound>routeStep;})){
+    neutral_input();
     if(++routeStep==3){phase=3;phaseAge=tick;routeStep=0;target=route[2].x;targetZ=route[2].z;}
     else {target=route[routeStep].x;targetZ=route[routeStep].z;}}
    return result;}
-  if(phase==3){input(n,target,false,targetZ);
+  if(phase==3){route_input(n,false);
    if(std::all_of(roster.begin(),roster.end(),[&](const Track& t){return t.back>routeStep;})){
-    if(++routeStep==3){phase=4;phaseAge=tick;target=-250.f;targetZ=1025.f;}
+    neutral_input();
+    if(++routeStep==3){phase=4;phaseAge=tick;target=-258.12277f;targetZ=1006.72377f;}
     else {target=route[2-routeStep].x;targetZ=route[2-routeStep].z;}}
    return result;}
   input(n,target,false,targetZ);
@@ -281,6 +305,7 @@ int main(int argc,char** argv){
  require(pc_pikipelago_surface_course()&&!std::strcmp(pc_pikipelago_surface_course(),"tutorial"),"explicit tutorial surface required");
  if(!pc_window_init("P2 upper terrain traversal",960,540))return 3;
  pc_settings_init();pc_window_set_control_mode(PC_CONTROL_CLASSIC);pc_window_set_display_mode(0);pc_window_set_window_size(960,540);pc_window_center();
+ require(!pc_settings_get_free_camera(),"ordinary C-stick squad control requires classic camera settings");
  SDL_Window* w=SDL_GL_GetCurrentWindow();int width,height,x,y;SDL_GetWindowSize(w,&width,&height);SDL_GetWindowPosition(w,&x,&y);SDL_Rect b{};SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(w),&b);
  require(width==960&&height==540&&std::abs(x-(b.x+(b.w-width)/2))<=2&&std::abs(y-(b.y+(b.h-height)/2))<=2,"centered960x540 baseline");
  std::puts("P2_UPPER_WINDOW size=960x540 centered=1");
