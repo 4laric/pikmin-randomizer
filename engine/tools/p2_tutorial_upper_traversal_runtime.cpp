@@ -82,7 +82,12 @@ class UpperApp:public PlugPikiApp {
  bool bankReady=false;
  int gatherStage=0,gatherSince=0,gatherUid=0,lastTelemetryPhase=-1;
  bool plate_membership(Navi* n,const std::array<Piki*,20>& current,std::array<bool,20>& joined){
-  joined.fill(false);int members=0;Iterator plate(n->mPlateMgr);CI_LOOP(plate){Creature* member=*plate;int uid=-1;
+  joined.fill(false);int members=0;
+  // PC occupied slots are authoritative immediately after Pikmin update.
+  // CPlate's iterator uses the earlier Navi-refreshed layout count instead.
+  const int occupied=n->getPlatePikis();
+  require(occupied>=0&&occupied<=20,"actual occupied plate count outside original roster");
+  for(int slot=0;slot<occupied;++slot){Creature* member=n->mPlateMgr->getCreature(slot);int uid=-1;
    for(int i=0;i<20;++i)if(member==current[i])uid=i;
    require(uid>=0&&!joined[uid],"unexpected duplicate/nonoriginal plate member");
    require(current[uid]->mNavi==n&&current[uid]->mMode==PikiMode::FormationMode,"actual plate ownership/mode mismatch");joined[uid]=true;++members;

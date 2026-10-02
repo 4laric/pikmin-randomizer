@@ -1,6 +1,24 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
+`ef527bac11f36bf337efdcb805e7f9a95659ea29`, exported from the clean
+`output/native-coop-p2-source-combination` worktree under #1144. Every one of
+4,259 copied tracked source/resource files was prevalidated and checked against
+the native working-tree bytes; 53 audited Android/touch binaries are skipped
+and both desktop icons are retained. This export adds the merged White ordinary
+carry fixture and its CMake registrations, and the reviewed tutorial traversal
+occupied-slot membership repair. Linux Actions run 36996547508 passed all 284
+compiled tests and the clean Debian 12 packaged loader/help smoke. Its production
+executable SHA-256 is
+`8a48b55d9fa9dd039180ac799a848ac35f11cee35679d019e4f3c2e167932794`.
+Windows production coverage remains at native `7d98bcdd6625cd403d65ebd564505697283d8aba`;
+it does not establish Windows coverage of the new fixture sources. Ordinary
+traversal crossings, human gameplay, native campaign save/resume, paired gameplay,
+mixed Purple/White cave acquisition and final player sign-off remain open.
+Build, package and export checks do not establish physical gameplay acceptance.
+See [the candidate and its limits](docs/PIKMIN2_COOP_P2_COMBINATION_1144.md).
+
+The current private co-op/P2 source candidate is native
 `7d98bcdd6625cd403d65ebd564505697283d8aba`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. The verified
 private export copies 4,258 tracked source/resource files and skips 53 audited

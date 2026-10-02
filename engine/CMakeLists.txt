@@ -3090,3 +3090,9 @@ pikmin_add_ci_fixture(tutorial_upper_traversal tools/p2_tutorial_upper_traversal
 if(TARGET pikmin_ci_fixture_tutorial_upper_traversal)
     target_include_directories(pikmin_ci_fixture_tutorial_upper_traversal PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
 endif()
+
+# #1178 ordinary Ivory acquisition into sole-White engineering cargo haul; build only.
+pikmin_add_ci_fixture(white_carry tools/p2_white_carry_runtime.cpp)
+if(TARGET pikmin_ci_fixture_white_carry)
+    target_include_directories(pikmin_ci_fixture_white_carry PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
