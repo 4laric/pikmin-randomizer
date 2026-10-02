@@ -439,10 +439,25 @@ void receiverObservedClearance(Navi* n,int target,int age){
  const double elapsed=receiverCounterMilliseconds(start,SDL_GetPerformanceCounter(),frequency);
  std::printf("P2_PURPLE_KOCHAPPY_CLEARANCE_COST age=%d waypoint=%d clearance_ms=%.6f print_cost_included=0 original_call_count=1 actor_writes=0\n",age,target,elapsed);
 }
+double receiverGuideSpan(Navi* n,int target){
+ require(target>=0&&target<ReceiverRouteCount,"reentry source guide index invalid");
+ const double radius=n->mCollisionRadius;
+ require(std::isfinite(radius)&&std::fabs(radius-8.5)<.001,"reentry native radius changed");
+ const double offset=n->isCreatureFlag(CF_EnableGroundOffset)?n->mGroundOffset:0.;
+ require(std::isfinite(offset),"reentry invalid ground offset");
+ const auto& f=ReceiverRouteFloor[target];const auto& w=ReceiverRoute[target];
+ const double ny=mapMgr->mMapModel->mTriList[f.face].mTriangle.mNormal.y;
+ require(std::isfinite(ny)&&ny>.5,"reentry original source floor changed");
+ const RouteVec center={n->mSRT.t.x,n->mSRT.t.y-offset+radius,n->mSRT.t.z};
+ const RouteVec guide={w.x,double(f.y)+radius/ny,w.z};
+ return std::sqrt(rvdot(rvsub(guide,center),rvsub(guide,center)));
+}
 // INCLINE_OBSERVER90_END
 class PurpleKochappyApp:public PlugPikiApp {
  int frame=0,age=0,phase=0,start=0,settled=0,throwCount=0;
  int receiverWaypoint=0;
+ bool gatherDiverted=false;
+ PcKochappyReentryProgress reentryProgress;
  bool seenCaptain=false,wasActive=false,sawFit=false,sawPause=false,recovered=false,deathDuringStun=false;
  Teki* enemy=nullptr;Pom* violet=nullptr;Piki* purple=nullptr;
  PcKochappyFsmSnapshot pausedFsm;
@@ -553,6 +568,7 @@ public:
      const float d=distance(n->mSRT.t,p->mSRT.t);require(std::isfinite(d),"gather target distance finite");
      if(d<nearest){nearest=d;gather=p;}}
     if(gather){
+     if(receiverWaypoint>0)gatherDiverted=true;
      if(age%30==0)std::printf("P2_PURPLE_KOCHAPPY_GATHER_CURSOR age=%d followers=%d target_generator=%u target_callable=%d target_state=%d target_xyz=%.4f,%.4f,%.4f cursor_xyz=%.4f,%.4f,%.4f loaded_whistle_min=%.4f loaded_whistle_max=%.4f whistle_timer=%.4f SDL_aim=1 actor_writes=0\n",
       age,n->getPlatePikis(),gather->mGenerator?unsigned(gather->mGenerator->_70):0,int(gather->mIsCallable),gather->getState(),gather->mSRT.t.x,gather->mSRT.t.y,gather->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.y,n->mCursorWorldPos.z,C_NAVI_PARM(n,mWhistleMinRadius),C_NAVI_PARM(n,mWhistleMaxRadius),n->mWhistleTimer);
      const float whistle=C_NAVI_PARM(n,mWhistleMaxRadius);
@@ -571,6 +587,20 @@ public:
     std::fflush(nullptr);
    }
    if(n->getPlatePikis()==20&&age-start>30){
+    if(gatherDiverted){
+     require(reentryProgress.mayBegin(receiverWaypoint),"route repeated gather diversion without forward progress or budget exhausted");
+     require(receiverWaypoint<=ReceiverRouteCount,"route reentry history exceeds original route");
+     receiverWallCache(); // validate the current owned source map before guide reads
+     double spans[ReceiverRouteCount];for(int i=0;i<receiverWaypoint;++i)spans[i]=receiverGuideSpan(n,i);
+     const int chosen=pc_kochappy_route_reentry(spans,ReceiverRouteCount,receiverWaypoint);
+     require(chosen>=0,"route no bounded previously visited reentry guide");
+     // Check the unchanged sphere/path padding and strict512 span BEFORE any
+     // planner rewind. Actor position and original waypoints remain untouched.
+     receiverObservedClearance(n,chosen,age);
+     require(reentryProgress.begin(receiverWaypoint,chosen),"route reentry progress invariant");
+     std::printf("P2_PURPLE_KOCHAPPY_REENTRY age=%d original_next=%d previously_visited=%d count=%d span=%.4f followers=20 unchanged_clearance=1 ordinary_replay=1 actor_writes=0\n",age,receiverWaypoint,chosen,reentryProgress.count,spans[chosen]);
+     receiverWaypoint=chosen;gatherDiverted=false;
+    }
     // Do not replace the strict loaded50-unit approach with an easier endpoint.
     // Follow each original corridor centroid/portal through ordinary SDL only.
     if(receiverWaypoint<ReceiverRouteCount)receiverObservedClearance(n,receiverWaypoint,age);

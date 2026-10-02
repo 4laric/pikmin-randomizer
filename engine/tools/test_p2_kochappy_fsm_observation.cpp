@@ -19,6 +19,23 @@ int main(){
  const float nan=std::numeric_limits<float>::quiet_NaN();
  for(int i=0;i<5;++i){float v[5]={240,100,90,.1f,.65f};v[i]=nan;
   CHECK(pc_kochappy_gather_input(v[0],v[1],v[2],v[3],v[4])==G::Refuse);}
+ double spans[4]={300,40,80,1};
+ CHECK(pc_kochappy_route_reentry(spans,4,3)==1); // closest future point3 excluded
+ CHECK(pc_kochappy_route_reentry(spans,4,0)==-1);
+ CHECK(pc_kochappy_route_reentry(nullptr,4,3)==-1);
+ CHECK(pc_kochappy_route_reentry(spans,4,5)==-1);
+ CHECK(pc_kochappy_route_reentry(spans,129,3)==-1);
+ spans[0]=512;CHECK(pc_kochappy_route_reentry(spans,4,1)==-1);
+ spans[0]=511.999;CHECK(pc_kochappy_route_reentry(spans,4,1)==0);
+ spans[0]=-1;CHECK(pc_kochappy_route_reentry(spans,4,3)==-1);
+ spans[0]=std::numeric_limits<double>::infinity();CHECK(pc_kochappy_route_reentry(spans,4,3)==-1);
+ spans[0]=300;spans[2]=nan;CHECK(pc_kochappy_route_reentry(spans,4,3)==-1);
+ PcKochappyReentryProgress progress;
+ CHECK(!progress.begin(0,0));CHECK(!progress.begin(30,30));
+ CHECK(progress.begin(30,8)&&progress.retainedNext==30);
+ CHECK(!progress.mayBegin(8)&&!progress.mayBegin(30));
+ CHECK(progress.begin(31,9));CHECK(progress.begin(32,10));CHECK(progress.begin(33,11));
+ CHECK(!progress.begin(34,12)&&progress.count==4); // finite total reentry budget
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;
