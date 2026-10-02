@@ -23,6 +23,7 @@
 #include "Demo.h"
 #include "GameStat.h"
 #include "Generator.h"
+#include "Interactions.h"
 #include "pc_p2_white.h"
 #include "pc_p2_species.h"
 #include "pc_p2_preview.h"
@@ -43,8 +44,14 @@ static int population() {
 }
 static void attach(Piki* p,Pom* flower) {
     require(p->isAlive(),"input dead before capture");
-    p->endStickObject();p->startStickObject(flower,nullptr,-1,0);
-    require(p->getStickObject()==flower,"injected capture failed");
+    p->endStickMouth();
+    require(flower->mCollInfo,"native flower collision info missing");
+    CollPart* slot=flower->mCollInfo->getSphere('slot');
+    require(slot&&slot->getChildAt(0),"native flower mouth missing");
+    InteractSwallow swallowed(flower,slot->getChildAt(0),0);
+    require(p->stimulate(swallowed),"native swallow stimulus refused");
+    Vector3f submerged=flower->mSRT.t;submerged.y-=46.f;p->resetPosition(submerged);
+    require(p->getStickObject()==flower&&p->isStickToMouth()&&p->getState()==PIKISTATE_Swallowed,"injected native mouth capture failed");
 }
 class IvoryApp:public PlugPikiApp {
     int frames=0;bool initialized=false;
@@ -78,6 +85,7 @@ public:
         attach(inputs[0],flower);
         require(pc_p2_convert_ivory(flower,3)==0,"failed allocation spent slots");
         require(inputs[0]->isAlive()&&!inputs[0]->getStickObject(),"failed allocation lost/captured input");
+        require(!inputs[0]->isStickToMouth()&&inputs[0]->getState()==PIKISTATE_Flying&&inputs[0]->mSRT.t.y==flower->mSRT.t.y+50.f&&inputs[0]->mVelocity.y==500.f&&!inputs[0]->mWantToStick,"allocation refusal did not discharge existing body safely");
         for(Creature* head:reserved)itemMgr->kill(head);
         require(population()==20,"pool failure changed living population");
         std::printf("P2_IVORY_ALLOC_FAILURE_PASS reserved=%zu input_alive=1 slots=0 population=20\n",reserved.size());
@@ -97,6 +105,7 @@ public:
         pc_p2_make_white(inputs[5]);attach(inputs[5],flower);attach(inputs[6],flower);
         require(pc_p2_convert_ivory(flower,0)==0,"exhausted callback spent slot");
         require(inputs[5]->isAlive()&&inputs[6]->isAlive()&&!inputs[5]->getStickObject()&&!inputs[6]->getStickObject()&&population()==20,"exhausted callback lost input");
+        for(int i=5;i<=6;++i)require(!inputs[i]->isStickToMouth()&&inputs[i]->getState()==PIKISTATE_Flying&&inputs[i]->mSRT.t.y==flower->mSRT.t.y+50.f&&inputs[i]->mVelocity.y==500.f&&!inputs[i]->mWantToStick,"overcapacity refusal did not discharge existing body safely");
         require(pc_p2_convert_ivory(flower,0)==0&&population()==20,"repeated callback changed population");
         int heads=0;Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){PikiHeadItem* p=static_cast<PikiHeadItem*>(*sprouts);if(p->isAlive()){++heads;require(pc_p2_species(p)==P2SpeciesWhite,"replacement is not White");}}
         require(heads==5,"expected five genuine White sprouts");
