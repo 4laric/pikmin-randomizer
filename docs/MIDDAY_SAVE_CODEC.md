@@ -63,6 +63,55 @@ specific writer stopped and offer explicit recovery before retrying. Reads can
 inspect a committed immutable generation while a writer lock exists. Missing
 `CURRENT` means no committed save, even if generations or pending files exist.
 
+### Explicit recovery successor
+
+Publication now writes a checksummed `WRITER.lock/owner` containing platform,
+local host/boot-and-PID-namespace identity, PID and process creation identity.
+Windows queries the creation FILETIME and process termination state; Linux uses
+the boot ID/PID namespace and `/proc/PID/stat` start ticks. Missing/incomplete,
+foreign, live or uninspectable owners refuse automatic recovery. Legacy empty
+locks remain unknown: the code does not invent stopped-writer proof for them.
+An OS process-lifetime gate (`WRITER.guard`, Windows share-denied handle/Linux
+nonblocking flock) serializes all new writers and recovery transactions and is
+automatically released when a process exits. A gate file on disk is not a lease.
+
+`inspectRecovery` returns a proposed exact selection and hashes of the durable
+owner, current commit bytes and selected checkpoint, plus inventory high-water and
+day-end fence. It mutates no save state; the gate file may be created. `recover`
+requires that explicit plan, takes the gate and rechecks every field before
+retiring a proven stopped owner's lock to `recovered-lock-HASH`. It acquires its
+own durable recovery owner, archives old CURRENT bytes to a hash-named evidence
+file, then atomically publishes the selected validated generation last. Unknown
+or changed ownership/metadata/selection cannot be waived by a timeout.
+
+Commit format `PCCOMM02` adds a monotonic generation high-water u64; original
+`PCCOMMIT` records remain readable. Recovery may select an older generation but
+records the greatest observed generation filename/committed watermark, preventing
+later save IDs from reusing a retained corrupt or orphan incarnation. Existing
+evidence and exact matching interrupted pending metadata can be reused without
+overwriting; changed evidence refuses. Recovery interruption leaves its own
+durable owner identity and a complete old or new CURRENT; a new exact plan can
+retry after proving that owner stopped.
+
+A valid commit identifies the selectable current/previous checkpoint. A damaged
+or missing commit cannot establish committed provenance, so selecting any
+validated snapshot additionally requires `explicitUncommittedSelection=true`.
+This is a visible forensic recovery acknowledgement, not a guessed fallback or
+proof that an online host/peer agreed that snapshot. Production online recovery
+must separately validate the negotiated durable commit acknowledgement. This API
+must not bypass that future coordinator. Day-end-superseded selections refuse.
+POSIX directory creation now syncs each new directory and its parent; Linux and
+power-loss behavior still require platform execution acceptance.
+
+The successor Windows suite passes136 standalone controls: the original codec
+coverage, legacy commit-read/upgrade, durable stopped/live/foreign/unknown owner
+refusal, changed-plan rejection, new save after selected recovery, and eight real
+fresh-process interruptions (four original publication and four recovery
+boundaries). The live-writer case pauses a real child at generation durability,
+proves both its held OS gate and its independently queried live owner refuse
+recovery, then releases it and waits for termination. POSIX child supervision now
+uses bounded nonblocking waits; it has not been executed on Linux yet.
+
 `load` normally returns `Current`. Damage in the current generation may return
 `RecoveryAvailable`, leaving caller output unchanged. Only an explicit
 `acceptPrevious` request returns `Recovered`; files remain untouched. A corrupt
@@ -138,3 +187,58 @@ previous-good recovery, same-generation/orphan/foreign-lock refusal, each
 durability boundary and four real fresh-process interruptions. Windows also
 locks the real commit file to deny replacement and verifies old save preservation.
 No actual native world save/restart, full production build or Linux test is claimed.
+
+## Read-only world integration audit of native281
+
+The next capture/restore design was checked against clean integration native
+`281f916a220552904d1ac070c6cbe6004100f2e9` and root
+`dba9bc6ba1f9a8a11763916fcdd57a448aca2bb5`; codec work remains on its independent
+efe4-based branch. These are read-only source observations, not adapters or hooks.
+
+- `src/sysDolphin/system.cpp:391` delegates online turns to the session; ordinary
+  `app->idle()` is at450, followed by input log/state hash finalization. Ordinary
+  capture needs a new post-update seam and a save-specific world/input fence.
+  `pc_port/netplay/pc_netplay_session.cpp:5549` runs the online tick, then hashes
+  state; its confirmed-frame outbox flush at5574-5575 precedes advance bookkeeping.
+  Capture must follow confirmed flush and precede the next Advance. A future
+  negotiated save fence is additional to existing menus and day-end save barriers.
+- `include/Navi.h` exposes the two-captain spawn index via `getNaviIndex`, state
+  machine, control-camera basis and health inherited from Creature. `pc_coop.h`
+  explicitly describes player captain choices and co-op/VS run flags as unsaved
+  session state. Capture must include both logical captain identities, role/input
+  ownership and formational basis; appearance choice alone is insufficient.
+- `include/Piki.h:315-354` includes leader, formation priority, active action,
+  Navi owner, legacy color/maturity/current state and independent `mP2Purple`,
+  `mP2White`, `mP2Bulbmin` flags. Typed identity cannot be reconstructed from the
+  three legacy color slots. Census includes pending sprouts/births and stock;
+  leader/Navi/action/cargo pointers become typed logical references. Purple flight
+  and White ingestion attribution need separately coordinated family exports;
+  `pc_p2_white_poison.h` currently exposes prepare/finish/forget/reset, not a save
+  state export. Resetting that state would lose simulation-visible attribution.
+- `include/WorldClock.h` has current day/hour/minute, real-seconds-into-hour,
+  previous/current time, delta and rate fields. A clock adapter must preserve the
+  accumulated phase/rate, then establish zero first-update delta without firing
+  sunrise/sunset twice. The RNG header confirms non-deterministic draws still
+  call libc rand: getter/setter availability is not offline persistence support.
+- `audio_stubs.cpp:211-228` holds16 NativeEvents and an event clock;
+  `Jac_CheckFreeEvents` at526 returns the gameplay-visible free count.
+  `soundMgr.cpp:775-777` compares free-event availability around destroy. Logical
+  event allocation/type/action/context belongs in a required global adapter;
+  old voices and wall-clock `startedMs` are recreated. Desired carry loops must
+  reconcile after actor references with no logical allocation side effects.
+- `pc_randomizer.h:29` exposes the sim-visible randomizer payload but not the full
+  live world; its outbox documentation at39-43 includes checks, benefits, Emperor,
+  DeathLink and P2 delivery ledger. World restore needs consumed/pending/outbox and
+  logical grant results paired to generation; neither resume_snapshot nor the
+  existing day-end checkpoint API is a full-world Save-and-quit implementation.
+
+Next concrete capture contract: independent manager census first; assign stable
+birth incarnations to every captain/Pikmin/sprout/enemy/boss/cargo/structure/hazard;
+request each exact typed adapter's refusal/validated output; require clock, scene,
+identity/tombstone, stock/economy, RNG, audio and AP sections. Allocate all actors
+before rebinding any target/owner, with birth/receipt side effects suppressed;
+validate graph roles/population/economy, restore RNG after initialization and
+establish pause/zero input before publication. Unsupported actor or live action
+blocks Save-and-quit visibly. Shared manager birth/kill hooks, tick/menu/CMake,
+family state exports and AP/save generation adoption require their real owners'
+coordination before editing; no current shared source is changed by this audit.
