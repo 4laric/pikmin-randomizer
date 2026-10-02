@@ -37,9 +37,28 @@ add_compile_options(-UWIN32)
 # Consola oculta en el juego se decide por target, no aquí.
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++")
 
-# SDL2 para MinGW, descargado en third_party (ver README-WINDOWS.md).
-set(_sdl2_mingw "${CMAKE_CURRENT_LIST_DIR}/../third_party/SDL2-mingw64")
-if (EXISTS "${_sdl2_mingw}")
-    list(APPEND CMAKE_PREFIX_PATH "${_sdl2_mingw}")
-    list(APPEND CMAKE_FIND_ROOT_PATH "${_sdl2_mingw}")
+# SDK privado: argumento CMake > entorno > extracción local ignorada.
+# Propagar la selección también al toolchain de los try_compile.
+if(NOT DEFINED SDL2_MINGW_ROOT)
+    if(DEFINED ENV{SDL2_MINGW_ROOT} AND NOT "$ENV{SDL2_MINGW_ROOT}" STREQUAL "")
+        set(SDL2_MINGW_ROOT "$ENV{SDL2_MINGW_ROOT}" CACHE PATH "SDL2 MinGW x86-64 SDK")
+    else()
+        set(SDL2_MINGW_ROOT "${CMAKE_CURRENT_LIST_DIR}/../third_party/SDL2-mingw64"
+            CACHE PATH "SDL2 MinGW x86-64 SDK")
+    endif()
 endif()
+if("${SDL2_MINGW_ROOT}" STREQUAL "" OR "${SDL2_MINGW_ROOT}" MATCHES ";")
+    message(FATAL_ERROR "SDL2_MINGW_ROOT debe ser un directorio SDK no vacío, sin punto y coma")
+endif()
+get_filename_component(_sdl2_mingw "${SDL2_MINGW_ROOT}" ABSOLUTE
+    BASE_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+set(SDL2_MINGW_ROOT "${_sdl2_mingw}" CACHE PATH "SDL2 MinGW x86-64 SDK" FORCE)
+foreach(_sdl2_required include/SDL2/SDL.h lib/libSDL2.dll.a bin/SDL2.dll)
+    if(NOT EXISTS "${SDL2_MINGW_ROOT}/${_sdl2_required}" OR
+       IS_DIRECTORY "${SDL2_MINGW_ROOT}/${_sdl2_required}")
+        message(FATAL_ERROR "SDK SDL2 incompleto: ${SDL2_MINGW_ROOT}/${_sdl2_required}")
+    endif()
+endforeach()
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES SDL2_MINGW_ROOT)
+list(APPEND CMAKE_PREFIX_PATH "${SDL2_MINGW_ROOT}")
+list(APPEND CMAKE_FIND_ROOT_PATH "${SDL2_MINGW_ROOT}")

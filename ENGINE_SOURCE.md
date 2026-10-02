@@ -1,6 +1,21 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
+`7d98bcdd6625cd403d65ebd564505697283d8aba`, exported from the clean
+`output/native-coop-p2-source-combination` worktree under #1144. The verified
+private export copies 4,258 tracked source/resource files and skips 53 audited
+Android/touch binaries; both desktop icons are retained. It removes only the
+previously exported external `third_party/SDL2-mingw64` pointer approved in SDK04.
+Linux native CI run 36991396339 passed all 284 compiled tests and the clean
+Debian 12 packaged loader/help smoke. Its production executable SHA-256 is
+`8a48b55d9fa9dd039180ac799a848ac35f11cee35679d019e4f3c2e167932794`.
+The reviewed combined-enemy protocol and tutorial traversal source are included;
+ordinary traversal/carry acceptance, full native campaign resume, paired gameplay,
+mixed Purple/White cave acquisition, Windows coverage of this revision and final
+player sign-off remain open. These build and export checks do not establish
+physical gameplay acceptance. See [the candidate and its limits](docs/PIKMIN2_COOP_P2_COMBINATION_1144.md).
+
+The current private co-op/P2 source candidate is native
 `9b93652ed26f6b9bf54bdb920034ec8261fdfa88`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. The export
 copies 4,259 tracked source/resource files and skips 53 Android/touch binaries;

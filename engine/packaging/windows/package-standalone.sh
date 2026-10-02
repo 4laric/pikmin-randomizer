@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# package-standalone.sh [--clean] [--build-dir DIR] [--pal-build-dir DIR]
+# package-standalone.sh [--clean] [--build-dir DIR] [--pal-build-dir DIR] [--sdl2-root DIR]
 #
 # Compila las dos versiones (USA y PAL) para Windows x86-64 con MinGW-w64 y
 # deja un directorio listo para zippear:
@@ -22,7 +22,7 @@ build_dir="${repo_root}/build-windows-standalone"
 pal_build_dir="${repo_root}/build-windows-standalone-pal"
 output_dir="${script_dir}/out/nectar-windows"
 toolchain="${repo_root}/cmake/toolchain-mingw64.cmake"
-sdl2_root="${repo_root}/third_party/SDL2-mingw64"
+sdl2_root="${SDL2_MINGW_ROOT:-${repo_root}/third_party/SDL2-mingw64}"
 
 clean=0
 while (($#)); do
@@ -30,8 +30,14 @@ while (($#)); do
         --clean) clean=1 ;;
         --build-dir) build_dir="$2"; shift ;;
         --pal-build-dir) pal_build_dir="$2"; shift ;;
+        --sdl2-root)
+            if (($# < 2)) || [[ -z "$2" ]]; then
+                printf '%s\n' '--sdl2-root requiere un directorio SDK no vacío.' >&2
+                exit 2
+            fi
+            sdl2_root="$2"; shift ;;
         --help|-h)
-            printf 'Uso: %s [--clean] [--build-dir DIR] [--pal-build-dir DIR]\n' "$0"
+            printf 'Uso: %s [--clean] [--build-dir DIR] [--pal-build-dir DIR] [--sdl2-root DIR]\n' "$0"
             exit 0
             ;;
         *) printf 'Opción desconocida: %s\n' "$1" >&2; exit 2 ;;
@@ -43,11 +49,19 @@ if [[ ! -f "${toolchain}" ]]; then
     printf 'No está el toolchain MinGW: %s\n' "${toolchain}" >&2
     exit 1
 fi
-if [[ ! -f "${sdl2_root}/lib/libSDL2.dll.a" ]]; then
-    printf 'Falta SDL2 para MinGW en %s\n' "${sdl2_root}" >&2
-    printf 'Descarga SDL2-devel-*-mingw.tar.gz y extrae x86_64-w64-mingw32 ahí.\n' >&2
+# Validar el mismo SDK antes de cualquier limpieza o compilación.
+if [[ "$sdl2_root" == *';'* ]] || [[ ! -d "$sdl2_root" ]]; then
+    printf 'Directorio SDL2 MinGW no válido: %s\n' "$sdl2_root" >&2
     exit 1
 fi
+sdl2_root="$(cd -- "$sdl2_root" && pwd -P)"
+for required in include/SDL2/SDL.h lib/libSDL2.dll.a bin/SDL2.dll; do
+    if [[ ! -f "${sdl2_root}/${required}" ]]; then
+        printf 'SDK SDL2 incompleto: %s/%s\n' "$sdl2_root" "$required" >&2
+        printf '%s\n' 'Extrae x86_64-w64-mingw32 de SDL2-devel-*-mingw.tar.gz.' >&2
+        exit 1
+    fi
+done
 if ! command -v x86_64-w64-mingw32-g++ >/dev/null 2>&1; then
     printf 'Instala g++-mingw-w64-x86-64 (no está x86_64-w64-mingw32-g++).\n' >&2
     exit 1
@@ -60,6 +74,7 @@ fi
 cmake_common=(
     -DCMAKE_TOOLCHAIN_FILE="${toolchain}"
     -DCMAKE_BUILD_TYPE=Release
+    "-DSDL2_MINGW_ROOT:PATH=${sdl2_root}"
     -DPIKMIN_NATIVE_JAUDIO=ON
 )
 
@@ -102,9 +117,7 @@ copy_dll() {
 }
 
 sdl2_copied=0
-for candidate in \
-    "${sdl2_root}/bin/SDL2.dll" \
-    "${build_dir}/bin/SDL2.dll"
+for candidate in "${sdl2_root}/bin/SDL2.dll"
 do
     if copy_dll "${candidate}"; then
         sdl2_copied=1

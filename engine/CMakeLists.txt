@@ -216,6 +216,18 @@ if (ANDROID)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include")
     file(CREATE_LINK "${_sdl2_src}/include" "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include/SDL2" SYMBOLIC)
     set(SDL2_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include" "${_sdl2_src}/include")
+elseif(WIN32 AND DEFINED SDL2_MINGW_ROOT)
+    # The explicit MinGW SDK also supplies the packaged DLL. Do not allow
+    # stale SDL2_DIR/cache, system packages or pkg-config to select another SDK.
+    foreach(_sdl2_required include/SDL2/SDL.h lib/libSDL2.dll.a bin/SDL2.dll)
+        if(NOT EXISTS "${SDL2_MINGW_ROOT}/${_sdl2_required}" OR
+           IS_DIRECTORY "${SDL2_MINGW_ROOT}/${_sdl2_required}")
+            message(FATAL_ERROR "Incomplete SDL2 MinGW SDK: ${SDL2_MINGW_ROOT}/${_sdl2_required}")
+        endif()
+    endforeach()
+    set(SDL2_INCLUDE_DIRS "${SDL2_MINGW_ROOT}/include" "${SDL2_MINGW_ROOT}/include/SDL2")
+    set(SDL2_LIBRARIES "${SDL2_MINGW_ROOT}/lib/libSDL2.dll.a")
+    set(SDL2_FOUND TRUE)
 else()
     find_package(SDL2 QUIET)
     if (NOT SDL2_FOUND)

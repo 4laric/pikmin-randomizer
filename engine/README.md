@@ -265,11 +265,29 @@ European disc extracts cleanly and then fails to start.
 
 The Windows executable is built with MinGW-w64, cross-compiled from Linux.
 
-SDL2 for MinGW is expected in `third_party/SDL2-mingw64`. It is not committed to
-the repository; download `SDL2-devel-<version>-mingw.tar.gz` from the
+SDL2 for MinGW is a private SDK, not a committed checkout link. Download
+`SDL2-devel-<version>-mingw.tar.gz` from the
 [SDL releases](https://github.com/libsdl-org/SDL/releases) and extract its
-`x86_64-w64-mingw32` directory there, so that
-`third_party/SDL2-mingw64/lib/libSDL2.dll.a` exists.
+`x86_64-w64-mingw32` directory. The default location remains the ignored
+`third_party/SDL2-mingw64` directory. The SDK must contain
+`include/SDL2/SDL.h`, `lib/libSDL2.dll.a` and `bin/SDL2.dll`.
+
+To keep the SDK elsewhere, configure with `-DSDL2_MINGW_ROOT:PATH=/absolute/sdk`
+or set the environment variable `SDL2_MINGW_ROOT`. An explicit CMake value
+takes precedence over the environment; the ignored local directory is the
+fallback. Relative CMake SDK paths are resolved from the repository root.
+For the USA/PAL standalone package, use
+`packaging/windows/package-standalone.sh --sdl2-root /absolute/sdk`.
+The package argument takes precedence over the environment and local fallback;
+relative package paths are resolved from the invoking shell's directory.
+Both configurations and the packaged SDL2.dll use that same SDK. For Windows
+with `SDL2_MINGW_ROOT` defined, SDK selection deliberately bypasses
+`find_package(SDL2)` and pkg-config: cached `SDL2_DIR`, old SDL2 include/library
+values and other package search prefixes do not select SDL2. Headers and the
+absolute import library come from the chosen root. Reconfiguring an existing
+build with a different SDK changes these paths; rebuild before packaging.
+Ordinary native Linux and Android SDL2 discovery are unchanged. Missing SDK
+files fail before the packaging script cleans or builds anything.
 
 ```sh
 sudo apt install g++-mingw-w64-x86-64

@@ -1,5 +1,6 @@
 #include "pc_p2_ship_store.h"
 #include "pc_p2_campaign_policy.h"
+#include "pc_p2_boss_arena_policy.h"
 #include "pc_p2_proxy.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
@@ -125,6 +126,7 @@ bool slotEnemies = false, campaignEnemies = false;
 // P2 enemy bridge: a versioned roster revision with target->source_id bindings.
 // Lane 02 enforces admission; the native side only validates identity and revision.
 bool p2EnemyBridge = false;
+bool p2CombinedEnemies = false;
 bool p2ProxyTier = false;
 std::unordered_map<std::string, unsigned> p2Bindings;
 // Versioned manifest-owned native journal order. Empty for all historical seeds.
@@ -707,6 +709,8 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (!bootstrap) return false;
     if (bbft) fail("standalone and BBFT modes cannot be combined");
     p2ProxyTier = false;
+    p2CombinedEnemies = false;
+    std::string combinedP1Mode;
     std::ifstream input(bootstrap);
     if (!input) fail("cannot open standalone bootstrap");
     std::string magic; input >> magic;
@@ -825,65 +829,13 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (schema != 9 || !(input >> deathLinkUnit) || deathLinkUnit < 1 || deathLinkUnit > 100) fail("invalid DeathLink unit");
         input >> end;
     }
-    if (end == "ENEMY_P2") {
-        unsigned protocol, count; std::string revision;
-        if (schema != 9 || enemyMask || slotEnemies || campaignEnemies || groupEnemies)
-            fail("P2 enemy bridge cannot mix other enemy layouts");
-        if (!(input >> protocol >> revision >> count) || protocol != 1
-            || revision != randomizerP2RosterRevision || count == 0 || count > kP2MaxBindings)
-            fail("incompatible P2 enemy roster or protocol version");
-        for (unsigned i = 0; i < count; ++i) {
-            std::string target; unsigned sourceId;
-            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
-                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
-                fail("invalid P2 enemy binding");
-        }
-        p2EnemyBridge = true;
-        p2ProxyTier = false;
+    if (end == "ENEMY_COMPOSITION") {
+        unsigned version;
+        if (schema != 9 || !(input >> version >> combinedP1Mode) || version != 1
+            || (combinedP1Mode != "mask" && combinedP1Mode != "slots" && combinedP1Mode != "campaign"))
+            fail("unsupported combined enemy composition");
+        p2CombinedEnemies = true;
         input >> end;
-        if (end == "P2_PROXY_TIER") {
-            unsigned tier = 0;
-            if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
-            p2ProxyTier = true;
-            input >> end;
-        }
-        if (end == "ENEMY_CHECKS") {
-            unsigned version, count;
-            if (!(input >> version >> count) || version != 1 || count == 0 || count > checkCount + 102)
-                fail("invalid resolved enemy check catalog");
-            for (unsigned i = 0; i < checkCount; ++i) legacyCheckNames.emplace_back(legacyCheckName(i));
-            std::set<unsigned> retained;
-            for (unsigned i = 0; i < count; ++i) {
-                std::string kind; unsigned value;
-                if (!(input >> kind >> value)) fail("truncated resolved enemy check catalog");
-                if (kind == "L") {
-                    if (value >= legacyCheckNames.size() || !retained.insert(value).second)
-                        fail("invalid resolved legacy check index");
-                    resolvedCheckNames.push_back(legacyCheckNames[value]);
-                } else if (kind == "P") {
-                    unsigned sources;
-                    if (!pc_randomizer_p2_bound(value) || value == 9 || value == 10 || value == 11 || value == 16
-                        || !p2CheckIndices.emplace(value, i).second || !(input >> sources)
-                        || sources == 0 || sources > kP2MaxBindings)
-                        fail("invalid resolved P2 check identity");
-                    for (unsigned j = 0; j < sources; ++j) {
-                        unsigned uid; int stage;
-                        if (!(input >> uid >> stage) || !uid || stage < 0 || stage > 4
-                            || !p2CheckSources[value].insert({uid, stage}).second)
-                            fail("invalid resolved P2 check source");
-                    }
-                    resolvedCheckNames.push_back("P2:" + std::to_string(value));
-                } else fail("unknown resolved enemy check kind");
-            }
-            // Only bestiary locations may be removed from the legacy catalog.
-            // Parts, population and permanent checks keep their original identity.
-            for (unsigned i = 0; i < legacyCheckNames.size(); ++i)
-                if (legacyCheckNames[i].find("Bestiary:") != 0 && !retained.count(i))
-                    fail("resolved catalog omits non-enemy check");
-            checkCount = count;
-            input >> end;
-        }
-        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
@@ -902,7 +854,7 @@ bool pc_randomizer_init(int argc, char** argv) {
             fail("campaign enemy heavy encounter budget exceeded");
         campaignEnemies = minibossEnemies = true;
         input >> end;
-        if (end != "END") fail("campaign enemy mode cannot mix legacy layouts");
+        if (end != (p2CombinedEnemies ? "ENEMY_P2" : "END")) fail("campaign enemy mode cannot mix legacy layouts");
     }
     if (end == "ENEMY_MINIBOSSES") {
         int version;
@@ -942,6 +894,102 @@ bool pc_randomizer_init(int argc, char** argv) {
         groupEnemies = true;
         input >> end;
     }
+    if (end == "ENEMY_P2") {
+        unsigned protocol, count; std::string revision;
+        if (schema != 9 || (!p2CombinedEnemies && (enemyMask || slotEnemies || campaignEnemies || groupEnemies)))
+            fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (p2CombinedEnemies &&
+            ((combinedP1Mode == "campaign" && (!campaignEnemies || slotEnemies || groupEnemies))
+             || (combinedP1Mode == "slots" && (!slotEnemies || campaignEnemies))
+             || (combinedP1Mode == "mask" && (!enemyMask || slotEnemies || campaignEnemies || groupEnemies || minibossEnemies))))
+            fail("combined enemy P1 layout differs from composition mode");
+        if (!(input >> protocol >> revision >> count) || protocol != 1
+            || revision != randomizerP2RosterRevision || count == 0 || count > kP2MaxBindings)
+            fail("incompatible P2 enemy roster or protocol version");
+        for (unsigned i = 0; i < count; ++i) {
+            std::string target; unsigned sourceId;
+            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
+                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
+                fail("invalid P2 enemy binding");
+            if (p2CombinedEnemies) {
+                // Production combined manifests bind only canonical campaign UIDs.
+                bool known = false;
+                for (const auto& row : randomizerSpawnSlots)
+                    if (target == std::to_string(row.uid)) { known = true; break; }
+                if (!known) fail("combined P2 binding has no canonical generator UID");
+            }
+        }
+        p2EnemyBridge = true;
+        p2ProxyTier = false;
+        input >> end;
+        if (end == "P2_PROXY_TIER") {
+            unsigned tier = 0;
+            if (!(input >> tier) || tier != 1) fail("invalid P2 proxy tier");
+            p2ProxyTier = true;
+            input >> end;
+        }
+        if (end == "ENEMY_CHECKS") {
+            unsigned version, count;
+            if (!(input >> version >> count) || version != 1 || count == 0 || count > checkCount + 102)
+                fail("invalid resolved enemy check catalog");
+            for (unsigned i = 0; i < checkCount; ++i) legacyCheckNames.emplace_back(legacyCheckName(i));
+            std::set<unsigned> retained;
+            for (unsigned i = 0; i < count; ++i) {
+                std::string kind; unsigned value;
+                if (!(input >> kind >> value)) fail("truncated resolved enemy check catalog");
+                if (kind == "L") {
+                    if (value >= legacyCheckNames.size() || !retained.insert(value).second)
+                        fail("invalid resolved legacy check index");
+                    resolvedCheckNames.push_back(legacyCheckNames[value]);
+                } else if (kind == "P") {
+                    unsigned sources;
+                    if (!pc_randomizer_p2_bound(value) || value == 9 || value == 10 || value == 11 || value == 16
+                        || !p2CheckIndices.emplace(value, i).second || !(input >> sources)
+                        || sources == 0 || sources > kP2MaxBindings)
+                        fail("invalid resolved P2 check identity");
+                    for (unsigned j = 0; j < sources; ++j) {
+                        unsigned uid; int stage;
+                        if (!(input >> uid >> stage) || !uid || stage < 0 || stage > 4
+                            || !p2CheckSources[value].insert({uid, stage}).second)
+                            fail("invalid resolved P2 check source");
+                        if (p2CombinedEnemies) {
+                            // Match GenObjectBoss's actual rekey: a compiled day
+                            // alias uses its primary only while that primary is bound.
+                            const unsigned primary = p2bossarena::aliasPrimary(uid);
+                            const unsigned primarySource = primary ? pc_randomizer_p2_source_for_id(primary) : 0;
+                            const unsigned effectiveUid = primarySource ? primary : uid;
+                            const unsigned directSource = pc_randomizer_p2_source_for_id(uid);
+                            if (primarySource && directSource && directSource != primarySource)
+                                fail("combined P2 alias conflicts with primary binding");
+                            const unsigned suppress = p2bossarena::suppressPrimary(uid);
+                            if (suppress && pc_randomizer_p2_source_for_id(suppress))
+                                fail("combined P2 check names a suppressed arena mate");
+                            bool originalStage = false, effectiveStage = false;
+                            for (const auto& row : randomizerSpawnSlots) {
+                                if (row.uid == uid && row.stage == stage) originalStage = true;
+                                if (row.uid == effectiveUid && row.stage == stage) effectiveStage = true;
+                            }
+                            if (!originalStage || !effectiveStage
+                                || pc_randomizer_p2_source_for_id(effectiveUid) != value)
+                                fail("combined P2 check source differs from binding");
+                        }
+                    }
+                    resolvedCheckNames.push_back("P2:" + std::to_string(value));
+                } else fail("unknown resolved enemy check kind");
+            }
+            // Only bestiary locations may be removed from the legacy catalog.
+            // Parts, population and permanent checks keep their original identity.
+            for (unsigned i = 0; i < legacyCheckNames.size(); ++i)
+                if (legacyCheckNames[i].find("Bestiary:") != 0 && !retained.count(i))
+                    fail("resolved catalog omits non-enemy check");
+            checkCount = count;
+            input >> end;
+        }
+        if (p2CombinedEnemies && resolvedCheckNames.empty())
+            fail("combined enemies require resolved checks");
+        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
+    }
+    if (p2CombinedEnemies && !p2EnemyBridge) fail("combined composition requires P2 bindings");
     if (end == "PURPLE") {
         unsigned version;
         if (!p2EnemyBridge || !(input >> version) || version != 1) fail("Purple requires P2 campaign bridge version 1");
@@ -1042,6 +1090,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (minibossEnemies) hello << " miniboss-slots-v1";
     if (emperorGoal) hello << " emperor-goal-v1";
     if (deathLinkUnit) hello << " death-link-v1";
+    if (p2CombinedEnemies) hello << " combined-enemies-v1";
     if (p2EnemyBridge) hello << " p2-enemy-bridge-v1";
     if (p2ProxyTier) hello << " p2-proxy-tier-v1";
     if (!resolvedCheckNames.empty()) hello << " resolved-enemy-checks-v1";
@@ -1822,8 +1871,8 @@ bool pc_randomizer_p2_room_bootstrap(const char* path) {
     return false;
 }
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
-    if (pc_randomizer_p2_bridge()) {
-        const unsigned source = pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(generator));
+    const unsigned source = pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(generator));
+    if (pc_randomizer_p2_bridge() && (!p2CombinedEnemies || source)) {
         if (protectedSpawn || p2campaign::hasStaticHost(source))
             return p2campaign::hostType(source, original, protectedSpawn);
         const int proxy = pc_p2_proxy_host(source);

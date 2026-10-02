@@ -19,6 +19,31 @@ int main(int argc, char** argv) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--combined-campaign-layout-probe")) {
+        // Uses production init/parser and resolver, without spawning an engine.
+        // Campaign-mode driver only: compares with frozen 72-row assignments.
+        assert(pc_randomizer_p2_bridge() && pc_randomizer_resolved_checks());
+        int objects[72] = {};
+        for (unsigned i = 0; i < 72; ++i) {
+            const auto& row = randomizerCampaignSlots[i];
+            pc_randomizer_set_generator_id(&objects[i], row.uid);
+            const unsigned source = pc_randomizer_p2_source_for_id(row.uid);
+            const int actual = pc_randomizer_enemy_for_generator(row.original, false, &objects[i]);
+            // A newly protected P1 campaign slot is deliberately a fatal source
+            // change; only bound P2 protection returns the pinned original.
+            const int protectedType = source ? pc_randomizer_enemy_for_generator(row.original, true, &objects[i]) : -1;
+            if (source) assert(protectedType == row.original);
+            std::printf("COMBINED_RESOLVE uid=%u original=%d source=%u actual=%d protected=%d\n",
+                row.uid, row.original, source, actual, protectedType);
+            // Saved-generator UID recovery must select the identical assignment.
+            int restored = 0;
+            pc_randomizer_set_generator_id(&restored, pc_randomizer_generator_id(&objects[i]));
+            assert(pc_randomizer_enemy_for_generator(row.original, false, &restored) == actual);
+            pc_randomizer_set_generator_id(&restored, 0);
+        }
+        std::puts("COMBINED_LAYOUT_PROBE_PASS");
+        return 0;
+    }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-checks-probe")) {
         assert(pc_randomizer_resolved_checks());
         pc_randomizer_update();
