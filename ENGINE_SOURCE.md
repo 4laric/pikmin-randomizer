@@ -1,6 +1,27 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
+`ef78631655ae050875f692a1e0ca8c5df856a3f9`, exported from clean
+`output/native-coop-p2-source-combination` under #1144. All 4,264 copied
+tracked files match the native working-tree bytes; 53 audited non-desktop
+binaries are skipped. This adds the nine reviewed White1191 campaign files
+from native `f04696a62b5a6e1a718882673cbfdcf22cd0a93d`, preserving captain
+fixture `c16ac01a...` and all other combined source. Fresh producer, original
+1148 and cave-owner consents were consumed through supported coordination;
+legacy TheLynk preservation is explicitly qualified rather than owner consent.
+
+White source Linux Actions 37019617307 passed 284 compiled tests and clean
+Debian 12 package smoke; full raw package hashes and all 101 archive members
+including 53 ELF files were independently verified. The fresh combined
+Linux run 37022837890 is in progress at export time. Source/build evidence
+does not establish gameplay: natural White acquisition, P2 retail cargo with
+minimum 15/maximum 25 carriers, native UI SAVE/fresh resume, poison and human
+playtest remain open. Ship selection via window title is interim UI, and
+online White remains refused. Purple, cave journey, two-captain SAVE/resume
+and imported-level acceptance remain open. Future White treasure/stager,
+settings1190 and co-op151 successor source are not included.
+
+The current private co-op/P2 source candidate is native
 `116c90adec76df55f5d2f57a037260feb525c128`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. All 4,263
 copied files match the native working-tree bytes; 53 audited non-desktop
