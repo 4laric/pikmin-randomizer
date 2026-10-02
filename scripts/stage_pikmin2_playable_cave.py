@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -375,6 +376,22 @@ def portable_generator(tool,table,layout_out,directory,env):
     return dict(marker=marker,layout=layout)
 
 
+def bundled_runtime_evidence(binary,library_directory,env,directory):
+    """Trace known manual-game package with the host ELF loader and fixed libs."""
+    from scripts.fixture_platform import elf_interpreter,check_loader_environment
+    check_loader_environment(env)
+    loader=elf_interpreter(binary).resolve(strict=True)
+    if loader != elf_interpreter(Path('/usr/bin/python3').resolve()).resolve(strict=True):
+        raise ValueError('manual package ELF interpreter differs from host loader')
+    result=subprocess.run([str(loader),'--library-path',str(library_directory.resolve()),'--list',str(binary.resolve())],
+                          cwd=directory,env=env,capture_output=True,text=True,timeout=10)
+    if result.returncode or 'not found' in result.stdout+result.stderr:
+        raise ValueError('Unresolved manual package dependencies: '+result.stdout+result.stderr)
+    return {'platform':'linux','executable':str(binary.resolve()),'loader':str(loader),
+            'library_directory':str(library_directory.resolve()),'loader_stdout':result.stdout,
+            'scope':'Host loader link-time trace; dynamically loaded plugins are not enumerated'}
+
+
 def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=None, species_banks=None):
     validate(manifest)
     acquisition=manifest['policy']==WFG_POLICY
@@ -395,7 +412,8 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     output.mkdir(parents=True)
     env=dict(os.environ)
     if not is_windows():
-        evidence={name:runtime_evidence(binary,env=env,cwd=output)
+        evidence={name:(bundled_runtime_evidence(binary,exe.parent/'lib',env,output)
+                        if name=='native' and (exe.parent/'lib').is_dir() else runtime_evidence(binary,env=env,cwd=output))
                   for name,binary in (('native',exe),('generator',generator_exe))}
         (output/'platform-inputs.json').write_text(json.dumps(evidence,indent=2)+'\n')
     table=manifest['table']
@@ -459,6 +477,8 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
     shutil.copy2(exe,output/'nectar.exe')
     shutil.copy2(generator_exe,output/'cave-generator.exe')
     for dll in exe.parent.glob('*.dll'): shutil.copy2(dll,output/dll.name)
+    if not is_windows() and (exe.parent/'lib').is_dir():
+        shutil.copytree(exe.parent/'lib',output/'lib')
     package=dict(schema=2,policy='forest1-bounded-developer-package-v2',fingerprint=fingerprint(manifest),salt=salt,
                  assets=str(assets.resolve()),pod=str(pod.resolve()),
                  native_runtime_acceptance='UNTESTED',geometry='original engineered tiles, native collision and water attributes',
@@ -475,6 +495,10 @@ def stage(manifest, assets, pod, exe, generator_exe, output, salt=0, checkpoint=
                          'No forced PW starting party, stock grants, AP or campaign save integration.'])
     launcher=Path(__file__).with_name('play_pikmin2_cave.py').resolve()
     (output/'Play.cmd').write_text('@echo off\r\npy -3.12 "'+str(launcher)+'" "'+str(output.resolve())+'"\r\npause\r\n')
+    if not is_windows():
+        (output/'Play.sh').write_text('#!/bin/sh\nexec python3 '+shlex.quote(str(launcher))+' '+shlex.quote(str(output.resolve()))+'\n')
+        (output/'Play.sh').chmod(0o755)
+    package['libraries']={p.relative_to(output).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in (output/'lib').rglob('*') if p.is_file()}
     package['files']={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in output.iterdir() if p.is_file()}
     (output/'package.json').write_text(json.dumps(package,indent=2)+'\n')
     return package

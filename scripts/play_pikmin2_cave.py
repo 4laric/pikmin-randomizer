@@ -3,6 +3,7 @@
 This developer package has its own descriptor, native treasure receipt ledger,
 and checkpoint. It never opens a campaign/AP manifest or session.
 """
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -62,7 +63,36 @@ def recover_pending(session_dir,manifest,placement,receipt_text,live_paths=()):
         atomic_write(session_dir/'checkpoint.json',json.dumps(state,indent=2)+'\n')
 
 
+@contextmanager
+def file_lock(path):
+    """Process-owned OS lock, released automatically after launcher exit."""
+    with Path(path).open('a+b') as lock:
+        if os.name == 'nt':
+            import msvcrt
+            lock.seek(0); lock.write(b'0'); lock.flush(); lock.seek(0)
+            msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+        else:
+            import fcntl
+            fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield lock
+
+
+def linux_runtime_paths(proc_root=Path('/proc')):
+    paths=[]
+    for directory in proc_root.iterdir():
+        if not directory.name.isdigit(): continue
+        try:
+            if directory.stat().st_uid != os.getuid(): continue
+            paths.append(os.readlink(directory/'exe'))
+        except (FileNotFoundError,ProcessLookupError):
+            continue  # exited during enumeration
+        except PermissionError as error:
+            raise RuntimeError('Unable to identify an owned process safely') from error
+    return paths
+
+
 def live_runtime_paths():
+    if os.name != 'nt': return linux_runtime_paths()
     # Path identity is used only for same-session crash recovery, never admission.
     running=subprocess.run(['powershell','-NoProfile','-Command',
         "ConvertTo-Json -InputObject @(Get-Process nectar -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)"],
@@ -73,10 +103,25 @@ def live_runtime_paths():
     return paths
 
 
+def stop_owned_child(child):
+    """Bounded cleanup using the retained child object; never a numeric group scan."""
+    if child.poll() is None:
+        child.terminate()
+        try: child.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            child.kill(); child.wait(timeout=3)
+
+
 def runtime_capacity():
     from scripts.capacity_gate import admit, measure
     allowed, reason = admit('game', measure())
     if not allowed: raise RuntimeError('CAPACITY_GATE: ' + reason)
+
+
+def verify_libraries(package,expected):
+    actual={p.relative_to(package).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in (package/'lib').rglob('*') if p.is_file()}
+    if actual != expected: raise ValueError('package runtime libraries changed')
 
 
 def main(package):
@@ -90,6 +135,7 @@ def main(package):
     for name,digest in meta['files'].items():
         if Path(name).name!=name or hashlib.sha256((package/name).read_bytes()).hexdigest()!=digest:
             raise ValueError('package input changed: '+name)
+    verify_libraries(package,meta.get('libraries',{}))
     manifest=json.loads((package/'cave.json').read_text()); validate(manifest)
     if manifest['schema'] != 'p2-bounded-developer-cave/1':
         raise ValueError('journey floors require a versioned journey package')
@@ -97,10 +143,7 @@ def main(package):
     live_paths=live_runtime_paths()
     session_dir=package/'session'; session_dir.mkdir(exist_ok=True)
     # OS lock is automatically released after a supervisor crash; no stale lock deletion.
-    import msvcrt
-    with (session_dir/'launch.lock').open('a+b') as lock:
-        lock.seek(0); lock.write(b'0'); lock.flush(); lock.seek(0)
-        msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+    with file_lock(session_dir/'launch.lock'):
         placement=parse_items_text((package/'p2-cave-items.txt').read_text())
         receipt_path=session_dir/'receipts.txt'
         if not receipt_path.exists():
@@ -125,17 +168,24 @@ def main(package):
                 del env[key]
         env['PIKMIN_P2_ROOM_WINDOW']='960x540'
         env['PIKMIN_P2_ITEM_RECEIPT_PATH']=str(receipt_path)
-        env['PATH']='C:\\msys64\\mingw64\\bin;'+env.get('PATH','')
+        if os.name == 'nt':
+            env['PATH']='C:\\msys64\\mingw64\\bin;'+env.get('PATH','')
+        else:
+            for key in list(env):
+                if key.startswith('LD_') or key in ('GLIBC_TUNABLES','GCONV_PATH','LOCPATH'): del env[key]
+            env['LD_LIBRARY_PATH']=str(run/'lib')
         with (run/'native.log').open('w') as log:
             # Shared across packages/checkouts, held only through process creation.
             # Other runtime families must still coordinate admission with this lane.
             admission=Path(tempfile.gettempdir())/'pikmin-randomizer-runtime-admission.lock'
-            with admission.open('a+b') as gate:
-                gate.seek(0); gate.write(b'0'); gate.flush(); gate.seek(0)
-                msvcrt.locking(gate.fileno(),msvcrt.LK_NBLCK,1)
+            with file_lock(admission):
                 runtime_capacity()
-                child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT)
-            returncode=child.wait()
+                child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,stdout=log,stderr=subprocess.STDOUT,
+                                       **({'start_new_session':True} if os.name != 'nt' else {}))
+            try:
+                returncode=child.wait()
+            finally:
+                stop_owned_child(child)
         # Receipts survive even an unsaved crash; a repeated process cannot regrant.
         current=receipt_path.read_text()
         receipts(current,placement)
