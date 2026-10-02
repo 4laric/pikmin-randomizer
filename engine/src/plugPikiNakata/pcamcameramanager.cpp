@@ -6,6 +6,13 @@
 #include "Peve/Condition.h"
 #include "Peve/Event.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_camlead.h"
+#include "netplay/pc_netplay_det.h"
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#endif
 
 /**
  * @todo: Documentation
@@ -82,9 +89,64 @@ void PcamCameraManager::startCamera(Creature* target)
  */
 void PcamCameraManager::update()
 {
+#if defined(PIKI_PC_PORT)
+	// Netplay M2c test hook (issue #879): det-mode-only presentation yaw
+	// wobble. PIKMIN_NETPLAY_TEST_CAMERA_WOBBLE=<degrees> offsets the camera's
+	// yaw source (PcamCamera azimuth) before the posture/matrices are built,
+	// so lookAt, frustum and axes all wobble coherently and the rendered view
+	// really moves. Sinusoidal, 97-tick period, absolute per-tick offset: the
+	// saved azimuth is restored after update, so there is no drift. Env read
+	// once per process. It never changes sim inputs during replay: det-mode
+	// Navis build their stick basis from the recorded input yaw, not from
+	// this camera. On the v1 live-camera path the same wobble diverges navi
+	// movement early, which is the control experiment proving yaw-as-input.
+	static bool wobRead   = false;
+	static double wobDeg  = 0.0;
+	if (!wobRead) {
+		wobRead         = true;
+		const char* env = std::getenv("PIKMIN_NETPLAY_TEST_CAMERA_WOBBLE");
+		wobDeg          = (env != nullptr && *env != '\0') ? std::atof(env) : 0.0;
+		// M2b fix (review m7): one log line proving the wobble switch took
+		// effect (acceptance compares wobble vs plain hash logs).
+		if (wobDeg != 0.0) {
+			std::printf("[netplay] test camera wobble: %.1f deg, 97-tick period\n", wobDeg);
+			std::fflush(stdout);
+		}
+	}
+	float wobSavedAz  = 0.0f;
+	float wobSavedCur = 0.0f;
+	bool wobActive    = false;
+#endif
 	mCamera->control(*mController);
+#if defined(PIKI_PC_PORT)
+	// The offset lands between control (which banks input drag into the
+	// azimuth) and update (which builds posture/matrices from it), so input
+	// drag is preserved and only this tick's matrices see the wobble.
+	if (pc_netplay_deterministic() && wobDeg != 0.0 && mCamera != nullptr) {
+		const double phase  = 6.283185307179586 * (double)pc_netplay_tick() / 97.0;
+		const double wobRad = wobDeg * 3.141592653589793 / 180.0 * std::sin(phase);
+		if (wobRad != 0.0) {
+			wobSavedAz  = mCamera->mPolarDir.mAzimuth;
+			wobSavedCur = mCamera->mCurrentAzimuth;
+			mCamera->mPolarDir.mAzimuth = wobSavedAz + (float)wobRad;
+			mCamera->mCurrentAzimuth    = wobSavedCur + (float)wobRad;
+			wobActive                   = true;
+		}
+	}
+	mCamera->update();
+	// Netplay M5c lane A (issue #887): record the posture this sim camera
+	// shows (before the vibration events move it for the next tick). Inert
+	// outside a lockstep session.
+	pc_netplay_camlead_note_sim_update(this);
+	updateVibrationEvent();
+	if (wobActive) {
+		mCamera->mPolarDir.mAzimuth = wobSavedAz;
+		mCamera->mCurrentAzimuth    = wobSavedCur;
+	}
+#else
 	mCamera->update();
 	updateVibrationEvent();
+#endif
 }
 
 /**

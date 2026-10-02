@@ -28,6 +28,18 @@ DEFINE_ERROR(__LINE__) // Never used in the DLL
  */
 DEFINE_PRINT("MemoryCard")
 
+// (Placed below DEFINE_ERROR(__LINE__) so its line number does not move.)
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_loadguard.h"
+// Netplay M4 gap-fix lane S fix round 1 (issue #885): keep-alive entry (see
+// pc_port/netplay/pc_netplay_loadguard.h). The day-end save waits here for the
+// card worker thread inside one netplay session tick, so each turn of the wait
+// lets the session poll the network (rate-limited there, inert outside a
+// session tick). Weak-linked: strong-defined by pc_netplay_session.cpp in
+// netplay builds only; null in the default build.
+__attribute__((weak)) void pc_netplay_load_keepalive(int site);
+#endif
+
 static CARDStat cst;
 static CARDMemoryCard CardWorkArea ATTRIBUTE_ALIGN(32);
 u8 cardData[CARD_DATA_SIZE];
@@ -543,6 +555,7 @@ void MemoryCard::waitPolling()
 	// sin ceder deja el núcleo saturado durante todo el guardado. Cedemos la
 	// CPU igual que `CardUtilIdleWhileBusy()`.
 	while (!hasCardFinished()) {
+		if (pc_netplay_load_keepalive != nullptr) pc_netplay_load_keepalive(pc_netplay_loadguard::kSiteSave);
 		OSYieldThread();
 	}
 #else
@@ -916,6 +929,8 @@ void MemoryCard::loadCurrentGame()
 void MemoryCard::saveCurrentGame()
 {
 #if defined(PIKI_PC_PORT)
+	// Netplay M4 lane B2 fix round 1: this save runs the day-end barrier.
+	bool netBarrier = false;
 	// Direct boot can reach the save UI before a physical backup slot has
 	// been selected. Index zero would write at cardData - 0x2000.
 	if (gameflow.mGamePrefs.mSpareMemCardSaveIndex < 1 || gameflow.mGamePrefs.mSpareMemCardSaveIndex > 4) {
@@ -947,10 +962,42 @@ void MemoryCard::saveCurrentGame()
 	writeOneGameFile(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1);
 	waitPolling();
 #if defined(PIKI_PC_PORT)
+	if (pc_randomizer_netplay_save_barrier_active()) {
+		// Netplay M4 lane B2 (issue #885): the day-end save barrier. The
+		// outcome below is sim-visible (the early return and the slot swap),
+		// so both peers must agree on it inside this tick: each writes its
+		// checkpoint, the peers exchange SAVE_RESULT / SAVE_ACK over the bulk
+		// channel, and both follow the host's result.
+		netBarrier             = true;
+		const bool localCardOk = !mDidSaveFail;
+		const bool hostOk      = pc_randomizer_save_campaign_netplay(
+		    getGameFilePtr(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1), localCardOk);
+		if (hostOk && !localCardOk) {
+			// Fix round 1 (C12): the host saved; rewrite this peer's game file
+			// from the same in-memory block so both cards hold the agreed day
+			// (a second failure ends the session: exit 5).
+			mDidSaveFail = false;
+			writeOneGameFile(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1);
+			waitPolling();
+			pc_randomizer_netplay_card_rewrite_result(!mDidSaveFail);
+		}
+		mDidSaveFail = !hostOk;
+		if (mDidSaveFail) { gsys->mIsCardSaving = FALSE; return; }
+	} else {
 	if (mDidSaveFail) { gsys->mIsCardSaving = FALSE; return; }
 	pc_randomizer_save_campaign(getGameFilePtr(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1));
+	}
 #endif
 	saveOptions();
+#if defined(PIKI_PC_PORT)
+	if (netBarrier) {
+		// Fix round 1 (C3): saveOptions() resets and re-derives mDidSaveFail
+		// from this peer's own card I/O. That is local only; the agreed
+		// outcome (ok: this branch only runs when the host saved) stands.
+		pc_randomizer_netplay_options_result(!mDidSaveFail);
+		mDidSaveFail = false;
+	}
+#endif
 
 	u8 idx                                     = gameflow.mGamePrefs.mMemCardSaveIndex;
 	gameflow.mGamePrefs.mMemCardSaveIndex      = gameflow.mGamePrefs.mSpareMemCardSaveIndex;
@@ -1424,6 +1471,12 @@ void MemoryCard::repairFile()
 bool MemoryCard::didSaveFail()
 {
 	bool fail = mDidSaveFail;
+#if defined(PIKI_PC_PORT)
+	// Netplay M4 lane B2 fix round 1 (C3): ogSave branches on this in the tick
+	// after a save. In a netplay session only the agreed outcome may decide
+	// that branch, never this peer's local card probe.
+	if (pc_randomizer_netplay_agreed_saves()) return fail;
+#endif
 	if (CARDProbe(0) == 0) {
 		fail = true;
 	}

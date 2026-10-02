@@ -1,8 +1,13 @@
 #include "pc_p2_white.h"
+#include "pc_p2_white_campaign_policy.h"
+#include "pc_randomizer.h"
+#include "FlowController.h"
 #include "pc_p2_white_policy.h"
 #include "pc_p2_ivory_budget.h"
 #include "pc_p2_species.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_cave.h"
+#include "pc_p2_cave_bud_actor.h"
 #include "pc_bbft.h"
 #include "Piki.h"
 #include "PikiHeadItem.h"
@@ -36,6 +41,12 @@ struct Clip { float seconds=1; std::vector<Shape*> shapes; std::vector<Matrix4f>
 std::map<std::string, Clip> clips;
 Shape* growth[3] = {};
 std::set<unsigned> ivoryGenerators;
+thread_local const Generator* campaignBirthGenerator = nullptr;
+thread_local bool campaignBirthActive = false;
+const p2whitecampaign::Config& campaignConfig() {
+    static const auto config=[] {p2whitecampaign::Config cfg;std::ifstream in("p2-white-campaign.txt");if(!p2whitecampaign::parse(in,cfg))std::abort();return cfg;}();
+    return config;
+}
 Shape* loadShape(const std::string& name) {
     Shape* result=gameflow.loadShape(("courses/pikmin2room/"+name+".mod").c_str(),true);
     if(!result)std::abort();
@@ -44,7 +55,10 @@ Shape* loadShape(const std::string& name) {
 }
 }
 
-bool pc_p2_whites_enabled(){return pc_pikipelago_room_preview() && enabled;}
+P2WhiteCampaignBirthScope::P2WhiteCampaignBirthScope(const Generator* generator) : previous(campaignBirthGenerator), previousActive(campaignBirthActive) {campaignBirthGenerator=generator;campaignBirthActive=true;}
+P2WhiteCampaignBirthScope::~P2WhiteCampaignBirthScope() {campaignBirthGenerator=previous;campaignBirthActive=previousActive;}
+
+bool pc_p2_whites_enabled(){return (pc_pikipelago_room_preview() || pc_randomizer_white_campaign() || pc_p2_cave_route_species_requested(P2SpeciesWhite)) && enabled;}
 bool pc_p2_is_white(const Piki* piki){return pc_p2_whites_enabled() && pc_p2_species(piki)==P2SpeciesWhite;}
 void pc_p2_make_white(Piki* piki){
     if(!pc_p2_whites_enabled() || !pc_p2_set_species(piki,P2SpeciesWhite))std::abort();
@@ -59,9 +73,11 @@ float pc_p2_white_carry_max_factor(){return stats.baseRunSpeed*stats.carryMaxFac
 
 void pc_p2_white_setup(){
     enabled=false;clips.clear();ivoryGenerators.clear();
-    if(!pc_pikipelago_room_preview())return;
-    std::ifstream in("p2-white.txt");if(!in)return;
-    std::string word;if(!(in>>word) || word!="P2_WHITE_1" || !pc_p2_preview_goal())std::abort();
+    const bool route=pc_p2_cave_route_species_requested(P2SpeciesWhite);
+    if(!pc_pikipelago_room_preview() && !pc_randomizer_white_campaign() && !route)return;
+    if(pc_randomizer_white_campaign())(void)campaignConfig();
+    std::ifstream in("p2-white.txt");if(!in){if(pc_randomizer_white_campaign() || route)std::abort();return;}
+    std::string word;if(!(in>>word) || word!="P2_WHITE_1" || (!route && !pc_randomizer_white_campaign() && !pc_p2_preview_goal()))std::abort();
     if(!(in>>word>>stats.movement>>stats.attack>>stats.scale>>stats.carryPower>>stats.budBonus>>stats.flowerBonus>>stats.carryMaxFactor>>stats.carryMinFactor>>stats.baseRunSpeed) || word!="stats" || !p2_white_stats_valid(stats))std::abort();
     int generatorCount=0;if(!(in>>word>>generatorCount)||word!="ivory_generators"||generatorCount<1||generatorCount>32)std::abort();
     for(int i=0;i<generatorCount;++i){unsigned id;if(!(in>>id)||!ivoryGenerators.insert(id).second)std::abort();}
@@ -91,19 +107,52 @@ bool pc_p2_draw_white(Piki* piki,Graphics& gfx){
 }
 
 bool pc_p2_ivory(const Pom* pom){
+    if(pc_p2_cave_bud_body_profile())return pom && pc_p2_whites_enabled() && pc_p2_cave_bud_body_species(pom)==P2SpeciesWhite;
+    if(pc_randomizer_white_campaign())return pom && pc_p2_whites_enabled() && pom->mGenerator && flowCont.mCurrentStage
+        && campaignConfig().matches(flowCont.mCurrentStage->mStageID,pom->mGenerator->_70);
     return pom && pc_p2_whites_enabled() && pom->mGenerator && ivoryGenerators.count(pom->mGenerator->_70);
+}
+
+int pc_p2_white_campaign_spent(const Pom* pom){
+    if(!pc_randomizer_white_campaign() || !pom || !flowCont.mCurrentStage || pc_p2_cave_bud_body_profile())return 0;
+    const Generator* generator = campaignBirthActive ? campaignBirthGenerator : pom->mGenerator;
+    if(!generator || !campaignConfig().matches(flowCont.mCurrentStage->mStageID,generator->_70))return 0;
+    return p2whitecampaign::budget.get({flowCont.mCurrentStage->mStageID,generator->_70});
+}
+
+// Refused inputs still belong to the player. Release the mouth linkage and
+// discharge the existing body above the bud, then let native airborne physics
+// and landing recovery run. Never leave a normal/free body at the swallowed Y.
+static void releaseIvoryInput(Pom* pom,Piki* p,int index){
+    p->endStickMouth();
+    Vector3f position=pom->mSRT.t;position.y+=50.f;
+    p->resetPosition(position);
+    p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());
+    const float angle=float(index)*1.256637f;
+    p->mVelocity.set(120.f*std::sin(angle),500.f,120.f*std::cos(angle));
+    p->mTargetVelocity=p->mVelocity;
+    // Native thrown-flight lands without the knockback state's random
+    // deflowering. Disable intentional sticking for this discharged input.
+    p->mFSM->transit(p,PIKISTATE_Flying);
+    p->mWantToStick=false;
+    std::printf("P2_IVORY_INPUT_RELEASE uid=%u species=%d x=%.4f y=%.4f z=%.4f state=%d\n",p->mGenerator?p->mGenerator->_70:0,int(pc_p2_species(p)),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,p->getState());
 }
 
 int pc_p2_convert_ivory(Pom* pom,int remaining){
     if(!pc_p2_ivory(pom))return -1;
-    Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};
+    const bool body=pc_p2_cave_bud_body_profile();
+    if(body)remaining=pc_p2_cave_bud_body_remaining(pom);
+    Stickers stickers(pom);Iterator it(&stickers);P2IvoryBudget budget{remaining};int released=0;
     CI_LOOP(it){Creature* creature=*it;if(!creature||!creature->isAlive()||!creature->isPiki())continue;Piki* p=static_cast<Piki*>(creature);
         const bool alreadyWhite=pc_p2_is_white(p);
-        if(!budget.accepts(alreadyWhite)){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if((body && budget.slots>=remaining) || !budget.accepts(alreadyWhite)){releaseIvoryInput(pom,p,released++);it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
-        if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        if(!sprout){releaseIvoryInput(pom,p,released++);it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);pc_p2_set_species(sprout,P2SpeciesWhite);
-        float angle=budget.births*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
-        p->setEraseKill();p->kill(false);it.dec();budget.completed(alreadyWhite);}
+        float angle=budget.births*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;
+        sprout->mVelocity.set(horizontal*std::sin(angle),vertical,horizontal*std::cos(angle));sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
+        p->setEraseKill();p->kill(false);it.dec();budget.completed(alreadyWhite);
+        if(body)pc_p2_cave_bud_body_output(pom,alreadyWhite);}
+    if(pc_randomizer_white_campaign() && !body && !p2whitecampaign::budget.record({flowCont.mCurrentStage->mStageID,pom->mGenerator->_70},5-remaining+budget.slots,campaignConfig()))std::abort();
     std::printf("P2_IVORY_CONVERT count=%d slots=%d\n",budget.births,budget.slots);return budget.slots;
 }

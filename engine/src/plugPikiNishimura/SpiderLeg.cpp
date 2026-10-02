@@ -13,6 +13,7 @@
 #include "Spider.h"
 #include "Stickers.h"
 #if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_present.h"
 #include "timing/pc_render_phase.h"
 #endif
 
@@ -1286,6 +1287,19 @@ void SpiderLeg::refresh(BossShapeObject* shapeObj, Graphics& gfx)
 {
 #if defined(PIKI_PC_PORT)
 	if (!pc_render_is_authoritative()) {
+		// Issue #1036: the authoritative pass wrote the joints for the sim camera, and the leg
+		// logic below is sim code. Rebuild the base animation for this pass's camera (no
+		// animation advance, no sim state: updateAnimation() would also rewrite mJointRotation)
+		// and put the world-space joints from the authoritative pass on top.
+		if (pc_netplay_present_two_pass_active()) {
+			Matrix4f worldMtx;
+			Matrix4f viewMtx;
+			worldMtx.makeSRT(mSpider->mSRT.s, mSpider->mSRT.r, mCurrentCentre);
+			gfx.mCamera->mLookAtMtx.multiplyTo(worldMtx, viewMtx);
+			mSpider->mAnimator.updateContext();
+			shapeObj->mShape->updateAnim(gfx, viewMtx, nullptr, this);
+			mPresentJoints.apply(shapeObj, gfx);
+		}
 		return;
 	}
 #endif
@@ -1304,4 +1318,7 @@ void SpiderLeg::refresh(BossShapeObject* shapeObj, Graphics& gfx)
 	createMatrixScale(shapeObj, gfx);
 	setGroundFlag();
 	checkMotionFinished();
+#if defined(PIKI_PC_PORT)
+	mPresentJoints.capture(shapeObj, gfx);
+#endif
 }

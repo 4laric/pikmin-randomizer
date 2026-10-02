@@ -137,6 +137,23 @@ int  pc_window_num_gamepads(void);
 void pc_window_input_reset_assignment(void);
 void pc_window_input_assign(int player, int kind, int gamepadId);
 int  pc_window_input_get_assignment(int player, int* gamepadId);
+// Netplay launch lane (issue #887): per-peer input ownership, netplay builds
+// only (defined under PIKI_NETPLAY_BUILD). Selects which physical device
+// family feeds the netplay local player: ignoreKeyboard drops every key and
+// mouse contribution (and a gamepad peer keeps its pad with the window in the
+// background), ignoreGamepads drops every gamepad contribution. `auto` is
+// both false.
+void pc_window_set_netplay_input_filter(bool ignoreKeyboard, bool ignoreGamepads);
+// --netplay-input gamepad:N: `player` is fed by the index-th open gamepad
+// (0 = first). Re-resolved on every hotplug until that pad is open; the
+// slot stays neutral meanwhile.
+void pc_window_set_netplay_gamepad(int player, int index);
+// F6/F9 presses the ownership/session rule dropped so far (self-test).
+unsigned pc_window_netplay_blocked_hotkeys(void);
+// Diagnostic (PIKMIN_NETPLAY_INPUT_TRACE=1): one-line snapshot of the local
+// device routing (focus, ownership flags, per-player device and raw SDL
+// stick/A state). Read-only; never touches pads or the sim.
+void pc_window_netplay_input_trace(char* buf, int size);
 // Jugador (0/1) que tiene el teclado; el ratón va con él.
 int  pc_window_get_keyboard_owner(void);
 const char* pc_window_gamepad_name(int gamepadId);

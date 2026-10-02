@@ -10,6 +10,7 @@ from unittest.mock import patch
 from randomizer.cave_floor import create as legacy, fingerprint, atomic_write
 from randomizer.cave_journey import create, identity, encoded, Session, zero_buds, POLICY
 from experimental.pikmin2_cave_lane41_generator import _seed_uint64
+from randomizer.cave_checkpoint import entry_text
 
 
 def placements(journey):
@@ -34,8 +35,7 @@ class JourneyTests(unittest.TestCase):
         (run/'cave.json').write_text(encoded(self.session.manifests[state['floor']]))
         (run/'layout.json').write_text('synthetic unit-test layout')
         (run/'nectar.exe').write_bytes(b'synthetic unit-test executable')
-        (run/'p2-cave-entry.txt').write_text(f"P2_CAVE_ENTRY_1 {entry['fingerprint'][:32]} {state['floor']} {entry['health']} {len(entry['squad'])}\n"
-            + ''.join(f'{s} {m}\n' for s,m in entry['squad']))
+        (run/'p2-cave-entry.txt').write_text(entry_text(entry['fingerprint'][:32],state['floor'],entry))
         self.session.begin(run,state)
         return run
 
@@ -48,6 +48,18 @@ class JourneyTests(unittest.TestCase):
         p = self.session.placements[1]; item = p['items'][0]
         atomic_write(self.session.ledger_path(1),f"P2_RECEIPTS_1\n{p['seed']} treasure:forest_1:f1:{item['slot_id']} {item['host']} cave_treasure\n")
 
+    def test_wfg_factory_is_separate_and_session_refuses_it(self):
+        from randomizer.cave_journey import create_wfg_route, validate
+        journey=create_wfg_route('1127')
+        self.assertEqual(journey['floors'][1:],self.journey['floors'])
+        self.assertEqual([f['salt'] for f in journey['floors']],[0,0,1])
+        self.assertEqual([(f['descriptor']['table']['cave_id'],f['descriptor']['table']['floor']) for f in journey['floors']],
+                         [('forest_2',1),('forest_1',1),('forest_1',2)])
+        self.assertEqual(validate(journey),journey)
+        with self.assertRaisesRegex(ValueError,'not Session'):Session(self.tmp.name,journey,{})
+        bad=copy.deepcopy(journey);bad['floors'][0]['salt']=1
+        with self.assertRaises(ValueError):validate(bad)
+
     def test_legacy_identity_and_new_floor_namespaces(self):
         self.assertEqual(fingerprint(legacy('930')), 'f4ac3b78b6ff81adbe0aad75398e35af9f89a49ad326a4bfaef646bf7078f54c')
         self.assertEqual(create('1127'),self.journey)
@@ -56,6 +68,17 @@ class JourneyTests(unittest.TestCase):
         self.assertNotEqual(one['table']['seed'],two['table']['seed'])
         self.assertNotEqual(fingerprint(one),fingerprint(two))
         self.assertTrue(all(':f2:' in b['slot_id'] for b in two['table']['buds']))
+
+    def test_white_purple_transfer_restores_exact_versioned_destination_once(self):
+        run=self.run_dir();manifest=self.session.manifests[1]
+        (run/'p2-cave-transfer.txt').write_text(f'P2_CAVE_TRANSFER_2\n{fingerprint(manifest)[:32]}\n1 .625 3\n3 2\n4 1\n1 0\n')
+        (run/'p2-cave-bud-transfer.txt').write_text(zero_buds(manifest))
+        state,changed=self.session.recover();self.assertTrue(changed)
+        self.assertEqual(state['entry']['squad'],[[3,2],[4,1],[1,0]])
+        self.assertEqual((state['entry']['health'],state['entry']['wire_schema']),(.625,2))
+        self.assertEqual(self.session.recover(),(state,False))
+        destination=self.run_dir(state,'versioned-destination')
+        self.assertTrue((destination/'p2-cave-entry.txt').read_text().startswith('P2_CAVE_ENTRY_2 '))
 
     def test_actual_protocol_transition_and_restart(self):
         run = self.run_dir(); self.transfer(run)

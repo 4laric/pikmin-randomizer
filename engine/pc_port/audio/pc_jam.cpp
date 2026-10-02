@@ -214,6 +214,12 @@ bool PCJamPlayer::writeRootPort(u8 port, u16 value) {
     return true;
 }
 
+bool PCJamPlayer::childPortPending(u8 child, u8 port) const {
+    if (child >= 16 || port >= 16) return false;
+    const int slot = mTracks[0].children[child];
+    return slot >= 0 && mTracks[slot].active && mTracks[slot].ports[port].imported;
+}
+
 bool PCJamPlayer::childPortReady(u8 child, u8 port) const {
     if (child >= 16 || port >= 2) return false;
     const int slot = mTracks[0].children[child];

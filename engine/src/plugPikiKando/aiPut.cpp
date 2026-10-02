@@ -1,4 +1,5 @@
 #include "pc_bbft.h"
+#include "pc_crowd_handover.h"
 #include "AIConstant.h"
 #include "BombItem.h"
 #include "Boss.h"
@@ -37,6 +38,7 @@ void ActPutBomb::procCollideMsg(Piki* piki, MsgCollide* msg)
 		if (collider->mObjType == OBJTYPE_Navi && !piki->isKinoko() && !collider->mStickListHead) {
 			rumbleMgr->start(RUMBLE_Unk2, static_cast<Navi*>(collider)->mNaviID, nullptr);
 			mTouchedPlayer = true;
+			pc_crowd_handover::abandonSquadBeforeHandover(piki, static_cast<Navi*>(collider));
 			piki->mNavi    = static_cast<Navi*>(collider);
 		}
 	}

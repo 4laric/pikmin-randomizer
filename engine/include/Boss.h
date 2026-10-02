@@ -10,6 +10,9 @@
 #include "SearchSystem.h"
 #include "Vector.h"
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include <vector>
+#endif
 
 struct PrereleaseTrapState;
 class BirthInfo;
@@ -151,6 +154,27 @@ public:
 	AnimContext mAnimContext; // _04
 	AnimMgr* mAnimMgr;        // _14
 };
+
+#if defined(PIKI_PC_PORT)
+/**
+ * @brief Netplay two-pass frame (issue #1036): world-space joint copy for the multi-part bosses.
+ *
+ * Beady Long Legs, Emperor Bulblax, Goolix and Burrowing Snagret write their final joint matrices in
+ * their body controller's refresh (SpiderLeg, KingBody, SlimeBody, SnakeBody), which is sim code and
+ * only runs in the authoritative pass. The presentation pass has the owner's updateAnim rebuild the
+ * base animation for the local camera, then needs those sim-driven joints on top of it in the same
+ * camera space. capture() keeps the authoritative result as world space (view matrix undone);
+ * apply() re-applies the presentation camera. Neither touches anything the sim reads.
+ */
+struct BossPresentJoints {
+	// Authoritative pass of a two-pass tick, after the body wrote the shape's anim matrices.
+	void capture(BossShapeObject* shapeObj, Graphics& gfx);
+	// Presentation pass, after the owner's updateAnim redirected the shape to the present pool.
+	void apply(BossShapeObject* shapeObj, Graphics& gfx);
+
+	std::vector<Matrix4f> mWorld;
+};
+#endif
 
 /**
  * @brief TODO
@@ -370,6 +394,7 @@ public:
 	void refresh2d(Graphics&);
 	void finalSetup();
 #if defined(PIKI_PC_PORT)
+    void pcTestPullCaptains(); // TEST_ONLY, issue #1036
     bool beginPrereleaseTrap();
     void tickPrereleaseTrap(float seconds);
     void endPrereleaseTrap();

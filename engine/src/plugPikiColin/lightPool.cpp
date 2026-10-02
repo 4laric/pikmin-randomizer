@@ -3,6 +3,9 @@
 #include "Camera.h"
 #include "DebugLog.h"
 #include "Graphics.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_sim_rng.h"
+#endif
 
 /**
  * @note UNUSED Size: 00009C
@@ -19,7 +22,13 @@ DEFINE_PRINT("LightPool");
  */
 LightPool::LightPool()
 {
+#if defined(PIKI_PC_PORT)
+	// M1 deterministic netplay: the debug-frustum orbit angle is visual-only
+	// (this pool is UNUSED in the DLL), so it uses the cosmetic stream.
+	mFocusRotationAngle = TAU * pc_cosmetic_randf(1.0f);
+#else
 	mFocusRotationAngle = TAU * gsys->getRand(1.0f);
+#endif
 
 	mCamera.mPosition.set(0.0f, 50.0f, 0.0f);
 	mCamera.mFocus.set(0.0f, 10.0f, 0.00001f);

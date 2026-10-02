@@ -8,6 +8,11 @@ import shutil
 import subprocess
 import time
 import math
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fixture_platform import (is_windows, copy_private_tree, fresh_destination,
+                              owned_process_options, wait_owned_process, terminate_owned_process,
+                              runtime_evidence, linux_admission)
 
 
 MARKERS = ('P2_CAVE_READY', 'P2_CAVE_GENERATE_PASS', 'PASS CAVE_GUARDED_BOOT')
@@ -15,6 +20,8 @@ MARKERS = ('P2_CAVE_READY', 'P2_CAVE_GENERATE_PASS', 'PASS CAVE_GUARDED_BOOT')
 
 def clone_assets(source, destination):
     """Copy files; share only valid directory targets. Never mutate source links."""
+    if not is_windows():
+        return copy_private_tree(source, destination)
     source, destination = Path(source), Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
     for entry in source.iterdir():
@@ -42,7 +49,7 @@ def clone_assets(source, destination):
 
 
 def prepare(source, destination):
-    source, destination = Path(source).absolute(), Path(destination).absolute()
+    source, destination = fresh_destination(source, destination)
     if source == destination or source in destination.parents:
         raise ValueError('Run destination must be separate from the source run')
     destination.mkdir(parents=True, exist_ok=False)
@@ -71,30 +78,43 @@ def supervise(argv, directory, timeout=60, env=None, required_markers=None):
     try:
         with log_path.open('wb') as log:
             proc = subprocess.Popen(argv, cwd=directory, env=env, stdout=log,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT, **owned_process_options())
             record['pid'] = proc.pid
+            if not is_windows():
+                record['owned_process_group'] = proc.pid
             try:
-                record['exit_code'] = proc.wait(timeout=timeout)
+                record['exit_code'] = wait_owned_process(proc, timeout=max(0, timeout - (time.monotonic() - start)))
                 record['timed_out'] = False
             except subprocess.TimeoutExpired:
                 record['timed_out'] = True
-                proc.kill()
-                record['exit_code'] = proc.wait(timeout=10)
+            record['cleanup'] = terminate_owned_process(proc)
+            if record['timed_out']:
+                record['exit_code'] = proc.returncode
         text = log_path.read_text(errors='replace')
         record['markers'] = {marker: marker in text for marker in
                              (MARKERS if required_markers is None else required_markers)}
         record['captain_down'] = 'P2_FIXTURE_CAPTAIN_DOWN' in text
         record['passed'] = (not record['timed_out'] and record['exit_code'] == 0
-                            and all(record['markers'].values()) and not record['captain_down'])
+                            and all(record['markers'].values()) and not record['captain_down']
+                            and record['cleanup']['child_reaped']
+                            and (is_windows() or record['cleanup']['group_absent']))
     except BaseException as error:
         record['error'] = str(error)
         raise
     finally:
-        if proc is not None and proc.poll() is None:
-            proc.kill()
-            proc.wait(timeout=10)
-        record['elapsed_seconds'] = round(time.monotonic() - start, 3)
-        (directory / 'run-result.json').write_text(json.dumps(record, indent=2) + '\n')
+        try:
+            if proc is not None:
+                record['cleanup'] = terminate_owned_process(proc)
+        except BaseException as error:
+            record['passed'] = False
+            record['cleanup_error'] = str(error) or type(error).__name__
+            receipt = getattr(proc, '_fixture_cleanup', None)
+            if isinstance(receipt, dict):
+                record['cleanup'] = dict(receipt)
+            raise
+        finally:
+            record['elapsed_seconds'] = round(time.monotonic() - start, 3)
+            (directory / 'run-result.json').write_text(json.dumps(record, indent=2) + '\n')
     return record
 
 
@@ -123,6 +143,13 @@ def main():
     (directory / 'run-inputs.json').write_text(json.dumps(provenance, indent=2) + '\n')
     env = dict(os.environ)
     env['SDL_AUDIODRIVER'] = 'dummy'
+    if not is_windows():
+        provenance['runtime'] = runtime_evidence(exe, env=env, cwd=directory)
+        admission = linux_admission(exe, Path(__file__).resolve().parents[1], directory, directory)
+        if admission['exe_sha256'] != provenance['runtime']['executable']['sha256']:
+            raise ValueError('Executable changed between dependency inspection and admission')
+        (directory / 'admission.json').write_text(json.dumps(admission, indent=2) + '\n')
+        (directory / 'run-inputs.json').write_text(json.dumps(provenance, indent=2) + '\n')
     record = supervise([str(exe), '--experimental-pikmin2-room'], directory, args.timeout, env)
     record.update(provenance)
     (directory / 'run-result.json').write_text(json.dumps(record, indent=2) + '\n')

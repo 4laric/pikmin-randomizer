@@ -1,5 +1,6 @@
 #include "DebugLog.h"
 #include "GameStat.h"
+#include "pc_crowd_handover.h"
 #include "Navi.h"
 #include "PikiAI.h"
 #include "PikiMgr.h"
@@ -200,6 +201,7 @@ void ActFree::procCollideMsg(Piki* piki, MsgCollide* msg)
 	    && (piki->mPlayerId == -1 || static_cast<Navi*>(collider)->mNaviID == piki->mPlayerId)) {
 		rumbleMgr->start(RUMBLE_Unk2, static_cast<Navi*>(collider)->mNaviID, nullptr);
 		mTouchedPlayer = true;
+		pc_crowd_handover::abandonSquadBeforeHandover(piki, static_cast<Navi*>(collider));
 		piki->mNavi    = static_cast<Navi*>(collider);
 	}
 }

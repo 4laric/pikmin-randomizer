@@ -1,4 +1,5 @@
 #include "pc_p2_king_teki.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_king_teki_policy.h"
 #include "pc_p2_king_policy.h"
 #include "pc_p2_animation.h"
@@ -44,6 +45,10 @@ std::map<BTeki*, Binding> s;
 unsigned lastTicks = 0;
 float clockAcc = 0;
 unsigned long behaviorTick = 0;
+// M1 det fix: last logical tick that advanced the behavior clock below (0 =
+// unprimed; pc_netplay_tick() is 1-based inside tick bodies, so every bound
+// host in one tick advances the shared clock once).
+unsigned lastDetTick = 0;
 bool gDeadKeySeen = false;
 constexpr float Tick = 1.0f / 30.0f;
 
@@ -138,6 +143,7 @@ void pc_p2_king_teki_reset() {
 	lastTicks = 0;
 	clockAcc = 0;
 	behaviorTick = 0;
+	lastDetTick = 0;
 	gDeadKeySeen = false;
 }
 void pc_p2_king_teki_forget(BTeki* t) { if (t) s.erase(t); }
@@ -196,7 +202,19 @@ void pc_p2_king_teki_tick(BTeki* t) {
 	// wander off and drag the fight/carcass away from the squad.
 	t->mSRT.t = b.home;
 	const unsigned now = SDL_GetTicks();
-	clockAcc += float(now - lastTicks) * 0.001f;
+	if (pc_netplay_deterministic()) {
+		// M1 det fix: tick-counted analogue of the wall clock. pc_p2_king_teki_tick
+		// runs once per bound host, sharing one clock: advance it by logical
+		// ticks since the last call, so two bound hosts in one tick advance it
+		// once, and skipped ticks catch up (bounded below, as before). The
+		// wall anchor is still refreshed so leaving det mode never injects a jump.
+		const unsigned tickNow = pc_netplay_tick();
+		if (lastDetTick == 0) lastDetTick = tickNow;
+		clockAcc += float(tickNow - lastDetTick) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2);
+		lastDetTick = tickNow;
+	} else {
+		clockAcc += float(now - lastTicks) * 0.001f;
+	}
 	lastTicks = now;
 	int steps = 0;
 	while (clockAcc >= Tick && steps < 4) {

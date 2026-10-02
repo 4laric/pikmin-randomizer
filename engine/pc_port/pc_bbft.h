@@ -13,6 +13,11 @@ bool pc_bbft_forest_access();
 void pc_bbft_check(const char* name);
 bool pc_bbft_checked(const char* name);
 void pc_bbft_start_button(bool down);
+// Netplay (#1029): switch the cutscene-skip source to the synced inputs. While
+// on, the local pad's Start (pc_bbft_start_button) is ignored; the session
+// feeds both captains' injected Start state once per Advance.
+void pc_bbft_start_source_synced(bool on);
+void pc_bbft_synced_start(bool pad0Down, bool pad1Down);
 bool pc_bbft_take_skip();
 const char* pc_bbft_save_root();
 void pc_bbft_milestone(const char* text);

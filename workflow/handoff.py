@@ -155,30 +155,38 @@ def validate_handoff(root, data, lane=None):
         build = data.get('build')
         require(isinstance(build, dict) and nonempty(build.get('command')) and
                 build.get('exit_code') == 0, 'Successful build record required')
-        require(local_path(root, build.get('directory')).is_dir(), 'Build directory missing')
-        require(local_path(root, build['directory']).is_relative_to(Path(root).resolve() / 'output'),
-                'Lane build must be under output/')
-        refs(build.get('evidence'), 'build')
-        refs(build.get('dry_run'), 'dry run')
-        require(build.get('dry_run_exit_code') == 0 and any(
-            'ninja: no work to do.' in paths[k].read_text(encoding='utf-8', errors='replace')
-            for k in build['dry_run']), 'No-work Ninja dry run required')
-        exe = build.get('executable')
-        refs([exe], 'executable')
-        require(build.get('replacement_main') in (True, False), 'replacement_main boolean required')
-        if build['replacement_main']:
-            refs([build.get('provenance')], 'provenance')
-            provenance = json.loads(paths[build['provenance']].read_text(encoding='utf-8'))
-            require(provenance.get('status') == 'built', 'Fixture provenance is not built')
-            require(provenance.get('expected_native_head') == data['native']['head'] and
-                    provenance.get('observed_source', {}).get('head') == data['native']['head'] and
-                    provenance.get('observed_source', {}).get('status') == data['native']['dirty'],
-                    'Fixture provenance native identity mismatch')
-            require(local_path(root, provenance.get('source')) == local_path(root, data['native']['worktree']) and
-                    local_path(root, provenance.get('build')) == local_path(root, build['directory']),
-                    'Fixture provenance source/build mismatch')
-            artifact = provenance.get('artifacts', {}).get(str(paths[exe]), {})
-            require(artifact.get('sha256') == evidence[exe]['sha256'], 'Fixture artifact hash mismatch')
+        require(build.get('delivery') in (None, 'governed-remote-linux-v1'), 'Unknown runtime delivery variant')
+        if build.get('delivery') == 'governed-remote-linux-v1':
+            from .remote_runtime import validate_remote_runtime
+            try:
+                validate_remote_runtime(root, data, paths, refs)
+            except (KeyError, TypeError, IndexError) as error:
+                raise Rejected('Malformed remote runtime evidence: ' + str(error)) from error
+        else:
+            require(local_path(root, build.get('directory')).is_dir(), 'Build directory missing')
+            require(local_path(root, build['directory']).is_relative_to(Path(root).resolve() / 'output'),
+                    'Lane build must be under output/')
+            refs(build.get('evidence'), 'build')
+            refs(build.get('dry_run'), 'dry run')
+            require(build.get('dry_run_exit_code') == 0 and any(
+                'ninja: no work to do.' in paths[k].read_text(encoding='utf-8', errors='replace')
+                for k in build['dry_run']), 'No-work Ninja dry run required')
+            exe = build.get('executable')
+            refs([exe], 'executable')
+            require(build.get('replacement_main') in (True, False), 'replacement_main boolean required')
+            if build['replacement_main']:
+                refs([build.get('provenance')], 'provenance')
+                provenance = json.loads(paths[build['provenance']].read_text(encoding='utf-8'))
+                require(provenance.get('status') == 'built', 'Fixture provenance is not built')
+                require(provenance.get('expected_native_head') == data['native']['head'] and
+                        provenance.get('observed_source', {}).get('head') == data['native']['head'] and
+                        provenance.get('observed_source', {}).get('status') == data['native']['dirty'],
+                        'Fixture provenance native identity mismatch')
+                require(local_path(root, provenance.get('source')) == local_path(root, data['native']['worktree']) and
+                        local_path(root, provenance.get('build')) == local_path(root, build['directory']),
+                        'Fixture provenance source/build mismatch')
+                artifact = provenance.get('artifacts', {}).get(str(paths[exe]), {})
+                require(artifact.get('sha256') == evidence[exe]['sha256'], 'Fixture artifact hash mismatch')
     return {'reviewable': True, 'gameplay_accepted': False,
             'slice_passed': all(c['status'] in ('PASS', 'N/A') for c in criteria) and
                             all(t['exit_code'] == 0 for t in data['tests']),

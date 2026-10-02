@@ -3,6 +3,7 @@
 #include "pc_p2_breadbug_contest_host.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_breadbug_cargo_phase.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "teki.h"
@@ -120,7 +121,14 @@ void pc_p2_breadbug_actor_setup(){
 }
 void pc_p2_breadbug_actor_tick(){
  if(actors.empty())return;
- const float now=SDL_GetTicks()*0.001f;
+ // M1 deterministic netplay fix: the cargo contest clock is sim-affecting
+ // (freeze window, steal/release), so in det mode it runs on logical ticks
+ // (seconds at the current tick rate) instead of the wall clock. Off path
+ // identical. The draw-path SDL_GetTicks uses below stay wall-clocked:
+ // proxy motion frames are presentation-only.
+ const float now=pc_netplay_deterministic()
+  ? float(pc_netplay_tick())*pc_netplay_fixed_dt(gsys?gsys->mFrameRate:2)
+  : SDL_GetTicks()*0.001f;
  for(auto& entry:actors){
   BTeki* actor=entry.first;auto& state=entry.second;
   Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;

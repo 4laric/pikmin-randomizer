@@ -19,6 +19,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include "audio/pc_audio.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
 
 namespace {
 // A sound whose context cannot get an event handle never reaches
@@ -930,6 +933,9 @@ void SeSystem::update(Graphics& gfx, immut Vector3f& listenerPos)
 {
 	if (mIsClosed) {
 		PRINT("... seSystem closed\n");
+#if defined(PIKI_PC_PORT)
+		pc_audio_trace_count(PCAT_SE_CLOSED); // issue #1030 (env-gated trace)
+#endif
 		return;
 	}
 
@@ -942,6 +948,14 @@ void SeSystem::update(Graphics& gfx, immut Vector3f& listenerPos)
 
 	mListenerPosition = listenerPos;
 	mCameraMtx        = gfx.mCamera->mLookAtMtx;
+#if defined(PIKI_PC_PORT)
+	// Issue #1030 audio trace (env-gated, read-only): which pass / camera /
+	// captain this listener update used.
+	pc_audio_trace_listener(pc_netplay_present_two_pass_active() && pc_render_is_authoritative() ? 1 : 0,
+	                        pc_netplay_present_two_pass_active() ? pc_netplay_present_local_player() : -1, listenerPos.x,
+	                        listenerPos.y, listenerPos.z, mCameraMtx.mMtx[0][3], mCameraMtx.mMtx[1][3],
+	                        mCameraMtx.mMtx[2][3]);
+#endif
 
 	Vector3f vec1, vec2;
 	Jac_UpdateCamera((SVector_*)&vec1, (SVector_*)&vec2);

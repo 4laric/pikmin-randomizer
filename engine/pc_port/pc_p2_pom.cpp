@@ -35,6 +35,7 @@
 //   P2_POM_INJECT_1 <count>
 //   <generator-u32> <forcedBirthFailures>          x count
 #include "pc_p2_pom.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_pom_policy.h"
 #include "pc_bbft.h"
 #include "GameStat.h"
@@ -114,6 +115,9 @@ std::vector<InjectFail> injects;
 unsigned clockLast = 0;
 float clockAcc     = 0.0f;
 unsigned behaviorTick = 0;
+// M1 det fix: last logical tick that advanced the behavior clock below (0 =
+// unprimed; pc_netplay_tick() is 1-based inside tick bodies).
+unsigned lastDetTick = 0;
 bool clockPrimed   = false; // first tick re-bases the clock so the setup pause
                             // never collapses the one-tick Wait into a catch-up
 // Population-conservation baseline: deadPikis captured at setup (before any
@@ -492,6 +496,7 @@ void pc_p2_pom_reset()
 	clockLast    = SDL_GetTicks();
 	clockAcc     = 0.0f;
 	behaviorTick = 0;
+	lastDetTick  = 0;
 	deadPikisBaseline = 0;
 	clockPrimed  = false;
 }
@@ -582,7 +587,20 @@ void pc_p2_pom_tick()
 		clockPrimed = true;
 	}
 	const unsigned now = SDL_GetTicks();
-	clockAcc += float(now - clockLast) * 0.001f;
+	if (pc_netplay_deterministic()) {
+		// M1 det fix: tick-counted analogue of the wall clock. The wall code
+		// advances the shared behavior clock by wall time since the last
+		// call; here it advances by logical ticks since the last call, so
+		// every call in one tick advances it once and skipped ticks catch up
+		// (bounded below, as before). The wall anchor is still refreshed so
+		// leaving det mode never injects a jump.
+		const unsigned tickNow = pc_netplay_tick();
+		if (lastDetTick == 0) lastDetTick = tickNow;
+		clockAcc += float(tickNow - lastDetTick) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2);
+		lastDetTick = tickNow;
+	} else {
+		clockAcc += float(now - clockLast) * 0.001f;
+	}
 	clockLast = now;
 	int steps = 0;
 	while (clockAcc >= SimTick && steps < MaxCatchUpSteps) {

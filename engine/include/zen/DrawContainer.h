@@ -63,6 +63,10 @@ public:
 	void start(containerType, int, int, int, int, int, int);
 	void draw(Graphics&);
 	bool update(int&);
+#if defined(PIKI_PC_PORT)
+	void refreshCounts(int stored, int containerCapacity, int squad, int squadCapacity, int field, int fieldLimit);
+	int revalidateTransfer(int requested) const;
+#endif
 
 	// unused/inlined:
 	~DrawContainer() { }
@@ -107,6 +111,9 @@ protected:
 	Texture* mWindowTextures[3];    // _1C4
 	Texture* mContainerTextures[3]; // _1D0
 	bool mIsActive;                 // _1DC
+#if defined(PIKI_PC_PORT)
+	bool mPcLiveCounts = false;
+#endif
 };
 
 /**

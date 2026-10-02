@@ -213,3 +213,18 @@ bool zen::ogScrMakeDefaultMgr::checkTypingAll()
 {
 	return mActiveTypingTextMgr->check() == TypingTextMgr::STATE_Complete ? true : false;
 }
+
+#if defined(PIKI_PC_PORT)
+PcDefaultFileSnapshot zen::ogScrMakeDefaultMgr::pcDefaultFileSnapshot() const
+{
+    PcDefaultFileSnapshot value;
+    value.available = true;
+    value.state = mStatus;
+    // Do not inspect dormant text or accept the failure acknowledgment.
+    if (mStatus != AwaitingConfirmation || mNextStatus != Success) return value;
+    value.successful = true;
+    value.typingComplete = mActiveTypingTextMgr && mActiveTypingTextMgr->pcTypingComplete();
+    value.confirmationReady = value.typingComplete;
+    return value;
+}
+#endif

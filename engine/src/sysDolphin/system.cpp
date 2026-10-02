@@ -3,6 +3,7 @@
 #if PIKI_PC_PORT
 #include "pc_window.h"
 #include "pc_bbft.h"
+#include "netplay/pc_netplay_det.h"
 #include <chrono>
 #include <thread>
 #include "timing/pc_frame_scheduler.h"
@@ -13,6 +14,8 @@
 #include "settings/pc_settings.h"
 #include "timing/pc_render_packet.h"
 #include "mods/pc_vs_arena.h"
+#include "netplay/pc_input_log.h"
+#include "netplay/pc_state_hash.h"
 #endif
 
 #include "bigFont.h"
@@ -295,6 +298,15 @@ void System::waitRetrace()
  * @todo: Documentation
  */
 #if PIKI_PC_PORT
+// Netplay M3 lockstep driver (issue #880). Weak-linked: strong-defined by
+// pc_port/netplay/pc_netplay_session.cpp in netplay builds only. The default
+// build has no definition, the pointer is null, and the loop below runs the
+// normal path exactly as before.
+class BaseApp;
+__attribute__((weak)) bool pc_netplay_session_drive(System* sys, BaseApp* app);
+#endif
+
+#if PIKI_PC_PORT
 // Read once; see the call site below for why this is not the 60 FPS switch.
 static bool pc_replay_test_enabled()
 {
@@ -303,6 +315,43 @@ static bool pc_replay_test_enabled()
 		return value != nullptr && value[0] == '1';
 	}();
 	return enabled;
+}
+
+// M1 deterministic netplay: periodic world-sim / whole-tick cost report
+// (item 8). Enabled by PIKMIN_NETPLAY_PROFILE_LOG=<file>; appended every 600
+// ticks (20 s at the forced 30 Hz clamp) and mirrored to stdout so hidden
+// smoke runs carry the numbers in their logs. p50 is the profiler median.
+// Non-static so the M3 lockstep session can call it per Advance (review M4);
+// the normal path calls it at the same point below.
+void pc_netplay_det_profile_note_tick()
+{
+	const char* path = pc_netplay_det_profile_path();
+	if (!path) return;
+	const unsigned tick = pc_netplay_tick();
+	if (tick == 0 || tick % 600 != 0) return;
+	const double nowSec = std::chrono::duration<double>(
+	    std::chrono::steady_clock::now().time_since_epoch()).count();
+	// Interval rate since the previous dump (0 on the first dump, which
+	// covers startup and stage load rather than steady-state ticks).
+	static unsigned lastTick = 0;
+	static double lastSec    = 0.0;
+	double rate = 0.0;
+	if (lastSec > 0.0 && nowSec > lastSec) rate = (tick - lastTick) / (nowSec - lastSec);
+	lastTick = tick;
+	lastSec  = nowSec;
+	const PcTickStats sim   = pc_tick_profiler_stats(kPcTickWorldSim, 1000.0 / 30.0);
+	const PcTickStats whole = pc_tick_profiler_stats(kPcTickWhole, 1000.0 / 30.0);
+	char line[288];
+	snprintf(line, sizeof(line),
+	    "[netplay-det] tick=%u ticks_per_sec=%.1f world_sim_ms_p50=%.3f p95=%.3f n=%u whole_ms_p50=%.3f p95=%.3f n=%u\n",
+	    tick, rate, sim.median, sim.p95, sim.samples, whole.median,
+	    whole.p95, whole.samples);
+	fputs(line, stdout);
+	fflush(stdout);
+	if (FILE* log = fopen(path, "a")) {
+		fputs(line, log);
+		fclose(log);
+	}
 }
 #endif
 
@@ -334,6 +383,15 @@ void System::run(BaseApp* app)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
+#if PIKI_PC_PORT
+		// Netplay M3 lockstep (issue #880): when a netplay switch is set, the
+		// session owns the whole loop turn (handshake, tick(s), network wait
+		// or shutdown pacing). Weak-linked: null in the default build, so
+		// the normal path below runs exactly as before.
+		if (pc_netplay_session_drive != nullptr && pc_netplay_session_drive(this, app)) {
+			continue;
+		}
+#endif
 		Jac_Gsync();
 		CARDProbe(0);
 		CARDProbe(1);
@@ -349,7 +407,24 @@ void System::run(BaseApp* app)
 
 		// Get schedule from fixed-step scheduler
 		double now = std::chrono::steady_clock::now().time_since_epoch().count() / 1e9;
+#if PIKI_PC_PORT
+		// M1 deterministic netplay, unthrottled replay mode: grant one
+		// logical tick per loop iteration without waiting for the wall clock
+		// (the vsync limiter is bypassed separately in pc_window). The sim
+		// is unchanged because mDeltaTime stays fixed (see updateSysClock).
+		PcFrameSchedule schedule;
+		if (pc_netplay_unthrottled()) {
+			schedule.logicalTicks      = 1;
+			schedule.fixedDelta        = pc_netplay_fixed_dt(mFrameRate);
+			schedule.interpolationAlpha = 1.0;
+			schedule.nextDeadline      = now + schedule.fixedDelta;
+			schedule.discardedTicks    = 0;
+		} else {
+			schedule = frameScheduler.advance(now, mFrameRate);
+		}
+#else
 		PcFrameSchedule schedule = frameScheduler.advance(now, mFrameRate);
+#endif
 
 		if (schedule.logicalTicks > 0) {
 #if PIKI_PC_PORT
@@ -362,11 +437,22 @@ void System::run(BaseApp* app)
 			// walking and throw inputs at high refresh rates.
 			mControllerMgr.update();
             if (pc_bbft_hold()) continue; // Input polling may have handled F9.
+#if PIKI_PC_PORT
+			pc_input_log_tick(); // netplay harness: record/replay this tick's pads.
+#endif
 			pc_gfx_enable_capture(pc_replay_test_enabled());
 #endif
 			updateSysClock();
 			OSCheckActiveThreads();
+			// M1 deterministic netplay: count the tick (and pin the FP
+			// environment) immediately before the tick body runs.
+			pc_netplay_on_tick_begin();
 			app->idle();
+#if PIKI_PC_PORT
+			if (pc_netplay_deterministic()) pc_netplay_det_profile_note_tick();
+			pc_input_log_tick_end(); // netplay harness: file the yaw the sim used (M2c).
+			pc_state_hash_tick_end(); // netplay harness: hash sim state after this tick.
+#endif
 
 			// Identity-replay experiment: re-execute the tick's captured display
 			// lists into a cleared framebuffer and present that. It is NOT the
@@ -471,6 +557,30 @@ f32 System::getTime()
  */
 void System::updateSysClock()
 {
+#if PIKI_PC_PORT
+	if (pc_netplay_deterministic()) {
+		// M1 deterministic netplay: mDeltaTime comes from the current logical
+		// tick period and never from the wall clock (1/30 at clamp 2, 1/60 at
+		// clamp 1, 1/120 at clamp 0). The FPS/profiling counters below keep
+		// running off OSGetTick so the HUD, logs and profiler still work.
+		OSTick tick = OSGetTick();
+		mEngineFrames++;
+		mFrameTicks = tick - mPrevTick;
+		mDeltaTime  = pc_netplay_fixed_dt(mFrameRate);
+		mTotalFrames++;
+		int time = tick - mFpsSampleStart;
+		if (time > OS_TIMER_CLOCK) {
+			// M1 det fix: multiply in f64. __OSBusClock is u32, so the
+			// original (f64)(CLOCK * frames) wraps past ~106 frames/sample
+			// and reads garbage in unthrottled mode (320+ ticks/s).
+			mFPS                 = (f64)OS_TIMER_CLOCK * (f64)(mEngineFrames - mFramesAtSampleStart) / (f64)time;
+			mFpsSampleStart      = tick;
+			mFramesAtSampleStart = mEngineFrames;
+		}
+		mPrevTick = tick;
+		return;
+	}
+#endif
 	OSTick tick = OSGetTick();
 	mEngineFrames++;
 	mFrameTicks = tick - mPrevTick;

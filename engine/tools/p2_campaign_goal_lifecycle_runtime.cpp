@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     SDL_SetMainReady();
     pc_gpu_preference_apply();
-    _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
+    SDL_setenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1", 1);
     // Production startup: pc_bbft_init parses --randomizer-seed into a full
     // session here because NO preview flag is passed (challengeLevel stays
     // -1, so the bridge-only early return is skipped and pc_randomizer_init

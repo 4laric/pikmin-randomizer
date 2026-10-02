@@ -216,6 +216,18 @@ if (ANDROID)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include")
     file(CREATE_LINK "${_sdl2_src}/include" "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include/SDL2" SYMBOLIC)
     set(SDL2_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/sdl2-include" "${_sdl2_src}/include")
+elseif(WIN32 AND DEFINED SDL2_MINGW_ROOT)
+    # The explicit MinGW SDK also supplies the packaged DLL. Do not allow
+    # stale SDL2_DIR/cache, system packages or pkg-config to select another SDK.
+    foreach(_sdl2_required include/SDL2/SDL.h lib/libSDL2.dll.a bin/SDL2.dll)
+        if(NOT EXISTS "${SDL2_MINGW_ROOT}/${_sdl2_required}" OR
+           IS_DIRECTORY "${SDL2_MINGW_ROOT}/${_sdl2_required}")
+            message(FATAL_ERROR "Incomplete SDL2 MinGW SDK: ${SDL2_MINGW_ROOT}/${_sdl2_required}")
+        endif()
+    endforeach()
+    set(SDL2_INCLUDE_DIRS "${SDL2_MINGW_ROOT}/include" "${SDL2_MINGW_ROOT}/include/SDL2")
+    set(SDL2_LIBRARIES "${SDL2_MINGW_ROOT}/lib/libSDL2.dll.a")
+    set(SDL2_FOUND TRUE)
 else()
     find_package(SDL2 QUIET)
     if (NOT SDL2_FOUND)
@@ -255,6 +267,15 @@ set(PC_PORT_SOURCES
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_surface_topology.cpp
     pc_port/pc_p2_surface_water.cpp
+    # Deterministic netplay fixed-step mode, M1 (issue #878). Engine-free TUs;
+    # they join pikmin_pc and the engine-free pc_bbft_test / pc_sim_rng_test.
+    pc_port/netplay/pc_netplay_det.cpp
+    pc_port/netplay/pc_netplay_policy.cpp
+    pc_port/netplay/pc_netplay_present.cpp
+    pc_port/netplay/pc_sim_rng.cpp
+    # Netplay M5c lane A (issue #887): the lead (instant) camera. Engine TU in
+    # both builds; inert until a lockstep session arms it (netplay builds).
+    pc_port/netplay/pc_netplay_camlead.cpp
     # Challenge host-mode engine runtime bridge (#722, ported from #710
     # db245877; #186 review before shared-line landing): the per-tick runtime
     # bridge plus the landed host-state module, linked into pikmin_pc so the
@@ -321,6 +342,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_white.cpp
     pc_port/pc_p2_white_poison.cpp
     pc_port/pc_p2_cave.cpp
+    pc_port/pc_p2_cave_dialog_window.cpp
     pc_port/pc_p2_cave_generate.cpp
     pc_port/pc_p2_cave_generator.cpp
     pc_port/pc_p2_cave_rooms.cpp
@@ -460,6 +482,14 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bigtreasure_own.cpp
     pc_port/pc_p2_bigtreasure_teki.cpp
     pc_port/pc_randomizer.cpp
+    # Netplay M4 lane A snapshot codec (issue #885): engine-free, linked in
+    # every build next to pc_randomizer.cpp (which calls it). New behaviour
+    # is opt-in at runtime, so default builds are byte-identical.
+    pc_port/netplay/pc_netplay_randstate.cpp
+    # Netplay M4 lane B1 outbox/mirror/ledger module (issue #885): engine-free,
+    # linked wherever pc_randomizer.cpp is. Inert unless a netplay session
+    # with the external-state stream is active.
+    pc_port/pc_randomizer_outbox.cpp
     pc_port/pc_p2_waterwraith.cpp
     pc_port/pc_p2_waterwraith_actor.cpp
     pc_port/pc_p2_kurage.cpp
@@ -482,6 +512,15 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_photo_mode.cpp
     pc_port/pc_permadeath.cpp
     pc_port/pc_coop.cpp
+    # Netplay M4 D-policy (#885): owner co-op randomizer policy (engine-free).
+    pc_port/pc_coop_policy.cpp
+    # Direct-boot co-op switch (netplay M0): CLI/env parse + apply. New
+    # netplay code lives under pc_port/netplay/.
+    pc_port/netplay/pc_coop_switch.cpp
+    # Netplay determinism harness M1 (#878): input record/replay plus
+    # per-tick state hashes. Opt-in via PIKMIN_INPUT_*/PIKMIN_STATE_HASH_*.
+    pc_port/netplay/pc_input_log.cpp
+    pc_port/netplay/pc_state_hash.cpp
     pc_port/pc_art.cpp
     pc_port/pc_icon.cpp
     pc_port/settings/pc_glass_menu.cpp
@@ -492,6 +531,7 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_vs.cpp
     pc_port/pc_file_dialog.cpp
     pc_port/gl/pc_gfx.cpp
+    pc_port/gl/pc_gfx_deferred_tex.cpp
     pc_port/gl/pc_tev_shader.cpp
     pc_port/gl/pc_postprocess.cpp
     pc_port/gl/pc_texpack.cpp
@@ -720,6 +760,9 @@ target_compile_options(${NECTAR_GAME} PRIVATE ${NATIVE_COMPILE_OPTIONS})
 target_link_libraries(${NECTAR_GAME} PRIVATE ${NECTAR_LEGACY})
 # P2 fork targets (desktop only; the Android build is a shared library).
 if (NOT ANDROID)
+add_executable(pc_diary_observer_test tools/test_pc_diary_observer.cpp)
+target_include_directories(pc_diary_observer_test PRIVATE pc_port)
+add_test(NAME pc_diary_observer_test COMMAND pc_diary_observer_test)
 # Lane 29 replacement-main runtime fixture (#243). Built as an ordinary target so
 # the lane wrapper (`build_lane.py l29 --target p2_kurage_runtime`) produces it
 # under the normal build semaphore; it runs the same engine as pikmin_pc with the
@@ -735,7 +778,10 @@ if(WIN32)
     add_library(bbft_transport STATIC pc_port/bbft/bbft_transport.c)
     target_link_libraries(pikmin_pc PRIVATE bbft_transport ws2_32)
     target_link_libraries(p2_kurage_runtime PRIVATE bbft_transport ws2_32)
-    add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp pc_port/pc_p2_delivery_host.cpp)
+    add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/netplay/pc_netplay_det.cpp pc_port/netplay/pc_sim_rng.cpp)
+    # The #871 proxy TU pulls the engine header chain (teki.h), which needs
+    # the same forced pc_types.h preinclude as the rest of the build.
+    target_compile_options(pc_bbft_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_bbft_test COMMAND pc_bbft_test)
     add_test(NAME pc_bbft_background_test COMMAND pc_bbft_test --background)
     add_executable(jaudio_bbft_test pc_port/audio/jaudio_bbft_test.cpp pc_port/audio/jaudio_sink.cpp)
@@ -775,6 +821,328 @@ if(PIKMIN_NATIVE_OPTIMIZE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     foreach(target IN LISTS PIKMIN_OPTIMIZED_TARGETS)
         target_compile_options(${target} PRIVATE -march=native)
     endforeach()
+endif()
+
+# Deterministic netplay build flags, M1 (issue #878). Adds -ffp-contract=off
+# (no fused multiply-add: identical FP results on any CPU running the same
+# binary) and -ftrivial-auto-var-init=zero (no uninitialized-stack garbage in
+# legacy code) to the game code targets. Mutually exclusive with
+# PIKMIN_NATIVE_OPTIMIZE, and OFF by default so the default build's flags are
+# unchanged.
+option(PIKMIN_NETPLAY_BUILD "Deterministic netplay build flags" OFF)
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_NATIVE_OPTIMIZE)
+    message(FATAL_ERROR "PIKMIN_NETPLAY_BUILD cannot be combined with PIKMIN_NATIVE_OPTIMIZE")
+endif()
+if(PIKMIN_NETPLAY_BUILD AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    foreach(target IN LISTS PIKMIN_OPTIMIZED_TARGETS)
+        target_compile_options(${target} PRIVATE -ffp-contract=off -ftrivial-auto-var-init=zero)
+    endforeach()
+endif()
+
+# Deterministic floating-point libm, M2d (issue #879). When
+# PIKMIN_NETPLAY_BUILD=ON, the game executables additionally link
+# pc_port/netplay/pc_netplay_libm.c, whose strong C definitions of the
+# transcendental entry points (sinf/cosf/sincosf/tanf/atanf/atan2f/
+# asinf/acosf/expf/logf/powf/fmodf/hypotf/sqrtf/log10f/log2f/exp2f and the double
+# versions) satisfy the game's undefined references at static link. The
+# mingw-w64 libm archive members that use x87 (fsin/fcos/fsincos/fpatan/
+# f2xm1/fyl2x, plus fldl/fsqrt/fstpl in sqrt/sqrtf) are therefore never
+# the netplay exe, and the msvcrt.dll `tan` import thunk disappears.
+# The TU is compiled once as an OBJECT library (review m2) so the game
+# exes and the host test share the exact same object and flags. Per-name
+# -fno-builtin-* (review M1/m5): GCC must never lower one of the
+# overridden names to x87 microcode, while memcpy/sqrt builtins stay on
+# (the TU uses __builtin_memcpy bit casts and an SSE sqrtsd helper, so
+# they fold to moves/sqrtsd instead of CRT calls). -fno-lto: keep this TU
+# out of LTO so its strong symbols link by the ordinary static rules
+# (LTO partitions have discarded builtin-named definitions like sincosf
+# while other partitions still reference them). The default (non-netplay)
+# build does not link this TU at all: its FP behavior and its libm
+# disassembly are unchanged.
+set(PC_NETPLAY_LIBM_NO_BUILTIN_FLAGS
+    -fno-builtin-sinf -fno-builtin-cosf -fno-builtin-sincosf -fno-builtin-tanf
+    -fno-builtin-atanf -fno-builtin-atan2f -fno-builtin-asinf -fno-builtin-acosf
+    -fno-builtin-expf -fno-builtin-logf -fno-builtin-log10f -fno-builtin-log2f
+    -fno-builtin-exp2f -fno-builtin-powf -fno-builtin-fmodf -fno-builtin-hypotf
+    -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos -fno-builtin-tan
+    -fno-builtin-asin -fno-builtin-acos -fno-builtin-atan -fno-builtin-atan2
+    -fno-builtin-exp -fno-builtin-log -fno-builtin-log10 -fno-builtin-log2
+    -fno-builtin-exp2 -fno-builtin-pow -fno-builtin-fmod -fno-builtin-hypot)
+if(PIKMIN_NETPLAY_BUILD AND NOT ANDROID)
+    add_library(pc_netplay_libm_obj OBJECT pc_port/netplay/pc_netplay_libm.c)
+    target_include_directories(pc_netplay_libm_obj PRIVATE pc_port)
+    target_compile_options(pc_netplay_libm_obj PRIVATE
+        ${PC_NETPLAY_LIBM_NO_BUILTIN_FLAGS} -fno-lto -ffp-contract=off -ftrivial-auto-var-init=zero)
+    target_sources(${NECTAR_GAME} PRIVATE $<TARGET_OBJECTS:pc_netplay_libm_obj>)
+    if(TARGET p2_kurage_runtime)
+        target_sources(p2_kurage_runtime PRIVATE $<TARGET_OBJECTS:pc_netplay_libm_obj>)
+    endif()
+endif()
+
+# Netplay M3 lockstep (issue #880): vendored GekkoNet as its own static
+# library. GekkoLib/src/*.cpp with -std=gnu++20, GEKKONET_NO_ASIO and
+# GEKKONET_STATIC; include dirs include, include/private and thirdparty
+# (zpp). Created and linked into the game exe only when
+# PIKMIN_NETPLAY_BUILD=ON, so the default build is untouched. The game's own
+# netplay code compiles as C++17 and includes only gekkonet.h, which is
+# C-compatible.
+if(PIKMIN_NETPLAY_BUILD AND NOT ANDROID)
+    file(GLOB GEKKONET_SOURCES "third_party/gekkonet/GekkoLib/src/*.cpp")
+    add_library(gekkonet STATIC ${GEKKONET_SOURCES})
+    target_include_directories(gekkonet PUBLIC
+        third_party/gekkonet/GekkoLib/include
+        PRIVATE
+        third_party/gekkonet/GekkoLib/include/private
+        third_party/gekkonet/GekkoLib/thirdparty)
+    target_compile_definitions(gekkonet PUBLIC GEKKONET_STATIC PRIVATE GEKKONET_NO_ASIO)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(gekkonet PRIVATE -std=gnu++20)
+    endif()
+    # Quoted-include priority: on case-insensitive filesystems the game's
+    # include/Event.h would otherwise shadow GekkoNet's private event.h
+    # (directory-wide -I flags precede target ones). -iquote dirs are
+    # searched first for "..." includes; GekkoNet TUs include nothing else
+    # by quoted name, so this is safe.
+    target_compile_options(gekkonet PRIVATE
+        "-iquote${CMAKE_CURRENT_SOURCE_DIR}/third_party/gekkonet/GekkoLib/include/private"
+        "-iquote${CMAKE_CURRENT_SOURCE_DIR}/third_party/gekkonet/GekkoLib/include"
+        "-iquote${CMAKE_CURRENT_SOURCE_DIR}/third_party/gekkonet/GekkoLib/thirdparty")
+    # M3 session driver + UDP transport (game C++17 TUs).
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_session.cpp
+        pc_port/netplay/pc_netplay_udp.cpp)
+    # Desync forensics (issue #1037): the session input log, the desync
+    # exchange data model and the per-object state dump ring. Netplay exe only.
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_inlog.cpp
+        pc_port/netplay/pc_netplay_forensics.cpp
+        pc_port/netplay/pc_state_dump.cpp)
+    # M4 gap-fix lane K (issue #885): failure-path diagnostics for the
+    # netplay exe only (they log, then the game halts as before).
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_diag.cpp
+        pc_port/netplay/pc_netplay_diag_bt.cpp)
+    target_include_directories(${NECTAR_GAME} PRIVATE third_party/gekkonet/GekkoLib/include)
+    target_link_libraries(${NECTAR_GAME} PRIVATE gekkonet)
+    if(WIN32)
+        target_link_libraries(${NECTAR_GAME} PRIVATE ws2_32 winmm)
+    endif()
+endif()
+
+# Netplay M5a ICE transport (issue #887): vendored libjuice v1.7.4 as its own
+# static library. third_party/libjuice/src/*.c as C11, with JUICE_STATIC and
+# the no-Nettle defines from its CMakeLists (USE_NETTLE=0, RELEASE=1 in
+# Release); links ws2_32 and bcrypt on Windows. Created and linked only when
+# PIKMIN_NETPLAY_BUILD=ON, so the default build is untouched (verified with
+# nm: the default exe has 0 juice symbols). NOTE: NATIVE_COMPILE_OPTIONS is
+# C++-only (-fpermissive etc.) and is deliberately NOT applied to this C
+# target.
+if(PIKMIN_NETPLAY_BUILD AND NOT ANDROID)
+    file(GLOB LIBJUICE_SOURCES "third_party/libjuice/src/*.c")
+    add_library(juice STATIC ${LIBJUICE_SOURCES})
+    set_target_properties(juice PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+    target_include_directories(juice PUBLIC
+        third_party/libjuice/include
+        PRIVATE
+        third_party/libjuice/include/juice
+        third_party/libjuice/src)
+    target_compile_definitions(juice PUBLIC JUICE_STATIC PRIVATE USE_NETTLE=0)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_compile_definitions(juice PRIVATE RELEASE=1)
+    endif()
+    if(WIN32)
+        target_compile_definitions(juice PRIVATE WIN32_LEAN_AND_MEAN)
+        target_link_libraries(juice PUBLIC ws2_32 bcrypt)
+    endif()
+    find_package(Threads REQUIRED)
+    target_link_libraries(juice PRIVATE Threads::Threads)
+    # M5a ICE session driver + transport (game C++17 TUs).
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_ice.cpp)
+    target_include_directories(${NECTAR_GAME} PRIVATE third_party/libjuice/include)
+    target_link_libraries(${NECTAR_GAME} PRIVATE juice)
+    # Launch lane (issue #887): the one-command launcher's pre-init stage and
+    # its in-exe self-tests. PIKI_NETPLAY_BUILD compiles the launcher hooks in
+    # pc_main/pc_window/pc_settings/pc_randomizer into this exe only, so the
+    # default exe carries no launcher code or symbols (m11).
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_launch.cpp
+        pc_port/netplay/pc_netplay_launch_selftest.cpp)
+    # M5c lane C (issue #887): the session HUD and end banner (drawn from
+    # vi_stubs.cpp under PIKI_NETPLAY_BUILD; presentation only).
+    target_sources(${NECTAR_GAME} PRIVATE
+        pc_port/netplay/pc_netplay_hud.cpp)
+    target_compile_definitions(${NECTAR_GAME} PRIVATE PIKI_NETPLAY_BUILD=1)
+endif()
+
+# Launch lane (issue #887): in-exe self-tests (they need the game's settings
+# and window code). settings: the host-settings adoption round trip over
+# every hashed key (M2) and every settings save path (B3). input/input-session:
+# input ownership through pc_window_poll_events with an SDL virtual gamepad
+# (M4, m5, m7). Each run works in its own subdir of the build dir.
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_test(NAME netplay_launch_settings_selftest
+        COMMAND $<TARGET_FILE:${NECTAR_GAME}> --netplay-launch-selftest settings
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    add_test(NAME netplay_launch_input_selftest
+        COMMAND $<TARGET_FILE:${NECTAR_GAME}> --netplay-launch-selftest input
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    add_test(NAME netplay_launch_input_session_selftest
+        COMMAND $<TARGET_FILE:${NECTAR_GAME}> --netplay-launch-selftest input-session
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
+# Netplay M5a host-run ICE test (issue #887): two libjuice agents in one
+# process connect over loopback with host candidates only (no STUN/TURN, so
+# no external network), a 64 KiB transfer through the channel interface
+# arrives intact, and the code encode/decode round-trips while garbage is
+# rejected. Netplay builds only (links the juice target, which the default
+# build never creates).
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_executable(pc_netplay_ice_test
+        pc_port/netplay/pc_netplay_ice_test.cpp
+        pc_port/netplay/pc_netplay_ice.cpp)
+    target_include_directories(pc_netplay_ice_test PRIVATE
+        pc_port
+        third_party/libjuice/include
+        third_party/gekkonet/GekkoLib/include)
+    target_compile_definitions(pc_netplay_ice_test PRIVATE GEKKONET_STATIC GEKKONET_NO_ASIO)
+    target_compile_options(pc_netplay_ice_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(pc_netplay_ice_test PRIVATE juice gekkonet)
+    if(WIN32)
+        target_link_libraries(pc_netplay_ice_test PRIVATE ws2_32)
+    endif()
+    add_test(NAME pc_netplay_ice_test COMMAND pc_netplay_ice_test)
+endif()
+
+# Netplay M5a local TURN server helper (issue #887): tiny exe around
+# libjuice's own juice_server_create for the TURN-only pair test. Netplay
+# builds only.
+if(PIKMIN_NETPLAY_BUILD AND NOT ANDROID)
+    add_executable(netplay_turn_server tools/netplay/ice_turn_server.cpp)
+    target_include_directories(netplay_turn_server PRIVATE third_party/libjuice/include)
+    target_compile_options(netplay_turn_server PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(netplay_turn_server PRIVATE juice)
+    if(WIN32)
+        target_link_libraries(netplay_turn_server PRIVATE ws2_32)
+    endif()
+endif()
+
+# Netplay M5c lane B (issue #887): loopback UDP impairment proxy for pair
+# tests (latency schedule, jitter, loss, periodic link blocks; model in
+# pc_netplay_impair.h). Exe-independent, so a baseline on an older exe sees
+# the same link. Test tool, netplay builds on Windows only.
+if(PIKMIN_NETPLAY_BUILD AND WIN32 AND NOT ANDROID)
+    add_executable(netplay_impair_proxy tools/netplay/udp_impair_proxy.cpp)
+    target_include_directories(netplay_impair_proxy PRIVATE pc_port)
+    target_compile_options(netplay_impair_proxy PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(netplay_impair_proxy PRIVATE ws2_32 winmm)
+endif()
+
+# Host-run accuracy/determinism test for the netplay libm (issue #879).
+# Engine-free: links the libm OBJECT plus the test driver. The driver
+# calls the entry points by their standard names (proving the override
+# links) and compares against the platform libm loaded explicitly from
+# msvcrt.dll, so the reference is never shadowed by our definitions.
+# Registered only for netplay builds (review m4): the ulp half compares
+# against msvcrt.dll, which varies with the Windows version, so a
+# default-build ctest could fail elsewhere for unrelated reasons.
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_executable(pc_netplay_libm_test
+        pc_port/netplay/pc_netplay_libm_test.cpp
+        $<TARGET_OBJECTS:pc_netplay_libm_obj>)
+    target_include_directories(pc_netplay_libm_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_libm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_libm_test COMMAND pc_netplay_libm_test)
+endif()
+
+# Netplay M3 lockstep transport test (issue #880): two GekkoNet sessions in
+# one process over an in-memory adapter with the lossy wrapper, a toy
+# deterministic state, window 0 and 2,000 frames; expects 0 desyncs and
+# identical checksums. Netplay builds only (links the gekkonet target, which
+# the default build never creates).
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_executable(pc_netplay_transport_test
+        pc_port/netplay/pc_netplay_transport_test.cpp
+        pc_port/netplay/pc_netplay_udp.cpp)
+    target_include_directories(pc_netplay_transport_test PRIVATE
+        pc_port
+        third_party/gekkonet/GekkoLib/include)
+    target_compile_definitions(pc_netplay_transport_test PRIVATE GEKKONET_STATIC GEKKONET_NO_ASIO)
+    target_compile_options(pc_netplay_transport_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(pc_netplay_transport_test PRIVATE gekkonet)
+    if(WIN32)
+        target_link_libraries(pc_netplay_transport_test PRIVATE ws2_32)
+    endif()
+    add_test(NAME pc_netplay_transport_test COMMAND pc_netplay_transport_test)
+endif()
+
+# Netplay M4 gap-fix lane S (issue #885): the load guard's engine-free policy
+# (pc_netplay_loadguard.h: stall-injector parsing/slicing, load window,
+# keep-alive gate) and the GekkoNet behaviour it relies on, checked against
+# the vendored library with two in-memory sessions (a silent peer is dropped
+# by both sides; network polls keep a stalled peer alive without an Advance
+# and leave an executing Advance untouched; a raised timeout survives one
+# block; a dead peer is still detected). Netplay builds only (links gekkonet).
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_executable(pc_netplay_loadguard_test pc_port/netplay/pc_netplay_loadguard_test.cpp)
+    target_include_directories(pc_netplay_loadguard_test PRIVATE
+        pc_port
+        third_party/gekkonet/GekkoLib/include)
+    target_compile_definitions(pc_netplay_loadguard_test PRIVATE GEKKONET_STATIC GEKKONET_NO_ASIO)
+    target_compile_options(pc_netplay_loadguard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(pc_netplay_loadguard_test PRIVATE gekkonet)
+    if(WIN32)
+        target_link_libraries(pc_netplay_loadguard_test PRIVATE ws2_32)
+    endif()
+    add_test(NAME pc_netplay_loadguard_test COMMAND pc_netplay_loadguard_test)
+endif()
+
+# Netplay M5c lane B (issue #887): adaptive input delay and session stats
+# (pc_netplay_adaptive.h: controller, frame-time histogram, schedule parsing,
+# transition arithmetic), the impairment model (pc_netplay_impair.h), and
+# delay transitions against the vendored GekkoNet (two in-memory sessions
+# growing and shrinking their delays mid-run with scripted per-frame inputs:
+# both peers see identical inputs, and every frame F carries record F - d0).
+# Netplay builds only (links gekkonet).
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    add_executable(pc_netplay_adaptive_test pc_port/netplay/pc_netplay_adaptive_test.cpp)
+    target_include_directories(pc_netplay_adaptive_test PRIVATE
+        pc_port
+        third_party/gekkonet/GekkoLib/include)
+    target_compile_definitions(pc_netplay_adaptive_test PRIVATE GEKKONET_STATIC GEKKONET_NO_ASIO)
+    target_compile_options(pc_netplay_adaptive_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    target_link_libraries(pc_netplay_adaptive_test PRIVATE gekkonet)
+    if(WIN32)
+        target_link_libraries(pc_netplay_adaptive_test PRIVATE ws2_32)
+    endif()
+    add_test(NAME pc_netplay_adaptive_test COMMAND pc_netplay_adaptive_test)
+endif()
+
+# FP determinism gate (issue #879). Runs objdump over the linked game exe
+# and fails on any x87 op (transcendentals and fsqrt), any FMA
+# instruction, any libm sqrt call from the netplay TU, or any
+# tan/sin/cos/atan/exp/log/pow/hypot-family import from msvcrt/ucrt. Only
+# meaningful (and only registered) for netplay builds, where the software
+# libm must have removed all of them. Both game-linked exes are gated
+# (review m3); objdump comes from ${CMAKE_OBJDUMP}, not PATH.
+if(PIKMIN_NETPLAY_BUILD AND PIKMIN_BUILD_TESTS AND NOT ANDROID)
+    if(WIN32)
+        add_test(NAME netplay_fp_gate
+            COMMAND py -3.12 "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/fp_gate.py" --objdump "${CMAKE_OBJDUMP}" "$<TARGET_FILE:${NECTAR_GAME}>")
+        if(TARGET p2_kurage_runtime)
+            add_test(NAME netplay_fp_gate_kurage
+                COMMAND py -3.12 "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/fp_gate.py" --objdump "${CMAKE_OBJDUMP}" "$<TARGET_FILE:p2_kurage_runtime>")
+        endif()
+    else()
+        find_package(Python3 COMPONENTS Interpreter)
+        add_test(NAME netplay_fp_gate
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/fp_gate.py" --objdump "${CMAKE_OBJDUMP}" "$<TARGET_FILE:${NECTAR_GAME}>")
+        if(TARGET p2_kurage_runtime)
+            add_test(NAME netplay_fp_gate_kurage
+                COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/fp_gate.py" --objdump "${CMAKE_OBJDUMP}" "$<TARGET_FILE:p2_kurage_runtime>")
+        endif()
+    endif()
 endif()
 
 option(PIKMIN_ENABLE_IPO "Enable portable interprocedural/link-time optimization" ON)
@@ -1820,6 +2188,33 @@ if(PIKMIN_BUILD_TESTS)
     target_include_directories(pc_pad_bindings_test PRIVATE ${SDL2_INCLUDE_DIRS} pc_port)
     target_compile_options(pc_pad_bindings_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_pad_bindings_test COMMAND pc_pad_bindings_test)
+    # Netplay input record/replay format (#878, host-only, no game needed)
+    add_executable(pc_input_log_test pc_port/netplay/pc_input_log_test.cpp pc_port/netplay/pc_input_log.cpp)
+    target_include_directories(pc_input_log_test PRIVATE pc_port include)
+    target_compile_options(pc_input_log_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_input_log_test COMMAND pc_input_log_test)
+
+    # Netplay desync forensics (#1037, host-only, no game needed): session input
+    # log format and the desync exchange data model.
+    add_executable(pc_netplay_forensics_test
+        pc_port/netplay/pc_netplay_forensics_test.cpp
+        pc_port/netplay/pc_netplay_inlog.cpp
+        pc_port/netplay/pc_netplay_forensics.cpp)
+    target_include_directories(pc_netplay_forensics_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_forensics_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_forensics_test COMMAND pc_netplay_forensics_test)
+
+    # Netplay replay tool self test (#878, tool logic only, launches no game)
+    # Portable interpreter: py -3.12 on Windows (tree convention), python3
+    # elsewhere so PIKMIN_BUILD_TESTS also works on non-Windows hosts.
+    if(WIN32)
+        add_test(NAME netplay_replay_selftest
+            COMMAND py -3.12 "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/selftest.py")
+    else()
+        find_package(Python3 COMPONENTS Interpreter)
+        add_test(NAME netplay_replay_selftest
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/netplay/selftest.py")
+    endif()
 
     # Permadeath save block (no game needed)
     add_executable(pc_permadeath_test pc_port/pc_permadeath_test.cpp pc_port/pc_permadeath.cpp src/sysCommon/stream.cpp src/sysCommon/string.cpp)
@@ -1845,6 +2240,49 @@ if(PIKMIN_BUILD_TESTS)
     target_include_directories(pc_menu_repeat_test PRIVATE pc_port)
     target_compile_options(pc_menu_repeat_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_menu_repeat_test COMMAND pc_menu_repeat_test)
+
+    # Direct-boot co-op switch parse/apply (netplay M0; no game needed)
+    add_executable(pc_coop_switch_test pc_port/netplay/pc_coop_switch_test.cpp pc_port/netplay/pc_coop_switch.cpp pc_port/pc_coop.cpp)
+    target_include_directories(pc_coop_switch_test PRIVATE pc_port)
+    target_compile_options(pc_coop_switch_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_coop_switch_test COMMAND pc_coop_switch_test)
+
+    # Netplay M4 D-policy co-op randomizer rules (#885; engine-free, no game needed)
+    add_executable(pc_coop_policy_test pc_port/pc_coop_policy_test.cpp pc_port/pc_coop_policy.cpp)
+    target_include_directories(pc_coop_policy_test PRIVATE pc_port)
+    target_compile_options(pc_coop_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_coop_policy_test COMMAND pc_coop_policy_test)
+
+    # Co-op geyser launch gate (#1035; header-only, no game needed)
+    add_executable(pc_geyser_gate_test pc_port/pc_geyser_gate_test.cpp)
+    target_include_directories(pc_geyser_gate_test PRIVATE pc_port)
+    target_compile_options(pc_geyser_gate_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_geyser_gate_test COMMAND pc_geyser_gate_test)
+
+    # Netplay input-ownership selection (launch lane; header-only, no SDL/game)
+    add_executable(pc_netplay_input_sel_test pc_port/netplay/pc_netplay_input_sel_test.cpp)
+    target_include_directories(pc_netplay_input_sel_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_input_sel_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_input_sel_test COMMAND pc_netplay_input_sel_test)
+
+    # Netplay launcher pure pieces (launch lane; header-only, no SDL/game):
+    # SESSION re-stamp, bootstrap acceptance, run layout, code classes.
+    add_executable(pc_netplay_launch_test pc_port/netplay/pc_netplay_launch_test.cpp)
+    target_include_directories(pc_netplay_launch_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_launch_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_launch_test COMMAND pc_netplay_launch_test)
+
+    # Netplay M5c lane C (issue #887; header-only, no SDL/game): --continue's
+    # run folders, checkpoint checks, campaign record and recovery message,
+    # and the session HUD's stall window, quality colour and text.
+    add_executable(pc_netplay_continue_test pc_port/netplay/pc_netplay_continue_test.cpp)
+    target_include_directories(pc_netplay_continue_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_continue_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_continue_test COMMAND pc_netplay_continue_test)
+    add_executable(pc_netplay_hud_model_test pc_port/netplay/pc_netplay_hud_model_test.cpp)
+    target_include_directories(pc_netplay_hud_model_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_hud_model_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_hud_model_test COMMAND pc_netplay_hud_model_test)
 
     # Host software DSP test (not linked into main game)
     add_executable(pc_dsp_host_test
@@ -1883,11 +2321,62 @@ if(PIKMIN_BUILD_TESTS)
         set_tests_properties(pc_audio_mixer_test PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 
+    # Netplay audio ownership gate (issue #1030). Host-run, header-only.
+    add_executable(pc_audio_source_test pc_port/audio/pc_audio_source_test.cpp)
+    target_include_directories(pc_audio_source_test PRIVATE pc_port)
+    target_compile_options(pc_audio_source_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_audio_source_test COMMAND pc_audio_source_test)
+
+    # Sequencer clock guard (issue #1030). Host-run, header-only.
+    add_executable(pc_audio_clock_test pc_port/audio/pc_audio_clock_test.cpp)
+    target_include_directories(pc_audio_clock_test PRIVATE pc_port)
+    target_compile_options(pc_audio_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_audio_clock_test COMMAND pc_audio_clock_test)
+
     add_executable(pc_frame_scheduler_test
         pc_port/timing/pc_frame_scheduler_test.cpp
         pc_port/timing/pc_frame_scheduler.cpp)
     target_compile_options(pc_frame_scheduler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_frame_scheduler_test COMMAND pc_frame_scheduler_test)
+
+    # Deterministic netplay RNG streams, M1 (issue #878). Host-run; covers
+    # the MSL sequence, state round-trip, stream independence and the
+    # rand() passthrough when deterministic mode is off.
+    add_executable(pc_sim_rng_test
+        pc_port/netplay/pc_sim_rng_test.cpp
+        pc_port/netplay/pc_sim_rng.cpp
+        pc_port/netplay/pc_netplay_det.cpp)
+    target_compile_options(pc_sim_rng_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_sim_rng_test COMMAND pc_sim_rng_test)
+
+    # Netplay sim-visibility policy, M2a (issue #879). Host-run; covers the
+    # pass-through contract with the switch off and the pinned sim values
+    # (visible / 16:9 / near LOD) with the switch on.
+    add_executable(pc_netplay_policy_test
+        pc_port/netplay/pc_netplay_policy_test.cpp
+        pc_port/netplay/pc_netplay_policy.cpp
+        pc_port/netplay/pc_netplay_det.cpp
+        pc_port/netplay/pc_sim_rng.cpp)
+    target_compile_options(pc_netplay_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_policy_test COMMAND pc_netplay_policy_test)
+
+    # Netplay M2b two-pass present module (issue #879). Host-run; covers the
+    # skip-presentation flag and the null-GX counters.
+    add_executable(pc_netplay_present_test
+        pc_port/netplay/pc_netplay_present_test.cpp
+        pc_port/netplay/pc_netplay_present.cpp
+        pc_port/netplay/pc_netplay_det.cpp
+        pc_port/netplay/pc_sim_rng.cpp)
+    target_compile_definitions(pc_netplay_present_test PRIVATE PC_NETPLAY_PRESENT_HOST=1)
+    target_compile_options(pc_netplay_present_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_present_test COMMAND pc_netplay_present_test)
+
+    # Netplay M5c lane A lead camera core (issue #887; header-only, no game):
+    # key mapping, input history, prediction window, correction filter.
+    add_executable(pc_netplay_camlead_test pc_port/netplay/pc_netplay_camlead_test.cpp)
+    target_include_directories(pc_netplay_camlead_test PRIVATE pc_port)
+    target_compile_options(pc_netplay_camlead_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_netplay_camlead_test COMMAND pc_netplay_camlead_test)
 
     add_executable(pc_render_phase_test
         pc_port/timing/pc_render_phase_test.cpp
@@ -1937,6 +2426,16 @@ if(PIKMIN_BUILD_TESTS)
     target_compile_options(pc_postprocess_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_postprocess_test COMMAND pc_postprocess_test)
 
+    # Polish deferred texture-init store (issues #879 #880, fix2 m3): links
+    # the real unit, not a model of it. No GL context needed.
+    add_executable(pc_gfx_deferred_test
+        pc_port/gl/pc_gfx_deferred_test.cpp
+        pc_port/gl/pc_gfx_deferred_tex.cpp
+    )
+    target_include_directories(pc_gfx_deferred_test PRIVATE pc_port/gl)
+    target_compile_options(pc_gfx_deferred_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_gfx_deferred_test COMMAND pc_gfx_deferred_test)
+
     add_executable(pc_render_packet_test
         pc_port/timing/pc_render_packet_test.cpp
         pc_port/timing/pc_render_packet.cpp)
@@ -1945,7 +2444,9 @@ if(PIKMIN_BUILD_TESTS)
 
     add_executable(pc_tick_profiler_test
         pc_port/timing/pc_tick_profiler_test.cpp
-        pc_port/timing/pc_tick_profiler.cpp)
+        pc_port/timing/pc_tick_profiler.cpp
+        pc_port/netplay/pc_netplay_det.cpp
+        pc_port/netplay/pc_sim_rng.cpp)
     target_include_directories(pc_tick_profiler_test PRIVATE pc_port/timing)
     target_compile_options(pc_tick_profiler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
     add_test(NAME pc_tick_profiler_test COMMAND pc_tick_profiler_test)
@@ -1976,7 +2477,54 @@ endif()
 # Standalone adapter harness; exercises real file I/O without game assets.
 # Include the P2 ordinary delivery ledger because pc_randomizer.cpp always links
 # against its host entry points; this only changes probe linkage, not behavior.
-add_executable(pc_randomizer_probe pc_port/pc_randomizer_probe.cpp pc_port/pc_randomizer.cpp pc_port/pc_p2_delivery_host.cpp)
+add_executable(pc_randomizer_probe pc_port/pc_randomizer_probe.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
+# Same engine-header preinclude as pc_bbft_test above (pc_p2_proxy.cpp needs it).
+target_compile_options(pc_randomizer_probe PRIVATE ${NATIVE_COMPILE_OPTIONS})
+
+# Netplay M4 lane A snapshot codec + reassembler test (issue #885).
+# Engine-free (no gekkonet/game/SDL link), registered in every build.
+add_executable(pc_netplay_randstate_test pc_port/netplay/pc_netplay_randstate_test.cpp pc_port/netplay/pc_netplay_randstate.cpp)
+target_include_directories(pc_netplay_randstate_test PRIVATE pc_port)
+target_compile_options(pc_netplay_randstate_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_netplay_randstate_test COMMAND pc_netplay_randstate_test)
+
+# Netplay M4 lane B1 outbox / mirror line / session.json ledger test
+# (issue #885). Engine-free, registered in every build.
+add_executable(pc_randomizer_outbox_test pc_port/pc_randomizer_outbox_test.cpp pc_port/pc_randomizer_outbox.cpp)
+target_include_directories(pc_randomizer_outbox_test PRIVATE pc_port)
+target_compile_options(pc_randomizer_outbox_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_randomizer_outbox_test COMMAND pc_randomizer_outbox_test)
+# B1 fix round 1: pc_randomizer.cpp's outbox-active host journals and client
+# mirror (exact bytes) against stub session hooks, one process per role.
+add_executable(pc_randomizer_outbox_io_test pc_port/pc_randomizer_outbox_io_test.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
+target_include_directories(pc_randomizer_outbox_io_test PRIVATE pc_port)
+target_compile_options(pc_randomizer_outbox_io_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_randomizer_outbox_io_host_test COMMAND pc_randomizer_outbox_io_test host)
+add_test(NAME pc_randomizer_outbox_io_host_noledger_test COMMAND pc_randomizer_outbox_io_test host-noledger)
+add_test(NAME pc_randomizer_outbox_io_client_test COMMAND pc_randomizer_outbox_io_test client)
+add_test(NAME pc_randomizer_outbox_io_client_unknown_test COMMAND pc_randomizer_outbox_io_test client-unknown)
+
+# Netplay M4 lane B2 (issue #885): the engine-free Hello v3 / decision table /
+# bundle / SAVE_RESULT codecs (header-only pc_netplay_transfer.h), and
+# pc_randomizer.cpp's day-end save barrier path, checkpoint info, adoption
+# and join-mode stale set-aside against stub session hooks (one process per
+# role; host-stale must print the historical fatal message and exit).
+add_executable(pc_netplay_transfer_test pc_port/netplay/pc_netplay_transfer_test.cpp)
+target_include_directories(pc_netplay_transfer_test PRIVATE pc_port)
+target_compile_options(pc_netplay_transfer_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_netplay_transfer_test COMMAND pc_netplay_transfer_test)
+add_executable(pc_randomizer_campaign_net_test pc_port/pc_randomizer_campaign_net_test.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
+target_include_directories(pc_randomizer_campaign_net_test PRIVATE pc_port)
+target_compile_options(pc_randomizer_campaign_net_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_randomizer_campaign_net_host_test COMMAND pc_randomizer_campaign_net_test host)
+add_test(NAME pc_randomizer_campaign_net_client_test COMMAND pc_randomizer_campaign_net_test client)
+add_test(NAME pc_randomizer_campaign_net_join_stale_test COMMAND pc_randomizer_campaign_net_test join-stale)
+# B2 fix round 1: the pending mirror checkpoint retracted by an abandoned
+# barrier (C2), and the host's two fatal stale cases split (X8); each fatal
+# role runs itself as a child and asserts exit code 2 plus the exact message.
+add_test(NAME pc_randomizer_campaign_net_client_abandon_test COMMAND pc_randomizer_campaign_net_test client-abandon)
+add_test(NAME pc_randomizer_campaign_net_host_stale_foreign_test COMMAND pc_randomizer_campaign_net_test host-stale-foreign)
+add_test(NAME pc_randomizer_campaign_net_host_stale_badname_test COMMAND pc_randomizer_campaign_net_test host-stale-badname)
 
 # Only the isolated diagnostic build includes scripted stock/death fixtures.
 option(PIKMIN_RANDOMIZER_TEST_HOOKS "Enable standalone scripted gameplay test fixtures" OFF)
@@ -2365,6 +2913,10 @@ target_compile_options(p2_groink_teki_sidecar PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_dependencies(p2_groink_teki_test p2_groink_teki_sidecar)
 
 # Opt-in Purple and White policy regressions.
+add_executable(p2_purple_collision_trace_test tools/test_purple_collision_trace.cpp)
+target_include_directories(p2_purple_collision_trace_test PRIVATE pc_port)
+target_compile_options(p2_purple_collision_trace_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_purple_collision_trace_test COMMAND p2_purple_collision_trace_test)
 add_executable(p2_purple_direct_policy_test tools/p2_purple_direct_policy_test.cpp)
 target_include_directories(p2_purple_direct_policy_test PRIVATE pc_port)
 target_compile_options(p2_purple_direct_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -2429,7 +2981,11 @@ function(pikmin_add_ci_fixture name source)
         message(FATAL_ERROR "Invalid explicit CI fixture: ${name} ${source}")
     endif()
     set(target "pikmin_ci_fixture_${name}")
-    set(sources ${PC_PORT_SOURCES})
+    # Clone the final production source set, including late-added NETPLAY
+    # ICE/launcher/session/HUD TUs, platform resources and libm object binding.
+    # PC_PORT_SOURCES predates those additions. Cloning it omitted real symbols;
+    # attaching libm separately here would duplicate its existing object source.
+    get_target_property(sources ${NECTAR_GAME} SOURCES)
     list(REMOVE_ITEM sources pc_port/pc_main.cpp)
     list(APPEND sources "${source}")
     add_executable(${target} EXCLUDE_FROM_ALL ${sources})
@@ -2448,6 +3004,26 @@ endfunction()
 
 # #928 opt-in captain switching acceptance (requires local assets to run).
 pikmin_add_ci_fixture(captain_switch tools/p2_captain_switch_runtime.cpp)
+
+# #1154/#1161 ordinary natural WFG acquisition and cave party route; build only.
+pikmin_add_ci_fixture(cave_route tools/p2_cave_route_runtime.cpp)
+if(TARGET pikmin_ci_fixture_cave_route)
+    target_include_directories(pikmin_ci_fixture_cave_route PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+# #1157 matched captain combined SDL fixture; opt-in compile/package only.
+pikmin_add_ci_fixture(captain_combined_sdl tools/p2_captain_combined_sdl_fixture.cpp)
+if(TARGET pikmin_ci_fixture_captain_combined_sdl)
+    target_include_directories(pikmin_ci_fixture_captain_combined_sdl PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+# #1148 ordinary paired SDL/AP acceptance. Explicit compile-only target; the
+# NETPLAY=OFF profile cannot substitute for its deterministic consumer linkage.
+if(PIKMIN_NETPLAY_BUILD)
+    pikmin_add_ci_fixture(coop_state_protocol tools/p2_coop_state_protocol_runtime.cpp)
+    if(TARGET pikmin_ci_fixture_coop_state_protocol)
+        target_sources(pikmin_ci_fixture_coop_state_protocol PRIVATE tools/p2_coop_fixture_input_snapshot.cpp)
+        target_include_directories(pikmin_ci_fixture_coop_state_protocol PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+    endif()
+endif()
 add_executable(p2_bomb_telegraph_test tools/p2_bomb_telegraph_test.cpp)
 target_include_directories(p2_bomb_telegraph_test PRIVATE pc_port)
 target_compile_options(p2_bomb_telegraph_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -2492,3 +3068,56 @@ pikmin_add_ci_fixture(captain_reentry tools/p2_captain_reentry_runtime.cpp)
 
 # #1079 local native card save/resume acceptance, built only on CI.
 pikmin_add_ci_fixture(captain_campaign_resume tools/p2_captain_campaign_resume_runtime.cpp)
+pikmin_add_ci_fixture(captain_onion_owner_sdl tools/p2_captain_onion_owner_sdl_fixture.cpp)
+if(TARGET pikmin_ci_fixture_captain_onion_owner_sdl)
+    target_include_directories(pikmin_ci_fixture_captain_onion_owner_sdl PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1148 complete codec consumer against real randomizer and proxy implementations.
+add_executable(pc_randomizer_state_stream_test pc_port/pc_randomizer_state_stream_test.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
+target_include_directories(pc_randomizer_state_stream_test PRIVATE pc_port)
+target_compile_options(pc_randomizer_state_stream_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+foreach(mode p1 thelynk)
+    add_test(NAME pc_randomizer_state_stream_${mode} COMMAND pc_randomizer_state_stream_test ${mode})
+    foreach(fault bad-mode bad-disabled bad-unknown bad-trailing bad-progression)
+        add_test(NAME pc_randomizer_state_stream_${mode}_${fault} COMMAND pc_randomizer_state_stream_test ${mode} ${fault})
+    endforeach()
+endforeach()
+# #1150 compile-only original tutorial encounter/carry diagnostic.
+pikmin_add_ci_fixture(tutorial_encounter tools/p2_tutorial_encounter_runtime.cpp)
+if(TARGET pikmin_ci_fixture_tutorial_encounter)
+    target_include_directories(pikmin_ci_fixture_tutorial_encounter PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1177 compile-only ordinary all-roster upper-terrain traversal.
+pikmin_add_ci_fixture(tutorial_upper_traversal tools/p2_tutorial_upper_traversal_runtime.cpp)
+if(TARGET pikmin_ci_fixture_tutorial_upper_traversal)
+    target_include_directories(pikmin_ci_fixture_tutorial_upper_traversal PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1178 ordinary Ivory acquisition into sole-White engineering cargo haul; build only.
+pikmin_add_ci_fixture(white_carry tools/p2_white_carry_runtime.cpp)
+if(TARGET pikmin_ci_fixture_white_carry)
+    target_include_directories(pikmin_ci_fixture_white_carry PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1164 ordinary Anode landing and electrical contact; build only.
+pikmin_add_ci_fixture(elecbug_contact tools/p2_elecbug_contact_runtime.cpp)
+if(TARGET pikmin_ci_fixture_elecbug_contact)
+    target_include_directories(pikmin_ci_fixture_elecbug_contact PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1166 separately bounded ordinary blank-card initialization; opt-in only.
+pikmin_add_ci_fixture(blank_card_sdl tools/p2_blank_card_sdl_fixture.cpp)
+
+# #1191 ordinary natural White acquisition, retail haul and native save/resume.
+pikmin_add_ci_fixture(white_campaign tools/p2_white_campaign_runtime.cpp)
+if(TARGET pikmin_ci_fixture_white_campaign)
+    target_include_directories(pikmin_ci_fixture_white_campaign PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #1191 injected native Ivory allocation/overcapacity refund controls; opt-in only.
+pikmin_add_ci_fixture(ivory_budget tools/preview_p2_ivory_budget.cpp)
+if(TARGET pikmin_ci_fixture_ivory_budget)
+    target_include_directories(pikmin_ci_fixture_ivory_budget PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()

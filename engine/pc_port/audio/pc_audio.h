@@ -81,6 +81,10 @@ void pc_audio_set_stereo(bool stereo);
 bool pc_audio_send_system_se(u16 id, bool stop);
 bool pc_audio_send_orima_se(u16 id, bool stop, bool pikiSound);
 bool pc_audio_write_se_port(u8 track, u8 port, u16 value);
+// Like pc_audio_write_se_port, but through a command queue (the original's Jal_SendCmdQueue): the value waits until
+// the child's script has taken the previous one from that port, so two cues raised in the same frame both arrive.
+// Drops the new value when the queue (16 deep) is full.
+bool pc_audio_queue_se_port(u8 track, u8 port, u16 value);
 void pc_audio_set_se_track_volume(u8 track, float volume);
 void pc_audio_set_se_track_paused(u8 track, bool paused);
 bool pc_audio_send_event_action(u8 event, u8 slot, u16 command, bool stop);
@@ -100,6 +104,43 @@ AIDCallback pc_audio_register_dma_callback(AIDCallback callback);
 void pc_audio_start_dma(u32 start_addr, u32 length);
 void pc_audio_stop_dma(void);
 u32  pc_audio_get_dma_bytes_left(void);
+
+
+// Netplay audio trace (issue #1030). Env-gated by PIKMIN_NETPLAY_AUDIO_TRACE=1;
+// every call is a no-op (one cached flag test) when it is off, and nothing in
+// here is read by the simulation. Counters feed a once-a-second summary line
+// ("[audio-trace] sec ...") that compares sequencer / mixer / stream advance
+// against wall time; events are logged immediately.
+enum PCAudioTraceCounter {
+    PCAT_GSYNC = 0,        // Jac_Gsync (once per sim tick / loop turn)
+    PCAT_MOVIE_FRAME,      // Jac_DemoFrame (movie sound frame)
+    PCAT_SE_UPDATE,        // SeSystem::update (listener update)
+    PCAT_SE_UPDATE_AUTH,   // ... of which in the authoritative sim pass
+    PCAT_FORMATION_CALL,   // Jac_Orima_Formation calls (per captain per tick)
+    PCAT_FORMATION_START,  // gaya/charge sound start edges
+    PCAT_FORMATION_STOP,   // gaya/charge sound stop edges
+    PCAT_ORIMA_SE,         // Jac_PlayOrimaSe calls
+    PCAT_ORIMA_SE_DROPPED, // ... suppressed (not the local captain's)
+    PCAT_POLL,             // pc_window_poll_events audio pumps
+    PCAT_EVENT_PLAY,       // Jac_PlayEventAction calls (positional gameplay sounds)
+    PCAT_EVENT_FAIL,       // ... with no active event
+    PCAT_SYSTEM_SE,        // Jac_PlaySystemSe calls
+    PCAT_SE_CLOSED,        // SeSystem::update returns early (system closed)
+    PCAT_SEJAM_NOTE,       // note-ons of the persistent SE sequence that got a voice
+    PCAT_SEJAM_NOVOICE,    // ... that did not
+    PCAT_MOVIE_FRAME_FWD,  // movie frames forwarded to the demo cue cursor (Jac_DemoFrame)
+    PCAT_DEMO_CUE,         // demo sound cues written to the demo SE track
+    PCAT_COUNT
+};
+bool pc_audio_trace_enabled(void);
+void pc_audio_trace_count(int counter);
+// One cinematic frame request (MoviePlayer::sndFrameMovie): which movie, which frame it is on, and whether it
+// drives the demo cue cursor (the movie that started the demo audio) or only runs alongside it. Trace only.
+void pc_audio_trace_movie_frame(int movieIndex, int frame, int forwarded);
+void pc_audio_trace_event(const char* fmt, ...);
+void pc_audio_trace_state(int demo, int flags, int scene);
+void pc_audio_trace_listener(int authoritativePass, int localPlayer, float lx, float ly, float lz,
+                             float cx, float cy, float cz);
 
 // Audio Tick (Simulates AI Hardware Interrupts)
 void pc_audio_tick(void);

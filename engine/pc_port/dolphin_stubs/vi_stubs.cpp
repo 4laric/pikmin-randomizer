@@ -18,6 +18,9 @@
 #include "touch/pc_touch.h"
 #endif
 #endif
+#if PIKI_NETPLAY_BUILD
+#include "netplay/pc_netplay_hud.h"
+#endif
 
 static u32 sRetraceCount = 0;
 
@@ -40,6 +43,11 @@ void VIWaitForRetrace(void)    {
     // framebuffer is blitted to the window, so it appears on top.
     pc_settings_draw_idle_counter();
     pc_settings_draw_vs_hud();
+#if PIKI_NETPLAY_BUILD
+    // Netplay M5c lane C (issue #887): the session HUD / end banner, under
+    // the F1 menu. Inert without a netplay session.
+    pc_netplay_hud_draw();
+#endif
     pc_settings_draw();
     pc_glass_menu_draw();
 #endif

@@ -10,6 +10,7 @@
 #include "sysNew.h"
 #include "system.h"
 #if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_present.h"
 #include "timing/pc_render_phase.h"
 #endif
 
@@ -421,6 +422,17 @@ void LifeGauge::refresh(Graphics& gfx)
 		}
 		}
 #if defined(PIKI_PC_PORT)
+	}
+#endif
+#if defined(PIKI_PC_PORT)
+	// M2b fix2 (issue #879 B1/M6 observation): life-gauge draws are
+	// presentation-only in det two-pass. The state update above stays
+	// authoritative (1x per tick, as before); drawing in both passes submits
+	// view-dependent immediate geometry (circle segments) from the auth pass,
+	// making null_attempted differ between LOCAL_PLAYER 0 and 1. The
+	// presentation pass draws every visible gauge with the local camera.
+	if (pc_netplay_present_two_pass_active() && pc_render_is_authoritative()) {
+		return;
 	}
 #endif
 

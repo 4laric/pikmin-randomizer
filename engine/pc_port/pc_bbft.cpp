@@ -1,5 +1,6 @@
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
+#include "netplay/pc_netplay_det.h"
 #include "pc_p2_challenge_persistence.h"
 #include "pc_p2_challenge_runtime.h"
 #include "pc_p2_challenge_content.h"
@@ -16,6 +17,29 @@
 #include <windows.h>
 #include "bbft/bbft_transport.h"
 #endif
+// Netplay M4 lane A (issue #885): the external-state stream replaces the
+// local randomizer-ready hold while a session runs. Strong-defined by
+// pc_netplay_session.cpp in netplay builds only; null otherwise, where the
+// historical hold below runs unchanged.
+#if defined(__GNUC__)
+__attribute__((weak)) bool pc_netplay_session_active(void);
+__attribute__((weak)) bool pc_netplay_randstate_stream_enabled(void);
+#else
+bool pc_netplay_session_active(void);
+bool pc_netplay_randstate_stream_enabled(void);
+#endif
+namespace {
+bool netplay_randstate_stream_hold_exempt()
+{
+#if defined(__GNUC__)
+	return pc_netplay_session_active != nullptr && pc_netplay_session_active()
+	    && pc_netplay_randstate_stream_enabled != nullptr
+	    && pc_netplay_randstate_stream_enabled();
+#else
+	return false;
+#endif
+}
+} // namespace
 static bool enabled = false;
 static int challengeLevel = -1;
 static bool p2RoomPreview = false;
@@ -155,9 +179,56 @@ const char* pc_bbft_save_root() {
     return session.c_str();
 }
 static bool startDown = false, skipRequested = false;
+// Netplay (#1029): in a lockstep session the cutscene skip comes from the
+// SYNCED inputs (pc_bbft_synced_start), never from the local physical pad,
+// or only the peer whose player pressed Start skips and the sims diverge.
+static bool syncedStart = false;
+static bool syncedPrev[2] = { false, false };
+// Test-only (#1029): PIKMIN_TEST_RAW_START="t1,t2,..." models a physical Start
+// press reaching the local raw-pad path at those logical ticks, so a hidden
+// harness peer (whose real pad is neutral) can exercise it. The session path
+// ignores it, exactly as it ignores a real press. Unset: inert.
+static bool rawStartKnob(unsigned tick) {
+    static bool parsed = false;
+    static unsigned ticks[16];
+    static int count = 0;
+    static unsigned lastFired = 0xFFFFFFFFu;
+    if (!parsed) {
+        parsed = true;
+        const char* e = std::getenv("PIKMIN_TEST_RAW_START");
+        while (e && *e && count < 16) {
+            char* end = nullptr;
+            const unsigned long v = std::strtoul(e, &end, 10);
+            if (end == e) break;
+            ticks[count++] = (unsigned)v;
+            if (*end != ',') break;
+            e = end + 1;
+        }
+    }
+    for (int i = 0; i < count; ++i) {
+        if (ticks[i] == tick && lastFired != tick) { lastFired = tick; return true; }
+    }
+    return false;
+}
 void pc_bbft_start_button(bool down) {
+    if (syncedStart) return;
+    if (rawStartKnob(pc_netplay_tick())) { skipRequested = true; startDown = true; return; }
     skipRequested = pc_bbft_accept_input() && down && !startDown;
     startDown = down;
+}
+void pc_bbft_start_source_synced(bool on) {
+    syncedStart = on;
+    skipRequested = false;
+    startDown = false;
+    syncedPrev[0] = syncedPrev[1] = false;
+}
+void pc_bbft_synced_start(bool pad0Down, bool pad1Down) {
+    if (!syncedStart) return;
+    // A rising edge on either captain's synced Start. Assigned, not OR-ed, so
+    // an unconsumed edge cannot outlive its own frame.
+    skipRequested = (pad0Down && !syncedPrev[0]) || (pad1Down && !syncedPrev[1]);
+    syncedPrev[0] = pad0Down;
+    syncedPrev[1] = pad1Down;
 }
 bool pc_bbft_take_skip() {
     bool result = skipRequested;
@@ -334,8 +405,21 @@ void pc_bbft_update() {
     if (sChallengeContentHook) sChallengeContentHook();
 }
 bool pc_bbft_hold() {
+    // M1 deterministic netplay: losing window focus must not freeze the sim;
+    // it only zeroes the local input (pc_bbft_accept_input() already returns
+    // false while unfocused, and the pad poll zeroes the pads). Only the
+    // randomizer "state not ready" hold stays here; making it a synchronized
+    // event is later netplay work.
+    const bool detMode = pc_netplay_deterministic();
     if (pc_randomizer_enabled()) {
+        // M4a: with the external-state stream on, readiness arrives over the
+        // stream at the same tick on both peers; a local file-mtime hold
+        // would freeze the loop (including the netplay driver) before the
+        // first snapshot can apply. Never hold locally here; synchronized
+        // HOLD/RESUME is lane B work.
+        if (netplay_randstate_stream_hold_exempt()) return false;
 #ifdef _WIN32
+        if (detMode) return !pc_randomizer_ready();
         static bool stalling = false;
         static std::chrono::steady_clock::time_point stallStart, lastReport;
         const bool focusHold = pc_bbft_focus_hold_policy(pc_bbft_test_background(), bbft_is_foreground());
@@ -357,7 +441,7 @@ bool pc_bbft_hold() {
 #endif
     }
 #ifdef _WIN32
-    return enabled && (!bbft_state_ready() || bbft_warp_held() || (!testBackground && !bbft_is_foreground())
+    return enabled && (!bbft_state_ready() || bbft_warp_held() || (!detMode && !testBackground && !bbft_is_foreground())
         || (bbft_region_unlocks() && !bbft_has("Pikmin Access")));
 #else
     return false;

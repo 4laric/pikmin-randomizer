@@ -4,6 +4,9 @@
 #include "P2D/Screen.h"
 #include "P2D/TextBox.h"
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_diary_observer.h"
+#endif
 
 class Controller;
 class Graphics;
@@ -78,6 +81,12 @@ public:
 	}
 
 	bool checkDisp() { return mHasDrawOccurredThisFrame; }
+#if defined(PIKI_PC_PORT)
+	PcDiaryAction pcDiaryAction() const
+	{
+		return pc_diary_message_action(mState == STATE_ActiveDisplay, mIsUiInputDisabled, mIsPageFullyRevealed);
+	}
+#endif
 
 	void move(int x, int y)
 	{

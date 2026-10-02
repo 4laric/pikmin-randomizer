@@ -9,6 +9,8 @@ POLICY = "forest1-bounded-v1"
 NAMES = ("Pikmin 2: forest_1 F1 Water Treasure", "Pikmin 2: forest_1 F1 Electric Treasure")
 ITEMS = dict(zip(("treasure_water", "treasure_elec"), NAMES))
 SCHEMA = "p2-bounded-developer-cave/1"
+WFG_POLICY = 'wfg-pw-acquisition-v1'
+WFG_SCHEMA = 'p2-wfg-acquisition-floor/1'
 
 
 def _resolve(seed, slot, policy=POLICY, floor=1):
@@ -70,10 +72,32 @@ def create_journey_floor(seed, slot, floor):
                 required_colors=requirements(resolved))
 
 
+def create_wfg_acquisition(seed, slot='Player1'):
+    """Opt-in White Flower Garden identity; geometry remains engineering geometry."""
+    from experimental.pikmin2_cave_schema import validate_floor_table, slot_id
+    if type(seed) is not str or not seed or type(slot) is not str or not slot:
+        raise ValueError('cave seed and slot must be nonempty strings')
+    material=json.dumps([WFG_POLICY,seed,slot],separators=(',',':')).encode()
+    floor_seed=int.from_bytes(hashlib.sha256(material).digest()[:8],'big')
+    sid=lambda kind,i:slot_id('forest_2',1,kind,i)
+    table=dict(schema=1,seed=str(floor_seed),cave_id='forest_2',floor=1,
+        unit_pool=WFG_POLICY,unit_candidates=['room_north3_1_tsuchi'],
+        segments=[dict(slot_id=sid('segment',i),index=i) for i in range(2)],
+        chokes=[],leaves=[],treasures=[],
+        buds=[dict(slot_id=sid('bud',i),index=i,segment=i,species=s,count=5)
+              for i,s in enumerate(('purple','white'))],
+        hole=dict(slot_id=sid('segment',1),segment=1),generated=True,geometry_rerolls=True)
+    validate_floor_table(table)
+    return dict(schema=WFG_SCHEMA,seed=seed,slot=slot,policy=WFG_POLICY,
+                source_course='forest_2/f_02',table=table,required_colors={})
+
+
 def validate(descriptor):
     if type(descriptor) is not dict:
         raise ValueError("expected standalone developer cave descriptor")
-    if descriptor.get('schema') == 'p2-journey-floor/1':
+    if descriptor.get('schema') == WFG_SCHEMA:
+        expected=create_wfg_acquisition(descriptor.get('seed'),descriptor.get('slot'))
+    elif descriptor.get('schema') == 'p2-journey-floor/1':
         table = descriptor.get('table')
         if type(table) is not dict:
             raise ValueError('invalid journey floor table')

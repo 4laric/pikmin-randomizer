@@ -43,6 +43,9 @@ public:
 		mMovieIndex   = 0;
 		mPlayer       = nullptr;
 		mActorVisMask = 0;
+#if defined(PIKI_PC_PORT)
+		mSndOwner = false;
+#endif
 	}
 
 	// unused/inlined:
@@ -56,6 +59,12 @@ public:
 	CinematicPlayer* mPlayer; // _18
 	Matrix4f mRootTransform;  // _1C
 	u32 mActorVisMask;        // _5C
+#if defined(PIKI_PC_PORT)
+	// Issue #1030: this movie began the running demo's sound and so owns the demo's cue cursor. Movies that play
+	// alongside it (the take-off's second movie, the results screen's onyon movies) each request a sound frame every
+	// tick too, but must not drive the owner's cues.
+	bool mSndOwner;
+#endif
 };
 
 /**

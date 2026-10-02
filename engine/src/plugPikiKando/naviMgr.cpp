@@ -1,3 +1,4 @@
+#include "pc_coop.h"
 #include "NaviMgr.h"
 #include "DebugLog.h"
 #include "Dolphin/os.h"
@@ -89,7 +90,10 @@ void NaviMgr::update()
 	// state. update_inactive_captain_follow() returns immediately unless a real
 	// second Navi exists, and the guard here keeps the call out of the
 	// single-captain path entirely, so default play is unchanged.
-	if (mNumObjects > 1) {
+	// Upstream co-op drives both captains from their own pads, so the lane 12
+	// "inactive captain follows the active one" AI must not run there: it
+	// overwrote captain 2's target velocity every frame (#887).
+	if (mNumObjects > 1 && !pc_coop_active()) {
 		pc_p2_captain::update_inactive_captain_follow();
 	}
 }

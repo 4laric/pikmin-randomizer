@@ -58,6 +58,10 @@
 #include "pc_p2_projectiles.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_white_treasure.h"
+#include "pc_p2_white_treasure_policy.h"
+#include "pc_p2_cave_bud_actor.h"
+#include "FlowController.h"
 #include "pc_p2_cave_items_engine.h"  // lane 46 (#484) physical cave-item placement
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -149,6 +153,74 @@ static PelletConfig* privateConfig(PelletConfig* source,int weight,int slots) {
     result->mCarryMinPikis.mValue=weight;result->mCarryMaxPikis.mValue=slots;
     return result;
 }
+namespace whiteRetail {
+static p2whitetreasure::Config config;
+static Pellet* actor = nullptr;
+static GoalItem* receiver = nullptr;
+static Shape* treasureShape = nullptr;
+static Shape* receiverShape = nullptr;
+static bool ready = false;
+static bool current() {return ready && flowCont.mCurrentStage && flowCont.mCurrentStage->mStageID == config.stage;}
+static void reject(const char* message) {std::fprintf(stderr,"White campaign treasure: %s\n",message);std::abort();}
+static void textures(Shape* shape) {for(int i=0;i<shape->mTexAttrCount;++i)if(shape->mTexAttrList[i].mTexture)shape->mTexAttrList[i].mTexture->attach();}
+}
+void pc_p2_white_treasure_setup() {
+    using namespace whiteRetail;
+    ready=false;actor=nullptr;receiver=nullptr;treasureShape=nullptr;receiverShape=nullptr;
+    if(!pc_randomizer_white_treasure_campaign())return;
+    if(!p2whitetreasure::read_config(config))reject("original retail descriptor/assets mismatch");
+    if(!flowCont.mCurrentStage || flowCont.mCurrentStage->mStageID!=config.stage)return;
+    if(pc_pikipelago_room_preview() || pc_p2_cave_bud_body_profile())reject("ordinary campaign excludes preview/cave providers");
+    Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* p=static_cast<Pellet*>(*pellets);
+        if(p->isAlive() && p->mGenerator && p->mGenerator->_70==config.cargo){if(actor)reject("duplicate stage/cargo generator");actor=p;}}
+    auto* red=itemMgr->getContainer(Red);
+    if(!red || !red->mGenerator || red->mGenerator->_70!=config.receiver)reject("original receiver generator missing/mismatched");
+    receiver=red;
+    if(p2whitetreasure::ledger.delivered) {
+        // Restore the finite source treasure's consumed state from its native-card generation.
+        // This is production campaign reconstruction, never fixture input or a reward retry.
+        if(actor){actor->kill(false);actor=nullptr;}
+        std::printf("P2_WHITE_TREASURE_RESTORED stage=%d cargo=%u delivered=1 pokos=180\n",config.stage,config.cargo);
+    } else if(!actor || !actor->mConfig || actor->mConfig->mModelId.mId!='pr05')reject("undelivered original cargo host missing");
+    const int previousHeap=gsys->setHeap(SYSHEAP_App);
+    if(actor){actor->mConfig=privateConfig(actor->mConfig,15,25);treasureShape=gameflow.loadShape("courses/pikmin2room/treasure.mod",true);if(!treasureShape)reject("retail treasure shape missing");textures(treasureShape);}
+    receiverShape=gameflow.loadShape("courses/pikmin2room/pod.mod",true);if(!receiverShape)reject("retail receiver shape missing");textures(receiverShape);
+    gsys->setHeap(previousHeap);ready=true;
+    std::printf("P2_WHITE_TREASURE_READY stage=%d cargo=%u receiver=%u id=dia_a_red value=180 minimum=15 maximum=25 delivered=%d pokos=%d original_asset_hashes_verified=1\n",config.stage,config.cargo,config.receiver,int(p2whitetreasure::ledger.delivered),p2whitetreasure::ledger.total());
+}
+bool pc_p2_white_treasure_is_pod(GoalItem* goal){return whiteRetail::current()&&goal==whiteRetail::receiver;}
+bool pc_p2_white_treasure_deliver(Pellet* pellet) {
+    using namespace whiteRetail;
+    if(!current() || !pellet)return false;
+    if(pellet!=actor) {
+        if(pellet->mGenerator && pellet->mGenerator->_70==config.cargo)reject("original retail cargo pointer replaced");
+        return false;
+    }
+    // After completion the pool may reuse the old pointer for a distinct P1 pellet.
+    // Preserve that item's ordinary path; only this source stage/UID is retail.
+    if(p2whitetreasure::ledger.delivered && (!pellet->mGenerator || pellet->mGenerator->_70!=config.cargo))return false;
+    if(!pellet->mGenerator || pellet->mGenerator->_70!=config.cargo || !receiver || !receiver->mGenerator || receiver->mGenerator->_70!=config.receiver
+       || pellet->mTargetGoal!=static_cast<Suckable*>(receiver) || !pellet->mConfig || pellet->mConfig->mCarryMinPikis()!=15 || pellet->mConfig->mCarryMaxPikis()!=25)reject("actual retail actor/receiver identity or carry profile changed");
+    const int partsBeforeReceipt=playerState->getCurrParts();
+    const bool added=p2whitetreasure::ledger.credit();
+    if(playerState->getCurrParts()!=partsBeforeReceipt)reject("retail receipt changed P1 repair economy");
+    // The existing native suction state invokes this callback only on completion;
+    // true suppresses its P1 seed/repair branches. Ledger persists with the native card.
+    std::printf("P2_WHITE_TREASURE_RECEIPT stage=%d cargo=%u receiver=%u id=dia_a_red value=180 new=%d pokos=%d seeds=0 native_suction_completed=1\n",config.stage,config.cargo,config.receiver,int(added),p2whitetreasure::ledger.total());std::fflush(stdout);return true;
+}
+bool pc_p2_white_treasure_draw(Pellet* pellet,Graphics& gfx,Matrix4f& matrix) {
+    using namespace whiteRetail;
+    if(!current() || !pellet || pellet!=actor || !pellet->isAlive() || !pellet->mGenerator || pellet->mGenerator->_70!=config.cargo || p2whitetreasure::ledger.delivered || !treasureShape)return false;
+    treasureShape->updateAnim(gfx,matrix,nullptr,pellet);treasureShape->drawshape(gfx,*gfx.mCamera,nullptr);return true;
+}
+bool pc_p2_white_treasure_draw_pod(GoalItem* goal,Graphics& gfx,Matrix4f&) {
+    using namespace whiteRetail;
+    if(!pc_p2_white_treasure_is_pod(goal) || !receiverShape)return false;
+    Matrix4f world,view;Vector3f position=goal->mSRT.t;position.y+=74;
+    world.makeSRT(Vector3f(1,1,1),Vector3f(0,0,0),position);gfx.mCamera->mLookAtMtx.multiplyTo(world,view);
+    receiverShape->updateAnim(gfx,view,nullptr,goal);receiverShape->drawshape(gfx,*gfx.mCamera,nullptr);return true;
+}
+
 static void podTitle(const std::string& recent) {
     if(SDL_Window* window=SDL_GL_GetCurrentWindow()) {
         std::string title="Pikipelago - Research Pod: "+std::to_string(economy.total())+" Pokos";
@@ -157,7 +229,7 @@ static void podTitle(const std::string& recent) {
     }
 }
 Suckable* pc_p2_preview_goal(){return pc_pikipelago_room_preview()?podAnchor:nullptr;}
-bool pc_p2_preview_is_pod(GoalItem* goal){return pc_pikipelago_room_preview() && podAnchor && goal==podAnchor;}
+bool pc_p2_preview_is_pod(GoalItem* goal){return pc_p2_white_treasure_is_pod(goal) || (pc_pikipelago_room_preview() && podAnchor && goal==podAnchor);}
 int pc_p2_preview_pokos(){return podAnchor?economy.total():-1;}
 bool pc_p2_preview_ready() { return pc_pikipelago_room_preview() && previewShape && previewTreasure; }
 bool pc_p2_preview_cargo_free_ready() { return pc_pikipelago_room_preview() && cargoFree && setupComplete; }
@@ -165,6 +237,12 @@ Pellet* pc_p2_preview_treasure() { return previewTreasure; }
 
 void pc_p2_preview_setup() {
     if (!pc_pikipelago_room_preview()) {
+        // #1150: ordinary imported tutorial can explicitly own Red1 without
+        // enabling room-preview cargo/Pod semantics or changing default P1.
+        const char* course = pc_pikipelago_surface_course();
+        const bool tutorialRed = course && std::string(course) == "tutorial"
+            && std::ifstream("p2-dwarf-red-fsm.txt").good();
+        if (tutorialRed) pc_p2_kochappy_setup();
         if (pc_randomizer_p2_bridge()) {
             pc_p2_dwarf_orange_setup();
             pc_p2_kochappy_fsm_setup();
@@ -215,6 +293,8 @@ void pc_p2_preview_setup() {
             pc_p2_imomushi_setup();
             pc_p2_umimushi_setup();
         }
+        if (tutorialRed && !pc_randomizer_p2_bridge()) pc_p2_kochappy_fsm_setup();
+        pc_p2_white_treasure_setup();
         return;
     }
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;
@@ -402,6 +482,7 @@ void pc_p2_preview_setup() {
 }
 
 bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
+    if(pc_p2_white_treasure_draw(pellet,gfx,matrix))return true;
     if(!pc_pikipelago_room_preview() || !pellet)return false;
     if(pc_p2_cave_items_draw_pellet(pellet,gfx,matrix))return true;  // lane 46 (#484)
     Cargo* c=cargoFor(pellet);Shape* shape=c?c->shape:(pellet==previewTreasure?previewShape:nullptr);
@@ -413,6 +494,7 @@ bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
 
 bool pc_p2_preview_deliver(Pellet* pellet) {
     if(!pellet)return false;
+    if(pc_p2_white_treasure_deliver(pellet))return true;
     if(pc_p2_cave_items_deliver(pellet))return true;  // lane 46 (#484) physical cave treasure
     if(pc_pikipelago_room_preview() && podAnchor) {
         // P1's long-idle captain can be carried like a pellet. Returning him to
@@ -521,6 +603,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
 }
 
 bool pc_p2_preview_draw_pod(GoalItem* goal,Graphics& gfx,Matrix4f& matrix) {
+    if(pc_p2_white_treasure_draw_pod(goal,gfx,matrix))return true;
     if(!pc_p2_preview_is_pod(goal) || !podShape)return false;
     // Static visual uses the existing destination's suction height; animation is deferred.
     Matrix4f world,view;Vector3f position=goal->mSRT.t;position.y+=74;

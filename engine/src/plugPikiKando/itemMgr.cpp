@@ -3,6 +3,13 @@
 #include "pc_coop.h"
 #endif
 #if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
+#endif
+#if defined(PIKI_PC_PORT)
 #include "settings/pc_settings.h"
 #endif
 #include "AIConstant.h"
@@ -775,12 +782,23 @@ void ItemCreature::refresh(Graphics& gfx)
 {
 	bool isOffCamera = false;
 
-	if (!gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius())) {
+	// M2a netplay culling policy (issue #879): in deterministic mode the sim
+	// sees always-visible, so isOffCamera stays false and the draw submission
+	// follows the same value (updateAnim/collisions always run).
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius()))) {
 		enableAICulling();
 		isOffCamera = true;
 	} else {
 		disableAICulling();
 	}
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// re-derives submission from the real local frustum. AI flags above stay
+	// authoritative (enableAICulling no-ops off-phase; det pins the flag).
+	if (pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()) {
+		isOffCamera = !gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius());
+	}
+#endif
 
 	if (mItemShapeObject) {
 		_3C4 = false;
@@ -1149,12 +1167,21 @@ void BuildingItem::refresh(Graphics& gfx)
 	mAnimatedMaterials.animate(&val);
 
 	bool isOffCamera = false;
-	if (!gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius())) {
+	// M2a netplay culling policy (issue #879): see ItemCreature::refresh.
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius()))) {
 		enableAICulling();
 		isOffCamera = true;
 	} else {
 		disableAICulling();
 	}
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// re-derives submission from the real local frustum; AI flags stay
+	// authoritative (see ItemCreature::refresh).
+	if (pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()) {
+		isOffCamera = !gfx.mCamera->isPointVisible(mSRT.t, getBoundingSphereRadius());
+	}
+#endif
 
 	if (mItemShapeObject) {
 		_3C4 = false;

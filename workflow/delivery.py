@@ -76,7 +76,7 @@ class DeliveryMixin:
         build = frozen.get('build', {})
         if build is None:
             build = {}  # Valid tooling handoffs may explicitly omit a build.
-        if build.get('replacement_main'):
+        if build.get('replacement_main') and build.get('delivery') != 'governed-remote-linux-v1':
             # Preserve original certificate bytes and explicitly derive a relocation
             # certificate for the identical executable bytes in the frozen bundle.
             name = build['provenance']

@@ -13,6 +13,7 @@
 #include "types.h"
 #if defined(PIKI_PC_PORT)
 #include "timing/pc_render_phase.h"
+#include "netplay/pc_netplay_det.h"
 #endif
 
 class CollEvent;
@@ -283,10 +284,26 @@ public:
 	{
 #if defined(PIKI_PC_PORT)
 		if (!pc_render_is_authoritative()) return;
+		// M2a netplay culling policy (issue #879): in deterministic mode the
+		// sim-facing culling state is always visible, so arming the cull flag
+		// from the local frustum is replaced by forcing it clear. Identical
+		// on every peer; pass-through when the switch is off.
+		if (pc_netplay_deterministic()) {
+			resetCreatureFlag(CF_UseAICulling);
+			return;
+		}
 #endif
 		setCreatureFlag(CF_UseAICulling);
 	}
-	bool aiCullable() { return !isCreatureFlag(CF_UseAICulling); }
+	bool aiCullable()
+	{
+#if defined(PIKI_PC_PORT)
+		// M2a netplay culling policy (issue #879): always visible in
+		// deterministic mode, regardless of the stored flag.
+		if (pc_netplay_deterministic()) return true;
+#endif
+		return !isCreatureFlag(CF_UseAICulling);
+	}
 
 	bool isAIActive() { return !isCreatureFlag(CF_IsAiDisabled); }
 	void stopAI() { setCreatureFlag(CF_IsAiDisabled); }

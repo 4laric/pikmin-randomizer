@@ -722,7 +722,7 @@ int main(int argc, char** argv)
         if (std::string(argv[i]) == "--receiver-reentry") { sAutomaticBindingScenario = true; sReentryScenario = true; }
     }
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady();
-    pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
+    pc_gpu_preference_apply(); SDL_setenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1", 1); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
     if (!pc_window_init("P2 Kurage display fixture", 960, 540)) return 3;
     pc_window_center();

@@ -6,6 +6,9 @@
 #include "NaviMgr.h"
 #include "NsMath.h"
 #include "SoundMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_geyser_gate.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -107,8 +110,16 @@ void MizuAi::naviGeyzerJump()
 	Vector3f targetPos = mMizu->mSRT.t + dir;
 	targetPos.y        = mapMgr->getMinY(targetPos.x, targetPos.z, true);
 
-	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
-		naviMgr->getNavi(ni)->stimulate(InteractGeyzer(mMizu, targetPos));
+	const int naviCount = naviMgr->getNaviCount();
+	for (int ni = 0; ni < naviCount; ni++) {
+		Navi* navi = naviMgr->getNavi(ni);
+#if defined(PIKI_PC_PORT)
+		// Issue #1035 (upstream Open Nectar 0.9 MizuAi fix): with two captains, launch only the one on the geyser.
+		if (!pc_geyser_gate::shouldLaunch(naviCount, navi->mSRT.t.x, navi->mSRT.t.z, mMizu->mSRT.t.x, mMizu->mSRT.t.z)) {
+			continue;
+		}
+#endif
+		navi->stimulate(InteractGeyzer(mMizu, targetPos));
 	}
 }
 

@@ -8,6 +8,7 @@
 #include "PikiMgr.h"
 #include "Navi.h"
 #include "NaviMgr.h"
+#include "pc_crowd_handover.h"
 #include "MapMgr.h"
 #include "teki.h"
 #include "Generator.h"
@@ -139,8 +140,11 @@ bool pc_p2_bulbmin_whistle(Piki* bulbmin, Navi* whistler) {
     if (!command.accepted) return false;
     bulbmin->mLeaderCreature = nullptr;
     if (naviMgr) {
-        // The whistling captain owns the recruit (co-op); captain 1 otherwise.
-        if (Navi* navi = whistler ? whistler : naviMgr->getNavi()) bulbmin->mNavi = navi;
+        // Preserve the actual whistling captain and release the old plate slot.
+        if (Navi* navi = whistler ? whistler : naviMgr->getNavi()) {
+            pc_crowd_handover::abandonSquadBeforeHandover(bulbmin, navi);
+            bulbmin->mNavi = navi;
+        }
     }
     return true;
 }

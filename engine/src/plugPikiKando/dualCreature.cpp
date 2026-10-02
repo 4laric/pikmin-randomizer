@@ -1,6 +1,11 @@
 #include "DualCreature.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_dangomushi.h"
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
 #endif
 #include "DebugLog.h"
 #include "Graphics.h"
@@ -165,16 +170,22 @@ void DualCreature::update()
 void DualCreature::refresh(Graphics& gfx)
 {
 	Matrix4f mtx;
+#if defined(PIKI_PC_PORT)
+	// M2b: dynamics mode, world matrix and collisions are sim (authoritative
+	// only). Presentation re-renders with the stored mode/matrix and the
+	// local camera. Culling/policy reads stay authoritative-consistent.
+	f32 p2DrawCullRadius = 2.0f * getBoundingSphereRadius();
+	const f32 p2CullRadius = pc_p2_dangomushi_cull_radius(this);
+	if (p2CullRadius > p2DrawCullRadius) p2DrawCullRadius = p2CullRadius;
+	const bool authDual = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative();
+	if (authDual) {
+#endif
 #if defined(VERSION_PIKIDEMO) || defined(VERSION_GPIJ01_01)
 	// I don't enjoy splitting this difference in two, but syntax highlighting really hates extra opening braces.
 #else
 #if defined(PIKI_PC_PORT)
-	f32 cullRadius = 2.0f * getBoundingSphereRadius();
-	const f32 p2CullRadius = pc_p2_dangomushi_cull_radius(this);
-	if (p2CullRadius > cullRadius) {
-		cullRadius = p2CullRadius;
-	}
-	bool isPointVisible = gfx.mCamera->isPointVisible(mSRT.t, cullRadius);
+	// Deterministic visibility policy retains the actual P2 body bounds.
+	bool isPointVisible = pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, p2DrawCullRadius));
 #else
 	bool isPointVisible = gfx.mCamera->isPointVisible(mSRT.t, 2.0f * getBoundingSphereRadius());
 #endif
@@ -188,7 +199,7 @@ void DualCreature::refresh(Graphics& gfx)
 
 	if (!_43E) {
 #if defined(VERSION_PIKIDEMO) || defined(VERSION_GPIJ01_01)
-		if (!mIsDynamicsSimpleFixed && gfx.mCamera->isPointVisible(mSRT.t, 2.0f * getBoundingSphereRadius()))
+		if (!mIsDynamicsSimpleFixed && pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, 2.0f * getBoundingSphereRadius())))
 #else
 		if (!mIsDynamicsSimpleFixed && isPointVisible)
 #endif
@@ -207,9 +218,29 @@ void DualCreature::refresh(Graphics& gfx)
 		mWorldMtx.makeSRT(mSRT.s, mSRT.r, mSRT.t);
 	}
 
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 	gfx.mCamera->mLookAtMtx.multiplyTo(mWorldMtx, mtx);
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// submits only what the real local frustum sees, from the stored
+	// authoritative mode/matrix. AI flags and dynamics above stay
+	// authoritative.
+	const bool m2bDualCulled = pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()
+	                        && !gfx.mCamera->isPointVisible(mSRT.t, p2DrawCullRadius);
+	if (!m2bDualCulled) {
+		doRender(gfx, mtx);
+	}
+#else
 	doRender(gfx, mtx);
+#endif
+#if defined(PIKI_PC_PORT)
+	// M2b: collision creation is sim-only.
+	if (authDual && mIsRealDynamics) {
+#else
 	if (mIsRealDynamics) {
+#endif
 		createCollisions(gfx);
 	}
 

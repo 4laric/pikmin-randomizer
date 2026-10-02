@@ -6,6 +6,9 @@
 #include "sysNew.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
 #endif
 
 /**
@@ -35,6 +38,15 @@ void CullFrustum::vectorToWorldPlane(immut Vector3f& vec, CullingPlane& worldPla
  */
 bool CullFrustum::isPointVisible(immut Vector3f& point, f32 cutoff)
 {
+#if defined(PIKI_PC_PORT)
+	// M2b (issue #879): in the sim pass visibility is the M2a policy value
+	// (always visible), never the local-window frustum. The presentation
+	// pass takes the vanilla path below (real frustum culling, no AI-flag
+	// writes — callers guard those with sim_side).
+	if (pc_netplay_present_sim_pass()) {
+		return pc_netplay_sim_visible(true);
+	}
+#endif
 	for (int i = 0; i < mActivePlaneCount; i++) {
 		Plane* plane = &mPlanePointers[i]->mPlane;
 		if (point.x * plane->mNormal.x + point.y * plane->mNormal.y + point.z * plane->mNormal.z - plane->mOffset < -cutoff) {
@@ -325,6 +337,9 @@ void CullFrustum::update(f32 aspectRatio, f32 fov, f32 zNear, f32 zFar)
 			aspectRatio = windowAspect;
 		}
 	}
+	// M2a fix (issue #879 review M1): no netplay aspect pin here. The
+	// always-visible policy leaves no sim-affecting reader of the frustum
+	// aspect, so the shared draw frustum keeps the live window aspect.
 #endif
 	mAspectRatio   = aspectRatio;
 	mVerticalScale = 1.0f;

@@ -14,6 +14,10 @@
 #include "pc_p2_species.h"
 #include "pc_p2_species_schema.h"
 #include "pc_p2_cave_transfer.h"
+#include "pc_p2_cave_route_policy.h"
+#include "pc_p2_teki_lifetime.h"
+#include "pc_randomizer.h"
+#include "pc_p2_ship_store.h"
 #include "pc_p2_bulbmin.h"
 #include "pc_p2_cave_generator.h"  // lane 41 (#480) runtime generator hook
 #include "pc_p2_cave_rooms_engine.h"  // lane 44 (#482) proxy room/unit instantiation
@@ -34,14 +38,25 @@
 #include "MoviePlayer.h"
 #include "PlayerState.h"
 #include "gameflow.h"
+#include "FlowController.h"
+#include "OnePlayerSection.h"
 #include "system.h"
 #include <SDL2/SDL.h>
+#include "pc_p2_cave_dialog_window.h"
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <vector>
+
+__attribute__((weak)) bool pc_netplay_session_active(void);
 
 namespace {
 int floorId=0;
@@ -51,6 +66,7 @@ int checkpointSchema=1;
 std::string token;
 bool requested=false;
 bool tutorialEntry=false;
+bool boundedForestCheckpoint=false;
 bool completed=false;
 float titleTimer=0;
 P2CaveAnchor anchor;
@@ -58,8 +74,210 @@ Shape* transitionShape=nullptr;
 P2CaveNavRate navRate;
 unsigned navDrawCalls=0;
 bool navMarkerLogged=false;
+P2CaveSurfaceRoute surfaceRoute;
+bool surfaceRouteLoaded=false;
+bool surfaceWfgDestination=false;
+unsigned long surfaceContextScene=0;
+unsigned routeSpeciesMask=0;
+std::set<std::string> activatedSurfaceTokens;
+bool bodyContextReady=false;
+unsigned long bodyContextScene=0;
+void resetRouteSpecies(){routeSpeciesMask=0;}
+bool online(){return pc_netplay_session_active && pc_netplay_session_active();}
+bool tutorialSurfaceStage(){
+    const char* surface=pc_pikipelago_surface_course();
+    return surface && std::string(surface)=="tutorial" && flowCont.mCurrentStage
+        && flowCont.mCurrentStage->mFileName
+        && std::string(flowCont.mCurrentStage->mFileName)=="stages/p2_tutorial.ini";
+}
 using Survivor = P2CaveSurvivor;
-void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
+void invalid(const char* reason){resetRouteSpecies();std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
+bool routeFile(const std::string& path,std::string& bytes){
+    std::ifstream in(path,std::ios::binary|std::ios::ate);if(!in)return false;
+    const auto size=in.tellg();if(size<=0 || size>64*1024*1024)return false;
+    bytes.resize(static_cast<size_t>(size));in.seekg(0);
+    return bool(in.read(&bytes[0],static_cast<std::streamsize>(bytes.size())));
+}
+unsigned authorizeRouteSpecies(const P2CaveSurfaceRoute& route,const std::string& routeBytes){
+    unsigned mask=0;for(const auto& p:route.party.squad)
+        if(p.species==P2SpeciesPurple || p.species==P2SpeciesWhite)mask|=1u<<p.species;
+    if(!mask)return 0; // Retained wire2 alone never activates a species.
+    std::ifstream in("p2-cave-route-species.txt");P2CaveRouteActivation request;
+    if(!in || !p2_cave_route_activation_read(in,request))invalid("species authorization");
+    std::map<std::string,std::string> bytes;size_t total=0;
+    for(const auto& file:request.files){std::string content;
+        if(!routeFile(file.first,content))invalid("species bank missing or oversized");
+        total+=content.size();if(total>256u*1024u*1024u)invalid("species bank aggregate size");
+        bytes.emplace(file.first,std::move(content));}
+    if(!p2_cave_route_activation_valid(request,route,routeBytes,bytes))invalid("species bank or route identity");
+    return mask;
+}
+bool surfaceSafe(){
+    Navi* n=naviMgr?naviMgr->getNavi():nullptr;
+    return surfaceRouteLoaded && !completed && n && n->getCurrState() && playerState
+        && p2_cave_surface_route_eligible(surfaceRoute.entrance,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,
+            n->getCurrState()->getID()==NAVISTATE_Walk,gameflow.mPauseAll,gameflow.mIsUIOverlayActive,
+            gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive,playerState->mInDayEnd,online(),n->mHealth);
+}
+void loadSurfaceRoute(){
+    const auto scene=pc_p2_scene_generation();
+    if(surfaceContextScene!=scene){
+        const bool oldSurface=surfaceRouteLoaded;
+        resetRouteSpecies();surfaceRoute=P2CaveSurfaceRoute{};surfaceRouteLoaded=false;surfaceWfgDestination=false;
+        if(oldSurface){completed=false;requested=false;anchor=P2CaveAnchor{};}
+        surfaceContextScene=scene;
+    }
+    if(!tutorialSurfaceStage() || online()){resetRouteSpecies();return;}
+    if(surfaceRouteLoaded || !naviMgr || !pikiMgr)return;
+    Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState())return;
+    // Restoring a staged checkpoint must never revive an already dead captain.
+    if(n->getCurrState()->getID()!=NAVISTATE_Walk || !std::isfinite(n->mHealth)
+        || n->mHealth<=1 || naviMgr->isNaviDead(n) || gameflow.mPauseAll
+        || gameflow.mIsUIOverlayActive || (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive))return;
+    std::ifstream present("p2-cave-route-surface.txt");if(!present)return;
+    std::string routeBytes;if(!routeFile("p2-cave-route-surface.txt",routeBytes))invalid("surface route unreadable");
+    std::istringstream in(routeBytes);
+    P2CaveSurfaceRoute route;if(!p2_cave_surface_route_read(in,route))invalid("surface route");
+    std::error_code destinationError;
+    const bool destinationPresent=std::filesystem::exists("p2-cave-route-destination.txt",destinationError);
+    if(destinationError)invalid("surface destination unreadable");
+    bool wfgDestination=false;
+    if(destinationPresent){
+        std::ifstream destination("p2-cave-route-destination.txt");
+        std::string magic,boundary,cave,extra;
+        if(!(destination>>magic>>boundary>>cave) || magic!="P2_CAVE_ROUTE_DESTINATION_1"
+            || boundary!=route.party.token || cave!="forest_2/f_02"
+            || (destination>>extra) || !destination.eof())invalid("surface destination");
+        wfgDestination=true;
+    }
+    // A scene reload may not treat the old staged boundary as fresh stock.
+    // Ordinary return/reentry starts a new bounded process with a new token.
+    if(activatedSurfaceTokens.count(route.party.token))invalid("surface token reused across scenes");
+    std::vector<Piki*> actors;Iterator it(pikiMgr);
+    CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())actors.push_back(p);}
+    if(actors.size()!=route.party.squad.size())invalid("surface roster differs from staged actors");
+    if(C_NAVI_PARM(n,mHealth)<=0)invalid("surface captain unavailable");
+    // No typed species, maturity or captain-health write occurs before this
+    // complete authorization/hash/model-set gate and actual native shape setup.
+    resetRouteSpecies();routeSpeciesMask=authorizeRouteSpecies(route,routeBytes);
+    if(routeSpeciesMask&(1u<<P2SpeciesPurple))pc_p2_purple_setup();
+    if(routeSpeciesMask&(1u<<P2SpeciesWhite))pc_p2_white_setup();
+    for(const auto& saved:route.party.squad)
+        if((saved.species==P2SpeciesPurple && !pc_p2_purples_enabled())
+            || (saved.species==P2SpeciesWhite && !pc_p2_whites_enabled()))invalid("surface species assets unavailable");
+    activatedSurfaceTokens.insert(route.party.token);
+    for(size_t i=0;i<actors.size();++i){
+        const auto& saved=route.party.squad[i];Piki* p=actors[i];
+        if((saved.species==3 && !pc_p2_purples_enabled()) || (saved.species==4 && !pc_p2_whites_enabled()))invalid("surface species assets unavailable");
+        if(!pc_p2_set_species(p,saved.species))invalid("surface species");
+        p->mHappa=saved.maturity;
+        if(saved.species==3)pc_p2_make_purple(p);
+        if(saved.species==4)pc_p2_make_white(p);
+    }
+    n->mHealth=C_NAVI_PARM(n,mHealth)*route.party.health;
+    surfaceRoute=route;surfaceRouteLoaded=true;surfaceWfgDestination=wfgDestination;anchor=route.entrance;
+    std::printf("P2_CAVE_SURFACE_READY token=%s survivors=%zu health=%.9g x=%.3f y=%.3f z=%.3f radius=%.3f\n",
+        route.party.token.c_str(),actors.size(),route.party.health,anchor.x,anchor.y,anchor.z,anchor.radius);std::fflush(stdout);
+}
+
+// Output-only #1154 dialog-evidence candidate. These observations never select
+// a button. The external OS consumer must corroborate mapped dialog/title,
+// WM_TRANSIENT_FOR(parent_x11_window), modality, and the parent's _NET_WM_PID.
+unsigned long dialogEvidenceSequence=0;
+long dialogEvidencePid(){
+#if defined(_WIN32)
+    return static_cast<long>(_getpid());
+#else
+    return static_cast<long>(getpid());
+#endif
+}
+std::string dialogEvidenceString(const char* text){
+    std::string out="\"";
+    if(text)for(const unsigned char* p=reinterpret_cast<const unsigned char*>(text);*p;++p){
+        if(*p=='"' || *p=='\\'){out+='\\';out+=static_cast<char>(*p);}
+        else if(*p<32){char escaped[7];std::snprintf(escaped,sizeof(escaped),"\\u%04x",unsigned(*p));out+=escaped;}
+        else out+=static_cast<char>(*p);
+    }
+    return out+'"';
+}
+unsigned long dialogEvidenceBefore(const SDL_MessageBoxData& data,const char* phase,const char* action,
+        const std::string& boundary,const char* cave,int floor){
+    const unsigned long sequence=++dialogEvidenceSequence;
+    int x=0,y=0,width=0,height=0;
+    if(data.window){SDL_GetWindowPosition(data.window,&x,&y);SDL_GetWindowSize(data.window,&width,&height);}
+    const PcP2CaveDialogWindow wm = pc_p2_cave_dialog_window(data.window);
+    std::ostringstream out;
+    out<<"{\"event\":\"begin\",\"sequence\":"<<sequence<<",\"pid\":"<<dialogEvidencePid()
+       <<",\"phase\":"<<dialogEvidenceString(phase)<<",\"action\":"<<dialogEvidenceString(action)<<",\"token\":"<<dialogEvidenceString(boundary.c_str())
+       <<",\"cave\":"<<dialogEvidenceString(cave)<<",\"floor\":"<<floor
+       <<",\"title\":"<<dialogEvidenceString(data.title)<<",\"message\":"<<dialogEvidenceString(data.message)
+       <<",\"flags\":"<<data.flags<<",\"video_driver\":"<<dialogEvidenceString(SDL_GetCurrentVideoDriver())
+       <<",\"parent_sdl_window\":"<<(data.window?SDL_GetWindowID(data.window):0)
+       <<",\"parent_title\":"<<dialogEvidenceString(data.window?SDL_GetWindowTitle(data.window):nullptr)
+       <<",\"parent_flags\":"<<(data.window?SDL_GetWindowFlags(data.window):0)
+       <<",\"parent_x\":"<<x<<",\"parent_y\":"<<y<<",\"parent_w\":"<<width<<",\"parent_h\":"<<height
+       <<",\"syswm_available\":"<<(wm.available?"true":"false")
+       <<",\"syswm_subsystem\":"<<wm.subsystem
+       <<",\"parent_x11_window\":"<<wm.x11Window
+       <<",\"parent_net_wm_pid_verification\":\"external_OS_required\""
+       <<",\"button_disabled_state_supported\":false,\"buttons\":[";
+    for(int i=0;i<data.numbuttons;++i){const auto& b=data.buttons[i];if(i)out<<',';
+        out<<"{\"id\":"<<b.buttonid<<",\"text\":"<<dialogEvidenceString(b.text)<<",\"flags\":"<<b.flags
+           <<",\"return_default\":"<<((b.flags&SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT)?"true":"false")
+           <<",\"escape_default\":"<<((b.flags&SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT)?"true":"false")<<'}';}
+    out<<"]}";
+    std::printf("P2_CAVE_NATIVE_DIALOG %s\n",out.str().c_str());std::fflush(stdout);
+    return sequence;
+}
+void dialogEvidenceAfter(unsigned long sequence,const SDL_MessageBoxData& data,
+        const char* phase,const char* action,const std::string& boundary,const char* cave,int floor,int result,int choice){
+    const std::string error=result?SDL_GetError():"";
+    const char* selected=nullptr;
+    if(result==0)for(int i=0;i<data.numbuttons;++i)
+        if(data.buttons[i].buttonid==choice)selected=data.buttons[i].text;
+    std::ostringstream out;
+    out<<"{\"event\":\"end\",\"sequence\":"<<sequence<<",\"pid\":"<<dialogEvidencePid()
+       <<",\"phase\":"<<dialogEvidenceString(phase)<<",\"action\":"<<dialogEvidenceString(action)<<",\"token\":"<<dialogEvidenceString(boundary.c_str())
+       <<",\"cave\":"<<dialogEvidenceString(cave)<<",\"floor\":"<<floor
+       <<",\"title\":"<<dialogEvidenceString(data.title)<<",\"rc\":"<<result<<",\"choice\":"<<choice
+       <<",\"known_button_selected\":"<<(selected?"true":"false")
+       <<",\"selected_label\":"<<dialogEvidenceString(selected)<<",\"sdl_error\":"<<dialogEvidenceString(error.c_str())<<'}';
+    std::printf("P2_CAVE_NATIVE_DIALOG %s\n",out.str().c_str());std::fflush(stdout);
+}
+
+bool enterSurfaceCave(){
+    if(!surfaceSafe() || pc_p2_cave_bud_pending())return false;
+    P2CaveEntry party=surfaceRoute.party;party.squad.clear();
+    Iterator it(pikiMgr);CI_LOOP(it){
+        Piki* p=static_cast<Piki*>(*it);if(!p->isAlive())continue;
+        const int state=p->getState(),species=pc_p2_species(p);
+        if(state==PIKISTATE_Dying || state==PIKISTATE_Dead || state==PIKISTATE_Swallowed
+            || state==PIKISTATE_Bury || state==PIKISTATE_Grow || p->getStickObject()
+            || species<0 || species>(surfaceRoute.wireVersion==2?P2SpeciesWhite:P2SpeciesYellow))return false;
+        party.squad.push_back({species,p->mHappa});
+    }
+    Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads){if(static_cast<PikiHeadItem*>(*heads)->isAlive())return false;}
+    Navi* n=naviMgr->getNavi();party.health=n->mHealth/C_NAVI_PARM(n,mHealth);
+    const std::string text=p2_cave_surface_route_transfer(party,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,surfaceRoute.wireVersion);
+    if(text.empty())return false;
+    const char* destination=surfaceWfgDestination?"White Flower Garden":"Emergence Cave";
+    const std::string message=std::string("Enter ")+destination+" with all "+std::to_string(party.squad.size())+" surviving Pikmin?";
+    const SDL_MessageBoxButtonData buttons[]={{SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,"Stay"},{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,1,"Enter cave"}};
+    SDL_MessageBoxData data={SDL_MESSAGEBOX_INFORMATION,SDL_GL_GetCurrentWindow(),destination,message.c_str(),2,buttons,nullptr};int choice=0;
+    const unsigned long dialogSequence=dialogEvidenceBefore(data,"surface","enter",party.token,
+        surfaceWfgDestination?"forest_2/f_02":"forest_1",0);
+    const int dialogResult=SDL_ShowMessageBox(&data,&choice);
+    dialogEvidenceAfter(dialogSequence,data,"surface","enter",party.token,
+        surfaceWfgDestination?"forest_2/f_02":"forest_1",0,dialogResult,choice);
+    if(dialogResult!=0 || choice!=1)return false;
+    if(!surfaceSafe())return false;
+    FILE* f=std::fopen("p2-cave-surface-transfer.tmp","wb");if(!f)return false;
+    bool ok=std::fwrite(text.data(),1,text.size(),f)==text.size() && std::fflush(f)==0;
+    if(std::fclose(f)!=0)ok=false;
+    if(!ok || std::rename("p2-cave-surface-transfer.tmp","p2-cave-surface-transfer.txt")!=0)return false;
+    completed=true;resetRouteSpecies();std::printf("P2_CAVE_SURFACE_TRANSFER token=%s survivors=%zu health=%.9g\n",party.token.c_str(),party.squad.size(),party.health);
+    std::fflush(nullptr);std::_Exit(42);
+}
 // Tutorial later-floors entry admission (lanes tutorial2-descend-policy-native
 // #757 + tutorial2-floor9-descend #807; consumer #747). NEW version admission
 // (not a port): the shared header pc_p2_cave_entry_policy.h knows no
@@ -82,7 +300,7 @@ P2CaveEntryProfile p2_tutorial2_entry_profile(const std::string& version, int fl
 bool p2_tutorial_descends(int floor){return floor>=1 && floor<=8;}
 bool active(){return floorId && !completed && p2CavePreviewReady(beasts,floorId,pc_p2_preview_cargo_free_ready(),pc_p2_preview_ready(),pc_p2_preview_goal()!=nullptr,pc_p2_preview_cargo_count(),pc_p2_preview_pokos(),cargoTerminal) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
-    && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd;}
+    && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd && !online();}
 
 void navigationDiagnostic(){
     if(!floorId || !navRate.due(SDL_GetTicks()))return;
@@ -98,7 +316,7 @@ void navigationDiagnostic(){
     std::fflush(stdout);
 }
 
-const char* caveName(){return beasts?"Beasts Cave":"Emergence Cave";}
+const char* caveName(){return beasts?"Beasts Cave":bodyContextReady?"White Flower Garden":"Emergence Cave";}
 void notice(const char* text){SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,caveName(),text,SDL_GL_GetCurrentWindow());}
 bool writeTransfer(const std::string& text){
     FILE* file=std::fopen("p2-cave-transfer.tmp","wb");
@@ -109,6 +327,24 @@ bool writeTransfer(const std::string& text){
 }
 }
 int pc_p2_cave_floor(){return floorId;}
+bool pc_p2_cave_surface_route_active(){return surfaceRouteLoaded && tutorialSurfaceStage() && pc_p2_scene_generation()==surfaceContextScene;}
+bool pc_p2_cave_route_species_requested(int species){
+    if(completed || online() || !tutorialSurfaceStage()
+        || pc_p2_scene_generation()!=surfaceContextScene){resetRouteSpecies();return false;}
+    return (species==P2SpeciesPurple || species==P2SpeciesWhite) && (routeSpeciesMask&(1u<<species));
+}
+bool pc_p2_cave_body_profile_context(unsigned long long seed,const std::string& cave,
+        int floor,const std::string& boundaryToken){
+    if(!bodyContextReady || completed || online() || pc_p2_scene_generation()!=bodyContextScene
+        || !pc_pikipelago_room_preview() || !flowCont.mCurrentStage || !flowCont.mCurrentStage->mFileName
+        || std::string(flowCont.mCurrentStage->mFileName)!="stages/chal0.ini"
+        || pc_randomizer_enabled() || pc_randomizer_purple_campaign() || p2ship::stock.total()!=0)return false;
+    const auto* layout=pc_p2_cave_rooms_layout();
+    return layout && cave=="forest_2" && layout->cave==cave && layout->seed==seed
+        && layout->floor==floor && floorId==floor && floor==1 && checkpointSchema==2
+        && token==boundaryToken && !beasts && !tutorialEntry
+        && pc_p2_purples_enabled() && pc_p2_whites_enabled();
+}
 bool pc_p2_cave_is_beasts(){return beasts;}
 std::string pc_p2_cave_boundary_token(){return token;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
@@ -139,6 +375,9 @@ bool pc_p2_tutorial2_entry_check(const char* path, int* floorOut){
     return ok!=0;
 }
 void pc_p2_cave_setup(){
+    bodyContextReady=false;bodyContextScene=0;
+    resetRouteSpecies();surfaceContextScene=pc_p2_scene_generation();
+    surfaceRoute=P2CaveSurfaceRoute{};surfaceRouteLoaded=false;surfaceWfgDestination=false;
     const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
     navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
     pc_p2_cave_rooms_shutdown();
@@ -146,7 +385,7 @@ void pc_p2_cave_setup(){
     pc_p2_cave_items_shutdown();  // lane 46 (#484)
     pc_p2_cave_bud_shutdown();  // lane 48 (#486)
     pc_p2_cave_carry_shutdown();  // lane 50 (#488)
-    floorId=0;checkpointSchema=1;beasts=false;cargoTerminal=false;token.clear();requested=false;tutorialEntry=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
+    floorId=0;checkpointSchema=1;beasts=false;cargoTerminal=false;token.clear();requested=false;tutorialEntry=false;boundedForestCheckpoint=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     // Lane 41 (#480) runtime generator hook: opt-in only, so a normal cave entry
     // is unchanged. Reads a host-written canonical floor table and writes the
     // engine-generated observed layout for lane 40's checker.
@@ -200,12 +439,38 @@ void pc_p2_cave_setup(){
     if(admitted==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
     tutorialEntry=(profile==P2CaveEntryProfile::Invalid && admitted!=P2CaveEntryProfile::Invalid);
+    // Bud setup above validates its checkpoint against the live room layout.
+    // A stray bud sidecar cannot identify an otherwise unrelated legacy cave.
+    const P2CaveRoomLayout* checkpointLayout=pc_p2_cave_rooms_layout();
+    boundedForestCheckpoint=!beasts && !tutorialEntry && (floor==1 || floor==2)
+        && checkpointLayout && checkpointLayout->cave=="forest_1"
+        && checkpointLayout->floor==floor;
     std::vector<Survivor> squad;
     checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
     for(int i=0;i<count;++i){Survivor s;if(!(in>>s.species>>s.maturity) || !p2_schema_supports(checkpointSchema,s.species) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
     if(in>>extra || !in.eof())invalid("trailing data");
     std::vector<Piki*> spawned;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())spawned.push_back(p);}
     if(spawned.size()!=squad.size())invalid("spawn count differs from checkpoint");
+    const bool bodyProfile=pc_p2_cave_bud_body_profile();
+    if(bodyProfile){
+        if(!checkpointLayout || checkpointLayout->cave!="forest_2" || checkpointLayout->floor!=floor
+            || floor!=1 || checkpointSchema!=2 || beasts || tutorialEntry || online()
+            || !flowCont.mCurrentStage || !flowCont.mCurrentStage->mFileName
+            || std::string(flowCont.mCurrentStage->mFileName)!="stages/chal0.ini"
+            || pc_randomizer_enabled() || pc_randomizer_purple_campaign() || p2ship::stock.total()!=0
+            || !pc_p2_purples_enabled() || !pc_p2_whites_enabled())invalid("WFG body context");
+        // This bounded standalone profile does not impersonate campaign stock
+        // or first-meeting flags. With empty real ship storage, staying below
+        // either source species cap admits both met/unmet WFG branches.
+        int purple=0,white=0;
+        for(const auto& survivor:squad){purple+=survivor.species==3;white+=survivor.species==4;}
+        if(purple>=20 || white>=20)invalid("WFG source species cap");
+    }
+    for(const auto& survivor:squad){
+        if(survivor.species==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
+        if(survivor.species==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
+    }
+    Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     for(size_t i=0;i<squad.size();++i){
         Piki* p=spawned[i];p->mHappa=squad[i].maturity;
         if(squad[i].species==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
@@ -216,7 +481,6 @@ void pc_p2_cave_setup(){
         if(squad[i].species==5)pc_p2_make_bulbmin(p);
         std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].species,squad[i].maturity);
     }
-    Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
     if(!beasts && tutorialEntry){
@@ -253,10 +517,15 @@ void pc_p2_cave_setup(){
         std::printf("P2_CAVE_VISUAL_READY kind=%s vertices=%d\n",kind.c_str(),transitionShape->mVertexCount);
     }
     std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
+    if(bodyProfile){
+        // GameCoreSection finalSetup advances the scene after preview/cave setup.
+        // Bodies arm on their first ordinary tick, never in bootstrap callbacks.
+        bodyContextScene=pc_p2_scene_generation()+1;bodyContextReady=true;
+    }
     pc_p2_cave_generate_run(); // lane cave-generate-provider (#129): opt-in manifest sidecar only; reviewed hook, pending #186
     if(beasts && floor>=3){std::printf("P2_BEASTS_ENTRY_READY floor=%d token=%s descent=disabled\n",floor,token.c_str());std::fflush(stdout);}
 }
-void pc_p2_cave_request(){if(active() && !(beasts && floorId>=3))requested=true;}
+void pc_p2_cave_request(){if(!online() && ((surfaceRouteLoaded && !completed) || (active() && !(beasts && floorId>=3))))requested=true;}
 bool pc_p2_cave_interact(float x,float y,float z){
     if(beasts && floorId>=3)return false;
     if(!safeTime() || !anchor.contains(x,y,z))return false;
@@ -289,7 +558,9 @@ bool pc_p2_cave_checkpoint(bool confirm){
         // Do not preserve an actor half-swallowed, converting or becoming a sprout.
         if(state==PIKISTATE_Swallowed || state==PIKISTATE_Bury || state==PIKISTATE_Grow
             || (p->getStickObject() && p->getStickObject()->mObjType!=OBJTYPE_Pellet))busy=true;
-        const int species=pc_p2_species(p);if(species<0 || !p2_schema_supports(checkpointSchema,species))invalid("runtime Pikmin species");
+        const int species=pc_p2_species(p);
+        if(species<0 || !p2_cave_bounded_live_species_supported(checkpointSchema,species,
+                boundedForestCheckpoint,pc_p2_whites_enabled()))invalid("runtime Pikmin species");
         alive.push_back(p);
     }
     Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads){if(static_cast<PikiHeadItem*>(*heads)->isAlive())busy=true;}
@@ -306,12 +577,19 @@ bool pc_p2_cave_checkpoint(bool confirm){
         if(confirm)notice(anchor.enabled?"Stand at the hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
     }
     if(confirm && !failed){
-        const char* action=(beasts || (!tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"Descend":"Leave cave";
+        const char* action=(beasts || (!bodyContextReady && !tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"Descend":"Leave cave";
         std::string message=std::string(action)+" with all "+std::to_string(alive.size())+" surviving Pikmin?\n"
             "Uncollected treasure stays behind. Your squad and delivered treasure will be saved together.";
         const SDL_MessageBoxButtonData buttons[]={{SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,"Stay"},{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,1,action}};
         SDL_MessageBoxData data={SDL_MESSAGEBOX_INFORMATION,SDL_GL_GetCurrentWindow(),caveName(),message.c_str(),2,buttons,nullptr};int choice=0;
-        if(SDL_ShowMessageBox(&data,&choice)!=0 || choice!=1)return false;
+        const char* dialogAction=std::string(action)=="Descend"?"descend":"leave";
+        const auto* dialogLayout=pc_p2_cave_rooms_layout();
+        const unsigned long dialogSequence=dialogEvidenceBefore(data,"floor",dialogAction,token,
+            dialogLayout?dialogLayout->cave.c_str():caveName(),floorId);
+        const int dialogResult=SDL_ShowMessageBox(&data,&choice);
+        dialogEvidenceAfter(dialogSequence,data,"floor",dialogAction,token,
+            dialogLayout?dialogLayout->cave.c_str():caveName(),floorId,dialogResult,choice);
+        if(dialogResult!=0 || choice!=1)return false;
     }
     // Apply the source cave save filter (pikiMgr::caveSaveAllPikmins, pikiMgr.cpp
     // :723) and build the persisted squad. Wild Bulbmin dependents are dropped on
@@ -351,6 +629,12 @@ bool pc_p2_cave_exit_after_checkpoint(){
     std::fflush(nullptr);std::_Exit(42);
 }
 void pc_p2_cave_tick(){
+    loadSurfaceRoute();
+    if(surfaceRouteLoaded){
+        const bool attempt=requested;requested=false;
+        if(attempt)enterSurfaceCave();
+        return;
+    }
     pc_p2_cave_carry_tick();  // lane 50 (#488) carry blocking at hazards
     pc_p2_cave_geometry_tick();  // lane 45 (#483) live electric-gate actor
     pc_p2_cave_bud_tick();  // lane 48 (#486) ordinary bud conversion path
@@ -370,7 +654,7 @@ void pc_p2_cave_tick(){
         titleTimer=0;
         int count=0,purples=0,whites=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;if(pc_p2_is_white(p))++whites;}}
         const std::string transition=beasts && floorId>=3?" | Floor "+std::to_string(floorId+1)+" descent unavailable":
-            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || (!tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"descend":"leave cave")+" | Saves at floor boundaries";
+            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || (!bodyContextReady && !tutorialEntry && floorId==1) || (tutorialEntry && p2_tutorial_descends(floorId)))?"descend":"leave cave")+" | Saves at floor boundaries";
         std::string title=std::string("Pikipelago - ")+caveName()+" | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple, "+std::to_string(whites)+" White) | "+std::to_string(pc_p2_preview_pokos())+" Pokos"+transition;
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
     }
@@ -379,7 +663,7 @@ void pc_p2_cave_tick(){
 void pc_p2_cave_draw_transition(Graphics& gfx){
     if(gfx.mCamera && pc_p2_cave_rooms_active())pc_p2_cave_rooms_draw(gfx);
     if(gfx.mCamera && pc_p2_cave_geometry_active())pc_p2_cave_geometry_draw(gfx);  // lane 45 (#483)
-    if(!active() || !anchor.enabled || !gfx.mCamera)return;
+    if((!active() && !surfaceRouteLoaded) || !anchor.enabled || !gfx.mCamera)return;
     if(navRate.enabled)++navDrawCalls;
     if(!navMarkerLogged){std::puts("P2_CAVE_MARKER_DRAW");navMarkerLogged=true;}
     // Map post-effects may leave an orthographic projection/material active.

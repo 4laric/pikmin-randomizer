@@ -20,6 +20,19 @@ DEFINE_ERROR(__LINE__) // Never used in the DLL
  */
 DEFINE_PRINT("CardUtil")
 
+// (Placed below DEFINE_ERROR(__LINE__) so its line number does not move.)
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_loadguard.h"
+// Netplay M4 gap-fix lane S fix round 1 (issue #885): keep-alive entry (see
+// pc_port/netplay/pc_netplay_loadguard.h). The day-end save's card mount and
+// write waits run inside one netplay session tick, so each turn of
+// CardUtilIdleWhileBusy lets the session poll the network (rate-limited there,
+// inert outside a session tick and off the session's thread). Weak-linked:
+// strong-defined by pc_netplay_session.cpp in netplay builds only; null in the
+// default build.
+__attribute__((weak)) void pc_netplay_load_keepalive(int site);
+#endif
+
 /**
  * @brief Gets number of directory entries in card list.
  * @note UNUSED Size: 000010
@@ -738,6 +751,9 @@ bool CardUtilIsCardBusy()
 void CardUtilIdleWhileBusy()
 {
 	while (CardUtilIsCardBusy()) {
+#if defined(PIKI_PC_PORT)
+		if (pc_netplay_load_keepalive != nullptr) pc_netplay_load_keepalive(pc_netplay_loadguard::kSiteSave);
+#endif
 		OSYieldThread();
 	}
 }

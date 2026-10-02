@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "netplay/pc_netplay_det.h"
 #if PIKI_USE_JAUDIO
 #include "port/jaudio_host.h"
 #include "port/audio_sink.h"
@@ -32,6 +33,11 @@
 #include <string>
 #include <vector>
 
+// Weak-linked: strong-defined by pc_port/netplay/pc_netplay_session.cpp in
+// netplay builds only. Null in the default build, so the presentation limiter
+// below runs exactly as before there.
+__attribute__((weak)) bool pc_netplay_session_active(void);
+
 static SDL_Window*   sWindow = nullptr;
 static SDL_GLContext sGLContext = nullptr;
 // Mandos resueltos por jugador: sControllers[0] = P1, [1] = P2. Se recalculan
@@ -39,6 +45,10 @@ static SDL_GLContext sGLContext = nullptr;
 static SDL_GameController* sControllers[2] = { nullptr, nullptr };
 #define sController sControllers[0]
 static bool sSwarmHeldP2 = false;
+// Free-camera stick drag per player, accumulated by pc_window_read_gamepad
+// and consumed by pcamcamera.cpp. Declared up here so the BBFT input gate in
+// pc_window_poll_events can clear P2's share when input is refused.
+static float sStickCameraDrag[2] = { 0.0f, 0.0f };
 
 // Todos los mandos abiertos, y el dispositivo asignado a cada jugador. Sin
 // asignación explícita (1 jugador, o antes de pasar por el menú) P1 = teclado
@@ -55,6 +65,28 @@ struct PcPlayerDevice {
 static PcPlayerDevice sPlayerDevice[2] = { { PC_INPUT_DEV_NONE, -1 }, { PC_INPUT_DEV_NONE, -1 } };
 static bool sPlayerDeviceExplicit = false;
 static int  sKeyboardOwner = 0; // jugador que recibe teclado (0 salvo asignación)
+#if PIKI_NETPLAY_BUILD
+// Netplay launch lane (issue #887): per-peer input ownership, netplay builds
+// only. A `keyboard` peer samples only keys and mouse (every gamepad is
+// ignored); a `gamepad` peer samples only its assigned pad (keys and mouse
+// are ignored) and keeps it while its window is in the background (M4).
+// `auto` keeps today's behaviour (both flags false).
+static bool sNetplayIgnoreKeyboard = false;
+static bool sNetplayIgnoreGamepads = false;
+// --netplay-input gamepad:N: the player it feeds and N. Re-resolved on every
+// controller hotplug until the Nth pad is open (m5).
+static int sNetplayPadPlayer = -1;
+static int sNetplayPadIndex  = -1;
+// F6/F9 presses dropped by the ownership/session rule (m7); read by the
+// input self-test.
+static unsigned sNetplayBlockedHotkeys = 0;
+static void netplayResolvePendingPad();
+#define PC_NETPLAY_IGNORE_KEYBOARD sNetplayIgnoreKeyboard
+#define PC_NETPLAY_IGNORE_GAMEPADS sNetplayIgnoreGamepads
+#else
+#define PC_NETPLAY_IGNORE_KEYBOARD false
+#define PC_NETPLAY_IGNORE_GAMEPADS false
+#endif
 
 // Última pulsación vista en el bucle de eventos, para el menú "pulsa un botón".
 static int            sLastPressKind   = PC_INPUT_DEV_NONE;
@@ -125,6 +157,9 @@ static bool pc_controller_open_slot(int index)
 	printf("[PC Port] Opened Game Controller #%d (id %d): %s\n", (int)sOpenPads.size(), (int)id, SDL_GameControllerName(ctl));
 	fflush(stdout);
 	resolvePlayerPads();
+#if PIKI_NETPLAY_BUILD
+	netplayResolvePendingPad();
+#endif
 	return true;
 }
 
@@ -147,6 +182,9 @@ static void pc_controller_close_instance(SDL_JoystickID which)
 		break;
 	}
 	resolvePlayerPads();
+#if PIKI_NETPLAY_BUILD
+	netplayResolvePendingPad();
+#endif
 }
 static int sWindowWidth = 1280;
 static int sWindowHeight = 720;
@@ -343,6 +381,15 @@ void pc_window_set_prompt_player(int player) { sPromptPlayer = player; }
 // jugador al que va el texto, o el último usado si no hay asignación.
 static bool promptUsesGamepad()
 {
+	{
+		// Test-only (#1029): PIKMIN_TEST_PROMPT_GAMEPAD=1 makes this peer's
+		// text-window labels read as a gamepad player's.
+		static const bool forced = [] {
+			const char* e = std::getenv("PIKMIN_TEST_PROMPT_GAMEPAD");
+			return e != nullptr && e[0] == '1';
+		}();
+		if (forced) return true;
+	}
 	if (sPromptPlayer >= 0 && sPromptPlayer < 2 && sPlayerDeviceExplicit) {
 		if (sPlayerDevice[sPromptPlayer].kind == PC_INPUT_DEV_GAMEPAD) return true;
 		if (sPlayerDevice[sPromptPlayer].kind == PC_INPUT_DEV_KEYBOARD) return false;
@@ -389,6 +436,32 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize)
 		snprintf(buf, bufSize, "?");
 		return;
 	}
+
+#if PIKI_NETPLAY_BUILD
+	// Netplay (#1029): this text is substituted into the message window
+	// strings the SIM reveals character by character, so its length decides
+	// when a page is fully revealed (and when a tutorial window releases the
+	// game). A keyboard peer ("Space"), a gamepad peer ("A") or a different
+	// binding / keyboard layout would reveal at different ticks and desync the
+	// pair. In a session every peer prints the same fixed GameCube names. The
+	// escape hatch PIKMIN_NETPLAY_LOCAL_PROMPT_LABELS=1 restores per-device
+	// labels (it can desync; for testing the fix only).
+	if (pc_netplay_session_active != nullptr && pc_netplay_session_active()) {
+		static const bool local = [] {
+			const char* e = std::getenv("PIKMIN_NETPLAY_LOCAL_PROMPT_LABELS");
+			return e != nullptr && e[0] == '1';
+		}();
+		if (!local) {
+			static const char* const kNames[] = { "A", "B", "C-Stick", "X", "Y", "Z", "L", "R" };
+			static const char kTags[]         = "abcxyzlr";
+			const char* hit                   = std::strchr(kTags, tag);
+			snprintf(buf, bufSize, "%s", hit ? kNames[hit - kTags] : "?");
+			printf("[netplay-det] prompt label tag=%c -> %s (session labels)\n", tag, buf);
+			return;
+		}
+		// Still in a session: this peer prints its own device's label.
+	}
+#endif
 
 	if (promptUsesGamepad()) {
 		if (tag == 'c') {
@@ -802,6 +875,9 @@ static bool pc_window_read_gamepad(SDL_GameController* ctl, u16& button, s8& sti
     // Mod "Free Camera": the right stick orbits instead of pushing the squad,
     // the way Pikmin 3 rearranged it. The squad moves to the Swarm button,
     // which defaults to D-pad Down here because the mod frees it up.
+    // Netplay note: the steal happens at sample time, so its result (the
+    // zeroed C-stick) is already inside the recorded PADStatus, and the yaw
+    // the sim uses comes from the recorded input yaw. No det-mode exception.
     if (pc_settings_get_free_camera()) {
         if (abs(rx) > axisDeadZone && pc_pad_route_stick_live(route.cstick, rx, false)) {
             // Cada mando gira la cámara de su jugador (en cooperativo, J2 la suya).
@@ -956,18 +1032,38 @@ void pc_window_poll_events(PADStatus* pad) {
                 pc_controller_close_instance(event.cdevice.which);
                 break;
             case SDL_CONTROLLERBUTTONDOWN:
+                // Netplay ownership: a keyboard peer's prompts never see a
+                // gamepad press.
+                if (PC_NETPLAY_IGNORE_GAMEPADS) break;
                 sLastPressKind = PC_INPUT_DEV_GAMEPAD;
                 sLastPressId   = event.cbutton.which;
                 sLastPressSerial++;
                 break;
-            case SDL_KEYDOWN:
+            case SDL_KEYDOWN: {
+#if PIKI_NETPLAY_BUILD
+                // m7: F6 (P2 cave request) and F9 (BBFT warp) change the sim
+                // locally, outside lockstep. A netplay session never acts on
+                // them, and a gamepad peer ignores every key anyway.
+                const bool hotkeysBlocked = sNetplayIgnoreKeyboard
+                    || (pc_netplay_session_active != nullptr && pc_netplay_session_active());
+#else
+                const bool hotkeysBlocked = false;
+#endif
                 if (event.key.keysym.scancode == SDL_SCANCODE_F6 && !event.key.repeat && !sSettingsMenuOpen) {
-                    pc_p2_cave_request();
+                    if (!hotkeysBlocked) pc_p2_cave_request();
+#if PIKI_NETPLAY_BUILD
+                    else ++sNetplayBlockedHotkeys;
+#endif
                 }
                 if (event.key.keysym.scancode == SDL_SCANCODE_F9 && !event.key.repeat) {
-                    pc_bbft_warp();
+                    if (!hotkeysBlocked) pc_bbft_warp();
+#if PIKI_NETPLAY_BUILD
+                    else ++sNetplayBlockedHotkeys;
+#endif
                 }
-                if (!event.key.repeat && event.key.keysym.scancode != SDL_SCANCODE_ESCAPE) {
+                // Netplay ownership: a gamepad peer's prompts never see a key.
+                if (!event.key.repeat && event.key.keysym.scancode != SDL_SCANCODE_ESCAPE
+                    && !PC_NETPLAY_IGNORE_KEYBOARD) {
                     sLastPressKind = PC_INPUT_DEV_KEYBOARD;
                     sLastPressId   = -1;
                     sLastPressSerial++;
@@ -1009,6 +1105,7 @@ void pc_window_poll_events(PADStatus* pad) {
                     printf("[PC Port] Control mode: %s\n", modeNames[sControlMode]);
                 }
                 break;
+            }
         }
     }
 
@@ -1046,10 +1143,13 @@ void pc_window_poll_events(PADStatus* pad) {
     // aiming, so that key stops sending B for as long as it is down. The
     // whistle is unaffected in practice -- right click is wired to B on its
     // own, below -- and with the mod off nothing changes.
+    // Netplay note: the suppression happens at sample time, so the recorded
+    // PADStatus already carries it. No det-mode exception.
     const bool freeCamHeld = pc_settings_get_free_camera() && held(PC_KEY_ACT_B);
+    const bool freeCamSuppressB = freeCamHeld;
 
     if (held(PC_KEY_ACT_A))        button |= PAD_BUTTON_A;
-    if (held(PC_KEY_ACT_B) && !freeCamHeld) button |= PAD_BUTTON_B;
+    if (held(PC_KEY_ACT_B) && !freeCamSuppressB) button |= PAD_BUTTON_B;
     if (held(PC_KEY_ACT_X))        button |= PAD_BUTTON_X;
     if (held(PC_KEY_ACT_Y))        button |= PAD_BUTTON_Y;
     if (held(PC_KEY_ACT_Z))        button |= PAD_TRIGGER_Z;
@@ -1093,9 +1193,18 @@ void pc_window_poll_events(PADStatus* pad) {
     substickX = (s8)(cdirX * 127);
     substickY = (s8)(cdirY * 127);
 
-    const bool usedKeyboard = button != 0 || dirX != 0 || dirY != 0 || cdirX != 0 || cdirY != 0;
+    bool usedKeyboard = button != 0 || dirX != 0 || dirY != 0 || cdirX != 0 || cdirY != 0;
     bool usedGamepad = false;
     sSwarmHeld = held(PC_KEY_ACT_SWARM);
+    // Netplay input ownership: a `gamepad` peer ignores every key, so the
+    // keyboard-derived sample is zeroed before any merge below.
+    if (PC_NETPLAY_IGNORE_KEYBOARD) {
+        button = 0;
+        stickX = stickY = substickX = substickY = 0;
+        triggerL = triggerR = 0;
+        sSwarmHeld   = false;
+        usedKeyboard = false;
+    }
 
     {
         const bool lockDown = held(PC_KEY_ACT_LOCKON);
@@ -1120,7 +1229,8 @@ void pc_window_poll_events(PADStatus* pad) {
     }
 
     // ── Gamepad Mapping (overrides / merges if controller connected) ──
-    if (sController) {
+    // Netplay input ownership: a `keyboard` peer ignores every gamepad.
+    if (sController && !PC_NETPLAY_IGNORE_GAMEPADS) {
         usedGamepad = pc_window_read_gamepad(sController, button, stickX, stickY, substickX, substickY,
                                              triggerL, triggerR, sSwarmHeld);
     }
@@ -1226,16 +1336,20 @@ void pc_window_poll_events(PADStatus* pad) {
         }
         
         // Also map mouse buttons to A/B for convenience. El ratón va con el
-        // dueño del teclado (P2 si se le asignó el teclado).
+        // dueño del teclado (P2 si se le asignó el teclado). The mouse is
+        // keyboard-family input for netplay ownership: a `gamepad` peer
+        // ignores it with the keys.
         u16 mouseButton = 0;
-        if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-            mouseButton |= PAD_BUTTON_A;
-        }
-        if (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-            mouseButton |= PAD_BUTTON_B;
-        }
-        if (mouseState & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
-            mouseButton |= PAD_TRIGGER_Z;
+        if (!PC_NETPLAY_IGNORE_KEYBOARD) {
+            if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+                mouseButton |= PAD_BUTTON_A;
+            }
+            if (mouseState & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+                mouseButton |= PAD_BUTTON_B;
+            }
+            if (mouseState & SDL_BUTTON(SDL_BUTTON_MIDDLE)) {
+                mouseButton |= PAD_TRIGGER_Z;
+            }
         }
         if (sKeyboardOwner == 1) {
             kbButton2 |= mouseButton;
@@ -1252,7 +1366,20 @@ void pc_window_poll_events(PADStatus* pad) {
     pad[0].substickY  = substickY;
     pad[0].triggerLeft  = triggerL;
     pad[0].triggerRight = triggerR;
-    if (!pc_bbft_accept_input()) {
+    // Sample the BBFT gate once per poll: it depends on the foreground
+    // window, so two calls could disagree within the same poll and gate P1
+    // but not P2.
+    const bool acceptInput = pc_bbft_accept_input();
+#if PIKI_NETPLAY_BUILD
+    // M4: a gamepad-owning netplay peer keeps its pad while its window is in
+    // the background (the local two-window test: the keyboard window has
+    // focus). Its keys and mouse are already ignored above, so only the pad
+    // stays live. A keyboard peer keeps the focus rule.
+    const bool padAccept = acceptInput || (sNetplayIgnoreKeyboard && !sNetplayIgnoreGamepads);
+#else
+    const bool padAccept = acceptInput;
+#endif
+    if (!padAccept) {
         pad[0].button = 0;
         pad[0].stickX = pad[0].stickY = 0;
         pad[0].substickX = pad[0].substickY = 0;
@@ -1278,7 +1405,11 @@ void pc_window_poll_events(PADStatus* pad) {
     sSwarmHeldP2 = kbSwarm2;
     if (sControllers[1] || sKeyboardOwner == 1) {
         u16 b2 = kbButton2; s8 sx2 = kbStickX2, sy2 = kbStickY2, cx2 = kbSubX2, cy2 = kbSubY2; u8 tl2 = kbTrigL2, tr2 = kbTrigR2;
-        if (sControllers[1])
+        // Skipped while input is refused: pc_window_read_gamepad would
+        // otherwise accumulate P2 free-camera drag (sStickCameraDrag[1]) and
+        // swarm state from a held stick while BBFT holds the frame.
+        // Netplay ownership: a `keyboard` peer ignores every gamepad here too.
+        if (sControllers[1] && padAccept && !PC_NETPLAY_IGNORE_GAMEPADS)
             pc_window_read_gamepad(sControllers[1], b2, sx2, sy2, cx2, cy2, tl2, tr2, sSwarmHeldP2, 1);
         pad[1].err          = PAD_ERR_NONE;
         pad[1].button       = b2;
@@ -1288,6 +1419,27 @@ void pc_window_poll_events(PADStatus* pad) {
         pad[1].substickY    = cy2;
         pad[1].triggerLeft  = tl2;
         pad[1].triggerRight = tr2;
+        // M1 det fix: the sim keeps running while unfocused, so in det mode
+        // the same !accept_input() zeroing applied to pad 0 above must cover
+        // pad 1 (all local input). Off-mode path untouched.
+#if PIKI_NETPLAY_BUILD
+        if (!padAccept && pc_netplay_deterministic()) {
+#else
+        if (!pc_bbft_accept_input() && pc_netplay_deterministic()) {
+#endif
+            pad[1].button = 0;
+            pad[1].stickX = pad[1].stickY = 0;
+            pad[1].substickX = pad[1].substickY = 0;
+            pad[1].triggerLeft = pad[1].triggerRight = 0;
+        }
+    }
+    if (!padAccept) {
+        pad[1].button = 0;
+        pad[1].stickX = pad[1].stickY = 0;
+        pad[1].substickX = pad[1].substickY = 0;
+        pad[1].triggerLeft = pad[1].triggerRight = 0;
+        sSwarmHeldP2 = false;
+        sStickCameraDrag[1] = 0.0f;
     }
 #if defined(PIKI_PC_PORT) && defined(PIKI_PC_SETTINGS_MENU)
     // While the settings menu is open, consume the pad so the game underneath
@@ -1326,7 +1478,15 @@ void pc_window_swap_buffers(void) {
         SDL_GL_SwapWindow(sWindow);
         // VSync Off must not retain the software presentation limiter. Game
         // simulation uses the fixed-step scheduler independently.
-        if (sVsyncEnabled) {
+        // M1 deterministic netplay: unthrottled replay runs bypass the
+        // limiter as well (fast replay tests; the sim is unchanged).
+        // Polish pacing (issue #880): while a netplay session runs, the
+        // session owns the single 30 Hz schedule (drift-free deadline in
+        // pc_netplay_session.cpp). The presentation limiter stays off there,
+        // otherwise two stacked 30 Hz pacers cap throttled pairs at ~21 tps.
+        const bool netplayOwnsPacing =
+            (pc_netplay_session_active != nullptr) && pc_netplay_session_active();
+        if (sVsyncEnabled && !pc_netplay_unthrottled() && !netplayOwnsPacing) {
             // The interval is the game's setFrameClamp: retraces per logical
             // frame against a 60 Hz base, so 1 is 60 Hz and 2 is 30 Hz. The
             // port adds 0 for 120 Hz, which has no 60 Hz divisor. Mirror
@@ -1535,6 +1695,88 @@ int pc_window_input_get_assignment(int player, int* gamepadId) {
     return sPlayerDevice[player].kind;
 }
 
+#if PIKI_NETPLAY_BUILD
+void pc_window_set_netplay_input_filter(bool ignoreKeyboard, bool ignoreGamepads) {
+    sNetplayIgnoreKeyboard = ignoreKeyboard;
+    sNetplayIgnoreGamepads = ignoreGamepads;
+}
+
+static void netplayResolvePendingPad() {
+    if (sNetplayPadPlayer < 0 || sNetplayPadIndex < 0) return;
+    const PcPlayerDevice& dev = sPlayerDevice[sNetplayPadPlayer];
+    if (dev.kind == PC_INPUT_DEV_GAMEPAD && pc_find_open_pad(dev.id) != nullptr) return; // bound, open
+    if (sNetplayPadIndex >= (int)sOpenPads.size()) return; // keep waiting for pad N
+    const PcOpenPad& pad = sOpenPads[(size_t)sNetplayPadIndex];
+    sPlayerDeviceExplicit = true;
+    sPlayerDevice[sNetplayPadPlayer].kind = PC_INPUT_DEV_GAMEPAD;
+    sPlayerDevice[sNetplayPadPlayer].id   = pad.id;
+    resolvePlayerPads();
+    printf("[netplay] input: gamepad #%d (id %d, %s) feeds %s\n", sNetplayPadIndex, (int)pad.id,
+           SDL_GameControllerName(pad.ctl), sNetplayPadPlayer == 0 ? "host/P1" : "joiner/P2");
+    fflush(stdout);
+}
+
+void pc_window_set_netplay_gamepad(int player, int index) {
+    if (player < 0 || player > 1 || index < 0) return;
+    sNetplayPadPlayer = player;
+    sNetplayPadIndex  = index;
+    // Owned by a pad even before it is open: the slot stays neutral (never
+    // the keyboard) until pad N connects, then resolves on the hotplug.
+    sPlayerDeviceExplicit = true;
+    sPlayerDevice[player].kind = PC_INPUT_DEV_GAMEPAD;
+    sPlayerDevice[player].id   = -1;
+    resolvePlayerPads();
+    netplayResolvePendingPad();
+}
+
+unsigned pc_window_netplay_blocked_hotkeys(void) { return sNetplayBlockedHotkeys; }
+
+void pc_window_netplay_input_trace(char* buf, int size) {
+    if (buf == nullptr || size <= 0) return;
+    const Uint32 flags = sWindow ? SDL_GetWindowFlags(sWindow) : 0;
+    int n = std::snprintf(buf, (size_t)size,
+                          "bg=%s kbfocus=%d focus=%d accept=%d ignKb=%d ignPad=%d kbOwner=%d explicit=%d open=%d want=p%d#%d",
+                          SDL_GetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS)
+                              ? SDL_GetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS) : "unset",
+                          SDL_GetKeyboardFocus() != nullptr ? 1 : 0,
+                          (flags & SDL_WINDOW_INPUT_FOCUS) ? 1 : 0, pc_bbft_accept_input() ? 1 : 0,
+                          (int)sNetplayIgnoreKeyboard, (int)sNetplayIgnoreGamepads, sKeyboardOwner,
+                          (int)sPlayerDeviceExplicit, (int)sOpenPads.size(), sNetplayPadPlayer, sNetplayPadIndex);
+    // Background-read probe: the DualSense accelerometer is noisy at rest,
+    // so changing values prove HID reports are being read by this process.
+    if (!sOpenPads.empty() && n > 0 && n < size) {
+        SDL_GameController* pctl = sOpenPads[0].ctl;
+        static SDL_GameController* sProbeCtl = nullptr;
+        if (sProbeCtl != pctl && SDL_GameControllerHasSensor(pctl, SDL_SENSOR_ACCEL)) {
+            SDL_GameControllerSetSensorEnabled(pctl, SDL_SENSOR_ACCEL, SDL_TRUE);
+            sProbeCtl = pctl;
+        }
+        float acc[3] = { 0.0f, 0.0f, 0.0f };
+        const int ok = SDL_GameControllerGetSensorData(pctl, SDL_SENSOR_ACCEL, acc, 3);
+        n += std::snprintf(buf + n, (size_t)(size - n), " acc=%d:%.4f,%.4f,%.4f", ok, acc[0], acc[1], acc[2]);
+    }
+    for (int p = 0; p < 2 && n > 0 && n < size; p++) {
+        SDL_GameController* ctl = sControllers[p];
+        n += std::snprintf(buf + n, (size_t)(size - n), " | P%d dev=%d/%d ctl=%d", p + 1, sPlayerDevice[p].kind,
+                           (int)sPlayerDevice[p].id, ctl ? 1 : 0);
+        if (ctl && n > 0 && n < size) {
+            n += std::snprintf(buf + n, (size_t)(size - n), " att=%d lx=%d ly=%d a=%d",
+                               SDL_GameControllerGetAttached(ctl) ? 1 : 0,
+                               (int)SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_LEFTX),
+                               (int)SDL_GameControllerGetAxis(ctl, SDL_CONTROLLER_AXIS_LEFTY),
+                               (int)SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_A));
+            SDL_Joystick* joy = SDL_GameControllerGetJoystick(ctl);
+            const SDL_JoystickGUID guid = SDL_JoystickGetGUID(joy);
+            const char* path = SDL_GameControllerPath(ctl);
+            if (n > 0 && n < size)
+                n += std::snprintf(buf + n, (size_t)(size - n), " drv=%c type=%d path=%.60s",
+                                   (guid.data[14] >= 32 && guid.data[14] < 127) ? (char)guid.data[14] : '?',
+                                   (int)SDL_GameControllerGetType(ctl), path ? path : "none");
+        }
+    }
+}
+#endif
+
 const char* pc_window_gamepad_name(int gamepadId) {
     SDL_GameController* ctl = pc_find_open_pad(gamepadId);
     const char* name = ctl ? SDL_GameControllerName(ctl) : nullptr;
@@ -1672,8 +1914,6 @@ extern "C" float pc_window_take_camera_pitch(void) {
     sCameraPitchDrag = 0.0f;
     return delta;
 }
-
-static float sStickCameraDrag[2] = { 0.0f, 0.0f };
 
 extern "C" void pc_window_add_camera_drag_player(int player, float normalizedDx) {
     if (player < 0 || player > 1) player = 0;

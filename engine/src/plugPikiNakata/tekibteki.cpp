@@ -35,6 +35,9 @@
 #include "pc_p2_kochappy_fsm.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_enemy.h"
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_actor.h"
 #include "pc_p2_giant_breadbug_actor.h"
@@ -52,6 +55,8 @@
 #include "pc_p2_long_legs.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_chappy.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
 #endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
@@ -1729,7 +1734,7 @@ bool BTeki::insideDirection(Vector3f& direction)
  */
 Creature* BTeki::getClosestNaviPiki(immut Condition& cond, f32* outDist)
 {
-	// Cooperativo: el navi más cercano que cumpla la condición.
+	// Cooperativo: el navi mÃ¡s cercano que cumpla la condiciÃ³n.
 	Creature* navi = nullptr;
 	f32 naviBest   = 0.0f;
 	for (int ni = 0; ni < naviMgr->getNaviCount(); ni++) {
@@ -2348,7 +2353,7 @@ void BTeki::drawDefault(Graphics& gfx)
 		cullCentre.set(legsCentre[0], legsCentre[1], legsCentre[2]);
 		rad = p2Radius;
 	}
-	if (!gfx.mCamera->isPointVisible(cullCentre, rad)) {
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(cullCentre, rad))) {
 #else
 	if (!gfx.mCamera->isPointVisible(getBoundingSphereCentre(), rad)) {
 #endif
@@ -2364,7 +2369,20 @@ void BTeki::drawDefault(Graphics& gfx)
 	if (getTekiOption(TEKIOPT_Unk6) && !isCreatureFlag(CF_AIAlwaysActive)) {
 		// some debug flag thing
 	} else {
+#if defined(PIKI_PC_PORT)
+		// M2b fix (review M5, resolves m2a open item m1): the presentation
+		// pass skips off-screen teki entirely on the real local frustum.
+		// The sim work inside drawTekiShape (updateAnim/collisions) is
+		// auth-gated internally; updateAnim routes visible shapes to the
+		// present pool.
+		const bool m2bTekiCulled = pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()
+		                        && !gfx.mCamera->isPointVisible(cullCentre, rad);
+		if (!m2bTekiCulled) {
+			drawTekiShape(gfx);
+		}
+#else
 		drawTekiShape(gfx);
+#endif
 	}
 
 	if (gsys->mToggleDebugInfo) {

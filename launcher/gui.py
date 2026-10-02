@@ -53,7 +53,8 @@ def starting_stats_hint(manifest):
 
 
 class LauncherApp:
-    def __init__(self, root, seed_arg=None, server_arg=None):
+    def __init__(self, root, seed_arg=None, server_arg=None, p2_content=None, content_manifest=None,
+                 assets=None, reset_assets=False):
         import tkinter as tk
         from tkinter import ttk
         self.tk, self.ttk = tk, ttk
@@ -77,7 +78,8 @@ class LauncherApp:
         if seed and Path(seed).is_file():
             self.set_seed(seed)
         installed = self.config.get("assets")
-        source = installed if installed and launcher.assets_problem(installed) is None else self.config.get("image") or installed
+        source = assets or (None if reset_assets else
+                            installed if installed and launcher.assets_problem(installed) is None else self.config.get("image") or installed)
         if source:
             self.source_var.set(source)
         if server_arg:
@@ -85,6 +87,9 @@ class LauncherApp:
         elif self.config.get("server"):
             self.server_var.set(self.config["server"])
         self.refresh_source_status()
+        selected_folder, selected_manifest = launcher.p2_content_selection(self.config, p2_content, content_manifest)
+        self.p2_content_var.set(selected_folder or "")
+        self.p2_manifest_var.set(selected_manifest or "")
         root.after(100, self.pump)
 
     # --- Layout -----------------------------------------------------------
@@ -157,6 +162,19 @@ class LauncherApp:
         self.source_status.grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self.source_var.trace_add("write", lambda *a: self.refresh_source_status())
         self.setup_widgets = list(data.grid_slaves())
+
+        p2 = self.panel(self.root, "EXPERIMENTAL PIKMIN 2 CONTENT")
+        self.p2_panel = p2
+        p2.columnconfigure(1, weight=1)
+        self.p2_content_var = tk.StringVar()
+        self.p2_manifest_var = tk.StringVar()
+        ttk.Label(p2, text="Prepared content folder", style="Panel.TLabel").grid(row=1, column=0, sticky="w")
+        ttk.Entry(p2, textvariable=self.p2_content_var).grid(row=1, column=1, sticky="ew")
+        ttk.Label(p2, text="Or content manifest JSON", style="Panel.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Entry(p2, textvariable=self.p2_manifest_var).grid(row=2, column=1, sticky="ew")
+        ttk.Label(p2, text="For P2 enemy seeds only. Use prepared files from your own game; see the included experimental package guide.",
+                  style="Muted.TLabel", wraplength=700).grid(row=3, column=0, columnspan=2, sticky="w")
+        p2.pack_forget()
 
         self.ap = self.panel(self.root, "3. CONNECT TO ARCHIPELAGO")
         self.server_var = tk.StringVar()
@@ -255,6 +273,10 @@ class LauncherApp:
         self.stats_hint_var.set(starting_stats_hint(self.manifest))
         self.render_card()
         self.resume_var.set(launcher.run_summary(self.manifest, path) if self.manifest else "")
+        if self.manifest and self.manifest.get("p2_layout"):
+            self.p2_panel.pack(fill="x", padx=16, pady=(0, 10), before=self.play_button.master)
+        else:
+            self.p2_panel.pack_forget()
         if self.manifest and self.manifest.get("mode") == "ap":
             self.play_button.configure(text="Connect & play")
             self.ap.pack(fill="x", padx=16, pady=(0, 10), before=self.play_button.master)
@@ -365,6 +387,8 @@ class LauncherApp:
             if not self.exe.is_file():
                 raise launcher.LaunchError(f"The game executable is missing: {self.exe}. Re-extract the release zip.")
             manifest = launcher.load_manifest(seed)
+            p2_content, content_manifest = launcher.resolve_p2_content(
+                manifest, {}, self.p2_content_var.get().strip(), self.p2_manifest_var.get().strip())
             if not source:
                 raise launcher.LaunchError("Choose your disc image or extracted assets folder first.")
             if discimage.is_disc_image(source) and not Path(source).is_file():
@@ -380,6 +404,8 @@ class LauncherApp:
             self.status_var.set("Fix the highlighted problem and try again.")
             return
         self.config.update(seed=str(Path(seed).resolve()))
+        if manifest.get("p2_layout"):
+            self.config.update(p2_content=p2_content, p2_content_manifest=content_manifest)
         if server:
             self.config["server"] = server
         launcher.save_config(self.config)
@@ -387,10 +413,10 @@ class LauncherApp:
         self.log.configure(state="normal"); self.log.delete("1.0", "end"); self.log.configure(state="disabled")
         self.set_running(True)
         self.progress.configure(value=0)
-        self.worker = threading.Thread(target=self.run, args=(seed, manifest, source, server, password), daemon=True)
+        self.worker = threading.Thread(target=self.run, args=(seed, manifest, source, server, password, p2_content, content_manifest), daemon=True)
         self.worker.start()
 
-    def run(self, seed, manifest, source, server, password):
+    def run(self, seed, manifest, source, server, password, p2_content=None, content_manifest=None):
         try:
             if discimage.is_disc_image(source):
                 self.lines.put(("status", "Extracting game data from the disc image…"))
@@ -411,7 +437,8 @@ class LauncherApp:
             env["PIKMIN_AP_CONTROL"] = "1" if server else "0"
             if password:
                 env["PIKMIN_AP_PASSWORD"] = password
-            command = launcher.build_command(seed, session, self.exe, assets, server)
+            command = launcher.build_command(seed, session, self.exe, assets, server,
+                                             p2_content=p2_content, content_manifest=content_manifest)
             self.lines.put(("status", "Connecting to Archipelago…" if server else "Starting solo game…"))
             self.lines.put(("progress", 100))
             self.process = subprocess.Popen(command, cwd=str(launcher.ROOT), env=env, stdout=subprocess.PIPE,
@@ -515,19 +542,24 @@ def main(argv=None):
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Pikipelago.Launcher")
     argv = list(sys.argv[1:] if argv is None else argv)
-    server = None
-    if "--server" in argv:
-        index = argv.index("--server")
-        server = argv[index + 1] if index + 1 < len(argv) else None
-        del argv[index:index + 2]
-    seed = next((a for a in argv if not a.startswith("--")), None)
+    import argparse
+    parser = argparse.ArgumentParser(description="Pikipelago launcher window")
+    parser.add_argument("seed", nargs="?")
+    parser.add_argument("--server")
+    parser.add_argument("--p2-content")
+    parser.add_argument("--content-manifest")
+    parser.add_argument("--assets")
+    parser.add_argument("--reset-assets", action="store_true")
+    args = parser.parse_args(argv)
+    seed, server = args.seed, args.server
     try:
         import tkinter
         root = tkinter.Tk()
     except Exception as exc:  # No tkinter or no display: use the console launcher.
         print(f"Window unavailable ({exc}); using the console launcher.")
-        return launcher.main([a for a in sys.argv[1:]])
-    LauncherApp(root, seed, server)
+        return launcher.main(argv)
+    LauncherApp(root, seed, server, args.p2_content, args.content_manifest,
+                assets=args.assets, reset_assets=args.reset_assets)
     root.mainloop()
     return 0
 

@@ -41,7 +41,7 @@ def _default_admitted_placement():
     try:
         from importlib.resources import files
         package = __package__ or ""
-        if package.startswith("pikmin_randomizer"):
+        if package:
             resource = files(package) / "data" / ADMITTED_PLACEMENT_FILENAME
             return json.loads(resource.read_text(encoding="utf-8"))
     except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
@@ -74,7 +74,7 @@ def _default_proxy_placement():
     try:  # packaged apworld: the sibling ships next to the admitted-placement document
         from importlib.resources import files
         package = __package__ or ""
-        if package.startswith("pikmin_randomizer"):
+        if package:
             resource = files(package) / "data" / PROXY_PLACEMENT_FILENAME
             return json.loads(resource.read_text(encoding="utf-8"))
     except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
@@ -681,7 +681,7 @@ PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 P2_REQUIRES_PURPLE = {}
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_checks=False, p2_second_captain=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_white_campaign=False, p2_white_treasure_campaign=False, p2_checks=False, p2_second_captain=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
@@ -729,6 +729,12 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if p2_second_captain and not p2_enemies: raise ValueError("p2_second_captain requires p2_enemies")
     if type(p2_purple_campaign) is not bool: raise ValueError("invalid p2_purple_campaign")
     if p2_purple_campaign and not p2_enemies: raise ValueError("p2_purple_campaign requires p2_enemies")
+    if type(p2_white_campaign) is not bool: raise ValueError("invalid p2_white_campaign")
+    if type(p2_white_treasure_campaign) is not bool: raise ValueError("invalid p2_white_treasure_campaign")
+    if p2_white_campaign and not (p2_enemies and p2_purple_campaign):
+        raise ValueError("p2_white_campaign requires P2/Purple campaign")
+    if p2_white_treasure_campaign and not p2_white_campaign:
+        raise ValueError("p2_white_treasure_campaign requires White campaign")
     p2_species_explicit = p2_species is not None and p2_species not in ("playable", "full")
     if p2_species is not None and not p2_enemies: raise ValueError("p2_species requires p2_enemies")
     if p2_density is not None and not p2_enemies: raise ValueError("p2_density requires p2_enemies")
@@ -778,8 +784,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
         if legacy_checks: raise ValueError("P2 enemies require modern checks")
-        if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
-            raise ValueError("P2 enemies are mutually exclusive with P1 enemy layouts")
+        combined_enemies = bool(enemy_shuffle or per_spawn_enemies or campaign_enemies)
+        # New combinations require one authoritative final check/source catalog.
+        if combined_enemies:
+            p2_checks = True
         collection_checks = True
     if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
     if goal_mode == "emperor_bulblax": collection_checks = True
@@ -942,9 +950,17 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
                                                        density=p2_density,
                                                        proxy_rows=proxy_rows,
                                                        proxy_document=proxy_document)
+        combined_enemies = bool(result.get('enemy_mask') or 'spawn_layout' in result or 'campaign_layout' in result)
+        if combined_enemies:
+            result['enemy_composition'] = 'p1-then-p2-v1'
+            result['capabilities'].append('combined-enemies-v1')
         result['capabilities'].append('p2-enemy-bridge-v1')
         if p2_purple_campaign:
             result['p2_purple_campaign'] = True
+        if p2_white_campaign:
+            result['p2_white_campaign'] = True
+        if p2_white_treasure_campaign:
+            result['p2_white_treasure_campaign'] = True
         if p2_proxy_tier is not None:
             result['p2_proxy_tier'] = p2_proxy_tier
             result['capabilities'].append('p2-proxy-tier-v1')
@@ -1095,18 +1111,36 @@ def validate(m):
         expected.add('p2_second_captain')
         if m['p2_second_captain'] is not True or 'p2_layout' not in m:
             raise ValueError('invalid p2_second_captain')
+    if type(m) is dict and 'p2_white_campaign' in m:
+        expected.add('p2_white_campaign')
+        if m['p2_white_campaign'] is not True or m.get('p2_purple_campaign') is not True or 'p2_layout' not in m:
+            raise ValueError('invalid p2_white_campaign')
+    if type(m) is dict and 'p2_white_treasure_campaign' in m:
+        expected.add('p2_white_treasure_campaign')
+        if m['p2_white_treasure_campaign'] is not True or m.get('p2_white_campaign') is not True:
+            raise ValueError('invalid p2_white_treasure_campaign')
     if type(m) is dict and 'p2_purple_campaign' in m:
         expected.add('p2_purple_campaign')
         if m['p2_purple_campaign'] is not True or 'p2_layout' not in m:
             raise ValueError('invalid p2_purple_campaign')
+    if type(m) is dict and 'enemy_composition' in m:
+        expected.add('enemy_composition')
+        if (m['enemy_composition'] != 'p1-then-p2-v1' or m.get('schema') != 9
+                or 'p2_layout' not in m or 'enemy_catalog' not in m
+                or not (m.get('enemy_shuffle') == 'families-v1'
+                        or 'spawn_layout' in m or 'campaign_layout' in m)):
+            raise ValueError('invalid combined enemy composition')
     if type(m) is dict and 'p2_layout' in m:
         expected.add('p2_layout')
         from experimental.pikmin2_enemy_roster import load_and_validate
         from experimental.pikmin2_seed_bridge import (SeedBridgeError, admitted_ids,
                                                       validate_layout as validate_p2_layout)
-        if (m.get('schema') != 9 or m.get('enemy_mask') != 0
+        combined = m.get('enemy_composition') == 'p1-then-p2-v1'
+        if m.get('schema') != 9:
+            raise ValueError('p2_layout requires schema 9')
+        if not combined and (m.get('enemy_mask') != 0
                 or any(key in m for key in ('spawn_layout', 'group_layout', 'campaign_layout'))):
-            raise ValueError('p2_layout is mutually exclusive with P1 enemy layouts and requires schema 9')
+            raise ValueError('mixed enemy layouts require versioned enemy composition')
         if 'p2-enemy-bridge-v1' not in m.get('capabilities', []):
             raise ValueError('p2_layout requires the p2-enemy-bridge-v1 capability')
         try:
@@ -1222,6 +1256,7 @@ def validate(m):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
+    if m.get('enemy_composition'): fixed['capabilities'].append('combined-enemies-v1')
     if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     if m.get('enemy_catalog'): fixed['capabilities'].append('resolved-enemy-checks-v1')

@@ -2,6 +2,11 @@
 // and actual native card commit/load; scripted sunset/results input is disclosed.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
+// MinGW's GL headers restore WIN32 after -UWIN32. Engine headers reserve
+// that spelling for the incompatible legacy renderer; keep host _WIN32.
+#if defined(_WIN32) && defined(WIN32)
+#undef WIN32
+#endif
 #include "App.h"
 #include "CPlate.h"
 #include "GameCoreSection.h"

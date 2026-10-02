@@ -261,6 +261,14 @@ public:
 	P2DScreen* getScreenPtr() { return &mScreen; }
 
 	StatusFlag getStatusFlag() { return mState; }
+#if defined(PIKI_PC_PORT)
+	StatusFlag getStatusFlag() const { return mState; }
+	bool pcInputReady() const { return mState == STATUS_Active && mRatio == 1.0f; }
+	int getSelectMenu() const
+	{
+		return mCancelSelectMenuNo >= 0 ? mCurrentSelect : (mIsSelectMenuCancel ? -1 : mCurrentSelect);
+	}
+#endif
 
 	int getSelectMenu()
 	{

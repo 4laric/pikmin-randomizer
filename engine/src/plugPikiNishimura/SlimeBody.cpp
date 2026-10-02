@@ -264,9 +264,16 @@ void SlimeBody::refresh(BossShapeObject* shape, Graphics& gfx)
 {
 #if defined(PIKI_PC_PORT)
 	if (!pc_render_is_authoritative()) {
+		// Issue #1036: the sim-driven joints were written for the sim camera in the
+		// authoritative pass; rebuild them for this pass's camera from the world-space
+		// copy. Reads the copy, writes only the present-pool matrices.
+		mPresentJoints.apply(shape, gfx);
 		return;
 	}
 #endif
 
 	setJointPosition(shape, gfx);
+#if defined(PIKI_PC_PORT)
+	mPresentJoints.capture(shape, gfx);
+#endif
 }

@@ -8,6 +8,7 @@ from randomizer.cave_floor import create_journey_floor, fingerprint, atomic_writ
 from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 
 POLICY = 'forest1-two-floor-journey-v1'
+WFG_ROUTE_POLICY = 'wfg-pw-acquisition-route-v1'
 
 
 def read_json(path):
@@ -32,9 +33,17 @@ def create(seed, slot='Player1'):
 
 
 def validate(journey):
-    if type(journey) is not dict or encoded(journey) != encoded(create(journey.get('seed'), journey.get('slot'))):
+    factory = create_wfg_route if type(journey) is dict and journey.get('schema') == 'p2-cave-journey/2' else create
+    if type(journey) is not dict or encoded(journey) != encoded(factory(journey.get('seed'), journey.get('slot'))):
         raise ValueError('foreign or malformed journey')
     return journey
+
+
+def create_wfg_route(seed, slot='Player1'):
+    from randomizer.cave_floor import create_wfg_acquisition
+    return dict(schema='p2-cave-journey/2', policy=WFG_ROUTE_POLICY, seed=seed, slot=slot,
+                floors=[dict(descriptor=create_wfg_acquisition(seed,slot),salt=0)]
+                + create(seed,slot)['floors'])
 
 
 def identity(journey):
@@ -48,10 +57,16 @@ def zero_buds(manifest):
             + ''.join(f"{b['slot_id']} 0\n" for b in table['buds']))
 
 
-def initial_entry(manifest, squad=None, health=1):
-    return dict(schema=1, fingerprint=fingerprint(manifest), health=health,
+def initial_entry(manifest, squad=None, health=1, wire_schema=None):
+    from randomizer.cave_checkpoint import wire_schema as native_schema
+    entry=dict(schema=1, fingerprint=fingerprint(manifest), health=health,
                 squad=copy.deepcopy(squad if squad is not None else [[1, 0]]*20),
                 buds=zero_buds(manifest), receipts='P2_RECEIPTS_1\n')
+    if wire_schema is not None:entry['wire_schema']=wire_schema
+    version=native_schema(entry)
+    if version!=1:entry['wire_schema']=version
+    else:entry.pop('wire_schema',None)
+    return entry
 
 
 class Session:
@@ -59,6 +74,8 @@ class Session:
     def __init__(self, directory, journey, placements):
         self.directory = Path(directory).resolve()
         self.journey = validate(journey)
+        if self.journey['schema'] != 'p2-cave-journey/1':
+            raise ValueError('WFG acquisition requires Route container2, not Session')
         self.fingerprint = identity(journey)
         self.placements = placements
         self.manifests = {n: journey['floors'][n-1]['descriptor'] for n in (1, 2)}
@@ -122,7 +139,7 @@ class Session:
         return saved, boundary
 
     def destination(self, source):
-        entry = initial_entry(self.manifests[2], source['squad'], source['health'])
+        entry = initial_entry(self.manifests[2], source['squad'], source['health'], source.get('wire_schema'))
         if self.ledger(2) != 'P2_RECEIPTS_1\n':
             raise ValueError('destination ledger predates floor transition')
         return entry
@@ -148,7 +165,7 @@ class Session:
             source, actual = self.source_boundary(run)
             if encoded(actual) != encoded(boundary):
                 raise ValueError('source boundary bytes changed')
-            expected = initial_entry(self.manifests[2], source['squad'], source['health'])
+            expected = initial_entry(self.manifests[2], source['squad'], source['health'], source.get('wire_schema'))
         if encoded(state['entry']) != encoded(expected):
             raise ValueError('incoming squad or floor identity changed')
         return state
@@ -163,9 +180,8 @@ class Session:
             raise ValueError('staged descriptor differs from journey')
         expected_entry = state['entry']
         words = (run/'p2-cave-entry.txt').read_text().split()
-        expected = (['P2_CAVE_ENTRY_1', expected_entry['fingerprint'][:32], str(state['floor']),
-                     str(expected_entry['health']), str(len(expected_entry['squad']))]
-                    + [str(v) for row in expected_entry['squad'] for v in row])
+        from randomizer.cave_checkpoint import entry_text
+        expected = entry_text(expected_entry['fingerprint'][:32],state['floor'],expected_entry).split()
         if words != expected:
             raise ValueError('staged entry differs from incoming boundary')
         pending = dict(schema=1, journey=self.fingerprint, floor=state['floor'], revision=state['revision'],

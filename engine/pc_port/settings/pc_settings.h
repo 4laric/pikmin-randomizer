@@ -141,6 +141,29 @@ int pc_settings_get_hold_to_pluck(void);
 // results/diary is exempt in normal play (only preview/fixture runs dismiss it).
 int pc_settings_get_disable_tutorials(void);
 
+// Netplay M3 (issue #880): passive F1 menu query for the local-input gate.
+// Unlike pc_settings_consume_game_input() this polls nothing and latches
+// nothing, so the netplay session may call it every turn.
+bool pc_settings_menu_open(void);
+
+// Netplay launch lane (issue #887), netplay builds only (defined under
+// PIKI_NETPLAY_BUILD). Starts the settings session guard: the sim-relevant
+// keys the M3 handshake hashes are locked for the session, and every save
+// (the single saveConfig() choke point: F1 close, window-size confirm, glass
+// menu, reset, player count, VS rules, texture packs) writes this player's
+// OWN values for them, never the session's; a save with no local change
+// leaves the file byte-identical. adoptBlock (the joiner) is the host's
+// m3-config-v1 "k=v;..." text: each hashed key is mapped back exactly as
+// the handshake fingerprints it. Null for the host.
+void pc_settings_session_begin(const char* adoptBlock);
+// Test hook (netplay builds): open and close the F1 menu exactly as the
+// keypresses do, which runs the F1-close save path.
+void pc_settings_test_f1_cycle(void);
+// In-exe self-test (netplay builds; ctest): adoption round trip over every
+// session key and every save path. configText returns the session's
+// build_config_string (valid until the next call). Returns 0 on pass.
+int pc_settings_netplay_selftest(const char* (*configText)(void));
+
 /// What the mouse wheel controls: 0 = Pikmin colour to throw, 1 = camera zoom.
 int pc_settings_get_mouse_wheel_action(void);
 

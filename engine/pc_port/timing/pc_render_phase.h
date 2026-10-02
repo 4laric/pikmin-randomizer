@@ -17,6 +17,12 @@ bool pc_render_is_authoritative();
 /// Prepares the thread-local presentation context with the given interpolation alpha.
 void pc_render_begin_presentation(double alpha);
 
+/// Ends the presentation pass: back to authoritative without bumping the
+/// tick serial (unlike begin_authoritative_tick). The two-pass driver calls
+/// this after the presentation pass so doneRender/parseMessages/hash and any
+/// soft-reset idle run as authoritative, not presentation.
+void pc_render_end_presentation(void);
+
 /// Prepares the thread-local context for authoritative evaluation.
 void pc_render_begin_authoritative_tick();
 

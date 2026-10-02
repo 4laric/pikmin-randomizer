@@ -47,6 +47,10 @@ public:
 	ogScrTitleMgr();
 
 	TitleStatus update(Controller*);
+#if defined(PIKI_PC_PORT)
+	bool pcBlankStoryReady() const;
+	int pcBlankStorySelection() const;
+#endif
 	void start(bool);
 #if defined(PIKI_PC_PORT)
 	void pcInsertCoopItem(DrawMenu* menu);

@@ -4,6 +4,15 @@
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "GoalItem.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "pc_coop_policy.h"
+#include <cstdio>
+#include "timing/pc_render_phase.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
+#endif
 #include "FlowController.h"
 #include "teki.h"
 #if defined(PIKI_PC_PORT)
@@ -19,6 +28,7 @@
 #include "ItemObject.h"
 #include "MoviePlayer.h"
 #include "NaviMgr.h"
+#include "NaviState.h"
 #include "Pellet.h"
 #include "Piki.h"
 #include "PikiMgr.h"
@@ -396,6 +406,10 @@ void GoalItem::suckMe(Pellet* item)
 	} else {
 		pikiNum = config->mNonMatchingOnyonSeeds();
 	}
+	// Permanent diagnostic (issue #1034): which Onion paid how many seeds for which pellet.
+	std::printf("[pellet] onion=%d kind=pellet type=%d size=%s seeds=%d matching=%d pcolor=%d match_seeds=%d nonmatch_seeds=%d\n",
+	    int(mOnionColour), int(config->mPelletType()), config->mModelId.mStringID, pikiNum, int(mOnionColour == config->mPelletType()),
+	    int(config->mPelletColor()), int(config->mMatchingOnyonSeeds()), int(config->mNonMatchingOnyonSeeds()));
 
 	if (pikiNum < 0) {
 		mSAICtx.mCounter += 2;
@@ -404,9 +418,12 @@ void GoalItem::suckMe(Pellet* item)
 		playEventSound(this, SE_CONTAINER_HANABI);
 		playEventSound(this, SE_CONTAINER_PELLETIN2);
 	} else {
+		const int stateBefore = getCurrState() ? getCurrState()->getID() : -1;
 		mSAICtx.mCurrAnimId += pikiNum;
 		MsgUser msg(0);
 		C_SAI(this)->procMsg(this, &msg);
+		std::printf("[pellet] onion=%d state_before=%d state_after=%d pending=%d\n", int(mOnionColour), stateBefore,
+		    getCurrState() ? getCurrState()->getID() : -1, int(mSAICtx.mCurrAnimId));
 		playEventSound(this, SE_CONTAINER_PELLETIN2);
 	}
 }
@@ -433,7 +450,7 @@ void GoalItem::enterGoal(Piki* piki)
 /**
  * @todo: Documentation
  */
-void GoalItem::exitPikis(int pikis)
+void GoalItem::exitPikis(int pikis, int requesterNaviId)
 {
     if (pc_randomizer_expanded()) {
         int available = pc_randomizer_field_capacity() - int(GameStat::mapPikis) - itemMgr->getContainerExitCount();
@@ -442,6 +459,12 @@ void GoalItem::exitPikis(int pikis)
     }
 
     if (!pc_bbft_color_access(mOnionColour)) return;
+#if defined(PIKI_PC_PORT)
+	// Co-op only: with one captain the default captain is always the right one, so single-player is untouched.
+	if (requesterNaviId >= 0 && requesterNaviId < PC_COOP_CAPTAINS && naviMgr->getNaviCount() > 1) {
+		mPcExitFor[requesterNaviId] += pikis;
+	}
+#endif
 	mIsDispensingPikis = true;
 	mPikisToExit += pikis;
 	mPikiSpawnTimer = 0.0f;
@@ -462,6 +485,11 @@ Piki* GoalItem::exitPiki()
 	Piki* piki                 = (Piki*)pikiMgr->birth();
 	pikiMgr->containerExitMode = false;
 	if (!piki) {
+#if defined(PIKI_PC_PORT)
+		// Co-op: the exit that failed is still counted off by GoalItem::update (mPikisToExit--), so forfeit one
+		// owed exit too; otherwise the debt outlives the queue and the next day-start exit goes to captain 2.
+		(void)pc_coop_onion_exit_next(mPcExitFor);
+#endif
 #if defined(VERSION_GPIJ01) || defined(VERSION_DPIJ01_PIKIDEMO)
 #else
 		ERROR("*** PIKI BIRTH FAILED !!!\n");
@@ -471,6 +499,21 @@ Piki* GoalItem::exitPiki()
 
 	Navi* navi = naviMgr->getNavi();
 #if defined(PIKI_PC_PORT)
+	// Co-op: the Pikmin join the captain who took them out of the Onion, not always captain 1.
+	int requesterId = pc_coop_onion_exit_next(mPcExitFor);
+	if (requesterId >= 0) {
+		// A requester downed while the Onion was dispensing cannot lead a squad: hand the Pikmin to the other captain.
+		bool live[PC_COOP_CAPTAINS] = {};
+		for (int id = 0; id < PC_COOP_CAPTAINS; id++) {
+			Navi* c = naviMgr->getNavi(id);
+			live[id] = c && c->mHealth > 1.0f && c->getCurrState() && c->getCurrState()->getID() != NAVISTATE_Dead;
+		}
+		requesterId = pc_coop_onion_exit_target(requesterId, live);
+		if (Navi* requester = naviMgr->getNavi(requesterId)) {
+			navi = requester;
+			fprintf(stderr, "[coop] onion exit piki joins navi=%d\n", requesterId);
+		}
+	}
 	// VS: salen hacia el capitán dueño de la cebolla.
 	if (pc_vs_active() && mPcOwner >= 0 && naviMgr->getNavi(mPcOwner)) navi = naviMgr->getNavi(mPcOwner);
 #endif
@@ -740,6 +783,9 @@ void GoalItem::startAI(int)
 	mIsDispensingPikis = false;
 	mPikisToExit       = 0;
 	mPikiSpawnTimer    = 0.0f;
+#if defined(PIKI_PC_PORT)
+	for (int i = 0; i < PC_COOP_CAPTAINS; i++) mPcExitFor[i] = 0;
+#endif
 }
 
 /**
@@ -786,6 +832,28 @@ void GoalItem::update()
 {
 	mVelocity.set(0.0f, 0.0f, 0.0f);
 	ItemCreature::update();
+	{
+		// TEST_ONLY (issue #1034): periodic Onion animation/state probe, only under the pellet-bonus knob.
+		static const bool probe = std::getenv("PIKMIN_TEST_ONLY_PELLET_BONUS") != nullptr;
+		static int frames[3];
+		if (probe && mOnionColour >= 0 && mOnionColour < 3 && (++frames[mOnionColour] % 240) == 0) {
+			std::printf("[pellet-onion] onion=%d state=%d motion=%d counter=%.1f finished=%d speed=%.1f pending=%d movie=%d\n", int(mOnionColour),
+			    getCurrState() ? getCurrState()->getID() : -1, mItemAnimator.getCurrentMotionIndex(), mItemAnimator.getCounter(),
+			    int(mItemAnimator.isFinished()), mMotionSpeed, int(mSAICtx.mCurrAnimId), int(gameflow.mMoviePlayer->mIsActive));
+		}
+	}
+	// Seeds credited by suckMe while the Onion was in a state with no "pellet in" arrow (BootInit/BootEmit
+	// right after a randomizer Onion grant) are never emitted: the state machine returns to Wait with
+	// mCurrAnimId/mCounter still pending and nothing re-posts the user event, so the sprouts only appear
+	// when the next pellet arrives (issue #1034). Wait with seeds pending is otherwise unreachable, so
+	// re-post the event once here. This is an intended behaviour change (docs/NETPLAY_PLAY.md, "What differs from
+	// the original game"): the stranded seeds now come out, and the pellet-in sound and effect play once more.
+	// Every other Onion timing is untouched.
+	if (getCurrState() && getCurrState()->getID() == GoalAI::GOAL_Wait && !isCreatureFlag(CF_IsAiDisabled)
+	    && (mSAICtx.mCurrAnimId > 0 || mSAICtx.mCounter > 0)) {
+		MsgUser msg(0);
+		C_SAI(this)->procMsg(this, &msg);
+	}
 	if (mColourAnimationEnabled) {
 		mColourAnimProgress += (mColourFadeRate * mMotionSpeed * gsys->getFrameTime()) / 30.0f;
 		if (mColourAnimProgress > 1.0f) {
@@ -815,6 +883,11 @@ void GoalItem::update()
 			mPikisToExit--;
 			if (mPikisToExit <= 0) {
 				mIsDispensingPikis = false;
+#if defined(PIKI_PC_PORT)
+				// Co-op: the dispense is over, so no exit is owed to anyone any more. This also drops debt left by an
+				// exitPiki() that returned early (pc_bbft_color_access) before consuming it.
+				for (int i = 0; i < PC_COOP_CAPTAINS; i++) mPcExitFor[i] = 0;
+#endif
 			}
 
 			mPikiSpawnTimer = gsys->getRand(1.0f) * 0.1f + 0.2f;
@@ -840,7 +913,9 @@ void GoalItem::refresh(Graphics& gfx)
 	Vector3f pos = mSRT.t;
 	mWorldMtx.makeSRT(mSRT.s, mSRT.r, pos);
 	gfx.mCamera->mLookAtMtx.multiplyTo(mWorldMtx, mtx1);
-	if (!gfx.mCamera->isPointVisible(mSRT.t, 200.0f)) {
+	// M2a netplay culling policy (issue #879): in deterministic mode the sim
+	// sees always-visible (spot effect visibility follows the same value).
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, 200.0f))) {
 		enableAICulling();
 		if (!gameflow.mMoviePlayer->mIsActive) {
 			mSpotModelEff->mIsVisible = false;
@@ -849,6 +924,17 @@ void GoalItem::refresh(Graphics& gfx)
 		disableAICulling();
 		mSpotModelEff->mIsVisible = true;
 	}
+#if defined(PIKI_PC_PORT)
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// draws the spot effect for the real local frustum. The member above
+	// stays authoritative (effect update runs auth-only and re-reads it).
+	const bool m2bGoalPres = pc_netplay_present_two_pass_active() && !pc_render_is_authoritative();
+	const bool m2bGoalVisible
+	    = !m2bGoalPres || gfx.mCamera->isPointVisible(mSRT.t, 200.0f);
+	if (m2bGoalPres && !gameflow.mMoviePlayer->mIsActive) {
+		mSpotModelEff->mIsVisible = m2bGoalVisible;
+	}
+#endif
 
 	gfx.setLighting(true, nullptr);
 	gfx.useMatrix(Matrix4f::ident, 0);
@@ -862,7 +948,11 @@ void GoalItem::refresh(Graphics& gfx)
 	}
 	mAnimatedMaterials.animate(&rate);
 	mItemShapeObject->mShape->updateAnim(gfx, mtx1, nullptr, this);
+#if defined(PIKI_PC_PORT)
+	if (aiCullable() && m2bGoalVisible) {
+#else
 	if (aiCullable()) {
+#endif
         if(!pc_p2_preview_draw_pod(this,gfx,mtx1))mItemShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 	}
     if(pc_p2_preview_is_pod(this))mSpotModelEff->mIsVisible=false;

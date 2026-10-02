@@ -1,5 +1,16 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_policy.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#else
+#define pc_netplay_sim_visible(x) (x)
+#define pc_netplay_sim_lod_distance(x) (x)
+#endif
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_sim_rng.h"
+#endif
 #include "ViewPiki.h"
 #include "AIPerf.h"
 #include "DebugLog.h"
@@ -468,7 +479,14 @@ PcHdModelId ViewPiki::hdHappaModel() const
 void ViewPiki::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 {
 	Vector3f pos;
+#if defined(PIKI_PC_PORT)
+	// M2b: sim-derived positions are authoritative-only; presentation draws
+	// from the stored values.
+	const bool authDemo = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative();
+	if (authDemo && (AIPerf::optLevel <= 2 || mOptUpdateContext.updatable())) {
+#else
 	if (AIPerf::optLevel <= 2 || mOptUpdateContext.updatable()) {
+#endif
 		pos.set(0.0f, 0.0f, 0.0f);
 		mPikiShape->mShape->calcJointWorldPos(gfx, 0, pos);
 		mShadowPos = pos;
@@ -485,10 +503,22 @@ void ViewPiki::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	} else {
 		pos.set(6.0f, 0.0f, 0.0f);
 	}
+#if defined(PIKI_PC_PORT)
+	if (authDemo) {
+#endif
 	mPikiShape->mShape->calcJointWorldPos(gfx, 6, pos);
 	mEffectPos = pos;
+#if defined(PIKI_PC_PORT)
+	}
+#endif
 
+	// M1 deterministic netplay: damage flash is draw-only, so it draws from
+	// the cosmetic stream and never perturbs the sim stream.
+#if defined(PIKI_PC_PORT)
+	const Colour drawColour = (isDamaged() && pc_cosmetic_randf(1.0f) > 0.5f) ? COLOUR_WHITE : mCurrentColour;
+#else
 	const Colour drawColour = (isDamaged() && gsys->getRand(1.0f) > 0.5f) ? COLOUR_WHITE : mCurrentColour;
+#endif
 	mPikiShape->mShape->mMaterialList->setColour(drawColour);
 #if defined(PIKI_PC_PORT)
 	// The original piki texture is grey and mCurrentColour paints it; the HD
@@ -505,9 +535,19 @@ void ViewPiki::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		if (amount > hdWhiten) hdWhiten = amount;
 	}
 	const GXColor hdHappaTint = { 255, 255, 255, 255 };
+	// M2b fix (review M5, resolves m2a open item m1): the presentation pass
+	// submits only what the real local frustum sees. AI flags stay
+	// authoritative (aiCullable is det-pinned true; anchors above are
+	// auth-guarded).
+	const bool m2bPikiSubmit = !pc_netplay_present_two_pass_active() || pc_render_is_authoritative()
+	                        || gfx.mCamera->isPointVisible(mSRT.t, getSize() * 4.0f);
 #endif
 
-	if (aiCullable()) {
+	if (aiCullable()
+#if defined(PIKI_PC_PORT)
+	    && m2bPikiSubmit
+#endif
+	) {
 #if defined(PIKI_PC_PORT)
 		if (!pc_p2_draw_white(this, gfx) && !pc_p2_draw_purple(this, gfx)
 		    && !pc_hd_model_draw_skinned(gfx, mPikiShape->mShape, hdPikiModel(), hdTint, static_cast<u8>(hdWhiten)))
@@ -521,7 +561,11 @@ void ViewPiki::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		mPanickedEffect->updatePos(mShadowPos);
 	}
 
-	if (!pc_p2_is_purple(this) && !pc_p2_is_white(this) && aiCullable() && AIPerf::optLevel < 3 && mHappaModel) {
+	if (!pc_p2_is_purple(this) && !pc_p2_is_white(this) && aiCullable()
+#if defined(PIKI_PC_PORT)
+	    && m2bPikiSubmit
+#endif
+	    && AIPerf::optLevel < 3 && mHappaModel) {
 		gfx.useMatrix(mPikiShape->mShape->getAnimMatrix(6), 0);
 #if defined(PIKI_PC_PORT)
 		// VS: la hoja/flor de los Pikmin de J2 va teñida de violeta; el cuerpo
@@ -623,13 +667,16 @@ void ViewPiki::refresh(Graphics& gfx)
 	}
 	Matrix4f mtx;
 	f32 size = getSize();
-	if (!gfx.mCamera->isPointVisible(mSRT.t, size * 4.0f)) {
+	// M2a netplay culling policy (issue #879): in deterministic mode the sim
+	// sees always-visible, and the camera-distance LOD for sim-affecting head
+	// look/pose is pinned to the near/full LOD.
+	if (!pc_netplay_sim_visible(gfx.mCamera->isPointVisible(mSRT.t, size * 4.0f))) {
 		enableAICulling();
 	} else {
 		disableAICulling();
 		if (AIPerf::useLOD) {
 			Vector3f diff = gfx.mCamera->mPosition - mSRT.t;
-			_528          = diff.length();
+			_528          = pc_netplay_sim_lod_distance(diff.length());
 		} else {
 			_528 = 12800.0f;
 		}

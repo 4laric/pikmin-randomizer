@@ -41,6 +41,76 @@ def death_link_summary(manifest, data):
             f"sent {deaths // unit}, {deaths % unit}/{unit} deaths toward the next")
 
 
+def initial_session_data(manifest):
+    """Fresh ``session.json``/``mirror.json`` payload for a manifest."""
+    data = dict(schema=1, fingerprint=fingerprint(manifest), checked=[], received=[], ap_identity=None)
+    if manifest.get("goal_mode") == "emperor_bulblax":
+        data["emperor_defeated"] = False
+    if manifest.get("death_link"):
+        data["pikmin_deaths"] = 0
+        data["death_links_received"] = 0
+    return data
+
+
+def validate_session_data(manifest, data):
+    """Shared ``session.json``/``mirror.json`` schema validation."""
+    names = active_names(manifest)
+    allowed_items = {ITEM_IDS[n] for n in item_pool(manifest)}
+    expected = initial_session_data(manifest)
+    if type(data) is not dict or set(data) != set(expected):
+        raise ValueError("saved session does not match manifest; refusing to reset it")
+    if (type(data["schema"]) is not int or data["schema"] != 1
+            or data["fingerprint"] != fingerprint(manifest)):
+        raise ValueError("saved session does not match manifest; refusing to reset it")
+    if (type(data["checked"]) is not list
+            or any(type(n) is not str or n not in names for n in data["checked"])
+            or len(data["checked"]) != len(set(data["checked"]))):
+        raise ValueError("invalid saved checks")
+    if (type(data["received"]) is not list
+            or any(type(i) is not int or i not in allowed_items for i in data["received"])):
+        raise ValueError("invalid saved received items")
+    identity = data["ap_identity"]
+    if identity is not None and (type(identity) is not list or len(identity) != 3
+            or type(identity[0]) is not str or any(type(v) is not int for v in identity[1:])):
+        raise ValueError("invalid AP identity")
+    if manifest["mode"] == "solo" and (data["received"] or identity is not None):
+        raise ValueError("solo save contains AP state")
+    if "emperor_defeated" in data and type(data["emperor_defeated"]) is not bool:
+        raise ValueError("invalid emperor state")
+    for key in ("pikmin_deaths", "death_links_received"):
+        if key in data and (type(data[key]) is not int or data[key] < 0):
+            raise ValueError("invalid death link state")
+    if data.get("death_links_received", 0) > (1 << 32) - 1:
+        raise ValueError("DeathLink inventory exceeds uint32")
+    return True
+
+
+def render_session_state(manifest, names, inventory, data, token, ready):
+    """Shared ``state.txt`` rendering for host sessions and netplay mirrors."""
+    unlocks = sum(1 << i for i, name in enumerate(UNLOCKS) if inventory[name])
+    if manifest['schema'] >= 3 and inventory[FOREST_ACCESS]:
+        unlocks |= 32
+    if manifest['schema'] >= 4 and inventory[RED]:
+        unlocks |= 64
+    if manifest['schema'] >= 5 and inventory[IMPACT_ACCESS]:
+        unlocks |= 128
+    checks = sum(1 << i for i, name in enumerate(names) if name in data["checked"])
+    if manifest['schema'] >= 8:
+        indices = [str(i) for i, n in enumerate(names) if n in data['checked']]
+        checks = 'CHECKS ' + str(len(indices)) + (' ' + ' '.join(indices) if indices else '')
+    emperor = (" EMPEROR " + str(int(data["emperor_defeated"]))) if manifest.get("goal_mode") == "emperor_bulblax" else ""
+    # The native game treats the first value it reads as its baseline, so
+    # links received while the game was closed are never replayed.
+    death_link = (" DEATHLINK " + str(data["death_links_received"])) if manifest.get("death_link") else ""
+    repairs = min(inventory[REPAIR], manifest["goal"])
+    if manifest["schema"] >= 2:
+        flarlic = min(10 - manifest.get("starting_flarlic", 2), inventory[FLARLIC])
+        return (f"PIKMIN_STATE {manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} "
+                f"{checks}{upgrade_counts(manifest, inventory)}{benefit_state(manifest, inventory)}"
+                f"{emperor}{death_link} END\n")
+    return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
+
+
 class Session:
     def __init__(self, manifest, directory):
         self.manifest = manifest
@@ -50,33 +120,10 @@ class Session:
         self.directory = Path(directory)
         self.path = self.directory / "session.json"
         self.rewards = solo_rewards(manifest) if manifest["mode"] == "solo" else {}
-        self.data = dict(schema=1, fingerprint=self.fingerprint, checked=[], received=[], ap_identity=None)
-        if manifest.get("goal_mode") == "emperor_bulblax": self.data["emperor_defeated"] = False
-        if manifest.get("death_link"):
-            # Ordinary Pikmin deaths accumulate across days and reconnects; the
-            # remainder below one unit is never lost. Received links are counted
-            # for display; the native game only applies links received while running.
-            self.data["pikmin_deaths"] = 0
-            self.data["death_links_received"] = 0
+        self.data = initial_session_data(manifest)
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
-            if (type(loaded) is not dict or set(loaded) != set(self.data)
-                    or type(loaded["schema"]) is not int or loaded["schema"] != 1 or loaded["fingerprint"] != self.fingerprint):
-                raise ValueError("saved session does not match manifest; refusing to reset it")
-            if (type(loaded["checked"]) is not list or any(type(n) is not str or n not in self.names for n in loaded["checked"])
-                    or len(loaded["checked"]) != len(set(loaded["checked"]))):
-                raise ValueError("invalid saved checks")
-            if type(loaded["received"]) is not list or any(type(i) is not int or i not in self.allowed_items for i in loaded["received"]):
-                raise ValueError("invalid saved received items")
-            identity = loaded["ap_identity"]
-            if identity is not None and (type(identity) is not list or len(identity) != 3
-                    or type(identity[0]) is not str or any(type(v) is not int for v in identity[1:])):
-                raise ValueError("invalid AP identity")
-            if manifest["mode"] == "solo" and (loaded["received"] or identity is not None):
-                raise ValueError("solo save contains AP state")
-            if "emperor_defeated" in loaded and type(loaded["emperor_defeated"]) is not bool: raise ValueError("invalid emperor state")
-            for key in ("pikmin_deaths", "death_links_received"):
-                if key in loaded and (type(loaded[key]) is not int or loaded[key] < 0): raise ValueError("invalid death link state")
+            validate_session_data(manifest, loaded)
             self.data = loaded
         # Native delivery is fsynced before the runner sees it. Recover complete
         # records from older runs if the runner was interrupted before its save.
@@ -94,6 +141,22 @@ class Session:
                 fields = fields[:-3] + ['END']
             if 'CAPTAINS' in fields:
                 raise ValueError('native journal second-captain mode mismatch')
+            # White flags are part of the validated seed fingerprint. Normalize
+            # only the exact enabled suffix, in native order, before legacy checks.
+            if manifest.get('p2_white_treasure_campaign'):
+                if fields[-3:] != ['WHITE_TREASURE', '1', 'END']:
+                    raise ValueError('native journal White treasure mode mismatch')
+                fields = fields[:-3] + ['END']
+            if 'WHITE_TREASURE' in fields:
+                raise ValueError('native journal White treasure mode mismatch')
+            if manifest.get('p2_white_campaign'):
+                if fields[-3:] != ['WHITE', '1', 'END']:
+                    raise ValueError('native journal White mode mismatch')
+                fields = fields[:-3] + ['END']
+                if fields[-3:] != ['PURPLE', '1', 'END']:
+                    raise ValueError('native journal White requires Purple mode')
+            if 'WHITE' in fields:
+                raise ValueError('native journal White mode mismatch')
             # Purple is a pinned session option, not a seed schema extension.
             # Normalize only its exact native suffix before the legacy count
             # check; unknown modes and non-P2 seeds must still fail closed.
@@ -202,27 +265,30 @@ class Session:
         return self.inventory[REPAIR] >= self.manifest["goal"] and (self.manifest.get("goal_mode") != "emperor_bulblax" or self.data["emperor_defeated"])
 
     def native_state(self, token, ready):
-        inventory = self.inventory
-        unlocks = sum(1 << i for i, name in enumerate(UNLOCKS) if inventory[name])
-        if self.manifest['schema'] >= 3 and inventory[FOREST_ACCESS]:
-            unlocks |= 32
-        if self.manifest['schema'] >= 4 and inventory[RED]:
-            unlocks |= 64
-        if self.manifest['schema'] >= 5 and inventory[IMPACT_ACCESS]:
-            unlocks |= 128
-        checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
-        if self.manifest['schema'] >= 8:
-            indices = [str(i) for i, n in enumerate(self.names) if n in self.data['checked']]
-            checks = 'CHECKS ' + str(len(indices)) + (' ' + ' '.join(indices) if indices else '')
-        emperor = (" EMPEROR " + str(int(self.data["emperor_defeated"]))) if self.manifest.get("goal_mode") == "emperor_bulblax" else ""
-        # The native game treats the first value it reads as its baseline, so
-        # links received while the game was closed are never replayed.
-        death_link = (" DEATHLINK " + str(self.data["death_links_received"])) if self.death_link_unit else ""
-        repairs = min(inventory[REPAIR], self.manifest["goal"])
-        if self.manifest["schema"] >= 2:
-            flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])
-            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)}{emperor}{death_link} END\n"
-        return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
+        return render_session_state(self.manifest, self.names, self.inventory, self.data, token, ready)
+
+
+def resolve_session_file(directory):
+    """Return the session file overlay/tracker readers should open.
+
+    The host layout stores ``session.json``; a netplay client mirror stores
+    ``mirror.json`` with the same schema. Pointing ``--session-dir`` at a
+    mirror directory reads the mirror. When ``session.json`` exists it wins,
+    so host behaviour is unchanged.
+    """
+    directory = Path(directory)
+    primary = directory / "session.json"
+    if primary.exists():
+        return primary
+    mirror = directory / "mirror.json"
+    if mirror.exists():
+        return mirror
+    return primary
+
+
+def load_session_data(directory):
+    """Parse the resolved session/mirror file for overlay/tracker readers."""
+    return json.loads(resolve_session_file(directory).read_text(encoding="utf-8"))
 
 
 class SessionLock:

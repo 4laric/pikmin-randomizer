@@ -61,6 +61,18 @@ def spawn_sources(layout, groups=None):
 
 
 def bootstrap_slots(manifest):
+    if manifest.get('enemy_composition'):
+        if manifest['enemy_composition'] != 'p1-then-p2-v1':
+            raise ValueError('unsupported enemy composition')
+        # The exact P1 choices precede P2 UID overrides; never resample here.
+        p1 = dict(manifest)
+        p1.pop('enemy_composition')
+        p1.pop('p2_layout')
+        mode = ('campaign' if 'campaign_layout' in p1 else
+                'slots' if 'spawn_layout' in p1 else 'mask')
+        from experimental.pikmin2_seed_bridge import bootstrap_for_manifest
+        return ('ENEMY_COMPOSITION 1 ' + mode + '\n' + bootstrap_slots(p1)
+                + bootstrap_for_manifest(manifest))
     if manifest.get('p2_layout'):
         # Opt-in experimental bridge; lazy so ordinary seeds never load lane 02/03.
         from experimental.pikmin2_seed_bridge import bootstrap_for_manifest

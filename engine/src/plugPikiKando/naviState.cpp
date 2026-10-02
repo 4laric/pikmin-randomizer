@@ -12,6 +12,9 @@
 #include "pc_p2_white.h"
 #include "pc_p2_breadbug_teki.h"
 #include "NaviState.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_det.h"
+#endif
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_whistle.h"
@@ -20,6 +23,7 @@
 #endif
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
+#include "audio/pc_audio_source.h"
 #endif
 #include <cstdlib>
 #include <cstdio>
@@ -69,6 +73,21 @@ static bool pcOnyonBusyByOther(Navi* navi, GoalItem* onyon);
 #include "jaudio/pikidemo.h"
 #if defined(PIKI_PC_PORT)
 #include "settings/pc_settings.h"
+
+// Co-op log helper (issue #1028): how many live Pikmin follow this captain in formation.
+static int pcCoopFormationCount(Navi* navi)
+{
+	int count = 0;
+	Iterator it(pikiMgr);
+	CI_LOOP(it)
+	{
+		Piki* piki = static_cast<Piki*>(*it);
+		if (piki->isAlive() && piki->mMode == PikiMode::FormationMode && piki->mNavi == navi) {
+			count++;
+		}
+	}
+	return count;
+}
 #endif
 
 /**
@@ -1073,6 +1092,28 @@ static zen::DrawContainer* pcContainerWindowFor(Navi* navi)
 {
 	return (navi->mNaviID == 1 && containerWindow2) ? containerWindow2 : containerWindow;
 }
+
+static void pcRefreshContainerCounts(Navi* navi, zen::DrawContainer* win)
+{
+	int eligible = 0;
+	Iterator squad(navi->mPlateMgr);
+	CI_LOOP(squad)
+	{
+		Piki* piki = static_cast<Piki*>(*squad);
+		const int state = piki->getState();
+		if (!piki->isAlive() || state == PIKISTATE_FallMeck || state == PIKISTATE_Bury || state == PIKISTATE_Drown
+		    || state == PIKISTATE_Dead || state == PIKISTATE_Dying || state == PIKISTATE_Absorb) continue;
+		if (piki->mColor == navi->mGoalItem->mOnionColour) ++eligible;
+	}
+	// GameStat counters change as the unpaused world runs. Pending exits reserve
+	// space immediately, including an earlier captain confirmation this same tick.
+	GameStat::update();
+	const int used = pc_vs_active() ? pcVsFieldPikis(navi->mNaviID)
+	    : int(GameStat::mapPikis) + itemMgr->getContainerExitCount();
+	const int limit = pc_vs_active() ? pcVsFieldLimit() : int(AICONST.mMaxPikisOnField());
+	win->refreshCounts(navi->mGoalItem->getTotalStorePikis() - navi->mGoalItem->mPikisToExit,
+	    10000, eligible, limit, used, limit);
+}
 #endif
 
 NaviContainerState::NaviContainerState()
@@ -1124,6 +1165,7 @@ void NaviContainerState::init(Navi* navi)
 	const int fieldMax = pc_vs_active() ? pcVsFieldLimit() : int(AICONST.mMaxPikisOnField());
 	win->start((zen::DrawContainer::containerType)navi->mGoalItem->mOnionColour, storedPikisAvailable, 10000,
 	           numOnionColoredPikis, fieldMax, fieldNow, fieldMax);
+	if (coop) pcRefreshContainerCounts(navi, win);
 	if (!coop) gameflow.mPauseAll = TRUE;
 #else
 	gameflow.mGameInterface->message(MOVIECMD_HideHUD, 0);
@@ -1175,9 +1217,15 @@ void NaviContainerState::onCloseWindow()
  */
 void NaviContainerState::exec(Navi* navi)
 {
-	int signedPikiCount;
+	int signedPikiCount = 0;
 #if defined(PIKI_PC_PORT)
-	if (pcContainerWindowFor(navi)->update(signedPikiCount)) {
+	zen::DrawContainer* win = pcContainerWindowFor(navi);
+	if (containerWindow2) pcRefreshContainerCounts(navi, win);
+	if (win->update(signedPikiCount)) {
+		if (containerWindow2) {
+			pcRefreshContainerCounts(navi, win);
+			signedPikiCount = win->revalidateTransfer(signedPikiCount);
+		}
 		if (!containerWindow2) gameflow.mGameInterface->message(MOVIECMD_ShowHUD, 0);
 #else
 	if (containerWindow->update(signedPikiCount)) {
@@ -1244,7 +1292,12 @@ void NaviContainerState::enterPikis(Navi* navi, int countToEnter)
  */
 void NaviContainerState::exitPikis(Navi* navi, int countToExit)
 {
-	navi->mGoalItem->exitPikis(countToExit);
+#if defined(PIKI_PC_PORT)
+	if (naviMgr->getNaviCount() > 1) {
+		fprintf(stderr, "[coop] onion exit request navi=%d count=%d tick=%d\n", navi->mNaviID, countToExit, (int)pc_netplay_tick());
+	}
+#endif
+	navi->mGoalItem->exitPikis(countToExit, navi->mNaviID);
 }
 
 /**
@@ -1773,6 +1826,11 @@ void NaviGatherState::init(Navi* navi)
 	navi->_AC4               = 0.0f;
 	navi->mWhistleCircleMode = 1;
 	mWhistleAnimPhase        = 0;
+#if defined(PIKI_PC_PORT)
+	if (naviMgr->getNaviCount() > 1) {
+		fprintf(stderr, "[coop] gather navi=%d tick=%d\n", navi->mNaviID, (int)pc_netplay_tick());
+	}
+#endif
 	SeSystem::playPlayerSe(SE_GATHER);
 
 	int kEffID = (navi->mNaviID == 0) ? KandoEffect::NaviWhistle0 : KandoEffect::NaviWhistle1;
@@ -1787,7 +1845,12 @@ void NaviGatherState::init(Navi* navi)
 
 #if defined(PIKI_PC_PORT)
 	// Use the actual whistle action, so controller remapping still works.
-	const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	// M1 deterministic netplay: the double-tap window counts ticks instead
+	// of wall seconds (ticks at the current tick rate, same 0.35 s
+	// threshold: a 10-tick gap recalls, an 11-tick gap does not at 30 Hz).
+	const double now = pc_netplay_deterministic()
+	    ? static_cast<double>(pc_netplay_tick()) * pc_netplay_fixed_dt(gsys ? gsys->mFrameRate : 2)
+	    : std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 	mTapState.press(now);
 	// A short tap should recruit immediately, even before the animation loop.
 	navi->mWhistleRadiusFrac = pc_whistle_fraction(0.0f);
@@ -1990,6 +2053,13 @@ void NaviGatherState::procAnimMsg(Navi* navi, MsgAnim* msg)
 void NaviGatherState::cleanup(Navi* navi)
 {
 	rumbleMgr->stop(3, navi->mNaviID);
+#if defined(PIKI_PC_PORT)
+	if (naviMgr->getNaviCount() > 1) {
+		fprintf(stderr, "[coop] gather end navi=%d formation=%d (navi0=%d navi1=%d) tick=%d\n", navi->mNaviID,
+		        pcCoopFormationCount(navi), pcCoopFormationCount(naviMgr->getNavi(0)), pcCoopFormationCount(naviMgr->getNavi(1)),
+		        (int)pc_netplay_tick());
+	}
+#endif
 	int id = (navi->mNaviID == 0) ? 1 : 2;
 	seSystem->stopPlayerSe(SE_GATHER);
 	utEffectMgr->kill(id);
@@ -3483,6 +3553,12 @@ void NaviDeadState::init(Navi* navi)
 		// SE_PLAYER_DOWN es un evento de escena (corta la música): con el
 		// otro vivo la música sigue; se avisa con el sonido de daño.
 		seSystem->playPlayerSe(SE_DAMAGED);
+		{
+			// issue #1030: makeCStick skips a downed captain, so release its C-stick (charge) slot here; otherwise
+			// a captain downed while charging keeps the swarm sound playing for as long as the partner lives.
+			PcAudioSource audioSource(navi->mNaviID);
+			seMgr->playNaviSound(0, 0);
+		}
 		navi->mVelocity.set(0.0f, 0.0f, 0.0f);
 		navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 		// Only upstream co-op has a per-captain camera. The P2 opt-in second

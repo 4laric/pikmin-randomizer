@@ -1,5 +1,9 @@
 #ifndef _ZEN_OGRESULT_H
 #define _ZEN_OGRESULT_H
+#if defined(PIKI_PC_PORT)
+#include "pc_diary_observer.h"
+#include "pc_campaign_ui_observer.h"
+#endif
 
 #include "types.h"
 
@@ -126,6 +130,10 @@ public:
 	void start();
 	void skip();
 	void draw(Graphics&);
+#if defined(PIKI_PC_PORT)
+	PcDiaryAction pcDiaryAction() const;
+	PcSaveUiSnapshot pcSaveUiSnapshot() const;
+#endif
 
 private:
 	void ogScrResultMgrSub();

@@ -12,11 +12,71 @@
 #include "gameflow.h"
 #include <stdlib.h>
 #if defined(PIKI_PC_PORT)
+#include "pc_crowd_slot_diag.h"
 #include "settings/pc_settings.h"
 #include <cstdio>
 #endif
 
 static bool newVer = true;
+
+#if defined(PIKI_PC_PORT)
+// Netplay co-op issue #1033: the plate a Pikmin's ActCrowd joined must stay its
+// current captain's plate. Logs once per Pikmin and call site (and at most a
+// couple of dozen lines per process) when it does not, with the data needed to
+// find which write moved mNavi or replaced the plate.
+#define PC_CROWD_SLOT_CHECK(WHERE) \
+do { \
+	if (mPlateMgr && (!mPiki->mNavi || mPiki->mNavi->mPlateMgr != mPlateMgr)) { \
+		int owner_ = -1; \
+		for (int ni_ = 0; naviMgr && ni_ < naviMgr->getNaviCount(); ni_++) { \
+			Navi* n_ = naviMgr->getNavi(ni_); \
+			if (n_ && n_->mPlateMgr == mPlateMgr) { \
+				owner_ = n_->mNaviID; \
+			} \
+		} \
+		pc_crowd_slot_diag::Info info_ = { \
+			WHERE, \
+			unsigned(gsys->mTotalFrames), \
+			mPiki, \
+			int(mPiki->mColor), \
+			int(mPiki->mHappa), \
+			mPiki->mSRT.t.x, \
+			mPiki->mSRT.t.z, \
+			mPiki->mNavi ? mPiki->mNavi->mNaviID : -1, \
+			owner_, \
+			mCPlateSlotID, \
+			mPlateMgr->mUsedSlotCount, \
+			mPlateMgr->mTotalSlotCount, \
+			mPlateMgr->mPlatePikiCount, \
+			int(mPiki->mMode), \
+			mPiki->getState(), \
+			int(mMode), \
+			int(mState), \
+		}; \
+		pc_crowd_slot_diag::ownerMismatch(info_); \
+	} \
+} while (0)
+#else
+#define PC_CROWD_SLOT_CHECK(WHERE) do { } while (0)
+#endif
+
+#if defined(PIKI_PC_PORT)
+// Netplay co-op #1033: true when mPlateMgr still lists mPiki at mCPlateSlotID although
+// its used-slot counter no longer covers it; the counter is raised back over the
+// slot (every Pikmin the counter cut off then finds its own slot valid again).
+// False when the slot is gone (idx out of range or listed to somebody else).
+#define PC_CROWD_RESTORE_SLOT() \
+	([&]() -> bool { \
+		if (mCPlateSlotID < 0 || mCPlateSlotID >= mPlateMgr->mSlotListSize \
+		    || mPlateMgr->mSlotList[mCPlateSlotID].mOccupant.getPtr() != mPiki) { \
+			return false; \
+		} \
+		if (mPlateMgr->mUsedSlotCount <= mCPlateSlotID) { \
+			mPlateMgr->mUsedSlotCount = mCPlateSlotID + 1; \
+		} \
+		return true; \
+	}())
+#endif
 
 /**
  * @todo: Documentation
@@ -74,12 +134,28 @@ void ActCrowd::init(Creature* target)
 	}
 
 	Navi* navi    = static_cast<Navi*>(target);
+#if defined(PIKI_PC_PORT)
+	if (mPlateMgr) {
+		int owner_ = -1;
+		for (int ni_ = 0; naviMgr && ni_ < naviMgr->getNaviCount(); ni_++) {
+			Navi* n_ = naviMgr->getNavi(ni_);
+			if (n_ && n_->mPlateMgr == mPlateMgr) owner_ = n_->mNaviID;
+		}
+		pc_crowd_slot_diag::reinit(unsigned(gsys->mTotalFrames), mPiki, owner_, navi->mNaviID, mCPlateSlotID);
+	}
+#endif
 	mPlateMgr     = navi->mPlateMgr;
 	mCPlateSlotID = mPlateMgr->getSlot(mPiki, this);
 	if (mCPlateSlotID == -1) {
 		PRINT("slot id is -1\n");
 	} else {
+#if defined(PIKI_PC_PORT)
+		// Same plate as the slot just taken (navi->mPlateMgr == mPlateMgr here); named
+		// through the plate so it pairs with the decrement in cleanup() (#1033).
+		mPlateMgr->mPlatePikiCount++;
+#else
 		navi->incPlatePiki();
+#endif
 	}
 
 	if (!mPiki->isHolding()) {
@@ -225,12 +301,23 @@ void ActCrowd::procAnimMsg(Piki* piki, MsgAnim* msg)
  */
 void ActCrowd::cleanup()
 {
+	PC_CROWD_SLOT_CHECK("cleanup");
 	if (mPiki->mRouteHandle) {
 		routeMgr->getPathFinder('test')->releaseHandle(mPiki->mRouteHandle);
 	}
 	if (mCPlateSlotID != -1) {
 		int count = mPiki->getCnt();
+#if defined(PIKI_PC_PORT)
+		// Netplay co-op #1033: the count follows the plate whose slot is released
+		// below (the one init() joined), not the Pikmin's current captain. With one
+		// captain these are the same plate; with two, a Pikmin whose mNavi changed
+		// under a live action left its old plate's count too high and the new one's
+		// too low, so Navi::refresh() later shrank mUsedSlotCount below the real
+		// occupancy and the next exec() hit "invalid slotId!".
+		mPlateMgr->mPlatePikiCount--;
+#else
 		mPiki->mNavi->decPlatePiki();
+#endif
 		mPlateMgr->releaseSlot(mPiki, mCPlateSlotID);
 		if (count > 0 && count == mPiki->getCnt()) {
 			ERROR("smart ptr err %d\n", mPiki->getCnt());
@@ -249,6 +336,25 @@ void ActCrowd::cleanup()
  */
 int ActCrowd::exec()
 {
+	PC_CROWD_SLOT_CHECK("exec");
+#if defined(PIKI_PC_PORT)
+	// Netplay co-op #1033, defensive only (the ownership writes now abandon the squad
+	// action first and cleanup() keeps each plate's count): if the captain this Pikmin
+	// follows no longer owns the plate its action joined, rejoin the owner's plate.
+	// changeMode abandons this action (releasing the old slot and count on the plate it
+	// holds) and starts a fresh one on mNavi's plate. Logged once above.
+	if (mPlateMgr && mPiki->mNavi && mPiki->mNavi->mPlateMgr != mPlateMgr) {
+		if (!mPlateMgr->validSlot(mCPlateSlotID) && !PC_CROWD_RESTORE_SLOT()) {
+			// The old plate lost this slot: nothing to release.
+			if (mCPlateSlotID != -1) {
+				mPlateMgr->mPlatePikiCount--;
+			}
+			mCPlateSlotID = -1;
+		}
+		mPiki->changeMode(PikiMode::FormationMode, mPiki->mNavi);
+		return ACTOUT_Continue;
+	}
+#endif
 	mPrevMode = mMode;
 	mMode = 5;
 #if defined(PIKI_PC_PORT)
@@ -308,7 +414,28 @@ int ActCrowd::exec()
 	}
 
 	if (!mPlateMgr->validSlot(mCPlateSlotID)) {
+#if defined(PIKI_PC_PORT)
+		// Netplay co-op #1033: this used to end both games of a session. Logged
+		// once, then recovered the same way on both peers (nothing here reads
+		// anything but sim state):
+		//  - the plate still lists this Pikmin at its slot, so only the plate's
+		//    used-slot counter fell behind: raise it back over the slot. Every
+		//    other Pikmin the counter cut off finds its own slot valid again;
+		//  - otherwise the slot is gone: drop the count init() added, forget the
+		//    slot (cleanup() then skips the release) and rejoin mNavi's plate.
+		pc_crowd_slot_diag::invalidSlot(unsigned(gsys->mTotalFrames), mPiki, mPiki->mNavi->mNaviID, mCPlateSlotID, mPlateMgr->mUsedSlotCount,
+		                                mPlateMgr->mTotalSlotCount, unsigned(mPlateMgr->mPlatePikiCount));
+		if (!PC_CROWD_RESTORE_SLOT()) {
+			if (mCPlateSlotID != -1) {
+				mPlateMgr->mPlatePikiCount--;
+			}
+			mCPlateSlotID = -1;
+			mPiki->changeMode(PikiMode::FormationMode, mPiki->mNavi);
+			return ACTOUT_Continue;
+		}
+#else
 		ERROR("invalid slotId!\n");
+#endif
 	}
 
 	Vector3f platePos = mPlateMgr->mSlotList[mCPlateSlotID].mOffsetFromCenter + mPlateMgr->mPlateCenter;

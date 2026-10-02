@@ -103,27 +103,56 @@ def validate_server(patch, slot_data, location_ids):
         raise ValueError("TheLynk server check set differs from patch")
 
 
+def session_fingerprint(patch):
+    return digest(dict(contract="thelynk-v7-native-v1", patch=patch, reference=THELYNK_REFERENCE))
+
+
+def initial_session_data(patch):
+    enabled_locations(patch["Options"])
+    return dict(kind="thelynk-v7-native-v1", fingerprint=session_fingerprint(patch),
+                identity=None, received=[], checked=[])
+
+
+def validate_session_data(patch, value):
+    expected = initial_session_data(patch)
+    if type(value) is not dict or set(value) != set(expected) or value["kind"] != expected["kind"] or value["fingerprint"] != session_fingerprint(patch):
+        raise ValueError("foreign session; use a separate TheLynk session directory")
+    if type(value["received"]) is not list or any(type(i) is not int or i not in SUPPORTED_ITEMS for i in value["received"]):
+        raise ValueError("invalid TheLynk receipts")
+    if type(value["checked"]) is not list or any(type(i) is not int or i not in enabled_locations(patch["Options"]).values() for i in value["checked"]) or len(set(value["checked"])) != len(value["checked"]):
+        raise ValueError("invalid TheLynk checks")
+    if value["identity"] is not None and (type(value["identity"]) is not list or len(value["identity"]) != 3
+            or value["identity"][0] != patch["Seed"] or type(value["identity"][1]) is not int
+            or value["identity"][2] != patch["Slot"]):
+        raise ValueError("invalid saved TheLynk identity")
+    return True
+
+
+def render_session_state(data, token, ready):
+    parts = sum(1 << (i - 71400) for i in data["received"] if i in PART_ITEMS.values())
+    checked = sorted(data["checked"])
+    counts = [data["received"].count(i) for i in range(71800, 71818)]
+    return (f"THELYNK_STATE 1 {token} {int(ready)} {parts} CHECKS {len(checked)} "
+            + " ".join(map(str, checked)) + " BONUSES " + " ".join(map(str, counts)) + " END\n")
+
+
+def render_bootstrap(patch, token):
+    ids = sorted(enabled_locations(patch["Options"]).values())
+    return (f"PIKMIN_THELYNK 1\nSESSION {token}\nFINGERPRINT {session_fingerprint(patch)}\n"
+            f"CHECKS {len(ids)} " + " ".join(map(str, ids)) + "\nEND\n")
+
+
 class TheLynkSession:
     def __init__(self, patch, directory):
         self.patch = patch
         self.directory = Path(directory)
         self.path = self.directory / "session.json"
         self.locations = enabled_locations(patch["Options"])
-        self.fingerprint = digest(dict(contract="thelynk-v7-native-v1", patch=patch, reference=THELYNK_REFERENCE))
-        self.data = dict(kind="thelynk-v7-native-v1", fingerprint=self.fingerprint,
-                         identity=None, received=[], checked=[])
+        self.fingerprint = session_fingerprint(patch)
+        self.data = initial_session_data(patch)
         if self.path.exists():
             value = json.loads(self.path.read_text(encoding="utf-8"))
-            if type(value) is not dict or set(value) != set(self.data) or value["kind"] != self.data["kind"] or value["fingerprint"] != self.fingerprint:
-                raise ValueError("foreign session; use a separate TheLynk session directory")
-            if type(value["received"]) is not list or any(type(i) is not int or i not in SUPPORTED_ITEMS for i in value["received"]):
-                raise ValueError("invalid TheLynk receipts")
-            if type(value["checked"]) is not list or any(type(i) is not int or i not in self.locations.values() for i in value["checked"]) or len(set(value["checked"])) != len(value["checked"]):
-                raise ValueError("invalid TheLynk checks")
-            if value["identity"] is not None and (type(value["identity"]) is not list or len(value["identity"]) != 3
-                    or value["identity"][0] != patch["Seed"] or type(value["identity"][1]) is not int
-                    or value["identity"][2] != patch["Slot"]):
-                raise ValueError("invalid saved TheLynk identity")
+            validate_session_data(patch, value)
             self.data = value
         for journal in self.directory.glob("runs/*/checks.txt"):
             self.poll(journal.parent)
@@ -172,16 +201,10 @@ class TheLynkSession:
         return set(PART_ITEMS.values()) <= set(self.data["received"])
 
     def bootstrap(self, token):
-        ids = sorted(self.locations.values())
-        return (f"PIKMIN_THELYNK 1\nSESSION {token}\nFINGERPRINT {self.fingerprint}\n"
-                f"CHECKS {len(ids)} " + " ".join(map(str, ids)) + "\nEND\n")
+        return render_bootstrap(self.patch, token)
 
     def state(self, token, ready):
-        parts = sum(1 << (i - 71400) for i in self.data["received"] if i in PART_ITEMS.values())
-        checked = sorted(self.data["checked"])
-        counts = [self.data["received"].count(i) for i in range(71800, 71818)]
-        return (f"THELYNK_STATE 1 {token} {int(ready)} {parts} CHECKS {len(checked)} "
-                + " ".join(map(str, checked)) + " BONUSES " + " ".join(map(str, counts)) + " END\n")
+        return render_session_state(self.data, token, ready)
 
     def poll(self, directory):
         directory = Path(directory)
@@ -205,12 +228,21 @@ class TheLynkSession:
         return True
 
 
-async def play(session, server, exe, assets):
+async def play(session, server, exe, assets, attached_directory=None):
     import websockets
     if not server.startswith(("ws://", "wss://")):
         server = "ws://" + server
     token = secrets.token_hex(32)
     directory = session.directory / "runs" / token
+    attached = attached_directory is not None
+    if attached:
+        directory = Path(attached_directory).resolve(strict=True)
+        token = directory.name
+        from .netplay_mirror import run_dir_for
+        if directory != run_dir_for(session.directory.resolve(), token):
+            raise ValueError("attached TheLynk run differs from session root")
+        if (directory / "bootstrap.txt").read_text(encoding="ascii") != session.bootstrap(token):
+            raise ValueError("attached TheLynk bootstrap differs from complete patch")
     process = log = None
     goal_sent = False
     try:
@@ -256,7 +288,7 @@ async def play(session, server, exe, assets):
                                 if packet["index"] == 0 and len(packet["items"]) >= before:
                                     synced = True
                         ready = authenticated and synced and package_ok
-                        if ready and process is None:
+                        if ready and process is None and not attached:
                             directory.mkdir(parents=True)
                             atomic_write(directory / "bootstrap.txt", session.bootstrap(token))
                             atomic_write(directory / "state.txt", session.state(token, False))
@@ -268,7 +300,7 @@ async def play(session, server, exe, assets):
                             process = subprocess.Popen([str(exe), "--randomizer-seed", str(directory / "bootstrap.txt")],
                                                        cwd=directory, env=env, stdout=log, stderr=subprocess.STDOUT)
                             print(f"TheLynk native session: {directory}", flush=True)
-                        if process is not None:
+                        if attached or process is not None:
                             handshaken = session.poll(directory)
                             atomic_write(directory / "state.txt", session.state(token, ready and handshaken))
                             pending = set(session.data["checked"]) - sent
@@ -281,7 +313,7 @@ async def play(session, server, exe, assets):
             except (OSError, websockets.ConnectionClosed) as exc:
                 if connected and isinstance(exc, OSError):
                     raise  # Local file/process failures are not network reconnects.
-                if process is not None:
+                if attached or process is not None:
                     atomic_write(directory / "state.txt", session.state(token, False))
                 print(f"TheLynk reconnecting: {exc}", flush=True)
                 await asyncio.sleep(1)
@@ -289,6 +321,8 @@ async def play(session, server, exe, assets):
         if process.returncode:
             raise RuntimeError(f"native exited {process.returncode}; see {directory / 'native.log'}")
     finally:
+        if attached:
+            atomic_write(directory / "state.txt", session.state(token, False))
         if process is not None:
             try:
                 session.poll(directory)
@@ -305,14 +339,44 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("patch", type=Path, help="TheLynk-generated .appik1")
     parser.add_argument("--session-dir", type=Path, required=True)
-    parser.add_argument("--server", required=True)
-    parser.add_argument("--exe", type=Path, required=True)
-    parser.add_argument("--assets", type=Path, required=True)
+    parser.add_argument("--server")
+    parser.add_argument("--netplay-client", action="store_true", help="Ingest host mirror only; no AP connection")
+    parser.add_argument("--bootstrap", type=Path)
+    parser.add_argument("--mirror-dir", type=Path)
+    parser.add_argument("--attach-native-run", type=Path)
+    parser.add_argument("--exe", type=Path)
+    parser.add_argument("--assets", type=Path)
     args = parser.parse_args()
     patch = read_patch(args.patch)
+    if args.attach_native_run:
+        if args.exe or args.assets or args.bootstrap:
+            raise ValueError("attach uses the existing native process/bootstrap/assets")
+        if args.netplay_client:
+            if args.server:
+                raise ValueError("client attach never contacts AP")
+            from .runner import attach_native_client
+            attach_native_client(patch, args.attach_native_run)
+        else:
+            if not args.server:
+                raise ValueError("TheLynk host attach requires --server")
+            with SessionLock(args.session_dir):
+                session = TheLynkSession(patch, args.session_dir.resolve())
+                asyncio.run(play(session, args.server, None, None, args.attach_native_run))
+        return
+    if args.exe is None or args.assets is None:
+        raise ValueError("ordinary TheLynk launch requires --exe and --assets")
     exe, assets = args.exe.resolve(strict=True), args.assets.resolve(strict=True)
     if not (assets / "dataDir/stages").is_dir():
         raise ValueError("assets must contain dataDir/stages")
+    if args.netplay_client:
+        if args.server or args.bootstrap is None:
+            raise ValueError("TheLynk mirror requires --bootstrap and no --server")
+        from .runner import launch_netplay_client
+        launch_netplay_client(patch, args.session_dir.resolve(), args.bootstrap.read_text(encoding="ascii"),
+                              args.mirror_dir, exe, assets)
+        return
+    if not args.server:
+        raise ValueError("TheLynk host requires --server")
     with SessionLock(args.session_dir):
         session = TheLynkSession(patch, args.session_dir.resolve())
         asyncio.run(play(session, args.server, exe, assets))

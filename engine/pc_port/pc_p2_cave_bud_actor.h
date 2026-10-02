@@ -9,6 +9,17 @@
 #pragma once
 
 #include "Vector.h"
+class Pom;
+
+// Explicit WFG body profile suppresses legacy file-presence recognition even
+// before final setup. Species queries authorize only this validated scene.
+bool pc_p2_cave_bud_body_profile();
+int pc_p2_cave_bud_body_species(const Pom*);
+int pc_p2_cave_bud_body_remaining(const Pom*);
+// Call only after an output was allocated and its input consumed.
+void pc_p2_cave_bud_body_output(const Pom*, bool sameSpecies);
+// Native Pom death only: retire an exhausted, empty body before manager reuse.
+void pc_p2_cave_bud_body_retire(Pom*);
 
 // True when at least one seeded bud actor was instantiated this run.
 bool pc_p2_cave_bud_active();

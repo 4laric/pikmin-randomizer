@@ -8,6 +8,10 @@
 #include "NaviMgr.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#endif
 
 //////////////////////////////////////////////////////
 //////////////// PRINT/ERROR DEFINES /////////////////
@@ -903,6 +907,11 @@ void DayMgr::menuDecreaseTime(Menu& parent)
  */
 void DayMgr::refresh(Graphics& gfx, f32 time, int numLights)
 {
+	// M2b (review M1): runs in both passes. Stage lighting is time-based, so
+	// the presentation pass recomputes identical values; the pass driver
+	// resets the light list / shape cache / flares between the passes, which
+	// makes re-adding idempotent (that missing reset was the old first-frame
+	// "stall": re-adding a listed Light self-loops it).
 	TimeSetting* timeSettingStart;
 	TimeSetting* timeSettingEnd;
 

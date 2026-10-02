@@ -1,5 +1,11 @@
 #include "pc_randomizer.h"
 #include "pc_bbft.h"
+#if defined(PIKI_PC_PORT)
+#include "netplay/pc_netplay_camlead.h"
+#include "netplay/pc_netplay_det.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#endif
 #include "NewPikiGame.h"
 
 #include "Controller.h"
@@ -45,6 +51,10 @@
 #include "zen/ogMemChk.h"
 #include "zen/ogMenu.h"
 #include "zen/ogPause.h"
+#if defined(PIKI_PC_PORT)
+#include "zen/DrawMenu.h"
+#include "pc_campaign_ui_observer.h"
+#endif
 #include "zen/ogResult.h"
 #include "zen/ogTotalScore.h"
 #include "zen/ogTutorial.h"
@@ -53,6 +63,7 @@
 #include "Kontroller.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
+#include "pc_coop_menu_layout.h"
 #include "timing/pc_render_phase.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_permadeath.h"
@@ -118,6 +129,39 @@ static zen::ogScrPauseMgr* pauseWindow;
 
 /// End of day results screen.
 static zen::ogScrResultMgr* resultWindow;
+
+#if defined(PIKI_PC_PORT)
+PcPauseSnapshot pc_pause_observe()
+{
+    PcPauseSnapshot value;
+    const zen::ogScrPauseMgr* pause = pauseWindow;
+    if (!pause || !pause->mIsActive) return value;
+    value.available = true;
+    value.state = pause->mState;
+    const zen::DrawMenu* main = pause->mMainMenu;
+    const zen::DrawMenu* sub = pause->mSubMenu;
+    if (pause->mState == zen::ogScrPauseMgr::PAUSE_Active && main) {
+        value.mainState = main->getStatusFlag();
+        value.mainSelection = main->getSelectMenu();
+        value.mainInputReady = main->pcInputReady();
+    } else if (pause->mState == zen::ogScrPauseMgr::PAUSE_SunsetSubmenu && sub) {
+        value.subState = sub->getStatusFlag();
+        value.subSelection = sub->getSelectMenu();
+        value.sunsetInputReady = sub->pcInputReady();
+    }
+    return value;
+}
+PcSaveUiSnapshot pc_save_ui_observe()
+{
+    const zen::ogScrResultMgr* result = resultWindow;
+    return result ? result->pcSaveUiSnapshot() : PcSaveUiSnapshot{};
+}
+
+PcDiaryAction pc_diary_observe()
+{
+	return pc_diary_window_action(resultWindow);
+}
+#endif
 
 /// Story mode final results screen.
 static zen::DrawFinalResult* totalWindow;
@@ -2307,11 +2351,24 @@ public:
 	{
 		Matrix4f orthoMtx;
 
+#if defined(PIKI_PC_PORT)
+		// M2b: movie update is sim; presentation reuses authoritative state.
+		if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 		if (!gameflow.mIsUIOverlayActive || gameflow.mIsTutorialTextActive) {
 			// update any cutscenes or text demos
 			gameflow.mMoviePlayer->update();
 		}
+#if defined(PIKI_PC_PORT)
+		}
+#endif
 
+#if defined(PIKI_PC_PORT)
+		// M2b: authoritative pass keeps the SimCamera (world-space pose) and
+		// skips real-camera updates; presentation drives the local view.
+		const bool skipCamForSim = pc_netplay_present_two_pass_active() && pc_render_is_authoritative();
+		if (!skipCamForSim) {
+#endif
 		if (!gameflow.mMoviePlayer->setCamera(gfx)) {
 			// false = no scene currently active, so no preset camera information to go off
 			if (gameflow.mMoviePlayer->mCamTransitionFactor > 0.0f) {
@@ -2375,12 +2432,24 @@ public:
 			gfx.setCamera(&mGameCamera);
 			mGameCamera.update(f32(gfx.mScreenWidth) / f32(gfx.mScreenHeight), mGameCamera.mFov, pc_first_person_active() ? 3.0f : 100.0f, mCameraFarClip);
 		}
+#if defined(PIKI_PC_PORT)
+		} // !skipCamForSim
+#endif
 
 #if defined(PIKI_PC_PORT)
 		// Pantalla partida (PLAN_COOP fase 3): fuera de cinemáticas se dibuja
 		// el mundo dos veces, una por Olimar, cada una en su mitad y con su
 		// cámara. El estado (sonido, efectos) solo avanza en la primera pasada.
-		const bool splitScreen = sGamecoreLive && gamecore && gamecore->isSplitScreen() && !gameflow.mMoviePlayer->mIsActive
+		// M2b: in det co-op each peer renders only its local captain full
+		// screen (no split). Both captains are still simulated.
+		// M2b fix (review M6): same movie/memcard exclusions as splitScreen
+		// (during a co-op cutscene the movie camera owns the view, not the
+		// captain's), so cutscenes keep working in det co-op.
+		const bool detSingleView = pc_netplay_present_two_pass_active() && sGamecoreLive && gamecore
+		                        && gamecore->isSplitScreen() && !gameflow.mMoviePlayer->mIsActive
+		                        && !(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie) && !memcardWindow;
+		const bool splitScreen = !detSingleView && sGamecoreLive && gamecore && gamecore->isSplitScreen()
+		                      && !gameflow.mMoviePlayer->mIsActive
 		                      && !(gameflow.mDemoFlags & CinePlayerFlags::NonGameMovie) && !memcardWindow;
 		mSplitViews = splitScreen ? 2 : 1;
 		for (int view = 0; view < mSplitViews; view++) {
@@ -2388,6 +2457,29 @@ public:
 			if (splitScreen) {
 				beginSplitView(gfx, view);
 			}
+#if defined(PIKI_PC_PORT)
+			// M2b: det co-op presentation shows the local captain full
+			// screen with its own camera. Authoritative keeps SimCamera.
+			// M2b fix (review M6): update the camera for the full-screen
+			// aspect / clip, as beginView does per split view.
+			if (detSingleView && !pc_render_is_authoritative() && sGamecoreLive && gamecore) {
+				const int localPlayer = pc_netplay_present_local_player();
+				Camera* localCam      = gamecore->getViewCamera(localPlayer);
+				if (localCam) {
+					localCam->update(f32(gfx.mScreenWidth) / f32(gfx.mScreenHeight), localCam->mFov,
+					                 pc_first_person_active() ? 3.0f : 100.0f, mCameraFarClip);
+					// M5c lane A (issue #887): in a lockstep session the view
+					// leads with the local camera controls (a separate lead
+					// camera; the sim camera above stays exactly as before).
+					Camera* viewCam = pc_netplay_camlead_view(localPlayer, localCam);
+					if (viewCam != localCam) {
+						viewCam->update(f32(gfx.mScreenWidth) / f32(gfx.mScreenHeight), viewCam->mFov,
+						                pc_first_person_active() ? 3.0f : 100.0f, mCameraFarClip);
+					}
+					gfx.setCamera(viewCam);
+				}
+			}
+#endif
 #endif
 
 		// do any pre-rendering, assuming we're not in a cutscene
@@ -2414,7 +2506,8 @@ public:
 				}
 
 #if defined(PIKI_PC_PORT)
-				if (isDVDNormal && gamecore->mRenderPass == 0) {
+				// M2b: effect update is sim; presentation draws only.
+				if (isDVDNormal && gamecore->mRenderPass == 0 && pc_render_is_authoritative()) {
 #else
 				if (isDVDNormal) {
 #endif
@@ -2491,6 +2584,11 @@ public:
 		if (!mIsInitialSetup) {
 			// check if we should advance the time of day
 			if (!gsys->resetPending() && (!mActiveMenu || gameflow.mMoviePlayer->mIsActive)) {
+#if defined(PIKI_PC_PORT)
+				// M2b: world sim (clock, Node::update, HUD update, updateAI)
+				// runs in the authoritative pass only. Presentation draws.
+				if (!pc_netplay_present_two_pass_active() || pc_render_is_authoritative()) {
+#endif
 				// PIKMIN_TICK_STATS: the world simulation lives here, inside
 				// the draw, so time it apart from the GX translation.
 				const bool profiling = pc_tick_profiler_enabled();
@@ -2507,6 +2605,25 @@ public:
 					const bool pcClockHeld = pc_settings_get_infinite_day() != 0;
 					if (!pcClockHeld && !gameflow.mMoviePlayer->mIsActive && (mUpdateFlags & UPDATE_WORLD_CLOCK)
 					    && !playerState->isTutorial()) {
+#if defined(PIKI_PC_PORT)
+						// Test-only (issue #1031): PIKMIN_TEST_CLOCK_TOD=<hour> jumps the clock once,
+						// on the first gameplay tick of the process, so a short harness run can sit
+						// in the end-of-day countdown window (18.5..19.5). Unset in every shipped
+						// launch.
+						{
+							static int sTestTodState = 0; // 0 unread, 1 armed, 2 done or absent
+							static float sTestTod = 0.0f;
+							if (sTestTodState == 0) {
+								const char* e = std::getenv("PIKMIN_TEST_CLOCK_TOD");
+								sTestTodState = (e && *e) ? 1 : 2;
+								if (sTestTodState == 1) sTestTod = (float)std::atof(e);
+							}
+							if (sTestTodState == 1) {
+								gameflow.mWorldClock.setTime(sTestTod);
+								sTestTodState = 2;
+							}
+						}
+#endif
 						f32 tod = gameflow.mWorldClock.mTimeOfDay;
 						gameflow.mWorldClock.update(1.0f);
 						f32 tod2 = gameflow.mWorldClock.mTimeOfDay;
@@ -2529,6 +2646,9 @@ public:
 					    std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count()
 					        - simStart);
 				}
+#if defined(PIKI_PC_PORT)
+				}
+#endif
 			}
 		} else {
 			// we're still in initial set up - finalise things so we can start properly
@@ -2624,20 +2744,30 @@ public:
 	void preRender(Graphics& gfx) { gamecore->mMapMgr->preRender(gfx); }
 
 #if defined(PIKI_PC_PORT)
-	/// Menú de mapa/controles de cada jugador dentro de su mitad (4:3
-	/// uniforme, centrado), sin tapar la mitad del otro.
+	/// Compact corner menus leave both players' view centers unobscured.
 	void drawSplitMenuWindows(Graphics& gfx)
 	{
+		const bool fullscreen = pc_netplay_present_two_pass_active() || gamecore->mSplitBlend <= .001f;
+		const pc_coop_menu::Mode mode = fullscreen ? pc_coop_menu::Mode::Fullscreen
+		    : (pc_settings_get_coop_split() == 1 ? pc_coop_menu::Mode::Horizontal : pc_coop_menu::Mode::Vertical);
+		const int savedUi43 = pc_gfx_get_ui_43();
+		const int savedRadarIndex = zen::gRaderNaviIndex;
+		float savedProjX, savedProjY;
+		pc_gfx_get_proj_offset(&savedProjX, &savedProjY);
+		pc_gfx_set_proj_offset(0, 0);
 		zen::ogScrMenuMgr* wins[2] = { menuWindow, menuWindow2 };
 		for (int view = 0; view < 2; view++) {
 			if (!wins[view]) continue;
-			gamecore->setViewSubrect(view);
+			const int side = pc_netplay_present_two_pass_active() ? view : gamecore->viewSide(view);
+			const auto panel = pc_coop_menu::panel(pc_gfx_get_window_aspect_ratio(), mode, side);
+			pc_gfx_set_view_subrect(panel.x0, panel.y0, panel.x1, panel.y1);
 			pc_gfx_set_ui_43_no_bars(1);
 			zen::gRaderNaviIndex = view;
 			wins[view]->draw(gfx);
-			zen::gRaderNaviIndex = 0;
-			pc_gfx_set_ui_43_no_bars(0);
 		}
+		zen::gRaderNaviIndex = savedRadarIndex;
+		pc_gfx_set_ui_43_no_bars(savedUi43);
+		pc_gfx_set_proj_offset(savedProjX, savedProjY);
 		pc_gfx_clear_view_subrect();
 		gfx.setViewport(AREA_FULL_SCREEN(gfx));
 		gfx.setScissor(AREA_FULL_SCREEN(gfx));
@@ -3242,6 +3372,13 @@ NewPikiGameSection::NewPikiGameSection()
 	// Default 30 fps; toggle in F1 menu and persisted in pikmin_settings.conf.
 	int fpsModeValue = pc_settings_get_fps_mode();
 	int frameClampValue = 2;  // Default to 30 fps (clamp=2)
+#if defined(PIKI_PC_PORT)
+	// M1 deterministic netplay: gameplay is forced to the original 30 Hz
+	// clamp regardless of the user's fpsMode setting.
+	if (pc_netplay_deterministic()) {
+		frameClampValue = 2;
+	} else
+#endif
 	if (fpsModeValue == 1) {
 		frameClampValue = 1;  // 60 fps
 	} else if (fpsModeValue == 2) {

@@ -23,6 +23,8 @@
 #include <stddef.h>
 #if defined(PIKI_PC_PORT)
 #include "pc_photo_mode.h"
+#include "timing/pc_render_phase.h"
+#include "netplay/pc_netplay_present.h"
 #endif
 
 /**
@@ -3337,7 +3339,21 @@ void BaseShape::updateAnim(Graphics& gfx, immut Matrix4f& mtx, f32* p3, const vo
 	(void)visualOwner;
 	gsys->mTimer->start("updateAnim", true);
 	gsys->mAnimatedPolygons++;
+#if defined(PIKI_PC_PORT)
+	// M2b two-pass (issue #879): the presentation pass rebuilds matrices for
+	// the local camera into separate storage and never advances animation
+	// time. The sim pointer is recorded once per shape so the driver can
+	// restore the exact authoritative state afterwards.
+	const bool isPresentation = !pc_render_is_authoritative() && pc_netplay_present_two_pass_active();
+	if (isPresentation) {
+		pc_netplay_present_save_shape_ptr(this, mAnimMatrices);
+		mAnimMatrices = gfx.getPresentMatrices(mAnimMtxCount);
+	} else {
+		mAnimMatrices = gfx.getMatrices(mAnimMtxCount);
+	}
+#else
 	mAnimMatrices = gfx.getMatrices(mAnimMtxCount);
+#endif
 
 	if (mCurrentAnimation->mData) {
 #if defined(PIKI_PC_PORT)
@@ -3350,9 +3366,16 @@ void BaseShape::updateAnim(Graphics& gfx, immut Matrix4f& mtx, f32* p3, const vo
 #else
 		const bool holdAnimation = false;
 #endif
+#if defined(PIKI_PC_PORT)
+		// M2b: presentation only rebuilds matrices for the local camera.
+		if (!p3 && !holdAnimation && (!isPresentation)) {
+			mCurrentAnimation->animate(mCurrentAnimation->mAnimSpeed);
+		}
+#else
 		if (!p3 && !holdAnimation) {
 			mCurrentAnimation->animate(mCurrentAnimation->mAnimSpeed);
 		}
+#endif
 
 		for (int i = 0; i < mJointCount; i++) {
 			AnimData* data = mAnimOverrides[i]->mData;
@@ -3402,6 +3425,25 @@ void BaseShape::updateAnim(Graphics& gfx, immut Matrix4f& mtx, f32* p3, const vo
 
 	gsys->mTimer->stop("updateAnim");
 }
+
+#if defined(PIKI_PC_PORT)
+// M2b: restores every sim pointer the presentation pass overwrote (see
+// pc_netplay_present_save_shape_ptr). Called once by the pass driver after
+// the presentation renderall completes.
+void pc_netplay_present_restore_all_shapes()
+{
+	const size_t n = pc_netplay_present_saved_count();
+	for (size_t i = 0; i < n; ++i) {
+		void* saved = nullptr;
+		void* shapePtr = pc_netplay_present_saved_shape_at(i, &saved);
+		BaseShape* shape = static_cast<BaseShape*>(shapePtr);
+		if (shape) {
+			shape->mAnimMatrices = static_cast<Matrix4f*>(saved);
+		}
+	}
+	pc_netplay_present_clear_saved();
+}
+#endif
 
 /**
  * @brief Likely fabricated static inline function useful for DOL-exclusive code in `BaseShape::calcWeightedMatrices`.

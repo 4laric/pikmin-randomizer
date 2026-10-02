@@ -67,6 +67,17 @@ if ((clean)); then
 fi
 
 printf '%s\n' '[1/5] Configurando y compilando (x86-64 genérico)...'
+# Native-only CI checks out the canonical guard separately. Forward the same
+# explicit PATH to both regional builds; leave the CMake local default intact.
+guard_args=()
+if [[ -n "${P2_CHALLENGE_GUARD_INCLUDE_DIR:-}" ]]; then
+    if [[ ! -f "${P2_CHALLENGE_GUARD_INCLUDE_DIR}/p2_fixture_captain_guard.h" ]]; then
+        printf 'Canonical fixture guard missing: %s\n' "${P2_CHALLENGE_GUARD_INCLUDE_DIR}" >&2
+        exit 2
+    fi
+    guard_args+=("-DP2_CHALLENGE_GUARD_INCLUDE_DIR:PATH=${P2_CHALLENGE_GUARD_INCLUDE_DIR}")
+fi
+
 # NATIVE_OPTIMIZE apagado: -march=native produciría instrucciones que la
 # máquina de destino puede no tener, y es justo lo que verify-portable.sh
 # comprueba. IPO es otra cosa: la optimización entre unidades de traducción no
@@ -78,7 +89,8 @@ cmake -S "${repo_root}" -B "${build_dir}" \
     -DPIKMIN_NATIVE_OPTIMIZE=OFF \
     -DPIKMIN_ENABLE_IPO=ON \
     -DPIKMIN_NATIVE_JAUDIO=ON \
-    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    "${guard_args[@]}"
 cmake --build "${build_dir}" -j"$(nproc)"
 
 # La europea, con las mismas opciones. Solo el ejecutable del juego: el
@@ -89,7 +101,8 @@ cmake -S "${repo_root}" -B "${pal_build_dir}" \
     -DPIKMIN_NATIVE_OPTIMIZE=OFF \
     -DPIKMIN_ENABLE_IPO=ON \
     -DPIKMIN_NATIVE_JAUDIO=ON \
-    -DCMAKE_INSTALL_PREFIX=/usr
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    "${guard_args[@]}"
 cmake --build "${pal_build_dir}" --target pikmin_pc -j"$(nproc)"
 
 if ((run_tests)); then

@@ -977,3 +977,15 @@ void zen::ogScrMemChkMgr::setErrorMessage()
 	}
 	}
 }
+
+#if defined(PIKI_PC_PORT)
+PcDefaultFileSnapshot zen::ogScrMemChkMgr::pcDefaultFileSnapshot() const
+{
+    PcDefaultFileSnapshot value;
+    // Mirrors update's MakeDefaultFile child route; never inspect a dormant child.
+    if (mStatus == MakeDefaultFile && mMakeDefaultMgr)
+        value = mMakeDefaultMgr->pcDefaultFileSnapshot();
+    value.memoryState = mStatus;
+    return value;
+}
+#endif

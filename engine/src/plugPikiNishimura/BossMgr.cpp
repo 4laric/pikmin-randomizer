@@ -1,8 +1,13 @@
 #include "Boss.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
+#include "pc_p2_white.h"
+#include "netplay/pc_netplay_present.h"
+#include "timing/pc_render_phase.h"
+#include "netplay/pc_netplay_det.h"
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 #endif
 #include "CoreNucleus.h"
 #include "DebugLog.h"
@@ -11,6 +16,7 @@
 #include "Kogane.h"
 #include "MemStat.h"
 #include "Mizu.h"
+#include "NaviMgr.h"
 #include "Nucleus.h"
 #include "Pellet.h"
 #include "PlayerState.h"
@@ -789,6 +795,8 @@ Creature* BossMgr::create(int genBossID, BirthInfo& birthInfo, GenObjectBoss* ge
 		if (playerState->hasContainer(genBoss->mItemColour)) {
 			boss = createBoss(BOSS_Pom);
 			if (boss) {
+				// Generator assigns mGenerator after birth returns, including reused slots.
+				P2WhiteCampaignBirthScope whiteBirth(birthInfo.mGenerator);
 				boss->initBoss(birthInfo, OBJTYPE_Pom);
 				boss->init(birthInfo.mPosition);
 				setBossParam(boss, genBoss);
@@ -886,11 +894,81 @@ void BossMgr::killAll()
 	}
 }
 
+#if defined(PIKI_PC_PORT)
+/**
+ * TEST_ONLY (issue #1036): PIKMIN_NETPLAY_TEST_NAVI_TO_BOSS=<BossID>,<tick>[,<dx>,<dz>]
+ * puts captain 1 (navi 0), and captain 2 in co-op 40 units further along z,
+ * dx/dz (default 100/0) from the first active boss of that BossID (0 Beady
+ * Long Legs, 1 Burrowing Snagret, 3 Emperor Bulblax) once the deterministic
+ * tick (plain single player: the sim update count) reaches <tick>, so the boss's appear trigger fires and both peers'
+ * cameras see it without a scripted walk. Inert unless the variable is set
+ * (it also works in single player, for before/after screenshots). It changes
+ * sim state, so give it to both peers (run_pair scrubs it from the inherited
+ * environment; pass it with --env).
+ */
+void BossMgr::pcTestPullCaptains()
+{
+	struct Cfg {
+		bool armed = false;
+		int id = 0;
+		unsigned tick = 0;
+		float dx = 100.0f;
+		float dz = 0.0f;
+	};
+	static const Cfg cfg = [] {
+		Cfg c;
+		if (const char* v = std::getenv("PIKMIN_NETPLAY_TEST_NAVI_TO_BOSS")) {
+			int id = 0;
+			unsigned t = 0;
+			float dx = 100.0f, dz = 0.0f;
+			const int n = std::sscanf(v, "%d,%u,%f,%f", &id, &t, &dx, &dz);
+			if (n >= 2 && id >= BOSS_IDSTART && id < BOSS_IDCOUNT) {
+				c.armed = true;
+				c.id    = id;
+				c.tick  = t;
+				if (n >= 3) c.dx = dx;
+				if (n >= 4) c.dz = dz;
+			}
+		}
+		return c;
+	}();
+	static bool sFired = false;
+	static unsigned sCalls = 0;
+	if (!cfg.armed || sFired || !naviMgr) {
+		return;
+	}
+	// The deterministic tick when netplay is on; otherwise (plain single player, where it never
+	// advances) the number of sim updates seen here.
+	const unsigned now = pc_netplay_deterministic() ? pc_netplay_tick() : ++sCalls;
+	if (now < cfg.tick) {
+		return;
+	}
+	BossNode* node = static_cast<BossNode*>(mActiveNodes[cfg.id].mChild);
+	Navi* navi0    = naviMgr->getNavi(0);
+	if (!node || !node->mBoss || !navi0) {
+		return;
+	}
+	sFired = true;
+	const Vector3f& at = *node->mBoss->getInitPosition();
+	for (int i = 0; i < 2; i++) {
+		Navi* navi = (i == 0) ? navi0 : naviMgr->getNavi(1);
+		if (navi) {
+			Vector3f pos(at.x + cfg.dx, at.y, at.z + cfg.dz + 40.0f * float(i));
+			navi->resetPosition(pos);
+		}
+	}
+	std::printf("[netplay-test] navis pulled to boss %d init=(%.1f %.1f %.1f) at tick %u\n", cfg.id, at.x, at.y, at.z, now);
+}
+#endif
+
 /**
  * @todo: Documentation
  */
 void BossMgr::update()
 {
+#if defined(PIKI_PC_PORT)
+	pcTestPullCaptains();
+#endif
 	gsys->mTimer->start("boss updt", true);
 	if (mForceUpdate) {
 		for (int i = BOSS_IDSTART; i < BOSS_IDCOUNT; i++) {
@@ -944,6 +1022,21 @@ void BossMgr::refresh(Graphics& gfx)
 			FOREACH_NODE(BossNode, mActiveNodes[i].mChild, node)
 			{
 				node->mBoss->refreshViewCulling(gfx);
+#if defined(PIKI_PC_PORT)
+				// M2b fix2 (review M5 residual, resolves m2a open item m1):
+				// the presentation pass submits only what the real local
+				// frustum sees, from the stored authoritative state. AI
+				// flags above stay authoritative (refreshViewCulling is a
+				// no-op in presentation).
+				if (pc_netplay_present_two_pass_active() && !pc_render_is_authoritative()) {
+					Vector3f m2bPoint(node->mBoss->mSRT.t);
+					m2bPoint.y += C_BOSS_PARM(node->mBoss, mRenderSphereHeight);
+					if (!gfx.mCamera->isPointVisible(m2bPoint,
+					                                 C_BOSS_PARM(node->mBoss, mRenderSphereRadius))) {
+						continue;
+					}
+				}
+#endif
 				if (C_BOSS_PARM(node->mBoss, _1DC) == 0 || !node->mBoss->mGrid.aiCulling() || node->mBoss->aiCullable()) {
 					node->mBoss->refresh(gfx);
 				}
