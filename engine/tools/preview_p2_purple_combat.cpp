@@ -37,6 +37,8 @@
 #include "Camera.h"
 #include "Controller.h"
 #include "Kontroller.h"
+#include "CPlate.h"
+#include "Stickers.h"
 #include "MapCode.h"
 #include <vector>
 #include <algorithm>
@@ -84,6 +86,67 @@ static bool sdlPluckAtRest(float speed,float targetSpeed) {
 static bool sdlPluckBrakeBeforeWaypoint(float distance,float speed,float tau,float dt) {
     return speed>1.f && distance<=speed*(tau+dt)+4.f;
 }
+
+// BEGIN SDL PLUCK PULSE POLICY
+// Read-only fixture forecast. This is the flat, non-slip specialization of
+// Navi::makeVelocity and Creature::updateAI/update, including native fix-position.
+// It neither advances the engine nor writes an actor. Runtime observations,
+// current collision parts and the unchanged native pluck gate remain authoritative.
+struct SdlPluckPoint { float x=0.f,z=0.f; };
+static SdlPluckPoint pluckAdd(SdlPluckPoint a,SdlPluckPoint b) {return {a.x+b.x,a.z+b.z};}
+static SdlPluckPoint pluckSub(SdlPluckPoint a,SdlPluckPoint b) {return {a.x-b.x,a.z-b.z};}
+static SdlPluckPoint pluckScale(SdlPluckPoint a,float s) {return {a.x*s,a.z*s};}
+static float pluckLength(SdlPluckPoint a) {return std::hypot(a.x,a.z);}
+static bool pluckFinite(SdlPluckPoint a) {return std::isfinite(a.x)&&std::isfinite(a.z);}
+struct SdlPluckState { SdlPluckPoint position,velocity,anchor; bool fixed=false; };
+struct SdlPluckInputModel {
+    float speed=0.f,binDegrees=0.f,clamp=0.f,neutral=0.f,cursor=0.f;
+    float cameraX=1.f,cameraZ=0.f;
+};
+static bool pluckInputModelValid(const SdlPluckInputModel& m) {
+    return std::isfinite(m.speed)&&m.speed>0.f&&std::isfinite(m.binDegrees)&&m.binDegrees>0.f&&m.binDegrees<=180.f
+        &&std::isfinite(m.clamp)&&m.clamp>0.f&&m.clamp<=1.f&&std::isfinite(m.neutral)&&m.neutral>=0.f
+        &&std::isfinite(m.cursor)&&m.cursor>=m.neutral&&m.cursor<m.clamp
+        &&std::isfinite(m.cameraX)&&std::isfinite(m.cameraZ)
+        &&std::fabs(std::hypot(m.cameraX,m.cameraZ)-1.f)<.001f;
+}
+static SdlPluckPoint pluckInputTarget(int x,int y,const SdlPluckInputModel& m) {
+    // ordinaryInput(nativeAxisUnits=true) -> SDL axis /256 -> Controller /74.
+    // Navi bins the CAMERA-space direction before rotating it into world space.
+    const float pi=3.14159265358979323846f,quarter=pi*.25f;
+    const float sx=x/74.f,sz=-y/74.f;
+    float magnitude=std::sqrt(sx*sx+sz*sz),theta=std::atan2(sx,sz);
+    if(theta<0.f)theta+=2.f*pi;
+    const float width=pi/180.f*m.binDegrees;
+    const float angle=width*int((theta+width*.5f)/width);
+    const float remainder=angle-int(angle/quarter)*quarter;
+    const float length=std::sin(quarter)/(std::sin(remainder)+std::sin(quarter-remainder));
+    magnitude*=1.f/length;
+    if(magnitude>=m.clamp)magnitude=1.f;
+    if(magnitude<m.neutral || magnitude<=m.cursor)magnitude=0.f;
+    const float localX=magnitude*std::sin(angle),localZ=magnitude*std::cos(angle);
+    return {(m.cameraX*localX-m.cameraZ*localZ)*m.speed,
+            (m.cameraZ*localX+m.cameraX*localZ)*m.speed};
+}
+static bool pluckPulseStep(SdlPluckState& s,SdlPluckPoint target,float dt,float tau) {
+    if(!pluckFinite(s.position)||!pluckFinite(s.velocity)||!pluckFinite(s.anchor)||!pluckFinite(target)
+        ||!std::isfinite(dt)||dt<=0.f||dt>1.f/30.f+.000001f||!std::isfinite(tau)||tau<dt)return false;
+    s.velocity=pluckAdd(s.velocity,pluckScale(pluckSub(target,s.velocity),dt/tau));
+    s.position=pluckAdd(s.position,pluckScale(s.velocity,dt));
+    // Creature::update captures the fixed point AFTER both moveNew passes.
+    if(pluckLength(target)<.01f) {
+        if(!s.fixed){s.fixed=true;s.anchor=s.position;}
+    } else s.fixed=false;
+    if(s.fixed) {
+        const auto delta=pluckSub(s.anchor,s.position);const float distance=pluckLength(delta);
+        if(distance>0.f&&distance<30.f)s.velocity=pluckScale(delta,10.f);
+    }
+    return pluckFinite(s.position)&&pluckFinite(s.velocity);
+}
+static bool pluckPulseSettled(const SdlPluckState& s) {
+    return s.fixed&&pluckLength(s.velocity)<=1.f&&pluckLength(pluckSub(s.position,s.anchor))<=.1f;
+}
+// END SDL PLUCK PULSE POLICY
 
 static const auto fixtureStarted=std::chrono::steady_clock::now();
 static void milestone(const char* name,int tick) {
@@ -217,6 +280,11 @@ class PurpleCombatApp : public PlugPikiApp {
     std::vector<Vector3f> pluckRoute;
     size_t pluckRouteIndex=0;
     bool sdlPluckBraking=false;
+    bool sdlPulseActive=false;
+    int sdlPulseFrames=0;
+    SdlPluckState sdlPulseBefore;
+    SdlPluckPoint sdlPulseCommand;
+
     PikiHeadItem* routedHead=nullptr;
     Vector3f routedHeadPosition;
     static float planarDistance(const Vector3f& a,const Vector3f& b) {
@@ -305,20 +373,32 @@ class PurpleCombatApp : public PlugPikiApp {
             // that required braking. Find a farther strictly clear route or
             // retain the existing bounded no-route refusal; never reverse
             // a minimum-strength walking command across an arrival point.
-            if(sdlAcquisitionMode() && planarDistance(n->mSRT.t,p)<=4.f) return;
+            if(sdlAcquisitionMode() && !isGoal && planarDistance(n->mSRT.t,p)<=4.f) return;
             if(pluckSegmentClear(p,p)) {nodes.push_back(p);goal.push_back(isGoal);}
         };
         // Choose a reachable position inside the engine's actual pluck range,
         // using the real sprout and current Violet parts. This plans controller
         // inputs only; it never moves actors or edits the game's route graph.
-        // Keep the SDL arrival margin inside the unchanged native pluck
-        // threshold: (range-4-.5)+4 < range-.25. Outer .95 goals do not
-        // provide that margin; if the inner ring is blocked, fail normally.
-        const float goalRadius=sdlAcquisitionMode()?pluckRange-4.f-.5f:pluckRange*.95f;
-        require(goalRadius>0.f,"native pluck range cannot fit SDL stopping margin");
-        for(int i=0;i<32;++i) {
-            const float a=i*6.283185307f/32.f;
-            addNode(head->mSRT.t+Vector3f(goalRadius*std::cos(a),0,goalRadius*std::sin(a)),true);
+        if(sdlAcquisitionMode()) {
+            // The native pluck contract is a disk, not a four-unit arrival ball.
+            // At each bearing choose the point with most slack to BOTH the
+            // actual pluck gate and every live projected collision pair.
+            for(int i=0;i<64;++i) {
+                const float angle=i*6.283185307f/64.f;float best=.5f;Vector3f selected;
+                for(float radius=.5f;radius<pluckRange-.25f;radius+=.25f) {
+                    Vector3f point=head->mSRT.t+Vector3f(radius*std::cos(angle),0,radius*std::sin(angle));
+                    float slack=pluckRange-.25f-radius;
+                    for(const auto& obstacle:pluckObstacles)slack=std::min(slack,planarDistance(point,obstacle.centre)-obstacle.radius);
+                    if(slack>best){best=slack;selected=point;}
+                }
+                if(best>.5f)addNode(selected,true);
+            }
+        } else {
+            const float goalRadius=pluckRange*.95f;
+            for(int i=0;i<32;++i) {
+                const float a=i*6.283185307f/32.f;
+                addNode(head->mSRT.t+Vector3f(goalRadius*std::cos(a),0,goalRadius*std::sin(a)),true);
+            }
         }
         for(const auto& obstacle:pluckObstacles) for(int i=0;i<16;++i) {
             const float a=i*6.283185307f/16.f;
@@ -778,6 +858,146 @@ class PurpleCombatApp : public PlugPikiApp {
         if(sdlAcquisitionMode()) ordinaryInput(buttons,y,x,true);
         else pc_p2_input_script_set(1,buttons,x,y);
     }
+    static SdlPluckPoint sdlPoint(const Vector3f& p) {return {p.x,p.z};}
+    SdlPluckState sdlPulseSnapshot(Navi* n) const {
+        return {sdlPoint(n->mSRT.t),sdlPoint(n->mVelocity),sdlPoint(n->mFixedPosition),n->isCreatureFlag(CF_IsPositionFixed)};
+    }
+    SdlPluckInputModel sdlPulseModel(Navi* n,float tau) const {
+        require(n->controlCamera() && n->mPlateMgr && n->mKontroller,"pulse controller dependencies");
+        const int state=n->getCurrState()->getID();
+        require(state==NAVISTATE_Walk || state==NAVISTATE_Idle,"pulse requires ordinary walking state");
+        require(n->mGroundTriangle && MapCode::getSlipCode(n->mGroundTriangle)==0
+            && std::fabs(n->mGroundTriangle->mTriangle.mNormal.x)<.0001f
+            && std::fabs(n->mGroundTriangle->mTriangle.mNormal.z)<.0001f
+            && n->mGroundTriangle->mTriangle.mNormal.y>.9999f,"pulse forecast requires flat non-slip ground");
+        require(n->isCreatureFlag(CF_AllowFixPosition) && !n->isCreatureFlag(CF_EnableAirDrag)
+            && !n->isCreatureFlag(CF_DisableMovement|CF_IsAiDisabled|CF_SkipPhysicsAndCollision|CF_IsFlying|CF_IsClimbing)
+            && !n->mIsBeingDamaged && !n->mIsFrozen && !n->mKontroller->mIsControllerFrozen
+            && !n->mCollPlatform && !n->mRope && !n->mStickTarget
+            && n->mHoldingCreature.isNull(),"pulse forecast unsupported movement state");
+        require(pluckLength(sdlPoint(n->_B0))<.0001f && pluckLength(sdlPoint(n->mVolatileVelocity))<.0001f
+            && std::isfinite(tau) && tau>=1.f/30.f,"pulse forecast external force or acceleration");
+        Stickers stickers(n);const float drag=std::max(.1f,1.f-.08f*stickers.getNumStickers());
+        const Vector3f& axis=n->controlCamera()->mViewXAxis;
+        const float yaw=std::atan2(axis.z,axis.x);
+        SdlPluckInputModel model;
+        model.speed=(n->mPlateMgr->canNaviRunFast()?C_NAVI_PARM(n,mRunSpeed):C_NAVI_PARM(n,mMoveSpeed))
+            *drag*pc_randomizer_captain_movement_multiplier()*pc_settings_get_navi_speed_scale();
+        model.binDegrees=C_NAVI_PARM(n,mShakePreventionAngle);
+        model.clamp=C_NAVI_PARM(n,mClampStickToMaxThreshold);
+        model.neutral=C_NAVI_PARM(n,mNeutralStickThreshold);model.cursor=C_NAVI_PARM(n,mCursorMoveStickThreshold);
+        model.cameraX=std::cos(yaw);model.cameraZ=std::sin(yaw);
+        require(pluckInputModelValid(model),"invalid loaded pulse input model");return model;
+    }
+    bool sdlPulseSegmentClear(SdlPluckPoint a,SdlPluckPoint b,float margin=0.f) const {
+        if(!pluckFinite(a)||!pluckFinite(b)||!std::isfinite(margin)||margin<0.f)return false;
+        const auto delta=pluckSub(b,a);const float square=delta.x*delta.x+delta.z*delta.z;
+        for(const auto& obstacle:pluckObstacles) {
+            if(!sdlFinitePoint(obstacle.centre)||!std::isfinite(obstacle.radius)||obstacle.radius<0.f)return false;
+            const auto offset=pluckSub(sdlPoint(obstacle.centre),a);
+            const float t=square>0.f?std::max(0.f,std::min(1.f,(offset.x*delta.x+offset.z*delta.z)/square)):0.f;
+            if(pluckLength(pluckSub(pluckAdd(a,pluckScale(delta,t)),sdlPoint(obstacle.centre)))<obstacle.radius+margin)return false;
+        }
+        return true;
+    }
+    bool sdlNeutralEnvelopeClear(const SdlPluckState& state,float tau) const {
+        if(state.fixed) {
+            // After native pull starts the qualified recurrence contracts toward
+            // the captured anchor; the first overshoot still carries velocity.
+            if(pluckLength(pluckSub(state.anchor,state.position))>.00001f) {
+                const float discrepancy=pluckLength(pluckSub(state.velocity,pluckScale(pluckSub(state.anchor,state.position),10.f)));
+                // Cover the observed velocity discrepancy on the next step;
+                // do not infer exact contraction merely from a nonzero offset.
+                return std::isfinite(discrepancy) && sdlPulseSegmentClear(state.position,state.anchor,.05f+discrepancy/30.f);
+            }
+        }
+        const float limit=1.f/30.f;
+        const float step=std::min(limit,tau*.5f),maximum=step*(1.f-step/tau);
+        // First neutral capture plus first drift. All later fixed-position
+        // pulls stay between anchor and drift for dt<=1/30 and dt<=tau.
+        return sdlPulseSegmentClear(state.position,pluckAdd(state.position,pluckScale(state.velocity,(state.fixed?1.f:2.f)*maximum)),.05f);
+    }
+    bool sdlPulseTerrainClear(SdlPluckPoint a,SdlPluckPoint b,float height,float margin) const {
+        if(!mapMgr||!pluckFinite(a)||!pluckFinite(b)||!std::isfinite(height))return false;
+        const auto delta=pluckSub(b,a);const int samples=int(std::ceil(pluckLength(delta)))+1;
+        // Same native terrain predicates as route admission, now also covering
+        // the selected off-axis pulse and neutral envelope. These finite samples
+        // are fixture admission checks, not a continuous terrain proof.
+        for(int i=0;i<=samples;++i)for(int side=-1;side<8;++side) {
+            auto p=pluckAdd(a,pluckScale(delta,float(i)/samples));
+            if(side>=0){p.x+=margin*std::cos(side*6.283185307f/8.f);p.z+=margin*std::sin(side*6.283185307f/8.f);}
+            CollTriInfo* tri=mapMgr->getCurrTri(p.x,p.z,true);const float y=mapMgr->getMinY(p.x,p.z,true);
+            if(!tri||!sdlFinitePoint(tri->mTriangle.mNormal)||MapCode::getAttribute(tri)==ATTR_Water||MapCode::getAttribute(tri)==ATTR_Hole||MapCode::getSlipCode(tri)!=0
+                ||!std::isfinite(y)||std::fabs(y-height)>=.1f||std::fabs(tri->mTriangle.mNormal.x)>=.0001f
+                ||std::fabs(tri->mTriangle.mNormal.z)>=.0001f||tri->mTriangle.mNormal.y<=.9999f)return false;
+        }
+        return true;
+    }
+    void sdlObservePulse(Navi* n,PikiHeadItem* head,Pom* violet,float tau,float dt) {
+        (void)head;(void)violet;sdlPulseModel(n,tau);
+        SdlPluckState predicted=sdlPulseBefore;require(pluckPulseStep(predicted,sdlPulseCommand,dt,tau),"invalid pulse observation step");
+        const SdlPluckState actual=sdlPulseSnapshot(n);
+        const float positionError=pluckLength(pluckSub(predicted.position,actual.position));
+        const float velocityError=pluckLength(pluckSub(predicted.velocity,actual.velocity));
+        const float targetError=pluckLength(pluckSub(sdlPulseCommand,sdlPoint(n->mTargetVelocity)));
+        const float anchorError=actual.fixed?pluckLength(pluckSub(predicted.anchor,actual.anchor)):0.f;
+        std::printf("P2_PURPLE_PLUCK_PULSE_OBS tick=%d frame=%d dt=%.9f position_error=%.6f velocity_error=%.6f target_error=%.6f anchor_error=%.6f fixed=%d expected_fixed=%d command=%.6f,%.6f actor_writes=0\n",
+            ticks,sdlPulseFrames,dt,positionError,velocityError,targetError,anchorError,int(actual.fixed),int(predicted.fixed),sdlPulseCommand.x,sdlPulseCommand.z);
+        // Deviations are diagnostic failures, never synthetic corrections.
+        require(positionError<.1f && velocityError<1.f && targetError<.5f && anchorError<.1f
+            && actual.fixed==predicted.fixed,"native pulse deviated from qualified movement forecast");
+        require(sdlNeutralEnvelopeClear(actual,tau),"native pulse neutral envelope crosses live collision bounds");
+        const float neutralStep=std::min(1.f/30.f,tau*.5f),neutralMaximum=neutralStep*(1.f-neutralStep/tau);
+        const bool pulling=actual.fixed&&pluckLength(pluckSub(actual.anchor,actual.position))>.00001f;
+        const auto end=pulling?actual.anchor
+            :pluckAdd(actual.position,pluckScale(actual.velocity,(actual.fixed?1.f:2.f)*neutralMaximum));
+        const float driftMargin=pulling?pluckLength(pluckSub(actual.velocity,pluckScale(pluckSub(actual.anchor,actual.position),10.f)))/30.f:0.f;
+        require(sdlPulseTerrainClear(actual.position,end,n->mSRT.t.y,.05f+driftMargin),"native pulse neutral terrain changed");
+        acquisitionInput();sdlPulseCommand={};sdlPulseBefore=actual;
+        require(++sdlPulseFrames<=64,"native pulse failed to settle within bounded observation");
+        if(sdlPluckAtRest(pluckLength(actual.velocity),pluckLength(sdlPoint(n->mTargetVelocity))) && pluckPulseSettled(actual)) {
+            sdlPulseActive=false;
+            std::printf("P2_PURPLE_PLUCK_PULSE_SETTLED tick=%d frames=%d native_fixed_position=1 actor_writes=0\n",ticks,sdlPulseFrames);
+        }
+    }
+    bool sdlBeginPulse(Navi* n,PikiHeadItem* head,Pom*,const Vector3f& waypoint,float tau,float dt,float range) {
+        const SdlPluckInputModel model=sdlPulseModel(n,tau);const SdlPluckState start=sdlPulseSnapshot(n);
+        const float oldDistance=pluckLength(pluckSub(start.position,sdlPoint(waypoint)));
+        int bestX=0,bestY=0;float bestScore=std::numeric_limits<float>::infinity();SdlPluckState bestEnd;
+        const float limit=1.f/30.f,step=std::min(limit,tau*.5f),maximum=step*(1.f-step/tau);
+        for(int bearing=0;bearing<144;++bearing)for(int power=1;power<=74;++power) {
+            const float angle=bearing*6.283185307f/144.f;
+            const int x=int(std::lround(power*std::cos(angle))),y=int(std::lround(power*std::sin(angle)));
+            const SdlPluckPoint target=pluckInputTarget(x,y,model);if(pluckLength(target)<.01f)continue;
+            // Qualified prospective bound for one input tick followed by neutral,
+            // for any next dt in (0,1/30]. This is CURRENT-pose geometry, not
+            // proof about future animation/camera/contact. Observe every tick.
+            const float lengthFactor=(limit*limit+2.f*maximum*limit)/tau;
+            const auto furthest=pluckAdd(start.position,pluckScale(target,lengthFactor));
+            if(!sdlPulseSegmentClear(start.position,furthest,(tau+limit)*pluckLength(start.velocity)+.05f))continue;
+            SdlPluckState trial=start;bool clear=true;
+            for(int frame=0;frame<64;++frame) {
+                const auto before=trial.position;
+                if(!pluckPulseStep(trial,frame==0?target:SdlPluckPoint{},dt,tau)
+                    ||!sdlPulseSegmentClear(before,trial.position,.05f)){clear=false;break;}
+                if(frame>0&&pluckPulseSettled(trial))break;
+            }
+            if(!clear||!pluckPulseSettled(trial))continue;
+            const float distance=pluckLength(pluckSub(trial.position,sdlPoint(waypoint)));
+            const bool terminal=pluckLength(pluckSub(trial.position,sdlPoint(head->mSRT.t)))<range-.5f;
+            if(!terminal&&distance>=oldDistance-.1f)continue;
+            const float score=distance-(terminal?10000.f:0.f);
+            if(score<bestScore && sdlPulseTerrainClear(start.position,furthest,n->mSRT.t.y,(tau+limit)*pluckLength(start.velocity)+.05f))
+                {bestScore=score;bestX=x;bestY=y;bestEnd=trial;}
+        }
+        if(!std::isfinite(bestScore))return false;
+        sdlPulseBefore=start;sdlPulseCommand=pluckInputTarget(bestX,bestY,model);sdlPulseFrames=0;sdlPulseActive=true;
+        acquisitionInput(0,bestX,bestY);
+        std::printf("P2_PURPLE_PLUCK_PULSE_BEGIN tick=%d raw=%d,%d target=%.6f,%.6f predicted_landing=%.6f,%.6f dt=%.9f tau=%.6f native_fix_position=1 actor_writes=0\n",
+            ticks,bestX,bestY,sdlPulseCommand.x,sdlPulseCommand.z,bestEnd.position.x,bestEnd.position.z,dt,tau);
+        return true;
+    }
+
     bool approachAndPluck(Navi* n,PikiHeadItem* head,Pom* violet) {
         // Ordinary controller movement/pluck. Never relocate the captain or
         // sprout, or force a plucking state to satisfy natural acceptance.
@@ -808,6 +1028,10 @@ class PurpleCombatApp : public PlugPikiApp {
             refreshPluckObstacles(n,violet);
             pluckTrace("motion_snapshot",n,head,violet);
             require(pluckSegmentClear(n->mSRT.t,n->mSRT.t),"SDL pluck captain starts inside live collision bounds");
+            if(sdlPulseActive) {
+                sdlObservePulse(n,head,violet,pluckTau,pluckDt);
+                return false;
+            }
             // The observed failing route began while the ejected sprout was
             // still unpluckable and Violet parts were changing. Let the native
             // head FSM become ready without walking into that opening pose.
@@ -849,6 +1073,21 @@ class PurpleCombatApp : public PlugPikiApp {
             const Vector3f& target=pluckRoute[pluckRouteIndex];
             const float tx=target.x-n->mSRT.t.x,tz=target.z-n->mSRT.t.z,d=std::sqrt(tx*tx+tz*tz);
             require(d>.05f,"controller reached approach point outside native pluck range");
+            if(sdlAcquisitionMode()) {
+                if(!sdlPluckAtRest(pluckSpeed,pluckTargetSpeed)) {
+                    acquisitionInput();sdlPluckBraking=true;return false;
+                }
+                if(!sdlBeginPulse(n,head,violet,target,pluckTau,pluckDt,pluckRange)) {
+                    // Quantized movement may stop short of a geometric corner.
+                    // Replan ONCE from the observed rest point; the nearby-node
+                    // exclusion prevents endlessly selecting that same corner.
+                    planPluckRoute(n,head,violet,pluckRange);
+                    require(!pluckRoute.empty() && sdlBeginPulse(n,head,violet,pluckRoute[0],pluckTau,pluckDt,pluckRange),
+                        "no eligible quantized pulse after stopped route replan");
+                }
+                return false;
+            }
+
             if(sdlAcquisitionMode() && (d<=4.f || sdlPluckBrakeBeforeWaypoint(d,pluckSpeed,pluckTau,pluckDt))) {
                 acquisitionInput();sdlPluckBraking=true;
                 std::printf("P2_PURPLE_PLUCK_BRAKE tick=%d reason=waypoint distance=%.6f speed=%.6f target_speed=%.6f tau=%.6f dt=%.9f SDL_neutral=1 actor_writes=0\n",
@@ -869,6 +1108,8 @@ class PurpleCombatApp : public PlugPikiApp {
                 int(SDL_JoystickGetAxis(ordinaryPad,SDL_CONTROLLER_AXIS_LEFTY)),int(SDL_JoystickGetButton(ordinaryPad,SDL_CONTROLLER_BUTTON_A)));
             return false;
         }
+        require(std::isfinite(head->mSRT.t.y) && std::isfinite(n->mSRT.t.y)
+            && std::fabs(head->mSRT.t.y-n->mSRT.t.y)<25.f,"native pluck height gate");
         if(!head->canPullout()) {acquisitionInput();return false;}
         acquisitionInput(KBBTN_A);
         ++pluckAttempts;

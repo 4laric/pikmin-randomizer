@@ -1,3 +1,27 @@
+# Current native source provenance
+
+Native `4ab0b3c3a2eb7dfd3b186252d065ea5c9d9fa287` is exported from clean
+`output/native-coop-p2-source-combination` under #1144. All 4,264 copied
+tracked files match actual working-tree bytes; 53 audited non-desktop resources
+are skipped. This adds only the independently reviewed Purple1128 ordinary SDL
+pulse fixture to the previously accepted White/captain source ef786. The exact
+Git LF fixture SHA is 375f2fefa2ca18cfe18c35de06d25d1bde9e6cecb99d85a1d9a0e6b92df99304;
+Windows checkout/export CRLF bytes have SHA322d56e92ae66cf60f5b551228f6131c61a3e2b6c46770a3694775a5ebcaf849.
+Supported genuine owner coordination 6b027097 was consumed before adoption.
+Production movement, actor state, pluck range, original driver and runtime
+budgets remain unchanged. Arithmetic/static controls and syntax passed;
+actual dynamic acquisition, ordinary SAVE/one fresh resume, later battle/carry
+and human playtest remain open. Fresh matching selected-fixture compilation,
+controller pin and one runtime admission are still required.
+
+Previous ef786 Linux run37022837890 passed 284 tests and clean Debian12
+launcher/help/loader smoke; all101 archive members/53 ELF binaries were verified.
+That package does not compile/execute this selected fixture. Current source
+build evidence and all named gameplay acceptance remain pending. FutureWhite
+retail-provider10, settings1190 and co-op151 source are not included.
+
+## Earlier exports (historical evidence)
+
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
