@@ -34,29 +34,90 @@ class Deadline:
         self.remaining()
 
 
+def replace_complete_command(pending, target):
+    """Preserve POSIX/new-file publication; existing Windows file uses ReplaceFileW.
+
+    The matching native fixture reader explicitly shares deletion. No5 retry:
+    every native API refusal remains an OSError with its actual code and paths.
+    """
+    if os.name != "nt" or not target.exists():
+        os.replace(pending, target)
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    replace = kernel.ReplaceFileW
+    replace.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                       wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p]
+    replace.restype = wintypes.BOOL
+    ctypes.set_last_error(0)
+    if not replace(str(target), str(pending), None, 0, None, None):
+        error = ctypes.WinError(ctypes.get_last_error())
+        error.filename = str(pending)
+        error.filename2 = str(target)
+        raise error
+
+
 class SdlCommand:
-    """Atomic file feeding only the fixture's actual SDL virtual controller."""
-    def __init__(self, path: Path):
+    """Same-owner atomic SDL feed; only identified sharing/lock violations retry."""
+    def __init__(self, path: Path, deadline):
         self.path = path
+        self.deadline = deadline
         self.sequence = 0
+        self.events = []
+
+    def event(self, disposition, attempt, error=None):
+        row = dict(sequence=self.sequence, path=str(self.path),
+                   disposition=disposition, attempt=attempt,
+                   monotonic=time.monotonic())
+        if error is not None:
+            row.update(exception=type(error).__name__, errno=error.errno,
+                       winerror=getattr(error, "winerror", None),
+                       filename=error.filename, filename2=error.filename2)
+        self.events.append(row)
+        with self.path.with_suffix(".publication.jsonl").open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(json.dumps(row, sort_keys=True) + "\n")
 
     def publish(self, buttons=0, axes=(0, 0, 0, 0)):
         if type(buttons) is not int or not 0 <= buttons < 1 << 21:
             raise ValueError("SDL button bounds")
         if len(axes) != 4 or any(type(v) is not int or not -32768 <= v <= 32767 for v in axes):
             raise ValueError("SDL axis bounds")
+        nonzero = buttons != 0 or any(axes)
+        if nonzero:
+            self.deadline.check()
         self.sequence += 1
         text = f"SDL1 {self.sequence} {buttons} {' '.join(map(str, axes))} END\n"
         pending = self.path.with_suffix(".pending")
         pending.write_bytes(text.encode("ascii"))
-        # An open Windows reader can briefly prevent replace. No partial command
-        # is exposed; keep the last complete file and retry on the next turn.
+        retry_end = min(time.monotonic() + 0.050, self.deadline.end)
         try:
-            os.replace(pending, self.path)
-        except PermissionError:
+            for attempt in range(1, 12):
+                if nonzero:
+                    self.deadline.check()  # Preserve absolute-phase timeout semantics.
+                if attempt > 1 and time.monotonic() >= retry_end:
+                    return False  # No retry after audit/scheduling consumed its window.
+                if nonzero:
+                    self.deadline.check()  # Every replacement, including a retry.
+                try:
+                    replace_complete_command(pending, self.path)
+                    if attempt > 1:
+                        self.event("published-after-transient-sharing-retry", attempt)
+                    return True
+                except PermissionError as error:
+                    #111 did not retain the code. Only actual32/33 justify retries;
+                    # access-denied5/unknown PermissionError remain fail-closed.
+                    transient = getattr(error, "winerror", None) in (32, 33)
+                    self.event("identified-sharing-violation" if transient else "refused", attempt, error)
+                    # Actual audit I/O can consume time; recompute AFTER it.
+                    remaining = retry_end - time.monotonic()
+                    if not transient or attempt >= 11 or remaining <= 0:
+                        return False
+                    if nonzero:
+                        self.deadline.check()
+                    time.sleep(min(0.005, remaining))
+        finally:
             pending.unlink(missing_ok=True)
-            return False
-        return True
 
 
 class OwnedChildren:
@@ -224,7 +285,7 @@ def capture(args):
                 _winapi.CreateJunction(str(args.assets.resolve()), str(stage / "assets"))
             else:
                 (stage / "assets").symlink_to(args.assets.resolve(), target_is_directory=True)
-            feed = SdlCommand(stage / "sdl-input.txt")
+            feed = SdlCommand(stage / "sdl-input.txt", deadline)
             feed.publish()
             env = dict(base, PIKMIN_COOP_FIXTURE_INPUT=str(feed.path))
             command = [str(executable), "--netplay-test-hidden", "--netplay-input", "auto",
