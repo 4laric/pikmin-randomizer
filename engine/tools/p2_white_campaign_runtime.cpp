@@ -81,7 +81,7 @@ public:CampaignInput():Kontroller(1){}
    if(phase==1&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==3){
     // Ordinary A: keep the pending grab held, release only after actual Hanged.
-    if(walking)keys=KeyConfig::_instance->mThrowKey.mBind;
+    if(walking&&n->mNextThrowPiki&&n->mNextThrowPiki->isAlive()&&pc_p2_species(n->mNextThrowPiki)==P2SpeciesRed&&n->mNextThrowPiki->mNavi==n&&n->mNextThrowPiki->mMode==PikiMode::FormationMode&&n->mNextThrowPiki->getState()==PIKISTATE_Normal&&n->mNextThrowPiki->isThrowable())keys=KeyConfig::_instance->mThrowKey.mBind;
     else if(n&&n->getCurrState()&&n->getCurrState()->getID()==NAVISTATE_ThrowWait){
      auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
      keys=KeyConfig::_instance->mThrowKey.mBind;
@@ -93,7 +93,8 @@ public:CampaignInput():Kontroller(1){}
    if(phase==14&&walking&&phaseTick%30<15)keys=KBBTN_DPAD_RIGHT;
    if(phase==8)keys=KeyConfig::_instance->mThrowKey.mBind;
    if(phase==11&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=phase==2||phase==4||phase==7||phase==11||phase==17||phase==25;
+   if(phase==16&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
+   const bool move=phase==2||phase==4||phase==7||phase==11||phase==16||phase==17||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
     bool walk=phase==4||phase==17||phase==25||bx*bx+bz*bz>10000;
@@ -159,7 +160,7 @@ public:int idle()override{
  Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){auto* p=static_cast<PikiHeadItem*>(*sprouts);if(!p->isAlive())continue;require(pc_p2_species(p)==P2SpeciesWhite,"unexpected sprout species");++heads;if(p->canPullout()&&!head)head=p;}
  Iterator pellets(pelletMgr);int pelletCount=0;CI_LOOP(pellets){auto* p=static_cast<Pellet*>(*pellets);if(p==cargo)cargoSlot=true;if(p->isAlive())++pelletCount;}
  if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_OBSERVATION frame=%d phase=%d red=%d white=%d heads=%d stock=%d spent=%d followers=%d carriers=%d pokos=%d nstate=%d\n",frame,phase,red,white,heads,whiteStock(),spent(),whiteFollowers,carriers,p2whitetreasure::ledger.total(),n->getCurrState()->getID());
- if(phase==3&&frame%60==0){
+ if((phase==3||phase==16)&&frame%60==0){
   auto* grab=n->getCurrState()->getID()==NAVISTATE_ThrowWait?static_cast<NaviThrowWaitState*>(n->getCurrState()):nullptr;
   Piki* heldRed=grab?grab->mHeldThrowPiki:nullptr;Piki* pendingRed=grab?grab->mPendingThrowPiki:nullptr;
   std::printf("P2_WHITE_CAMPAIGN_ACQUIRE_INPUT frame=%d nstate=%d n_x=%.4f n_z=%.4f cursor_x=%.4f cursor_z=%.4f red_formation=%d held_uid=%u held_state=%d pending_uid=%u pending_state=%d actual_holding=%d\n",frame,n->getCurrState()->getID(),n->mSRT.t.x,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.z,followers-whiteFollowers,heldRed&&heldRed->mGenerator?uid(heldRed):0,heldRed?heldRed->getState():-1,pendingRed&&pendingRed->mGenerator?uid(pendingRed):0,pendingRed?pendingRed->getState():-1,grab?int(grab->mIsHoldingThrowPiki):0);
@@ -186,7 +187,7 @@ public:int idle()override{
   if(std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")){std::puts("P2_WHITE_CAMPAIGN_READY_PASS");std::fflush(nullptr);std::_Exit(0);}next(1);
  }
  if(!resumeMode){require(red+white+heads+whiteStock()==20,"ordinary population lost/duplicated");require(white+heads+whiteStock()<=15,"more than15 natural Whites");require(carriers<=15,"more than15 actual White carriers");
-  if(phase<10){require(cargoSlot&&uid(cargo)==26&&cargo->isAlive()&&pelletCount==baselinePellets&&!p2whitetreasure::ledger.delivered,"cargo/receipt changed before physical hauling phase");}
+  if(phase<10||phase==16){require(cargoSlot&&uid(cargo)==26&&cargo->isAlive()&&pelletCount==baselinePellets&&!p2whitetreasure::ledger.delivered,"cargo/receipt changed before physical hauling phase");}
   if(phase<7)require(carriers==0,"premature ordinary cargo attachment");
  }else{p1Require();require(red==0&&white+whiteStock()==15&&heads==0,"fresh resumed original20 lineage lost/duplicated or unexpected Red bodies");}
 
@@ -197,6 +198,12 @@ public:int idle()override{
   std::printf("P2_WHITE_CAMPAIGN_IVORY_COMPLETE uid=%u natural_outputs=5 red=%d white_heads=%d spent=%d\n",flowerIds[budIndex],red,heads,spent());
   if(++budIndex<3){goal=flowers[budIndex]->mSRT.t;next(2);}else{conservedBudget();next(13);}
  }
+ // A natural conversion can leave original Reds free; whistle the actual
+ // unjoined body under the cursor before attempting another ordinary grab.
+ if((phase==16||(phase==3&&n->getCurrState()->getID()==NAVISTATE_Walk))&&followers-whiteFollowers<red){
+  Iterator unjoined(pikiMgr);CI_LOOP(unjoined){auto* p=static_cast<Piki*>(*unjoined);if(p->isAlive()&&pc_p2_species(p)==P2SpeciesRed&&p->mMode==PikiMode::FreeMode&&p->getState()==PIKISTATE_Normal){goal=p->mSRT.t;if(phase==3)next(16);break;}}
+ }
+ if(phase==16&&followers-whiteFollowers==red){goal=flowers[budIndex]->mSRT.t;next(2);}
  if(phase==13&&phaseTick>=30&&followers==0&&n->getCurrState()->getID()==NAVISTATE_Walk){next(4);}
  if(phase==4&&head){goal=head->mSRT.t;float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<225)next(5);}
  if(phase==5){if(head){float x=head->mSRT.t.x-n->mSRT.t.x,z=head->mSRT.t.z-n->mSRT.t.z;if(x*x+z*z>400&&n->getCurrState()->getID()==NAVISTATE_Walk){goal=head->mSRT.t;next(4);}}
