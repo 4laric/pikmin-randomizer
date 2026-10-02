@@ -28,16 +28,18 @@ class SurfaceImportTests(unittest.TestCase):
         self.texts = {'grid.bin': grid, 'mapcode.bin': struct.pack('>I', 1)+bytes([9]),
                       'waterbox.txt': b'0 { 1 0 -10 0 10 4 10 }'}
 
-    def extract(self, course='forest', output='bundle'):
+    def extract(self, course='forest', output='bundle', stage_text=None):
         prefix = 'user/Kando/map/'+course+'/'
         gen = 'user/Abe/map/'+course+'/'
         # All sources are actual read bytes; only the disc/archive framing is mocked.
         catalog = {prefix+'texts.szs': (0x440, 4), prefix+'arc.szs': (0x444, 3),
                    gen+'route.txt': (0x447, len(self.route)),
                    gen+'defaultgen.txt': (0x447+len(self.route), 3)}
+        stages = (stage_text or ('1 { name '+course+' end 0 0 }')).encode('ascii')
+        catalog['user/Abe/stages.txt'] = (0x44a+len(self.route), len(stages))
         def archive(data):
             return self.texts if data == b'text' else {'model.bmd': b'original model'}
-        self.iso.write_bytes(b'header'.ljust(0x440, b'\0')+b'textarc'+self.route+b'bad')
+        self.iso.write_bytes(b'header'.ljust(0x440, b'\0')+b'textarc'+self.route+b'bad'+stages)
         with patch('experimental.pikmin2_surface_import.disc_files', return_value=catalog), \
              patch('experimental.pikmin2_surface_import.archive_files', side_effect=archive):
             return import_surface(self.iso, course, self.root/output)
@@ -57,6 +59,23 @@ class SurfaceImportTests(unittest.TestCase):
                 self.assertEqual((bundle/'generators/defaultgen.txt').read_bytes(), b'bad')
                 self.assertEqual(receipt['course'], course)
                 self.assertEqual((bundle/'arc/model.bmd').read_bytes(), b'original model')
+                calendar = json.loads((bundle/'surface-generator-calendar.json').read_bytes())
+                self.assertEqual(calendar, dict(course=course, day_units='native_counter',
+                                                nonloop=[], loop=[]))
+                self.assertIn('user/Abe/stages.txt', receipt['source_members'])
+                self.assertEqual((bundle/'source/stages.txt').read_bytes(),
+                                 ('1 { name '+course+' end 0 0 }').encode('ascii'))
+
+    def test_missing_declared_schedule_refused_before_output_created(self):
+        with self.assertRaisesRegex(ValueError, 'Missing declared generator files'):
+            self.extract(stage_text='1 { name forest end 1 missing.txt 1 2 2 0 }')
+        self.assertFalse((self.root/'bundle').exists())
+
+    def test_calendar_changes_are_covered_by_bundle_identity(self):
+        result = self.extract()
+        (self.root/'bundle/surface-generator-calendar.json').write_text('{}')
+        with self.assertRaisesRegex(ValueError, 'Changed bundle member'):
+            verify_bundle(self.root/'bundle', result['identity'])
 
     def test_repeated_import_identity_independent_of_destination(self):
         a, b = self.extract(output='first'), self.extract(output='second')

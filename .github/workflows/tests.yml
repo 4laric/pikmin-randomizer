@@ -37,7 +37,7 @@ jobs:
   tests:
     # Same-repo PRs from claude/** branches are already built by their push run.
     if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'claude/')
-    runs-on: windows-2022
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - name: Keep LF line endings
@@ -78,6 +78,7 @@ jobs:
           tests/test_pikmin2_bulbmin_bridge.py
           tests/test_pikmin2_surface_import.py
           tests/test_pikmin2_surface_pocket.py
+          tests/test_pikmin2_generator_calendar.py
           tests/test_pikmin2_cave_arena_overlay.py
           tests/test_pikmin2_cave_item_gate_placement.py
           tests/test_pikmin2_challenge_trial_arena_thin_v2.py
