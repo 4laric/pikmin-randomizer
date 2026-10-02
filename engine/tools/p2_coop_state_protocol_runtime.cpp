@@ -21,6 +21,8 @@
 #include "Camera.h"
 #include "GameStat.h"
 #include "GoalItem.h"
+#include "Collision.h"
+#include "PlayerState.h"
 #include "ItemMgr.h"
 #include "CPlate.h"
 #include "AIConstant.h"
@@ -36,8 +38,11 @@
 #endif
 #include "pc_window.h"
 #include "netplay/pc_netplay_launch.h"
+#include "netplay/pc_input_log.h"
 #include "pc_randomizer.h"
+#include "pc_p2_preview.h"
 #include "p2_fixture_captain_guard.h"
+#include "p2_coop_fixture_input_snapshot.h"
 extern std::uint32_t pc_netplay_current_frame(void);
 
 namespace {
@@ -61,6 +66,21 @@ void fixture_require(bool ok, const char* why) {
     std::_Exit(1);
 }
 
+
+// Read one immutable whole-command snapshot. The writer uses ReplaceFileW for
+// an existing Windows path; a retained reader sees the complete previous file.
+bool command_snapshot(const std::string& path, std::string& text) {
+    char bytes[256];
+    unsigned count = 0;
+    const PcCoopSnapshotResult result = pc_coop_fixture_input_snapshot(
+        path.c_str(), bytes, sizeof(bytes), &count);
+    if (result == PC_COOP_SNAPSHOT_MISSING) return false;
+    fixture_require(result != PC_COOP_SNAPSHOT_IO_ERROR, "SDL input snapshot I/O");
+    fixture_require(result == PC_COOP_SNAPSHOT_OK, "SDL input command length");
+    text.assign(bytes, count);
+    return true;
+}
+
 class CoopProtocolFixtureApp : public PlugPikiApp {
     SDL_Joystick* mPad = nullptr;
     bool mCaptainInitialized[2] = {false, false};
@@ -76,9 +96,8 @@ class CoopProtocolFixtureApp : public PlugPikiApp {
 
     void input() {
         if (!mInputPath.empty()) {
-            std::ifstream file(mInputPath);
-            if (file) {
-                std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            std::string text;
+            if (command_snapshot(mInputPath, text)) {
                 fixture_require(text.size() < 256, "SDL input command length");
                 std::istringstream stream(text);
                 std::string tag, end, extra;
@@ -216,6 +235,31 @@ public:
             std::fflush(nullptr);
         }
         if (mFrames % 15 == 0) {
+            // Read-only approach facts from the actual owner-filtered GoalItem,
+            // including its real 'cont' sphere. No lookup assigns mGoalItem,
+            // updates GameStat, enters UI, or changes collision/stock/world.
+            for (int captain = 0; captain < 2; ++captain) {
+                Navi* n = naviMgr ? naviMgr->getNavi(captain) : nullptr;
+                if (!n || !n->getCurrState()) continue;
+                const Vector3f naviCentre = n->getCentre();
+                float yawSin = 0.f, yawCos = 1.f;
+                const bool yawValid = pc_netplay_control_yaw(n->mNaviID, &yawSin, &yawCos);
+                for (int color = 0; color < 3; ++color) {
+                    GoalItem* goal = itemMgr ? itemMgr->pcGetContainer(color, n->mNaviID) : nullptr;
+                    const bool pod = goal && pc_p2_preview_is_pod(goal);
+                    CollPart* cont = goal && !pod && goal->mCollInfo && goal->mCollInfo->hasInfo()
+                        ? goal->mCollInfo->getSphere('cont') : nullptr;
+                    std::printf("COOP_PROTOCOL_GOAL sim_frame=%u role=%d captain=%d color=%d present=%d pod=%d cont_present=%d ordinary_candidate=%d "
+                        "navi_center=%.3f,%.3f,%.3f yaw_valid=%d yaw_sin=%.7f yaw_cos=%.7f goal_xyz=%.3f,%.3f,%.3f cont_xyz=%.3f,%.3f,%.3f radius=%.3f navi_size=%.3f stored=%d "
+                        "pending_onion=%d radar_unlocked=%d\n",
+                        pc_netplay_current_frame(), mLocalRole, captain, color, int(goal != nullptr), int(pod), int(cont != nullptr), int(goal && !pod && cont),
+                        naviCentre.x, naviCentre.y, naviCentre.z, int(yawValid), yawSin, yawCos,
+                        goal ? goal->mSRT.t.x : 0.f, goal ? goal->mSRT.t.y : 0.f, goal ? goal->mSRT.t.z : 0.f,
+                        cont ? cont->mCentre.x : 0.f, cont ? cont->mCentre.y : 0.f, cont ? cont->mCentre.z : 0.f,
+                        cont ? cont->mRadius : 0.f, n->getSize(), goal ? goal->getTotalStorePikis() : -1,
+                        goal ? goal->mPikisToExit : -1, playerState ? int(playerState->hasRadar()) : -1);
+                }
+            }
             int alive = 0;
             if (pikiMgr) { Iterator it(pikiMgr); CI_LOOP(it) { if (static_cast<Piki*>(*it)->isAlive()) ++alive; } }
             for (int captain = 0; captain < 2; ++captain) {

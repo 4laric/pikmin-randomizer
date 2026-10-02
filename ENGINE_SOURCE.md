@@ -1,9 +1,9 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
-`aa3ef7eb0cb7b939a94cb1487ff899cf1520be34`, exported from the clean
+`d6495f4910f16b4a9958bf0cd73aaef496e95349`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. The export
-copies 4,252 tracked source/resource files and skips 53 Android/touch binaries;
+copies 4,254 tracked source/resource files and skips 53 Android/touch binaries;
 the two desktop icon resources are retained. Every copied file was prevalidated
 and checked against the native working-tree bytes after export. It preserves the
 accepted tutorial source and adds reviewed protocol helpers, packaged consumers,
