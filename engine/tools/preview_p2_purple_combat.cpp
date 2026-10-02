@@ -17,6 +17,7 @@
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
+#include "pc_world_map_observer.h"
 #include "pc_purple_save_budget.h"
 #include "system.h"
 #include "App.h"
@@ -501,6 +502,7 @@ class PurpleCombatApp : public PlugPikiApp {
     Vector3f parkPosition;
     bool sunsetRequested=false, sunsetSeen=false;
     PcPurpleSaveBudget ordinarySaveBudget;
+    PcWorldMapResumeInput ordinaryResumeMapInput;
     int sunsetTicks=0, sunsetDay=-1, expectedDay=-1, savedMaturity=-1, resumeReady=0;
     int ordinaryMenuFrames=0,ordinaryDiaryFrames=0;
     bool releaseDiaryInput=false,diaryRevealObserved=false,diaryAdvanceObserved=false;
@@ -1826,13 +1828,28 @@ public:
         }
         require(ticks<(sunsetRequested?15000:6000),"global fixture timeout");
         if(mode("persistence_resume")) pc_p2_input_script_set(1,(!n || gameflow.mIsUIOverlayActive) && ticks%20<4?KBBTN_A:0,0,0);
-        if(mode("natural_resume")) ordinaryInput(); // No blind A presses into load/title/save UI.
+        if(mode("natural_resume")) {
+            const PcWorldMapSnapshot map=pc_world_map_observe();
+            const PcWorldMapInput intent=ordinaryResumeMapInput.observe(map,gsys->mTotalFrames);
+            if(intent==PcWorldMapInput::Refuse) ordinaryInput();
+            require(intent!=PcWorldMapInput::Refuse,"ordinary resume map identity/readiness/selection refused");
+            ordinaryInput(intent==PcWorldMapInput::Confirm?KBBTN_A:0);
+            if(intent==PcWorldMapInput::Confirm) std::printf(
+                "P2_PURPLE_ORDINARY_RESUME_MAP edge=%u frame=%llu mode=%d course=%d open=%d cursor_ready=%d confirm_ready=%d yes=%d scene_identity=%llu setup_identity=%llu menu_identity=%llu observer_read_only=1 SDL_input=1 area_day_injected=0\n",
+                ordinaryResumeMapInput.keyEdges(),static_cast<unsigned long long>(map.observedFrame),map.mode,map.selectedCourse,
+                int(map.courseOpen),int(map.cursorMoveReady),int(map.confirmationActive),int(map.confirmationYes),
+                static_cast<unsigned long long>(map.sectionIdentity),static_cast<unsigned long long>(map.setupIdentity),
+                static_cast<unsigned long long>(map.menuIdentity));
+        }
         if(sunsetRequested) {
             if(ordinarySaveMode()) ordinarySunsetStep();else sunsetStep();
             if(!mode("sdl_dayend") && gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) gameflow.mMoviePlayer->requestSkip();
             return result;
         }
-        if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
+        if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) {
+            if(!mode("natural_resume")) gameflow.mMoviePlayer->requestSkip();
+            return result;
+        }
         if(!n||!pikiMgr||!itemMgr||!bossMgr||!tekiMgr||!mapMgr||!n->getCurrState()
             ||gameflow.mPauseAll||gameflow.mIsUIOverlayActive) return result;
         if(!activeSeen && (n->getCurrState()->getID()==NAVISTATE_Walk || n->getCurrState()->getID()==NAVISTATE_Idle)) {
