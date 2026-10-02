@@ -7,6 +7,8 @@ import struct
 from pathlib import Path
 
 from experimental.pikmin2_kochappy_bank import install
+from experimental.pikmin2_generator_objects import enemy_object
+from experimental.pikmin2_surface_pocket import generators
 from scripts.preview_pikmin2_room import records
 from scripts.stage_pikmin2_surface_water import prepare as prepare_water
 
@@ -33,15 +35,17 @@ def source_selection(bundle, day):
             or onion["after_boot"] != 1 or tuple(onion["effective_position"]) != ONION_POSITION):
         raise ValueError("Original booted Red Onion identity/placement changed")
     raw = (bundle / "generators/nonloop/5-29.txt").read_bytes()
-    # The imported inventory retains positions but not teki payload. Verify the
-    # actual first raw record's sourceID/version/count/facing/radius before use.
-    text = raw.decode("shift_jis")
-    first = text.split("{teki}", 1)[1].split("{????}", 1)[0]
-    clean = "\n".join(line.split("#", 1)[0] for line in first.splitlines())
-    tokens = clean.split()
-    expected = ["{0005}", "1", "0", "1", "0.000000", "1", "100.000000",
-                "0.000000", "0", "3", "1", "1", "2", "0.400000"]
-    if tokens != expected:
+    parsed = generators(raw.decode("cp932"))["actors"]
+    onion_raw = (bundle / "generators/defaultgen.txt").read_bytes()
+    parsed_onions = generators(onion_raw.decode("cp932"))["actors"]
+    if not parsed or len(parsed_onions) < 2 or enemy != parsed[0] or onion != parsed_onions[1]:
+        raise ValueError("Original generator inventory/raw payload disagreement")
+    expected = dict(source_id=1, birth_type=0, count=1, direction_degrees=0.0,
+                    spawn_type=1, appear_radius=100.0, enemy_size=0.0,
+                    treasure_code=0, pellet_color=3, pellet_size=1,
+                    pellet_minimum=1, pellet_maximum=2, pellet_probability=0.4,
+                    generator_version="????", generator_tail=[])
+    if enemy_object(enemy) != expected:
         raise ValueError("Unsupported source1 generator payload; do not substitute a proxy")
     return enemy, onion, hashlib.sha256(raw).hexdigest()
 
