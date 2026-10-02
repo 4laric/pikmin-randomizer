@@ -17,6 +17,7 @@
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
+#include "pc_purple_save_budget.h"
 #include "system.h"
 #include "App.h"
 #include "Node.h"
@@ -499,6 +500,7 @@ class PurpleCombatApp : public PlugPikiApp {
     int regenerationFrames=0;
     Vector3f parkPosition;
     bool sunsetRequested=false, sunsetSeen=false;
+    PcPurpleSaveBudget ordinarySaveBudget;
     int sunsetTicks=0, sunsetDay=-1, expectedDay=-1, savedMaturity=-1, resumeReady=0;
     int ordinaryMenuFrames=0,ordinaryDiaryFrames=0;
     bool releaseDiaryInput=false,diaryRevealObserved=false,diaryAdvanceObserved=false;
@@ -692,6 +694,12 @@ class PurpleCombatApp : public PlugPikiApp {
         if(cards==1) {
             require(confirming && sunsetSeen && stockOne(),"ordinary card/day/Purple stock mismatch");
             require(diaryRevealObserved && diaryAdvanceObserved,"actual ordinary diary reveal/advance missing");
+            if(mode("sdl_dayend")) {
+                const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
+                require(ordinarySaveBudget.saving() && ordinarySaveBudget.observe(now),"ordinary save phase deadline");
+                std::printf("P2_PURPLE_SAVE_BUDGET_FINISHED acquisition_seconds=%.6f save_seconds=%.6f whole_seconds=%.6f acquisition_limit=60 save_limit=60 whole_limit=120 monotonic=1 movie_skip=0\n",
+                    ordinarySaveBudget.acquisitionSeconds(),ordinarySaveBudget.saveSeconds(now),now);
+            }
             ordinaryInput();milestone("ordinary_checkpoint_committed",ticks);
             std::printf("P2_PURPLE_ORDINARY_SAVE_PASS day_before=%d day=%d maturity=%d stock=1 generations=1 direct_stock_helpers=0 clock_advanced=0 external_checkpoint_validation_required=1\n",
                 sunsetDay,expectedDay,savedMaturity);
@@ -1430,6 +1438,11 @@ class PurpleCombatApp : public PlugPikiApp {
             GameStat::update();require(alive==20 && red==19 && purple==1 && int(GameStat::mapPikis)==20,"SDL conversion population");
             require(sdlThrowObserved && pc_throw_selection_class(follower)==4 && pc_piki_carry_strength(follower)==10,"SDL native throw and Purple capabilities");
             milestone("SDL_acquisition_verified",ticks);
+            if(mode("sdl_dayend")) {
+                const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
+                require(ordinarySaveBudget.acquired(now,true),"ordinary save acquisition deadline or duplicate transition");
+                std::printf("P2_PURPLE_SAVE_BUDGET_TRANSITION acquisition_seconds=%.6f acquisition_limit=60 save_limit=60 whole_limit=120 verified_acquisition=1 monotonic=1\n",now);
+            }
             std::puts("P2_PURPLE_SDL_ACQUISITION_PASS scripted_throw=0 direct_throw_api=0 actor_state_writes=0 native_throw_state_observed=1 SDL_pluck=1 field=20 red=19 purple=1 selection=4 strength=10");
             return follower;
         }
@@ -1780,6 +1793,10 @@ public:
         pc_purple_collision_trace_context(naviMgr ? naviMgr->getNavi() : nullptr,
             (sdlPulseActive || sdlPluckBraking || sdlPoseProbeActive) && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
         const int result=PlugPikiApp::idle();
+        if(mode("sdl_dayend")) {
+            const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
+            require(ordinarySaveBudget.observe(now),"ordinary save acquisition or save phase deadline");
+        }
         Navi* n=naviMgr?naviMgr->getNavi():nullptr;
         // Injection modifies the initialized runtime, never an engine-free stand-in.
         // The real guard then executes before diagnostics, pause/movie or any other return.
@@ -1804,7 +1821,7 @@ public:
         if(mode("natural_resume")) ordinaryInput(); // No blind A presses into load/title/save UI.
         if(sunsetRequested) {
             if(ordinarySaveMode()) ordinarySunsetStep();else sunsetStep();
-            if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) gameflow.mMoviePlayer->requestSkip();
+            if(!mode("sdl_dayend") && gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) gameflow.mMoviePlayer->requestSkip();
             return result;
         }
         if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }

@@ -1,12 +1,33 @@
 #include "pc_purple_collision_trace.h"
 #include "pc_purple_sdl_axis_policy.h"
 #include "pc_purple_dismiss_policy.h"
+#include "pc_purple_save_budget.h"
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
 #include <initializer_list>
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
+    PcPurpleSaveBudget budget;
+    check(budget.observe(0) && budget.observe(59.9),"acquisition has original hard60");
+    check(budget.acquired(59.9,true) && budget.saving(),"verified late acquisition starts save once");
+    check(budget.observe(119.8),"save phase may run another bounded60");
+    check(!budget.observe(119.9) && !budget.observe(119.8),"save deadline failure sticky");
+    PcPurpleSaveBudget late;
+    check(!late.acquired(60,true),"late acquisition cannot extend its original deadline");
+    PcPurpleSaveBudget missing;
+    check(!missing.observe(60),"missing acquisition cannot use save budget");
+    PcPurpleSaveBudget duplicate;
+    check(duplicate.acquired(40,true) && !duplicate.acquired(50,true)
+        && !duplicate.observe(50),"duplicate acquisition cannot reset save deadline");
+    PcPurpleSaveBudget unverified;
+    check(!unverified.acquired(20,false),"unverified acquisition refused");
+    PcPurpleSaveBudget backwards;
+    check(backwards.observe(20) && !backwards.observe(19),"backward clock refused");
+    PcPurpleSaveBudget jump;
+    check(jump.acquired(10,true) && !jump.observe(71),"forward time jump exceeds save limit");
+    PcPurpleSaveBudget nan;
+    check(!nan.observe(std::numeric_limits<double>::quiet_NaN()),"nonfinite clock refused");
     int captain=0, partner=0;
     for(unsigned formation=0;formation<=19;++formation)
         check(pcPurpleDismissInitialModes(formation,19-formation),"legitimate mixed Free/Formation initial roster");
