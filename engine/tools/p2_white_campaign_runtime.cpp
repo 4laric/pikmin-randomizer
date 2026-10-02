@@ -56,7 +56,7 @@ static const unsigned flowerIds[]={25,28,29};
 static int phase=0,phaseTick=0,frame=0,budIndex=0;
 static Vector3f goal;
 static SDL_Joystick* virtualPad=nullptr;
-static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false;
+static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false;
 static WhiteSaveIntent saveIntent=WhiteSaveIntent::Neutral;
 static Piki* held=nullptr;
 static std::set<Piki*> naturalBodies;
@@ -115,12 +115,13 @@ public:CampaignInput():Kontroller(1){}
    if(phase==14&&walking&&pc_preferred_throw_color_for(n)!=PikiColorCount+2&&phaseTick%30<2)keys=KBBTN_DPAD_RIGHT;
    if(phase==8)keys=KeyConfig::_instance->mThrowKey.mBind;
    if(phase==11&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
+   if(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==27&&!unsettledWhitePluck()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==16&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||phase==17||phase==25;
+   const bool move=phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
-    bool walk=phase==4||phase==17||phase==25||bx*bx+bz*bz>10000;
+    bool walk=phase==4||phase==17||phase==25||((phase==9||phase==10)&&separatingReds)||bx*bx+bz*bz>10000;
     if(walk||phaseTick%10==0){float dx=walk?bx:goal.x-n->mCursorWorldPos.x,dz=walk?bz:goal.z-n->mCursorWorldPos.z;float length=std::sqrt(dx*dx+dz*dz);
      if(length>(walk?15.f:3.f)){const auto& axis=n->mNaviCamera->mViewXAxis;float strength=walk?65.f:22.f;stickX=strength*(dx*axis.x+dz*axis.z)/length;stickY=strength*(dx*axis.z-dz*axis.x)/length;}}
    }
@@ -175,7 +176,7 @@ public:int idle()override{
  int red=0,white=0,heads=0,followers=0,whiteFollowers=0,carriers=0;bool cargoSlot=false;PikiHeadItem* head=nullptr;
  std::set<unsigned> originals;std::set<Piki*> whites;
  Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);if(!p->isAlive())continue;
-  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if((phase>=7&&phase<18)||phase==26||phase==27)require(naturalBodies.count(p),"natural White pointer membership changed");}
+  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if((phase>=7&&phase<18)||phase==26||phase==27||phase==28)require(naturalBodies.count(p),"natural White pointer membership changed");}
   else{require(pc_p2_species(p)==P2SpeciesRed&&p->mHappa==Leaf,"unexpected ordinary species/Red maturity");++red;if(!resumeMode)require(p->mGenerator&&uid(p)>=1&&uid(p)<=20&&originals.insert(uid(p)).second,"original Red identity changed");}
   if(p->mMode==PikiMode::FormationMode&&p->mNavi==n){++followers;if(pc_p2_is_white(p))++whiteFollowers;}
   if(cargo&&p->getStickObject()==cargo){const bool valid=pc_p2_is_white(p)&&naturalBodies.count(p)&&p->mMode==PikiMode::TransportMode&&pc_piki_carry_strength(p)==1&&std::abs(pc_piki_carry_power(p)-3)<.001;
@@ -215,8 +216,8 @@ public:int idle()override{
   if(std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")){std::puts("P2_WHITE_CAMPAIGN_READY_PASS");std::fflush(nullptr);std::_Exit(0);}next(1);
  }
  if(!resumeMode){require(red+white+heads+whiteStock()==20,"ordinary population lost/duplicated");require(white+heads+whiteStock()<=15,"more than15 natural Whites");require(carriers<=15,"more than15 actual White carriers");
-  if(phase<10||phase==16||phase==26||phase==27){require(cargoSlot&&uid(cargo)==26&&cargo->isAlive()&&pelletCount==baselinePellets&&!p2whitetreasure::ledger.delivered,"cargo/receipt changed before physical hauling phase");}
-  if(phase<7||phase==26||phase==27)require(carriers==0,"premature ordinary cargo attachment");
+  if(phase<10||phase==16||phase==26||phase==27||phase==28){require(cargoSlot&&uid(cargo)==26&&cargo->isAlive()&&pelletCount==baselinePellets&&!p2whitetreasure::ledger.delivered,"cargo/receipt changed before physical hauling phase");}
+  if(phase<7||phase==26||phase==27||phase==28)require(carriers==0,"premature ordinary cargo attachment");
  }else{p1Require();require(red==0&&white+whiteStock()==15&&heads==0,"fresh resumed original20 lineage lost/duplicated or unexpected Red bodies");}
 
  if(phase==1&&phaseTick>=30&&followers==20){goal=flowers[budIndex]->mSRT.t;next(2);}
@@ -241,7 +242,13 @@ public:int idle()override{
   require(red==5&&white==15&&heads==0,"ordinary fifteen plucked adults changed");
   if(frame%30==0){int ordinal=0;for(auto* p:whites)std::printf("P2_WHITE_CAMPAIGN_PLUCK_BODY frame=%d ordinal=%d generated_uid=%u mode=%d state=%d owned=%d formation=%d x=%.4f y=%.4f z=%.4f\n",frame,++ordinal,p->mGenerator?uid(p):0,p->mMode,p->getState(),int(p->mNavi==n),int(p->mMode==PikiMode::FormationMode&&p->mNavi==n),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);}
   if(phaseTick>=30&&n->getCurrState()->getID()==NAVISTATE_Walk&&!unsettledWhitePluck()&&whiteFollowers<15){for(auto* p:whites)if(p->mMode==PikiMode::FreeMode&&p->getState()==PIKISTATE_Normal){goal=p->mSRT.t;if(phase==26)next(27);break;}}
-  if(phaseTick>=30&&!unsettledWhitePluck()&&n->getCurrState()->getID()==NAVISTATE_Walk&&whiteFollowers==15){require(red==5&&whiteFollowers==15,"ordinary fifteen plucks/formation required");std::puts("P2_WHITE_CAMPAIGN_ACQUIRED red=5 white=15 heads=0 body_total=20 spent=15 ordinary_birth_pluck=1");if(humanMode){next(30);pc_window_input_assign(0,PC_INPUT_DEV_KEYBOARD,-1);std::puts("P2_WHITE_CAMPAIGN_HUMAN_READY natural_white=15 repair_writes=0 user_gameplay=1 keyboard_routing_restored=1");}else{goal=cargo->mSRT.t;next(7);}}
+  if(phaseTick>=30&&!unsettledWhitePluck()&&n->getCurrState()->getID()==NAVISTATE_Walk&&whiteFollowers==15){require(red==5&&whiteFollowers==15,"ordinary fifteen plucks/formation required");std::puts("P2_WHITE_CAMPAIGN_ACQUIRED red=5 white=15 heads=0 body_total=20 spent=15 ordinary_birth_pluck=1");if(humanMode){next(30);pc_window_input_assign(0,PC_INPUT_DEV_KEYBOARD,-1);std::puts("P2_WHITE_CAMPAIGN_HUMAN_READY natural_white=15 repair_writes=0 user_gameplay=1 keyboard_routing_restored=1");}else{next(28);}}
+ }
+ if(phase==28){
+  require(red==5&&white==15&&heads==0&&whiteFollowers==15,"ordinary full squad changed before Red separation");
+  if(followers-whiteFollowers<5){Iterator unjoined(pikiMgr);CI_LOOP(unjoined){auto* p=static_cast<Piki*>(*unjoined);if(p->isAlive()&&pc_p2_species(p)==P2SpeciesRed&&p->mMode==PikiMode::FreeMode&&p->getState()==PIKISTATE_Normal){goal=p->mSRT.t;break;}}}
+  if(frame%30==0)std::printf("P2_WHITE_CAMPAIGN_RED_REGROUP frame=%d original_red=%d red_formation=%d natural_white_formation=%d target_x=%.4f target_z=%.4f\n",frame,red,followers-whiteFollowers,whiteFollowers,goal.x,goal.z);
+  if(phaseTick>=30&&n->getCurrState()->getID()==NAVISTATE_Walk&&!unsettledWhitePluck()&&!unsettledAcquisition()&&followers-whiteFollowers==5){goal=cargo->mSRT.t;next(7);}
  }
  if(phase==7){goal=cargo->mSRT.t;float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;if(x*x+z*z<64&&bx*bx+bz*bz>625&&bx*bx+bz*bz<10000)next(14);}
  if(phase==14){Piki* selected=n->mNextThrowPiki;
@@ -257,9 +264,17 @@ public:int idle()override{
   require((!grab->mHeldThrowPiki||grab->mHeldThrowPiki==held)&&(!grab->mPendingThrowPiki||grab->mPendingThrowPiki==held),"ordinary actual White grab pointer changed");
   if(held&&grab->mHeldThrowPiki==held&&grab->mIsHoldingThrowPiki&&held->getState()==PIKISTATE_Hanged)next(15);
  }
+ if(phase==15&&held->getState()==PIKISTATE_Flying&&carriers==14){
+  require(red==5&&followers-whiteFollowers==5,"all five original Reds must follow before ordinary separation");
+  // The final projectile is already in native flight. Move the captain and
+  // Red squad toward unchanged source route5 while cargo takes its own route.
+  separatingReds=true;goal.set(110.f,0.f,-110.f);
+  std::printf("P2_WHITE_CAMPAIGN_SEPARATION_BEGIN frame=%d original_red=5 red_formation=5 flying_natural_white=1 attached_white=14 source_route=5 target_x=110 target_z=-110 captain_x=%.4f captain_z=%.4f\n",frame,n->mSRT.t.x,n->mSRT.t.z);
+ }
  if(phase==15&&(held->getState()==PIKISTATE_Flying||held->getStickObject()==cargo))next(9);
- if(phase==9&&held->getStickObject()==cargo){if(carriers==15)next(10);else next(14);}
+ if(phase==9&&held->getStickObject()==cargo){if(carriers==15){require(separatingReds,"final natural White flight not observed before separation");next(10);}else next(14);}
  if(phase==10){
+  if(frame%30==0)std::printf("P2_WHITE_CAMPAIGN_SEPARATION_WALK frame=%d red_formation=%d captain_x=%.4f captain_z=%.4f target_x=%.4f target_z=%.4f\n",frame,followers-whiteFollowers,n->mSRT.t.x,n->mSRT.t.z,goal.x,goal.z);
   if(cargoSlot&&cargo->isAlive()&&carriers==15&&cargo->mCarrierCounter==15){require(!transportEnded,"retail transport resumed after interruption");float x=cargo->mSRT.t.x-destination.x,z=cargo->mSRT.t.z-destination.z,d=std::sqrt(x*x+z*z);if(!haulFrames){haulStart=cargo->mSRT.t;initialDistance=d;}++haulFrames;
    std::printf("P2_WHITE_CAMPAIGN_HAUL frame=%d cargo_uid=26 white=15 red=0 others=0 strength=15 native_strength=%d x=%.4f y=%.4f z=%.4f goal_distance=%.4f natural_body_total=20\n",frame,cargo->mCarrierCounter,cargo->mSRT.t.x,cargo->mSRT.t.y,cargo->mSRT.t.z,d);
    float hx=cargo->mSRT.t.x-haulStart.x,hz=cargo->mSRT.t.z-haulStart.z;if(haulFrames>=10&&hx*hx+hz*hz>=900&&initialDistance-d>=20)physical=true;
