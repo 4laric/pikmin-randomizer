@@ -37,7 +37,7 @@ jobs:
   tests:
     # Same-repo PRs from claude/** branches are already built by their push run.
     if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'claude/')
-    runs-on: windows-2022
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - name: Keep LF line endings
@@ -102,6 +102,10 @@ jobs:
           tests/test_pool_completion_evidence.py
           tests/test_pool_recovery_rebind.py
           tests/test_worker_roster.py
+          tests/test_elecbug_development_launch.py
+
+      - name: Private Kochappy launcher controls
+        run: python -m unittest scripts.test_purple_kochappy_fixture_inputs
 
       - name: Generate fixed P2 playable seeds (deterministic)
         shell: bash
