@@ -12,6 +12,8 @@
 #include "pc_gfx.h"
 #include "pc_purple_collision_trace.h"
 #include "pc_purple_sdl_axis_policy.h"
+#include "pc_purple_dismiss_policy.h"
+#include "KeyConfig.h"
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
@@ -218,6 +220,7 @@ static void ordinaryInput(unsigned buttons=0,int y=0,int x=0,bool nativeAxisUnit
     }
     SDL_JoystickSetVirtualButton(ordinaryPad,SDL_CONTROLLER_BUTTON_A,(buttons&KBBTN_A)!=0);
     SDL_JoystickSetVirtualButton(ordinaryPad,SDL_CONTROLLER_BUTTON_B,(buttons&KBBTN_B)!=0);
+    SDL_JoystickSetVirtualButton(ordinaryPad,SDL_CONTROLLER_BUTTON_X,(buttons&KBBTN_X)!=0);
     SDL_JoystickSetVirtualButton(ordinaryPad,SDL_CONTROLLER_BUTTON_START,(buttons&KBBTN_START)!=0);
     // Native pad conversion divides SDL axes by 256. Preserve acquisition's
     // native stick units; keep the already observed save-menu deflection intact.
@@ -318,6 +321,11 @@ class PurpleCombatApp : public PlugPikiApp {
     bool sdlPoseProbeActive=false;
     PcPurplePoseProbeBudget sdlPoseProbeBudget;
     SdlPluckPoint sdlPoseProbeOrigin;
+    PcPurpleDismissPolicy sdlDismissPolicy;
+    std::vector<Piki*> sdlDismissRoster;
+    PikiHeadItem* sdlDismissHead=nullptr;
+    unsigned sdlDismissBinding=0;
+    bool sdlDismissComplete=false;
 
     PikiHeadItem* routedHead=nullptr;
     Vector3f routedHeadPosition;
@@ -1318,6 +1326,54 @@ class PurpleCombatApp : public PlugPikiApp {
         ordinaryInput(0,int(std::lround(power*(dx*axis.z-dz*axis.x)/distance)),
             int(std::lround(power*(dx*axis.x+dz*axis.z)/distance)),true);
     }
+    bool sdlDismissBeforePluck(Navi* n,PikiHeadItem* head) {
+        std::vector<Piki*> current;unsigned formation=0,free=0,heads=0;
+        Iterator bodies(pikiMgr);CI_LOOP(bodies) {
+            Piki* p=static_cast<Piki*>(*bodies);if(!p||!p->isAlive())continue;
+            require(!pc_p2_is_purple(p)&&!p->mP2White&&p->mColor==Red&&p->mNavi==n
+                &&p->getState()==PIKISTATE_Normal&&!p->isStickTo(),"ordinary dismiss unsupported owned roster");
+            require(p->mMode==PikiMode::FormationMode||p->mMode==PikiMode::FreeMode,"ordinary dismiss unsupported native mode");
+            if(p->mMode==PikiMode::FormationMode)++formation;else ++free;
+            require(p->mGroundTriangle && MapCode::getAttribute(p->mGroundTriangle)!=ATTR_Water
+                && MapCode::getAttribute(p->mGroundTriangle)!=ATTR_Hole,"ordinary dismiss Red terrain hazard");
+            current.push_back(p);
+        }
+        Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts) {
+            PikiHeadItem* h=static_cast<PikiHeadItem*>(*sprouts);if(!h||!h->isAlive())continue;
+            require(h==head&&h->mP2Purple,"ordinary dismiss original head identity");++heads;
+        }
+        require(sdlThrowObserved&&current.size()==19&&heads==1,"ordinary dismiss population conservation");
+        if(!sdlDismissHead) {
+            require(formation==19&&free==0&&KeyConfig::_instance,"ordinary dismiss initial formation");
+            const KeyConfig* keys=KeyConfig::_instance;
+            const unsigned bind=unsigned(keys->mDisbandKey.mBind);
+            // X is the supported ordinary SDL/wake path. Do not guess another
+            // binding or silently trigger throw, whistle, pluck or menus.
+            require(bind==KBBTN_X && !(bind & unsigned(keys->mThrowKey.mBind|keys->mSetCursorKey.mBind
+                |keys->mExtractKey.mBind|keys->mAttackKey.mBind|keys->mMenuKey.mBind)),"unsupported loaded dismiss binding");
+            sdlDismissBinding=bind;sdlDismissRoster=current;sdlDismissHead=head;
+        }
+        require(head==sdlDismissHead&&unsigned(KeyConfig::_instance->mDisbandKey.mBind)==sdlDismissBinding,
+            "ordinary dismiss input or head identity changed");
+        for(Piki* original:sdlDismissRoster)
+            require(std::count(current.begin(),current.end(),original)==1,"ordinary dismiss actor lifetime changed");
+        if(sdlDismissComplete) {
+            require(formation==0&&free==19,"ordinary dismissed roster rejoined before approach");return true;
+        }
+        const int state=n->getCurrState()->getID();
+        const auto command=sdlDismissPolicy.observe(state==NAVISTATE_Idle,state==NAVISTATE_Walk,
+            state==NAVISTATE_Release,formation==0&&free==19);
+        require(command!=PcPurpleDismissInput::Refuse,"ordinary dismiss observation deadline");
+        ordinaryInput(command==PcPurpleDismissInput::Press?sdlDismissBinding:0);
+        std::printf("P2_PURPLE_SDL_DISMISS tick=%d binding=%u state=%d release_seen=%d formation=%u free=%u "
+            "bodies=19 heads=1 total=20 SDL_press=%d actor_writes=0\n",ticks,sdlDismissBinding,state,
+            int(sdlDismissPolicy.releaseSeen()),formation,free,int(command==PcPurpleDismissInput::Press));
+        if(command==PcPurpleDismissInput::Done) {
+            sdlDismissComplete=true;milestone("SDL_ordinary_dismiss_observed",ticks);
+            return false; // Observe one released-input native idle before approach.
+        }
+        return false;
+    }
     Piki* sdlStep(Navi* n) {
         require(pc_window_get_control_mode()==PC_CONTROL_CLASSIC,"SDL classic cursor controls required");
         require(std::fabs(pc_settings_get_navi_speed_scale()-1.f)<.001f,"SDL default captain speed");
@@ -1378,6 +1434,7 @@ class PurpleCombatApp : public PlugPikiApp {
             PikiHeadItem* h=static_cast<PikiHeadItem*>(*heads);
             if(!h || !h->isAlive() || !h->mP2Purple)continue;
             ordinaryInput();
+            if(!sdlDismissBeforePluck(n,h))return nullptr;
             if(h->mGroundTriangle && std::fabs(h->mSRT.t.y-mapMgr->getMinY(h->mSRT.t.x,h->mSRT.t.z,true))<1.f
                 && approachAndPluck(n,h,violet))sdlPhase=3;
             return nullptr;

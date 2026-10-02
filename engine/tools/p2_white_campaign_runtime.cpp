@@ -112,7 +112,7 @@ public:CampaignInput():Kontroller(1){}
    }
    if(phase==13&&walking&&phaseTick%30<15)keys=KeyConfig::_instance->mDisbandKey.mBind;
    if(phase==5&&phaseTick%60<45)keys=KeyConfig::_instance->mThrowKey.mBind;
-   if(phase==14&&walking&&phaseTick%30<15)keys=KBBTN_DPAD_RIGHT;
+   if(phase==14&&walking&&pc_preferred_throw_color_for(n)!=PikiColorCount+2&&phaseTick%30<2)keys=KBBTN_DPAD_RIGHT;
    if(phase==8)keys=KeyConfig::_instance->mThrowKey.mBind;
    if(phase==11&&phaseTick%60<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==27&&!unsettledWhitePluck()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
@@ -239,12 +239,14 @@ public:int idle()override{
   if(phaseTick>=30&&!unsettledWhitePluck()&&n->getCurrState()->getID()==NAVISTATE_Walk&&whiteFollowers==15){require(red==5&&whiteFollowers==15,"ordinary fifteen plucks/formation required");std::puts("P2_WHITE_CAMPAIGN_ACQUIRED red=5 white=15 heads=0 body_total=20 spent=15 ordinary_birth_pluck=1");if(humanMode){next(30);pc_window_input_assign(0,PC_INPUT_DEV_KEYBOARD,-1);std::puts("P2_WHITE_CAMPAIGN_HUMAN_READY natural_white=15 repair_writes=0 user_gameplay=1 keyboard_routing_restored=1");}else{goal=cargo->mSRT.t;next(7);}}
  }
  if(phase==7){goal=cargo->mSRT.t;float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;if(x*x+z*z<64&&bx*bx+bz*bz>625&&bx*bx+bz*bz<10000)next(14);}
- if(phase==14){Piki* selected=n->mNextThrowPiki;if(n->getCurrState()->getID()==NAVISTATE_Walk&&selected&&naturalBodies.count(selected)&&selected->mNavi==n&&selected->mMode==PikiMode::FormationMode&&selected->getState()==PIKISTATE_Normal&&selected->isThrowable()){held=nullptr;next(8);}}
+ if(phase==14){Piki* selected=n->mNextThrowPiki;
+  if(phaseTick%15==0)std::printf("P2_WHITE_CAMPAIGN_THROW_PREFERENCE frame=%d phase_tick=%d preferred=%d expected_white=%d preview_class=%d preview_state=%d preview_natural=%d\n",frame,phaseTick,pc_preferred_throw_color_for(n),PikiColorCount+2,selected?pc_throw_selection_class(selected):-1,selected?selected->getState():-1,int(selected&&naturalBodies.count(selected)));
+  if(phaseTick>=15&&phaseTick%30>=5&&pc_preferred_throw_color_for(n)==PikiColorCount+2&&n->getCurrState()->getID()==NAVISTATE_Walk&&selected&&naturalBodies.count(selected)&&selected->mNavi==n&&selected->mMode==PikiMode::FormationMode&&selected->getState()==PIKISTATE_Normal&&selected->isThrowable()){held=nullptr;next(8);}}
  if(phase==8&&n->getCurrState()->getID()==NAVISTATE_ThrowWait){
   auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());Piki* actual=grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki;
   if(!held&&actual){
    int ordinal=0,actualOrdinal=0;for(auto* p:naturalBodies){++ordinal;if(p==actual)actualOrdinal=ordinal;}
-   std::printf("P2_WHITE_CAMPAIGN_ACTUAL_GRAB frame=%d natural_ordinal=%d species=%d mode=%d state=%d owned=%d actual_holding=%d pending=%d x=%.4f y=%.4f z=%.4f\n",frame,actualOrdinal,int(pc_p2_species(actual)),actual->mMode,actual->getState(),int(actual->mNavi==n),int(grab->mIsHoldingThrowPiki),int(grab->mPendingThrowPiki!=nullptr),actual->mSRT.t.x,actual->mSRT.t.y,actual->mSRT.t.z);
+   std::printf("P2_WHITE_CAMPAIGN_ACTUAL_GRAB frame=%d natural_ordinal=%d species=%d mode=%d state=%d owned=%d actual_holding=%d pending=%d preferred=%d x=%.4f y=%.4f z=%.4f\n",frame,actualOrdinal,int(pc_p2_species(actual)),actual->mMode,actual->getState(),int(actual->mNavi==n),int(grab->mIsHoldingThrowPiki),int(grab->mPendingThrowPiki!=nullptr),pc_preferred_throw_color_for(n),actual->mSRT.t.x,actual->mSRT.t.y,actual->mSRT.t.z);
    require(validNaturalGrab(actual,n),"actual native grab is not an eligible natural White");held=actual;
   }
   require((!grab->mHeldThrowPiki||grab->mHeldThrowPiki==held)&&(!grab->mPendingThrowPiki||grab->mPendingThrowPiki==held),"ordinary actual White grab pointer changed");

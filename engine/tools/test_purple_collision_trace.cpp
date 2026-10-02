@@ -1,5 +1,6 @@
 #include "pc_purple_collision_trace.h"
 #include "pc_purple_sdl_axis_policy.h"
+#include "pc_purple_dismiss_policy.h"
 #include <cstdlib>
 #include <cstdio>
 #include <limits>
@@ -7,6 +8,23 @@
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
     int captain=0, partner=0;
+    PcPurpleDismissPolicy dismiss;
+    check(dismiss.observe(false,true,false,false)==PcPurpleDismissInput::Neutral,"walking dismiss establishes released edge");
+    check(dismiss.observe(false,true,false,false)==PcPurpleDismissInput::Press,"ordinary loaded button press");
+    check(dismiss.observe(false,true,false,true)==PcPurpleDismissInput::Neutral,"Free roster alone cannot prove native Release");
+    check(dismiss.observe(false,false,true,true)==PcPurpleDismissInput::Neutral,"observe actual Release and release button");
+    check(dismiss.observe(false,true,false,true)==PcPurpleDismissInput::Done,"Release then Walk plus Free roster completes");
+    PcPurpleDismissPolicy idleDismiss;
+    check(idleDismiss.observe(true,false,false,false)==PcPurpleDismissInput::Press,"ordinary Idle wake press");
+    check(idleDismiss.observe(true,false,false,false)==PcPurpleDismissInput::Press,"wait for actual Walk without state writes");
+    check(idleDismiss.observe(false,true,false,false)==PcPurpleDismissInput::Neutral,"release wake before fresh click");
+    check(idleDismiss.observe(false,true,false,false)==PcPurpleDismissInput::Press,"fresh click after observed Walk");
+    check(idleDismiss.observe(false,false,true,false)==PcPurpleDismissInput::Neutral,"Release alone with Formation does not complete");
+    check(idleDismiss.observe(false,true,false,false)==PcPurpleDismissInput::Neutral,"Walk alone with Formation does not complete");
+    check(idleDismiss.observe(false,true,false,true)==PcPurpleDismissInput::Done,"actual Free roster required");
+    PcPurpleDismissPolicy missingRelease;
+    for(unsigned i=0;i<120;++i)check(missingRelease.observe(false,true,false,true)!=PcPurpleDismissInput::Refuse,"finite dismiss observation budget");
+    check(missingRelease.observe(false,true,false,true)==PcPurpleDismissInput::Refuse,"missing Release cannot hang or certify Free roster");
     check(pcPurpleCursorBandSafe(.2f,.1f,.5f,0.f),"ordinary cursor-band input stays movement neutral");
     check(!pcPurpleCursorBandSafe(.1f,.1f,.5f,0.f),"neutral boundary cannot guarantee turning");
     check(pcPurpleCursorBandSafe(.5f,.1f,.5f,0.f),"exact cursor upper boundary remains movement neutral");
