@@ -87,8 +87,9 @@ class LauncherApp:
         elif self.config.get("server"):
             self.server_var.set(self.config["server"])
         self.refresh_source_status()
-        self.p2_content_var.set(p2_content or self.config.get("p2_content", ""))
-        self.p2_manifest_var.set(content_manifest or self.config.get("p2_content_manifest", ""))
+        selected_folder, selected_manifest = launcher.p2_content_selection(self.config, p2_content, content_manifest)
+        self.p2_content_var.set(selected_folder or "")
+        self.p2_manifest_var.set(selected_manifest or "")
         root.after(100, self.pump)
 
     # --- Layout -----------------------------------------------------------

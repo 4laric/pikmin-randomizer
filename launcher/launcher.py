@@ -301,15 +301,21 @@ def check_ap_dependencies():
 
 # --- Launch -----------------------------------------------------------------
 
+def p2_content_selection(config, p2_content=None, content_manifest=None):
+    """An explicit input replaces the saved choice; keep explicit conflicts visible."""
+    if p2_content or content_manifest:
+        return p2_content, content_manifest
+    folder = config.get("p2_content")
+    return folder, None if folder else config.get("p2_content_manifest")
+
+
 def resolve_p2_content(manifest, config, p2_content=None, content_manifest=None):
     """Validate selected local input paths; runner validates family hashes/coverage."""
     if not manifest.get("p2_layout"):
         return None, None
+    p2_content, content_manifest = p2_content_selection(config, p2_content, content_manifest)
     if p2_content and content_manifest:
         raise LaunchError("Choose either a Pikmin 2 content folder or a content manifest.")
-    if not p2_content and not content_manifest:
-        p2_content = config.get("p2_content")
-        content_manifest = config.get("p2_content_manifest") if not p2_content else None
     if p2_content:
         path = Path(p2_content).expanduser().resolve()
         if not path.is_dir():
