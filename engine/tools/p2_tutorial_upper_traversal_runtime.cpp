@@ -185,7 +185,7 @@ class UpperApp:public PlugPikiApp {
   Creature* c=t.actor;require(c&&c->isAlive(),"original actor lost");
   const Vector3f& p=c->mSRT.t;
   require(std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z),"nonfinite actual actor position");
-  const float feet=p.y-c->mGroundOffset;
+  const float feet=p.y-(c->isCreatureFlag(CF_EnableGroundOffset)?c->mGroundOffset:0.f);
   auto* shape=mapMgr->mMapModel;
   auto* contact=c->mGroundTriangle;
   int face=-1;
@@ -198,11 +198,17 @@ class UpperApp:public PlugPikiApp {
   if(uid){auto* q=static_cast<Piki*>(c);require(q->mColor==Red&&q->mInWaterTimer==0&&q->getState()!=PIKISTATE_Drown,"original Red wet or identity changed");}
   Vector3f contactPoint(p.x,0.f,p.z);
   bool contactContains=face>=0&&contact->mTriangle.mNormal.y>0.f&&contact->inTriClampTo(contactPoint);
-  // Retained coincident slip faces may both be valid contacts; do not collapse
-  // them or require an arbitrary pointer tie-break from the independent query.
-  bool sourceContact=contactContains&&below&&std::fabs(contactPoint.y-floor)<.1f&&std::fabs(feet-floor)<12.f;
+  // moveNew clears contact each update; recTraceMove records native ground for
+  // both face and sphere-edge support. A body's vertical center projection need
+  // not lie inside that triangle, and its plane height need not equal the
+  // independent highest projected face. Observe native support and its exact
+  // static source owner; keep the independent query for the original floor band.
+  bool staticContact=face>=0&&c->mCurrCollisionModel==shape&&c->isCreatureFlag(CF_IsOnGround);
+  bool sourceContact=staticContact&&below&&std::fabs(feet-floor)<12.f;
   std::printf("P2_UPPER_ACTOR tick=%d phase=%d uid=%d xyz=%.3f,%.3f,%.3f feet=%.3f source_face=%d below_height=%.3f contact_matches=%d water=%d out=%d back=%d\n",
    tick,phase,uid,p.x,p.y,p.z,feet,face,floor,int(sourceContact),water,t.outbound,t.back);
+  std::printf("P2_UPPER_SUPPORT tick=%d uid=%d static_contact=%d center_contains=%d projected_height_agrees=%d\n",
+   tick,uid,int(staticContact),int(contactContains),int(contactContains&&below&&std::fabs(contactPoint.y-floor)<.1f));
   if(sourceContact){
    auto at=[&](const Waypoint& q){float dx=p.x-q.x,dz=p.z-q.z;
     return dx*dx+dz*dz<=50.f*50.f&&std::fabs(floor-q.floor)<=12.f;};
