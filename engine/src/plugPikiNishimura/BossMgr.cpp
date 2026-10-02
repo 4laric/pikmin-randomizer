@@ -1,6 +1,7 @@
 #include "Boss.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
+#include "pc_p2_white.h"
 #include "netplay/pc_netplay_present.h"
 #include "timing/pc_render_phase.h"
 #include "netplay/pc_netplay_det.h"
@@ -794,6 +795,8 @@ Creature* BossMgr::create(int genBossID, BirthInfo& birthInfo, GenObjectBoss* ge
 		if (playerState->hasContainer(genBoss->mItemColour)) {
 			boss = createBoss(BOSS_Pom);
 			if (boss) {
+				// Generator assigns mGenerator after birth returns, including reused slots.
+				P2WhiteCampaignBirthScope whiteBirth(birthInfo.mGenerator);
 				boss->initBoss(birthInfo, OBJTYPE_Pom);
 				boss->init(birthInfo.mPosition);
 				setBossParam(boss, genBoss);

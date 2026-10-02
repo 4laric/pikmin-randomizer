@@ -216,5 +216,6 @@ void pc_randomizer_observe_pikmin_death(const void* piki);
 
 // Explicit ordinary-campaign Purple mode; no implicit preview/asset enable.
 bool pc_randomizer_purple_campaign();
+bool pc_randomizer_white_campaign();
 // Fingerprint-bound campaign choice; absent on legacy seeds means one captain.
 bool pc_randomizer_second_captain();

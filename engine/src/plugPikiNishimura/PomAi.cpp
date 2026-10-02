@@ -66,7 +66,7 @@ void PomAi::initAI(Pom* pom)
 	mPlaySound          = false;
 	mIsOpening          = false;
 	mPrevStickPikiCount = 0;
-	mReleasedSeedCount  = 0;
+	mReleasedSeedCount  = pc_p2_white_campaign_spent(mPom); // Production restore from the same native-card generation; zero for every legacy/provider-off path.
 
 	// splitting this monstrosity up into temps would be better. however, that destroys the stack :')
 	mMaxSeedCount  = C_POM_PARM(mPom, mMinCycles)

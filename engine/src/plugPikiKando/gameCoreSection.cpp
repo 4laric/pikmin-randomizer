@@ -63,6 +63,7 @@
 #include "pc_p2_dangomushi.h"
 #include "pc_p2_long_legs.h"
 #include "pc_randomizer.h"
+#include "pc_p2_white.h"
 #include "MapCode.h"
 #include <fstream>
 #if defined(PIKI_PC_PORT)
@@ -2040,6 +2041,7 @@ void GameCoreSection::finalSetup()
         pc_p2_purple_setup();
         pc_p2_purple_motion_setup();
         pc_p2_purple_flight_setup();
+        if (pc_randomizer_white_campaign()) pc_p2_white_setup();
         std::printf("P2_SHIP_READY stored=%d controls=F10_withdraw_ShiftF10_deposit near_ship=180\n", p2ship::stock.total());
     }
 	pc_p2_snow_campaign_setup();
