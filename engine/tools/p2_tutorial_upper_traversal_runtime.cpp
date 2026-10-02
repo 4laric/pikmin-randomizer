@@ -291,14 +291,16 @@ public:
   if(phase==3){route_input(n,false);
    if(std::all_of(roster.begin(),roster.end(),[&](const Track& t){return t.back>routeStep;})){
     neutral_input();
-    if(++routeStep==3){phase=4;phaseAge=tick;target=-258.12277f;targetZ=1006.72377f;}
+    if(++routeStep==3){phase=4;phaseAge=tick;target=-250.f;targetZ=1025.f;}
     else {target=route[2-routeStep].x;targetZ=route[2-routeStep].z;}}
    return result;}
-  input(n,target,false,targetZ);
   const bool atBank=std::all_of(roster.begin(),roster.end(),[](const Track& t){
    const Vector3f& p=t.actor->mSRT.t;float dx=p.x+250.f,dz=p.z-1025.f;
    return dx*dx+dz*dz<=50.f*50.f&&std::fabs(p.y-t.actor->mGroundOffset-80.f)<=12.f;});
-  if(!atBank){settle=0;return result;}
+  // Guide the ordinary formation over the original bank anchor, then release
+  // both sticks for the unchanged all-body settled acceptance interval.
+  if(!atBank){input(n,target,false,targetZ,target-route[0].x,targetZ-route[0].z);settle=0;return result;}
+  neutral_input();
   if(n->getPlatePikis()!=20||n->getCurrState()->getID()!=NAVISTATE_Walk||!n->mKontroller->keyUp(whistleBind)||!allSettled){settle=0;return result;}
   if(++settle>=90){std::puts("PASS P2_UPPER_TRAVERSAL original_reds=20 original_captain=1 all_outbound=21 all_returned=21 source_faces=5332 source_water=3 route=retail_bank_20_19 high_ridge=UNPROVEN ordinary_SDL=1 actor_writes=0 gamefeel=UNPLAYED");std::fflush(nullptr);std::_Exit(0);}
   std::fflush(stdout);return result;
