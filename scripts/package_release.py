@@ -14,6 +14,7 @@ C:\\Users\\, or an executable built with test hooks (the string PIKMIN_RANDOMIZE
 production build does not contain it).
 """
 import re
+import ast
 import argparse
 import hashlib
 import json
@@ -61,6 +62,62 @@ def tracked_python_files(repo):
     return [Path(line) for line in listed.splitlines() if line.endswith(".py")]
 
 
+P2_DATA = ("docs/PIKMIN2_ENEMY_ROSTER.json", "docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json",
+           "docs/PIKMIN2_ADMITTED_PLACEMENT.json", "docs/PIKMIN2_PROXY_PLACEMENT.json")
+
+
+def production_dependencies(repo):
+    """Follow local imports, including literal dynamic family module names.
+
+    Only Git-tracked source is eligible. External retail files, developer outputs
+    and unrelated experimental scripts are never collected.
+    """
+    listed = git(["ls-files"], repo)
+    if listed is None:
+        raise PackageError("production dependencies require a Git checkout")
+    tracked = {Path(name) for name in listed.splitlines()}
+    pending = tracked_python_files(repo) + [Path("experimental/pikmin2_family_install.py")]
+    found = set()
+    while pending:
+        path = pending.pop()
+        if path in found:
+            continue
+        if path not in tracked or not (repo / path).is_file():
+            raise PackageError(f"production dependency missing or untracked: {path}")
+        found.add(path)
+        parent = list(path.with_suffix("").parts[:-1])
+        modules = set()
+        for node in ast.walk(ast.parse((repo / path).read_text(encoding="utf-8-sig"))):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if node.level:
+                    module = ".".join(parent[:len(parent) - node.level + 1] + ([module] if module else []))
+                modules.add(module)
+                modules.update(module + "." + alias.name for alias in node.names)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if re.fullmatch(r"(?:experimental|randomizer|scripts)\.[A-Za-z0-9_.]+", node.value):
+                    modules.add(node.value)
+        for module in modules:
+            if not module.startswith(("experimental.", "randomizer.", "scripts.")):
+                continue
+            parts = module.split(".")
+            candidates = (Path(*parts).with_suffix(".py"), Path(*parts) / "__init__.py")
+            match = next((p for p in candidates if (repo / p).is_file()), None)
+            if match:
+                pending.append(match)
+                for depth in range(1, len(parts)):
+                    init = Path(*parts[:depth]) / "__init__.py"
+                    if (repo / init).is_file():
+                        pending.append(init)
+    resources = {Path(name) for name in P2_DATA}
+    resources.update(p for p in tracked if p.parent == Path("randomizer/p2_proxy") and p.suffix == ".json")
+    if not resources <= tracked or any(not (repo / p).is_file() for p in resources):
+        raise PackageError("production P2 catalog resource missing or untracked")
+    return sorted(found | resources)
+
+
 def copy_tree_files(source, target, relative_paths):
     for relative in relative_paths:
         destination = target / relative
@@ -88,10 +145,11 @@ def stage_core(repo, stage, exe, dlls, seed, extractor=None):
         shutil.copy2(extractor, stage / "bin" / "nectar-launcher.exe")
     else:
         print(f"WARNING: {extractor} not found; players must supply an already extracted assets folder.", file=sys.stderr)
-    copy_tree_files(repo, stage, tracked_python_files(repo))
+    copy_tree_files(repo, stage, production_dependencies(repo))
     copy_tree_files(repo, stage, [Path("launcher") / name for name in ("launcher.py", "gui.py", "discimage.py", "rvz.py")])
     shutil.copy2(repo / "launcher" / "Play.cmd", stage / "Play.cmd")
     copy_tree_files(repo, stage, [Path("examples/Player1.yaml"), Path("README.md")])
+    copy_tree_files(repo, stage, [Path("docs/EXPERIMENTAL_MIXED_ENEMY_PACKAGE.md")])
     if (repo / "CHANGELOG.md").is_file():
         shutil.copy2(repo / "CHANGELOG.md", stage / "CHANGELOG.md")
     (stage / "LICENSES").mkdir()

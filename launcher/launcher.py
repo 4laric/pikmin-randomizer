@@ -301,11 +301,40 @@ def check_ap_dependencies():
 
 # --- Launch -----------------------------------------------------------------
 
-def build_command(seed_path, session, exe, assets, server=None, python=None, root=ROOT):
+def resolve_p2_content(manifest, config, p2_content=None, content_manifest=None):
+    """Validate selected local input paths; runner validates family hashes/coverage."""
+    if not manifest.get("p2_layout"):
+        return None, None
+    if p2_content and content_manifest:
+        raise LaunchError("Choose either a Pikmin 2 content folder or a content manifest.")
+    if not p2_content and not content_manifest:
+        p2_content = config.get("p2_content")
+        content_manifest = config.get("p2_content_manifest") if not p2_content else None
+    if p2_content:
+        path = Path(p2_content).expanduser().resolve()
+        if not path.is_dir():
+            raise LaunchError("The Pikmin 2 content folder does not exist. Choose your prepared user-owned content folder.")
+        return str(path), None
+    if content_manifest:
+        path = Path(content_manifest).expanduser().resolve()
+        if not path.is_file():
+            raise LaunchError("The Pikmin 2 content manifest does not exist. Choose its JSON file again.")
+        return None, str(path)
+    raise LaunchError("This experimental seed needs prepared content from your own Pikmin 2 game. "
+                      "Choose the Pikmin 2 content folder or use --content-manifest. "
+                      "See docs/EXPERIMENTAL_MIXED_ENEMY_PACKAGE.md.")
+
+
+def build_command(seed_path, session, exe, assets, server=None, python=None, root=ROOT,
+                  p2_content=None, content_manifest=None):
     command = [python or sys.executable, "-m", "randomizer", "run", str(Path(seed_path).resolve()),
                "--session-dir", str(session), "--exe", str(exe), "--assets", str(assets)]
     if server:
         command += ["--server", server]
+    if p2_content:
+        command += ["--p2-content", str(p2_content)]
+    if content_manifest:
+        command += ["--content-manifest", str(content_manifest)]
     return command
 
 
@@ -355,6 +384,8 @@ def main(argv=None):
     parser.add_argument("seed", nargs="?", help="seed.json (default: seeds\\seed.json in the package)")
     parser.add_argument("--server", help="Archipelago host:port (AP seeds)")
     parser.add_argument("--assets", help="extracted assets folder containing dataDir/stages, or a Pikmin .iso/.gcm to extract from")
+    parser.add_argument("--p2-content", help="prepared content folder from your own Pikmin 2 game")
+    parser.add_argument("--content-manifest", help="verified Pikmin 2 content manifest JSON")
     parser.add_argument("--reset-assets", action="store_true", help="forget the saved assets folder and ask again")
     parser.add_argument("--pause-on-exit", action="store_true", help="wait for Enter before closing on failure")
     args = parser.parse_args(argv)
@@ -384,6 +415,7 @@ def launch(args):
     seed_path = choose_seed(args.seed)
     manifest = load_manifest(seed_path)
     config = load_config()
+    p2_content, content_manifest = resolve_p2_content(manifest, config, args.p2_content, args.content_manifest)
     print(seed_card(manifest, seed_path))
     assets = resolve_assets(config, args.assets, args.reset_assets)
     session = session_dir(manifest, seed_path)
@@ -398,7 +430,8 @@ def launch(args):
         password = ask_password()
         if password:
             env["PIKMIN_AP_PASSWORD"] = password
-    command = build_command(seed_path, session, exe, assets, server)
+    command = build_command(seed_path, session, exe, assets, server,
+                            p2_content=p2_content, content_manifest=content_manifest)
     print("Launching...", flush=True)
     try:
         returncode, output = run(command, env)
