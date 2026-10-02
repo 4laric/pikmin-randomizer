@@ -1,6 +1,11 @@
 #pragma once
 #include <cstdint>
 #include <cmath>
+#include <cstring>
+
+inline bool pcPurpleCollisionAcquisitionMode(const char* mode) {
+    return mode && (std::strcmp(mode,"sdl_acquire")==0 || std::strcmp(mode,"sdl_dayend")==0);
+}
 
 struct PcPurpleQueuedForce { float x=0, y=0, z=0; };
 inline bool pcPurpleForceEqual(PcPurpleQueuedForce a, PcPurpleQueuedForce b) {

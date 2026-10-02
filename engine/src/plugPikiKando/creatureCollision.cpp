@@ -14,8 +14,7 @@ PcPurpleCollisionTraceWindow purpleCollisionTrace;
 PcPurpleCollisionClosure purpleCollisionClosure;
 PcPurpleQueuedForce purpleForce(const Vector3f& v) { return {v.x,v.y,v.z}; }
 bool purpleAcquisitionMode() {
-    const char* mode=std::getenv("P2_PURPLE_COMBAT_MODE");
-    return mode && std::strcmp(mode,"sdl_acquire")==0;
+    return pcPurpleCollisionAcquisitionMode(std::getenv("P2_PURPLE_COMBAT_MODE"));
 }
 bool purpleCollisionTraceEnabled() {
     static const bool enabled = [] {

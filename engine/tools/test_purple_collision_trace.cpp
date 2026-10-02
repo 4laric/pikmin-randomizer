@@ -5,6 +5,11 @@
 static void check(bool ok, const char* why) { if (!ok) { std::fprintf(stderr,"FAIL %s\n",why);std::exit(1); } }
 int main() {
     int captain=0, partner=0;
+    check(pcPurpleCollisionAcquisitionMode("sdl_acquire"),"direct acquisition mode captures typed evidence");
+    check(pcPurpleCollisionAcquisitionMode("sdl_dayend"),"ordinary dayend acquisition captures typed evidence");
+    const char* unrelatedModes[]={nullptr,"","sdl_health","sdl_resume","ordinary","sdl_acquire_extra"};
+    for(const char* mode:unrelatedModes)
+        check(!pcPurpleCollisionAcquisitionMode(mode),"unrelated modes remain inert");
     PcPurpleCollisionTraceWindow trace;
     check(!trace.take(&captain,true),"default inactive");
     trace.begin(false,true,&captain,1); check(!trace.take(&captain,true),"explicit flag required");
