@@ -393,8 +393,10 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         from experimental.pikmin2_staging import StagingError
         cache_dir = session.directory / "p2-content-cache"
         try:
+            from .p2_actor_bindings import resolve_actor_bindings
+            actors = resolve_actor_bindings(session.manifest, p2_actors)
             receipt = install_layout(run.directory, layout, Path(p2_content),
-                                     actor_bindings=p2_actors, retail_assets=Path(assets),
+                                     actor_bindings=actors, retail_assets=Path(assets),
                                      cache_dir=cache_dir)
         except Exception:
             # Any install failure (wrong source / uncovered identity / bad binding /
