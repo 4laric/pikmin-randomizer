@@ -33,6 +33,7 @@
 #include "KeyConfig.h"
 #include "pc_coop.h"
 #include "pc_diary_observer.h"
+#include "p2_purple_save_input.h" // Existing pure campaign UI intent policy; no UI writes.
 #include "pc_whistle_observer.h"
 #include "pc_onion_start_observer.h"
 #include "Node.h"
@@ -138,7 +139,8 @@ class CaptainSaveApp final:public PlugPikiApp {
     bool acquisitionNeeded=false, setupBSubmitted=false, setupBObserved=false, setupGatherObserved=false, setupRecruitmentObserved=false;
     bool menuSeen=false, menuConfirm=false;
     int menuFrames=0, diaryActions=0;
-    bool releaseDiaryInput=false;
+    bool releaseDiaryInput=false, pauseEvidenceCaptured=false;
+    int pauseCaptureAttempts=0;
     bool diaryRevealObserved=false, diaryAdvanceObserved=false;
     PcDiaryAction lastDiaryAction=PcDiaryAction::Unavailable;
     void elapsed(const char* phase){std::printf("P2_SAVE_TIME phase=%s elapsed_ms=%lld\n",phase,(long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count());}
@@ -415,7 +417,15 @@ class CaptainSaveApp final:public PlugPikiApp {
 
 public:
     CaptainSaveApp(){initialCards=cards();require(resumePhase?initialCards==1:initialCards==0,"expected committed generation before phase");}
-    void draw(Graphics& gfx)override{PlugPikiApp::draw(gfx);if(tick>=0&&!shot)shot=capture("captain-campaign.ppm");if(saving&&menuFrames==120)require(capture("pause-menu.ppm"),"ordinary pause menu capture");if(resumePhase&&withdrawQueued&&frames%240==0){const std::string path="onion-menu-"+std::to_string(frames)+".ppm";require(capture(path.c_str()),"ordinary Onion menu capture");}}
+    void draw(Graphics& gfx)override{PlugPikiApp::draw(gfx);if(tick>=0&&!shot)shot=capture("captain-campaign.ppm");if(saving&&!dayAdvanced&&!pauseEvidenceCaptured){
+            const PcPauseSnapshot pause=pc_pause_observe();
+            if(pause.available&&pause.mainInputReady){
+                require(++pauseCaptureAttempts<=60,"bounded rendered ready-pause capture attempts");
+                pauseEvidenceCaptured=capture("pause-menu.ppm");
+                std::printf("P2_ONION_PAUSE_CAPTURE attempt=%d ready=1 state=%d selected=%d captured=%d\n",pauseCaptureAttempts,pause.state,pause.mainSelection,int(pauseEvidenceCaptured));
+                if(pauseEvidenceCaptured)elapsed("ready_pause_render_captured");
+            }
+        }if(resumePhase&&withdrawQueued&&frames%240==0){const std::string path="onion-menu-"+std::to_string(frames)+".ppm";require(capture(path.c_str()),"ordinary Onion menu capture");}}
     int idle()override{
         if(pendingNegative){
             // Queue mutation until the next ordinary pre-engine guard. This
@@ -445,40 +455,48 @@ public:
             pad(menu&&frames%20<4?KBBTN_A:0);
         }
         if(saving){
-            // Observe actual diary eligibility; ordinary A remains the fallback
-            // for results/card prompts. B is never emitted outside eligibility.
+            // Existing value-only UI snapshots gate ordinary SDL edges. Native
+            // fades, movies, results and card writes retain their own timing.
             const bool confirming=gameflow.mWorldClock.mCurrentDay==startDay+1;
             if(confirming&&!dayAdvanced){dayAdvanced=true;elapsed("day_advanced");}
-            if(!confirming){
-                ++menuFrames;
-                if(menuFrames<=3||menuFrames==45||menuFrames==50||menuFrames==65||menuFrames==66||menuFrames==125||menuFrames==126||menuFrames%120==0){
-                    auto* core=findCore(gameflow.mGameSection);auto* ui=core?core->mController:nullptr;
-                    std::printf("P2_SAVE_UI_OBSERVER frame=%d allowed=%d overlay=%d paused=%d movie=%d player_day=%d ui_present=%d held=%08x pressed=%08x frozen=%d axis_y=%.3f\n",menuFrames,int(gameflow.mIsPauseAllowed),int(gameflow.mIsUIOverlayActive),int(gameflow.mPauseAll),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive),playerState->getCurrDay(),int(ui!=nullptr),ui?unsigned(ui->mCurrentInput):0,ui?unsigned(ui->mInputPressed):0,ui?int(ui->mIsControllerFrozen):-1,ui?double(ui->mMainStickY):0.0);
-                    std::fflush(stdout);
-                }
-                if(menuFrames==2)pad(); // Release START after its ordinary input edge.
-                if(menuFrames==45)pad(0,0,-65); // Continue -> Go to Sunset.
-                else if(menuFrames==50)pad();
-                // Main-menu exit and submenu entry each take0.5s, followed
-                // by the submenu's0.1s active delay. Wait beyond both fades.
-                else if(menuFrames==65||menuFrames==125)pad(KBBTN_A); // Sunset, then Yes.
-                else if(menuFrames==66||menuFrames==126)pad();
-                if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive)gameflow.mMoviePlayer->requestSkip();
-                return result;
+            const PcPauseSnapshot pause=pc_pause_observe();
+            const PcDiaryAction diary=confirming?pc_diary_observe():PcDiaryAction::Unavailable;
+            const PcSaveUiSnapshot save=confirming?pc_save_ui_observe():PcSaveUiSnapshot{};
+            const PurpleSaveInput intent=purple_save_input(confirming,pause,diary,save);
+            require(intent!=PurpleSaveInput::Unexpected,"unexpected pause/save selection refuses ordinary confirmation");
+            ++menuFrames;
+            { // Every observed frame, including neutral transitions and nested waits.
+                std::printf("P2_ONION_SAVE_UI frame=%d day_advanced=%d pause_available=%d pause_state=%d main_ready=%d main_selected=%d sunset_ready=%d sunset_selected=%d diary=%d result_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d nested_blocked=%d intent=%d release=%d\n",
+                    menuFrames,int(confirming),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.nestedUiBlocked),int(intent),int(releaseDiaryInput));
+                elapsed("ordinary_save_ui_observed");
             }
-            const PcDiaryAction diary=pc_diary_observe();
+            if(!confirming&&!pauseEvidenceCaptured){
+                // draw() must capture the actual ready pause before any menu edge.
+                // This neutral wait cannot skip a fade or leave the menu early.
+                pad();releaseDiaryInput=false;return result;
+            }
             if(diary!=lastDiaryAction){
                 std::printf("P2_ONION_DIARY observed=%d elapsed_stage=diary_eligibility\n",int(diary));
                 elapsed("diary_eligibility_changed");lastDiaryAction=diary;
             }
             if(releaseDiaryInput){pad();releaseDiaryInput=false;}
-            else if(diary==PcDiaryAction::RevealPage || diary==PcDiaryAction::AdvancePage){
-                require(++diaryActions<240,"bounded ordinary diary actions");
-                const bool reveal=diary==PcDiaryAction::RevealPage;
-                diaryRevealObserved|=reveal;diaryAdvanceObserved|=!reveal;
-                pad(reveal?KBBTN_B:KBBTN_A);releaseDiaryInput=true;
-                std::printf("P2_ONION_DIARY input=%s observed=%d action=%d ordinary_SDL=1\n",reveal?"B":"A",int(diary),diaryActions);
-            }else pad(frames%20<18?KBBTN_A:0); // Ordinary A during fades and results/card; never B.
+            else if(intent!=PurpleSaveInput::Neutral){
+                const bool reveal=intent==PurpleSaveInput::RevealDiary;
+                const bool advance=intent==PurpleSaveInput::AdvanceDiary;
+                if(reveal || advance){
+                    require(++diaryActions<240,"bounded ordinary diary actions");
+                    diaryRevealObserved|=reveal;diaryAdvanceObserved|=advance;
+                    std::printf("P2_ONION_DIARY input=%s observed=%d action=%d ordinary_SDL=1\n",reveal?"B":"A",int(diary),diaryActions);
+                }
+                if(intent==PurpleSaveInput::Down)pad(0,0,-65);
+                else if(intent==PurpleSaveInput::Up)pad(0,0,65);
+                else pad(reveal?KBBTN_B:KBBTN_A);
+                releaseDiaryInput=true; // Next normal engine update must consume release before another edge.
+            }else pad();
+            if(!confirming){
+                if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive)gameflow.mMoviePlayer->requestSkip();
+                return result;
+            }
             if(cards()==initialCards+1 && gameflow.mWorldClock.mCurrentDay==startDay+1){
                 require(diaryRevealObserved&&diaryAdvanceObserved,"observed actual diary reveal and advance inputs");
                 elapsed("native_commit_observed");

@@ -1,6 +1,20 @@
 # Native source provenance
 
 The current private co-op/P2 source candidate is native
+`116c90adec76df55f5d2f57a037260feb525c128`, exported from the clean
+`output/native-coop-p2-source-combination` worktree under #1144. All 4,263
+copied files match the native working-tree bytes; 53 audited non-desktop
+binaries are skipped. The only changed engine file is the reviewed captain
+Onion fixture: pause input now waits for a rendered ready menu, and save UI
+input follows observed readiness. Both whole reviews and 175 focused source
+controls passed. Linux Actions run 37016181028 completed successfully for
+the standalone production build and clean Debian 12 smoke. Full raw package
+collection is pending; this build does not establish compiled selected-fixture
+or gameplay acceptance. Ordinary captain SAVE/fresh-card resume, Purple and
+White campaign gameplay, cave journey, imported traversal and human sign-off
+remain open. No settings1190 or co-op151 successor source is included here.
+
+The current private co-op/P2 source candidate is native
 `a4894d5a1a191a711027827b44a2a06576f41c57`, exported from the clean
 `output/native-coop-p2-source-combination` worktree under #1144. All 4,263 copied
 tracked source/resource files were prevalidated and compared byte-for-byte with
