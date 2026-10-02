@@ -1,3 +1,23 @@
+# Current combined native source provenance
+
+Native `a403261bbb787ab1124fdedb6deae8dc1fb91f89` is exported from clean
+`output/native-coop-p2-source-combination` under #1144. All 4,272 copied
+tracked files match the actual native working-tree bytes; 53 audited non-desktop
+binary resources are skipped. This includes the reviewed Captain123 source and
+Settings1190 stable per-user configuration, Unicode path handling and atomic
+preserve-on-failure writes. Current Captain getters and launcher/AP/mirror
+behavior are preserved. Exact six-file intake is independently reviewed;
+33 integrated Python tests plus 30 subtests pass.
+
+The prior combined native281f production Linux build passed 284 tests and
+its packaged launcher check; its matching Windows build37043049008 is pending.
+Those builds do not include this new settings intake. A matching production build,
+private ON/B3 and human F1 native-write-to-restart checks remain open. Purple,
+White, Captain, cave and imported-level gameplay acceptance remains open.
+No executable or gameplay completion is inferred from this source export.
+
+## Previous export provenance (historical)
+
 # Current White retail source provenance
 
 Native `fb0a4ab56df604ee0abbd0138daafd82c1a8969b` is exported from clean
@@ -181,4 +201,4 @@ Graphics integration (#48): Original/Enhanced/Custom presets preserve existing s
 
 Integration #437: exported from the clean isolated `output/p2-main-review/native` worktree. See [the current dependency reconciliation](docs/PIKMIN2_DEPENDENCY_RECONCILIATION_437.md) for validation and acceptance limits.
 
-Release export (v0.32.0-playtest.1, #906): exported from a clean, detached checkout of native `main` at `597d8f92` with no local changes. Before this, `engine/` had drifted: 275 files matched older native states and 4 carried root-side merge resolutions, while native `main` had moved on (upstream Open Nectar 0.8.5–0.9, local co-op/VS, Progressive Maturity/Day Length, Better Pathfinding, the Whistle Pluck item and the Disable Tutorials filter). The exporter now skips binary assets under the Android and touch-control folders, which desktop builds do not use. Three files no longer in native `main` remain because root docs or tests reference them: `pc_port/tests/tutorial_settings_test.cpp`, `tools/preview_whistle_pluck.cpp` and `tools/test_p2_pose_bank.cpp`.
+Release export (v0.32.0-playtest.1, #906): exported from a clean, detached checkout of native `main` at `597d8f92` with no local changes. Before this, `engine/` had drifted: 275 files matched older native states and 4 carried root-side merge resolutions, while native `main` had moved on (upstream Open Nectar 0.8.5â€“0.9, local co-op/VS, Progressive Maturity/Day Length, Better Pathfinding, the Whistle Pluck item and the Disable Tutorials filter). The exporter now skips binary assets under the Android and touch-control folders, which desktop builds do not use. Three files no longer in native `main` remain because root docs or tests reference them: `pc_port/tests/tutorial_settings_test.cpp`, `tools/preview_whistle_pluck.cpp` and `tools/test_p2_pose_bank.cpp`.

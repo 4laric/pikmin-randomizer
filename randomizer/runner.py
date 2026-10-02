@@ -433,6 +433,11 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
+        from .native_settings import bind_settings
+        settings = bind_settings(env, run.directory.parent.parent, run.directory)
+        print(f"Native settings ({settings['status']}): {settings['path']}", flush=True)
+        if settings.get("warning"):
+            print("PIKMIN_SETTINGS_WARNING: " + settings["warning"], flush=True)
         startup_show = 1  # SW_SHOWNORMAL
         if env.get("PIKMIN_RANDOMIZER_TEST_BACKGROUND") == "1":
             # Agent/test launch inherited from a driver: never hold for focus; watch only if the owner opted in.
@@ -736,6 +741,11 @@ def _launch_netplay_client(manifest, mirror_dir, bootstrap_text, exe=None, asset
         _winapi.CreateJunction(str(Path(assets).resolve()), str(target.resolve()))
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
+        from .native_settings import bind_settings
+        settings = bind_settings(env, run.directory.parent.parent, run.directory)
+        print(f"Native settings ({settings['status']}): {settings['path']}", flush=True)
+        if settings.get("warning"):
+            print("PIKMIN_SETTINGS_WARNING: " + settings["warning"], flush=True)
         log = (run.directory / "native.log").open("w", encoding="utf-8")
         startup = subprocess.STARTUPINFO()
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
