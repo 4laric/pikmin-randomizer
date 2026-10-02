@@ -166,7 +166,7 @@ public:int idle()override{
   }
   p1Read(p1Before);for(int c=0;c<3;++c)for(int m=0;m<3;++m)p1Expected[c][m]=p1Before[c][m];p1Expected[Red][Leaf]+=5;p1Log("P2_WHITE_CAMPAIGN_P1_BEFORE_STOCK");
   require(red==20&&white==0&&heads==0&&spent()==0&&whiteStock()==0&&!p2whitetreasure::ledger.delivered,"fresh20Red/bud/stock/economy baseline required");for(auto* flower:flowers)require(flower&&flower->isAlive(),"three source Ivory buds required");
-  Iterator source(pelletMgr);CI_LOOP(source){auto* p=static_cast<Pellet*>(*source);if(p->isAlive()&&p->mGenerator&&uid(p)==26){require(!cargo,"duplicate original source cargo");cargo=p;}}
+  Iterator source(pelletMgr);CI_LOOP(source){auto* p=static_cast<Pellet*>(*source);if(p->isAlive()&&p->mGenerator&&uid(p)==26){require(!cargo,"duplicate original source cargo");cargo=p;cargoSlot=true;}}
   require(cargo&&cargo->mConfig&&cargo->mConfig->mCarryMinPikis()==15&&cargo->mConfig->mCarryMaxPikis()==25,"original retail15/max25 profile required");baselinePellets=pelletCount;
   std::puts("P2_WHITE_CAMPAIGN_BASELINE red=20 white=0 heads=0 stock=0 ivory=3 spent=0 cargo_uid=26 minimum=15 maximum=25 value=180");
   if(std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")){std::puts("P2_WHITE_CAMPAIGN_READY_PASS");std::fflush(nullptr);std::_Exit(0);}next(1);
