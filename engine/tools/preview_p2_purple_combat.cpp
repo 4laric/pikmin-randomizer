@@ -1831,7 +1831,14 @@ public:
         if(mode("natural_resume")) {
             const PcWorldMapSnapshot map=pc_world_map_observe();
             const PcWorldMapInput intent=ordinaryResumeMapInput.observe(map,gsys->mTotalFrames);
-            if(intent==PcWorldMapInput::Refuse) ordinaryInput();
+            if(intent==PcWorldMapInput::Refuse) {
+                ordinaryInput();
+                std::printf("P2_PURPLE_ORDINARY_RESUME_MAP_REFUSAL available=%d context=%d frame=%llu observed=%llu mode=%d return=%d course=%d open=%d coursepoint=%d cursor=%d confirm=%d yes=%d section=%llu setup=%llu menu=%llu challenge=%d pause=%d overlay=%d tutorial=%d movie=%d read_only=1\n",
+                    int(map.available),int(map.contextReady),static_cast<unsigned long long>(gsys->mTotalFrames),static_cast<unsigned long long>(map.observedFrame),
+                    map.mode,map.returnStatus,map.selectedCourse,int(map.courseOpen),int(map.coursePointOperation),int(map.cursorMoveReady),int(map.confirmationActive),int(map.confirmationYes),
+                    static_cast<unsigned long long>(map.sectionIdentity),static_cast<unsigned long long>(map.setupIdentity),static_cast<unsigned long long>(map.menuIdentity),
+                    int(gameflow.mIsChallengeMode),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mIsTutorialTextActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive));
+            }
             require(intent!=PcWorldMapInput::Refuse,"ordinary resume map identity/readiness/selection refused");
             ordinaryInput(intent==PcWorldMapInput::Confirm?KBBTN_A:0);
             if(intent==PcWorldMapInput::Confirm) std::printf(

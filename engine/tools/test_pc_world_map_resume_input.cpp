@@ -16,6 +16,21 @@ PcWorldMapSnapshot ready(std::uint64_t frame=1) {
 }
 int main() {
     using I=PcWorldMapInput;
+    for(int mode=-1;mode<=1;++mode) {
+        PcWorldMapResumeInput initial;auto fresh=ready();fresh.mode=mode;fresh.selectedCourse=-1;fresh.courseOpen=false;fresh.returnStatus=-1;
+        CHECK(initial.observe(fresh,1)==I::Neutral && initial.keyEdges()==0);
+        fresh=ready(2);CHECK(initial.observe(fresh,2)==I::Confirm && initial.keyEdges()==1);
+        PcWorldMapResumeInput operational;fresh=ready();fresh.selectedCourse=-1;fresh.courseOpen=false;fresh.returnStatus=-1;
+        CHECK(operational.observe(fresh,1)==I::Refuse && operational.keyEdges()==0);
+        PcWorldMapResumeInput blocked;fresh.mode=mode;fresh.contextReady=false;
+        CHECK(blocked.observe(fresh,1)==I::Refuse);
+    }
+    PcWorldMapResumeInput prefix;auto prefixState=ready();prefixState.mode=-1;prefixState.returnStatus=-1;prefixState.selectedCourse=-1;prefixState.courseOpen=false;
+    CHECK(prefix.observe(prefixState,1)==I::Neutral);
+    prefixState.mode=0;prefixState.observedFrame=2;CHECK(prefix.observe(prefixState,2)==I::Neutral);
+    prefixState.mode=1;prefixState.observedFrame=3;CHECK(prefix.observe(prefixState,3)==I::Neutral);
+    prefixState=ready(4);CHECK(prefix.observe(prefixState,4)==I::Confirm && prefix.keyEdges()==1);
+    prefixState.mode=-1;prefixState.observedFrame=5;CHECK(prefix.observe(prefixState,5)==I::Refuse);
     TestMap typedMap;TestSetup typedSetup;TestNode impostor;
     TestMap* checkedMap=nullptr;TestSetup* checkedSetup=nullptr;
     PcWorldMapLiveOwner<TestNode> typed{&typedMap,&typedSetup};

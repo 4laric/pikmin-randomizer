@@ -2480,6 +2480,9 @@ PcWorldMapSnapshot zen::DrawWorldMap::pcInputSnapshot() const
 {
 	PcWorldMapSnapshot value;
 	value.mode=mCurrentMode;value.returnStatus=mReturnStatus;
+	// Constructor/uninitialized prefix has no operational course/cursor state.
+	// Preserve only the mode/status; its owner adds current identities/context.
+	if (mCurrentMode==DrawWorldMapMode::Null) return value;
 	if (mCoursePointMgr) {
 		value.selectedCourse=mCoursePointMgr->getSelectCourseNumber();
 		value.coursePointOperation=mCoursePointMgr->pcOperationReady();

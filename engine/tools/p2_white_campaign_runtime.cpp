@@ -149,6 +149,7 @@ class CampaignApp:public PlugPikiApp {
  void next(int value){phase=value;phaseTick=0;}
 public:int idle()override{
  input->update();const int result=PlugPikiApp::idle();++frame;++phaseTick;require(frame<nativeFrameLimit,"absolute native frame bound");
+ if(phase==20){sunsetSeen=sunsetSeen||gameflow.mIsDayEndActive;dayAdvanced=sunsetSeen&&gameflow.mWorldClock.mCurrentDay==expectedDay;}
  Navi* n=naviMgr?naviMgr->getNavi():nullptr;
  if(n&&n->getCurrState()){
   initialized=true;if(std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))gameflow.mPauseAll=true; // Negative-only.
@@ -158,9 +159,8 @@ public:int idle()override{
   const bool expectedTeardown=phase==20&&sunsetSeen&&dayAdvanced&&gameflow.mCurrGameSectionID==SECTION_OnePlayer&&flowCont.mGameEndFlag==GAMEEND_None&&whiteStock()==15;
   if(!expectedTeardown){std::puts("P2_FIXTURE_CAPTAIN_DOWN missing_initialized_captain_or_state outcome=BLOCKED");std::fflush(nullptr);std::_Exit(86);}
  }
- if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+ if(phase!=20&&gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(phase==20){
-  sunsetSeen=sunsetSeen||gameflow.mIsDayEndActive;dayAdvanced=sunsetSeen&&gameflow.mWorldClock.mCurrentDay==expectedDay;
   require(gameflow.mWorldClock.mCurrentDay<=expectedDay&&flowCont.mGameEndFlag==GAMEEND_None,"unexpected day/endgame transition");
   auto pause=pc_pause_observe();auto save=pc_save_ui_observe();const auto diary=pc_diary_observe();saveIntent=white_save_intent(saveRequested,dayAdvanced,pause,diary,save);
   if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_SAVE_UI frame=%d phase_tick=%d day=%d expected_day=%d requested=%d sunset=%d advanced=%d intent=%d pause_available=%d pause_state=%d main_ready=%d main_selection=%d sub_ready=%d sub_selection=%d diary=%d save_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d memory_available=%d outer_memory_routed=%d default_available=%d memory_state=%d default_state=%d successful=%d typing_complete=%d confirmation_ready=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d file_selection=%d\n",frame,phaseTick,gameflow.mWorldClock.mCurrentDay,expectedDay,int(saveRequested),int(sunsetSeen),int(dayAdvanced),int(saveIntent),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.memoryAvailable),int(save.outerMemoryRouted),int(save.defaultFile.available),save.defaultFile.memoryState,save.defaultFile.state,int(save.defaultFile.successful),int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState,int(save.fileSelection));

@@ -65,8 +65,13 @@ public:
         sampled=true;lastFrame=currentFrame;
         if (s.available) {
             if (!section) {section=s.sectionIdentity;setup=s.setupIdentity;menu=s.menuIdentity;}
-            if (section!=s.sectionIdentity || setup!=s.setupIdentity || menu!=s.menuIdentity
-                || s.selectedCourse!=0 || !s.courseOpen
+            if (section!=s.sectionIdentity || setup!=s.setupIdentity || menu!=s.menuIdentity)
+                return PcWorldMapInput::Refuse;
+            // Initial native appearance may precede selected/open/return
+            // readiness. Observe the same typed live owners, emit no input.
+            if (phase==0 && (s.mode==-1 || s.mode==0 || s.mode==1)) return PcWorldMapInput::Neutral;
+            if (s.mode==-1 || s.mode==0 || s.mode==1) return PcWorldMapInput::Refuse;
+            if (s.selectedCourse!=0 || !s.courseOpen
                 || !(s.returnStatus==5 || (phase==2 && s.mode==8 && s.returnStatus==0)))
                 return PcWorldMapInput::Refuse;
         }
