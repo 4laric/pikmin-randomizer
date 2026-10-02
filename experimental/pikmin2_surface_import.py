@@ -9,6 +9,7 @@ import struct
 
 from experimental.pikmin2_assets import archive_files, disc_files
 from experimental.pikmin2_cave import tree
+from experimental.pikmin2_generator_calendar import course_schedule, validate_members
 from experimental.pikmin2_collision import plane, route_ini
 from experimental.pikmin2_surface_physics import water_boxes
 from experimental.pikmin2_surface_pocket import generators
@@ -200,11 +201,15 @@ def import_surface(iso, course, output):
         raw_route = read(gen_root+'route.txt')
         files['source/route.txt'] = raw_route
         files['texts/route.txt'] = raw_route.decode('cp932').encode('utf-8')
+        stages = read('user/Abe/stages.txt')
+        files['source/stages.txt'] = stages
+        schedule = course_schedule(stages.decode('cp932'), course)
         definitions, errors, warnings = {}, [], []
         names = sorted(name for name in catalog if name.startswith(gen_root)
                        and name.endswith('.txt') and name != gen_root+'route.txt')
         if gen_root+'defaultgen.txt' not in names:
             raise ValueError('Missing default surface generators')
+        validate_members(schedule, (name[len(gen_root):] for name in names))
         for name in names:
             relative = name[len(gen_root):]
             safe_path(relative)
@@ -251,6 +256,7 @@ def import_surface(iso, course, output):
                  'surface-water.json': dict(schema=1, boxes=water,
                                            native_consumer_implemented=False),
                  'surface-generators.json': definitions,
+                 'surface-generator-calendar.json': schedule,
                  'surface-import.json': report}
     for name, value in artifacts.items():
         files[name] = encoded(value)
