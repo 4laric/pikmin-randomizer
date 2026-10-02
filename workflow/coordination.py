@@ -143,10 +143,14 @@ class CoordinationMixin:
         chain = ancestry() if chain is None else chain
         files(additions)
         require(nonempty(scope), 'Updated issue-backed scope required')
-        require(isinstance(agreement_ids, list) and agreement_ids, 'Coordination agreements required')
+        require(isinstance(agreement_ids, list), 'Coordination agreement list required')
         with self.transaction() as state:
             lane = actor(self, state, key, generation, chain)
             self.lane(state, key, generation, revision)
+            # Unowned additions need no producer, but still require the same real
+            # private, pinned integration checkout as coordinated additions.
+            for repo in {'native' if f.casefold().startswith('native/') else 'root' for f in additions}:
+                checkout(self, lane, repo, consumer=True)
             covered = set()
             for agreement_id in agreement_ids:
                 row = state.get('coordination_agreements', {}).get(agreement_id)
