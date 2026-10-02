@@ -59,21 +59,21 @@ class PikminRandomizerWorld(World):
     def create_regions(self):
         menu = Region("Menu", self.player, self.multiworld)
         self.multiworld.regions.append(menu)
-        resolved_checks = {r['name'] for r in self.manifest().get('enemy_catalog', {}).get('checks', [])}
+        resolved_checks = {r['name'] for r in self.seed_manifest().get('enemy_catalog', {}).get('checks', [])}
         if resolved_checks:
             bestiary = Region("Bestiary", self.player, self.multiworld)
             self.multiworld.regions.append(bestiary)
             menu.connect(bestiary)
-            for name in active_names(self.manifest()):
+            for name in active_names(self.seed_manifest()):
                 if name in resolved_checks:
-                    bestiary.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], bestiary))
+                    bestiary.locations.append(PikminLocation(self.player, name, self.seed_manifest()['locations'][name], bestiary))
         for _, area, _ in START_AREAS.values():
             region = Region(area, self.player, self.multiworld)
             self.multiworld.regions.append(region)
             menu.connect(region)
-            for name in active_names(self.manifest()):
+            for name in active_names(self.seed_manifest()):
                 if name not in resolved_checks and check_area(name) == area:
-                    region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
+                    region.locations.append(PikminLocation(self.player, name, self.seed_manifest()['locations'][name], region))
 
     def create_item(self, name):
         classification = ItemClassification.trap if name in TRAP_ITEMS else ItemClassification.useful if name in BENEFIT_ITEMS or (name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry') else ItemClassification.progression
@@ -82,12 +82,12 @@ class PikminRandomizerWorld(World):
     def create_items(self):
         # Sparse cap-10 starts need farming access before reverse fill spends
         # their opening population check. This can be delivered from another world.
-        if self.manifest().get('starting_flarlic') == 1:
-            early = FLARLIC if self.manifest()['profile'] == 'foh-day2' else 'Pikmin: Forest of Hope Access'
+        if self.seed_manifest().get('starting_flarlic') == 1:
+            early = FLARLIC if self.seed_manifest()['profile'] == 'foh-day2' else 'Pikmin: Forest of Hope Access'
             self.multiworld.early_items[self.player][early] = max(
                 1, self.multiworld.early_items[self.player].get(early, 0))
         repairs = 0
-        for name in item_pool(self.manifest()):
+        for name in item_pool(self.seed_manifest()):
             item = self.create_item(name)
             if name == REPAIR:
                 repairs += 1
@@ -97,14 +97,15 @@ class PikminRandomizerWorld(World):
 
     def set_rules(self):
         expanded = bool(self.options.expanded_checks)
-        for name in active_names(self.manifest()):
+        for name in active_names(self.seed_manifest()):
             self.get_location(name).access_rule = lambda state, name=name: can_reach_manifest(
-                name, {item: state.count(item, self.player) for item in ITEM_IDS}, self.manifest())
+                name, {item: state.count(item, self.player) for item in ITEM_IDS}, self.seed_manifest())
         self.multiworld.completion_condition[self.player] = lambda state: state.has(REPAIR, self.player, REPAIR_COUNT) and (
-            self.manifest().get('goal_mode') != 'emperor_bulblax' or can_reach_manifest('Pikmin: Secret Safe',
-                {item: state.count(item, self.player) for item in ITEM_IDS}, self.manifest()))
+            self.seed_manifest().get('goal_mode') != 'emperor_bulblax' or can_reach_manifest('Pikmin: Secret Safe',
+                {item: state.count(item, self.player) for item in ITEM_IDS}, self.seed_manifest()))
 
-    def manifest(self):
+    def seed_manifest(self):
+        # AP owns World.manifest for archipelago.json metadata. Keep seed data separate.
         if not hasattr(self, '_manifest'):
             passthrough = getattr(self.multiworld, 're_gen_passthrough', {}).get(GAME)
             if passthrough:
@@ -133,10 +134,10 @@ class PikminRandomizerWorld(World):
         return self._manifest
 
     def fill_slot_data(self):
-        manifest = self.manifest()
+        manifest = self.seed_manifest()
         return {"manifest": manifest, "manifest_fingerprint": fingerprint(manifest)}
 
     def generate_output(self, output_directory):
         if getattr(self.multiworld, 'generation_is_fake', False): return
         path = Path(output_directory) / (self.multiworld.get_out_file_name_base(self.player) + ".pikmin.json")
-        path.write_text(json.dumps(self.manifest(), indent=2) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(self.seed_manifest(), indent=2) + "\n", encoding="utf-8")
