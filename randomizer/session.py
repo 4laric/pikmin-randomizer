@@ -141,6 +141,22 @@ class Session:
                 fields = fields[:-3] + ['END']
             if 'CAPTAINS' in fields:
                 raise ValueError('native journal second-captain mode mismatch')
+            # White flags are part of the validated seed fingerprint. Normalize
+            # only the exact enabled suffix, in native order, before legacy checks.
+            if manifest.get('p2_white_treasure_campaign'):
+                if fields[-3:] != ['WHITE_TREASURE', '1', 'END']:
+                    raise ValueError('native journal White treasure mode mismatch')
+                fields = fields[:-3] + ['END']
+            if 'WHITE_TREASURE' in fields:
+                raise ValueError('native journal White treasure mode mismatch')
+            if manifest.get('p2_white_campaign'):
+                if fields[-3:] != ['WHITE', '1', 'END']:
+                    raise ValueError('native journal White mode mismatch')
+                fields = fields[:-3] + ['END']
+                if fields[-3:] != ['PURPLE', '1', 'END']:
+                    raise ValueError('native journal White requires Purple mode')
+            if 'WHITE' in fields:
+                raise ValueError('native journal White mode mismatch')
             # Purple is a pinned session option, not a seed schema extension.
             # Normalize only its exact native suffix before the legacy count
             # check; unknown modes and non-P2 seeds must still fail closed.
