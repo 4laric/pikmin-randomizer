@@ -41,7 +41,7 @@ def _default_admitted_placement():
     try:
         from importlib.resources import files
         package = __package__ or ""
-        if package.startswith("pikmin_randomizer"):
+        if package:
             resource = files(package) / "data" / ADMITTED_PLACEMENT_FILENAME
             return json.loads(resource.read_text(encoding="utf-8"))
     except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
@@ -74,7 +74,7 @@ def _default_proxy_placement():
     try:  # packaged apworld: the sibling ships next to the admitted-placement document
         from importlib.resources import files
         package = __package__ or ""
-        if package.startswith("pikmin_randomizer"):
+        if package:
             resource = files(package) / "data" / PROXY_PLACEMENT_FILENAME
             return json.loads(resource.read_text(encoding="utf-8"))
     except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
