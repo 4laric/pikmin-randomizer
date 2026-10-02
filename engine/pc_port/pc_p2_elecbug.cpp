@@ -541,9 +541,9 @@ bool pc_p2_elecbug_pressed(BTeki* teki, Creature* presser) {
                 Vector3f dir(piki->getPosition().x - teki->getPosition().x, 0.0f,
                              piki->getPosition().z - teki->getPosition().z);
                 const bool accepted = piki->stimulate(InteractDenki(teki, 1.0f, &dir));
-                std::printf("P2_ELECBUG_PRESS_DENKI generator=%u source_id=28 pikmin=1 target=%d accepted=%d "
+                std::printf("P2_ELECBUG_PRESS_DENKI generator=%u source_id=28 pikmin=1 piki=%p target=%d accepted=%d "
                             "target_state=%d(%s)\n",
-                            genOf(teki), species, int(accepted), piki->getState(),
+                            genOf(teki), static_cast<void*>(piki), species, int(accepted), piki->getState(),
                             piki->getState() == PIKISTATE_DenkiDying ? "DenkiDying" : "other");
                 std::printf("P2_ELECBUG_PRESS_SHOCK generator=%u source_id=28 pikmin=1 color=%s\n",
                             genOf(teki), colorName(piki->mColor));
@@ -609,7 +609,17 @@ void pc_p2_elecbug_check_landing_press(BTeki* actor) {
         std::printf("P2_ELECBUG_NATURAL_PRESS generator=%u species=%d source_id=28 state=%s\n",
                     genOf(actor), pc_p2_species(p), stateName(s->state));
         std::fflush(stdout);
+        // Read-only dispatch evidence for the ordinary-throw fixture (#1164).
+        // Snapshot before the receiver, which may electrocute the presser.
+        const char* enemyBefore = stateName(s->state);
+        const int presserSpecies = pc_p2_species(p);
+        const float presserVelocityY = p->mVelocity.y;
         pc_p2_elecbug_pressed(actor, p);
+        std::printf("P2_ELECBUG_CONTACT_DISPATCH generator=%u piki=%p species=%d vy=%.6f "
+                    "contact=1 enemy_before=%s enemy_after=%s\n",
+                    genOf(actor), static_cast<void*>(p), presserSpecies, presserVelocityY,
+                    enemyBefore, stateName(s->state));
+        std::fflush(stdout);
         break;
     }
 }
