@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--assets", type=Path, required=True)
     parser.add_argument("--content", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--session", type=Path, help="existing session for cached replay")
     parser.add_argument("--expect", choices=("staged", "missing-actors"), required=True)
     args = parser.parse_args()
     package = args.package.resolve(strict=True)
@@ -32,8 +33,9 @@ def main():
 
     assert Path(runner.__file__).is_relative_to(package)
     assert Path(launcher.__file__).is_relative_to(package)
-    command = launcher.build_command(args.seed, output / "session", package / "bin/nectar.exe",
-                                     args.assets, p2_content=args.content)
+    session = args.session.resolve() if args.session else output / "session"
+    command = launcher.build_command(args.seed, session, package / "bin/nectar.exe",
+                                     args.assets, server="localhost:1", p2_content=args.content)
     assert "--p2-actors" not in command
     observed = {}
 
@@ -60,7 +62,7 @@ def main():
         raise Staged
 
     runner.subprocess.Popen = stop_native
-    sys.argv = command[3:]
+    sys.argv = command[2:]
     failure = None
     import contextlib
     import io
@@ -70,6 +72,10 @@ def main():
             runpy.run_module("randomizer", run_name="__main__")
     except Staged:
         assert args.expect == "staged"
+    except Exception as error:
+        failure = f"{type(error).__name__}: {error}"
+        assert args.expect == "missing-actors" and "no actor generator binding" in failure
+        assert not observed
     except SystemExit as error:
         failure = str(error)
         assert args.expect == "missing-actors" and error.code != 0
