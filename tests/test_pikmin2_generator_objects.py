@@ -25,7 +25,7 @@ def test_named_original_fields_and_opaque_tail_preserved():
 
 
 @pytest.mark.parametrize('index,value', [(0,'-1'), (0,'65536'), (1,'256'),
-    (2,'32768'), (2,'1.5'), (3,'nan'), (5,'inf'), (6,'-inf'), (7,'4294967296'),
+    (2,'32768'), (2,'1.5'), (3,'nan'), (5,'inf'), (6,'-inf'), (7,'32768'), (7,'-32769'),
     (8,'256'), (9,'-1'), (10,'256'), (11,'-1'), (12,'nan'), (3,'1e100'), (0,True)])
 def test_malformed_common_native_fields_refused(index, value):
     source = actor()
@@ -44,3 +44,10 @@ def test_unsupported_or_incomplete_record_refused(change):
     if change == 'special_version': source['source_payload'][13] = ['0000', 'extra']
     with pytest.raises(ValueError):
         enemy_object(source)
+
+
+@pytest.mark.parametrize('code', [-32768, -1, 0, 32767])
+def test_signed_original_treasure_code_preserved(code):
+    source = actor()
+    source['source_payload'][7] = str(code)
+    assert enemy_object(source)['treasure_code'] == code

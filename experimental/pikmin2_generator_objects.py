@@ -52,7 +52,7 @@ def enemy_object(actor):
                   direction_degrees=_number(values[3]),
                   spawn_type=_integer(values[4], 0, 255),
                   appear_radius=_number(values[5]), enemy_size=_number(values[6]),
-                  treasure_code=_integer(values[7], 0, 0xffffffff),
+                  treasure_code=_integer(values[7], -32768, 32767),
                   pellet_color=_integer(values[8], 0, 255),
                   pellet_size=_integer(values[9], 0, 255),
                   pellet_minimum=_integer(values[10], 0, 255),
