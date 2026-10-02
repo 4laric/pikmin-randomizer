@@ -747,6 +747,9 @@ target_compile_options(${NECTAR_GAME} PRIVATE ${NATIVE_COMPILE_OPTIONS})
 target_link_libraries(${NECTAR_GAME} PRIVATE ${NECTAR_LEGACY})
 # P2 fork targets (desktop only; the Android build is a shared library).
 if (NOT ANDROID)
+add_executable(pc_diary_observer_test tools/test_pc_diary_observer.cpp)
+target_include_directories(pc_diary_observer_test PRIVATE pc_port)
+add_test(NAME pc_diary_observer_test COMMAND pc_diary_observer_test)
 # Lane 29 replacement-main runtime fixture (#243). Built as an ordinary target so
 # the lane wrapper (`build_lane.py l29 --target p2_kurage_runtime`) produces it
 # under the normal build semaphore; it runs the same engine as pikmin_pc with the
@@ -3041,6 +3044,10 @@ pikmin_add_ci_fixture(captain_reentry tools/p2_captain_reentry_runtime.cpp)
 
 # #1079 local native card save/resume acceptance, built only on CI.
 pikmin_add_ci_fixture(captain_campaign_resume tools/p2_captain_campaign_resume_runtime.cpp)
+pikmin_add_ci_fixture(captain_onion_owner_sdl tools/p2_captain_onion_owner_sdl_fixture.cpp)
+if(TARGET pikmin_ci_fixture_captain_onion_owner_sdl)
+    target_include_directories(pikmin_ci_fixture_captain_onion_owner_sdl PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
 
 # #1148 complete codec consumer against real randomizer and proxy implementations.
 add_executable(pc_randomizer_state_stream_test pc_port/pc_randomizer_state_stream_test.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)

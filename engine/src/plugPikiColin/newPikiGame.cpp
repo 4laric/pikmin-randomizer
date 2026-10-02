@@ -126,6 +126,13 @@ static zen::ogScrPauseMgr* pauseWindow;
 /// End of day results screen.
 static zen::ogScrResultMgr* resultWindow;
 
+#if defined(PIKI_PC_PORT)
+PcDiaryAction pc_diary_observe()
+{
+	return pc_diary_window_action(resultWindow);
+}
+#endif
+
 /// Story mode final results screen.
 static zen::DrawFinalResult* totalWindow;
 

@@ -31,6 +31,13 @@ DEFINE_PRINT("OgResultSection")
 
 namespace zen {
 
+#if defined(PIKI_PC_PORT)
+PcDiaryAction ogScrResultMgr::pcDiaryAction() const
+{
+	return pc_diary_result_action(mStatus == RESULT_DiaryMessage, mMesgScreen);
+}
+#endif
+
 /// Table of all end of day diary entries, indexed by `zen::EnumResult`. Entries ending in _01.blo are a second page
 /// of the preceding entry.
 immut char* bloFile_Res_Table[] = {

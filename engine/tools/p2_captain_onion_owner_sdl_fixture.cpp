@@ -1,5 +1,5 @@
-// #1130 current combined ordinary SDL native save/resume, switching, movement
-// and actual native card commit/load; scripted sunset/results input is disclosed.
+// #1166 offline P1 SDL switched-captain Onion ownership, ordinary save/load.
+// Derived from #1130; no production state writes on the positive path.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 // MinGW's GL headers restore WIN32 after -UWIN32. Engine headers reserve
@@ -31,6 +31,7 @@
 #include "Pcam/CameraManager.h"
 #include "KeyConfig.h"
 #include "pc_coop.h"
+#include "pc_diary_observer.h"
 #include "Node.h"
 #include "Piki.h"
 #include "PikiMgr.h"
@@ -123,12 +124,18 @@ class CaptainSaveApp final:public PlugPikiApp {
     const std::chrono::steady_clock::time_point started=std::chrono::steady_clock::now();
     bool dayAdvanced=false,resumeMenuLogged=false,withdrawQueued=false;
     int withdrawnFromTotal=-1;
-    int diaryFrames=0, menuFrames=0, withdrawFrames=0;
-    bool withdrawConfirmQueued=false;
+    enum OwnerStage { Boot, Deposit, SwitchOne, Withdraw, Settle, Owned };
+    OwnerStage ownerStage=Boot;
+    int ownerFrames=0, switchFrames=0;
+    bool menuSeen=false, menuConfirm=false;
+    int menuFrames=0, diaryActions=0;
+    bool releaseDiaryInput=false;
+    bool diaryRevealObserved=false, diaryAdvanceObserved=false;
+    PcDiaryAction lastDiaryAction=PcDiaryAction::Unavailable;
     void elapsed(const char* phase){std::printf("P2_SAVE_TIME phase=%s elapsed_ms=%lld\n",phase,(long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count());}
     bool saving=false,shot=false,sawWhistle=false,initialized[2]={false,false},retired=false;
     int teardownGapFrames=0;
-    Vector3f movementStart,inactiveStart;
+    int controlStage=0;
     bool pendingNegative=false;
     void guardLiveState(){
         if(retired){require(!naviMgr && !pc_p2_captain::adapter(),"unexpected captain rebirth during bounded map gap");require(++teardownGapFrames<180,"bounded expected map transition gap");return;}
@@ -159,9 +166,39 @@ class CaptainSaveApp final:public PlugPikiApp {
         SDL_JoystickSetVirtualAxis(virtualPad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(-y*32767/74));SDL_JoystickUpdate();
     }
     void selected(int slot){auto* n=naviMgr->getNavi(slot);require(naviMgr->getActiveNavi()==n,"selected captain");require(cameraMgr->mController==n->mKontroller && cameraMgr->mCamera->mTargetCreature==n,"camera binding");std::printf("P2_SAVE_SELECTED phase=%s slot=%d camera=1\n",resumePhase?"resume":"save",slot);}
+    int liveCount(){int n=0;Iterator it(pikiMgr);CI_LOOP(it){auto* p=static_cast<Piki*>(*it);if(p&&p->isAlive())++n;}return n;}
+    // validSlot observes the used-slot boundary without accessing protected layout.
+    // More occupied slots than live Pikmin fails the observation immediately.
+    int plateCount(Navi* n){require(n&&n->mPlateMgr,"captain plate exists");int limit=liveCount();for(int i=0;i<=limit;++i)if(!n->mPlateMgr->validSlot(i))return i;require(false,"plate exceeds live population");return -1;}
+    int formation(Navi* n){int count=0;Iterator it(pikiMgr);CI_LOOP(it){auto* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&p->mMode==PikiMode::FormationMode&&p->mNavi==n)++count;}return count;}
+    void owned(const char* stage){
+        auto* a=naviMgr->getNavi(0);auto* b=naviMgr->getNavi(1);
+        require(liveCount()==20&&storedCount()==0,"owned field20 stock0");
+        require(formation(a)==0&&formation(b)==20,"all20 actual formation owner captain1");
+        require(a->mPlateMgr&&b->mPlateMgr&&plateCount(a)==0&&plateCount(b)==20,"CPlate agrees with observed ownership");
+        if(stage)std::printf("P2_ONION_OWNER stage=%s owner0=0 owner1=20 plate0=0 plate1=20 live=20 stored=0 input_player=1 switched_captain=1\n",stage);
+    }
+    void onionMenu(Navi* n,int target){
+        require(naviMgr->getActiveNavi()==n,"Onion input owner is selected captain");
+        auto* onion=itemMgr?itemMgr->getContainer(pc_randomizer_start_color()):nullptr;require(onion,"real starting Onion");
+        if(n->getCurrState()->getID()==NAVISTATE_Container){
+            require(containerWindow,"ordinary offline Onion UI");
+            const int state=containerWindow->getStatus(), squad=containerWindow->getMyPikiDisp();
+            if(!menuSeen){menuSeen=true;elapsed(target?"withdraw_menu_open":"deposit_menu_open");}
+            if(ownerFrames%30==0)std::printf("P2_ONION_MENU captain=%d target=%d displayed=%d stock=%d live=%d state=%d\n",n->mNaviID,target,squad,storedCount(),liveCount(),state);
+            require(squad>=0&&squad<=20,"ordinary menu selection bounded20");
+            if(state==zen::DrawContainer::STATE_Operation&&squad==target){pad(menuConfirm?KBBTN_A:0);menuConfirm=true;}
+            else pad(0,0,state==zen::DrawContainer::STATE_Operation?(target? -65:65):0);
+        }else if(!menuSeen){
+            const Vector3f goal=onion->getPosition();const float dx=goal.x-n->getPosition().x,dz=goal.z-n->getPosition().z,d=std::sqrt(dx*dx+dz*dz);
+            const Vector3f axis=n->controlCamera()->mViewXAxis;
+            if(d>12)pad(0,int(65*(dx*axis.x+dz*axis.z)/d),int(65*(dx*axis.z-dz*axis.x)/d));
+            else pad(frames%20<2?KBBTN_A:0);
+        }else pad();
+    }
 public:
     CaptainSaveApp(){initialCards=cards();require(resumePhase?initialCards==1:initialCards==0,"expected committed generation before phase");}
-    void draw(Graphics& gfx)override{PlugPikiApp::draw(gfx);if(tick>30&&!shot)shot=capture("captain-campaign.ppm");if(saving&&menuFrames==120)require(capture("pause-menu.ppm"),"ordinary pause menu capture");if(resumePhase&&withdrawQueued&&frames%240==0){const std::string path="onion-menu-"+std::to_string(frames)+".ppm";require(capture(path.c_str()),"ordinary Onion menu capture");}}
+    void draw(Graphics& gfx)override{PlugPikiApp::draw(gfx);if(tick>=0&&!shot)shot=capture("captain-campaign.ppm");if(saving&&menuFrames==120)require(capture("pause-menu.ppm"),"ordinary pause menu capture");if(resumePhase&&withdrawQueued&&frames%240==0){const std::string path="onion-menu-"+std::to_string(frames)+".ppm";require(capture(path.c_str()),"ordinary Onion menu capture");}}
     int idle()override{
         if(pendingNegative){
             // Queue mutation until the next ordinary pre-engine guard. This
@@ -176,23 +213,16 @@ public:
         const int result=PlugPikiApp::idle();require(++frames<7200,"frame bound");
         guardLiveState(); // never bypass initialized actors for movie/readiness/pause
 
-        if(resumePhase&&withdrawQueued&&tick<0&&frames%120==0){
-            auto* a=naviMgr?naviMgr->getNavi(0):nullptr;auto* b=naviMgr?naviMgr->getNavi(1):nullptr;
-            std::printf("P2_SAVE_RESUME_GATE frame=%d ready=%d pause=%d overlay=%d movie=%d active_state=%d inactive_state=%d ui_state=%d squad=%d stock=%d\n",frames,int(pc_randomizer_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive),a&&a->getCurrState()?a->getCurrState()->getID():-1,b&&b->getCurrState()?b->getCurrState()->getID():-1,containerWindow?int(containerWindow->getStatus()):-1,containerWindow?containerWindow->getMyPikiDisp():-1,containerWindow?containerWindow->getContainerPikiDisp():-1);std::fflush(stdout);
-        }
-
         if(resumePhase&&tick<0&&!withdrawQueued){
             const bool menu=!naviMgr||gameflow.mIsUIOverlayActive;
             if(menu&&!resumeMenuLogged){resumeMenuLogged=true;std::puts("P2_SAVE_RESUME_MENU ordinary_A_input=1 area_day_injected=0");}
             pad(menu&&frames%20<4?KBBTN_A:0);
         }
         if(saving){
-            // Ordinary held A speeds diary text through ogMessage.cpp; release
-            // two frames per cycle preserves edges for results/card prompts.
+            // Observe actual diary eligibility; ordinary A remains the fallback
+            // for results/card prompts. B is never emitted outside eligibility.
             const bool confirming=gameflow.mWorldClock.mCurrentDay==startDay+1;
             if(confirming&&!dayAdvanced){dayAdvanced=true;elapsed("day_advanced");}
-            // With neutral input the diary cannot leave its first page. One
-            // ordinary B reveals it; never repeat B in results/card dialogs.
             if(!confirming){
                 ++menuFrames;
                 if(menuFrames<=3||menuFrames==45||menuFrames==50||menuFrames==65||menuFrames==66||menuFrames==125||menuFrames==126||menuFrames%120==0){
@@ -210,88 +240,103 @@ public:
                 if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive)gameflow.mMoviePlayer->requestSkip();
                 return result;
             }
-            if(confirming)++diaryFrames;
-            if(diaryFrames==60){pad(KBBTN_B);elapsed("single_diary_B");}
-            else if(diaryFrames>61)pad(frames%20<18?KBBTN_A:0);
-            else pad();
+            const PcDiaryAction diary=pc_diary_observe();
+            if(diary!=lastDiaryAction){
+                std::printf("P2_ONION_DIARY observed=%d elapsed_stage=diary_eligibility\n",int(diary));
+                elapsed("diary_eligibility_changed");lastDiaryAction=diary;
+            }
+            if(releaseDiaryInput){pad();releaseDiaryInput=false;}
+            else if(diary==PcDiaryAction::RevealPage || diary==PcDiaryAction::AdvancePage){
+                require(++diaryActions<240,"bounded ordinary diary actions");
+                const bool reveal=diary==PcDiaryAction::RevealPage;
+                diaryRevealObserved|=reveal;diaryAdvanceObserved|=!reveal;
+                pad(reveal?KBBTN_B:KBBTN_A);releaseDiaryInput=true;
+                std::printf("P2_ONION_DIARY input=%s observed=%d action=%d ordinary_SDL=1\n",reveal?"B":"A",int(diary),diaryActions);
+            }else pad(frames%20<18?KBBTN_A:0); // Ordinary A during fades and results/card; never B.
             if(cards()==initialCards+1 && gameflow.mWorldClock.mCurrentDay==startDay+1){
+                require(diaryRevealObserved&&diaryAdvanceObserved,"observed actual diary reveal and advance inputs");
                 elapsed("native_commit_observed");
-                std::printf("PASS P2_CAPTAIN_CAMPAIGN_SAVE day_before=%d day_after=%d native_card_generation_count=%d scripted_sunset=1 scripted_results_input=1 saved_bytes_injected=0\n",startDay,gameflow.mWorldClock.mCurrentDay,cards());std::fflush(nullptr);std::_Exit(0);
+                std::printf("PASS P2_CAPTAIN_ONION_OWNER_SAVE day_before=%d day_after=%d native_card_generation_count=%d scripted_sunset=1 scripted_results_input=1 saved_bytes_injected=0\n",startDay,gameflow.mWorldClock.mCurrentDay,cards());std::fflush(nullptr);std::_Exit(0);
             }
             require(cards()<=initialCards+1,"unexpected extra checkpoint");
         }
         if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
         if(saving)return result;
-        if(!pc_randomizer_enabled()||!pc_randomizer_ready()||!naviMgr||!naviMgr->getActiveNavi()||(gameflow.mPauseAll && !(resumePhase&&withdrawQueued))||(gameflow.mIsUIOverlayActive && !(resumePhase&&withdrawQueued)))return result;
+        if(!pc_randomizer_enabled()||!pc_randomizer_ready()||!naviMgr||!naviMgr->getActiveNavi()||(gameflow.mPauseAll && !withdrawQueued)||(gameflow.mIsUIOverlayActive && !withdrawQueued))return result;
         auto* a=naviMgr->getNavi(0);auto* b=naviMgr->getNavi(1);require(a&&b,"two campaign captains");
         if(!a->getCurrState()||!b->getCurrState())return result; // Initial startup readiness; initialized guards above fail closed.
         if(tick<0){
-            // After established resume readiness the inactive captain may
-            // naturally idle while ordinary Onion UI input runs. The live
-            // initialized captain guard remains mandatory before this check.
-            const bool inactiveReady=b->getCurrState()->getID()==NAVISTATE_Walk
-                ||(resumePhase&&withdrawQueued&&b->getCurrState()->getID()==NAVISTATE_Idle);
-            if((a->getCurrState()->getID()!=NAVISTATE_Walk && !(resumePhase&&withdrawQueued&&a->getCurrState()->getID()==NAVISTATE_Container))||!inactiveReady)return result;
             require(pc_randomizer_resumed()==resumePhase,"actual production campaign load state");
-            startDay=gameflow.mWorldClock.mCurrentDay;
-            int live=0;Iterator it(pikiMgr);CI_LOOP(it){auto* p=static_cast<Piki*>(*it);if(p&&p->isAlive())++live;}
-            if(resumePhase){
-                if(!withdrawQueued){
-                    require(live==0 && storedCount()>=20,"restored stock before ordinary withdrawal");
-                    GoalItem* onion=itemMgr?itemMgr->getContainer(pc_randomizer_start_color()):nullptr;
-                    require(onion&&onion->getTotalStorePikis()>=20,"restored starting-color Onion stock");
-                    withdrawnFromTotal=live+storedCount();withdrawQueued=true;
-                    std::printf("P2_SAVE_WITHDRAW_UI_BEGIN total_before=%d direct_exitPikis=0\n",withdrawnFromTotal);
-                }
-                if(live<20){
-                    GoalItem* onion=itemMgr->getContainer(pc_randomizer_start_color());require(onion,"Onion unavailable");
-                    if(a->getCurrState()->getID()==NAVISTATE_Container){
-                        ++withdrawFrames;
-                        require(containerWindow,"ordinary Onion window unavailable");
-                        const int uiState=containerWindow->getStatus(), squad=containerWindow->getMyPikiDisp(), stock=containerWindow->getContainerPikiDisp();
-                        if(withdrawFrames==1||withdrawFrames%30==0){std::printf("P2_SAVE_ONION_OBSERVER frame=%d state=%d squad=%d stock=%d live=%d stored=%d active_state=%d inactive_state=%d\n",withdrawFrames,uiState,squad,stock,live,storedCount(),a->getCurrState()->getID(),b->getCurrState()->getID());std::fflush(stdout);}
-                        require(squad<=20,"ordinary Onion UI selection exceeds20");
-                        if(uiState==zen::DrawContainer::STATE_Operation && squad==20){pad(withdrawConfirmQueued?KBBTN_A:0);withdrawConfirmQueued=true;}
-                        else pad(0,0,uiState==zen::DrawContainer::STATE_Operation?-65:0);
-                        if(withdrawFrames==1)std::puts("P2_SAVE_ONION_UI opened=1 direction=withdraw input=SDL_virtual");
-                    }else if(withdrawFrames==0){
-                        const Vector3f goal=onion->getPosition();float dx=goal.x-a->getPosition().x,dz=goal.z-a->getPosition().z,d=std::sqrt(dx*dx+dz*dz);
-                        const Vector3f axis=a->controlCamera()->mViewXAxis;
-                        if(d>12)pad(0,int(65*(dx*axis.x+dz*axis.z)/d),int(65*(dx*axis.z-dz*axis.x)/d));
-                        else pad(frames%20<2?KBBTN_A:0);
-                    }else pad();
-                    return result;
-                }
-                require(live<=20,"ordinary withdrawal exceeded20live");
-                if(live<20)return result;
-                require(live+storedCount()==withdrawnFromTotal,"ordinary withdrawal population conservation");
+            int live=liveCount();
+            if(ownerStage==Boot){
+                if(a->getCurrState()->getID()!=NAVISTATE_Walk || b->getCurrState()->getID()!=NAVISTATE_Walk)return result;
+                if(!resumePhase && live<20)return result;
+                require(resumePhase?live==0:live==20,"actual initial field count");
+                require(a->mPlateMgr && b->mPlateMgr,"initialized captain formation plates");
+                if(!resumePhase && (formation(a)!=20 || plateCount(a)!=20))return result;
+                startDay=gameflow.mWorldClock.mCurrentDay;
+                withdrawnFromTotal=live+storedCount();require(withdrawnFromTotal==20,"actual total20 baseline");
+                selected(0);withdrawQueued=true;elapsed("ownership_boot");
+                if(sForceCaptainDown||sForceInactiveDown||forceNullState||forceMissingManager){pendingNegative=true;gameflow.mPauseAll=TRUE;return result;}
+                if(!resumePhase){require(formation(a)==20 && formation(b)==0,"fresh actual captain0 formation20");ownerStage=Deposit;}
+                else ownerStage=SwitchOne;
+            }
+            require(++ownerFrames<1800,"bounded ordinary ownership preparation");
+            if(ownerStage==Deposit){
+                if(live==0 && storedCount()==20 && a->getCurrState()->getID()!=NAVISTATE_Container){
+                    pad();menuSeen=false;menuConfirm=false;ownerStage=SwitchOne;elapsed("deposit20_complete");
+                }else{onionMenu(a,0);return result;}
+            }
+            if(ownerStage==SwitchOne){
+                if(switchFrames==0){pad(KBBTN_DPAD_UP);++switchFrames;return result;}
+                pad();++switchFrames;
+                if(naviMgr->getActiveNavi()!=b){require(switchFrames<60,"SDL switch to captain1");return result;}
+                selected(1);require(live==0&&storedCount()==20,"real stock before captain1 withdrawal");
+                ownerStage=Withdraw;menuSeen=false;menuConfirm=false;elapsed("captain1_withdraw_begin");
+            }
+            if(ownerStage==Withdraw){
+                if(live==20 && b->getCurrState()->getID()!=NAVISTATE_Container){pad();ownerStage=Settle;elapsed("withdraw20_spawned");}
+                else{require(live<=20,"Onion field cap20");onionMenu(b,20);return result;}
+            }
+            if(ownerStage==Settle){
+                pad();require(live+storedCount()==withdrawnFromTotal,"withdrawal conserves actual total");
+                if(formation(b)!=20)return result;
+                owned("withdraw_complete");ownerStage=Owned;elapsed("captain1_formation20");
             }
             require(live<=20,"campaign field exceeds20live");
             if(live<20)return result; // fresh production TEST_BACKGROUND withdrawal
             require(live==20,"campaign20live baseline");
             require(pc_p2_captain::adapter()&&pc_p2_captain::captive_count()==0,"fresh live binding");
-            selected(0);tick=0;elapsed("scene_ready");
-            std::printf("P2_SAVE_SCENE phase=%s resumed=%d day=%d live=%d stored=%d health0=%.3f health1=%.3f active_reset=0 ownership_restoration_not_assumed=1\n",resumePhase?"resume":"save",int(pc_randomizer_resumed()),startDay,live,storedCount(),a->mHealth,b->mHealth);
+            selected(1);tick=0;elapsed("scene_ready");
+            std::printf("P2_SAVE_SCENE phase=%s resumed=%d day=%d live=%d stored=%d health0=%.3f health1=%.3f active_selected=1 ownership_observed_after_UI=1 ownership_restoration_not_assumed=1\n",resumePhase?"resume":"save",int(pc_randomizer_resumed()),startDay,live,storedCount(),a->mHealth,b->mHealth);
             if(sForceCaptainDown||sForceInactiveDown||forceNullState||forceMissingManager){
                 pendingNegative=true;gameflow.mPauseAll=TRUE;return result;
             }
         }
+        owned(nullptr);
         if(b->getCurrState()->getID()==NAVISTATE_Gather)sawWhistle=true;
-        ++tick;
-        switch(tick){
-        case 5:pad(KBBTN_DPAD_UP);break;
-        case 15:selected(1);break;
-        case 20:pad();movementStart=b->getPosition();inactiveStart=a->getPosition();break;
-        case 25:pad(0,60,0);break;
-        case 45:{const float d=(b->getPosition()-movementStart).length();require(d>1,"selected walks");const Vector3f delta=a->getPosition()-inactiveStart;const float inactive=std::sqrt(delta.x*delta.x+delta.z*delta.z);require(inactive<2.0f,"inactive captain horizontal position stable during selected input");std::printf("P2_SAVE_MOVE distance=%.3f inactive_xz=%.3f\n",d,inactive);pad();break;}
-        case 50:pad(KBBTN_B);break;
-        case 65:require(sawWhistle,"selected whistle input");pad();break;
-        case 75:pad(KBBTN_DPAD_UP);break;
-        case 85:selected(0);pad();break;
-        case 100:
-            require(shot,"render capture");
-            if(resumePhase){require(cards()==initialCards,"resume did not commit another generation");std::printf("PASS P2_CAPTAIN_CAMPAIGN_RESUME day=%d generations=%d controls=1 camera=1 movement=1 whistle=1 stored=%d saved_bytes_injected=0\n",startDay,cards(),storedCount());std::fflush(nullptr);std::_Exit(0);}
-            {pad(KBBTN_START);saving=true;elapsed("ordinary_pause_requested");std::puts("P2_SAVE_SUNSET ordinary_pause_UI=1 direct_forceDayEnd=0 dayendflag_writes=0");}
+        require(++tick<180,"bounded ownership switch/whistle control stages");
+        // Replace the old100-tick movement demonstration with observation-gated
+        // ownership switches and whistle. Walking to the Onion already exercises
+        // actual selected movement; no additional mirrored-input claim is made.
+        switch(controlStage){
+        case 0:pad(KBBTN_DPAD_UP);controlStage=1;break;
+        case 1:
+            pad();if(naviMgr->getActiveNavi()!=a)break;
+            selected(0);owned("switched_to0");elapsed("switch0_owner_retained");controlStage=2;break;
+        case 2:pad(KBBTN_DPAD_UP);controlStage=3;break;
+        case 3:
+            pad();if(naviMgr->getActiveNavi()!=b)break;
+            selected(1);owned("switched_back1");elapsed("switch1_owner_retained");controlStage=4;break;
+        case 4:pad(KBBTN_B);controlStage=5;break;
+        case 5:
+            if(!sawWhistle)break;
+            pad();owned("whistle1");elapsed("whistle1_observed");controlStage=6;break;
+        case 6:
+            pad();if(!shot)break;
+            owned("before_sunset_or_resume_exit");
+            if(resumePhase){require(cards()==initialCards,"resume did not commit another generation");std::printf("PASS P2_CAPTAIN_ONION_OWNER_RESUME day=%d generations=%d controls=1 camera=1 onion_movement=1 whistle=1 stored=%d saved_bytes_injected=0\n",startDay,cards(),storedCount());std::fflush(nullptr);std::_Exit(0);}
+            pad(KBBTN_START);saving=true;elapsed("ordinary_pause_requested");std::puts("P2_SAVE_SUNSET ordinary_pause_UI=1 direct_forceDayEnd=0 dayendflag_writes=0");
             break;
         }
         std::fflush(stdout);return result;
