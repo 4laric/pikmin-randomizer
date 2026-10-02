@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 
 GUARDS = ('health', 'manager', 'global', 'dead_state', 'missing', 'health_pause', 'missing_movie')
 ROOT_MODULES = ('randomizer.seed', 'randomizer.session', 'randomizer.runner',
@@ -491,11 +492,36 @@ def verify_save_inputs(a, inputs, code):
     require(digest(a.exe) == a.exe_sha256, 'Executable changed')
 
 
+def record_checkpoint_boundary(a, report, session, run, boundary, schema, card):
+    # Metadata only. The card is always produced by native and read by genuine_card.
+    sequence = len(report['checkpoint_boundaries']) + 1
+    expected = ('before_save', 'after_save', 'before_resume', 'after_resume')
+    require(sequence <= len(expected) and boundary == expected[sequence - 1], 'Checkpoint boundary out of order')
+    paths = sorted(str(p.relative_to(a.session)) for p in a.session.rglob('*.sav'))
+    require((card is None and not paths) if boundary == 'before_save' else card is not None,
+            'Checkpoint boundary lacks expected card state')
+    receipt = {
+        'schema_version': 1, 'sequence': sequence, 'boundary': boundary,
+        'mode': 'sdl_dayend' if sequence <= 2 else 'natural_resume',
+        'observed_monotonic_ns': time.monotonic_ns(), 'observed_unix_ns': time.time_ns(), 'driver_pid': os.getpid(),
+        'session': str(a.session.resolve()), 'fingerprint': session.fingerprint,
+        'manifest_sha256': digest(a.session / 'fixture-seed.json'),
+        'root_pin': a.root_pin, 'native_pin': a.native_pin,
+        'native_source_sha256': a.native_source_sha256, 'exe_sha256': a.exe_sha256,
+        'run': str(run.directory.resolve()), 'run_token': run.token,
+        'bootstrap_sha256': digest(run.bootstrap), 'benefit_count': schema,
+        'check_count': len(session.names), 'checkpoint_paths': paths, 'cards': [] if card is None else [card],
+    }
+    path = a.session / ('checkpoint-boundary-%02d-%s.json' % (sequence, boundary))
+    write_new(path, receipt)
+    report['checkpoint_boundaries'].append({'boundary': boundary, 'path': str(path), 'sha256': digest(path)})
+
+
 def execute_save_resume(a, m):
     a.session.mkdir(parents=True, exist_ok=False)
     report = {'passed': False, 'mode': a.mode, 'profile': a.profile, 'timeout_seconds_per_native_child': 60,
         'root_pin': a.root_pin, 'native_pin': a.native_pin, 'native_source_sha256': a.native_source_sha256,
-        'exe_sha256': a.exe_sha256, 'phases': [], 'live_AP_server': False, 'saved_bytes_injected': False,
+        'exe_sha256': a.exe_sha256, 'phases': [], 'checkpoint_boundaries': [], 'live_AP_server': False, 'saved_bytes_injected': False,
         'scope': 'SDL acquisition/native day-save/fresh-process same-card resume; initial withdrawal fixture-assisted; no combat/delivery/ordinary withdrawal/live AP/human acceptance'}
     inputs = {n: inventory(getattr(a, n)) for n in ('assets', 'bank', 'motion', 'content')}
     code = {str(Path(module.__file__).resolve().relative_to(a.root)): digest(module.__file__) for module in m.values()}
@@ -519,6 +545,7 @@ def execute_save_resume(a, m):
         first, frozen = stage_save_run(a, m, manifest, session)
         require(not list(a.session.rglob('*.sav')), 'Fresh save requires zero checkpoint files')
         schema = checkpoint_schema(first.bootstrap)
+        record_checkpoint_boundary(a, report, session, first, 'before_save', schema, None)
         saved = launch_save_phase(a, m, first, frozen, 'sdl_dayend')
         report['phases'].append(saved)
         require(saved['passed'], 'Save child failed; resume not launched')
@@ -526,6 +553,7 @@ def execute_save_resume(a, m):
         card_args = dict(fingerprint=session.fingerprint, maturity=expected['maturity'], benefit_count=schema, check_count=len(session.names))
         card = genuine_card(a.session, **card_args)
         report['checkpoint'] = card
+        record_checkpoint_boundary(a, report, session, first, 'after_save', schema, card)
         require(digest(a.session / 'fixture-seed.json') == manifest_sha, 'Manifest changed during save')
         verify_save_inputs(a, inputs, code)
         # Reopen through normal APIs; no bootstrap/card/session-byte copying or construction.
@@ -534,13 +562,17 @@ def execute_save_resume(a, m):
         second, frozen2 = stage_save_run(a, m, manifest, restored)
         require(second.directory != first.directory and second.token != first.token, 'Fresh NativeRun identity required')
         require(checkpoint_schema(second.bootstrap) == schema, 'Resume schema drift')
-        require(genuine_card(a.session, **card_args) == card, 'Card changed before resume launch')
+        before_resume = genuine_card(a.session, **card_args)
+        record_checkpoint_boundary(a, report, restored, second, 'before_resume', schema, before_resume)
+        require(before_resume == card, 'Card changed before resume launch')
         verify_save_inputs(a, inputs, code)
         resumed = launch_save_phase(a, m, second, frozen2, 'natural_resume', expected)
         report['phases'].append(resumed)
         require(resumed['passed'], 'Fresh resume child failed')
         require(resumed['raw_run']['pid'] != saved['raw_run']['pid'], 'Distinct native process evidence required')
-        require(genuine_card(a.session, **card_args) == card, 'Resume changed checkpoint or generation')
+        after_resume = genuine_card(a.session, **card_args)
+        record_checkpoint_boundary(a, report, restored, second, 'after_resume', schema, after_resume)
+        require(after_resume == card, 'Resume changed checkpoint or generation')
         require(digest(a.session / 'fixture-seed.json') == manifest_sha, 'Manifest changed during resume')
         report.update(passed=True, reason='Ordinary SDL save and fresh same-card resume passed', manifest_sha256=manifest_sha)
     except Exception as error:
