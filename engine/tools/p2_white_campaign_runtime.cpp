@@ -19,6 +19,7 @@
 #include "Kontroller.h"
 #include "Camera.h"
 #include "KeyConfig.h"
+#include "zen/ogSave.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -163,7 +164,7 @@ static CampaignInput* input=nullptr;
 class CampaignApp:public PlugPikiApp {
  bool initialized=false,sunsetSeen=false,physical=false,transportEnded=false;
  Pom* flowers[3]={};int baselinePellets=0,haulFrames=0,stable=0,dayBefore=0,expectedDay=0;
- unsigned saveIndexBefore=0;uint64_t generationBefore=0;
+ unsigned saveIndexBefore=0,saveReadyIndex=0,defaultReadyIndex=0;bool saveReadyCaptured=false,defaultReadySeen=false;uint64_t generationBefore=0;
  Vector3f haulStart,destination,resumeStart;float initialDistance=0;
  void next(int value){phase=value;phaseTick=0;}
 public:int idle()override{
@@ -186,10 +187,30 @@ public:int idle()override{
   if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_SAVE_UI frame=%d phase_tick=%d day=%d expected_day=%d requested=%d sunset=%d advanced=%d intent=%d pause_available=%d pause_state=%d main_ready=%d main_selection=%d sub_ready=%d sub_selection=%d diary=%d save_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d memory_available=%d outer_memory_routed=%d default_available=%d memory_state=%d default_state=%d successful=%d typing_complete=%d confirmation_ready=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d file_selection=%d\n",frame,phaseTick,gameflow.mWorldClock.mCurrentDay,expectedDay,int(saveRequested),int(sunsetSeen),int(dayAdvanced),int(saveIntent),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.memoryAvailable),int(save.outerMemoryRouted),int(save.defaultFile.available),save.defaultFile.memoryState,save.defaultFile.state,int(save.defaultFile.successful),int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState,int(save.fileSelection));
   require(saveIntent!=WhiteSaveIntent::Refuse,"unexpected actual native save UI choice");
   if(pause.available)saveRequested=true;
+  const unsigned currentIndex=unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex);
+  if(save.defaultFile.available&&save.defaultFile.successful){
+   if(!defaultReadySeen){
+    require(!saveReadyCaptured&&currentIndex==saveIndexBefore+4u,"default-file initialization counter history mismatch");
+    defaultReadySeen=true;defaultReadyIndex=currentIndex;
+    std::printf("P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY initial_index=%u measured_index=%u native_successful_default_observer=1\n",saveIndexBefore,defaultReadyIndex);
+   }else require(currentIndex==defaultReadyIndex,"default-file counter changed before native SAVE");
+  }
+  const unsigned spareIndex=unsigned(gameflow.mGamePrefs.mSpareMemCardSaveIndex);
+  const bool readyToSave=save.available&&save.saveState==zen::ogSaveMgr::ShowingSaveNotice
+   &&!save.nestedUiBlocked&&!save.defaultFile.available&&spareIndex>=1u&&spareIndex<=4u;
+  if(readyToSave){
+   if(!saveReadyCaptured){
+    require(currentIndex==(defaultReadySeen?defaultReadyIndex:saveIndexBefore),"native SAVE baseline has unexplained index changes");
+    uint64_t readyGeneration=0;uint8_t readyHash[32];
+    require(pc_randomizer_checkpoint_info(&readyGeneration,readyHash)&&readyGeneration==generationBefore,"native SAVE baseline already committed");
+    saveReadyCaptured=true;saveReadyIndex=currentIndex;
+    std::printf("P2_WHITE_CAMPAIGN_SAVE_READY initial_index=%u measured_index=%u default_created=%d backup_slot=%u source_notice_ready=1 generation_before=%llu\n",saveIndexBefore,saveReadyIndex,int(defaultReadySeen),spareIndex,(unsigned long long)generationBefore);
+   }else require(currentIndex==saveReadyIndex,"native SAVE notice counter changed");
+  }
   conservedBudget();require(whiteStock()==15&&p2whitetreasure::ledger.total()==180,"stock/budget/receipt changed during native day SAVE");
   uint64_t generation=0;uint8_t hash[32];
-  if(dayAdvanced&&gameflow.mGamePrefs.mHasSaveGame&&gameflow.mGamePrefs.mMostRecentSaveIndex!=saveIndexBefore&&pc_randomizer_checkpoint_info(&generation,hash)&&generation==generationBefore+1){
-   p1Require();p1Log("P2_WHITE_CAMPAIGN_P1_SAVE_STOCK");std::printf("P2_WHITE_CAMPAIGN_SAVE_PASS day_before=%d day=%d stock=15 white_leaf=15 spent=15 pokos=180 generation=%llu native_save_index_before=%u native_save_index_after=%u external_CAMPAIGN_SAVED_required=1 fresh_process_resume_pending=1\n",dayBefore,expectedDay,(unsigned long long)generation,saveIndexBefore,unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex));std::fflush(nullptr);std::_Exit(0);
+  if(dayAdvanced&&gameflow.mGamePrefs.mHasSaveGame&&saveReadyCaptured&&gameflow.mGamePrefs.mMostRecentSaveIndex==saveReadyIndex+1u&&pc_randomizer_checkpoint_info(&generation,hash)&&generation==generationBefore+1){
+   p1Require();p1Log("P2_WHITE_CAMPAIGN_P1_SAVE_STOCK");std::printf("P2_WHITE_CAMPAIGN_SAVE_PASS day_before=%d day=%d stock=15 white_leaf=15 spent=15 pokos=180 generation=%llu native_save_index_before=%u native_save_ready_index=%u native_save_index_after=%u external_CAMPAIGN_SAVED_required=1 fresh_process_resume_pending=1\n",dayBefore,expectedDay,(unsigned long long)generation,saveIndexBefore,saveReadyIndex,unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex));std::fflush(nullptr);std::_Exit(0);
   }
   return result;
  }

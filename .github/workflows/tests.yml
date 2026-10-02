@@ -81,6 +81,9 @@ jobs:
           tests/test_pikmin2_generator_calendar.py
           tests/test_pikmin2_generator_objects.py
           tests/test_p2_tutorial_encounter.py
+          tests/test_p2_white_practice_scene.py
+          tests/test_p2_white_save_counter.py
+          tests/test_cave_mixed_route.py
           tests/test_pikmin2_cave_arena_overlay.py
           tests/test_pikmin2_cave_item_gate_placement.py
           tests/test_pikmin2_challenge_trial_arena_thin_v2.py
