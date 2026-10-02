@@ -178,7 +178,12 @@ public:int idle()override{
   if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if((phase>=7&&phase<18)||phase==26||phase==27)require(naturalBodies.count(p),"natural White pointer membership changed");}
   else{require(pc_p2_species(p)==P2SpeciesRed&&p->mHappa==Leaf,"unexpected ordinary species/Red maturity");++red;if(!resumeMode)require(p->mGenerator&&uid(p)>=1&&uid(p)<=20&&originals.insert(uid(p)).second,"original Red identity changed");}
   if(p->mMode==PikiMode::FormationMode&&p->mNavi==n){++followers;if(pc_p2_is_white(p))++whiteFollowers;}
-  if(cargo&&p->getStickObject()==cargo){require(pc_p2_is_white(p)&&naturalBodies.count(p)&&p->mMode==PikiMode::TransportMode&&pc_piki_carry_strength(p)==1&&std::abs(pc_piki_carry_power(p)-3)<.001,"cargo attached non-natural White or wrong strength/speed/mode");++carriers;}
+  if(cargo&&p->getStickObject()==cargo){const bool valid=pc_p2_is_white(p)&&naturalBodies.count(p)&&p->mMode==PikiMode::TransportMode&&pc_piki_carry_strength(p)==1&&std::abs(pc_piki_carry_power(p)-3)<.001;
+   if(!valid){int ordinal=0,actualOrdinal=0;for(auto* original:naturalBodies){++ordinal;if(original==p)actualOrdinal=ordinal;}
+    std::printf("P2_WHITE_CAMPAIGN_ATTACHMENT_REFUSAL frame=%d phase=%d generated_uid=%u natural_ordinal=%d species=%d natural_member=%d mode=%d expected_transport_mode=%d state=%d alive=%d owned=%d strength=%d speed_power=%.6f cargo_state=%d cargo_alive=%d cargo_visible=%d native_strength=%d actor_x=%.4f actor_y=%.4f actor_z=%.4f cargo_x=%.4f cargo_y=%.4f cargo_z=%.4f\n",frame,phase,p->mGenerator?uid(p):0,actualOrdinal,int(pc_p2_species(p)),int(naturalBodies.count(p)),p->mMode,int(PikiMode::TransportMode),p->getState(),int(p->isAlive()),int(p->mNavi==n),pc_piki_carry_strength(p),pc_piki_carry_power(p),cargo->getState(),int(cargo->isAlive()),int(cargo->isVisible()),cargo->mCarrierCounter,p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,cargo->mSRT.t.x,cargo->mSRT.t.y,cargo->mSRT.t.z);
+   }
+   require(valid,"cargo attached non-natural White or wrong strength/speed/mode");++carriers;
+  }
  }
  Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){auto* p=static_cast<PikiHeadItem*>(*sprouts);if(!p->isAlive())continue;require(pc_p2_species(p)==P2SpeciesWhite,"unexpected sprout species");++heads;if(p->canPullout()&&!head)head=p;}
  Iterator pellets(pelletMgr);int pelletCount=0;CI_LOOP(pellets){auto* p=static_cast<Pellet*>(*pellets);if(p==cargo)cargoSlot=true;if(p->isAlive())++pelletCount;}
