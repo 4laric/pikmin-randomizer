@@ -169,3 +169,13 @@ map unlock, followed by native SAVE and fresh-process verification.
 Held native commit `9a2aaba90e218bfea4cd2c45f1c73bfd51cdfcdf` passed all three
 hosted focused CTests and a no-work Ninja check. These are codec/descriptor checks,
 not a production compile or a death/carry/save/resume gameplay result.
+
+The private model extractor now emits schema 2 banks. It verifies the literal
+GPVE01 item and otakara configuration hashes before creating output, compares
+dictionary/value/minimum/maximum with the pinned catalogue, and retains original
+configuration and archive bytes alongside member and converted-model hashes.
+Each selected treasure includes its original radius, carry radius, height,
+inertia scaling, friction and dynamics mode. These are inputs for the original
+cargo provider; extraction does not activate it or establish collision fidelity.
+The held provider no longer renders a cave Pod model as the surface Ship. Actual
+Ship type 4 uses original object bank 2 and requires its own source provider.
