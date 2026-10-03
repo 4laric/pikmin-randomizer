@@ -33,6 +33,7 @@
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
 #include "pc_window.h"
+#include "pc_coop.h"
 
 #include "Colour.h"
 #include "Geometry.h"
@@ -257,6 +258,9 @@ void pc_netplay_hud_draw(void)
 	if (!info.banner) {
 		if (!info.running || !sVisible) return;
 		if (pc_settings_menu_open() || pc_glass_menu_active()) return;
+		// Both peers draw the P2 Y/radar panel in this corner, regardless of
+		// which captain is local. Keep its counts and controls unobscured.
+		if (pc_coop_right_map_menu_open()) return;
 		// The local Onion prompt occupies the status box's corner. Keep its
 		// opening/closing animation clear too; the other captain's menu does
 		// not obscure this peer's view. End-of-session alerts bypass this gate.
