@@ -112,6 +112,19 @@ int main(){
   CHECK(wait.observe(true,59,crowdLimit,0,transient.settled())==C::Hold&&wait.stable==0);
  }
  auto nonneutral=owned;nonneutral.neutral=false;CHECK(nonneutral.valid()&&!nonneutral.settled());
+ // Actual input is consumed on the following native idle. Do not infer
+ // readiness from issuing a neutral command before observing neutral state.
+ PcKochappyRouteCatchup neutralCadence;CHECK(neutralCadence.begin(0));
+ auto previousInput=owned;previousInput.neutral=false;
+ CHECK(neutralCadence.observe(true,10,crowdLimit,0,previousInput.settled())==C::Hold&&neutralCadence.stable==0);
+ for(int i=0;i<2;++i)CHECK(neutralCadence.observe(true,10,crowdLimit,0,owned.settled())==C::Hold);
+ CHECK(neutralCadence.observe(true,10,crowdLimit,0,owned.settled())==C::Continue);
+ PcKochappyRouteCatchup selfPreventing;CHECK(selfPreventing.begin(0));
+ for(int i=0;i<90;++i)CHECK(selfPreventing.observe(true,10,crowdLimit,0,previousInput.settled())==C::Hold);
+ CHECK(selfPreventing.observe(true,10,crowdLimit,0,previousInput.settled())==C::Refuse);
+ PcKochappyRouteCatchup slopeBlocked;CHECK(slopeBlocked.begin(0));
+ for(int i=0;i<90;++i)CHECK(slopeBlocked.observe(true,173,crowdLimit,0,owned.settled())==C::Hold);
+ CHECK(slopeBlocked.observe(true,173,crowdLimit,0,owned.settled())==C::Refuse); // neutral does not waive real lag
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;

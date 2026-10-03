@@ -594,12 +594,13 @@ class PurpleKochappyApp:public PlugPikiApp {
   const auto command=routeCatchup.observe(roster,targetError,restLimit,speed,allSettled);
   require(command!=PcKochappyCatchupInput::Refuse,"bounded ordinary route catchup stalled/invalid");
   if(routeCatchup.elapsed==1||routeCatchup.elapsed%30==0||command==PcKochappyCatchupInput::Continue)
-   std::printf("P2_PURPLE_KOCHAPPY_ROUTE_CATCHUP age=%d visited=%d next=%d elapsed=%d lag=%.4f target_error=%.4f limit=%.4f captain_speed=%.4f stable=%d continue=%d roster=20 SDL_cursor_whistle=1 actor_writes=0\n",
+   std::printf("P2_PURPLE_KOCHAPPY_ROUTE_CATCHUP age=%d visited=%d next=%d elapsed=%d lag=%.4f target_error=%.4f limit=%.4f captain_speed=%.4f stable=%d continue=%d roster=20 SDL_full_neutral=1 actor_writes=0\n",
     age,routeCatchup.guide,receiverWaypoint,routeCatchup.elapsed,lag,targetError,restLimit,speed,
     routeCatchup.stable,int(command==PcKochappyCatchupInput::Continue));
-  // Aim the ordinary cursor at the current captain, without walking or
-  // assuming its previous world position was within whistle range.
-  point(n,n->mSRT.t,false,KeyConfig::_instance->mSetCursorKey.mBind);
+  // All20 remain actual owned Formation members. Release the whistle and
+  // both sticks so native CStickNeutral can be observed on the next idle.
+  // Cursor aiming here would itself prevent the Formed neutral rest gate.
+  input();
   return command!=PcKochappyCatchupInput::Continue;
  }
  float pausedCounter=0,lastCounter=0,activeSeconds=0;
