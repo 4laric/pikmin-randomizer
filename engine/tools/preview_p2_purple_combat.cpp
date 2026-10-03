@@ -13,6 +13,7 @@
 #include "pc_purple_collision_trace.h"
 #include "pc_purple_sdl_axis_policy.h"
 #include "pc_purple_dismiss_policy.h"
+#include "pc_purple_pose_envelope.h"
 #include "KeyConfig.h"
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
@@ -332,17 +333,22 @@ struct PurpleTransportTrace : ActTransport {
 class PurpleCombatApp : public PlugPikiApp {
     struct PluckObstacle { Vector3f centre; float radius; };
     std::vector<PluckObstacle> pluckObstacles;
+    std::vector<PluckObstacle> pluckAdmissionObstacles;
+    PcPurpleMotionPoseCatalog capturedCaptainPoses;
     std::vector<Vector3f> pluckRoute;
     size_t pluckRouteIndex=0;
     bool sdlPluckBraking=false;
     SdlPluckForceSample sdlPreviousForceSample;
     bool sdlPulseActive=false;
     int sdlPulseFrames=0;
+    float sdlPulseYawStart=0;
     SdlPluckState sdlPulseBefore;
     SdlPluckPoint sdlPulseCommand;
     bool sdlPoseProbeActive=false;
     PcPurplePoseProbeBudget sdlPoseProbeBudget;
     SdlPluckPoint sdlPoseProbeOrigin;
+    bool sdlPoseProbeYawObserved=false;
+    float sdlPoseProbeYawStart=0,sdlPoseProbeYawArc=0;
     PcPurpleDismissPolicy sdlDismissPolicy;
     std::vector<Piki*> sdlDismissRoster;
     PikiHeadItem* sdlDismissHead=nullptr;
@@ -355,12 +361,15 @@ class PurpleCombatApp : public PlugPikiApp {
         const float x=a.x-b.x,z=a.z-b.z;return std::sqrt(x*x+z*z);
     }
     bool pluckSegmentClear(const Vector3f& a,const Vector3f& b) const {
-        const float dx=b.x-a.x,dz=b.z-a.z,length2=dx*dx+dz*dz;
-        for(const auto& obstacle:pluckObstacles) {
-            const float t=length2>0?std::max(0.f,std::min(1.f,((obstacle.centre.x-a.x)*dx+(obstacle.centre.z-a.z)*dz)/length2)):0.f;
-            const float x=a.x+t*dx-obstacle.centre.x,z=a.z+t*dz-obstacle.centre.z;
-            if(x*x+z*z<obstacle.radius*obstacle.radius) return false;
-        }
+        if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,a.x,a.z,0.f,0.f))return false;
+        for(const auto& obstacle:pluckObstacles)
+            if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,obstacle.centre.x,obstacle.centre.z,obstacle.radius,0.f))return false;
+        return true;
+    }
+    bool pluckAdmissionSegmentClear(const Vector3f& a,const Vector3f& b) const {
+        if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,a.x,a.z,0.f,0.f))return false;
+        for(const auto& obstacle:(sdlAcquisitionMode()?pluckAdmissionObstacles:pluckObstacles))
+            if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,obstacle.centre.x,obstacle.centre.z,obstacle.radius,0.f))return false;
         return true;
     }
     void collectCaptainParts(CollPart* part,std::vector<CollPart*>& parts,int depth=0) {
@@ -393,6 +402,17 @@ class PurpleCombatApp : public PlugPikiApp {
                 }
                 if(dy<sum) pluckObstacles.push_back({Vector3f(part->mCentre.x-offset.x,n->mSRT.t.y,part->mCentre.z-offset.z),
                     std::sqrt(sum*sum-dy*dy)});
+                if(sdlAcquisitionMode()) {
+                    const auto* envelope=capturedCaptainPoses.find(unsigned(captain->getID().mId),reinterpret_cast<std::uintptr_t>(captain));
+                    float reserve=0;
+                    require(envelope && PcPurplePoseEnvelope::projectedRadius(*envelope,part->mCentre.y-n->mSRT.t.y,part->mRadius,reserve),"captured pose envelope invalid");
+                    if(reserve>0)for(int sample=-1;sample<=1;++sample){
+                        float ox=0,oz=0;
+                        require(PcPurplePoseEnvelope::rotatedOffset(*envelope,n->mSRT.r.y+sample*PcPurplePulseYawHalfArc,ox,oz),"captured local pose rotation invalid");
+                        pluckAdmissionObstacles.push_back({Vector3f(part->mCentre.x-ox,n->mSRT.t.y,part->mCentre.z-oz),reserve});
+                    }
+                    if(ticks%30==0)std::printf("P2_PURPLE_PLUCK_POSE_ADMISSION tick=%d captain_id=%u violet_id=%u captured_horizontal=%.6f captured_low=%.6f captured_high=%.6f captured_radius=%.6f admission_radius=%.6f captured_local_box=1 yaw_half_arc_degrees=22.5 future_animation_sweep_proven=0 current_guard_unchanged=1 read_only=1 actor_writes=0\n",ticks,unsigned(captain->getID().mId),unsigned(part->getID().mId),envelope->horizontal,envelope->low,envelope->high,envelope->radius,reserve);
+                }
             }
         }
         for(int i=0;i<part->getChildCount();++i) collectPluckObstacles(part->getChildAt(i),n,captainParts,depth+1);
@@ -403,8 +423,24 @@ class PurpleCombatApp : public PlugPikiApp {
         std::vector<CollPart*> captainParts;
         collectCaptainParts(n->mCollInfo->getBoundingSphere(),captainParts);
         require(!captainParts.empty(),"captain collision parts absent");
-        pluckObstacles.clear();
+        pluckObstacles.clear();pluckAdmissionObstacles.clear();
+        if(sdlAcquisitionMode()) {
+            auto& upper=n->mNaviAnimMgr.getUpperAnimator();auto& lower=n->mNaviAnimMgr.getLowerAnimator();
+            const int u=upper.getCurrentMotionIndex(),l=lower.getCurrentMotionIndex();
+            require(upper.mMotionTable&&lower.mMotionTable&&upper.mAnimInfo&&lower.mAnimInfo
+                &&upper.mMotionTable->mMotions&&lower.mMotionTable->mMotions
+                &&u>=0&&l>=0&&u<upper.mMotionTable->mMotionCount&&l<lower.mMotionTable->mMotionCount
+                &&u<PIKIANIM_COUNT&&l<PIKIANIM_COUNT
+                &&std::isfinite(upper.getCounter())&&std::isfinite(lower.getCounter()),"current native animator motion identity invalid");
+            require(capturedCaptainPoses.select(reinterpret_cast<std::uintptr_t>(n),u,l),"captured motion catalog owner/bound invalid");
+            if(ticks%30==0)std::printf("P2_PURPLE_PLUCK_POSE_MOTION tick=%d upper=%d lower=%d upper_frame=%.6f lower_frame=%.6f captured_same_motion_only=1 future_animation_transition_proven=0 actor_writes=0\n",ticks,u,l,upper.getCounter(),lower.getCounter());
+        }
+        if(sdlAcquisitionMode())for(CollPart* part:captainParts) {
+            const Vector3f offset=part->mCentre-n->mSRT.t;
+            require(capturedCaptainPoses.observe(reinterpret_cast<std::uintptr_t>(n),reinterpret_cast<std::uintptr_t>(part),unsigned(part->getID().mId),offset.x,offset.y,offset.z,part->mRadius,n->mSRT.r.y),"captain pose identity/finite/bound invalid");
+        }
         collectPluckObstacles(violet->mCollInfo->getBoundingSphere(),n,captainParts);
+        if(sdlAcquisitionMode())pluckAdmissionObstacles.insert(pluckAdmissionObstacles.end(),pluckObstacles.begin(),pluckObstacles.end());
     }
     void pluckTrace(const char* event,Navi* n,PikiHeadItem* head,Pom* violet) {
         if(!sdlAcquisitionMode())return;
@@ -429,7 +465,7 @@ class PurpleCombatApp : public PlugPikiApp {
         refreshPluckObstacles(n,violet);
         pluckTrace("plan_begin",n,head,violet);
         auditBody("captain_route",n);
-        for(const auto& obstacle:pluckObstacles) std::printf("P2_PURPLE_PLUCK_OBSTACLE xyz=%.3f,%.3f,%.3f radius=%.3f live_part_pairs=1\n",
+        for(const auto& obstacle:(sdlAcquisitionMode()?pluckAdmissionObstacles:pluckObstacles)) std::printf("P2_PURPLE_PLUCK_OBSTACLE xyz=%.3f,%.3f,%.3f radius=%.3f admission_local_yaw_union=1 future_animation_sweep_proven=0\n",
             obstacle.centre.x,obstacle.centre.y,obstacle.centre.z,obstacle.radius);
         std::vector<Vector3f> nodes{n->mSRT.t};std::vector<bool> goal{false};
         auto addNode=[&](Vector3f p,bool isGoal) {
@@ -438,7 +474,7 @@ class PurpleCombatApp : public PlugPikiApp {
             // retain the existing bounded no-route refusal; never reverse
             // a minimum-strength walking command across an arrival point.
             if(sdlAcquisitionMode() && !isGoal && planarDistance(n->mSRT.t,p)<=4.f) return;
-            if(pluckSegmentClear(p,p)) {nodes.push_back(p);goal.push_back(isGoal);}
+            if(pluckAdmissionSegmentClear(p,p)) {nodes.push_back(p);goal.push_back(isGoal);}
         };
         // Choose a reachable position inside the engine's actual pluck range,
         // using the real sprout and current Violet parts. This plans controller
@@ -452,7 +488,7 @@ class PurpleCombatApp : public PlugPikiApp {
                 for(float radius=.5f;radius<pluckRange-.25f;radius+=.25f) {
                     Vector3f point=head->mSRT.t+Vector3f(radius*std::cos(angle),0,radius*std::sin(angle));
                     float slack=pluckRange-.25f-radius;
-                    for(const auto& obstacle:pluckObstacles)slack=std::min(slack,planarDistance(point,obstacle.centre)-obstacle.radius);
+                    for(const auto& obstacle:(sdlAcquisitionMode()?pluckAdmissionObstacles:pluckObstacles))slack=std::min(slack,planarDistance(point,obstacle.centre)-obstacle.radius);
                     if(slack>best){best=slack;selected=point;}
                 }
                 if(best>.5f)addNode(selected,true);
@@ -464,7 +500,7 @@ class PurpleCombatApp : public PlugPikiApp {
                 addNode(head->mSRT.t+Vector3f(goalRadius*std::cos(a),0,goalRadius*std::sin(a)),true);
             }
         }
-        for(const auto& obstacle:pluckObstacles) for(int i=0;i<16;++i) {
+        for(const auto& obstacle:(sdlAcquisitionMode()?pluckAdmissionObstacles:pluckObstacles)) for(int i=0;i<16;++i) {
             const float a=i*6.283185307f/16.f;
             const float r=obstacle.radius/std::cos(3.141592654f/16.f)+4.f;
             addNode(obstacle.centre+Vector3f(r*std::cos(a),0,r*std::sin(a)),false);
@@ -475,7 +511,7 @@ class PurpleCombatApp : public PlugPikiApp {
             int here=-1;for(size_t i=0;i<count;++i) if(!visited[i] && (here<0 || cost[i]<cost[here])) here=int(i);
             if(here<0 || !std::isfinite(cost[here])) break;
             visited[here]=true;if(goal[here]) {end=here;break;}
-            for(size_t next=0;next<count;++next) if(!visited[next] && pluckSegmentClear(nodes[here],nodes[next])) {
+            for(size_t next=0;next<count;++next) if(!visited[next] && pluckAdmissionSegmentClear(nodes[here],nodes[next])) {
                 const float candidate=cost[here]+planarDistance(nodes[here],nodes[next]);
                 if(candidate<cost[next]) {cost[next]=candidate;parent[next]=here;}
             }
@@ -483,7 +519,7 @@ class PurpleCombatApp : public PlugPikiApp {
         if(sdlAcquisitionMode()) {
             unsigned goals=0,reachable=0;for(size_t i=0;i<count;++i)if(goal[i]){++goals;if(std::isfinite(cost[i]))++reachable;}
             std::printf("P2_PURPLE_PLUCK_GRAPH tick=%d nodes=%u goals=%u reachable_goals=%u end=%d start_clear=%d read_only=1\n",
-                ticks,unsigned(count),goals,reachable,end,int(pluckSegmentClear(n->mSRT.t,n->mSRT.t)));
+                ticks,unsigned(count),goals,reachable,end,int(pluckAdmissionSegmentClear(n->mSRT.t,n->mSRT.t)));
             if(end<0)pluckTrace("plan_failure",n,head,violet);
         }
         if(end<0 && sdlAcquisitionMode())return false;
@@ -521,7 +557,7 @@ class PurpleCombatApp : public PlugPikiApp {
     int regenerationFrames=0;
     Vector3f parkPosition;
     bool sunsetRequested=false, sunsetSeen=false;
-    PcPurpleSaveBudget ordinarySaveBudget;
+    PcPurpleSaveBudget ordinarySaveBudget{mode("sdl_dayend")&&std::getenv("P2_PURPLE_ENGINEERING_ACQUIRE90")&&std::strcmp(std::getenv("P2_PURPLE_ENGINEERING_ACQUIRE90"),"1")==0};
     PcWorldMapResumeInput ordinaryResumeMapInput;
     int sunsetTicks=0, sunsetDay=-1, expectedDay=-1, savedMaturity=-1, resumeReady=0;
     int ordinaryMenuFrames=0,ordinaryDiaryFrames=0;
@@ -788,8 +824,8 @@ class PurpleCombatApp : public PlugPikiApp {
             if(mode("sdl_dayend")) {
                 const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
                 require(ordinarySaveBudget.saving() && ordinarySaveBudget.observe(now),"ordinary save phase deadline");
-                std::printf("P2_PURPLE_SAVE_BUDGET_FINISHED acquisition_seconds=%.6f save_seconds=%.6f whole_seconds=%.6f acquisition_limit=60 save_limit=60 whole_limit=120 monotonic=1 movie_skip=0\n",
-                    ordinarySaveBudget.acquisitionSeconds(),ordinarySaveBudget.saveSeconds(now),now);
+                std::printf("P2_PURPLE_SAVE_BUDGET_FINISHED acquisition_seconds=%.6f save_seconds=%.6f whole_seconds=%.6f acquisition_limit=%.0f save_limit=60 whole_limit=%.0f monotonic=1 movie_skip=0\n",
+                    ordinarySaveBudget.acquisitionSeconds(),ordinarySaveBudget.saveSeconds(now),now,ordinarySaveBudget.acquisitionLimit(),ordinarySaveBudget.wholeLimit());
             }
             if(birthLedgerMode()){
                 const auto census=birthCensus("saved");
@@ -1060,12 +1096,21 @@ class PurpleCombatApp : public PlugPikiApp {
     }
     bool sdlPulseSegmentClear(SdlPluckPoint a,SdlPluckPoint b,float margin=0.f) const {
         if(!pluckFinite(a)||!pluckFinite(b)||!std::isfinite(margin)||margin<0.f)return false;
-        const auto delta=pluckSub(b,a);const float square=delta.x*delta.x+delta.z*delta.z;
+        // Validate segment arithmetic even when the obstacle list is empty.
+        if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,a.x,a.z,0.f,0.f))return false;
         for(const auto& obstacle:pluckObstacles) {
-            if(!sdlFinitePoint(obstacle.centre)||!std::isfinite(obstacle.radius)||obstacle.radius<0.f)return false;
-            const auto offset=pluckSub(sdlPoint(obstacle.centre),a);
-            const float t=square>0.f?std::max(0.f,std::min(1.f,(offset.x*delta.x+offset.z*delta.z)/square)):0.f;
-            if(pluckLength(pluckSub(pluckAdd(a,pluckScale(delta,t)),sdlPoint(obstacle.centre)))<obstacle.radius+margin)return false;
+            if(!sdlFinitePoint(obstacle.centre)||!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,
+                obstacle.centre.x,obstacle.centre.z,obstacle.radius,margin))return false;
+        }
+        return true;
+    }
+    bool sdlAdmissionSegmentClear(SdlPluckPoint a,SdlPluckPoint b,float margin=0.f) const {
+        if(!pluckFinite(a)||!pluckFinite(b)||!std::isfinite(margin)||margin<0.f)return false;
+        // Validate segment arithmetic even when the obstacle list is empty.
+        if(!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,a.x,a.z,0.f,0.f))return false;
+        for(const auto& obstacle:pluckAdmissionObstacles) {
+            if(!sdlFinitePoint(obstacle.centre)||!pcPurpleSegmentCircleClear(a.x,a.z,b.x,b.z,
+                obstacle.centre.x,obstacle.centre.z,obstacle.radius,margin))return false;
         }
         return true;
     }
@@ -1119,6 +1164,7 @@ class PurpleCombatApp : public PlugPikiApp {
     void sdlObservePulse(Navi* n,PikiHeadItem* head,Pom* violet,float tau,float dt) {
         if(sdlCancelOwnedCollision(n,tau)) return;
         (void)head;(void)violet;sdlPulseModel(n,tau);
+        require(std::isfinite(n->mSRT.r.y)&&std::fabs(std::remainder(n->mSRT.r.y-sdlPulseYawStart,6.283185307f))<=PcPurplePulseYawHalfArc+.0001f,"native pulse left admitted yaw arc");
         SdlPluckState predicted=sdlPulseBefore;require(pluckPulseStep(predicted,sdlPulseCommand,dt,tau),"invalid pulse observation step");
         const SdlPluckState actual=sdlPulseSnapshot(n);
         const float positionError=pluckLength(pluckSub(predicted.position,actual.position));
@@ -1146,6 +1192,12 @@ class PurpleCombatApp : public PlugPikiApp {
     }
     bool sdlBeginPulse(Navi* n,PikiHeadItem* head,Pom*,const Vector3f& waypoint,float tau,float dt,float range) {
         const SdlPluckInputModel model=sdlPulseModel(n,tau);const SdlPluckState start=sdlPulseSnapshot(n);
+        require(pc_window_get_control_mode()==PC_CONTROL_CLASSIC && !n->mPcLockTarget && !pc_first_person_active()
+            && pc_window_get_mouse_cursor_delta_x()==0.f && pc_window_get_mouse_cursor_delta_y()==0.f
+            && !n->isCreatureFlag(CF_DisableAutoFaceDir),"pulse yaw requires unpinned classic cursor");
+        require(std::isfinite(n->mSRT.r.y)&&std::isfinite(n->mFaceDirection)
+            &&std::fabs(std::remainder(n->mSRT.r.y-n->mFaceDirection,6.283185307f))<.001f,"pulse yaw model/current pose mismatch");
+        const float faceAdjust=n->mProps->mCreatureProps.mFaceDirAdjust(),cursorSpeed=C_NAVI_PARM(n,mCursorMoveSpeed);
         const float oldDistance=pluckLength(pluckSub(start.position,sdlPoint(waypoint)));
         int bestX=0,bestY=0;float bestScore=std::numeric_limits<float>::infinity();SdlPluckState bestEnd;
         const float limit=1.f/30.f,step=std::min(limit,tau*.5f),maximum=step*(1.f-step/tau);
@@ -1153,17 +1205,21 @@ class PurpleCombatApp : public PlugPikiApp {
             const float angle=bearing*6.283185307f/144.f;
             const int x=int(std::lround(power*std::cos(angle))),y=int(std::lround(power*std::sin(angle)));
             const SdlPluckPoint target=pluckInputTarget(x,y,model);if(pluckLength(target)<.01f)continue;
+            if(!pcPurplePulseYawEligible(n->mSRT.r.y,target.x,target.z,n->mCursorPosition.x,n->mCursorPosition.z,cursorSpeed,faceAdjust,1.f/30.f))continue;
             // Qualified prospective bound for one input tick followed by neutral,
             // for any next dt in (0,1/30]. This is CURRENT-pose geometry, not
-            // proof about future animation/camera/contact. Observe every tick.
+            // proof about future animation/camera/contact. Captured-pose reserve
+            // additionally screens admission; actual current-pair .05 guard
+            // remains unchanged and is observed every tick.
             const float lengthFactor=(limit*limit+2.f*maximum*limit)/tau;
             const auto furthest=pluckAdd(start.position,pluckScale(target,lengthFactor));
+            if(!sdlAdmissionSegmentClear(start.position,furthest,(tau+limit)*pluckLength(start.velocity)+.05f))continue;
             if(!sdlPulseSegmentClear(start.position,furthest,(tau+limit)*pluckLength(start.velocity)+.05f))continue;
             SdlPluckState trial=start;bool clear=true;
             for(int frame=0;frame<64;++frame) {
                 const auto before=trial.position;
                 if(!pluckPulseStep(trial,frame==0?target:SdlPluckPoint{},dt,tau)
-                    ||!sdlPulseSegmentClear(before,trial.position,.05f)){clear=false;break;}
+                    ||!sdlAdmissionSegmentClear(before,trial.position,.05f)||!sdlPulseSegmentClear(before,trial.position,.05f)){clear=false;break;}
                 if(frame>0&&pluckPulseSettled(trial))break;
             }
             if(!clear||!pluckPulseSettled(trial))continue;
@@ -1175,7 +1231,7 @@ class PurpleCombatApp : public PlugPikiApp {
                 {bestScore=score;bestX=x;bestY=y;bestEnd=trial;}
         }
         if(!std::isfinite(bestScore))return false;
-        sdlPulseBefore=start;sdlPulseCommand=pluckInputTarget(bestX,bestY,model);sdlPulseFrames=0;sdlPulseActive=true;
+        sdlPulseBefore=start;sdlPulseCommand=pluckInputTarget(bestX,bestY,model);sdlPulseFrames=0;sdlPulseActive=true;sdlPulseYawStart=n->mSRT.r.y;
         acquisitionInput(0,bestX,bestY);
         std::printf("P2_PURPLE_PLUCK_PULSE_BEGIN tick=%d raw=%d,%d target=%.6f,%.6f predicted_landing=%.6f,%.6f dt=%.9f tau=%.6f "
             "dead_zone=%d sampled=%d,%d camera_axis=%.9g,%.9g bin_degrees=%.9g native_fix_position=1 actor_writes=0\n",
@@ -1186,6 +1242,9 @@ class PurpleCombatApp : public PlugPikiApp {
     }
 
     void sdlPoseProbeClear(Navi* n,Pom* violet) {
+        if(sdlPoseProbeYawObserved)require(std::isfinite(n->mSRT.r.y)
+            &&std::fabs(std::remainder(n->mSRT.r.y-sdlPoseProbeYawStart,6.283185307f))<=sdlPoseProbeYawArc+.0001f,
+            "cursor probe left native one-tick yaw admission");
         require(pluckLength(pluckSub(sdlPoint(n->mSRT.t),sdlPoseProbeOrigin))<.1f
             && pluckLength(sdlPoint(n->mVelocity))<=1.f && pluckLength(sdlPoint(n->mTargetVelocity))==0.f,
             "cursor pose probe moved captain");
@@ -1194,42 +1253,62 @@ class PurpleCombatApp : public PlugPikiApp {
         require(!n->mCollInfo->checkCollision(violet->mCollInfo,&self,&other,push),"cursor pose probe native contact");
         require(sdlPulseTerrainClear(sdlPoint(n->mSRT.t),sdlPoint(n->mSRT.t),n->mSRT.t.y,.1f),
             "cursor pose probe terrain changed");
-        // A conservative all-yaw envelope of the CAPTURED current pose. This
-        // does not certify an unobserved animation sweep. The next refreshed
-        // actual parts must pass the same checks before any further input.
+        require(pc_window_get_control_mode()==PC_CONTROL_CLASSIC && !n->mPcLockTarget && !pc_first_person_active()
+            && pc_window_get_mouse_cursor_delta_x()==0.f && pc_window_get_mouse_cursor_delta_y()==0.f
+            && !n->isCreatureFlag(CF_DisableAutoFaceDir),"cursor probe requires ordinary unpinned classic cursor");
+        require(std::isfinite(n->mSRT.r.y)&&std::isfinite(n->mFaceDirection)
+            &&std::fabs(std::remainder(n->mSRT.r.y-n->mFaceDirection,6.283185307f))<.001f,"cursor probe pose/yaw mismatch");
+        float halfArc=0;
+        require(pcPurpleCursorYawBound(n->mSRT.r.y,n->mCursorPosition.x,n->mCursorPosition.z,
+            C_NAVI_PARM(n,mCursorMoveSpeed),1.f/30.f,halfArc),"cursor probe native one-tick yaw bound invalid");
+        // Captured compatible-motion offsets over the actual native one-tick
+        // cursor yaw bound. Unseen animation transitions remain unproven; every
+        // next idle refresh must pass current geometry before another input.
         std::vector<CollPart*> captainParts,violetParts;
         collectCaptainParts(n->mCollInfo->getBoundingSphere(),captainParts);
         collectCaptainParts(violet->mCollInfo->getBoundingSphere(),violetParts);
-        float envelope=0.f;
-        for(CollPart* part:captainParts) {
-            const Vector3f offset=part->mCentre-n->mSRT.t;
-            require(std::isfinite(part->mRadius) && part->mRadius>0.f,"cursor pose invalid captain radius");
-            envelope=std::max(envelope,std::sqrt(offset.x*offset.x+offset.y*offset.y+offset.z*offset.z)+part->mRadius);
+        for(CollPart* captain:captainParts)for(CollPart* part:violetParts) {
+            const auto* envelope=capturedCaptainPoses.find(unsigned(captain->getID().mId),reinterpret_cast<std::uintptr_t>(captain));
+            float radius=0;
+            require(envelope&&PcPurplePoseEnvelope::projectedRadius(*envelope,part->mCentre.y-n->mSRT.t.y,part->mRadius,radius,halfArc),"cursor probe captured local envelope invalid");
+            if(radius<=0)continue;
+            for(int sample=-1;sample<=1;++sample){
+                float ox=0,oz=0;
+                require(PcPurplePoseEnvelope::rotatedOffset(*envelope,n->mSRT.r.y+sample*halfArc,ox,oz),"cursor probe captured local rotation invalid");
+                const float gap=std::hypot(part->mCentre.x-n->mSRT.t.x-ox,part->mCentre.z-n->mSRT.t.z-oz);
+                require(std::isfinite(gap)&&gap>radius+.05f,"cursor probe native bounded yaw envelope blocked");
+            }
         }
-        require(std::isfinite(envelope)&&envelope>0.f,"cursor pose invalid captured envelope");
-        for(CollPart* part:violetParts) {
-            const Vector3f offset=part->mCentre-n->mSRT.t;
-            const float separation=std::sqrt(offset.x*offset.x+offset.y*offset.y+offset.z*offset.z);
-            require(std::isfinite(separation) && std::isfinite(part->mRadius) && part->mRadius>0.f
-                && separation>envelope+part->mRadius+1.f,"cursor pose captured yaw envelope blocked");
-        }
+        sdlPoseProbeYawStart=n->mSRT.r.y;sdlPoseProbeYawArc=halfArc;sdlPoseProbeYawObserved=true;
+        std::printf("P2_PURPLE_PLUCK_CURSOR_YAW tick=%d half_arc=%.9g native_factor=.2 maximum_dt=0.0333333351 captured_compatible_motion_only=1 future_animation_transition_proven=0 actor_writes=0\n",ticks,halfArc);
     }
-    void sdlProbePose(Navi* n,Pom* violet,float tau) {
-        if(!sdlPoseProbeActive) {sdlPoseProbeOrigin=sdlPoint(n->mSRT.t);sdlPoseProbeActive=true;}
+    void sdlProbePose(Navi* n,PikiHeadItem* head,Pom* violet,float tau) {
+        if(!sdlPoseProbeActive) {sdlPoseProbeOrigin=sdlPoint(n->mSRT.t);sdlPoseProbeActive=true;sdlPoseProbeYawObserved=false;}
         sdlPoseProbeClear(n,violet);
         require(sdlPoseProbeBudget.take(),"finite cursor pose probe budget exhausted");
         if(sdlCancelOwnedCollision(n,tau))return;
         const SdlPluckInputModel model=sdlPulseModel(n,tau);
-        const float bearing=float((sdlPoseProbeBudget.frames()-1)/8)*6.283185307f/8.f;
-        int selectedX=0,selectedY=0;bool found=false;
-        for(int power=1;power<=74&&!found;++power) {
-            const int x=int(std::lround(power*std::cos(bearing))),y=int(std::lround(power*std::sin(bearing)));
+        const Vector3f goal=!pluckRoute.empty()&&pluckRouteIndex<pluckRoute.size()?pluckRoute[pluckRouteIndex]:head->mSRT.t;
+        const float gx=goal.x-n->mSRT.t.x,gz=goal.z-n->mSRT.t.z;
+        require(std::isfinite(gx)&&std::isfinite(gz)&&std::hypot(gx,gz)>.01f
+            &&std::fabs(n->mCursorPosition.y)<.001f,"cursor probe actual route/head goal invalid");
+        const float desired=std::atan2(gx,gz),cursorSpeed=C_NAVI_PARM(n,mCursorMoveSpeed),cap=C_NAVI_PARM(n,mCursorMaxRadius);
+        int selectedX=0,selectedY=0;bool found=false;float bestError=std::numeric_limits<float>::infinity();
+        for(int bearing=0;bearing<144;++bearing)for(int power=1;power<=74;++power) {
+            const float rawAngle=bearing*6.283185307f/144.f;
+            const int x=int(std::lround(power*std::cos(rawAngle))),y=int(std::lround(power*std::sin(rawAngle)));
             float angle=0.f;const float magnitude=pluckInputMagnitude(x,y,model,angle);
-            if(pcPurpleCursorBandSafe(magnitude,model.neutral,model.cursor,pluckLength(pluckInputTarget(x,y,model))))
-                {selectedX=x;selectedY=y;found=true;}
+            if(!pcPurpleCursorBandSafe(magnitude,model.neutral,model.cursor,pluckLength(pluckInputTarget(x,y,model))))continue;
+            const float localX=std::sin(angle),localZ=std::cos(angle);
+            const float worldX=model.cameraX*localX-model.cameraZ*localZ,worldZ=model.cameraZ*localX+model.cameraX*localZ;
+            float cx=0,cz=0;
+            if(!pcPurpleCursorStep(n->mCursorPosition.x,n->mCursorPosition.z,worldX,worldZ,cursorSpeed,1.f/30.f,cap,cx,cz))continue;
+            const float error=std::fabs(std::remainder(std::atan2(cx,cz)-desired,6.283185307f));
+            if(std::isfinite(error)&&error<bestError){bestError=error;selectedX=x;selectedY=y;found=true;}
         }
         require(found,"loaded settings have no movement-neutral cursor probe");
         acquisitionInput(0,selectedX,selectedY);
+        std::printf("P2_PURPLE_PLUCK_CURSOR_GOAL tick=%d desired=%.9g predicted_error=%.9g waypoint=%zu route_size=%zu movement_target=0 native_tangent_projection=1 actor_writes=0\n",ticks,desired,bestError,pluckRouteIndex,pluckRoute.size());
         std::printf("P2_PURPLE_PLUCK_POSE_PROBE tick=%d auth_tick=%llu frame=%u raw=%d,%d face=%.9g "
             "origin=%.9g,%.9g target_velocity=0 captured_current_pose_clear=1 next_pose_requires_observation=1 actor_writes=0\n",
             ticks,static_cast<unsigned long long>(pc_render_tick_serial()),sdlPoseProbeBudget.frames(),
@@ -1314,12 +1393,12 @@ class PurpleCombatApp : public PlugPikiApp {
             }
             if(needsPlan && !planPluckRoute(n,head,violet,pluckRange)) {
                 require(sdlAcquisitionMode(),"no collision-clear controller approach to native pluck range");
-                sdlProbePose(n,violet,pluckTau);return false;
+                sdlProbePose(n,head,violet,pluckTau);return false;
             }
             if(sdlPoseProbeActive) {
                 // Release the ordinary cursor input; measure the ensuing native
                 // pose again before starting a movement forecast.
-                acquisitionInput();sdlPoseProbeActive=false;return false;
+                acquisitionInput();sdlPoseProbeActive=false;sdlPoseProbeYawObserved=false;return false;
             }
             while(pluckRouteIndex+1<pluckRoute.size() && planarDistance(n->mSRT.t,pluckRoute[pluckRouteIndex])<4.f
                 && (!sdlAcquisitionMode() || sdlPluckAtRest(pluckSpeed,pluckTargetSpeed))
@@ -1335,9 +1414,11 @@ class PurpleCombatApp : public PlugPikiApp {
                     // Quantized movement may stop short of a geometric corner.
                     // Replan ONCE from the observed rest point; the nearby-node
                     // exclusion prevents endlessly selecting that same corner.
-                    if(!planPluckRoute(n,head,violet,pluckRange)) {sdlProbePose(n,violet,pluckTau);return false;}
-                    require(!pluckRoute.empty() && sdlBeginPulse(n,head,violet,pluckRoute[0],pluckTau,pluckDt,pluckRange),
-                        "no eligible quantized pulse after stopped route replan");
+                    if(!planPluckRoute(n,head,violet,pluckRange)) {sdlProbePose(n,head,violet,pluckTau);return false;}
+                    require(!pluckRoute.empty(),"stopped route replan has no waypoints");
+                    if(!sdlBeginPulse(n,head,violet,pluckRoute[0],pluckTau,pluckDt,pluckRange)) {
+                        sdlProbePose(n,head,violet,pluckTau);return false;
+                    }
                 }
                 return false;
             }
@@ -1574,14 +1655,25 @@ class PurpleCombatApp : public PlugPikiApp {
             ordinaryInput();if(!follower)return nullptr;
             GameStat::update();require(alive==20 && red==19 && purple==1 && int(GameStat::mapPikis)==20,"SDL conversion population");
             require(sdlThrowObserved && pc_throw_selection_class(follower)==4 && pc_piki_carry_strength(follower)==10,"SDL native throw and Purple capabilities");
-            if(birthLedgerMode())require(birthPopulation.closes(birthCensus("acquired"),pc_goal_birth_ledger,false),"actual earned birth/replacement acquisition closure refused");
+            if(birthLedgerMode()){
+                const auto census=birthCensus("acquired");
+                require(birthPopulation.closes(census,pc_goal_birth_ledger,false),"actual earned birth/replacement acquisition closure refused");
+                int field=0,stock=0,heads=0,censusRed=0,censusPurple=0;
+                for(int species=0;species<6;++species)for(int maturity=0;maturity<3;++maturity){
+                    field+=census.field[species][maturity];stock+=census.stock[species][maturity];heads+=census.heads[species][maturity];
+                    if(species==1)censusRed+=census.field[species][maturity];
+                    if(species==3)censusPurple+=census.field[species][maturity];
+                }
+                require(field==alive&&censusRed==red&&censusPurple==purple,"acquisition field/census identity closure refused");
+                std::printf("P2_PURPLE_ACQUISITION_CENSUS field=%d red=%d purple=%d stock=%d heads=%d whole=%d baseline=20 successful_births_only=1 read_only=1\n",field,censusRed,censusPurple,stock,heads,field+stock+heads);
+            }
             milestone("SDL_acquisition_verified",ticks);
             if(mode("sdl_dayend")) {
                 const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
                 require(ordinarySaveBudget.acquired(now,true),"ordinary save acquisition deadline or duplicate transition");
-                std::printf("P2_PURPLE_SAVE_BUDGET_TRANSITION acquisition_seconds=%.6f acquisition_limit=60 save_limit=60 whole_limit=120 verified_acquisition=1 monotonic=1\n",now);
+                std::printf("P2_PURPLE_SAVE_BUDGET_TRANSITION acquisition_seconds=%.6f acquisition_limit=%.0f save_limit=60 whole_limit=%.0f verified_acquisition=1 monotonic=1\n",now,ordinarySaveBudget.acquisitionLimit(),ordinarySaveBudget.wholeLimit());
             }
-            std::puts("P2_PURPLE_SDL_ACQUISITION_PASS scripted_throw=0 direct_throw_api=0 actor_state_writes=0 native_throw_state_observed=1 SDL_pluck=1 field=20 red=19 purple=1 selection=4 strength=10");
+            std::printf("P2_PURPLE_SDL_ACQUISITION_PASS scripted_throw=0 direct_throw_api=0 actor_state_writes=0 native_throw_state_observed=1 SDL_pluck=1 field=%d red=%d purple=%d selection=4 strength=10\n",alive,red,purple);
             return follower;
         }
         Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads) {
