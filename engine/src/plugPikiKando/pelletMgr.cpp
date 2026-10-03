@@ -1,3 +1,4 @@
+#include "pc_p2_original_pelplant_native.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_cargo_ground.h"
 #include "pc_randomizer.h"
@@ -260,6 +261,9 @@ void Pellet::finishWaterEffect()
  */
 void Pellet::doKill()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    pc_p2_original_pelplant_forget_pellet(this);
+#endif
 	setTrySound(false);
 	mIsAlive = 0;
 	if (mPelletView) {
@@ -313,6 +317,9 @@ bool Pellet::isAlive()
  */
 bool Pellet::isAtari()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_captured(this)) return false;
+#endif
 	int state = getState();
 	if (state == PELSTATE_Appear) {
 		return false;
@@ -916,6 +923,9 @@ void Pellet::init(immut Vector3f& pos)
  */
 bool Pellet::isFree()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_captured(this)) return false;
+#endif
 	// mSlotFlags needs to be int for resetSlotFlags, this seems to be the easier fix
 	if ((u32)(mSlotFlags[0]) == 0 && (u32)(mSlotFlags[1]) == 0 && (u32)(mSlotFlags[2]) == 0 && (u32)(mSlotFlags[3]) == 0) {
 		return true;
@@ -1169,6 +1179,9 @@ static u32 bounceSounds[] = {
  */
 void Pellet::update()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_capture_update(this)) return;
+#endif
     if (mConfig && isUfoParts() && playerState->isBbftRestoredPart(mConfig->mModelId.mId)) {
         // Native kill releases carriers, collision, generator and sound state.
         // This also removes late enemy drops and already-spawned remote checks.
@@ -1389,6 +1402,9 @@ bool Pellet::stimulate(immut Interaction& interaction)
  */
 void Pellet::doRender(Graphics& gfx, Matrix4f& mtx)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_capture_draw(this, gfx, mtx)) return;
+#endif
 	if (mStuckMouthPart) {
 		Matrix4f jointMtx = mStuckMouthPart->getJointMatrix();
 		Matrix4f transformMtx;

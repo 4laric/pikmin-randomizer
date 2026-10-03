@@ -1,3 +1,4 @@
+#include "pc_p2_original_pelplant_native.h"
 #include "DebugLog.h"
 #include "Interactions.h"
 #include "sysNew.h"
@@ -45,6 +46,9 @@ TekiInteractionKey::TekiInteractionKey(int type, immut Interaction* interaction)
  */
 bool InteractAttack::actTeki(Teki* teki) immut
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_damage(teki, mDamage, mCollPart ? mCollPart->getCode().mStringID : nullptr)) return true;
+#endif
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (teki->isP2Dying()) return false;
 	if (pc_p2_hana_rejects_attack(teki)) return true;

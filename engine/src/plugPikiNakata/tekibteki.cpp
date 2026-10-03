@@ -1,4 +1,5 @@
 #include "pc_p2_original_drop_engine.h"
+#include "pc_p2_original_pelplant_native.h"
 #include "pc_p2_demon_host.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_life_gauge_hooks.h"
@@ -198,7 +199,7 @@ void BTeki::viewDraw(Graphics& gfx, immut Matrix4f& mat)
 	mTekiAnimator->updateContext();
 	mTekiShape->mShape->updateAnim(gfx, mat, nullptr, this);
 #ifdef PIKI_PC_PORT
-    if (!pc_p2_demon_manager_draw_actor(this, gfx, mat, true) && !pc_p2_sarai_manager_draw_actor(this, gfx, mat, true) && !pc_p2_kurage_teki_draw(this, gfx, mat, true) && !pc_p2_groink_teki_draw(this, gfx, mat, true) && !pc_p2_queen_teki_draw(this, gfx, mat, true) && !pc_p2_bombsarai_teki_draw(this, gfx, mat, true) && !pc_p2_fuefuki_teki_draw(this, gfx, mat, true) && !pc_p2_breadbug_teki_draw(this, gfx, mat, true) && !pc_p2_bigtreasure_teki_draw(this, gfx, mat, true) && !pc_p2_kogane_draw(this, gfx, mat, true) && !pc_p2_mamuta_draw(this, gfx, mat, true) && !pc_p2_frog_draw(this, gfx, mat, true) && !pc_p2_tank_draw(this, gfx, mat, true) && !pc_p2_kabuto_fsm_draw(this, gfx, mat, true) && !pc_p2_qurione_draw(this, gfx, mat, true) && !pc_p2_shijimi_draw(this, gfx, mat, true) && !pc_p2_dwarf_orange_draw(this, gfx, mat, true) && !pc_p2_kochappy_draw(this, gfx, mat, true) && !pc_p2_chappy_draw(this, gfx, mat, true) && !pc_p2_sheargrub_draw(this, gfx, mat, true) && !pc_p2_snow_draw(this, gfx, mat, true) && !pc_p2_batch2_draw(this, gfx, mat, true) && !pc_p2_batch3_draw(this, gfx, mat, true) && !pc_p2_long_legs_draw(this, gfx, mat, true) && !pc_hd_model_draw_skinned(gfx, mTekiShape->mShape, hdModel(), hdTint()))
+    if (!pc_p2_original_pelplant_draw(this, gfx, mat) && !pc_p2_demon_manager_draw_actor(this, gfx, mat, true) && !pc_p2_sarai_manager_draw_actor(this, gfx, mat, true) && !pc_p2_kurage_teki_draw(this, gfx, mat, true) && !pc_p2_groink_teki_draw(this, gfx, mat, true) && !pc_p2_queen_teki_draw(this, gfx, mat, true) && !pc_p2_bombsarai_teki_draw(this, gfx, mat, true) && !pc_p2_fuefuki_teki_draw(this, gfx, mat, true) && !pc_p2_breadbug_teki_draw(this, gfx, mat, true) && !pc_p2_bigtreasure_teki_draw(this, gfx, mat, true) && !pc_p2_kogane_draw(this, gfx, mat, true) && !pc_p2_mamuta_draw(this, gfx, mat, true) && !pc_p2_frog_draw(this, gfx, mat, true) && !pc_p2_tank_draw(this, gfx, mat, true) && !pc_p2_kabuto_fsm_draw(this, gfx, mat, true) && !pc_p2_qurione_draw(this, gfx, mat, true) && !pc_p2_shijimi_draw(this, gfx, mat, true) && !pc_p2_dwarf_orange_draw(this, gfx, mat, true) && !pc_p2_kochappy_draw(this, gfx, mat, true) && !pc_p2_chappy_draw(this, gfx, mat, true) && !pc_p2_sheargrub_draw(this, gfx, mat, true) && !pc_p2_snow_draw(this, gfx, mat, true) && !pc_p2_batch2_draw(this, gfx, mat, true) && !pc_p2_batch3_draw(this, gfx, mat, true) && !pc_p2_long_legs_draw(this, gfx, mat, true) && !pc_hd_model_draw_skinned(gfx, mTekiShape->mShape, hdModel(), hdTint()))
 #endif
 	mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
 }
@@ -529,6 +530,9 @@ void BTeki::startAI(int)
  */
 void BTeki::update()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_update(this)) return;
+#endif
 	releaseP2DeathStickers();
 	Creature::update();
 	pc_p2_demon_manager_update_actor(this);
@@ -971,6 +975,9 @@ void BTeki::becomeCorpse()
  */
 void BTeki::doKill()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    pc_p2_original_pelplant_forget_teki(this);
+#endif
 	PRINT_NAKATA("BTeki::doKill:%08x\n", this);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Actor-lifetime seam (#397/#186): clear this actor's P2 family
@@ -2323,6 +2330,9 @@ void BTeki::updateLifeGauge()
  */
 void BTeki::refresh(Graphics& gfx)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_refresh(this, gfx)) return;
+#endif
 	if (mDeadState == 0) {
 		TekiStrategy* strat = getStrategy();
 		if (strat) {
@@ -2419,6 +2429,9 @@ void BTeki::drawTekiShape(Graphics& gfx)
 
 	Matrix4f onCamMtx;
 	gfx.mCamera->mLookAtMtx.multiplyTo(mWorldMtx, onCamMtx);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_pelplant_draw(this, gfx, onCamMtx)) return;
+#endif
 	gfx.useMatrix(Matrix4f::ident, 0);
 	mTekiAnimator->updateContext();
 	mTekiShape->mShape->updateAnim(gfx, onCamMtx, nullptr, this);
@@ -2443,7 +2456,7 @@ void BTeki::drawTekiShape(Graphics& gfx)
 		}
 
 #ifdef PIKI_PC_PORT
-        if (!pc_p2_demon_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_sarai_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_kurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_groink_teki_draw(this, gfx, onCamMtx) && !pc_p2_bombsarai_teki_draw(this, gfx, onCamMtx) && !pc_p2_fuefuki_teki_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_teki_draw(this, gfx, onCamMtx) && !pc_p2_bigtreasure_teki_draw(this, gfx, onCamMtx) && !pc_p2_onikurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_king_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_queen_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_kabuto_fsm_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_shijimi_draw(this, gfx, onCamMtx, false) && !pc_p2_giant_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_dwarf_orange_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_chappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx) && !pc_p2_batch2_draw(this, gfx, onCamMtx) && !pc_p2_batch3_draw(this, gfx, onCamMtx) && !pc_p2_long_legs_draw(this, gfx, onCamMtx) && !pc_hd_model_draw_skinned(gfx, mTekiShape->mShape, hdModel(), hdTint()))
+        if (!pc_p2_original_pelplant_draw(this, gfx, onCamMtx) && !pc_p2_demon_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_sarai_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_kurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_groink_teki_draw(this, gfx, onCamMtx) && !pc_p2_bombsarai_teki_draw(this, gfx, onCamMtx) && !pc_p2_fuefuki_teki_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_teki_draw(this, gfx, onCamMtx) && !pc_p2_bigtreasure_teki_draw(this, gfx, onCamMtx) && !pc_p2_onikurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_king_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_queen_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_kabuto_fsm_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_shijimi_draw(this, gfx, onCamMtx, false) && !pc_p2_giant_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_dwarf_orange_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_chappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx) && !pc_p2_batch2_draw(this, gfx, onCamMtx) && !pc_p2_batch3_draw(this, gfx, onCamMtx) && !pc_p2_long_legs_draw(this, gfx, onCamMtx) && !pc_hd_model_draw_skinned(gfx, mTekiShape->mShape, hdModel(), hdTint()))
 #endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {

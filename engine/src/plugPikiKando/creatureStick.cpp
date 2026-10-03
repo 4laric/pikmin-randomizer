@@ -1,3 +1,4 @@
+#include "pc_p2_original_pelplant_native.h"
 #include "Collision.h"
 #include "Condition.h"
 #include "Creature.h"
@@ -287,6 +288,10 @@ void Creature::startStickObject(Creature* obj, CollPart* stickPart, int slot, f3
 	mPelletStickSlot = -1;
 
 	if (startStick(obj, stickPart)) {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+        if (obj->isTeki() && stickPart)
+            pc_p2_original_pelplant_stick(static_cast<BTeki*>(obj), stickPart->getCode().mStringID);
+#endif
 		if (!stickPart || stickPart->isBouncySphereType()) {
 			if (isTeki()) {
 				PRINT("STICK TO SPHERE !\n");
