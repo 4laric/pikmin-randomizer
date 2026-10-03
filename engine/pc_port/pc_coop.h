@@ -47,4 +47,9 @@ void pc_coop_begin_run(void);
 bool pc_coop_active(void);
 void pc_coop_end_run(void);
 
+/// Online presentation draws P2's Y panel in the right corner on both peers.
+/// Read-only open-menu query, including its close animation. Reserve the corner
+/// while open even if a temporary movie/debug presentation hides the panel.
+bool pc_coop_right_map_menu_open(void);
+
 #endif // PC_COOP_H
