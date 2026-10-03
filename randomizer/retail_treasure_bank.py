@@ -4,14 +4,14 @@ import json
 from pathlib import Path
 
 from experimental.pikmin2_assets import archive_files
-from experimental.pikmin2_campaign_treasures import source_profiles
+from experimental.pikmin2_campaign_treasures import source_profiles, POD_SHA256
 from experimental.pikmin2_cave import safe_name
 from experimental.pikmin2_treasure_catalog import RETAIL_DIGEST
 from .campaign_treasures import bounded_model, verified_entries
 from .held_treasures import prepare as prepare_held
 
 
-def prepare(bank, catalog, original, onyons, campaign, held_requests, selected):
+def prepare(bank, catalog, original, onyons, campaign, held_requests, selected, *, pod_model):
     """Return exact selected-input roles and one master SOURCE, without writes.
 
     Asset availability does not authenticate a loose placement or floor birth.
@@ -36,6 +36,17 @@ def prepare(bank, catalog, original, onyons, campaign, held_requests, selected):
     digest = lambda data: hashlib.sha256(data).hexdigest()
     for kind, data in configs.items():
         roles[base + f'source/user/Abe/Pellet/us/{kind}_config.txt'] = data
+    for name, expected_hash in POD_SHA256.items():
+        path = (bank / 'source/user/Kando/pod' / name if name.endswith('.szs') else
+                bank / ('pod' if name == 'pot.bmd' else 'pod-texts') / name)
+        data = bounded_model(path)
+        if digest(data) != expected_hash:
+            raise ValueError('Original Pod selected input differs from pinned source')
+        roles[base + 'pod/' + name] = data
+    receiver_model = bounded_model(pod_model)
+    if digest(receiver_model) != 'f562fb2926cc54be8875afb07d2d0effe2f2af7469f9d4ab5c7940917eb8b595':
+        raise ValueError('Qualified original Pod conversion required')
+    roles['assets/dataDir/courses/pikmin2retailpod/pod.mod'] = receiver_model
     for identity in selected:
         entry, source = entries[identity], profiles[identity]['source']
         source_path = 'user/Abe/Pellet/us/' + safe_name(source['archive'])

@@ -14,6 +14,12 @@ CONFIG_SHA256 = {
     'otakara': '36de6f3b05065913464d256bd2745a2ef3a6948f96f0729c6b0ee51771b7f24a',
     'item': 'fb69ac3f3736d83a7f62154c7592bc7fcd1eef456336320ba6b3ca80941c6b85',
 }
+POD_SHA256 = {
+    'arc.szs': '90784394f69e8db32102e7b3e69c29b2fe737d4d0240efaf1dcdf32def783412',
+    'pot.bmd': 'e567b76127b7802f88fe28cdd956260fededba0b5d30255b935bc15c28f25c0e',
+    'coll.txt': '548f59a9d8eceb3be896011a33765e8357217c66cd1587ac258253aa675ac005',
+    'texts.szs': '68e497d02bfd471dca911524430b7517d4260cdd4162146bdab81c1d35728861',
+}
 
 
 def source_profiles(config_bytes, entries, selected):
@@ -71,6 +77,12 @@ def extract(iso, catalog, output, selected):
                 target = output / folder / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(data)
             return {name: hashlib.sha256(data).hexdigest() for name, data in members.items()}
         unpack('user/Kando/pod/arc.szs', 'pod')
+        unpack('user/Kando/pod/texts.szs', 'pod-texts')
+        for name, expected_hash in POD_SHA256.items():
+            path = (output / 'source/user/Kando/pod' / name if name.endswith('.szs') else
+                    output / ('pod' if name == 'pot.bmd' else 'pod-texts') / name)
+            if hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash:
+                raise ValueError('Original Pod source hash mismatch')
         convert(output / 'pod/pot.bmd', output / 'pod.mod', True, bake_rigid=True)
         for identity in selected:
             source = profiles[identity]['source']
