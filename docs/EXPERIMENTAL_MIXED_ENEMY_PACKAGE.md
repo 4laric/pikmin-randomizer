@@ -26,10 +26,10 @@ content identities/hashes, stages a private asset tree and refuses missing or
 invalid content before native gameplay. The matching native executable must
 support the seed's declared capabilities; a launcher cannot bypass that check.
 
-Package import/generation tests are source checks. Public release readiness also
-requires a real AP fill and packaged mixed-enemy gameplay, normal checks and
-item receipts, day-end save, fresh resume and reconnect on the exact candidate.
-Those gameplay gates are not established by this package change.
+Package import/generation tests are source checks. The evidence below supports
+an experimental solo playtest release. Full gameplay qualification also requires
+ordinary mixed-enemy combat, enemy checks and item receipts on the exact
+candidate, alongside native save, fresh resume and reconnect.
 
 ## Experimental release candidate notes
 
@@ -64,15 +64,38 @@ reconnect tests must reuse it and the same server save. Keep older player saves
 and installations untouched. Asset staging and its cache need additional free
 disk space beyond the prepared-content directory.
 
-This candidate is **not yet gameplay-qualified**. Full-pool Linux staging and
-cache creation passed after resolving an initial disk-capacity failure. Actual
-admitted P2 births in mixed scenes, ordinary combat and real AP checks remain
-to be observed. Native day-end save, fresh resume,
-and client/server reconnect also remain unverified for the exact packaged seed.
-Do not advertise co-op support based on this solo release test.
+The unchanged experimental sample at seed `1153` has these observed results:
 
-For the direct smoke, start the generated seed normally, encounter both a P1 and
-a P2 enemy, and earn their actual manifest check IDs through the required
+- Full selected-family content staging and cache validation passed. The generated
+  seed has 78 P2 bindings and 42 distinct admitted species, combined with its
+  resolved P1 campaign. Eligibility does not imply every species appeared in
+  the tested area.
+- The real Forest of Hope scene rendered. P2 actors initialized and moved
+  naturally, and ordinary keyboard input moved the captain and produced punches.
+- A native population check reached the real AP server. Its location, received
+  item and AP identity persisted across restart.
+- Ordinary pause, **Go to Sunset**, diary/summary confirmations and **Save**
+  produced `CAMPAIGN_SAVED generation=1`, a native card file and a campaign
+  checkpoint. A fresh process loaded that unchanged checkpoint, displayed day 3
+  (`CAMPAIGN_RESUMED day=3`) and rejoined the saved AP room.
+
+The qualified Linux executable SHA-256 is
+`800bc863f1cbb9437c9da4dfdc7d0df7d30cfddd4628dbcf5f92185ff7f117f6`
+(native source `92b77add2baaa99af6d437c6820e0e396609837c`). The player manifest
+fingerprint is
+`2ae2ec6d57a2a1cefdac488daf9056a42a48e83edb8a79905532f13f61bc0ccd`.
+The mixed-journal restart fix is included through PR #1208. Exact seed, APWorld,
+YAML, card and checkpoint hashes, raw logs and screenshot evidence are recorded
+in [the #1153 qualification report](https://github.com/4laric/pikmin-randomizer/issues/1153#issuecomment-5964832141).
+
+**Limits:** ordinary enemy combat and corpse delivery/check receipts have not
+been accepted in this combined-seed run. This is not certification of all
+admitted families' behavior or co-op support. Three absent ship-part animation
+clips are a P1 baseline metadata/bundle limitation; native substitutes dummy
+animations. The existing player installation and saves were preserved.
+
+For the remaining combat playtest, start the generated seed normally, encounter
+both a P1 and a P2 enemy, and earn their actual manifest check IDs through the required
 delivery or defeat. Save normally, exit and resume, then reconnect the client
 and restart the server using its existing save. Verify enemy identities and
 progress persist without duplicate awards. Synthetic events, forced deaths,
