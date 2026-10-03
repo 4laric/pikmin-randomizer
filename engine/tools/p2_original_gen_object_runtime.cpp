@@ -86,7 +86,7 @@ public:int idle()override{
  if(!pc_randomizer_ready()||!naviMgr||!pikiMgr||!itemMgr||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
  auto*n=naviMgr->getActiveNavi();if(!n||!n->getCurrState()||n->getCurrState()->getID()!=NAVISTATE_Walk)return result;
  require(!GameStat::orimaDead&&n->mHealth>1,"captain alive");int count=0;Iterator it(pikiMgr);for(it.first();!it.isDone();it.next())++count;if(count!=20)return result;
- std::printf("ORIGINAL_GEN_OBJECT_BASELINE pikmin=20 window=960x540\n");run();return result;
+ std::printf("ORIGINAL_GEN_OBJECT_BASELINE pikmin=20 window=960x540\n");std::fflush(nullptr);run();return result;
  }
 };
 }
