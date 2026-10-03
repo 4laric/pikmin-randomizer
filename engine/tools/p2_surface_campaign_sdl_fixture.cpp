@@ -195,7 +195,7 @@ public:
             if(resumePhase)verifyResume();
             Generator* gen;FOREACH_NODE_REUSE(Generator,generatorList->mGenListHead->mChild,gen){
                 policies.push_back({gen,gen->mCarryOverFlags,gen->mDayLimit});
-                std::printf("P2_SURFACE_FIXTURE_SOURCE flags=%u count=%d deadline=%d latest=%d\n",gen->mCarryOverFlags,gen->mAliveCount,gen->mDayLimit,int(gen->mLatestSpawnCreature!=nullptr));}
+                std::printf("P2_SURFACE_FIXTURE_SOURCE flags=%u count=%d deadline=%d latest=%d name=%08x version=%08x disk=%08x object=%08x area=%08x type=%08x list=%d\n",gen->mCarryOverFlags,gen->mAliveCount,gen->mDayLimit,int(gen->mLatestSpawnCreature!=nullptr),gen->mGeneratorName.mId,gen->mGeneratorVersion.mId,gen->_70,gen->mGenObject?gen->mGenObject->mID:0,gen->mGenArea?gen->mGenArea->mID:0,gen->mGenType?gen->mGenType->mID:0,gen->mGeneratorListIdx);}
             tick=0;
         }
         ++tick;

@@ -333,10 +333,14 @@ public:
 
 	virtual ~PikiHeadMgr() { } // _48 (weak)
 	virtual Creature* birth(); // _78
+#if defined(PIKI_PC_PORT)
+	Creature* birthOriginalP2(GoalItem* owner);
+#endif
 
 	static bool buryMode;
 
 protected:
+	Creature* birthWithFieldLimit(int limit, bool allowBuriedExtra);
 	virtual Creature* createObject(); // _80
 
 	// _00     = VTBL 1

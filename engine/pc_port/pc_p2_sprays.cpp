@@ -12,6 +12,7 @@
 #include "PlayerState.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#include "timing/pc_render_phase.h"
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -79,6 +80,7 @@ bool pc_p2_sprays_bind(p2originalresource::ResourceState* state,
 }
 bool pc_p2_spicy_active(const Piki* p) { return p && p->mP2Spicy.active(); }
 void pc_p2_spicy_tick(Piki* p) {
+    if (!pc_render_is_authoritative()) return;
     if (!p->isAlive()) { p->mP2Spicy.clear(); return; }
     if (gameplay() && p->getState() == PIKISTATE_P2Dope)
         static_cast<DopeState*>(p->getCurrState())->animate(p,gsys->getFrameTime());

@@ -18,6 +18,7 @@
 #include "Navi.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_original_piki_origin.h"
+#include "pc_p2_source_body.h"
 #include "pc_p2_original_piki_recruit.h"
 #endif
 #if defined(PIKI_PC_PORT)
@@ -2050,8 +2051,8 @@ void Navi::releasePikis()
     // A mixed diagnostic scene must not change ordinary-only P1 disbanding.
     bool originalDisband=false;
     if(pc_p2_original_piki_recruit_pair_ready())for(int i=0;i<pikiCount;++i){
-        OriginalPikiBody body;
-        if(pc_p2_original_piki_body_query(pikiList[i],body)){originalDisband=true;break;}
+        PcP2SourceBody body;
+        if(pc_p2_source_body_query(pikiList[i],body)!=PcP2SourceBodyKind::None){originalDisband=true;break;}
     }
 #endif
 	for (pikiIdx = 0; pikiIdx < pikiCount; pikiIdx++) {

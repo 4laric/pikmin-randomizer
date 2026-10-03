@@ -1,3 +1,4 @@
+#include "pc_p2_source_body.h"
 #include "DebugLog.h"
 #include "pc_p2_gas_cloud.h"
 #if defined(PIKI_PC_PORT)
@@ -133,6 +134,7 @@ void Piki::doKill()
  // Retire before physical pool reuse; selected SAVE restoration requires its
  // separately authenticated selected survivor body, not this old pointer.
  pc_p2_cave_campaign_party_forget(this);
+ pc_p2_source_body_forget_external(this);
  pc_p2_original_piki_origin_forget(this);
 #endif
 	pikiMgr->kill(this);

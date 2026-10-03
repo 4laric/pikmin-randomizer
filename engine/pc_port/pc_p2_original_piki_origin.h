@@ -84,3 +84,11 @@ bool pc_p2_original_piki_body_color_access(const Piki*,int baseColor) noexcept;
 
 // Bootstrap-only read view of the successfully installed immutable catalog.
 const std::string& pc_p2_original_piki_catalog_fingerprint() noexcept;
+
+// Durable ancestry is body.origin (literal successful attempt index, not a
+// shared generator UID or positional guess). Native lifetime is a monotonic
+// actual association incarnation, process-local and retired before pool reuse.
+// A fresh process resolves saved durable ancestry to its new native handles.
+struct OriginalPikiBodyHandle {OriginalPikiBody body;std::uint64_t nativeLifetime=0;};
+bool pc_p2_original_piki_body_handle(const Piki*,OriginalPikiBodyHandle&);
+bool pc_p2_original_piki_body_current(const Piki*,std::uint64_t)noexcept;

@@ -45,7 +45,7 @@ struct SourceBank::Impl {
    if(!p2posefamily::Bank::validFrames(frames,count,duration)||table.motions[k].name!=name+".bca"||table.motions[k].duration!=duration||joints->clips[k].name!=name||joints->clips[k].duration!=duration)return fail(e,"Honey pose/event/attachment clip mismatch");
    clocks[k]=clock(table.motions[k]);if(!clocks[k].valid())return fail(e,"Honey source clock invalid");
    std::vector<Shape*> shapes;if(!p2posefamily::loadFamilyClip(bank,name,stem,count,duration,frames,shared,total,shapes,e))return false;
-   for(int i=0;i<count;++i){char suffix[16];std::snprintf(suffix,sizeof(suffix),"_%02d.mod",i);std::string expected,bytes;if(!(in>>expected)||!p2retail::hash(expected)||!read("assets/"+p2poseload::stemPath(false,stem,i),bytes)||hash(bytes)!=expected)return fail(e,"Honey sampled geometry hash differs from source receipt");closure+=expected;}
+   for(int i=0;i<count;++i){char suffix[16];std::snprintf(suffix,sizeof(suffix),"_%02d.mod",i);std::string expected,bytes;if(!(in>>expected)||!p2retail::hash(expected)||!read(p2poseload::stemPath(true,stem,i),bytes)||hash(bytes)!=expected)return fail(e,"Honey sampled geometry hash differs from source receipt");closure+=expected;}
   }
   std::string word;if(!(in>>word>>resource.gravity)||word!="gravity"||resource.gravity!=560.0f||(in>>word))return fail(e,"Honey actual source gravity invalid");
   if(!bank.owner()||!bank.basePose()||!p2original::pelplant::Geometry::admits(*bank.owner()))return fail(e,"Honey actual private flattened geometry missing");

@@ -5,6 +5,7 @@
 #include "pc_p2_original_piki_init.h"
 #include "pc_p2_original_piki_recruit.h"
 #include "pc_p2_original_piki_origin.h"
+#include "pc_p2_source_body.h"
 #include "pc_coop.h"
 #include "MoviePlayer.h"
 #include "gameflow.h"
@@ -228,8 +229,8 @@ void ActFree::procCollideMsg(Piki* piki, MsgCollide* msg)
         )) {
 #if defined(PIKI_PC_PORT)
         auto* captain=static_cast<Navi*>(collider);
-        OriginalPikiBody originalBody;
-        if(pc_p2_original_piki_body_query(piki,originalBody)
+        PcP2SourceBody originalBody;
+        if(pc_p2_source_body_query(piki,originalBody)!=PcP2SourceBodyKind::None
             &&(!captain->mKontroller||!captain->mOriginalP2ContactClock.formationable()))return;
         const bool movieActive=!gameflow.mMoviePlayer||gameflow.mMoviePlayer->mIsActive;
         const bool nativeEligible=captain->isAlive()&&piki->isAlive()&&piki->mIsCallable&&!piki->isDamaged();

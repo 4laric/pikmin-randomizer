@@ -14,6 +14,10 @@ void pc_p2_original_onyon_register();
 bool pc_p2_original_onyon_preflight(const std::vector<Generator*>&,std::string&);
 bool pc_p2_original_onyon_generator_init(Generator*,bool& handled,std::string&);
 bool pc_p2_original_onyon_identity(const Creature*,std::string&);
+namespace p2originalonyon { struct Root; }
+// Read immutable source metadata and the incarnation assigned by actual native
+// birth. A UID/color alone cannot authenticate a descendant's parent.
+bool pc_p2_original_onyon_root(const Creature*,p2originalonyon::Root&,std::string&);
 // Actual source body plus the verified original campaign bootstrap.
 bool pc_p2_original_onyon_campaign_owned(const Creature*);
 bool pc_p2_original_onyon_booted(const Creature*,bool&);

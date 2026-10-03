@@ -2,8 +2,14 @@
 #include "pc_p2_white.h"
 #include "pc_bbft.h"
 #include "PikiHeadItem.h"
+#include "pc_p2_original_sprout_native.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
+#include "pc_p2_bud_conversion_origin.h"
+#include "pc_p2_original_piki_init.h"
+#include "pc_p2_species.h"
+#include <cstdio>
+#include <cstdlib>
 #include "netplay/pc_netplay_present.h"
 #include "timing/pc_render_phase.h"
 #endif
@@ -172,6 +178,10 @@ void PikiHeadItem::setPermanentEffects(bool set)
  */
 void PikiHeadItem::doKill()
 {
+#if defined(PIKI_PC_PORT)
+    pc_p2_original_sprout_forget(this);
+    p2budorigin::registry().forget(this);
+#endif
 	ItemCreature::doKill();
 	GameStat::mePikis.dec(mSeedColor);
 	GameStat::workPikis.inc(mSeedColor);
@@ -202,7 +212,7 @@ f32 PikiHeadItem::getiMass()
 void PikiHeadItem::setColor(int color)
 {
     mP2Purple=false;mP2White=false;mP2Bulbmin=false;
-    if (!pc_bbft_color_access(color)) color = Red;
+    if (!pc_p2_original_sprout_color(this,color) && !pc_bbft_color_access(color)) color = Red;
 	mSeedColor = color;
 }
 
@@ -277,12 +287,41 @@ void PikiHeadItem::refresh(Graphics& gfx)
  */
 bool PikiHeadItem::interactBikkuri(immut InteractBikkuri& act)
 {
+#if defined(PIKI_PC_PORT)
+    const bool sourceSprout=pc_p2_original_sprout_owned(this);
+    p2budorigin::Record conversion;
+    const bool converted=p2budorigin::registry().head(this,conversion);
+    if(sourceSprout&&converted){std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL double HEAD ancestry\n");std::abort();}
+    if(sourceSprout){p2originalonyon::MemberRecord record;std::uint64_t handle=0;std::string error;
+        if(pc_p2_original_sprout_head_query(this,record,handle,error)!=p2originalonyon::QueryResult::Present)return false;}
+    p2budorigin::PendingEmission transfer;
+    std::string originError;
+    if(converted&&(pc_p2_original_piki_init_busy()
+        ||!p2budorigin::registry().prepareTransfer(this,unsigned(pc_p2_species(this)),transfer,originError)))return false;
+    Piki* piki=nullptr;
+    if(converted)piki=static_cast<Piki*>(pikiMgr->birthOriginalP2Sprout(this));
+    else {
+#endif
 	PikiMgr::meBirthMode = true;
-	Piki* piki           = (Piki*)pikiMgr->birth();
+	Piki* ordinary = static_cast<Piki*>(
+#if defined(PIKI_PC_PORT)
+        sourceSprout?pikiMgr->birthOriginalP2Sprout():
+#endif
+        pikiMgr->birth());
 	PikiMgr::meBirthMode = false;
+#if defined(PIKI_PC_PORT)
+        piki=ordinary;
+    }
+#else
+    Piki* piki=ordinary;
+#endif
 
 	if (piki) {
 		Navi* navi = naviMgr->getNavi();
+#if defined(PIKI_PC_PORT)
+        PcOriginalPikiInitScope sourceInit((converted||sourceSprout)?piki:nullptr);
+        if((converted||sourceSprout)&&!sourceInit.valid()){std::fprintf(stderr,"BUD_BODY_INIT_SCOPE_REFUSED\n");std::abort();}
+#endif
 		piki->init(navi);
 		piki->initColor(mSeedColor);
         if(mP2Purple)pc_p2_make_purple(piki);
@@ -292,12 +331,24 @@ bool PikiHeadItem::interactBikkuri(immut InteractBikkuri& act)
 #endif
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
+#if defined(PIKI_PC_PORT)
+        if(sourceSprout){if(!sourceInit.consumed()){std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL source init not consumed\n");std::abort();}
+            pc_p2_original_sprout_to_body(this,piki);}
+#endif
 
 		PikiMgr::meNukiMode = true;
 		piki->changeMode(PikiMode::FreeMode, nullptr);
 		PikiMgr::meNukiMode = false;
 		piki->mFSM->transit(piki, PIKISTATE_AutoNuki);
 
+#if defined(PIKI_PC_PORT)
+        if(converted){
+            const char* reason=nullptr;
+            if(!sourceInit.consumed()||!p2budorigin::registry().adoptBody(std::move(transfer),piki,reason)){
+                std::fprintf(stderr,"BUD_BODY_ADOPTION_REFUSED %s\n",reason?reason:"source init not consumed");std::abort();
+            }
+        }
+#endif
 		kill(false);
 		return true;
 	}
@@ -309,12 +360,41 @@ bool PikiHeadItem::interactBikkuri(immut InteractBikkuri& act)
  */
 bool PikiHeadItem::interactSwallow(immut InteractSwallow& act)
 {
+#if defined(PIKI_PC_PORT)
+    const bool sourceSprout=pc_p2_original_sprout_owned(this);
+    p2budorigin::Record conversion;
+    const bool converted=p2budorigin::registry().head(this,conversion);
+    if(sourceSprout&&converted){std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL double HEAD ancestry\n");std::abort();}
+    if(sourceSprout){p2originalonyon::MemberRecord record;std::uint64_t handle=0;std::string error;
+        if(pc_p2_original_sprout_head_query(this,record,handle,error)!=p2originalonyon::QueryResult::Present)return false;}
+    p2budorigin::PendingEmission transfer;
+    std::string originError;
+    if(converted&&(pc_p2_original_piki_init_busy()
+        ||!p2budorigin::registry().prepareTransfer(this,unsigned(pc_p2_species(this)),transfer,originError)))return false;
+    Piki* piki=nullptr;
+    if(converted)piki=static_cast<Piki*>(pikiMgr->birthOriginalP2Sprout(this));
+    else {
+#endif
 	PikiMgr::meBirthMode = true;
-	Piki* piki           = (Piki*)pikiMgr->birth();
+	Piki* ordinary = static_cast<Piki*>(
+#if defined(PIKI_PC_PORT)
+        sourceSprout?pikiMgr->birthOriginalP2Sprout():
+#endif
+        pikiMgr->birth());
 	PikiMgr::meBirthMode = false;
+#if defined(PIKI_PC_PORT)
+        piki=ordinary;
+    }
+#else
+    Piki* piki=ordinary;
+#endif
 
 	if (piki) {
 		Navi* navi = naviMgr->getNavi();
+#if defined(PIKI_PC_PORT)
+        PcOriginalPikiInitScope sourceInit((converted||sourceSprout)?piki:nullptr);
+        if((converted||sourceSprout)&&!sourceInit.valid()){std::fprintf(stderr,"BUD_BODY_INIT_SCOPE_REFUSED\n");std::abort();}
+#endif
 		piki->init(navi);
 		piki->initColor(mSeedColor);
         if(mP2Purple)pc_p2_make_purple(piki);
@@ -324,7 +404,19 @@ bool PikiHeadItem::interactSwallow(immut InteractSwallow& act)
 #endif
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
+#if defined(PIKI_PC_PORT)
+        if(sourceSprout){if(!sourceInit.consumed()){std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL source init not consumed\n");std::abort();}
+            pc_p2_original_sprout_to_body(this,piki);}
+#endif
 		piki->mFSM->transit(piki, PIKISTATE_AutoNuki);
+#if defined(PIKI_PC_PORT)
+        if(converted){
+            const char* reason=nullptr;
+            if(!sourceInit.consumed()||!p2budorigin::registry().adoptBody(std::move(transfer),piki,reason)){
+                std::fprintf(stderr,"BUD_BODY_ADOPTION_REFUSED %s\n",reason?reason:"source init not consumed");std::abort();
+            }
+        }
+#endif
 		kill(false);
 
 		return act.actPiki(piki);

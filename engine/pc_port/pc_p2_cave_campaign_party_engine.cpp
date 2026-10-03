@@ -1,6 +1,11 @@
 #include "pc_p2_cave_campaign_party_engine.h"
 #include "pc_p2_species.h"
 #include "pc_p2_original_piki_origin.h"
+#include "pc_p2_source_body.h"
+#if __has_include("pc_p2_original_sprout_native.h")
+#include "pc_p2_original_sprout_native.h"
+#define PC_P2_PARTY_SOURCE_SPROUT_PROVIDER 1
+#endif
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
 #include "pc_p2_captain.h"
@@ -60,6 +65,13 @@ bool pc_p2_cave_campaign_party_capture(P2CaveCampaignParty& party,bool inside){
             return held("invalid_captain_fields");}}
     Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);
         if(!p->isAlive())continue;
+        PcP2SourceBody typed;
+        const auto kind=pc_p2_source_body_query(p,typed);
+        // Party3 cannot represent conversion/Onyon ancestry or an expired
+        // labelled root. Retain the tag and refuse before allocating keys or
+        // publishing capture; Party4's complete graph owns those families.
+        if(kind==PcP2SourceBodyKind::BudConversion||kind==PcP2SourceBodyKind::OnyonEmission
+           ||kind==PcP2SourceBodyKind::Unavailable)return held("typed_source_body_requires_graph");
         if(!p->getCurrState()||p->getCurrState()->getID()!=PIKISTATE_Normal||p->isStickTo())return held("unsettled_body");
         P2CavePartyBody b;
         const auto prior=nextProvenance.find(p);
@@ -95,6 +107,13 @@ bool pc_p2_cave_campaign_party_capture(P2CaveCampaignParty& party,bool inside){
         captured.bodies.push_back(b);}
     auto& heads=inside?captured.floorHeads:captured.surfaceHeads;heads.clear();
     Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){auto* h=static_cast<PikiHeadItem*>(*sprouts);
+#if defined(PC_P2_PARTY_SOURCE_SPROUT_PROVIDER)
+        // The retained tag survives an unavailable full lineage read. Party3
+        // cannot encode the source Onion family, including pending and stock.
+        if(pc_p2_original_sprout_head_tag(h))return held("typed_source_head_requires_graph");
+#endif
+        p2budorigin::Record converted;
+        if(p2budorigin::registry().head(h,converted))return held("typed_source_head_requires_graph");
         if(!h->canPullout()||!h->getCurrState()||h->getCurrState()->getID()!=PikiHeadAI::PIKIHEAD_Wait)return held("unsettled_head");
         P2CavePartyHead s;s.species=pc_p2_species(h);s.growth=h->mFlowerStage;s.owner=h->mPcOwner;
         s.parent=h->mParentOnion?int(h->mParentOnion->mOnionColour):-1;s.state=h->getCurrState()->getID();

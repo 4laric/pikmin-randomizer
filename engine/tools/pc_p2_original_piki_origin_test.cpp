@@ -1,10 +1,10 @@
 #include "pc_p2_original_piki_origin.h"
 #include "pc_p2_original_source_uid.h"
 #include <iostream>
-namespace{unsigned checks=0;bool permitted=false,zeroHash=false,notificationOK=true;std::uint64_t selected=1;OriginalPikiOrigin ticket;OriginalPikiBodyState selectedState;bool bodyPermitted=false;}
+namespace{unsigned checks=0;bool permitted=false,zeroHash=false,notificationOK=true;std::uint64_t selected=1;OriginalPikiOrigin ticket;OriginalPikiBodyState selectedState;bool bodyPermitted=false,callbackExposedNative=false,forgetDuringCallback=false;}
 bool pc_p2_cave_campaign_survivor_permit(const std::string& k,std::uint32_t u,std::uint32_t a,std::uint64_t x,const std::string& f,std::uint64_t* g,std::uint8_t h[32]){if(!permitted||k!=ticket.sourceKey||u!=ticket.recordUid||a!=ticket.attempt||x!=ticket.activation||f!=ticket.catalogFingerprint)return false;*g=selected;for(int i=0;i<32;++i)h[i]=zeroHash?0:7;return true;}
 bool pc_p2_cave_campaign_survivor_body(const std::string& k,std::uint32_t u,std::uint32_t a,std::uint64_t x,const std::string& f,OriginalPikiBodyState& state,std::uint64_t* g,std::uint8_t h[32]){if(!bodyPermitted)return false;if(!pc_p2_cave_campaign_survivor_permit(k,u,a,x,f,g,h))return false;state=selectedState;return true;}
-bool pc_p2_cave_campaign_party_associate_birth(Piki*,const char*,std::uint32_t,std::uint32_t,std::uint64_t,const char*){return notificationOK;}
+bool pc_p2_cave_campaign_party_associate_birth(Piki* p,const char*,std::uint32_t,std::uint32_t,std::uint64_t,const char*){OriginalPikiBodyHandle h;callbackExposedNative|=pc_p2_original_piki_body_handle(p,h);if(forgetDuringCallback)pc_p2_original_piki_origin_forget(p);return notificationOK;}
 #define CHECK(x) do{++checks;if(!(x)){std::cerr<<"FAIL "<<checks<<" "<<#x<<"\n";return 1;}}while(false)
 int main(){std::string e,fp(64,'a');int slots[3]={};auto p=reinterpret_cast<Piki*>(&slots[0]),q=reinterpret_cast<Piki*>(&slots[1]);
  CHECK(p2original::originalSourceCatalogUid("tutorial/defaultgen.txt#5")==0x521c1cbeu);
@@ -63,10 +63,18 @@ int main(){std::string e,fp(64,'a');int slots[3]={};auto p=reinterpret_cast<Piki
  CHECK(pc_p2_original_piki_body_restore_saved(p,body)); // selected older SAVE remains legitimate
  pc_p2_original_piki_origin_forget(p);CHECK(pc_p2_original_piki_origin_associate_birth(p,o));CHECK(!pc_p2_original_piki_body_query(p,bodyOut));CHECK(!pc_p2_original_piki_body_recruited(p));pc_p2_original_piki_origin_forget(p);
  auto sceneBody=body;sceneBody.origin.activation=8;sceneBody.state={0,true,true};
+ forgetDuringCallback=true;CHECK(!pc_p2_original_piki_body_associate_birth(p,sceneBody));forgetDuringCallback=false;
+ CHECK(pc_p2_original_piki_body_birth_admit(sceneBody));
  CHECK(pc_p2_original_piki_body_associate_birth(p,sceneBody));
  CHECK(pc_p2_original_piki_body_wild(p));CHECK(pc_p2_original_piki_body_color_access(p,0));
+ OriginalPikiBodyHandle liveHandle;CHECK(pc_p2_original_piki_body_handle(p,liveHandle));
+ CHECK(liveHandle.nativeLifetime&&liveHandle.body.origin.attempt==sceneBody.origin.attempt&&liveHandle.body.origin.activation==sceneBody.origin.activation);
+ CHECK(pc_p2_original_piki_body_current(p,liveHandle.nativeLifetime));CHECK(!callbackExposedNative);
+ CHECK(!pc_p2_original_piki_body_current(p,0));CHECK(!pc_p2_original_piki_body_current(q,liveHandle.nativeLifetime));
  pc_p2_original_piki_origin_scene_exit();
  CHECK(!pc_p2_original_piki_origin_query(p,out));CHECK(!pc_p2_original_piki_body_query(p,bodyOut));
+ CHECK(!pc_p2_original_piki_body_current(p,liveHandle.nativeLifetime));
+ auto unchangedHandle=liveHandle;CHECK(!pc_p2_original_piki_body_handle(p,unchangedHandle));CHECK(unchangedHandle.nativeLifetime==liveHandle.nativeLifetime);
  CHECK(!pc_p2_original_piki_body_wild(p));CHECK(!pc_p2_original_piki_body_color_access(p,0));
  CHECK(pc_p2_original_piki_origin_install(fp,{row},e));
  CHECK(!pc_p2_original_piki_body_birth_admit(sceneBody));
@@ -74,6 +82,12 @@ int main(){std::string e,fp(64,'a');int slots[3]={};auto p=reinterpret_cast<Piki
  // Scene teardown does not revoke an authenticated selected SAVE rollback.
  ticket=sceneBody.origin;selectedState=sceneBody.state;
  CHECK(pc_p2_original_piki_body_restore_saved(q,sceneBody));
+ OriginalPikiBodyHandle restoredHandle;CHECK(pc_p2_original_piki_body_handle(q,restoredHandle));
+ CHECK(restoredHandle.nativeLifetime>liveHandle.nativeLifetime&&restoredHandle.body.origin.attempt==liveHandle.body.origin.attempt);
+ CHECK(!pc_p2_original_piki_body_current(q,liveHandle.nativeLifetime));
+ pc_p2_original_piki_origin_forget(q);CHECK(pc_p2_original_piki_body_restore_saved(p,sceneBody));
+ CHECK(pc_p2_original_piki_body_handle(p,restoredHandle)&&restoredHandle.nativeLifetime>liveHandle.nativeLifetime);
+ CHECK(!pc_p2_original_piki_body_current(p,liveHandle.nativeLifetime));
  pc_p2_original_piki_origin_scene_exit();CHECK(!pc_p2_original_piki_body_query(q,bodyOut));
  std::cout<<"PASS "<<checks<<" original Piki origin controls; cave ticket mocked, no native birth\n";
 }

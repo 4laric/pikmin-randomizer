@@ -5,12 +5,19 @@
 // Existing day-boundary saves have no extension. The card's hash authenticates
 // this descriptor and the shared typed party together with its cache/stock.
 struct P2SurfaceSource {
-    unsigned flags=0;
+    std::uint32_t flags=0;
     int dayLimit=-1, aliveCount=0, latestSpawnDay=-1, respawnInterval=0;
     P2CavePartyPoint position,offset;
-    bool valid() const{return flags<=15&&dayLimit>=-1&&dayLimit<=32767&&(aliveCount==0||aliveCount==1)
+    bool valid() const{return dayLimit>=-1&&dayLimit<=32767&&(aliveCount==0||aliveCount==1)
         &&latestSpawnDay>=-1&&latestSpawnDay<30&&respawnInterval>=-1&&respawnInterval<=32767
         &&position.valid()&&offset.valid();}
+    bool readFlags(std::istream& in){
+        std::string token;if(!(in>>token)||token.empty()||token.size()>10
+            ||token.find_first_not_of("0123456789")!=std::string::npos)return false;
+        std::uint64_t value=0;for(char c:token)value=value*10+unsigned(c-'0');
+        if(value>UINT32_MAX)return false;
+        flags=std::uint32_t(value);return true;
+    }
 };
 struct P2SurfaceSession {
     bool present=false;
@@ -37,7 +44,7 @@ struct P2SurfaceSession {
             unsigned count=0;
             if(!(in>>count)||count>4096)return false;
             next.sources.resize(count);
-            for(auto& source:next.sources)if(!(in>>source.flags>>source.dayLimit>>source.aliveCount>>source.latestSpawnDay>>source.respawnInterval)
+            for(auto& source:next.sources)if(!source.readFlags(in)||!(in>>source.dayLimit>>source.aliveCount>>source.latestSpawnDay>>source.respawnInterval)
                 ||!source.position.read(in)||!source.offset.read(in)||!source.valid())return false;
         }
         if(!next.party.read(in))return false;

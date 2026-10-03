@@ -61,5 +61,4 @@ bool readOnyons(const std::string& path,std::vector<OnyonRecord>& out,std::strin
  return readOnyonsFromBytes(bytes,out,e);
 }
 bool parseOnyons(const std::string& bytes,std::vector<OnyonRecord>& out,std::string& e){return readOnyonsFromBytes(bytes,out,e);}
-
 }

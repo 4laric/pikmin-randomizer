@@ -1,4 +1,5 @@
 #include "pc_p2_original_onyon_native.h"
+#include "pc_p2_original_onyon_lineage.h"
 #include "pc_randomizer.h"
 #include "ItemMgr.h"
 #include "GoalItem.h"
@@ -15,10 +16,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include <limits>
 namespace {
 constexpr unsigned type=0x70326f6eu,version=0x4f4e3031u; // p2on / ON01
 std::map<unsigned,p2original::OnyonRecord> records;
 std::map<const Creature*,unsigned> actors;
+std::map<const Creature*,std::uint64_t> incarnations;
+std::uint64_t nextIncarnation=1;
 std::map<const Generator*,unsigned> generators;
 std::function<PcOriginalOnyonProgress()> progress;
 std::function<void(int)> notify;
@@ -44,7 +48,7 @@ bool pc_p2_original_onyon_install(const std::vector<p2original::OnyonRecord>& ro
  for(const auto& r:rows){if(!p2original::validateOnyon(r,e))return false;if(!next.emplace(r.uid,r).second){e="duplicate original onyn UID";return false;}}
  records.swap(next);progress=std::move(query);notify=std::move(onBooted);e.clear();return true;
 }
-void pc_p2_original_onyon_unload(){admitted=false;actors.clear();generators.clear();records.clear();progress={};notify={};}
+void pc_p2_original_onyon_unload(){admitted=false;actors.clear();incarnations.clear();generators.clear();records.clear();progress={};notify={};}
 void pc_p2_original_onyon_register(){auto* f=GenObjectFactory::factory;if(!f)fail("native factory unavailable");for(int i=0;i<f->mSpawnerCount;++i)if(f->mSpawnerInfo[i].mID==type)return;if(f->mSpawnerCount>=f->mMaxSpawners)fail("native factory capacity exhausted");f->registerMember(type,make,"original P2 onyn",version);}
 GenObjectOriginalOnyon::GenObjectOriginalOnyon():GenObject(type,"original P2 onyn"){}
 void GenObjectOriginalOnyon::doRead(RandomAccessStream& stream){if(mVersion!=version)fail("onyn adapter version mismatch");if(Generator::ramMode)return;unsigned next=unsigned(stream.readInt());row(next);uid=next;}
@@ -88,7 +92,8 @@ Creature* GenObjectOriginalOnyon::birth(BirthInfo& info){
  AppHeap heap;Creature* actor=itemMgr->birth(r.index==4?OBJTYPE_Ufo:OBJTYPE_Goal);if(!actor)fail("native onyn allocation failed");
  if(r.index!=4)static_cast<GoalItem*>(actor)->setColorType(r.index);
  actor->init(position);actor->mSRT.r.set(0,r.rotation[1]*0.017453292519943295f,0);actor->mFaceDirection=actor->mSRT.r.y;actor->mGenerator=info.mGenerator;
- actors.emplace(actor,uid);actor->startAI(0);
+ if(nextIncarnation==std::numeric_limits<std::uint64_t>::max())fail("original onyn birth incarnation exhausted");
+ actors.emplace(actor,uid);incarnations.emplace(actor,nextIncarnation++);actor->startAI(0);
  std::printf("P2_ORIGINAL_ONYON_BIRTH uid=%u index=%d after_boot=%d x=%.6f y=%.6f z=%.6f yaw=%.6f native_family=1 retail_model=0\n",uid,r.index,r.afterBoot,position.x,position.y,position.z,actor->mFaceDirection);
  return actor;
 }
@@ -100,6 +105,28 @@ bool pc_p2_original_onyon_generator_init(Generator* gen,bool& handled,std::strin
  if(actor){gen->mLatestSpawnCreature=actor;gen->mAliveCount=1;}e.clear();return true;
 }
 bool pc_p2_original_onyon_identity(const Creature* actor,std::string& out){auto i=actors.find(actor);if(i==actors.end())return false;const auto& r=row(i->second);out=r.sourceSha+":"+r.sourceKey;return true;}
+bool pc_p2_original_onyon_root(const Creature* actor,p2originalonyon::Root& out,std::string& e){
+ auto i=actors.find(actor);auto lifetime=incarnations.find(actor);
+ if(!admitted||!pc_randomizer_original_session()||i==actors.end()||lifetime==incarnations.end()){
+  e="source Onion root lacks current native campaign admission";return false;
+ }
+ const auto& r=row(i->second);
+ const auto* generator=actor?actor->mGenerator:nullptr;
+ const auto binding=generators.find(generator);
+ const auto* object=generator?dynamic_cast<const GenObjectOriginalOnyon*>(generator->mGenObject):nullptr;
+ if(binding==generators.end()||binding->second!=r.uid||!object||object->uid!=r.uid){
+  e="source Onion root lost its actual admitted generator binding";return false;
+ }
+ if(r.index<0||r.index>2||!actor||actor->mObjType!=OBJTYPE_Goal||static_cast<const GoalItem*>(actor)->mOnionColour!=r.index){
+  e="source Onion root is not its admitted RGB physical receiver";return false;
+ }
+ p2originalonyon::Root candidate;candidate.sessionFingerprint=pc_randomizer_session_fingerprint();
+ candidate.sourceSha=r.sourceSha;candidate.sourceKey=r.sourceKey;candidate.sourceUid=r.uid;
+ candidate.species=static_cast<std::uint8_t>(r.index);candidate.incarnation=lifetime->second;
+ if(candidate.sessionFingerprint.size()!=64){e="source Onion root requires a selected immutable campaign";return false;}
+ for(char c:candidate.sessionFingerprint)if(!((c>='0'&&c<='9')||(c>='a'&&c<='f'))){e="source Onion root campaign fingerprint invalid";return false;}
+ out=std::move(candidate);e.clear();return true;
+}
 bool pc_p2_original_onyon_campaign_owned(const Creature* actor){return pc_randomizer_original_session()&&actors.count(actor)!=0;}
 bool pc_p2_original_onyon_booted(const Creature* actor,bool& out){auto i=actors.find(actor);if(i==actors.end())return false;const auto& r=row(i->second);if(r.index==4)return false;out=bool(progress().boot&(1u<<r.index));return true;}
 bool pc_p2_original_onyon_access(const Creature* actor){bool state=false;return pc_p2_original_onyon_booted(actor,state)&&state;}

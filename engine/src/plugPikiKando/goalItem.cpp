@@ -1,5 +1,6 @@
 #include "pc_p2_original_pelplant_native.h"
 #include "pc_p2_original_onyon_native.h"
+#include "pc_p2_original_sprout_native.h"
 #include "pc_p2_original_piki_init.h"
 #include <optional>
 #include "pc_p2_original_corpse_native.h"
@@ -370,8 +371,32 @@ Vector3f GoalItem::getSuckPos()
 void GoalItem::suckMe(Pellet* item)
 {
 	PelletConfig* config = item->mConfig;
+    const bool sourceReceiver=pc_p2_original_onyon_campaign_owned(this);
+    p2originalonyon::RewardPlan sourceReward;
+    p2original::CorpseRecord sourceReceipt;
+    bool sourceRewardPending=false;
+    if(sourceReceiver){
+        if(!pc_p2_original_corpse_query(item,sourceReceipt)){
+            std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL reward parent is not an admitted corpse or typed numeric child\n");std::abort();
+        }
+        if(!sourceReceipt.consumed){
+            p2originalonyon::SeedCause cause;
+            cause.kind=p2originalonyon::CauseKind::Corpse;cause.catalogFingerprint=sourceReceipt.identity.catalog;
+            cause.sourceUid=sourceReceipt.identity.generator;cause.sourceType=sourceReceipt.sourceType;
+            cause.ordinal=sourceReceipt.identity.ordinal;cause.epoch=sourceReceipt.identity.epoch;cause.activation=sourceReceipt.identity.activation;
+            std::string error;
+            if(!pc_p2_original_sprout_reward_prepare(this,cause,sourceReceipt.yield,sourceReward,error)){
+                std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL reward %s\n",error.c_str());std::abort();
+            }
+            sourceRewardPending=true;
+        }
+    }
     unsigned originalCorpseGrant=0;
     const bool originalCorpse=pc_p2_original_corpse_onion(item,this,originalCorpseGrant);
+    if(sourceRewardPending){
+        if(!originalCorpse||originalCorpseGrant!=sourceReceipt.yield){std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL reward receipt changed\n");std::abort();}
+        pc_p2_original_sprout_reward_commit(this,sourceReward);
+    }
     // Non-ship pellets reach this callback after their absorption finishes.
     // Corpse IDs identify the actual spawned species, including replacements.
     if (!originalCorpse && pc_randomizer_collection_checks() && config->mPelletType() == PELTYPE_Corpse
@@ -459,6 +484,9 @@ void GoalItem::suckMe(Pellet* item)
 void GoalItem::enterGoal(Piki* piki)
 {
     if (pc_p2_ship_special(piki)) { pc_p2_ship_deposit(piki); return; }
+    if(pc_p2_original_onyon_campaign_owned(this)){std::string error;
+        if(!pc_p2_original_sprout_deposit(this,piki,error)){
+            std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL deposit %s\n",error.c_str());std::abort();}}
 	int old = mItemAnimator.mMotionIdx;
 	playEventSound(this, SE_PIKI_GOHOME);
 	pikiInfMgr.incPiki(piki);
@@ -478,6 +506,9 @@ void GoalItem::enterGoal(Piki* piki)
 void GoalItem::exitPikis(int pikis, int requesterNaviId)
 {
     if (pc_p2_original_onyon_campaign_owned(this)) {
+        p2originalonyon::MemberRecord selected;std::string error;
+        // Unknown stock must not reserve a queue debt before actual birth.
+        if(!pc_p2_original_sprout_stock(this,selected,error))return;
         int available = 100 - int(GameStat::mapPikis) - itemMgr->getContainerExitCount();
         int stored = mHeldPikis[Leaf] + mHeldPikis[Bud] + mHeldPikis[Flower] - mPikisToExit;
         if (available <= 0 || stored <= 0 || pikis <= 0) return;
@@ -511,6 +542,13 @@ Piki* GoalItem::exitPiki()
     const bool original = pc_p2_original_onyon_campaign_owned(this);
     if (original && (mPikisToExit <= 0
         || mHeldPikis[Leaf] + mHeldPikis[Bud] + mHeldPikis[Flower] <= 0)) return nullptr;
+    p2originalonyon::MemberRecord sourceStock;
+    if(original){std::string error;
+        if(!pc_p2_original_sprout_stock(this,sourceStock,error))return nullptr;
+        const int selected=pikiInfMgr.mPikiCounts[mOnionColour][Flower]>0?Flower:
+            (pikiInfMgr.mPikiCounts[mOnionColour][Bud]>0?Bud:Leaf);
+        if(sourceStock.state.maturity!=selected)return nullptr;
+    }
 	int leg = gsys->getRand(1.0f) * 3.0f;
 	if (leg >= 3) {
 		leg = 2;
@@ -581,6 +619,7 @@ Piki* GoalItem::exitPiki()
 #if defined(PIKI_PC_PORT)
 	if (pc_vs_active()) piki->mPlayerId = mPcOwner;
 #endif
+    if(original)pc_p2_original_sprout_withdraw(this,piki,sourceStock);
 	pikiInfMgr.decPiki(piki);
 	piki->mSRT.s.set(1.0f, 1.0f, 1.0f);
 	piki->mFSM->transit(piki, PIKISTATE_Normal);
