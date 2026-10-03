@@ -67,6 +67,36 @@ class StageControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Red5 model'):
             self.rewrite(self.source().replace(b'50rp', b'10rp'))
 
+    def test_starting_squad_is_native_one_shot_only(self):
+        data = self.rewrite(self.source(), True)
+        daily, first = stage.split_starting_generators(data)
+        self.assertEqual(daily[:20], data[:20])
+        self.assertEqual(first[:20], data[:20])
+        self.assertEqual(struct.unpack_from('>I', first, 20)[0], 20)
+        self.assertEqual(struct.unpack_from('>I', daily, 20)[0], 7)
+        self.assertEqual(first[24:], data[24:24+20*96])
+        self.assertEqual(daily[24:], data[24+20*96:])
+        self.assertNotIn(b'ikip', daily[24:])
+
+    def test_starting_split_refuses_duplicate_identity(self):
+        data = bytearray(self.rewrite(self.source(), True))
+        struct.pack_into('<I', data, 24+96+8, 1)
+        with self.assertRaisesRegex(ValueError, 'unique'):
+            stage.split_starting_generators(bytes(data))
+
+    def test_starting_split_refuses_missing_and_extra_body(self):
+        data = self.rewrite(self.source(), True)
+        for changed in (data[:24]+data[120:], data+data[24:120]):
+            changed = bytearray(changed)
+            struct.pack_into('>I', changed, 20, 26 if len(changed)<len(data) else 28)
+            with self.assertRaisesRegex(ValueError, 'twenty'):
+                stage.split_starting_generators(bytes(changed))
+
+    def test_starting_split_refuses_bad_framing(self):
+        data = self.rewrite(self.source(), True)
+        for changed in (data[:23], b'BAD!'+data[4:], data[:20]+struct.pack('>I', 26)+data[24:]):
+            with self.assertRaises(ValueError):stage.split_starting_generators(changed)
+
     def test_unknown_generator_refuses(self):
         with self.assertRaisesRegex(ValueError, 'Unexpected'):
             self.rewrite(self.source().replace(b'preview ship', b'unknown ship'))
