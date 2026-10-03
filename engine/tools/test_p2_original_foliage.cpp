@@ -27,9 +27,9 @@ struct ControlledEngine final:Engine {
 };
 CatalogRow row(unsigned uid,unsigned source=91,unsigned count=1){CatalogRow r;r.course="tutorial";r.member="plantsgen.txt";r.sourceKey="literal-source:"+std::to_string(uid);r.index=uid;r.enemy.uid=uid;r.enemy.source=source;r.enemy.count=count;return r;}
 void identityAndResources(){
- std::string e;for(auto source:{46u,47u,49u,51u,52u,80u,88u,90u,91u,92u})CHECK(supported(source));CHECK(!supported(50));
+ std::string e;for(auto source:{46u,47u,49u,51u,52u,80u,81u,88u,90u,91u,92u})CHECK(supported(source));CHECK(!supported(50));
  auto literal=row(1);CHECK(decode(literal,e));
- for(auto source:{0u,48u,50u,53u,81u,89u,93u}){auto bad=literal;bad.enemy.source=source;CHECK(!decode(bad,e));}
+ for(auto source:{0u,48u,50u,53u,89u,93u}){auto bad=literal;bad.enemy.source=source;CHECK(!decode(bad,e));}
  for(auto version:{"0000","0001","?????"}){auto bad=literal;bad.enemy.generatorVersion=version;CHECK(!decode(bad,e));}
  auto bad=literal;bad.enemy.generatorTail={"0"};CHECK(!decode(bad,e));bad=literal;bad.enemy.uid=0;CHECK(!decode(bad,e));
  bad=literal;bad.enemy.pelletColor=0;bad.enemy.pelletSize=1;CHECK(!decode(bad,e));
@@ -89,7 +89,7 @@ void allNineOwnership(){
 }
 void literalCylinderPlanes(){
  for(auto source:{51u,52u,80u,88u,90u}){CHECK(cylinderSource(source));}
- for(auto source:{46u,47u,49u,91u}){CHECK(!cylinderSource(source));}
+ for(auto source:{46u,47u,49u,81u,91u}){CHECK(!cylinderSource(source));}
  Cylinder c{{0,0,0},10,2};
  CHECK(!cylinderPlaneVisible(c,1,0,0,2));CHECK(cylinderPlaneVisible(c,1,0,0,1.99f));CHECK(!cylinderPlaneVisible(c,1,0,0,2.01f));
  CHECK(!cylinderPlaneVisible(c,0,1,0,10));CHECK(cylinderPlaneVisible(c,0,1,0,9.99f));CHECK(!cylinderPlaneVisible(c,0,1,0,10.01f));
@@ -203,4 +203,4 @@ void typedTouchHooks(const CatalogRow& r,bool cave){
  // A fresh reservation owns a fresh actor even when source/ordinal repeat.
  CHECK(prepare()&&birth()&&p.bind(r,plant,701,e));CHECK(p.earthquake(plant,e)&&engine.touches.size()==6&&engine.touches.back().plant==plant&&engine.touches.back().token==701&&engine.touches.back().instigator==nullptr);CHECK(p.release(plant,701,e));
 }
-int main(){try{identityAndResources();reservationAndCleanup();forestIdentityAndResources();allNineOwnership();brownLargeIdentityAndEnd();literalCylinderPlanes();typedTouchHooks(row(91,91),false);typedTouchHooks(caveRows()[0],true);caveAuthenticationAndResources();caveLifetimeAndRegistry();for(auto source:{46u,47u,49u,51u,52u,80u,88u,90u,91u,92u})touchAndTiming(source);std::cout<<"Foliage sources46,47,49,51,52,80,88,90,91 literal identities, distinct banks, zero resource rows, lifecycle, cylinder planes and touch timing controls PASS; native gameplay not claimed\n";}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}
+int main(){try{identityAndResources();reservationAndCleanup();forestIdentityAndResources();allNineOwnership();brownLargeIdentityAndEnd();literalCylinderPlanes();typedTouchHooks(row(91,91),false);typedTouchHooks(row(81,81),false);typedTouchHooks(caveRows()[0],true);caveAuthenticationAndResources();caveLifetimeAndRegistry();for(auto source:{46u,47u,49u,51u,52u,80u,81u,88u,90u,91u,92u})touchAndTiming(source);std::cout<<"Foliage sources46,47,49,51,52,80,88,90,91 literal identities, distinct banks, zero resource rows, lifecycle, cylinder planes and touch timing controls PASS; native gameplay not claimed\n";}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

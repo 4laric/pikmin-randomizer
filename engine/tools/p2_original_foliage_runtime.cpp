@@ -113,7 +113,7 @@ class FoliageApp final:public PlugPikiApp {
    r.course=d->cave;r.member=d->source;r.caveFloor=2;r.caveRow=i;r.index=2*256+i;r.sourceKey=r.course+"/"+r.member+"#"+std::to_string(r.index);r.sourceForm=SourceForm::CaveTekiInfo;r.caveSourceSha256=d->sourceSha256;
    r.enemy.source=unsigned(literal.sourceId);r.enemy.uid=originalGeneratorUid(r.sourceKey);r.enemy.count=literal.minimum();r.enemy.generatorVersion="CAVE";rows.push_back(r);
   }
-  require(rows.size()==3&&rows[0].enemy.count==6&&rows[1].enemy.count==4&&rows[2].enemy.count==2,"literal cave three-source minimums");native=std::make_unique<Native>();tekiBaseline=tekiMgr->getSize();pelletBaseline=pelletMgr->getSize();rewardBaseline=rewards();
+  require(rows.size()==3&&rows[0].enemy.count==6&&rows[1].enemy.count==4&&rows[2].enemy.count==2,"literal cave three-source minimums");native=std::make_unique<Native>();if(batch=="watage"&&!human&&!naturalWalk)native->requestWatageCameraControl();tekiBaseline=tekiMgr->getSize();pelletBaseline=pelletMgr->getSize();rewardBaseline=rewards();
   bool physical=native->provider().cavePrepare(rows,e);if(refusal){require(!physical&&native->provider().size()==0&&tekiMgr->getSize()==tekiBaseline,"cave missing bank refuses before any native allocation");std::puts("PASS ORIGINAL_CAVE_FOLIAGE_RESOURCE_REFUSAL sources=91,92,47 births=0 direct_control=1 cave_layout=0");std::fflush(nullptr);std::_Exit(0);}
   checked(physical,e);checked(native->geometryOwnershipControl(e),e);checked(caveRegistry.install(fingerprint,rows,caveDecode,e),e);
   for(auto& g:generators){g=std::make_unique<Generator>();g->mGenType=nullptr;g->mGenObject=nullptr;g->mAliveCount=17;g->mLatestSpawnDay=123;}
@@ -159,10 +159,10 @@ class FoliageApp final:public PlugPikiApp {
    if(reentry)require(identity.activation==firstIdentity[i].activation+1&&identity.epoch==firstIdentity[i].epoch+1,"disc cache reentry advances epoch and activation");else firstIdentity[i]=identity;
    require(actor->mCollInfo&&actor->mCollInfo->getBoundingSphere(),"actual source static collider");
    collisionCentre[i]=actor->mCollInfo->getBoundingSphere()->mCentre;health[i]=actor->mHealth;
-   const unsigned parts=source==46?5:2;
+   const unsigned parts=(source==46||source==81)?5:2;
    require(actor->mCollInfo->getBoundingSphere()->getChildCount()==int(parts-1),"literal source collider child topology");
    for(unsigned j=0;j<parts;++j){auto* part=actor->mCollInfo->getSphere(0x66303030u+j);require(part,"literal source collider part identity");partCentres[i][j]=part->mCentre;
-    if(source==46)require(part->mRadius==(j==0?50.f:j==1?25.f:20.f),"Dandelion literal root and leaf sphere radii");}
+    if(source==46||source==81)require(part->mRadius==(j==0?50.f:j==1?25.f:20.f),"Dandelion literal root and leaf sphere radii");}
    if(source==92){auto* root=actor->mCollInfo->getSphere(0x66303030u);auto* child=actor->mCollInfo->getSphere(0x66303031u);
     require(root&&child&&root->getChildCount()==1&&root->mRadius==50&&child->mRadius==35,"brown large literal static root50 child35");brownLargeChildCentre[i]=child->mCentre;}
    std::printf("ORIGINAL_FOLIAGE_BIRTH source=%u uid=%u ordinal=%u epoch=%llu activation=%llu reentry=%d\n",source,identity.generator,identity.ordinal,(unsigned long long)identity.epoch,(unsigned long long)identity.activation,int(reentry));
@@ -189,13 +189,15 @@ class FoliageApp final:public PlugPikiApp {
    rows={literal(47,23,1376717705u,a,0,"forest"),literal(49,0,1389527839u,b,180,"forest")};
   }else if(batch=="dandelion"){
    rows={literal(46,13,1375741226u,a,0,"forest"),literal(80,5,1390227387u,b,90,"forest")};
+  }else if(batch=="watage"){
+   rows={literal(81,16,1388586510u,a,90,"yakushima"),literal(46,13,1375741226u,b,0,"forest")};
   }else if(batch=="shoots"){
    rows={literal(51,0,1382955810u,a,240,"yakushima"),literal(52,5,1390174228u,b,270,"yakushima")};
   }else if(batch=="horsetails"){
    rows={literal(90,14,1384248119u,a,270,"forest"),literal(88,4,1381420794u,b,95)};
   }else rows={literal(91,0,1390538979u,a,0),literal(88,4,1381420794u,b,95)};
   auto zero=literal(firstSource(),0,originalGeneratorUid("fixture/foliage-zero#0"),a,0);zero.course="fixture";zero.member="foliage-zero";zero.sourceKey="fixture/foliage-zero#0";zero.enemy.count=0;rows.push_back(zero);
-  native=std::make_unique<Native>();tekiBaseline=tekiMgr->getSize();pelletBaseline=pelletMgr->getSize();rewardBaseline=rewards();
+  native=std::make_unique<Native>();if(batch=="watage"&&!human&&!naturalWalk)native->requestWatageCameraControl();tekiBaseline=tekiMgr->getSize();pelletBaseline=pelletMgr->getSize();rewardBaseline=rewards();
   bool physical=native->provider().preflight(rows,e);
   if(refusal){require(!physical&&native->provider().size()==0&&tekiMgr->getSize()==tekiBaseline&&pelletMgr->getSize()==pelletBaseline,"physical resource refusal before allocation");if(batch=="tutorial")std::puts("PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL births=0 direct_control=1 gameplay=0");else std::printf("PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL sources=%s births=0 direct_control=1 gameplay=0\n",batchSources());std::fflush(nullptr);std::_Exit(0);}
   checked(physical,e);checked(native->geometryOwnershipControl(e),e);
@@ -217,21 +219,21 @@ class FoliageApp final:public PlugPikiApp {
  }
  void checkStatic(){for(unsigned i=0;i<2;++i){auto* actor=actors[i];const auto* h=native->provider().lookup(actor);require(h&&actor->mHealth==health[i]&&actor->isAlive(),"native foliage remains invulnerable");
    const auto& centre=actor->mCollInfo->getBoundingSphere()->mCentre;const auto& before=collisionCentre[i];require(std::fabs(centre.x-before.x)<.01f&&std::fabs(centre.y-before.y)<.01f&&std::fabs(centre.z-before.z)<.01f,"animated pose does not move static source collider");
-   for(unsigned j=0;j<(h->row.enemy.source==46?5u:2u);++j){const auto* part=actor->mCollInfo->getSphere(0x66303030u+j);require(part,"retained source collider part");const auto& old=partCentres[i][j];require(std::fabs(part->mCentre.x-old.x)<.01f&&std::fabs(part->mCentre.y-old.y)<.01f&&std::fabs(part->mCentre.z-old.z)<.01f,"all source leaf collider centres remain static during touch");}
+   for(unsigned j=0;j<((h->row.enemy.source==46||h->row.enemy.source==81)?5u:2u);++j){const auto* part=actor->mCollInfo->getSphere(0x66303030u+j);require(part,"retained source collider part");const auto& old=partCentres[i][j];require(std::fabs(part->mCentre.x-old.x)<.01f&&std::fabs(part->mCentre.y-old.y)<.01f&&std::fabs(part->mCentre.z-old.z)<.01f,"all source leaf collider centres remain static during touch");}
    if(h->row.enemy.source==92){const auto* child=actor->mCollInfo->getSphere(0x66303031u);require(child&&child->mRadius==35,"brown large child retained");const auto& old=brownLargeChildCentre[i];require(std::fabs(child->mCentre.x-old.x)<.01f&&std::fabs(child->mCentre.y-old.y)<.01f&&std::fabs(child->mCentre.z-old.z)<.01f,"brown large child remains static through touch");}
    if(!(actor->mVelocity.x==0&&actor->mVelocity.y==0&&actor->mVelocity.z==0))std::printf("ORIGINAL_FOLIAGE_VELOCITY_FAILURE source=%u velocity=%.9g,%.9g,%.9g volatile=%.9g,%.9g,%.9g position=%.9g,%.9g,%.9g\n",h->row.enemy.source,actor->mVelocity.x,actor->mVelocity.y,actor->mVelocity.z,actor->mVolatileVelocity.x,actor->mVolatileVelocity.y,actor->mVolatileVelocity.z,actor->mSRT.t.x,actor->mSRT.t.y,actor->mSRT.t.z);require(actor->mVelocity.x==0&&actor->mVelocity.y==0&&actor->mVelocity.z==0,"native scenery remains constrained");}
   checkEconomy();
  }
  void reenter(){std::string e;for(unsigned i=0;i<3;++i){checked(pc_p2_original_groups().cache(generators[i].get(),fingerprint,cache[i],e),e);GeneratorState s;unsigned live=0;require(pc_p2_original_groups().state(generators[i].get(),s,live)&&s.deathCount==0&&live==rows[i].enemy.count,"cache preserves literal count and no decorative deaths");}
-  checked(pc_p2_original_course_unload(e),e);require(native->provider().size()==0,"native unload releases owned foliage");for(auto* actor:actors)require(!actor->isAlive(),"unloaded native roots are dead");checkEconomy();phase=4;age=0;
+  checked(pc_p2_original_course_unload(e),e);require(native->provider().size()==0,"native unload releases owned foliage");for(auto* actor:actors)require(!actor->isAlive(),"unloaded native roots are dead");if(batch=="watage"&&!naturalWalk)require(native->watageParticles()>0,"source retirement retains finite detached Watage burst");checkEconomy();phase=4;age=0;
  }
  void walking(Navi* n){
   if(phase==1){require(walked<2,"natural walking source index");auto* h=native->provider().lookup(actors[walked]);require(h,"naturally touched source remains owned");
-   if(h->active&&h->touched){naturalTouch[walked]=true;input();phase=2;age=0;
+   if(h->active&&h->touched){naturalTouch[walked]=true;if(batch=="watage"&&walked==0)require(native->watageEmissions()==1&&native->watageParticles()>0,"natural Watage touch creates one genuine emitter");input();phase=2;age=0;
     std::printf("ORIGINAL_FOLIAGE_NATURAL_TOUCH source=%u captain=%.3f,%.3f,%.3f plant=%.3f,%.3f,%.3f frame=%.3f naturalinput=1 callbackcontrol=0\n",h->row.enemy.source,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,actors[walked]->mSRT.t.x,actors[walked]->mSRT.t.y,actors[walked]->mSRT.t.z,h->frame);std::fflush(nullptr);
    }else {point(n,collisionCentre[walked]);if(age%120==0){std::printf("ORIGINAL_FOLIAGE_WALK_PROGRESS source=%u captain=%.3f,%.3f,%.3f goal=%.3f,%.3f,%.3f velocity=%.3f,%.3f,%.3f\n",h->row.enemy.source,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,collisionCentre[walked].x,collisionCentre[walked].y,collisionCentre[walked].z,n->mVelocity.x,n->mVelocity.y,n->mVelocity.z);std::fflush(nullptr);}require(age<600,"SDL walking must reach real foliage touch");}
   }else if(phase==2){point(n,walkRetreat);auto* h=native->provider().lookup(actors[walked]);require(h,"natural animation host retained");
-   if(!h->active&&!h->touched){std::printf("ORIGINAL_FOLIAGE_NATURAL_END source=%u frame=%.3f naturalinput=1 callbackcontrol=0 retreat_input=1\n",h->row.enemy.source,h->frame);std::fflush(nullptr);++walked;age=0;if(walked==2){require(naturalTouch[0]&&naturalTouch[1],"actual captain naturally touched both original species");reenter();}else phase=1;}
+   if(!h->active&&!h->touched){if(batch=="watage"&&walked==0)require(native->watageEmissions()==1&&native->watageDrawQuads()>0,"active contact never reemits and genuine texture quads render");std::printf("ORIGINAL_FOLIAGE_NATURAL_END source=%u frame=%.3f naturalinput=1 callbackcontrol=0 retreat_input=1\n",h->row.enemy.source,h->frame);std::fflush(nullptr);++walked;age=0;if(walked==2){require(naturalTouch[0]&&naturalTouch[1],"actual captain naturally touched both original species");reenter();}else phase=1;}
    else require(age<900,"natural touched motion completes through normal engine clock");
   }
  }
@@ -254,7 +256,9 @@ public:
   if(!phase){if(n->getCurrState()->getID()!=NAVISTATE_Walk||++ready<45)return result;int live=0,red=0;Iterator it(pikiMgr);CI_LOOP(it){auto* p=static_cast<Piki*>(*it);if(p->isAlive()){++live;red+=p->mColor==Red;}}require(live==20&&red==20,"actual20 Red Pikmin baseline");if(caveBatch)caveSetup(n);else setup(n);phase=1;return result;}
   if(human)return result;++age;
   if(caveBatch){caveControl(n);return result;}
-  if(phase==4){if(naturalWalk)input();if(age>=30){require(tekiMgr->getSize()==tekiBaseline,"normal engine recycles unloaded pool references");install(true);phase=3;age=0;}return result;}
+  if(phase==4){if(naturalWalk)input();if(age>=(batch=="watage"?480:30)){
+   if(batch=="watage"){require(native->watageParticles()==0,"detached Watage particles drain after owned plants retire through manager clock");std::printf("P2_WATAGE_DRAIN emissions=%u draw_quads=%u plant_retired=1 manager_clock=1\n",native->watageEmissions(),native->watageDrawQuads());}
+   require(tekiMgr->getSize()==tekiBaseline,"normal engine recycles unloaded pool references");install(true);phase=3;age=0;}return result;}
   if(phase==5){if(naturalWalk)input();if(age>=30){require(native->provider().size()==0&&tekiMgr->getSize()==tekiBaseline,"final normal engine pool cleanup");checkEconomy();std::printf(naturalWalk?"PASS ORIGINAL_FOLIAGE_WALK sources=%s naturalinput=1 callbackcontrol=0 natural_touch=2 normal_animation=1 collider_static=1 no_rewards=1 initialized_placement=1 cache_disc_reentry=1 full_course=0\n":"PASS ORIGINAL_FOLIAGE sources=%s resources=1 collider_static=1 invulnerable=1 typed_touch=1 normal_animation=1 cache_disc_reentry=1 no_rewards=1 direct_control=1 gameplay=0\n",batchSources());std::fflush(nullptr);std::_Exit(0);}return result;}
   checkStatic();if(phase==3&&age>=30){if(naturalWalk)input();std::string e;checked(pc_p2_original_course_unload(e),e);require(native->provider().size()==0,"final owned release");phase=5;age=0;return result;}
   if(naturalWalk){walking(n);return result;}
@@ -272,6 +276,7 @@ int main(int argc,char** argv){
  else if(batch=="forest")sourceIDs={47,49},sourcePair="47,49";
  else if(batch=="brown-large")sourceIDs={92,91},sourcePair="92,91";
  else if(batch=="dandelion")sourceIDs={46,80},sourcePair="46,80";
+ else if(batch=="watage")sourceIDs={81,46},sourcePair="81,46";
  else if(batch=="shoots")sourceIDs={51,52},sourcePair="51,52";
  else if(batch=="horsetails")sourceIDs={90,88},sourcePair="90,88";
  else if(batch=="cave")caveBatch=true;

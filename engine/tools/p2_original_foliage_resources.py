@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pose-limit', type=int, default=12)
-    parser.add_argument('--sources', type=int, nargs='+', choices=(46, 47, 49, 51, 52, 80, 88, 90, 91, 92),
+    parser.add_argument('--sources', type=int, nargs='+', choices=(46, 47, 49, 51, 52, 80, 81, 88, 90, 91, 92),
                         default=[91, 88],
                         help='Literal source IDs to convert; default preserves original 91/88 bank')
     args = parser.parse_args()
@@ -55,6 +55,7 @@ def main():
                51: ('Wakame_s', 'wakame_s', 'normal', 2),
                52: ('Wakame_l', 'wakame_l', 'normal', 2),
                80: ('Tukushi', 'tukushi', 'normal', 2),
+               81: ('Watage', 'watage', 'postshadow', 0),
                90: ('Zenmai', 'zenmai', 'normal', 0),
                92: ('KareOoinu_l', 'karaooinu_l', 'normal', 0)}
 
@@ -108,6 +109,15 @@ def main():
             if len(raw) != size:
                 raise ValueError('Truncated ISO member ' + path)
             hashes[path] = sha(raw)
+            # Source81 was independently audited against GPVE01. Changed retail
+            # archives require a new audit, not automatic requalification.
+            watage_pins = {
+                'enemy/data/Watage/model.szs': '6fe6a304db148682ff4f65378405b6adcc74adf99489dfcdcf65eb36d39c2693',
+                'enemy/data/Watage/anim.szs': 'b6abec15b318d5be8fa3233babd2e64191108b42dc460f1b42a3cade153c14f7',
+                'enemy/parm/enemyParms.szs': '3618455a8561f1e1b0aad0253a75a69fae1fe3a47160d1c1efa294b0ddeb2a84',
+            }
+            if 81 in args.sources and path in watage_pins and hashes[path] != watage_pins[path]:
+                raise ValueError('Watage audited archive changed: ' + path)
             return raw
 
         params = archive_files(read('enemy/parm/enemyParms.szs'))

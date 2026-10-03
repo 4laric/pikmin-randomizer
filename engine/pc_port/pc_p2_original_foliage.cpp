@@ -19,7 +19,7 @@ bool sameRow(const CatalogRow& a,const CatalogRow& b){
 }
 
 }
-bool supported(unsigned source){return source==46||source==47||source==49||source==51||source==52||source==80||source==88||source==90||source==91||source==92;}
+bool supported(unsigned source){return source==46||source==47||source==49||source==51||source==52||source==80||source==81||source==88||source==90||source==91||source==92;}
 bool decode(const CatalogRow& row,std::string& e){
  if(!supported(row.enemy.source))return reject(e,"unsupported original foliage source");
  if(row.sourceForm!=SourceForm::SurfaceGenEnemy||row.caveFloor||row.caveRow||!row.caveSourceSha256.empty())return reject(e,"surface foliage requires surface provenance");

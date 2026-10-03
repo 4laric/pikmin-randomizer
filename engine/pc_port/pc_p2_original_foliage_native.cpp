@@ -1,4 +1,5 @@
 #include "pc_p2_original_foliage_native.h"
+#include "pc_p2_watage_native.h"
 #include "pc_p2_original_foliage_lod.h"
 #include "pc_p2_original_pelplant_geometry.h"
 #include "pc_p2_pose_family.h"
@@ -48,6 +49,7 @@ struct Track {
 struct Native::Impl final:Engine {
  Provider provider;std::map<unsigned,std::unique_ptr<Bank>> banks;
  std::map<Creature*,std::unique_ptr<Track>> tracks;bool loaded=false;
+ std::unique_ptr<p2watage::NativeEffect> watage;bool watageCameraControl=false;
  Impl():provider(*this){}
  bool load(std::string& e){
   if(loaded)return true; banks.clear();
@@ -62,8 +64,8 @@ struct Native::Impl final:Engine {
     if(banks.count(source))return reject(e,"duplicate original foliage bank");
     auto b=std::make_unique<Bank>();b->source=source;
     if(!(row>>b->name>>b->stem>>b->count>>b->duration)||b->count<2||b->count>64||b->duration<2||b->duration>10000)return reject(e,"invalid original foliage species row");
-    const std::string name=source==46?"Tanpopo":source==47?"Clover":source==49?"Ooinu_s":source==51?"Wakame_s":source==52?"Wakame_l":source==80?"Tukushi":source==90?"Zenmai":source==92?"KareOoinu_l":source==91?"KareOoinu_s":"Nekojarashi";
-    const std::string stem=source==46?"flora_Tanpopo_tanpopo":source==47?"flora_Clover_clover":source==49?"flora_Ooinu_s_ooinu_s":source==51?"flora_Wakame_s_wakame_s":source==52?"flora_Wakame_l_wakame_l":source==80?"flora_Tukushi_tukushi":source==90?"flora_Zenmai_zenmai":source==92?"flora_KareOoinu_l_karaooinu_l":source==91?"flora_KareOoinu_s_kareooinu_s":"flora_Nekojarashi_nekojarashi";
+    const std::string name=source==46?"Tanpopo":source==47?"Clover":source==49?"Ooinu_s":source==51?"Wakame_s":source==52?"Wakame_l":source==80?"Tukushi":source==81?"Watage":source==92?"KareOoinu_l":source==90?"Zenmai":source==91?"KareOoinu_s":"Nekojarashi";
+    const std::string stem=source==46?"flora_Tanpopo_tanpopo":source==47?"flora_Clover_clover":source==49?"flora_Ooinu_s_ooinu_s":source==51?"flora_Wakame_s_wakame_s":source==52?"flora_Wakame_l_wakame_l":source==80?"flora_Tukushi_tukushi":source==81?"flora_Watage_watage":source==92?"flora_KareOoinu_l_karaooinu_l":source==90?"flora_Zenmai_zenmai":source==91?"flora_KareOoinu_s_kareooinu_s":"flora_Nekojarashi_nekojarashi";
     if(b->name!=name||b->stem!=stem)return reject(e,"original foliage model identity mismatch");
     banks.emplace(source,std::move(b));
    }else {
@@ -77,7 +79,7 @@ struct Native::Impl final:Engine {
      for(float v:{b.health,b.territory,b.privateRadius,b.home,b.lod,b.floor})if(!std::isfinite(v)||v<0)return reject(e,"nonfinite/negative foliage parameter");
      if(b.health<=0||b.lod<=0||b.home<=0||b.privateRadius<=0)return reject(e,"degenerate foliage common parameters");b.params=true;
     }else if(word=="layer"){
-     std::string layer;if(b.layer||!(row>>layer)||(source==88?layer!="postshadow":layer!="normal"))return reject(e,"foliage source render layer mismatch");b.layer=true;b.postshadow=layer=="postshadow";
+     std::string layer;if(b.layer||!(row>>layer)||((source==88||source==81)?layer!="postshadow":layer!="normal"))return reject(e,"foliage source render layer mismatch");b.layer=true;b.postshadow=layer=="postshadow";
     }else if(word=="joint"){
      int frame,joint;Matrix4f m;m.makeIdentity();if(!(row>>frame>>joint)||frame<0||frame>=b.duration||joint<0||joint>255)return reject(e,"invalid foliage joint identity");
      for(int r=0;r<3;++r)for(int c=0;c<4;++c)if(!(row>>m.mMtx[r][c])||!std::isfinite(m.mMtx[r][c]))return reject(e,"invalid foliage joint matrix");
@@ -98,12 +100,13 @@ struct Native::Impl final:Engine {
   std::size_t total=0;
   for(auto& entry:banks){auto& b=*entry.second;
    if(!b.params||!b.layer||b.frames.empty()||b.spheres.empty())return reject(e,"incomplete foliage physical resource bank");
-   if(b.source==92&&(b.territory!=45.f||b.lod!=80.f))return reject(e,"source92 literal sphere LOD mismatch");
    // All admitted plain species have literal anonymous joint-zero trees. Do
    // not admit a truncated Dandelion bank that silently loses its leaf spheres.
-   const std::size_t expected=b.source==46?5:2;
-   const float rootRadius=(b.source==46||b.source==92)?50.f:b.source==51?10.f:(b.source==47||b.source==49||b.source==91)?30.f:20.f;
-   const float childRadius=b.source==92?35.f:b.source==46?25.f:b.source==51?5.f:(b.source==47||b.source==49||b.source==91)?20.f:10.f;
+   const std::size_t expected=(b.source==46||b.source==81)?5:2;
+   const float rootRadius=(b.source==46||b.source==81||b.source==92)?50.f:b.source==51?10.f:(b.source==47||b.source==49||b.source==91)?30.f:20.f;
+   const float childRadius=b.source==92?35.f:(b.source==46||b.source==81)?25.f:b.source==51?5.f:(b.source==47||b.source==49||b.source==91)?20.f:10.f;
+   if(b.source==81&&b.duration!=49)return reject(e,"Watage literal animation duration mismatch");
+   if(b.source==92&&(b.territory!=45.f||b.lod!=80.f))return reject(e,"source92 literal sphere LOD mismatch");
    if(b.spheres.size()!=expected)return reject(e,"foliage literal collider count mismatch");
    for(std::size_t i=0;i<expected;++i){
     const auto& sphere=b.spheres[i];
@@ -159,6 +162,7 @@ struct Native::Impl final:Engine {
   if(!load(e))return false;auto i=banks.find(source);if(i==banks.end())return reject(e,"requested original foliage source bank unavailable");
   auto* chassis=tekiMgr->getTekiShapeObject(TEKI_Palm);
   if(!chassis||!chassis->mShape||!chassis->mAnimMgr||!tekiMgr->getTekiParameters(TEKI_Palm)||!tekiMgr->getStrategy(TEKI_Palm))return reject(e,"foliage allocation chassis not preloaded before original admission");
+  if(source==81&&!watage){auto effect=std::make_unique<p2watage::NativeEffect>();if(!effect->load(e))return false;watage=std::move(effect);}
   auto& b=*i->second;out={true,true,true,b.health,unsigned(b.duration)};e.clear();return true;
  }
  bool reserve(unsigned count,std::string& e)override{
@@ -174,7 +178,8 @@ struct Native::Impl final:Engine {
   // Surface owns a native generator; genuine cave births deliberately carry
   // no P1 generator. Cave registry associations remain with the floor caller.
   actor->mGenerator=h.generator;actor->mSRT.t.set(p.x,p.y,p.z);actor->mFaceDirection=facing;actor->mSRT.r.set(0,facing,0);actor->mSRT.s.set(1,1,1);
-  actor->mHealth=actor->mMaxHealth=b.health;actor->mVelocity.set(0,0,0);actor->mVolatileVelocity.set(0,0,0);actor->mTargetVelocity.set(0,0,0);actor->mCollisionRadius=b.spheres[0].radius;actor->mSize=b.spheres[0].radius;
+  actor->mHealth=actor->mMaxHealth=b.health;actor->mVelocity.set(0,0,0);actor->mCollisionRadius=b.spheres[0].radius;actor->mSize=b.spheres[0].radius;
+  actor->mVolatileVelocity.set(0,0,0);actor->mTargetVelocity.set(0,0,0);
   actor->setCreatureFlag(CF_DisableMovement);actor->setCreatureFlag(CF_IsAiDisabled);
   for(unsigned option:{BTeki::TEKI_OPTION_VISIBLE,BTeki::TEKI_OPTION_ATARI,BTeki::TEKI_OPTION_ALIVE,BTeki::TEKI_OPTION_SHAPE_VISIBLE,BTeki::TEKI_OPTION_INVINCIBLE})actor->setTekiOption(option);
   actor->clearTekiOption(BTeki::TEKI_OPTION_ORGANIC);actor->clearTekiOption(BTeki::TEKI_OPTION_GRAVITATABLE);
@@ -203,6 +208,11 @@ struct Native::Impl final:Engine {
   const bool dying=i->second->nativeDying;i->second->collision.detach(static_cast<BTeki*>(h.creature));tracks.erase(i);
   if(!dying)h.creature->kill(false);return true;
  }
+ bool touched(Host& h,Creature*,std::string& e)override{
+  if(h.row.enemy.source!=81)return true;
+  if(!watage)return reject(e,"Watage effect was not admitted before actor birth");
+  return watage->touch({h.position.x,h.position.y,h.position.z},e);
+ }
  bool touchSound(Host&,Creature*,std::string&)override{
   // Native equivalent touch-leaf cue; P2 sample bank is not part of this port.
   SeSystem::playPlayerSe(SE_ORIMA_TOUCHPLANTS);return true;
@@ -211,12 +221,17 @@ struct Native::Impl final:Engine {
 Native::Native():m(std::make_unique<Impl>()){instances().insert(this);}
 Native::~Native(){if(m->provider.size())fail("foliage provider destroyed with live native roots");instances().erase(this);}
 Provider& Native::provider(){return m->provider;}
+std::size_t Native::watageParticles()const{return m->watage?m->watage->particles():0;}
+unsigned Native::watageEmissions()const{return m->watage?m->watage->emissions():0;}
+void Native::requestWatageCameraControl(){m->watageCameraControl=true;}
+unsigned Native::watageDrawQuads()const{return m->watage?m->watage->draws().quads:0;}
 bool Native::owns(const Creature* c)const{return m->tracks.count(const_cast<Creature*>(c))&&m->provider.lookup(c)!=nullptr;}
 bool Native::tick(BTeki* actor,float dt,std::string& e){
  auto* h=m->provider.lookup(actor);if(!h)return false;auto& t=*m->tracks.at(actor);
  m->simulationVisibility(actor,t);
  if(!m->provider.tick(actor,dt,t.visible,e))return false;
- actor->mVelocity.set(0,0,0);actor->mVolatileVelocity.set(0,0,0);actor->mTargetVelocity.set(0,0,0);actor->mStoredDamage=0;actor->mHealth=t.bank->health;
+ actor->mVelocity.set(0,0,0);actor->mStoredDamage=0;actor->mHealth=t.bank->health;
+ actor->mVolatileVelocity.set(0,0,0);actor->mTargetVelocity.set(0,0,0);
  actor->mSRT.t.set(h->position.x,h->position.y,h->position.z);actor->mGrid.updateGrid(actor->mSRT.t);actor->mGrid.updateAIGrid(actor->mSRT.t,false);
  t.presented.advance(dt);m->follow(actor,t);return true;
 }
@@ -236,6 +251,10 @@ void Native::postShadow(Graphics& gfx){
  for(const auto& i:m->tracks){if(!i.second->bank->postshadow)continue;auto* actor=static_cast<BTeki*>(i.first);
   Matrix4f root,view;root.makeSRT(actor->mSRT.s,Vector3f(0,actor->mFaceDirection,0),actor->mSRT.t);
   gfx.mCamera->mLookAtMtx.multiplyTo(root,view);draw(actor,gfx,view,true);
+ }
+ if(m->watage){
+  if(m->watageCameraControl&&m->watage->particles()){std::string e;if(!m->watage->cameraControl(gfx,e))fail(e);m->watageCameraControl=false;}
+  m->watage->draw(gfx);
  }
 }bool Native::collision(BTeki* actor,Creature* collider,std::string& e){
  auto* h=m->provider.lookup(actor);if(!h)return false;auto& t=*m->tracks.at(actor);
