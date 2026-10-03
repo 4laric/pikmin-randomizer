@@ -168,10 +168,6 @@ class Session:
                 if fields[-len(extension)-1:-1] != extension:
                     raise ValueError('native journal check catalog mismatch')
                 fields = fields[:-len(extension)-1] + ['END']
-            if manifest.get('p2_proxy_tier'):
-                if fields[-3:] != ['P2_PROXY_TIER', '1', 'END']:
-                    raise ValueError('native journal proxy tier mismatch')
-                fields = fields[:-3] + ['END']
             if manifest.get('enemy_composition'):
                 from .enemy_slots import bootstrap_slots
                 extension = bootstrap_slots(manifest).split()
@@ -185,6 +181,10 @@ class Session:
                 fields = fields[:start] + fields[start + 3:]
             elif 'ENEMY_COMPOSITION' in fields:
                 raise ValueError('native journal enemy composition mismatch')
+            if manifest.get('p2_proxy_tier'):
+                if fields[-3:] != ['P2_PROXY_TIER', '1', 'END']:
+                    raise ValueError('native journal proxy tier mismatch')
+                fields = fields[:-3] + ['END']
             if len(fields) != ((23 if manifest['schema'] >= 9 else 21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) + (2 if 'starting_flarlic' in manifest else 0) + (16 if 'color_stats' in manifest else 0) + (2 if manifest.get('progressive_color_stats') else 0) + (2 if manifest.get('benefit_items') else 0) + (2 if manifest.get('progressive_maturity') else 0) + (3 if manifest.get('progressive_day_length') else 0) + (2 if manifest.get('whistle_pluck_item') else 0) + (33 if 'spawn_layout' in manifest else 0) + (27 if 'group_layout' in manifest else 0) + (2 if manifest.get('miniboss_enemies') and 'campaign_layout' not in manifest else 0) + (5 + 2 * len(manifest['campaign_layout']['assignments']) if 'campaign_layout' in manifest else 0) + (2 if manifest.get('death_link') else 0) + (4 + 2 * len(manifest['p2_layout']['bindings']) if 'p2_layout' in manifest else 0)) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
