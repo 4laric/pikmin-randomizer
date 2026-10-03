@@ -259,6 +259,12 @@ public:int idle()override{
   if(resumeMode){p1ResumeExpected();require(red==0,"fresh resume duplicated original Red field bodies");p1Log("P2_WHITE_CAMPAIGN_P1_RESUME_STOCK");require(pc_randomizer_resumed()&&whiteStock()==15&&p2ship::stock.counts[1][Leaf]==15&&white==0&&heads==0&&p2whitetreasure::ledger.total()==180,"fresh native resume stock/maturity/ledger mismatch");conservedBudget();
    const char* expected=std::getenv("P2_WHITE_CAMPAIGN_EXPECT_DAY");char* end=nullptr;long day=expected?std::strtol(expected,&end,10):0;require(expected&&end&&!*end&&day>0&&day==gameflow.mWorldClock.mCurrentDay,"fresh native resumed day mismatch");
    Iterator source(pelletMgr);CI_LOOP(source){auto* p=static_cast<Pellet*>(*source);require(!p->isAlive()||!p->mGenerator||uid(p)!=26,"consumed retail source respawned on resume");}
+   // Read-only latest valid checkpoint under the same scan rules as the loader;
+   // host binds this observation to the unchanged full native card, resumed flag/day/stocks.
+   uint64_t checkpointGeneration=0;uint8_t checkpointHash[32]{};
+   require(pc_randomizer_checkpoint_info(&checkpointGeneration,checkpointHash)&&checkpointGeneration>0,"fresh resume valid native checkpoint observation missing");
+   std::printf("P2_WHITE_CAMPAIGN_RESUME_CHECKPOINT generation=%llu sha256=",static_cast<unsigned long long>(checkpointGeneration));
+   for(uint8_t byte:checkpointHash)std::printf("%02x",static_cast<unsigned int>(byte));std::putchar('\n');
    goal=itemMgr->getUfo()->getGoalPos();next(17);std::puts("P2_WHITE_CAMPAIGN_RESUME_BASELINE stock=15 leaf=15 spent=15 pokos=180 consumed_source_absent=1 native_checkpoint_resumed=1");return result;
   }
   p1Read(p1Before);for(int c=0;c<3;++c)for(int m=0;m<3;++m)p1Expected[c][m]=p1Before[c][m];p1Expected[Red][Leaf]+=5;p1Log("P2_WHITE_CAMPAIGN_P1_BEFORE_STOCK");
