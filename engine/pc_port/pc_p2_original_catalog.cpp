@@ -41,12 +41,15 @@ bool Catalog::forgetGenerator(const void* pointer,std::uint64_t handle){
  mGenerators.erase(i);return true;
 }
 bool Catalog::bind(const void* actor,unsigned uid,unsigned ordinal,std::uint64_t epoch,std::uint64_t& handle,std::string& error){
+ return bindActivation(actor,uid,ordinal,epoch,1,handle,error);
+}
+bool Catalog::bindActivation(const void* actor,unsigned uid,unsigned ordinal,std::uint64_t epoch,std::uint64_t activation,std::uint64_t& handle,std::string& error){
  auto row=find(uid);
  bool generatorPresent=false;for(const auto& g:mGenerators)if(g.second.uid==uid){generatorPresent=true;break;}
  if(!generatorPresent)return fail(error,"original actor has no bound generator");
- if(!actor||!row||!epoch||ordinal>=row->enemy.count||mNextHandle==std::numeric_limits<std::uint64_t>::max())return fail(error,"invalid original instance binding");
+ if(!actor||!row||!epoch||!activation||ordinal>=row->enemy.count||mNextHandle==std::numeric_limits<std::uint64_t>::max())return fail(error,"invalid original instance binding");
  if(mActors.count(actor))return fail(error,"native actor address already bound");
- InstanceIdentity identity{mFingerprint,uid,ordinal,epoch};
+ InstanceIdentity identity{mFingerprint,uid,ordinal,epoch,activation};
  if(mUsed.size()>=1048576||mUsed.count(identity))return fail(error,"original instance identity already used or session capacity exhausted");
  const auto next=mNextHandle;
  auto used=mUsed.insert(identity);
