@@ -215,16 +215,18 @@ void clearActors()
     gSourceForUid.clear();
 }
 
-int countCalls(const char* kind, const void* view)
+int countCalls(const char* kind, const BTeki* actor)
 {
+    const void* view = actor ? static_cast<const PelletView*>(actor) : nullptr;
     int n = 0;
     for (const CentralCall& c : gCentralCalls)
         if (c.kind == kind && (!view || c.view == view)) ++n;
     return n;
 }
 
-bool centralBound(const void* view, unsigned source, unsigned generator)
+bool centralBound(const BTeki* actor, unsigned source, unsigned generator)
 {
+    const void* view = static_cast<const PelletView*>(actor);
     const auto it = gCentralSources.find(view);
     return it != gCentralSources.end() && it->second.first == source && it->second.second == generator;
 }

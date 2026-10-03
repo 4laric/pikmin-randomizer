@@ -9,9 +9,9 @@ namespace p2original {
 struct CatalogRow {std::string course,member,sourceKey;unsigned index=0; EnemyRecord enemy;};
 unsigned originalGeneratorUid(const std::string& sourceKey);
 struct InstanceIdentity {
- std::string catalog; unsigned generator=0,ordinal=0; std::uint64_t epoch=0;
- bool operator==(const InstanceIdentity& b)const{return catalog==b.catalog&&generator==b.generator&&ordinal==b.ordinal&&epoch==b.epoch;}
- bool operator<(const InstanceIdentity& b)const{return std::tie(catalog,generator,ordinal,epoch)<std::tie(b.catalog,b.generator,b.ordinal,b.epoch);}
+ std::string catalog; unsigned generator=0,ordinal=0; std::uint64_t epoch=0,activation=1;
+ bool operator==(const InstanceIdentity& b)const{return catalog==b.catalog&&generator==b.generator&&ordinal==b.ordinal&&epoch==b.epoch&&activation==b.activation;}
+ bool operator<(const InstanceIdentity& b)const{return std::tie(catalog,generator,ordinal,epoch,activation)<std::tie(b.catalog,b.generator,b.ordinal,b.epoch,b.activation);}
 };
 // Logical IDs never contain addresses. Native pointers below are transient
 // associations only. Cache serialization and original provider dispatch are
@@ -31,6 +31,10 @@ public:
  bool generatorUid(const void* generator,std::uint64_t handle,unsigned& uid)const;
  bool forgetGenerator(const void* generator,std::uint64_t handle);
  bool bind(const void* actor,unsigned uid,unsigned ordinal,std::uint64_t epoch,std::uint64_t& handle,std::string&);
+ // Normal RAM course entry regenerates remaining actors even without a
+ // source respawn reset. Activation distinguishes those fresh incarnations.
+ // A full fresh-process checkpoint restore uses its exact saved activation.
+ bool bindActivation(const void* actor,unsigned uid,unsigned ordinal,std::uint64_t epoch,std::uint64_t activation,std::uint64_t& handle,std::string&);
  bool lookup(const void* actor,std::uint64_t handle,InstanceIdentity&)const;
  bool forget(const void* actor,std::uint64_t handle);
 private:

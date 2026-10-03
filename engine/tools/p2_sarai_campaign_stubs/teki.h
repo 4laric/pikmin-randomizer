@@ -1,13 +1,11 @@
 #pragma once
 // Engine-free double for the Sarai campaign bridge test: actor roster walk.
 #include "Generator.h"
+#include "../p2_sarai_common_stubs/Creature.h"
 #include <cstddef>
 #include <vector>
 
-class BTeki {
-public:
-    Generator* mGenerator = nullptr;
-};
+class BTeki : public Creature {};
 
 struct TekiMgr {
     std::vector<BTeki*> actors;

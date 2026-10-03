@@ -13,6 +13,7 @@
 #include "teki.h"
 #include "Generator.h"
 #include "pc_p2_generated_placement.h"
+#include "pc_p2_campaign_actor.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -217,6 +218,30 @@ int main()
 
     clearActors();
     resetBinds();
+    // Use the actual original registry against the canonical Creature base.
+    // A registered source0 actor must override a conflicting AP source23;
+    // retiring it restores the ordinary AP lookup without stale ownership.
+    BTeki* original = makeActor(1234567u, 23, 4001);
+    p2original::CatalogRow row;
+    row.course="tutorial";row.member="defaultgen.txt";
+    row.sourceKey="tutorial/defaultgen.txt#0";
+    row.enemy.uid=p2original::originalGeneratorUid(row.sourceKey);
+    row.enemy.source=0;row.enemy.count=1;
+    auto& registry=p2original::originalActors();std::string error;
+    require(registry.install(std::string(64,'a'),{row},
+        [](const p2original::CatalogRow&,std::string&){return true;},error), "install actual original registry");
+    std::uint64_t generatorHandle=0,actorHandle=0;unsigned token=0;
+    require(registry.generator(original->mGenerator,row.enemy.uid,generatorHandle,error), "bind original generator");
+    require(registry.actor(original,row.enemy.uid,0,1,token,actorHandle,error), "bind original Creature base");
+    require(pc_p2_campaign_source(original)==0, "valid original source0 overrides AP source23");
+    require(pc_p2_campaign_token(original)==token, "original token is independent of AP UID");
+    require(pc_p2_campaign_ids(0)==std::set<unsigned>{token}, "source0 roster uses registered original identity");
+    require(pc_p2_campaign_ids(23).empty(), "original source0 is not also admitted as AP source23");
+    require(registry.retire(original,actorHandle), "retire original actor before pointer reuse");
+    require(registry.retireGenerator(original->mGenerator,generatorHandle), "retire original generator");
+    require(pc_p2_campaign_source(original)==23, "unregistered actor retains ordinary AP lookup");
+    require(pc_p2_campaign_token(original)==1234567u, "retirement leaves no stale original token");
+    clearActors();
     std::printf("p2_sarai_campaign_test PASS checks=%d\n", gChecks);
     std::fflush(stdout);
     return 0;
