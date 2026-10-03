@@ -89,6 +89,17 @@ void pc_p2_original_corpse_born(Pellet* pellet,PelletView* view){
  source,id.generator,id.ordinal,(unsigned long long)id.epoch,(unsigned long long)id.activation,p->minimum,p->maximum,p->seeds);
 }
 const p2original::CorpseProfile* pc_p2_original_corpse_profile(const Pellet* pellet){auto i=bindings.find(pellet);return i==bindings.end()?nullptr:i->second.profile;}
+bool pc_p2_original_corpse_query(const Pellet* pellet,p2original::CorpseRecord& out){
+ auto i=bindings.find(pellet);
+ if(i==bindings.end()){
+  if(pellet&&pellet->mConfig&&(pellet->mConfig->mModelId.mId&0xffff0000u)==0x50320000u)
+   fault("source corpse query outlived its native receipt binding");
+  return false;
+ }
+ p2original::CorpseRecord record;
+ if(!ledger||!ledger->lookup(pellet,i->second.handle,record))fault("source corpse query lost its retained receipt");
+ out=std::move(record);return true;
+}
 void pc_p2_original_corpse_forget(Pellet* pellet){
  auto i=bindings.find(pellet);if(i==bindings.end())return;
  if(!ledger||!ledger->forgetPellet(pellet,i->second.handle))fault("corpse retirement lost its receipt binding");

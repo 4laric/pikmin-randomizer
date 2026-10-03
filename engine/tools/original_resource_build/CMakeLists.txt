@@ -18,7 +18,8 @@ add_executable(p2_original_wisp_policy
  "${RESOURCE_SOURCE}/pc_port/pc_p2_original_wisp.cpp"
  "${RESOURCE_SOURCE}/pc_port/pc_p2_original_spawn_plan.cpp")
 add_executable(p2_original_egg_contents_policy
- "${RESOURCE_SOURCE}/pc_port/pc_p2_original_resource_contents_test.cpp")
+ "${RESOURCE_SOURCE}/pc_port/pc_p2_original_resource_contents_test.cpp"
+ "${RESOURCE_SOURCE}/pc_port/pc_p2_original_resource_contents.cpp")
 add_executable(p2_original_egg_policy
  "${RESOURCE_SOURCE}/tools/p2_original_egg_test.cpp"
  "${RESOURCE_SOURCE}/pc_port/pc_p2_original_egg.cpp"

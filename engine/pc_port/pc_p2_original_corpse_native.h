@@ -18,6 +18,9 @@ bool pc_p2_original_corpse_leaves(BTeki*,bool ordinary);
 PelletConfig* pc_p2_original_corpse_config(PelletView*,PelletConfig* ordinary);
 void pc_p2_original_corpse_born(Pellet*,PelletView*);
 const p2original::CorpseProfile* pc_p2_original_corpse_profile(const Pellet*);
+// Read-only full retained receipt before actual suction consumes it. False for
+// unlabelled pellets, outputs unchanged; a stale source binding is a fault.
+bool pc_p2_original_corpse_query(const Pellet*,p2original::CorpseRecord&);
 void pc_p2_original_corpse_forget(Pellet*);
 bool pc_p2_original_corpse_onion(Pellet*,GoalItem*,unsigned& grant);
 void pc_p2_original_corpse_position(const Pellet*,Vector3f&,float direction);

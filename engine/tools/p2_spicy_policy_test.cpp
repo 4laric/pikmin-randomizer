@@ -38,5 +38,6 @@ int main() {
     assert(inventory.addBerry(HoneyKind::Spicy,1,p2sprays::BerriesPerSpray,e));
     assert(inventory.sprayCount(HoneyKind::Spicy)==1);
     assert(inventory.useSpray(HoneyKind::Spicy,e)); assert(!inventory.useSpray(HoneyKind::Spicy,e));
+    assert(inventory.snapshot(snapshot,e) && snapshot.sprayUses[0]==1 && snapshot.sprayUses[1]==0);
     std::puts("P2_SPICY_POLICY_PASS timing/pause/refresh/recovery and real stock production/use; gameplay untested");
 }

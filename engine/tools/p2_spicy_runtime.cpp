@@ -43,14 +43,14 @@ void captainGuard(bool dead,bool deadState,float hp,int tick) {
 struct Baseline { Piki* p; float attack,speed; int maturity; };
 class SpicyApp : public PlugPikiApp {
     int ticks=0,phase=0,pauseTicks=0;
-    bool sawCaptain=false;
+    bool sawCaptain=false,whistled=false;
     std::vector<Baseline> squad;
     p2originalresource::ResourceState stock;
     p2originalresource::EggContents contents;
     p2originalresource::honey::SourceBank bank;
     p2originalresource::honey::Resources resources;
     std::vector<float> pausedRemaining;
-    float phaseTime=0;
+    float phaseTime=0,setupTime=0;
     bool input(Navi* n) {
         auto previous=n->mKontroller->mInputPressed;
         n->mKontroller->mInputPressed=KBBTN_DPAD_UP;
@@ -77,16 +77,35 @@ public:
             require(!input(n),"zero stock spent");
             phase=3;phaseTime=0;return result;
         }
-        if(gameflow.mPauseAll||n->getCurrState()->getID()!=NAVISTATE_Walk) return result;
+        if(gameflow.mPauseAll||(phase==0&&n->getCurrState()->getID()!=NAVISTATE_Walk)) return result;
         if(phase==0) {
+            setupTime+=gsys->getFrameTime();
             Iterator pikis(pikiMgr);int alive=0;CI_LOOP(pikis) { auto* p=static_cast<Piki*>(*pikis);if(p&&p->isAlive()) ++alive; }
             require(alive==20,"fresh fixture must have exactly20 live Pikmin");
+            // Preview releases its authored starting squad to FreeMode. Use
+            // the actual whistle receiver with injected aim, never set party
+            // slots/modes or move/heal actors to manufacture a formation.
+            if(!whistled) {
+                Iterator gather(pikiMgr);CI_LOOP(gather) { auto* p=static_cast<Piki*>(*gather);if(p&&p->isAlive()) {
+                    Vector3f previous=n->mCursorWorldPos;n->mCursorWorldPos=p->getPosition();
+                    n->callPikis(200.0f);n->mCursorWorldPos=previous;break;
+                } }
+                whistled=true;std::puts("P2_SPICY_SETUP whistle_receiver=actual aim=injected");return result;
+            }
+            squad.clear();
             Iterator party(n->mPlateMgr);CI_LOOP(party) { auto* p=static_cast<Piki*>(*party);if(p&&p->isAlive()&&p->getState()==PIKISTATE_Normal) squad.push_back({p,p->getAttackPower(),p->getSpeed(.25f),p->mHappa}); }
-            require(!squad.empty(),"no eligible actual formation Pikmin");
+            if(squad.size()!=20) {
+                Iterator gather(pikiMgr);CI_LOOP(gather) { auto* p=static_cast<Piki*>(*gather);if(p&&p->isAlive()&&p->mMode==PikiMode::FreeMode) {
+                    Vector3f previous=n->mCursorWorldPos;n->mCursorWorldPos=p->getPosition();
+                    n->callPikis(200.0f);n->mCursorWorldPos=previous;
+                } }
+                if(ticks%30==0) { Iterator pending(pikiMgr);CI_LOOP(pending) { auto* p=static_cast<Piki*>(*pending);if(p&&p->isAlive())std::printf("P2_SPICY_SETUP state=%d mode=%d captain=%d\n",p->getState(),p->mMode,p->mNavi==n); } }
+                require(setupTime<8,"incomplete actual formation after initialization");return result;
+            }
             std::string e;p2originalresource::ResourceSnapshot injected;
             injected.sprayCounts[0]=2;require(stock.restore(injected,contents,e),"fixture inventory install");
             require(!pc_p2_sprays_bind(&stock,nullptr,e),"bind accepted missing source receiver");
-            require(bank.resources(resources,e),"actual source Honey receiver bank missing");
+            if(!bank.resources(resources,e))require(false,e.c_str());
             require(pc_p2_sprays_bind(&stock,&resources.receiverClips[1],e),"source-clock/inventory binding");
             require(input(n),"spicy input did not consume");
             require(stock.sprayCount(p2originalresource::HoneyKind::Spicy)==1,"wrong stock decrement");
@@ -108,6 +127,7 @@ public:
             gameflow.mPauseAll=true;phase=2;return result;
         }
         if(phase==3) {
+            if(ticks%120==0)std::printf("P2_SPICY_PROGRESS seconds=%.3f remaining=%.3f captain_state=%d\n",phaseTime,squad.front().p->mP2Spicy.remaining,n->getCurrState()->getID());
             bool recovered=true;for(const auto& b:squad) recovered=recovered&&!b.p->mP2Spicy.active();
             require(phaseTime<43,"40sec effect did not expire");
             if(!recovered) return result;

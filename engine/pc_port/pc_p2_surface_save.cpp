@@ -73,7 +73,7 @@ bool settled(){
             ||(source->mAliveCount==1&&(!source->mLatestSpawnCreature||!source->mLatestSpawnCreature->isAlive()))
             ||(source->mAliveCount==0&&source->mLatestSpawnCreature))
             return held("source_actor_cardinality_restore_pending");
-        if(source->mCarryOverFlags>15||source->mDayLimit<-1||source->mDayLimit>32767
+        if(source->mDayLimit<-1||source->mDayLimit>32767
             ||!source->mGenObject||!source->mGenArea||!source->mGenType)
             return held("unsupported_source_record");
         savedSources.insert(source);

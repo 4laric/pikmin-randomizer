@@ -3,10 +3,12 @@
 #include <map>
 #include <set>
 #include <tuple>
+#include <limits>
 namespace {
 std::string fingerprint;
 std::map<std::string,OriginalPikiSource> sources;
-struct Body {OriginalPikiOrigin origin;OriginalPikiBodyState state;bool hasState=false;};
+struct Body {OriginalPikiOrigin origin;OriginalPikiBodyState state;bool hasState=false;std::uint64_t nativeLifetime=0;bool committed=false;};
+std::uint64_t nativeLifetimeHighWater=0;
 std::map<const Piki*,Body> bodies;
 using BirthKey=std::tuple<std::string,std::uint32_t,std::uint32_t,std::uint64_t>;
 std::set<BirthKey> bornMembers;
@@ -30,14 +32,18 @@ bool valid(const OriginalPikiOrigin& o){auto i=sources.find(o.sourceKey);return 
 bool stateValid(const OriginalPikiBodyState& s){return s.species<=5&&(!s.wild||s.wasWild);}
 bool stateSame(const OriginalPikiBodyState&a,const OriginalPikiBodyState&b){return a.species==b.species&&a.wild==b.wild&&a.wasWild==b.wasWild;}
 bool attach(Piki* p,const OriginalPikiOrigin& o,const OriginalPikiBodyState* state=nullptr){
- if(!p||!valid(o)||bodies.count(p)||(state&&(!stateValid(*state)||sources.at(o.sourceKey).species!=state->species)))return false;
+ if(nativeLifetimeHighWater==std::numeric_limits<std::uint64_t>::max()||!p||!valid(o)||bodies.count(p)||(state&&(!stateValid(*state)||sources.at(o.sourceKey).species!=state->species)))return false;
  for(const auto& body:bodies)if(same(body.second.origin,o))return false;
- Body value;value.origin=o;if(state){value.state=*state;value.hasState=true;}
- auto inserted=bodies.emplace(p,std::move(value));
+ Body value;value.origin=o;value.nativeLifetime=nativeLifetimeHighWater+1;if(state){value.state=*state;value.hasState=true;}
+ bodies.emplace(p,std::move(value));
+ // Reserve before synchronous observer callbacks: nested actual associations
+ // cannot share an incarnation. Refused callbacks may leave harmless gaps.
+ ++nativeLifetimeHighWater;const auto reservedLifetime=nativeLifetimeHighWater;
+ const auto retirePending=[&](){auto current=bodies.find(p);if(current!=bodies.end()&&current->second.nativeLifetime==reservedLifetime)bodies.erase(current);};
  try {
-  if(pc_p2_cave_campaign_party_associate_birth(p,o.sourceKey.c_str(),o.recordUid,o.attempt,o.activation,o.catalogFingerprint.c_str()))return true;
- } catch(...) {bodies.erase(inserted.first);throw;}
- bodies.erase(inserted.first);return false;
+  if(pc_p2_cave_campaign_party_associate_birth(p,o.sourceKey.c_str(),o.recordUid,o.attempt,o.activation,o.catalogFingerprint.c_str())){auto current=bodies.find(p);if(current==bodies.end()||current->second.nativeLifetime!=reservedLifetime)return false;current->second.committed=true;return true;}
+ } catch(...) {retirePending();throw;}
+ retirePending();return false;
 }
 }
 bool pc_p2_original_piki_origin_install(const std::string& f,const std::vector<OriginalPikiSource>& rows,std::string& e){
@@ -148,3 +154,12 @@ bool pc_p2_original_piki_saved_color_held(const Piki* p,int color) noexcept {
 }
 
 const std::string& pc_p2_original_piki_catalog_fingerprint() noexcept {return fingerprint;}
+
+bool pc_p2_original_piki_body_handle(const Piki* p,OriginalPikiBodyHandle& out){
+ auto i=bodies.find(p);if(i==bodies.end()||!i->second.hasState||!i->second.committed||!i->second.nativeLifetime)return false;
+ OriginalPikiBodyHandle next;next.body.origin=i->second.origin;next.body.state=i->second.state;next.nativeLifetime=i->second.nativeLifetime;
+ out=std::move(next);return true;
+}
+bool pc_p2_original_piki_body_current(const Piki* p,std::uint64_t lifetime)noexcept{
+ auto i=bodies.find(p);return lifetime&&i!=bodies.end()&&i->second.hasState&&i->second.committed&&i->second.nativeLifetime==lifetime;
+}

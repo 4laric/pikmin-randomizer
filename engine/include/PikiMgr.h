@@ -8,6 +8,7 @@
 
 class Navi;
 class CPlate;
+class PikiHeadItem;
 
 /**
  * @brief TODO
@@ -233,6 +234,7 @@ public:
     // Original GenPiki has its own literal source field limit, not AP Flarlic.
     // Only the admitted canonical physical adapter calls this entrypoint.
     Creature* birthOriginalP2();
+    Creature* birthOriginalP2Sprout(PikiHeadItem*);
     // Call only from verified original source container/head transactions.
     Creature* birthOriginalP2Container();
     Creature* birthOriginalP2Sprout();

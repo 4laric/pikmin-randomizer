@@ -1,5 +1,7 @@
 #include "pc_p2_ship.h"
 #include "pc_randomizer.h"
+#include "pc_p2_original_onyon_native.h"
+#include "pc_p2_original_sprout_native.h"
 #include "ItemAI.h"
 #include <cstdio>
 #include <cstdlib>
@@ -863,6 +865,14 @@ void GoalAI::BootDone::act(AICreature* item)
 void GoalAI::EmitPiki::act(AICreature* item)
 {
 	GoalItem* obj = (GoalItem*)item;
+#if defined(PIKI_PC_PORT)
+	const bool sourceOnyon=pc_p2_original_onyon_campaign_owned(obj);
+	PcOriginalSproutOrigin sourceOrigin;
+	// Hold an unauthenticated pending range before even the firework RNG draw.
+	if(sourceOnyon&&item->mSAICtx.mCurrAnimId>0){std::string error;
+		if(!pc_p2_original_sprout_owner(obj,sourceOrigin,error)){
+			std::fprintf(stderr,"P2_ORIGINAL_SPROUT_FAIL %s\n",error.c_str());std::abort();}}
+#endif
 
 	if (item->mSAICtx.mCounter > 0) {
 		Vector3f pos = item->mSRT.t;
@@ -892,7 +902,9 @@ void GoalAI::EmitPiki::act(AICreature* item)
 #if defined(PIKI_PC_PORT)
 		// VS: con el campo del dueño lleno, la semilla se queda en su cebolla.
 		const bool vsFull = pc_vs_active() && obj->mPcOwner >= 0 && pcVsFieldPikis(obj->mPcOwner) >= pcVsFieldLimit();
-		PikiHeadItem* seed = vsFull ? nullptr : static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
+		PikiHeadItem* seed = sourceOnyon
+			? static_cast<PikiHeadItem*>(itemMgr->getPikiHeadMgr()->birthOriginalP2(obj))
+			: (vsFull ? nullptr : static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead)));
 #else
 		PikiHeadItem* seed = static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
 #endif
@@ -906,6 +918,9 @@ void GoalAI::EmitPiki::act(AICreature* item)
 			Vector3f pos = obj->mSRT.t;
 			pos.y += 110.0f;
 			seed->init(pos);
+#if defined(PIKI_PC_PORT)
+			if(sourceOnyon) pc_p2_original_sprout_bind(seed,obj,sourceOrigin);
+#endif
 			seed->setColor(obj->mOnionColour);
 			f32 dir = gsys->getRand(1.0f) * PI * 2.0f;
 			seed->mVelocity.set(sinf(dir) * 290.0f, 800.0f, cosf(dir) * 290.0f);
@@ -917,6 +932,9 @@ void GoalAI::EmitPiki::act(AICreature* item)
 #endif
 			C_SAI(seed)->start(seed, PikiHeadAI::PIKIHEAD_Flying);
 		} else {
+#if defined(PIKI_PC_PORT)
+			if(sourceOnyon)pc_p2_original_sprout_store(obj,sourceOrigin);
+#endif
 			pikiInfMgr.incPiki(obj->mOnionColour, Leaf);
 			obj->mHeldPikis[Leaf]++;
 			GameStat::containerPikis.inc(obj->mOnionColour);

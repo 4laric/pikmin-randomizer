@@ -506,24 +506,8 @@ Generator::Generator()
 /**
  * @todo: Documentation
  */
-Generator::Generator(int)
+Generator::Generator(int) : Generator()
 {
-	mGenArea   = nullptr;
-	mGenAreaID = 'pint';
-	mGenType   = nullptr;
-	mGenTypeID = '1one';
-	mGenPosition.set(0.0f, 0.0f, 0.0f);
-	mGenObject   = nullptr;
-	mGenObjectID = 'piki';
-	mGeneratorName.setID('    ');
-	mGeneratorVersion.setID('v0.0');
-
-	strcpy(mMemo, "unset");
-	mNextGenerator = nullptr;
-	mPrevGenerator = nullptr;
-	initCore("");
-	mIsRamReadDisabled = true;
-	setDayLimit(-1);
 }
 
 /**

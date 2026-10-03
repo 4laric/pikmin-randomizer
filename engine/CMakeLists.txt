@@ -284,12 +284,16 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_chappy.cpp
     pc_port/pc_p2_original_chappy_native.cpp
     pc_port/pc_p2_original_group_engine.cpp
+    pc_port/pc_p2_original_onyon.cpp
     pc_port/pc_p2_original_piki_init.cpp
+    pc_port/pc_p2_original_sprout_native.cpp
+    pc_port/pc_p2_original_sprout_reader.cpp
+    pc_port/pc_p2_original_onyon_lineage.cpp
+    pc_port/pc_p2_original_number_profile.cpp
     pc_port/pc_p2_original_piki_spawn.cpp
     pc_port/pc_p2_original_drop.cpp
     pc_port/pc_p2_original_drop_engine.cpp
     pc_port/pc_p2_original_gen_object.cpp
-    pc_port/pc_p2_original_onyon.cpp
     pc_port/pc_p2_original_onyon_native.cpp
     pc_port/pc_p2_original_gate.cpp
     pc_port/pc_p2_original_gate_state.cpp
@@ -410,6 +414,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_surface_save.cpp
     pc_port/pc_p2_original_piki_physical.cpp
     pc_port/pc_p2_original_piki_recruit.cpp
+    pc_port/pc_p2_bud_conversion_origin.cpp
+    pc_port/pc_p2_source_body.cpp
     pc_port/pc_p2_original_piki_native.cpp
     pc_port/pc_p2_original_bulblax_snagret.cpp
     pc_port/pc_p2_original_bulblax_snagret_native.cpp
@@ -684,6 +690,12 @@ if (ANDROID)
 endif()
 if (PIKMIN_TOUCH)
     list(APPEND PC_PORT_SOURCES pc_port/touch/pc_touch.cpp)
+endif()
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/pc_port/pc_p2_retail_cave_native.h"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/pc_port/pc_p2_original_session.h")
+    # Real reader requires NativeFloor 3e2 and OriginalSession c482 composition.
+    # Historical source trees keep pure provenance without inventing a reader.
+    list(APPEND PC_PORT_SOURCES pc_port/pc_p2_bud_retail_live.cpp)
 endif()
 
 include_directories(
@@ -3397,10 +3409,6 @@ add_test(NAME pc_midday_render_graph COMMAND pc_midday_render_graph_test)
         pc_port/pc_p2_original_piki_manifest.cpp)
     target_include_directories(pc_p2_original_piki_manifest_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
     add_test(NAME p2_original_piki_manifest COMMAND pc_p2_original_piki_manifest_test)
-    add_executable(pc_p2_original_progress_test tools/pc_p2_original_progress_test.cpp
-        pc_port/pc_p2_original_progress.cpp)
-    target_include_directories(pc_p2_original_progress_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
-    add_test(NAME p2_original_progress COMMAND pc_p2_original_progress_test)
 
     add_executable(pc_p2_original_piki_init_test tools/pc_p2_original_piki_init_test.cpp
         pc_port/pc_p2_original_piki_init.cpp)
@@ -3519,16 +3527,31 @@ target_include_directories(p2_original_piki_origin_test PRIVATE pc_port)
 target_compile_options(p2_original_piki_origin_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_original_piki_origin COMMAND p2_original_piki_origin_test)
 
+add_executable(p2_original_onyon_lineage_test tools/p2_original_onyon_lineage_test.cpp pc_port/pc_p2_original_onyon_lineage.cpp)
+target_include_directories(p2_original_onyon_lineage_test PRIVATE pc_port)
+add_test(NAME p2_original_onyon_lineage COMMAND p2_original_onyon_lineage_test)
+
+add_executable(p2_original_number_profile_test tools/p2_original_number_profile_test.cpp pc_port/pc_p2_original_number_profile.cpp)
+target_include_directories(p2_original_number_profile_test PRIVATE pc_port)
+add_test(NAME p2_original_number_profile COMMAND p2_original_number_profile_test)
+
 pikmin_add_ci_fixture(surface_campaign_sdl tools/p2_surface_campaign_sdl_fixture.cpp)
 
 pikmin_add_ci_fixture(original_piki_physical tools/p2_original_piki_physical_runtime.cpp)
 pikmin_add_ci_fixture(original_piki_native tools/p2_original_piki_native_runtime.cpp)
 
 add_executable(pc_p2_original_piki_recruit_test tools/pc_p2_original_piki_recruit_test.cpp
-    pc_port/pc_p2_original_piki_recruit.cpp pc_port/pc_p2_original_piki_origin.cpp pc_port/pc_p2_original_progress.cpp)
+    pc_port/pc_p2_original_piki_recruit.cpp pc_port/pc_p2_original_piki_origin.cpp pc_port/pc_p2_original_progress.cpp
+    pc_port/pc_p2_source_body.cpp pc_port/pc_p2_bud_conversion_origin.cpp)
 target_include_directories(pc_p2_original_piki_recruit_test PRIVATE pc_port)
 target_link_libraries(pc_p2_original_piki_recruit_test PRIVATE Threads::Threads)
 add_test(NAME p2_original_piki_recruit COMMAND pc_p2_original_piki_recruit_test)
+add_executable(pc_p2_bud_conversion_origin_test tools/pc_p2_bud_conversion_origin_test.cpp
+    pc_port/pc_p2_bud_conversion_origin.cpp pc_port/pc_p2_source_body.cpp
+    pc_port/pc_p2_original_piki_origin.cpp pc_port/pc_p2_original_piki_recruit.cpp pc_port/pc_p2_original_progress.cpp)
+target_include_directories(pc_p2_bud_conversion_origin_test PRIVATE pc_port)
+target_link_libraries(pc_p2_bud_conversion_origin_test PRIVATE Threads::Threads)
+add_test(NAME p2_bud_conversion_origin COMMAND pc_p2_bud_conversion_origin_test)
 
 add_executable(p2_campaign_treasure_test tools/test_p2_campaign_treasure.cpp)
 target_include_directories(p2_campaign_treasure_test PRIVATE pc_port)
@@ -3555,6 +3578,7 @@ add_executable(p2_original_progress_test tools/pc_p2_original_progress_test.cpp 
 target_include_directories(p2_original_progress_test PRIVATE pc_port)
 target_compile_options(p2_original_progress_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_original_progress_standalone COMMAND p2_original_progress_test)
+add_test(NAME p2_original_progress COMMAND p2_original_progress_test)
 
 add_executable(pc_p2_original_catfish_test tools/test_p2_original_catfish.cpp
     pc_port/pc_p2_original_catfish.cpp pc_port/pc_p2_original_spawn_plan.cpp

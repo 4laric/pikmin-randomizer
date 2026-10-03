@@ -16,6 +16,7 @@
 #include "pc_p2_original_hanachirashi_native.h"
 #include "pc_p2_original_cannon_native.h"
 #include "pc_p2_original_corpse_native.h"
+#include "pc_p2_original_sprout_native.h"
 #include "pc_p2_chappy.h"
 #include "pc_p2_original_onyon_native.h"
 #include "pc_p2_original_gate_native.h"
@@ -214,6 +215,10 @@ bool pc_p2_original_course_start(GeneratorList* list,std::string& e){
  current->shadows=std::move(shadows);current->started=true;e.clear();return true;
 }
 bool pc_p2_original_course_finish(std::string& e){
+ // Preserve unresolved source HEAD/pending graphs before any provider is
+ // disposed. BODY retirement intentionally stays after the Party observer in
+ // GameCoreSection::exitStage; this read-only guard must not retire BODYs.
+ if(!pc_p2_original_sprout_preflight_course_finish(e))return false;
  if(!current){e.clear();return true;}
  // Refuse before disposing generators, actors or their App-heap resources.
  // A collected receipt cannot replace a pending physical cargo graph.
