@@ -33,6 +33,25 @@ int main() {
     assert(!p2CaveSeedCargoMatch(&actor, &actor, &config, &foreignConfig));
     assert(!p2CaveSeedCargoMatch(nullptr, &actor, &config, &config));
     assert(!p2CaveSeedCargoMatch(&actor, &actor, nullptr, nullptr));
+    P2CaveSeedBudget budget;
+    assert(p2CaveSeedBudIndex("forest_1:f1:bud:0") == 0);
+    assert(p2CaveSeedBudIndex("forest_1:f1:bud:1") == 1);
+    assert(p2CaveSeedBudIndex("foreign") == -1);
+    assert(budget.consume(0, 1) && budget.consume(0, 2) && budget.consume(1, 1));
+    assert(!budget.consume(0, 2) && !budget.consume(0, 1) && !budget.consume(0, 4));
+    assert(!budget.consume(2, 1));
+    std::ostringstream encoded; budget.write(encoded);
+    assert(encoded.str() == " CAVE_BUDS 1 2 1");
+    P2CaveSeedBudget decoded;
+    std::istringstream validBudget(encoded.str());
+    assert(decoded.read(validBudget) && decoded.used == budget.used);
+    for (const char* bad : {"CAVE_BUDS 2 2 1", "OTHER 1 2 1", "CAVE_BUDS 1 6 1",
+            "CAVE_BUDS 1 -1 1", "CAVE_BUDS 1 02 1", "CAVE_BUDS 1 2", "CAVE_BUDS 1 2 6"}) {
+        std::istringstream input(bad);
+        assert(!decoded.read(input) && decoded.used == budget.used);
+    }
+    for (unsigned i = 3; i <= 5; ++i) assert(budget.consume(0, i));
+    assert(!budget.consume(0, 6));
     P2CaveSeedBinding b; std::istringstream in(wire());
     assert(p2CaveSeedRead(in, 91, b));
     std::string end; assert(in >> end && end == "END");

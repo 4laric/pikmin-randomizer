@@ -137,6 +137,7 @@ std::unordered_map<std::string, unsigned> p2Bindings;
 std::vector<std::string> resolvedCheckNames, legacyCheckNames;
 bool generatedCave = false;
 P2CaveSeedBinding generatedCaveBinding;
+P2CaveSeedBudget generatedCaveBudget;
 std::unordered_map<unsigned, unsigned> p2CheckIndices;
 std::unordered_map<unsigned, std::set<std::pair<unsigned, int>>> p2CheckSources;
 unsigned campaignAssignments[72] = {};
@@ -212,6 +213,7 @@ struct CkptScan {
     unsigned used[7] = {};
     p2ship::Store ship;
     p2whitecampaign::Budget whiteBudget;
+    P2CaveSeedBudget caveBudget;
     p2whitetreasure::Ledger whiteTreasure;
     unsigned thelynkUsed[18] = {};
 };
@@ -242,8 +244,9 @@ CkptScanStatus scanCampaignCheckpoint(CkptScan& s) {
         p2whitetreasure::Config config;
         valid = valid && p2whitetreasure::read_config(config) && s.whiteTreasure.read(meta,config);
     }
+    if (generatedCave) valid = valid && s.caveBudget.read(meta);
     if (thelynk) for (int i = 0; i < 18; ++i) valid = valid && bool(meta >> s.thelynkUsed[i]) && s.thelynkUsed[i] <= 330;
-    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : generatedCave ? "PIKMIN_CAMPAIGN_GENERATED_CAVE_1" : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != s.generation || (meta >> extra))
         return kCkptMismatch;
     s.block.resize(32768);
@@ -269,6 +272,7 @@ void loadCampaignCheckpoint() {
     for (int i=0; i<7; ++i) consumedBenefits[i] = s.used[i];
     p2ship::stock = s.ship;
     p2whitecampaign::budget = s.whiteBudget;
+    generatedCaveBudget = s.caveBudget;
     p2whitetreasure::ledger = s.whiteTreasure;
     for (int i = 0; i < 18; ++i) thelynkUsed[i] = s.thelynkUsed[i];
     campaignResumed = true;
@@ -2122,6 +2126,22 @@ void pc_randomizer_generated_cave_delivery(std::uint64_t seed, const char* cave,
     // Use the existing ready, session-bound, monotonic native check journal.
     pc_randomizer_check(checkName(check->index));
 }
+int pc_randomizer_generated_cave_bud_used(std::uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken) {
+    if (!pc_randomizer_generated_cave() || !ready || !cave || !slot || !boundaryToken
+        || seed != generatedCaveBinding.seed || std::strcmp(cave, "forest_1")
+        || floor != 1 || generatedCaveBinding.token != boundaryToken)
+        fail("unready or foreign generated cave bud context");
+    const int index = p2CaveSeedBudIndex(slot);
+    if (index < 0) fail("foreign generated cave bud slot");
+    return int(generatedCaveBudget.used[index]);
+}
+void pc_randomizer_generated_cave_bud_input(std::uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken, unsigned used) {
+    pc_randomizer_generated_cave_bud_used(seed, cave, floor, slot, boundaryToken);
+    if (!generatedCaveBudget.consume(p2CaveSeedBudIndex(slot), used))
+        fail("duplicate, retracted or excessive generated cave bud input");
+}
 void pc_randomizer_check(const char* name) {
     if (pc_midday_construction_rewards_suppressed()) return;
     if (!enabled || !ready) return;
@@ -2322,7 +2342,7 @@ bool write_campaign_checkpoint(const void* source, unsigned long long generation
         if (ec) return false;
     }
     std::ostringstream meta;
-    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : generatedCave ? "PIKMIN_CAMPAIGN_GENERATED_CAVE_1 " : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     if (purpleCampaign) p2ship::stock.write(meta);
     if (whiteCampaign) p2whitecampaign::budget.write(meta);
@@ -2331,6 +2351,7 @@ bool write_campaign_checkpoint(const void* source, unsigned long long generation
         if (!p2whitetreasure::read_config(config)) {if(fatal)fail("White retail save descriptor/assets invalid");return false;}
         p2whitetreasure::ledger.write(meta,config);
     }
+    if (generatedCave) generatedCaveBudget.write(meta);
     if (thelynk) for (int i = 0; i < 18; ++i) meta << ' ' << thelynkUsed[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
@@ -2654,6 +2675,7 @@ bool pc_randomizer_adopt_checkpoint() {
     for (unsigned& used : thelynkUsed) used = 0;
     p2ship::stock = p2ship::Store();
     p2whitecampaign::budget = p2whitecampaign::Budget();
+    generatedCaveBudget = P2CaveSeedBudget();
     p2whitetreasure::ledger = p2whitetreasure::Ledger();
     loadCampaignCheckpoint();
     if (campaignResumed) {

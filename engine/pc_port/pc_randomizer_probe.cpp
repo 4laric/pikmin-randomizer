@@ -24,6 +24,31 @@ int main(int argc, char** argv) {
         // production credit remains in pc_p2_cave_items_deliver(Pellet*).
         assert(pc_randomizer_generated_cave());
         pc_randomizer_update();
+        // Synthetic card payload, real checkpoint serializer. This component
+        // control does not claim ordinary engine SAVE or actor preservation.
+        unsigned char card[32768] = {};
+        const bool resumed = pc_randomizer_load_campaign(card);
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--cave-bud-input")) {
+                assert(i + 6 < argc);
+                const auto seed = std::strtoull(argv[++i], nullptr, 10);
+                const char* cave = argv[++i]; const int floor = std::atoi(argv[++i]);
+                const char* slot = argv[++i]; const char* boundary = argv[++i];
+                const unsigned used = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                pc_randomizer_generated_cave_bud_input(seed, cave, floor, slot, boundary, used);
+            } else if (!std::strcmp(argv[i], "--cave-budget")) {
+                assert(i + 2 < argc);
+                const auto seed = std::strtoull(argv[++i], nullptr, 10);
+                const char* boundary = argv[++i];
+                std::printf("CAVE_BUDGET blue=%d yellow=%d resumed=%d marker=%u\n",
+                    pc_randomizer_generated_cave_bud_used(seed, "forest_1", 1, "forest_1:f1:bud:0", boundary),
+                    pc_randomizer_generated_cave_bud_used(seed, "forest_1", 1, "forest_1:f1:bud:1", boundary),
+                    int(resumed), unsigned(card[0]));
+            } else if (!std::strcmp(argv[i], "--cave-save")) {
+                ++card[0];
+                pc_randomizer_save_campaign(card);
+            }
+        }
         for (int i = 1; i < argc; ++i) if (!std::strcmp(argv[i], "--cave-delivery")) {
             assert(i + 7 < argc);
             const auto seed = std::strtoull(argv[++i], nullptr, 10);

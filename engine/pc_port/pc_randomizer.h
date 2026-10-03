@@ -12,6 +12,10 @@ bool pc_randomizer_generated_cave_collected(uint64_t seed, const char* cave, int
     const char* item, const char* host, const char* slot, const char* boundaryToken);
 void pc_randomizer_generated_cave_delivery(uint64_t seed, const char* cave, int floor,
     const char* item, const char* host, const char* slot, const char* boundaryToken);
+int pc_randomizer_generated_cave_bud_used(uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken);
+void pc_randomizer_generated_cave_bud_input(uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken, unsigned used);
 enum PcPikminStat { PC_PIKI_DAMAGE, PC_PIKI_MOVEMENT, PC_PIKI_ATTACK_RATE };
 bool pc_randomizer_color_stats();
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat);

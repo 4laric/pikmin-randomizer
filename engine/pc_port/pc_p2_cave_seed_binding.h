@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <istream>
+#include <ostream>
 #include <limits>
 #include <string>
 
@@ -49,6 +50,38 @@ inline bool p2CaveSeedUint64(const std::string& text, std::uint64_t& value) {
     }
     return true;
 }
+
+inline int p2CaveSeedBudIndex(const std::string& slot) {
+    if (slot == "forest_1:f1:bud:0") return 0;
+    if (slot == "forest_1:f1:bud:1") return 1;
+    return -1;
+}
+
+struct P2CaveSeedBudget {
+    std::array<unsigned, 2> used{};
+
+    bool read(std::istream& in) {
+        std::string marker, version, blue, yellow;
+        std::uint64_t b = 0, y = 0;
+        if (!(in >> marker >> version >> blue >> yellow)
+            || marker != "CAVE_BUDS" || version != "1"
+            || !p2CaveSeedUint64(blue, b) || !p2CaveSeedUint64(yellow, y)
+            || b > 5 || y > 5) return false;
+        used = {unsigned(b), unsigned(y)};
+        return true;
+    }
+
+    void write(std::ostream& out) const {
+        out << " CAVE_BUDS 1 " << used[0] << ' ' << used[1];
+    }
+
+    bool consume(int index, unsigned next) {
+        if (index < 0 || index >= 2 || used[index] >= 5
+            || next != used[index] + 1) return false;
+        used[index] = next;
+        return true;
+    }
+};
 
 // Called after CAVE_CHECKS was consumed. The two new checks must append to the
 // already validated complete base catalog, never renumber its existing checks.

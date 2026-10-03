@@ -14,6 +14,7 @@
 #include "pc_p2_pom_policy.h"
 #include "pc_p2_receipt_host.h"
 #include "pc_p2_cave.h"
+#include "pc_randomizer.h"
 #include "pc_p2_cave_transfer.h"
 #include "pc_p2_teki_lifetime.h"
 #include "Pom.h"
@@ -298,6 +299,15 @@ void pc_p2_cave_bud_setup()
         actor.colour_index = plan.colour_index;
         actor.segment = plan.segment;
         actor.count = plan.count;
+        if (pc_randomizer_generated_cave()) {
+            actor.used = pc_randomizer_generated_cave_bud_used(layout->seed,
+                layout->cave.c_str(), layout->floor, actor.slot_id.c_str(),
+                pc_p2_cave_boundary_token().c_str());
+            if (actor.count != 5 || actor.used > actor.count) {
+                std::fputs("Invalid generated campaign bud budget\n", stderr); std::abort();
+            }
+            actor.done = actor.used == actor.count;
+        }
         actor.x = plan.x;
         actor.z = plan.z;
         actor.y = mapMgr ? mapMgr->getMinY(actor.x, actor.z, true) : 0.0f;
@@ -308,6 +318,9 @@ void pc_p2_cave_bud_setup()
     }
     std::error_code readError;
     const bool present=std::filesystem::exists("p2-cave-bud-entry.txt",readError);
+    if (pc_randomizer_generated_cave() && present) {
+        std::fputs("Generated campaign bud state belongs to the native card\n", stderr); std::abort();
+    }
     std::ifstream saved("p2-cave-bud-entry.txt");
     if (readError || (present && !saved)) {
         std::fputs("Cannot read P2 cave bud checkpoint\n",stderr); std::abort();
@@ -387,6 +400,13 @@ void pc_p2_cave_bud_tick()
                 continue;
             } else {
                 ++actor.used;
+                if (pc_randomizer_generated_cave()) {
+                    const auto* layout = pc_p2_cave_rooms_layout();
+                    if (!layout) { std::fputs("Missing generated bud layout\n", stderr); std::abort(); }
+                    pc_randomizer_generated_cave_bud_input(layout->seed, layout->cave.c_str(),
+                        layout->floor, actor.slot_id.c_str(),
+                        pc_p2_cave_boundary_token().c_str(), unsigned(actor.used));
+                }
                 ++swallowed;
                 std::printf("P2_CAVE_BUD_ACCEPT slot=%s colour=%s thrown_colour=%d used=%d budget=%d\n",
                             actor.slot_id.c_str(), actor.colour.c_str(), thrownColour, actor.used, actor.count);
