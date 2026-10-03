@@ -40,6 +40,11 @@ The original Perplexing Pool (`yakushima`) wild Yellow records are
 positions. The initial Yellow Onion is around (-1100,89,-950). Debug Yellow
 `initgen.txt#3` and Golden Candypop outputs must not substitute for these records.
 Source GenPiki deliberately disables random horizontal offsets for wild Yellow.
+For the diagnostic acquisition fixture, retain the starting 20 Reds before
+actual source attempts. The five authored wild Yellow births then yield 25
+field actors; do not reduce the baseline or delete source bodies to force the
+staged trajectory fixture's constant population. A whole original session
+must use its actual source calendar and is a separate qualification.
 
 The following 30–90 second script is for a qualified playable source scene;
 the course owner must first supply its launch command and safe approach route:
