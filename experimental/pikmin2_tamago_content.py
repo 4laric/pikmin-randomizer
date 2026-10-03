@@ -206,7 +206,7 @@ def _trailer_row(row, poses, source_frames):
     return row + (trailer.split()[1],) if trailer else row
 
 
-def plan(source, actors):
+def plan(source, actors, *, resource_only=False):
     """Validate everything and return exact payloads; never writes.
 
     Returns ``(actors_payload, bank_payload, mesh_files, manifest_digest)``
@@ -224,7 +224,7 @@ def plan(source, actors):
         if type(generator) is not int or not 0 < generator <= 0xFFFFFFFF:
             raise StagingError(f'TamagoMushi actor generator out of native range: {generator!r}')
         pairs.append(generator)
-    if not pairs:
+    if not pairs and not resource_only:
         raise StagingError('TamagoMushi install requires at least one generator')
     if len(set(pairs)) != len(pairs):
         raise StagingError('TamagoMushi actor generators are not unique')
@@ -248,7 +248,7 @@ def plan(source, actors):
     return digest, pairs, clip_rows, mesh_files
 
 
-def stage_tamago_ground(source, run, actors, _existing=None):
+def stage_tamago_ground(source, run, actors, _existing=None, *, resource_only=False):
     """Stage the batch-2 TamagoMushi ground files from an extracted TamagoMushi tree.
 
     ``source`` is the extracted ``<content>/TamagoMushi/`` directory
@@ -267,15 +267,18 @@ def stage_tamago_ground(source, run, actors, _existing=None):
     room = run / ROOM
     if not room.is_dir() or room.is_symlink():
         raise StagingError(f'TamagoMushi room directory missing for run staging: {room}')
-    digest, generators, clip_rows, mesh_files = plan(source, actors)
+    if resource_only and actors:
+        raise StagingError('TamagoMushi resource-only staging cannot bind actors')
+    digest, generators, clip_rows, mesh_files = plan(source, actors, resource_only=resource_only)
     actors_path, bank_path = run / ground.ACTORS_TXT, run / ground.BANK_TXT
-    actors_payload = ground.merge_actors(
-        actors_path.read_bytes() if actors_path.is_file() else None,
-        SPECIES, generators)
     bank_payload = ground.merge_bank(
         bank_path.read_bytes() if bank_path.is_file() else None,
         SPECIES, SOURCE_ID, clip_rows)
-    targets = {ground.ACTORS_TXT: actors_payload, ground.BANK_TXT: bank_payload}
+    targets = {ground.BANK_TXT: bank_payload}
+    if not resource_only:
+        targets[ground.ACTORS_TXT] = ground.merge_actors(
+            actors_path.read_bytes() if actors_path.is_file() else None,
+            SPECIES, generators)
     targets.update({str(ROOM / name): payload for name, payload in mesh_files.items()})
     # Sidecar conflicts surface inside the merge above (a restaged own-species
     # block must equal what is already there); only a mesh file that exists
@@ -301,6 +304,11 @@ def stage_tamago_ground(source, run, actors, _existing=None):
                    generators=[int(generator) for generator, _species in actors],
                    files={name: _sha(payload) for name, payload in targets.items()})
     return receipt
+
+
+def stage_bigfoot_children(source, run):
+    """Stage Mitite resources for BigFoot's death without creating a placement."""
+    return stage_tamago_ground(source, run, [], resource_only=True)
 
 
 if __name__ == '__main__':

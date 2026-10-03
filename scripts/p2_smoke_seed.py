@@ -417,6 +417,8 @@ def stage_content(manifest, content_dir, cache_dir, iso, prepare_fn=None, copy=s
     needed = {}
     for b in bindings:
         needed.setdefault(int(b['source_id']), b['enum_name'])
+    if 69 in needed:
+        needed.setdefault(68, 'TamagoMushi')
     reused, cached, missing, sparse, pending_copies = [], [], [], [], []
     for sid, enum in sorted(needed.items()):
         target = content_dir / enum
