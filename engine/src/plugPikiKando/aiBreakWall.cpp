@@ -9,6 +9,9 @@
 #include "UtEffect.h"
 #include "gameflow.h"
 #include "pc_randomizer.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_original_barrel_native.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -200,9 +203,16 @@ int ActBreakWall::breakWall()
 		timeSinceLastAttack = 1;
 	}
 
-	if (mIsAttackReady && (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastAttack > 0)) {
+	bool sourceBarrel=false;
+#if defined(PIKI_PC_PORT)
+	sourceBarrel=pc_p2_original_barrel_owned(mWall);
+#endif
+	if (mIsAttackReady && (sourceBarrel || (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastAttack > 0))) {
 		// Native wall health is measured in work units. A base-10 hit supplies 1/60 unit.
-		const f32 work = pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : timeSinceLastAttack / 60.0f;
+		f32 work = pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : timeSinceLastAttack / 60.0f;
+#if defined(PIKI_PC_PORT)
+		if(sourceBarrel)work=pc_p2_original_barrel_work_damage(mPiki);
+#endif
 		InteractAttack attack(mPiki, nullptr, work, false);
 		mIsAttackReady = false;
 		if (!mWall->stimulate(attack)) {

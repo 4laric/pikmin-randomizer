@@ -721,7 +721,7 @@ class GenObjectFactory : public Factory<GenObject> {
 protected:
 	GenObjectFactory()
 #if defined(PIKI_PC_PORT)
-	    : Factory<GenObject>(13) // Additional original-course object; no host/AP slot.
+	    : Factory<GenObject>(24) // Twelve legacy kinds plus bounded typed original-source kinds.
 #else
 	    : Factory<GenObject>(12)
 #endif

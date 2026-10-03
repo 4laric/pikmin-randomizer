@@ -985,6 +985,16 @@ void CollInfo::initInfo(Shape* shape, CollPart* parts, u32* ids)
 /**
  * @brief PC port (#246): initializes from a code-owned ObjCollInfo list rooted at @p root.
  */
+void CollInfo::initInfoTree(ObjCollInfo* root, CollPart* parts, u32* ids)
+{
+    if (!mUseDefaultMaxParts || !parts || !ids) {
+        ERROR("code-owned collision requires the default embedded arrays\n");
+    }
+    mCollParts = parts;
+    mPartIDs = ids;
+    initInfoTree(root);
+}
+
 void CollInfo::initInfoTree(ObjCollInfo* root)
 {
 	for (int i = 0; i < mMaxParts; i++) {

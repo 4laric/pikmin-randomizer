@@ -16,6 +16,9 @@
 #include "jaudio/pikiinter.h"
 #include "sysNew.h"
 #if defined(PIKI_PC_PORT)
+#include "pc_p2_original_bridge_native.h"
+#endif
+#if defined(PIKI_PC_PORT)
 #include "timing/pc_render_phase.h"
 #endif
 
@@ -248,6 +251,27 @@ Creature* WorkObjectMgr::birth(int wObjType, int p2)
 	WorkObjectNode* node = new WorkObjectNode(object);
 	mRootNode.add(node);
 	return object;
+}
+
+void WorkObjectMgr::originalAdopt(WorkObject* object)
+{
+	originalAdoptNode(object);
+}
+
+WorkObjectNode* WorkObjectMgr::originalAdoptNode(WorkObject* object)
+{
+	auto* node = new WorkObjectNode(object);
+	mRootNode.add(node);
+	return node;
+}
+
+bool WorkObjectMgr::originalForget(WorkObject* object)
+{
+	for(auto* child=mRootNode.mChild;child;child=child->mNext){
+		auto* node=static_cast<WorkObjectNode*>(child);
+		if(node->mObject==object){node->del();return true;}
+	}
+	return false;
 }
 
 /**
@@ -1247,6 +1271,10 @@ int Bridge::getJointIndex(int id)
  */
 bool Bridge::isStageFinished(int id)
 {
+#if defined(PIKI_PC_PORT)
+	bool original=false;
+	if(pc_p2_original_bridge_stage_finished(this,id,original))return original;
+#endif
 	if (mDoUseJointSegments) {
 		if (id < 0 || id >= mStageCount) {
 			return true;
@@ -1338,6 +1366,10 @@ void Bridge::setStageFinished(int stageIndex, bool isFinished)
  */
 Vector3f Bridge::getStagePos(int stage)
 {
+#if defined(PIKI_PC_PORT)
+	Vector3f original;
+	if(pc_p2_original_bridge_stage_position(this,stage,original))return original;
+#endif
 	if (mDoUseJointSegments) {
 		Vector3f pos;
 		f32 z = getStageZ(stage);

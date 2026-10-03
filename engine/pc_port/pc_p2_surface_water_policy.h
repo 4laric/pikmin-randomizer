@@ -27,10 +27,10 @@ inline int find(const std::vector<Box>& boxes, float x, float y, float z, float 
     for (const Box& b:boxes) if (contains(b,x,y,z,radius)) return b.id;
     return -1;
 }
-inline bool read(std::istream& in, std::vector<Box>& result) {
+inline bool read(std::istream& in, std::vector<Box>& result, const char* expectedCourse="tutorial") {
     result.clear();
     std::string magic,course; long long count=-1;
-    if (!(in>>magic>>course>>count) || magic!="P2_SURFACE_WATER_1" || course!="tutorial"
+    if (!(in>>magic>>course>>count) || magic!="P2_SURFACE_WATER_1" || course!=expectedCourse
         || count<0 || count>128) return false;
     std::vector<Box> candidate;
     for (int i=0; i<count; ++i) {

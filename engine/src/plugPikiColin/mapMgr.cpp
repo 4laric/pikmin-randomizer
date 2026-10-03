@@ -28,6 +28,7 @@
 #include "pc_bbft.h"
 #include "pc_p2_surface_topology.h"
 #include "pc_p2_surface_water.h"
+#include "pc_p2_surface_water_drain.h"
 #include "pc_p2_cargo_ground.h"
 #endif
 
@@ -1287,6 +1288,9 @@ void MapMgr::updateSimulation()
 
 	f32 dt = gsys->getFrameTime();
 	if (!mWorldSimulator->isPaused()) {
+#ifdef PIKI_PC_PORT
+		pc_p2_surface_water_update(dt);
+#endif
 		// update our accumulated running time for the physics engine
 		mAccumPhysicsTime += dt * 1.0f;
 		// catch the physics engine up to our frame time
