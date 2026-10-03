@@ -6,13 +6,18 @@ namespace {
 bool finite(Position p){return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);}
 bool reject(std::string& e,const char* message){e=message;return false;}
 }
-bool planSpawns(const EnemyRecord& r,const Math& math,SpawnPlan& out,std::string& e){
+bool validateOriginalRecord(const EnemyRecord& r,std::string& e){
  if(!r.uid||r.source>65535||r.birthType>255||r.count>10||r.deathCount>r.count||r.spawnType>255
   ||!finite(r.position)||!finite(r.offset)||!std::isfinite(r.directionDegrees)||!std::isfinite(r.appearRadius)||!std::isfinite(r.enemySize)
   ||r.treasureCode<-32768||r.treasureCode>32767||r.pelletColor>255||r.pelletSize>255||r.pelletMinimum>255||r.pelletMaximum>255
   ||!std::isfinite(r.pelletProbability)||r.generatorVersion.size()!=4||r.generatorTail.size()>4096)
   return reject(e,"original enemy common field or ten-slot source limit invalid");
  for(const auto& value:r.generatorTail)if(value.size()>4096)return reject(e,"original species tail token exceeds bound");
+ if(!finite({r.position.x+r.offset.x,r.position.y+r.offset.y,r.position.z+r.offset.z}))return reject(e,"original center overflow");
+ e.clear();return true;
+}
+bool planSpawns(const EnemyRecord& r,const Math& math,SpawnPlan& out,std::string& e){
+ if(!validateOriginalRecord(r,e))return false;
  const unsigned count=r.count-r.deathCount;
  if((count>1&&!math.squareRoot)||(count&&((math.mapAvailable&&!math.floor)||(r.spawnType!=1&&(!math.draw||!math.sinCos)))))return reject(e,"source-qualified original placement math adapter missing");
  const Position center{r.position.x+r.offset.x,r.position.y+r.offset.y,r.position.z+r.offset.z};

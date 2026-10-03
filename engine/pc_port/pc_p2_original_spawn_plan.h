@@ -31,4 +31,6 @@ struct Math {
 // than reproducing its overflow or silently truncating content. Output is atomic;
 // caller must own rollback of external RNG if a callback fails after draws.
 bool planSpawns(const EnemyRecord&,const Math&,SpawnPlan&,std::string&);
+// Structural common-record validation only; no math/RNG/provider callbacks.
+bool validateOriginalRecord(const EnemyRecord&,std::string&);
 }
