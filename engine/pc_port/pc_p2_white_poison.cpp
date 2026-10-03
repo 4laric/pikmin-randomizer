@@ -1,6 +1,8 @@
 #include "pc_p2_white_poison.h"
 #include "pc_p2_white_poison_policy.h"
 #include "pc_p2_white.h"
+#include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "Piki.h"
 #include "Generator.h"
 #include "teki.h"
@@ -8,12 +10,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <filesystem>
 #include <set>
 #include <string>
 #include <limits>
 
 namespace {
 bool enabled = false;
+bool ordinaryFallback = false;
 float poisonDamage = 0.0f;
 std::set<unsigned> predatorGenerators;
 std::set<const BTeki*> predators;
@@ -22,6 +26,7 @@ P2WhitePoisonEvents events;
 
 void pc_p2_white_poison_reset() {
     enabled = false;
+    ordinaryFallback = false;
     poisonDamage = 0.0f;
     predatorGenerators.clear();
     predators.clear();
@@ -32,7 +37,17 @@ void pc_p2_white_poison_setup() {
     pc_p2_white_poison_reset();
     if (!pc_p2_whites_enabled()) return;
     std::ifstream in("p2-white-poison.txt");
-    if (!in) return;
+    if (!in) {
+        // Ordinary White campaigns inherit the source750 mouth-consumption
+        // ability for this supported native adult family without a room file.
+        // An existing unreadable profile is a refusal, not a silent fallback.
+        if (pc_randomizer_white_campaign() && !pc_pikipelago_room_preview()) {
+            if (std::filesystem::exists("p2-white-poison.txt")) std::abort();
+            poisonDamage=750.0f; ordinaryFallback=true; enabled=true;
+            std::puts("P2_WHITE_POISON_CAMPAIGN_READY damage=750.000 family=TEKI_Swallow live_type_bound=1 explicit_profile=0");
+        }
+        return;
+    }
     std::string word;
     int count = 0;
     if (!(in >> word) || word != "P2_WHITE_POISON_1"
@@ -66,7 +81,8 @@ void pc_p2_white_poison_forget(BTeki* predator) {
 }
 
 bool pc_p2_white_poison_predator(BTeki* predator) {
-    return enabled && predator && predator->isAlive() && predators.count(predator);
+    return enabled && predator && predator->isAlive()
+        && (ordinaryFallback ? predator->mTekiType==TEKI_Swallow : predators.count(predator)!=0);
 }
 
 bool pc_p2_white_poison_prepare(BTeki* predator, Creature* victim) {

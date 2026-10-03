@@ -1,4 +1,5 @@
 #include "pc_p2_ship.h"
+#include "pc_p2_white_poison.h"
 #include "pc_dev_console.h"
 #include "pc_p2_ship_store.h"
 #include "pc_p2_purple.h"
@@ -2043,7 +2044,10 @@ void GameCoreSection::finalSetup()
         pc_p2_purple_setup();
         pc_p2_purple_motion_setup();
         pc_p2_purple_flight_setup();
-        if (pc_randomizer_white_campaign()) pc_p2_white_setup();
+        if (pc_randomizer_white_campaign()) {
+            pc_p2_white_setup();
+            pc_p2_white_poison_setup();
+        }
         std::printf("P2_SHIP_READY stored=%d controls=F10_withdraw_ShiftF10_deposit near_ship=180\n", p2ship::stock.total());
     }
 	pc_p2_snow_campaign_setup();

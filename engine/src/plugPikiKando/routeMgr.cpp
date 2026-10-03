@@ -19,6 +19,7 @@
 
 #if defined(PIKI_PC_PORT)
 #include "pc_route_planner.h"
+#include "pc_p2_surface_water.h"
 #include "settings/pc_settings.h"
 #include <cstdlib>
 #include <vector>
@@ -1330,6 +1331,13 @@ void RouteMgr::construct(MapMgr* map)
 			if (tri && MapCode::getAttribute(tri) == ATTR_Water) {
 				wp->mFlags |= WayPointFlags::InWater;
 			}
+#if defined(PIKI_PC_PORT)
+			// Static P2 source water lives in volumes, not retagged terrain.
+			// Keep an authored submerged waypoint out of dry rescue searches.
+			if (pc_p2_surface_water_box(wp->mPosition, 0.0f) >= 0) {
+				wp->mFlags |= WayPointFlags::InWater;
+			}
+#endif
 
 			wp->mRadius     = point->mRadius;
 			wp->mRoutePoint = point;
