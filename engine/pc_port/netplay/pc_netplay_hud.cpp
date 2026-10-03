@@ -27,6 +27,7 @@
 #include "netplay/pc_netplay_hud.h"
 
 #include "netplay/pc_netplay_input_sel.h"
+#include "netplay/pc_netplay_present.h"
 #include "gl/pc_gfx.h"
 #include "settings/pc_glass_menu.h"
 #include "settings/pc_settings.h"
@@ -37,6 +38,8 @@
 #include "Geometry.h"
 #include "Graphics.h"
 #include "Matrix4f.h"
+#include "NaviMgr.h"
+#include "NaviState.h"
 #include "system.h"
 
 #include <SDL2/SDL.h>
@@ -254,6 +257,11 @@ void pc_netplay_hud_draw(void)
 	if (!info.banner) {
 		if (!info.running || !sVisible) return;
 		if (pc_settings_menu_open() || pc_glass_menu_active()) return;
+		// The local Onion prompt occupies the status box's corner. Keep its
+		// opening/closing animation clear too; the other captain's menu does
+		// not obscure this peer's view. End-of-session alerts bypass this gate.
+		Navi* local = naviMgr ? naviMgr->getNavi(pc_netplay_present_local_player()) : nullptr;
+		if (local && local->getCurrState() && local->getCurrState()->getID() == NAVISTATE_Container) return;
 	}
 	if (gsys == nullptr || gsys->mDGXGfx == nullptr) return;
 	DGXGraphics* gfx = static_cast<DGXGraphics*>(gsys->mDGXGfx);
