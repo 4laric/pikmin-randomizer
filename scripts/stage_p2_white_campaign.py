@@ -88,6 +88,31 @@ def rewrite_generators(assets, retail_p2=False, practice_native_scene=False):
     return bytes(header) + struct.pack('>I', len(result)) + b''.join(result)
 
 
+
+def split_starting_generators(data):
+    """Use native init.gen one-shot ownership for the twenty starting bodies.
+
+    default.gen is read every visit. Native init.gen is read only without an
+    authoritative stage cache, including a validated zero-generator cache.
+    Preserve each original record and header; no runtime actor suppression.
+    """
+    if data[:4] != b'1.0v' or len(data) < 24:
+        raise ValueError('Expected canonical generator header')
+    starts = [m.start() for m in re.finditer(b'    0.0v', data)]
+    if not starts or starts[0] != 24 or len(starts) != struct.unpack_from('>I', data, 20)[0]:
+        raise ValueError('Generator framing/count changed')
+    rows = [data[a:(starts[i + 1] if i + 1 < len(starts) else len(data))] for i, a in enumerate(starts)]
+    if any(len(row) < 80 for row in rows):
+        raise ValueError('Truncated generator record')
+    first = [row for row in rows if row[72:76] == b'ikip']
+    daily = [row for row in rows if row[72:76] != b'ikip']
+    if len(first) != 20 or sorted(struct.unpack_from('<I', row, 8)[0] for row in first) != list(range(1, 21)):
+        raise ValueError('Require exact twenty unique starting Red source identities')
+    def pack(rows):
+        return data[:20] + struct.pack('>I', len(rows)) + b''.join(rows)
+    return pack(daily), pack(first)
+
+
 def prepare(assets, white, purple, room, output, pod=None, practice_native_scene=False):
     assets, white, purple, room, output = map(Path, (assets, white, purple, room, output))
     if any(not p.is_dir() for p in (assets, white, purple, room)):
@@ -118,7 +143,9 @@ def prepare(assets, white, purple, room, output, pod=None, practice_native_scene
     if not practice_native_scene:
         stage = re.sub(rb'(?m)^navi_start[^\r\n]*', b'navi_start -85.0 0.0', stage)
     routes = prototype_routes((room / 'room.ini').read_bytes())
-    overrides = {'dataDir/stages/practice/default.gen': data, 'dataDir/stages/practice.ini': stage,
+    daily_data, first_data = split_starting_generators(data)
+    overrides = {'dataDir/stages/practice/default.gen': daily_data,
+                 'dataDir/stages/practice/init.gen': first_data, 'dataDir/stages/practice.ini': stage,
                  'dataDir/courses/pikmin2room/room.mod': replace_embedded_routes((room / 'room.mod').read_bytes(), routes),
                  'dataDir/courses/pikmin2room/room.ini': routes}
     empty = data[:20] + struct.pack('>I', 0) if practice_native_scene else b'1.0v' + struct.pack('>4fI', -85, 0, 0, 45, 0)
@@ -161,6 +188,7 @@ def prepare(assets, white, purple, room, output, pod=None, practice_native_scene
              'stage_profile': 'practice-native-scene' if practice_native_scene else 'imported-capped-room',
              'original_practice_generator_sha256': PRACTICE_GENERATOR_SHA256 if practice_native_scene else None,
              'engineering_initial_placement': True,
+             'starting_population_source': 'init.gen: native one-shot stage-cache ownership',
              'imported_P2_terrain_day_end_accepted': False,
              'geometry': ('Original Practice terrain and sunset frame, original Red Onion/UFO anchors; engineering captain/20 Red/bud/cargo initial placement; ordinary route/contact/day-end/SAVE remains acceptance gate' if practice_native_scene else 'Inherited imported capped room with original prototype route rewrite; initial placement only, native contact/route remains acceptance gate'),
              'hashes': {str(f.relative_to(output)): digest(f) for f in files},
