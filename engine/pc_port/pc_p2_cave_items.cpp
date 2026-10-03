@@ -11,9 +11,13 @@
 #include "pc_p2_receipt_host.h"
 #include "pc_randomizer.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_seed_binding.h"
+#include "pc_p2_teki_lifetime.h"
 
 #include "Camera.h"
 #include "Graphics.h"
+#include "GoalItem.h"
+#include "ItemMgr.h"
 #include "MapMgr.h"
 #include "Pellet.h"
 #include "Shape.h"
@@ -29,10 +33,14 @@ namespace {
 P2CaveItemPlacement placement;
 bool itemsActive = false;
 Shape* itemShape = nullptr;
+GoalItem* campaignPod = nullptr;
+Shape* campaignPodShape = nullptr;
+unsigned long campaignPodScene = 0;
 
 struct Spawned {
     P2CaveItemEntry entry;
     Pellet* pellet = nullptr;
+    PelletConfig* config = nullptr;
 };
 std::vector<Spawned> spawned;
 int deliveredCount = 0;
@@ -80,7 +88,9 @@ PelletConfig* privateConfig(PelletConfig* source, int weight, int slots)
 int indexOf(Pellet* pellet)
 {
     for (std::size_t i = 0; i < spawned.size(); ++i) {
-        if (spawned[i].pellet == pellet) return static_cast<int>(i);
+        if (spawned[i].pellet == pellet && (!pc_randomizer_generated_cave()
+            || (pellet && p2CaveSeedCargoMatch(spawned[i].pellet, pellet,
+                spawned[i].config, pellet->mConfig)))) return static_cast<int>(i);
     }
     return -1;
 }
@@ -133,6 +143,9 @@ Pellet* pc_p2_cave_items_pellet_for(const char* item)
 
 void pc_p2_cave_items_shutdown()
 {
+    campaignPod = nullptr;
+    campaignPodShape = nullptr;
+    campaignPodScene = 0;
     placement = P2CaveItemPlacement{};
     itemsActive = false;
     itemShape = nullptr;
@@ -183,6 +196,15 @@ void pc_p2_cave_items_setup()
                     entry.item.c_str(), entry.host.c_str(), entry.slot_id.c_str(),
                     pc_p2_cave_boundary_token().c_str()))
                 receiptFailure();
+        campaignPod = itemMgr ? itemMgr->getContainer(Red) : nullptr;
+        if (!campaignPod || !campaignPod->isAlive()) receiptFailure();
+        campaignPodShape = gameflow.loadShape("courses/pikmin2room/pod.mod", true);
+        if (!campaignPodShape) receiptFailure();
+        for (int i = 0; i < campaignPodShape->mTexAttrCount; ++i)
+            if (campaignPodShape->mTexAttrList[i].mTexture)
+                campaignPodShape->mTexAttrList[i].mTexture->attach();
+        // GameCoreSection marks this new scene after all actor setup finishes.
+        campaignPodScene = pc_p2_scene_generation() + 1;
     }
 
     PelletConfig* templateConfig = treasureTemplate();
@@ -243,6 +265,7 @@ void pc_p2_cave_items_setup()
         Spawned record;
         record.entry = entry;
         record.pellet = pellet;
+        record.config = pellet->mConfig;
         spawned.push_back(record);
         std::printf("P2_CAVE_ITEM_ACTOR slot=%s item=%s host=%s kind=%s tagged=%d x=%.3f y=%.3f z=%.3f pellet=%p\n",
                     entry.slot_id.c_str(), entry.item.c_str(), entry.host.c_str(), entry.kind.c_str(),
@@ -276,11 +299,16 @@ bool pc_p2_cave_items_deliver(Pellet* pellet)
     const P2CaveItemEntry& entry = spawned[index].entry;
 
     if (pc_randomizer_generated_cave()) {
+        if (!p2CaveSeedReceiverMatch(true, pc_randomizer_ready(),
+                pc_p2_cave_items_goal(), pellet->mTargetGoal)) receiptFailure();
         const bool duplicate = pc_randomizer_generated_cave_collected(placement.seed,
             placement.cave.c_str(), placement.floor, entry.item.c_str(),
             entry.host.c_str(), entry.slot_id.c_str(), pc_p2_cave_boundary_token().c_str());
         pc_randomizer_generated_cave_delivery(placement.seed, placement.cave.c_str(),
             placement.floor, entry.item.c_str(), entry.host.c_str(), entry.slot_id.c_str(), pc_p2_cave_boundary_token().c_str());
+        // Suction completion kills this Pellet immediately afterwards. Retire
+        // its binding before the manager can reuse that address for other cargo.
+        spawned[index].pellet = nullptr;
         if (!duplicate) ++deliveredCount;
         ++deliveryEventCount;
         std::printf("P2_CAVE_CAMPAIGN_CHECK item=%s host=%s new=%d\n",
@@ -312,5 +340,37 @@ bool pc_p2_cave_items_deliver(Pellet* pellet)
                 granted ? 1 : 0, static_cast<unsigned long long>(placement.seed),
                 static_cast<int>(result));
     std::fflush(stdout);
+    return true;
+}
+
+Suckable* pc_p2_cave_items_goal()
+{
+    if (!itemsActive || !pc_randomizer_generated_cave() || !pc_randomizer_ready()
+        || pc_p2_cave_floor() != 1 || campaignPodScene != pc_p2_scene_generation()
+        || !campaignPod || !campaignPodShape || !campaignPod->isAlive()) return nullptr;
+    return static_cast<Suckable*>(campaignPod);
+}
+
+Suckable* pc_p2_cave_items_goal_for(Pellet* pellet)
+{
+    if (!pellet || !pellet->isAlive() || indexOf(pellet) < 0) return nullptr;
+    return pc_p2_cave_items_goal();
+}
+
+bool pc_p2_cave_items_is_pod(GoalItem* goal)
+{
+    return goal && goal == campaignPod && pc_p2_cave_items_goal();
+}
+
+bool pc_p2_cave_items_draw_pod(GoalItem* goal, Graphics& gfx, Matrix4f&)
+{
+    if (!pc_p2_cave_items_is_pod(goal)) return false;
+    Matrix4f world, view;
+    Vector3f position = goal->mSRT.t;
+    position.y += 74;
+    world.makeSRT(Vector3f(1, 1, 1), Vector3f(0, 0, 0), position);
+    gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
+    campaignPodShape->updateAnim(gfx, view, nullptr, goal);
+    campaignPodShape->drawshape(gfx, *gfx.mCamera, nullptr);
     return true;
 }

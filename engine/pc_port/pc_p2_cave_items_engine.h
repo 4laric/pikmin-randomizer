@@ -7,6 +7,8 @@
 
 class Pellet;
 class Graphics;
+class GoalItem;
+struct Suckable;
 struct Matrix4f;
 
 // True when a P2_CAVE_ITEMS_1 config was loaded, validated against the live
@@ -29,6 +31,13 @@ bool pc_p2_cave_items_draw_pellet(Pellet* pellet, Graphics& gfx, Matrix4f& matri
 // the pellet delivery seam; returns true when the pellet belongs to the cave item
 // set, whether the grant was new or a durable duplicate.
 bool pc_p2_cave_items_deliver(Pellet* pellet);
+
+// Seed-owned production receiver, active only in its validated cave scene.
+// Historical standalone/preview receiver behavior remains separate.
+Suckable* pc_p2_cave_items_goal();
+Suckable* pc_p2_cave_items_goal_for(Pellet* pellet);
+bool pc_p2_cave_items_is_pod(GoalItem* goal);
+bool pc_p2_cave_items_draw_pod(GoalItem* goal, Graphics& gfx, Matrix4f& matrix);
 
 const P2CaveItemPlacement* pc_p2_cave_items_placement();
 int pc_p2_cave_items_spawned();

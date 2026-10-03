@@ -21,6 +21,18 @@ static std::string changed(const std::string& from, const std::string& to) {
     s.replace(at, from.size(), to); return s;
 }
 int main() {
+    int receiver = 1, foreignReceiver = 2;
+    assert(p2CaveSeedReceiverMatch(true, true, &receiver, &receiver));
+    assert(!p2CaveSeedReceiverMatch(true, true, &receiver, &foreignReceiver));
+    assert(!p2CaveSeedReceiverMatch(true, false, &receiver, &receiver));
+    assert(!p2CaveSeedReceiverMatch(false, true, &receiver, &receiver));
+    assert(!p2CaveSeedReceiverMatch(true, true, nullptr, nullptr));
+    int actor = 3, config = 4, foreignConfig = 5;
+    assert(p2CaveSeedCargoMatch(&actor, &actor, &config, &config));
+    assert(!p2CaveSeedCargoMatch(&actor, &foreignReceiver, &config, &config));
+    assert(!p2CaveSeedCargoMatch(&actor, &actor, &config, &foreignConfig));
+    assert(!p2CaveSeedCargoMatch(nullptr, &actor, &config, &config));
+    assert(!p2CaveSeedCargoMatch(&actor, &actor, nullptr, nullptr));
     P2CaveSeedBinding b; std::istringstream in(wire());
     assert(p2CaveSeedRead(in, 91, b));
     std::string end; assert(in >> end && end == "END");

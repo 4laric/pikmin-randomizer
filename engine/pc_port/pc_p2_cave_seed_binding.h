@@ -19,6 +19,17 @@ struct P2CaveSeedBinding {
     std::array<P2CaveSeedCheck, 2> checks;
 };
 
+inline bool p2CaveSeedReceiverMatch(bool enabled, bool ready,
+    const void* ownedReceiver, const void* actualTarget) {
+    return enabled && ready && ownedReceiver && actualTarget == ownedReceiver;
+}
+
+inline bool p2CaveSeedCargoMatch(const void* ownedActor, const void* actualActor,
+    const void* ownedConfig, const void* actualConfig) {
+    return ownedActor && ownedConfig && actualActor == ownedActor
+        && actualConfig == ownedConfig;
+}
+
 inline const char* p2CaveSeedCheckName(unsigned ordinal) {
     static const char* names[] = {
         "Pikmin 2: Generated Forest Cave F1 Water Treasure",

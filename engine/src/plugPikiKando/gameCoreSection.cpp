@@ -38,6 +38,7 @@
 #include "pc_p2_demon_host.h"
 #include "pc_p2_sarai_manager.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_items_engine.h"
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_captain.h"
 #include "pc_p2_second_captain.h"
@@ -1027,6 +1028,7 @@ void GameCoreSection::exitStage()
 	// the kurage families were released here.
 	pc_p2_purple_flight_reset(); // Restore live Pikmin flags before the stage heap is released.
 	pc_p2_reset_all_teki();
+    if (pc_randomizer_generated_cave()) pc_p2_cave_items_shutdown();
 #endif
 	demoEventMgr = nullptr;
 	// Lane 12 (#130): drop the live captain/squad binding before the NaviMgr and
