@@ -267,6 +267,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_catalog.cpp
     pc_port/pc_p2_original_actor.cpp
     pc_port/pc_p2_original_lifecycle.cpp
+    pc_port/pc_p2_original_group.cpp
+    pc_port/pc_p2_original_group_engine.cpp
     pc_port/pc_p2_campaign_goal_probe.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_surface_topology.cpp
@@ -3213,6 +3215,12 @@ add_test(NAME pc_midday_render_graph COMMAND pc_midday_render_graph_test)
         pc_port/pc_p2_original_spawn_plan.cpp pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_actor_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
     add_test(NAME p2_original_actor COMMAND pc_p2_original_actor_test)
+    add_executable(pc_p2_original_group_test tools/pc_p2_original_group_test.cpp
+        pc_port/pc_p2_original_group.cpp pc_port/pc_p2_original_actor.cpp
+        pc_port/pc_p2_original_catalog.cpp pc_port/pc_p2_original_spawn_plan.cpp
+        pc_port/pc_p2_original_lifecycle.cpp)
+    target_include_directories(pc_p2_original_group_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
+    add_test(NAME p2_original_group COMMAND pc_p2_original_group_test)
     add_executable(pc_p2_original_lifecycle_test tools/pc_p2_original_lifecycle_test.cpp
         pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_lifecycle_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")

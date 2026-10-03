@@ -17,6 +17,8 @@ public:
  bool query(const Creature*,unsigned& source,unsigned& token,InstanceIdentity* identity=nullptr)const;
  bool retire(const Creature*,std::uint64_t);
  const CatalogRow* find(unsigned uid)const{return mCatalog.find(uid);}
+ const std::map<unsigned,CatalogRow>& rows()const{return mCatalog.rows();}
+ const std::string& fingerprint()const{return mCatalog.fingerprint();}
 private:
  struct Entry {std::uint64_t handle;unsigned token;};
  Catalog mCatalog;std::map<const Creature*,Entry> mActors;
