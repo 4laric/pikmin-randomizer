@@ -59,8 +59,11 @@ def prepare(assets, content, run, *, white=None, pod=None, safe_squad=False):
         # from reversing/killing the receiver before controller observation.
         data = ensure_pikmin_squad(assets, data)
         data = bytearray(data)
-        for match in re.finditer(b"fixture starting squad", data):
-            struct.pack_into(">f", data, match.start() + 40, 2000.0)
+        for index, match in enumerate(re.finditer(b"fixture starting squad", data)):
+            # The practice floor at X240..312/Z1812..1820 is Y30.
+            struct.pack_into(">3f", data, match.start() + 32,
+                             240.0 + (index % 10) * 8.0, 30.0,
+                             1820.0 - (index // 10) * 8.0)
         data = bytes(data)
     empty = data[:20] + struct.pack(">I", 0)
     overrides = {
@@ -92,7 +95,8 @@ def prepare(assets, content, run, *, white=None, pod=None, safe_squad=False):
                    source_stage_sha256=sha(assets / "dataDir/stages/practice/default.gen"),
                    starting_squad="20 Reds from current ensure_pikmin_squad; live count pending",
                    placement="engineered static pair near the squad, not campaign placement acceptance")
-    receipt["safe_squad_initial_z"] = 2000.0 if safe_squad else None
+    receipt["safe_squad_initial_grid"] = dict(x=240.0, y=30.0, z=1820.0,
+                                             columns=10, spacing=8.0) if safe_squad else None
     if white is not None:
         receipt["white_acquisition"] = dict(
             ivory_generator=25, staged_xyz=[150., 30., 1860.],
