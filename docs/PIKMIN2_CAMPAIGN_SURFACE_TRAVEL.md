@@ -55,3 +55,11 @@ tests cover all destinations, mismatched stage paths and incompatible flags;
 independent review found and corrected non-tutorial shipless landing targets.
 Full source-provider integration, story progression and actual saved/resumed
 four-course campaign acceptance remain open.
+
+Private runtime tests reached all four rendered surfaces with twenty-red HUDs,
+then used ordinary keyboard input to end the day, write an isolated native card,
+and travel from Valley of Repose to Awakening Wood. These are same-process
+observations, not human gameplay or fresh-process resume acceptance. The sunset
+record showed five battle deaths and fifteen saved Pikmin; the cause remains
+unresolved. First-visit fixture grants also prevent population-conservation
+claims. Preserve these failures when testing the original campaign providers.
