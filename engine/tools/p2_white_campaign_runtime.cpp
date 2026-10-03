@@ -65,7 +65,7 @@ static std::set<Piki*> naturalBodies;
 // Membership binds the fifteen-adult snapshot taken after all ordinary plucks;
 // acquisition regroup16 and pre-pluck disband13 precede that snapshot.
 static bool naturalWhiteMembershipRequired(int p){
- switch(p){case 7:case 8:case 9:case 10:case 11:case 12:case 14:case 15:case 17:case 25:case 26:case 27:case 28:return true;default:return false;}
+ switch(p){case 7:case 8:case 9:case 10:case 11:case 12:case 14:case 15:case 17:case 18:case 25:case 26:case 27:case 28:return true;default:return false;}
 }
 static bool ivoryOutputsComplete(int bud,int budget,int red,int white,int heads,int stock){
  return bud>=0&&bud<3&&budget==5&&stock==0&&red==20-5*(bud+1)&&white>=0&&heads>=0&&white+heads==5*(bud+1);
@@ -109,6 +109,23 @@ struct WhiteWithdrawalCadence {
  int request(int stock,int tick){require(pendingStock<0&&tick>=readyTick&&stock>0,"ordinary withdrawal request before acknowledgement/settling");pendingStock=stock;return ++sequence;}
 };
 static WhiteWithdrawalCadence withdrawal;
+struct WhiteDepositCadence {
+ int sequence=0,lastStock=0,pendingStock=-1,readyTick=0;
+ void observe(int stock,int tick){
+  require(stock>=lastStock&&stock<=15,"ordinary deposit stock decreased/exceeded fifteen");
+  if(pendingStock>=0&&stock>pendingStock){pendingStock=-1;readyTick=tick+20;}
+  lastStock=stock;
+ }
+ bool ready(int tick,bool settled,int eligible)const{return pendingStock<0&&lastStock<15&&tick>=readyTick&&settled&&eligible>0;}
+ int request(int stock,int tick){require(pendingStock<0&&stock==lastStock&&stock<15&&tick>=readyTick,"ordinary deposit request before acknowledgement/settling");pendingStock=stock;return ++sequence;}
+};
+static WhiteDepositCadence deposit;
+static bool depositRegrouping=false,depositWhistling=false;
+static bool whiteDepositEligible(Piki* p,Navi* n,UfoItem* ship){
+ if(!p||!n||!ship||!p->isAlive()||!pc_p2_is_white(p)||!naturalBodies.count(p)||p->mNavi!=n||p->mMode!=PikiMode::FormationMode||p->getState()!=PIKISTATE_Normal||p->isHolding()||p->isStickTo())return false;
+ const float x=p->mSRT.t.x-ship->getGoalPos().x,z=p->mSRT.t.z-ship->getGoalPos().z;
+ return x*x+z*z<=240.f*240.f;
+}
 static void keyRequest(int sequence,const char* key){std::printf("P2_WHITE_NATIVE_KEY_REQUEST seq=%d key=%s actual_SDL_keyboard_required=1\n",sequence,key);std::fflush(stdout);}
 // Whistle radius also reaches non-target bodies. Let ordinary throws/captures
 // finish before any regroup whistle, even when the intended target is grounded.
@@ -157,7 +174,8 @@ public:CampaignInput():Kontroller(1){}
    if(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==27&&!unsettledWhitePluck()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==16&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=(phase==1&&gatheringReds)||phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||phase==25;
+   if(phase==18&&depositWhistling&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
+   const bool move=(phase==1&&gatheringReds)||phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||(phase==18&&!unsettledWhitePluck()&&!unsettledAcquisition())||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
     bool walk=phase==4||phase==17||phase==25||((phase==9||phase==10)&&separatingReds)||bx*bx+bz*bz>10000;
@@ -363,7 +381,22 @@ public:int idle()override{
   if(!cargoSlot||!cargo->isAlive()){require(physical&&p2whitetreasure::ledger.total()==180,"actual physical removal/once retail callback required");if(++stable==60){next(11);std::puts("P2_WHITE_CAMPAIGN_DELIVERED cargo_removed=1 pokos=180 stable_frames=60 natural_white=15");}}
  }
  if(phase==11){if(whiteFollowers==15){goal=itemMgr->getUfo()->getGoalPos();next(17);}else{for(Piki* p:whites)if(p->mMode!=PikiMode::FormationMode){goal=p->mSRT.t;break;}}}
- if(phase==17){goal=itemMgr->getUfo()->getGoalPos();float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<10000){if(resumeMode){keyRequest(1,"CTRL_F10");next(22);}else{keyRequest(1,"SHIFT_F10");next(18);}}}
+ if(phase==17){goal=itemMgr->getUfo()->getGoalPos();float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<10000){if(resumeMode){keyRequest(1,"CTRL_F10");next(22);}else{next(18);return result;}}}
+ if(phase==18){
+  require(white+whiteStock()==15&&heads==0&&red==5,"ordinary deposit full lineage changed");
+  deposit.observe(whiteStock(),phaseTick);auto* ship=itemMgr->getUfo();require(ship,"ordinary deposit ship unavailable");
+  int eligible=0;Piki* regroup=nullptr;float farthest=100.f*100.f;
+  for(Piki* p:whites){
+   eligible+=int(whiteDepositEligible(p,n,ship));
+   const float dx=p->mSRT.t.x-n->mSRT.t.x,dz=p->mSRT.t.z-n->mSRT.t.z,d=dx*dx+dz*dz;
+   if(!unsettledWhitePluck()&&!unsettledAcquisition()&&p->getState()==PIKISTATE_Normal&&!p->isHolding()&&!p->isStickTo()&&(! (p->mNavi==n&&p->mMode==PikiMode::FormationMode)||d>farthest)){regroup=p;farthest=d;}
+   if(frame%30==0)std::printf("P2_WHITE_CAMPAIGN_DEPOSIT_BODY frame=%d pointer=%p generated_uid=%u natural_member=%d alive=%d owned=%d mode=%d state=%d holding=%d sticking=%d eligible=%d stock=%d ship_x=%.4f ship_z=%.4f captain_x=%.4f captain_z=%.4f body_x=%.4f body_y=%.4f body_z=%.4f\n",frame,static_cast<void*>(p),p->mGenerator?uid(p):0,int(naturalBodies.count(p)),int(p->isAlive()),int(p->mNavi==n),p->mMode,p->getState(),int(p->isHolding()),int(p->isStickTo()),int(whiteDepositEligible(p,n,ship)),whiteStock(),ship->getGoalPos().x,ship->getGoalPos().z,n->mSRT.t.x,n->mSRT.t.z,p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);
+  }
+  depositRegrouping=regroup!=nullptr;depositWhistling=regroup&&!(regroup->mNavi==n&&regroup->mMode==PikiMode::FormationMode);goal=regroup?regroup->mSRT.t:ship->getGoalPos();
+  const float sx=n->mSRT.t.x-ship->getGoalPos().x,sz=n->mSRT.t.z-ship->getGoalPos().z;
+  const bool settled=n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID())&&!unsettledWhitePluck()&&!unsettledAcquisition();
+  if(!depositRegrouping&&sx*sx+sz*sz<=180.f*180.f&&deposit.ready(phaseTick,settled,eligible))keyRequest(deposit.request(whiteStock(),phaseTick),"SHIFT_F10");
+ }
  if(phase==18&&whiteStock()==15&&white==0){redReturnLog(n,false,"P2_WHITE_CAMPAIGN_P1_PRE_SUNSET_STOCK");require(p2ship::stock.counts[1][Leaf]==15&&red==5&&heads==0,"ordinary ship deposit conservation");dayBefore=gameflow.mWorldClock.mCurrentDay;expectedDay=pc_randomizer_next_day(dayBefore);require(expectedDay==dayBefore+1,"ordinary next day required");saveIndexBefore=gameflow.mGamePrefs.mMostRecentSaveIndex;uint8_t hash[32];pc_randomizer_checkpoint_info(&generationBefore,hash);next(20);saveRequested=false;saveIntent=WhiteSaveIntent::Pause;std::puts("P2_WHITE_CAMPAIGN_SAVE_BEGIN actual_pause_day_UI_only=1 no_clock_write=1");}
  if(phase==22&&phaseTick>=30&&(n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID()))){keyRequest(withdrawal.request(whiteStock(),0),"F10");next(23);return result;}
  if(phase==23){require(whiteStock()+white==15&&heads==0&&p2whitetreasure::ledger.total()==180,"resumed ordinary withdrawal conservation");withdrawal.observe(whiteStock(),phaseTick);if(white==15&&whiteStock()==0){require(whiteFollowers==15,"resumed fifteen Whites not usable formation");naturalBodies=whites;resumeStart=n->mSRT.t;goal=resumeStart;goal.x+=60;next(25);}else if(withdrawal.ready(phaseTick,(n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID()))))keyRequest(withdrawal.request(whiteStock(),phaseTick),"F10");}
