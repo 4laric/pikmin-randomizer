@@ -136,9 +136,12 @@ def contact_witness(text, mode="landing"):
 
 
 def linux_preflight(exe, run, args, env):
-    """Require adopted #1174 helpers and current controller admission per child."""
+    """Inspect adopted helpers and the selected private execution context."""
     if sys.platform != "linux":
         raise ValueError("Only Windows and Linux fixtures are supported")
+    development = getattr(args, "development_launch", False)
+    if type(development) is not bool:
+        raise ValueError("development-launch must be an explicit boolean")
     # Deliberately no import from another worktree or fallback launcher.
     import fixture_platform as platform
     import run_pikmin2_cave_fixture as launcher
@@ -149,6 +152,20 @@ def linux_preflight(exe, run, args, env):
     if (launcher.supervise.__globals__.get("owned_process_options") is not platform.owned_process_options
             or launcher.supervise.__globals__.get("terminate_owned_process") is not platform.terminate_owned_process):
         raise ValueError("Shared supervisor lacks adopted owned-process-group support")
+    if development:
+        pins = {"PIKMIN_SHA": args.root_commit, "NATIVE_SHA": args.native_commit,
+                "FIXTURE_SOURCE_SHA256": args.fixture_source_sha256}
+        for key, value in pins.items():
+            length = 64 if key == "FIXTURE_SOURCE_SHA256" else 40
+            if not value or not re.fullmatch(r"[0-9a-f]{%d}" % length, value):
+                raise ValueError("Invalid development source metadata: " + key)
+        runtime = platform.runtime_evidence(exe, env=env, cwd=run)
+        if runtime.get("platform") != "linux" or runtime.get("executable", {}).get("sha256") != args.exe_sha256:
+            raise ValueError("Linux library/executable proof mismatch")
+        context = platform.linux_development_context(exe, ROOT, args.output.resolve(strict=True), run, runtime)
+        return {"development": context, "runtime": runtime, "source_metadata": pins,
+                "source_binding": "Source identities require separate build provenance; no controller or compiled-source attestation",
+                "platform_helper_sha256": args.platform_helper_sha256, "supervisor_sha256": args.supervisor_sha256}
     proof = platform.linux_admission(exe, ROOT, args.output.resolve(strict=True), run)
     expected = {"target": "pikmin_ci_fixture_elecbug_contact", "source": "tools/p2_elecbug_contact_runtime.cpp",
                 "exe_sha256": args.exe_sha256, "guard_sha256": sha(ROOT / "scripts/p2_fixture_captain_guard.h")}
@@ -207,6 +224,8 @@ def main():
     p.add_argument("--mode", choices=("ready", "positive", "landing", "red-electric", "white-electric", "negative"), required=True)
     p.add_argument("--negative-scene", choices=("landing", "red-electric", "white-electric"))
     p.add_argument("--guard-mask", choices=("active", "inactive", "null-state", "missing-manager"))
+    p.add_argument("--development-launch", action="store_true",
+                   help="Private Linux execution with runtime/capacity checks and owned cleanup; no controller proof")
     a = p.parse_args()
     exe = a.exe.resolve(strict=True)
     scene = a.negative_scene if a.mode == "negative" else ("landing" if a.mode in ("positive", "ready") else a.mode)

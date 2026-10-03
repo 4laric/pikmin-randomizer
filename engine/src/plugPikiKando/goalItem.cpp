@@ -8,6 +8,7 @@
 #include "netplay/pc_netplay_policy.h"
 #include "netplay/pc_netplay_present.h"
 #include "pc_coop_policy.h"
+#include "pc_goal_birth_ledger.h"
 #include <cstdio>
 #include "timing/pc_render_phase.h"
 #else
@@ -419,7 +420,15 @@ void GoalItem::suckMe(Pellet* item)
 		playEventSound(this, SE_CONTAINER_PELLETIN2);
 	} else {
 		const int stateBefore = getCurrState() ? getCurrState()->getID() : -1;
+#if defined(PIKI_PC_PORT)
+        const int birthPendingBefore=mSAICtx.mCurrAnimId;
+#endif
 		mSAICtx.mCurrAnimId += pikiNum;
+#if defined(PIKI_PC_PORT)
+        if(pc_goal_birth_ledger.armed)pc_goal_birth_ledger.request(gsys->mTotalFrames,
+            reinterpret_cast<std::uintptr_t>(this),reinterpret_cast<std::uintptr_t>(item),
+            config->mModelId.mId,mOnionColour,pikiNum,birthPendingBefore,mSAICtx.mCurrAnimId);
+#endif
 		MsgUser msg(0);
 		C_SAI(this)->procMsg(this, &msg);
 		std::printf("[pellet] onion=%d state_before=%d state_after=%d pending=%d\n", int(mOnionColour), stateBefore,

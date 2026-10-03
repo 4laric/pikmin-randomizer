@@ -35,6 +35,7 @@
 #include "pc_p2_cave_bud_actor.h"
 #include "pc_p2_cave_carry_engine.h"
 #include "pc_p2_cave_items_engine.h"
+#include "pc_p2_cave_carry_engine.h"
 #include "pc_p2_species.h"
 #include <vector>
 #include "pc_p2_preview.h"
@@ -115,6 +116,7 @@ void setupVirtualPad(){
 class CaveMixedRouteApp final : public PlugPikiApp {
     int frames=0, observed=0, phase=0, point=0, phaseTick=0, throwTick=0, aimed=0;
     bool entrySeen=false,captainSeen=false,started=false,picked=false;
+    bool electricYellowPickup=false,electricBluePickup=false;
     int separated=0,selectionQuiet=0;Piki* selectedBlue=nullptr;
     std::vector<Piki*> originalBlues,blueFlights;
     const std::string scenario=std::getenv("P2_CAVE_TEST_SCENARIO")?std::getenv("P2_CAVE_TEST_SCENARIO"):"route";
@@ -137,7 +139,16 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             if(!seen){blueFlights.push_back(selectedBlue);std::printf("P2_CAVE_MIXED_BLUE_FLIGHT actor=%p ordinal=%d source=ordinary_release x=%.2f z=%.2f\n",static_cast<void*>(selectedBlue),int(blueFlights.size()),selectedBlue->mSRT.t.x,selectedBlue->mSRT.t.z);std::fflush(nullptr);}
             fixturePad(0);return;
         }
-        if(throwTick==2){fixturePad(0);if(selectedBlue && selectedBlue->getState()==PIKISTATE_Normal){selectedBlue=nullptr;throwTick=0;selectionQuiet=0;}return;}
+        if(throwTick==2){
+            fixturePad(0);bool observedFlight=false;for(Piki* actor:blueFlights)if(actor==selectedBlue)observedFlight=true;
+            // Hanged exits to Normal during NaviThrow wind-up, before its
+            // KEY_Action0 starts Flying. Normal alone is not a landing witness.
+            if(selectedBlue && selectedBlue->getState()==PIKISTATE_Normal){
+                if(observedFlight){selectedBlue=nullptr;throwTick=0;selectionQuiet=0;}
+                else if(observed%10==0){std::printf("P2_CAVE_MIXED_BLUE_FLIGHT_PENDING actor=%p nstate=%d preflight_Normal=1 input=neutral\n",static_cast<void*>(selectedBlue),state);std::fflush(nullptr);}
+            }
+            return;
+        }
         if(state==NAVISTATE_ThrowWait){
             auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
             Piki* actual=grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki;
@@ -206,17 +217,73 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             sx=int(std::lround(30*(dx*axis.x+dz*axis.z)/distance));
             sy=int(std::lround(30*(dx*axis.z-dz*axis.x)/distance));
         }
+        if((phase==2 || phase==10) && observed%30==0){
+            std::printf("P2_CAVE_MIXED_GATHER phase=%d point=%d followers=%d target=%.2f,%.2f cursor=%.2f,%.2f aim_distance=%.2f max_cursor=%.2f\n",phase,point,following(),x/count,z/count,n->mCursorWorldPos.x,n->mCursorWorldPos.z,distance,C_NAVI_PARM(n,mCursorMaxRadius));
+            Iterator idle(pikiMgr);CI_LOOP(idle){Piki* p=static_cast<Piki*>(*idle);if(p && p->isAlive() && p->mMode!=PikiMode::FormationMode)
+                std::printf("P2_CAVE_MIXED_IDLE actor=%p species=%d state=%d mode=%d x=%.2f z=%.2f\n",static_cast<void*>(p),pc_p2_species(p),p->getState(),int(p->mMode),p->mSRT.t.x,p->mSRT.t.z);}
+            std::fflush(nullptr);
+        }
         fixturePad(KeyConfig::_instance->mSetCursorKey.mBind,sx,sy);
+    }
+    void drySeparationApproach(Navi* n,int base,int round){
+        // Gather before and after walking, rather than aborting a dry walking
+        // leg whenever a following actor temporarily leaves formation.
+        if(point==base){if(following()!=20){gatherAtCursor(n);return;}fixturePad(0);++point;return;}
+        if(point==base+1){if(walkTo(n,-100,-100))++point;return;}
+        if(point==base+2){if(walkTo(n,-20,-100))++point;return;}
+        require(point==base+3,"invalid dry separation approach stage");
+        if(following()!=20){gatherAtCursor(n);return;}
+        separated=round;next(3);
+    }
+    Piki* singleSpecies(int species){
+        Piki* found=nullptr;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
+            if(p&&p->isAlive()&&pc_p2_species(p)==species){require(!found,"ambiguous handoff species");found=p;}}
+        require(found!=nullptr,"missing handoff species");return found;
+    }
+    bool attachedCarrier(Pellet* treasure,int species){
+        bool attached=false;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
+            if(treasure&&p&&p->isAlive()&&p->getStickObject()==treasure){require(pc_p2_species(p)==species&&p->mMode==PikiMode::TransportMode,"wrong electric handoff carrier or transport mode");attached=true;}}
+        return attached;
+    }
+    bool canonicalElectricOpened(){
+        const P2CaveCarryPlan* plan=pc_p2_cave_carry_plan();require(plan&&plan->cave=="forest_1"&&plan->floor==1,"canonical electric plan missing");
+        int electric=0;for(const auto& door:plan->doors)if(door.carry_block=="elec")++electric;
+        const auto* leaf=p2CaveCarryFindDoor(*plan,"forest_1:f1:leaf:1");
+        const auto* gate=p2CaveCarryFindDoor(*plan,"gate:forest_1:f1:leaf:1");
+        require(electric==2&&leaf&&gate&&leaf->kind=="leaf"&&gate->kind=="gate"&&leaf->hazard=="elec"&&gate->hazard=="elec"&&leaf->carry_block=="elec"&&gate->carry_block=="elec"&&leaf->key=="yellow"&&gate->key=="yellow","canonical paired electric blockers changed");
+        // Only electric blockers increment this counter; water never opens.
+        require(pc_p2_cave_carry_opened()<=2,"unexpected electric blocker opens");
+        return pc_p2_cave_carry_opened()==2;
+    }
+    void colourThrow(Navi* n,float x,float z,int preferred,int species){
+        const int state=n->getCurrState()->getID();
+        if(state==NAVISTATE_ThrowWait){auto* grab=static_cast<NaviThrowWaitState*>(n->getCurrState());
+            Piki* actual=grab->mHeldThrowPiki?grab->mHeldThrowPiki:grab->mPendingThrowPiki;
+            if(actual)require(actual->isAlive()&&pc_p2_species(actual)==species,"wrong pending electric throw species");}
+        if(!throwTick){
+            // Native Idle consumes A to finish its animation, then returns to
+            // Walk. Wake through input; start the actual throw only in Walk.
+            if(state==NAVISTATE_Idle){aimAt(n,x,z,KeyConfig::_instance->mThrowKey.mBind);return;}
+            if(state!=NAVISTATE_Walk){fixturePad(0);return;}
+            if(pc_preferred_throw_color_for(n)!=preferred){aimAt(n,x,z,(observed-phaseTick)%30<2?KBBTN_DPAD_RIGHT:0);return;}
+            Piki* preview=n->mNextThrowPiki;
+            if(!preview||!preview->isAlive()||pc_p2_species(preview)!=species||preview->mMode!=PikiMode::FormationMode){fixturePad(0);return;}
+        }
+        mappedThrow(n,x,z);
     }
     void scenarioTick(Navi* n){
         if(observed<60)return;
-        if(scenario=="restore"){
+        if(scenario=="restore"||scenario=="restore_all"){
             mixed();require(!pc_p2_cave_bud_pending(),"restore pending outputs");
             require(!pc_p2_cave_items_pellet_for("treasure_water"),"delivered water item respawned");
             require(pc_p2_cave_items_delivered()==0,"reload granted another receipt");
-            std::puts("PASS CAVE_MIXED_ROUTE_RESTORE red=18 blue=1 yellow=1 water_absent=1 new_receipts=0");std::fflush(nullptr);std::_Exit(0);
+            if(scenario=="restore_all"){
+                require(!pc_p2_cave_items_pellet_for("treasure_elec"),"delivered electric item respawned");
+                std::puts("PASS CAVE_CANONICAL_ROUTE_RESTORE red=18 blue=1 yellow=1 water_absent=1 electric_absent=1 new_receipts=0");
+            }else std::puts("PASS CAVE_MIXED_ROUTE_RESTORE red=18 blue=1 yellow=1 water_absent=1 new_receipts=0");
+            std::fflush(nullptr);std::_Exit(0);
         }
-        require(scenario=="route","unknown scenario");
+        require(scenario=="route"||scenario=="route_all","unknown scenario");
         if(!started){require(alivePikis()==20&&colour(P2SpeciesRed)==20,"requires ordinary20Red entry");started=true;phaseTick=observed;std::puts("P2_CAVE_MIXED_SETUP starting=20_red input=SDL_virtual actor_writes=0 checkpoint_bypass=0 bud_auto_pluck=production");}
         require(alivePikis()==20,"survivor population changed");
         if(observed%90==0){std::printf("P2_CAVE_MIXED_PROGRESS phase=%d point=%d red=%d blue=%d yellow=%d following_red=%d following_blue=%d conversions=%d pending=%d navi=%.1f,%.1f delivered=%d\n",phase,point,colour(P2SpeciesRed),colour(P2SpeciesBlue),colour(P2SpeciesYellow),followers(P2SpeciesRed),followers(P2SpeciesBlue),pc_p2_cave_bud_conversions(),int(pc_p2_cave_bud_pending()),n->mSRT.t.x,n->mSRT.t.z,pc_p2_cave_items_delivered());std::fflush(nullptr);}
@@ -226,14 +293,14 @@ class CaveMixedRouteApp final : public PlugPikiApp {
             if(colour(P2SpeciesBlue)==2&&!pc_p2_cave_bud_pending()){require(colour(P2SpeciesRed)==18,"Blue conversion mismatch");Iterator blues(pikiMgr);CI_LOOP(blues){Piki* p=static_cast<Piki*>(*blues);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue)originalBlues.push_back(p);}require(originalBlues.size()==2,"original Blue identities missing");std::puts("P2_CAVE_MIXED_ACQUIRED red=18 blue=2");next(2);return;}
             require(colour(P2SpeciesBlue)<=2,"excess Blue conversion");
             if(pc_p2_cave_bud_pending()){fixturePad(0);return;}mappedThrow(n,bud.x,bud.z);return;}
-        if(phase==2){if(following()!=20){gatherAtCursor(n);return;}if(walkTo(n,-20,-100)){separated=0;next(3);}return;}
+        if(phase==2){drySeparationApproach(n,0,0);return;}
         // The loaded cursor radius is 100: walk within reach of target (60,-100).
         // At a dry point, ordinary Blue-only throws separate actors from Red squad.
         // Dismiss leaves Reds at the captain; whistle from the remote landing side.
         if(phase==3){int landed=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesBlue&&p->mMode!=PikiMode::FormationMode&&p->getState()==PIKISTATE_Normal&&p->mSRT.t.x>20)++landed;}
             if(landed==2){require(blueFlights.size()==2,"two original Blue ordinary flights not observed");next(4);return;}mappedThrow(n,60,-100,true);return;}
         if(phase==4){fixturePad(observed-phaseTick==1?KeyConfig::_instance->mDisbandKey.mBind:0);if(observed-phaseTick>30)next(5);return;}
-        if(phase==5){if(walkTo(n,60,-180))next(6);return;}
+        if(phase==5){if(walkTo(n,30,-180))next(6);return;} // Inside the water-leaf corridor walls at x=+/-50.
         if(phase==6){require(followers(P2SpeciesRed)==0,"whistle gathered Reds; refusing water traversal");
             if(followers(P2SpeciesBlue)==2){std::puts("P2_CAVE_MIXED_BLUE_ONLY followers=2 red_followers=0");next(separated?11:7);return;}
             float x,z;require(blueIdle(x,z),"missing idle Blue");aimAt(n,x,z,KeyConfig::_instance->mSetCursorKey.mBind);return;}
@@ -244,14 +311,66 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         if(phase==9){fixturePad(0);if(pc_p2_cave_items_delivered()==1){require(picked,"receipt without attachment");std::puts("P2_CAVE_MIXED_DELIVERED once=1 source=physical_Pod");next(10);}return;}
         if(phase==10){static const float path[][2]={{0,-400},{0,-300},{0,-200},{0,-100},{0,0}};
             if(point<5){if(walkTo(n,path[point][0],path[point][1]))++point;return;}
-            if(following()!=20){gatherAtCursor(n);return;}
-            if(walkTo(n,-20,-100)){separated=1;next(3);}return;}
+            drySeparationApproach(n,5,1);return;}
         if(phase==11){require(followers(P2SpeciesRed)==0,"Red following through Blue choke");static const float path[][2]={{100,-100},{100,0},{200,0},{300,0},{400,0},{500,0},{600,0},{700,0},{800,0},{900,20}};
             if(walkTo(n,path[point][0],path[point][1])&&++point==10){require(followers(P2SpeciesBlue)==2,"Blue followers lost at far side");std::puts("P2_CAVE_MIXED_BLUE_CHOKE physical_controller_traversal=1");next(12);}return;}
         if(phase==12){Vector3f bud;require(pc_p2_cave_bud_position("yellow",bud),"Yellow bud missing");
-            if(colour(P2SpeciesYellow)==1&&!pc_p2_cave_bud_pending()){mixed();std::puts("P2_CAVE_MIXED_YELLOW red=18 blue=1 yellow=1");next(13);return;}
+            if(colour(P2SpeciesYellow)==1&&!pc_p2_cave_bud_pending()){mixed();std::puts("P2_CAVE_MIXED_YELLOW red=18 blue=1 yellow=1");next(scenario=="route_all"?20:13);return;}
             require(colour(P2SpeciesYellow)<=1,"excess Yellow conversion");if(pc_p2_cave_bud_pending()){fixturePad(0);return;}mappedThrow(n,bud.x,bud.z);return;}
         if(phase==13){mixed();if(walkTo(n,800,100)){require(pc_p2_cave_items_delivered()==1,"receipt count changed");require(!pc_p2_cave_bud_pending(),"pending boundary conversion");fixturePad(0);std::puts("P2_CAVE_MIXED_BOUNDARY_READY survivors=20 red=18 blue=1 yellow=1 receipt=1");std::fflush(nullptr);f6();next(14);}return;}
+        if(phase>=20){mixed();require(followers(P2SpeciesRed)==0,"Red following electric route");
+            if(observed%30==0){Piki* yellow=singleSpecies(P2SpeciesYellow);Piki* blue=singleSpecies(P2SpeciesBlue);Pellet* treasure=pc_p2_cave_items_pellet_for("treasure_elec");
+                std::printf("P2_CAVE_ELECTRIC_PROGRESS phase=%d point=%d nstate=%d preferred=%d opened=%d yellow_state=%d yellow_mode=%d yellow_x=%.1f yellow_z=%.1f yellow_attached=%d blue_state=%d blue_mode=%d blue_x=%.1f blue_z=%.1f blue_attached=%d item_x=%.1f item_z=%.1f\n",phase,point,n->getCurrState()->getID(),pc_preferred_throw_color_for(n),pc_p2_cave_carry_opened(),yellow->getState(),int(yellow->mMode),yellow->mSRT.t.x,yellow->mSRT.t.z,int(treasure&&yellow->getStickObject()==treasure),blue->getState(),int(blue->mMode),blue->mSRT.t.x,blue->mSRT.t.z,int(treasure&&blue->getStickObject()==treasure),treasure?treasure->mSRT.t.x:0,treasure?treasure->mSRT.t.z:0);std::fflush(nullptr);}}
+        if(phase==20){
+            Piki* yellow=singleSpecies(P2SpeciesYellow);
+            if(followers(P2SpeciesYellow)!=1){aimAt(n,yellow->mSRT.t.x,yellow->mSRT.t.z,KeyConfig::_instance->mSetCursorKey.mBind);return;}
+            static const float path[][2]={{900,0},{800,0},{800,-100},{800,-200},{800,-300},{800,-370}};
+            if(walkTo(n,path[point][0],path[point][1])&&++point==6)next(21);return;
+        }
+        if(phase==21){
+            require(pc_p2_cave_carry_active(),"electric carry plan missing");
+            if(canonicalElectricOpened()){std::puts("P2_CAVE_ELECTRIC_CLEAR source=ordinary_Yellow_contact leaf=forest_1:f1:leaf:1 gate=gate:forest_1:f1:leaf:1 opened=2");next(22);return;}
+            colourThrow(n,800,-460,int(Yellow),P2SpeciesYellow);return;
+        }
+        if(phase==22){
+            Pellet* treasure=pc_p2_cave_items_pellet_for("treasure_elec");require(treasure!=nullptr,"electric delivery before pickup witness");
+            if(attachedCarrier(treasure,P2SpeciesYellow)){electricYellowPickup=true;std::puts("P2_CAVE_ELECTRIC_PICKUP carrier=Yellow source=ordinary_controller");next(23);return;}
+            if(!walkTo(n,800,-430))return;
+            Piki* yellow=singleSpecies(P2SpeciesYellow);
+            if(yellow->mMode!=PikiMode::FormationMode&&yellow->getState()==PIKISTATE_Normal){
+                const float dx=yellow->mSRT.t.x-treasure->mSRT.t.x,dz=yellow->mSRT.t.z-treasure->mSRT.t.z;
+                if(dx*dx+dz*dz>3600)aimAt(n,yellow->mSRT.t.x,yellow->mSRT.t.z,KeyConfig::_instance->mSetCursorKey.mBind);else fixturePad(0);return;}
+            colourThrow(n,treasure->mSRT.t.x,treasure->mSRT.t.z,int(Yellow),P2SpeciesYellow);return;
+        }
+        if(phase==23){
+            Pellet* treasure=pc_p2_cave_items_pellet_for("treasure_elec");require(treasure&&attachedCarrier(treasure,P2SpeciesYellow),"Yellow electric carry lost before dry handoff");
+            if(treasure->mSRT.t.z>-410&&treasure->mSRT.t.x>650){next(24);return;}
+            walkTo(n,800,-340);return;
+        }
+        if(phase==24){
+            Pellet* treasure=pc_p2_cave_items_pellet_for("treasure_elec");require(treasure!=nullptr,"electric delivered before Blue handoff");Piki* yellow=singleSpecies(P2SpeciesYellow);
+            if(yellow->getStickObject()!=treasure){require(electricYellowPickup&&treasure->mSRT.t.z>-440&&treasure->mSRT.t.x>650,"handoff outside dry cleared alcove");
+                std::puts("P2_CAVE_ELECTRIC_HANDOFF_RELEASE carrier=Yellow source=ordinary_whistle dry_side=1");next(25);return;}
+            aimAt(n,yellow->mSRT.t.x,yellow->mSRT.t.z,KeyConfig::_instance->mSetCursorKey.mBind);return;
+        }
+        if(phase==25){
+            Pellet* treasure=pc_p2_cave_items_pellet_for("treasure_elec");require(treasure!=nullptr,"electric delivery before Blue attachment");
+            if(attachedCarrier(treasure,P2SpeciesBlue)){electricBluePickup=true;std::puts("P2_CAVE_ELECTRIC_HANDOFF_PICKUP carrier=Blue source=ordinary_controller");next(26);return;}
+            Piki* blue=singleSpecies(P2SpeciesBlue);
+            if(blue->mMode!=PikiMode::FormationMode&&blue->getState()==PIKISTATE_Normal){
+                const float dx=blue->mSRT.t.x-treasure->mSRT.t.x,dz=blue->mSRT.t.z-treasure->mSRT.t.z;
+                if(dx*dx+dz*dz>3600)aimAt(n,blue->mSRT.t.x,blue->mSRT.t.z,KeyConfig::_instance->mSetCursorKey.mBind);else fixturePad(0);return;}
+            colourThrow(n,treasure->mSRT.t.x,treasure->mSRT.t.z,int(Blue),P2SpeciesBlue);return;
+        }
+        if(phase==26){
+            require(pc_p2_cave_items_delivered()<=2,"duplicate canonical delivery");fixturePad(0);
+            if(pc_p2_cave_items_delivered()==2){require(electricYellowPickup&&electricBluePickup&&canonicalElectricOpened(),"electric receipt without physical handoff");std::puts("P2_CAVE_CANONICAL_DELIVERED water=1 electric=1 source=physical_Pod");next(27);}return;
+        }
+        if(phase==27){
+            static const float path[][2]={{800,-300},{800,-200},{800,-100},{800,0},{800,100}};
+            if(walkTo(n,path[point][0],path[point][1])&&++point==5){require(pc_p2_cave_items_delivered()==2&&!pc_p2_cave_bud_pending(),"canonical boundary state changed");
+                std::puts("P2_CAVE_MIXED_BOUNDARY_READY survivors=20 red=18 blue=1 yellow=1 receipts=2");std::fflush(nullptr);f6();next(14);}return;
+        }
         if(phase==14){fixturePad(0);return;} // production F6/OS dialog owns transfer/exit42
     }
     int alivePikis() {

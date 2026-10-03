@@ -1,3 +1,4 @@
+#include "pc_midday_constructor_rewards.h"
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
 #include "netplay/pc_netplay_det.h"
@@ -469,6 +470,7 @@ bool pc_bbft_forest_access() {
 #endif
 }
 void pc_bbft_check(const char* name) {
+    if (pc_midday_construction_rewards_suppressed()) return;
     if (pc_randomizer_enabled()) { pc_randomizer_check(name); return; }
 #ifdef _WIN32
     if (enabled) bbft_check(name);

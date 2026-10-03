@@ -1333,6 +1333,10 @@ public:
 		return mStatus == Hidden;
 	}
 	selectFlag getSelectFlag() { return (selectFlag)mCurrentSelection; }
+#if defined(PIKI_PC_PORT)
+	bool pcInputReady() const { return mStatus == Active; }
+	bool pcSelectedYes() const { return mCurrentSelection == Yes; }
+#endif
 
 	void start() { init(Appearing); }
 
@@ -1933,6 +1937,26 @@ public:
 		return id;
 	}
 
+#if defined(PIKI_PC_PORT)
+	void pcNavigationSnapshot(PcWorldMapSnapshot& value) {
+		if(mMode!=CoursePointMode::Operation||!mSelectedPoint)return;
+		bool selectedOwned=false;
+		for(int i=0;i<5;++i)if(mSelectedPoint==&mCoursePoints[i])selectedOwned=true;
+		if(!selectedOwned)return;
+		for(int direction=0;direction<4;++direction) {
+			auto* link=mSelectedPoint->getLinkCoursePointPtr(static_cast<WorldMapCoursePoint::linkFlag>(direction));
+			if(!link)continue;
+			bool owned=false;for(int i=0;i<5;++i)if(link==&mCoursePoints[i])owned=true;
+			if(!owned)return; // No foreign link dereference or partial snapshot.
+			const int course=link->getNumber();
+			if(course<0||course>=STAGE_COUNT)return;
+			value.navigationCourse[direction]=course;
+			value.navigationOpen[direction]=link->getOpenSw()&&playerState&&playerState->courseOpen(course);
+		}
+		value.navigationAvailable=true;
+	}
+#endif
+
 	bool update(Controller* controller, bool p2)
 	{
 		// Access can arrive while the player is parked on this screen.
@@ -1970,6 +1994,9 @@ public:
 	u32 getEventFlag() { return mEventFlag; }
 
 	void createCourseInEffect() { mSelectedPoint->createCourseInEffect(); }
+#if defined(PIKI_PC_PORT)
+	bool pcOperationReady() const { return mMode == CoursePointMode::Operation; }
+#endif
 
 protected:
 	// DLL:
@@ -2468,6 +2495,32 @@ zen::DrawWorldMap::DrawWorldMap()
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+PcWorldMapSnapshot zen::DrawWorldMap::pcInputSnapshot() const
+{
+	PcWorldMapSnapshot value;
+	value.mode=mCurrentMode;value.returnStatus=mReturnStatus;
+	// Constructor/uninitialized prefix has no operational course/cursor state.
+	// Preserve only the mode/status; its owner adds current identities/context.
+	if (mCurrentMode==DrawWorldMapMode::Null) return value;
+	if (mCoursePointMgr) {
+		value.selectedCourse=mCoursePointMgr->getSelectCourseNumber();
+		value.coursePointOperation=mCoursePointMgr->pcOperationReady();
+	}
+	value.courseOpen=playerState && value.selectedCourse>=0 && value.selectedCourse<STAGE_COUNT
+	    && playerState->courseOpen(value.selectedCourse);
+	if (mCurrentMode==DrawWorldMapMode::Operation && mCursorMgr)
+		value.cursorMoveReady=mCursorMgr->isMoveOK();
+	if (mCurrentMode==DrawWorldMapMode::Operation && mCoursePointMgr)
+		mCoursePointMgr->pcNavigationSnapshot(value);
+	// Never inspect a dormant confirmation selection outside its owning mode.
+	if (mCurrentMode==DrawWorldMapMode::Confirm && mConfirmMgr) {
+		value.confirmationActive=mConfirmMgr->pcInputReady();
+		value.confirmationYes=value.confirmationActive && mConfirmMgr->pcSelectedYes();
+	}
+	return value;
+}
+#endif
 bool zen::DrawWorldMap::update(Controller* controller)
 {
 	bool res = false;

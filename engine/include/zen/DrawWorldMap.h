@@ -1,5 +1,8 @@
 #ifndef _ZEN_DRAWWORLDMAP_H
 #define _ZEN_DRAWWORLDMAP_H
+#if defined(PIKI_PC_PORT)
+#include "pc_world_map_observer.h"
+#endif
 
 #include "OnePlayerSection.h"
 #include "P2D/Pane.h"
@@ -217,6 +220,9 @@ public:
 
 	// DLL inlines:
 	returnStatusFlag getReturnStatusFlag() { return mReturnStatus; }
+#if defined(PIKI_PC_PORT)
+	PcWorldMapSnapshot pcInputSnapshot() const;
+#endif
 
 protected:
 	void setCoursePoint(startPlaceFlag);

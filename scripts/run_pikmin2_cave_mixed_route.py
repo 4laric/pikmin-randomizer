@@ -13,11 +13,12 @@ import subprocess
 import sys
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from randomizer.cave_floor import create,fingerprint,ITEMS
+from randomizer.cave_floor import create,fingerprint,validate,ITEMS
 from scripts.stage_pikmin2_playable_cave import stage
 from scripts.play_pikmin2_cave import checkpoint,receipts
 from scripts.fixture_platform import owned_process_options,wait_owned_process,terminate_owned_process
 from experimental.pikmin2_cave_items import parse_items_text
+from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 from scripts.pikmin2_cave_linux_runtime import X11Input,matching_modal,validate_end
 
 PREFIX='P2_CAVE_NATIVE_DIALOG '
@@ -25,9 +26,16 @@ PREFIX='P2_CAVE_NATIVE_DIALOG '
 def require(value,message):
     if not value:raise ValueError(message)
 
-def validate_boundary(state,manifest,placement):
+def validate_boundary(state,manifest,placement,all_treasures=False):
+    validate(manifest)
+    if all_treasures:
+        require(placement['seed']==_seed_uint64(manifest['table']['seed']),'canonical placement seed mismatch')
+        require(Counter((t['treasure_id'],t['slot_id']) for t in manifest['table']['treasures'])==
+                Counter((t['item'],t['host']) for t in placement['items']),'canonical treasure/host binding mismatch')
     require(Counter(s for s,m in state['squad'])==Counter({1:18,0:1,2:1}),'actual boundary mixed stock mismatch')
-    require(receipts(state['receipts'],placement)==[ITEMS['treasure_water']],'actual once-only water receipt mismatch')
+    expected=([ITEMS[t['treasure_id']] for t in manifest['table']['treasures']]
+              if all_treasures else [ITEMS['treasure_water']])
+    require(Counter(receipts(state['receipts'],placement))==Counter(expected),'actual once-only canonical receipt mismatch' if all_treasures else 'actual once-only water receipt mismatch')
     words=state['buds'].split();expected=manifest['table']['buds']
     used={words[5+2*i]:int(words[6+2*i]) for i in range(len(expected))}
     require(used=={b['slot_id']:2 if b['species']=='blue' else 1 for b in expected},'actual boundary bud budgets mismatch')
@@ -42,7 +50,17 @@ def modal_descendant(pid,child):
     return False
 
 
+def child_deadline_seconds(scenario):
+    # Actual Cave08 reached the far traversal at 60s after one physical
+    # delivery and two successful Blue-only separations; the complete route
+    # needs its own finite budget. Restore performs no traversal.
+    require(scenario in ('route','restore','route_all','restore_all'),'unknown native scenario')
+    if scenario=='route_all':return 180
+    return 120 if scenario=='route' else 60
+
+
 def launch(run,scenario,receipt_path,token):
+    limit_seconds=child_deadline_seconds(scenario)
     env=dict(os.environ)
     for key in list(env):
         if key.startswith(('PIKMIN_CAVE_','PIKMIN_P2_','P2_CAVE_','LD_')):del env[key]
@@ -52,14 +70,14 @@ def launch(run,scenario,receipt_path,token):
     (run/'pikmin_settings.conf').write_text('debugKeys=0\nwindowWidth=960\nwindowHeight=540\ndisplayMode=0\n')
     backend=X11Input();baseline={w['window'] for w in backend.windows()}
     child=None;modal_fd=None;events=[];begin=None;end=None;pressed=False;ready=False;error=None;raw=[];cleanup=None;exit_code=None
-    deadline=time.monotonic()+60
+    started=time.monotonic();deadline=started+limit_seconds
     try:
         child=subprocess.Popen([str(run/'nectar.exe'),'--experimental-pikmin2-room'],cwd=run,env=env,
                                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,**owned_process_options())
         os.set_blocking(child.stdout.fileno(),False);selector=selectors.DefaultSelector();selector.register(child.stdout,selectors.EVENT_READ)
         pending=b''
         while True:
-            require(time.monotonic()<deadline,'60-second owned-child deadline exceeded')
+            require(time.monotonic()<deadline,str(limit_seconds)+'-second owned-child deadline exceeded')
             for key,mask in selector.select(.02):
                 data=os.read(child.stdout.fileno(),65536)
                 if data:pending+=data
@@ -76,7 +94,12 @@ def launch(run,scenario,receipt_path,token):
                         elif record.get('event')=='end':
                             require(begin is not None,'dialog ended without begin');validate_end(record,begin,pressed);end=record
             if begin and not pressed:
-                modal=matching_modal(backend.windows(),begin,baseline)
+                windows=backend.windows()
+                try:modal=matching_modal(windows,begin,baseline)
+                except ValueError as exc:
+                    events.append({'event':'actual-X11-modal-refusal','error':str(exc),
+                                   'baseline_windows':sorted(baseline),'windows':windows})
+                    raise
                 if modal:
                     owner=modal['owner_pid'];require(modal_descendant(owner,child.pid),'native modal not owned by this child')
                     modal_fd=os.pidfd_open(owner);backend.press_return(modal['window']);pressed=True
@@ -89,8 +112,10 @@ def launch(run,scenario,receipt_path,token):
                 if data:pending+=data
                 if pending:raw.extend(pending.decode(errors='replace').splitlines())
                 break
-        if scenario=='route':require(exit_code==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
-        else:require(exit_code==0 and any('PASS CAVE_MIXED_ROUTE_RESTORE' in line for line in raw),'actual native reload failed')
+        if scenario in ('route','route_all'):require(exit_code==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
+        else:
+            marker='PASS CAVE_CANONICAL_ROUTE_RESTORE' if scenario=='restore_all' else 'PASS CAVE_MIXED_ROUTE_RESTORE'
+            require(exit_code==0 and any(marker in line for line in raw),'actual native reload failed')
     except BaseException as exc:
         error=repr(exc);raise
     finally:
@@ -111,13 +136,14 @@ def launch(run,scenario,receipt_path,token):
             if modal_fd is not None:os.close(modal_fd)
             backend.close()
             (run/'native.log').write_text('\n'.join(raw)+'\n')
-            (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'cleanup':cleanup,'observed_exit_code':exit_code,'elapsed_seconds':60-(deadline-time.monotonic())},indent=2)+'\n')
+            (run/'supervisor.json').write_text(json.dumps({'scenario':scenario,'exit_code':child.returncode if child else None,'error':error,'dialog_events':events,'cleanup':cleanup,'observed_exit_code':exit_code,'deadline_seconds':limit_seconds,'elapsed_seconds':time.monotonic()-started},indent=2)+'\n')
 
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('assets','pod','fixture','generator','output'):parser.add_argument('--'+name,type=Path,required=True)
+    parser.add_argument('--all-treasures',action='store_true',help='Require both canonical treasures and actual Yellow-to-Blue carry handoff')
     args=parser.parse_args();require(os.name!='nt','Linux supervised route entrypoint')
     output=args.output.resolve();require(not output.exists(),'fresh output required');output.mkdir(parents=True)
     asset_bytes=sum(p.stat().st_size for p in args.assets.rglob('*') if p.is_file())
@@ -130,13 +156,13 @@ def main():
     receipt_path=output/'receipts.txt';receipt_path.write_text('P2_RECEIPTS_1\n')
     initial=output/'route';stage(manifest,args.assets,args.pod,args.fixture,args.generator,initial)
     placement=parse_items_text((initial/'p2-cave-items.txt').read_text())
-    launch(initial,'route',receipt_path,token)
+    launch(initial,'route_all' if args.all_treasures else 'route',receipt_path,token)
     state=checkpoint((initial/'p2-cave-transfer.txt').read_text(),(initial/'p2-cave-bud-transfer.txt').read_text(),receipt_path.read_text(),manifest,placement)
-    validate_boundary(state,manifest,placement)
+    validate_boundary(state,manifest,placement,args.all_treasures)
     (output/'checkpoint.json').write_text(json.dumps(state,indent=2)+'\n')
     before=receipt_path.read_bytes();reload=output/'reload'
     stage(manifest,args.assets,args.pod,args.fixture,args.generator,reload,checkpoint=state)
-    launch(reload,'restore',receipt_path,token);require(receipt_path.read_bytes()==before,'reload changed durable receipts')
-    (output/'result.json').write_text(json.dumps({'passed':True,'ordinary_SDL_route':True,'production_F6_confirmed':True,'actual_mixed_reload':True,'campaign_SAVE_accepted':False},indent=2)+'\n')
+    launch(reload,'restore_all' if args.all_treasures else 'restore',receipt_path,token);require(receipt_path.read_bytes()==before,'reload changed durable receipts')
+    (output/'result.json').write_text(json.dumps({'passed':True,'ordinary_SDL_route':True,'production_F6_confirmed':True,'actual_mixed_reload':True,'canonical_treasures_complete':args.all_treasures,'campaign_SAVE_accepted':False},indent=2)+'\n')
 
 if __name__=='__main__':main()

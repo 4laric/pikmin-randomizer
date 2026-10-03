@@ -209,7 +209,11 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 def active_names(manifest):
     if "enemy_catalog" in manifest:
         from .enemy_catalog import active_names as resolved_names
-        return resolved_names(manifest)
+        names = resolved_names(manifest)
+        if 'generated_cave' in manifest:
+            from .cave_campaign import LOCATION_NAMES
+            names += LOCATION_NAMES
+        return names
     if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False), manifest.get("no_sticks", False))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
@@ -264,6 +268,10 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if 'generated_cave' in manifest:
+        from .cave_campaign import LOCATION_NAMES, can_reach as cave_reach
+        if name in LOCATION_NAMES:
+            return cave_reach(inventory, manifest)
     if 'enemy_catalog' in manifest and (name in BESTIARY_TARGETS or name.startswith('Bestiary: Deliver P2 ')):
         from .enemy_catalog import can_reach as resolved_reach
         return resolved_reach(name, inventory, manifest)

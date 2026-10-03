@@ -19,6 +19,7 @@
 #include "Kontroller.h"
 #include "Camera.h"
 #include "KeyConfig.h"
+#include "zen/ogSave.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -57,20 +58,74 @@ static int phase=0,phaseTick=0,frame=0,budIndex=0;
 static Vector3f goal;
 static SDL_Joystick* virtualPad=nullptr;
 static int nativeFrameLimit=5000;
-static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false;
+static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false,gatheringReds=false;
 static WhiteSaveIntent saveIntent=WhiteSaveIntent::Neutral;
 static Piki* held=nullptr;
 static std::set<Piki*> naturalBodies;
+// Membership binds the fifteen-adult snapshot taken after all ordinary plucks;
+// acquisition regroup16 and pre-pluck disband13 precede that snapshot.
+static bool naturalWhiteMembershipRequired(int p){
+ switch(p){case 7:case 8:case 9:case 10:case 11:case 12:case 14:case 15:case 17:case 18:case 25:case 26:case 27:case 28:return true;default:return false;}
+}
+static bool ivoryOutputsComplete(int bud,int budget,int red,int white,int heads,int stock){
+ return bud>=0&&bud<3&&budget==5&&stock==0&&red==20-5*(bud+1)&&white>=0&&heads>=0&&white+heads==5*(bud+1);
+}
 static Pellet* cargo=nullptr;
 static int p1Before[3][3]={};
 static int p1Expected[3][3]={};
 static void p1Read(int (&counts)[3][3]){for(int c=0;c<3;++c)for(int m=0;m<3;++m){require(pikiInfMgr.mPikiCounts[c][m]>=0,"negative native P1 stock");counts[c][m]=pikiInfMgr.mPikiCounts[c][m];}}
-static void p1Require(){for(int c=0;c<3;++c)for(int m=0;m<3;++m)require(pikiInfMgr.mPikiCounts[c][m]==p1Expected[c][m],"native all-color/maturity original Red conservation mismatch");}
+static void p1Require(){for(int c=0;c<3;++c)for(int m=0;m<3;++m){if(pikiInfMgr.mPikiCounts[c][m]!=p1Expected[c][m])std::printf("P2_WHITE_CAMPAIGN_P1_STOCK_REFUSAL color=%d maturity=%d actual=%d expected=%d\n",c,m,pikiInfMgr.mPikiCounts[c][m],p1Expected[c][m]);require(pikiInfMgr.mPikiCounts[c][m]==p1Expected[c][m],"native all-color/maturity original Red conservation mismatch");}}
 static void p1Log(const char* marker){std::printf("%s b_leaf=%d b_bud=%d b_flower=%d r_leaf=%d r_bud=%d r_flower=%d y_leaf=%d y_bud=%d y_flower=%d\n",marker,pikiInfMgr.mPikiCounts[Blue][Leaf],pikiInfMgr.mPikiCounts[Blue][Bud],pikiInfMgr.mPikiCounts[Blue][Flower],pikiInfMgr.mPikiCounts[Red][Leaf],pikiInfMgr.mPikiCounts[Red][Bud],pikiInfMgr.mPikiCounts[Red][Flower],pikiInfMgr.mPikiCounts[Yellow][Leaf],pikiInfMgr.mPikiCounts[Yellow][Bud],pikiInfMgr.mPikiCounts[Yellow][Flower]);}
+// Only current live-world managers are inspected. No cached body/Onion survives
+// this call; once the day advances, result/card telemetry uses stock only.
+static bool redReturnWorldReadable(bool advanced,bool captain,bool managers,bool gameplay){return !advanced&&captain&&managers&&gameplay;}
+static void redReturnLog(Navi* n,bool advanced,const char* marker){
+ p1Log(marker);
+ const bool readable=!advanced&&redReturnWorldReadable(false,n&&n->getCurrState(),pikiMgr&&itemMgr,gameflow.mCurrGameSectionID==SECTION_OnePlayer);
+ std::printf("P2_WHITE_CAMPAIGN_RED_RETURN_WORLD frame=%d phase=%d day=%d sunset=%d advanced=%d readable=%d\n",frame,phase,gameflow.mWorldClock.mCurrentDay,int(gameflow.mIsDayEndActive),int(advanced),int(readable));
+ if(!readable)return;
+ auto* onion=itemMgr->getContainer(Red);auto* ship=itemMgr->getUfo();
+ std::printf("P2_WHITE_CAMPAIGN_RED_ONION frame=%d available=%d uid=%u alive=%d held_leaf=%u held_bud=%u held_flower=%u x=%.4f y=%.4f z=%.4f ship_available=%d safety_range=%.4f\n",frame,int(onion!=nullptr),onion&&onion->mGenerator?onion->mGenerator->_70:0,onion?int(onion->isAlive()):0,onion?onion->mHeldPikis[Leaf]:0,onion?onion->mHeldPikis[Bud]:0,onion?onion->mHeldPikis[Flower]:0,onion?onion->mSRT.t.x:0,onion?onion->mSRT.t.y:0,onion?onion->mSRT.t.z:0,int(ship!=nullptr),pikiMgr->mPikiParms?pikiMgr->mPikiParms->mPikiParms.mSunsetSafetyRange():-1.f);
+ int originals=0;Iterator bodies(pikiMgr);CI_LOOP(bodies){auto* p=static_cast<Piki*>(*bodies);
+  const unsigned id=p->mGenerator?p->mGenerator->_70:0;if(id<1||id>20)continue;++originals;
+  float onionDistance=-1,shipDistance=-1;
+  if(onion)onionDistance=qdist2(onion->mSRT.t.x,onion->mSRT.t.z,p->mSRT.t.x,p->mSRT.t.z);
+  if(ship){const auto pos=ship->getGoalPos();shipDistance=qdist2(pos.x,pos.z,p->mSRT.t.x,p->mSRT.t.z);}
+  std::printf("P2_WHITE_CAMPAIGN_RED_RETURN_BODY frame=%d uid=%u species=%d alive=%d health=%.4f maturity=%d mode=%d state=%d owned=%d x=%.4f y=%.4f z=%.4f onion_distance=%.4f ship_distance=%.4f\n",frame,id,int(pc_p2_species(p)),int(p->isAlive()),p->mHealth,p->mHappa,p->mMode,p->getState(),int(p->mNavi==n),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,onionDistance,shipDistance);
+ }
+ std::printf("P2_WHITE_CAMPAIGN_RED_RETURN_MEMBERSHIP frame=%d original_generated_slots=%d\n",frame,originals);
+}
 static void p1ResumeExpected(){const char* text=std::getenv("P2_WHITE_CAMPAIGN_EXPECT_P1_STOCK");require(text,"source paired native card P1 stock expectation missing");for(int c=0;c<3;++c)for(int m=0;m<3;++m){char* end=nullptr;long value=std::strtol(text,&end,10);require(end!=text&&value>=0&&value<=100000,"invalid paired P1 stock expectation");p1Expected[c][m]=int(value);const bool last=c==2&&m==2;require(last?!*end:*end==',',"exact nine P1 stock expectation fields required");text=last?end:end+1;}p1Require();}
 static int whiteStock(){const auto& c=p2ship::stock.counts[1];return c[0]+c[1]+c[2];}
 static int spent(){int total=0;for(unsigned id:flowerIds)total+=p2whitecampaign::budget.get({0,id});return total;}
 static void conservedBudget(){for(unsigned id:flowerIds)require(p2whitecampaign::budget.get({0,id})==5,"three lifetime budgets not exactly five");}
+// Observe actual native stock as the acknowledgement; never publish a second
+// key while its predecessor is pending. Twenty neutral ticks leave key-up input.
+static bool whiteShipInputState(int state){return state==NAVISTATE_Walk||state==NAVISTATE_Idle;}
+struct WhiteWithdrawalCadence {
+ int sequence=1,pendingStock=-1,readyTick=0;
+ bool ready(int tick,bool settled)const{return pendingStock<0&&tick>=readyTick&&settled;}
+ void observe(int stock,int tick){if(pendingStock>=0&&stock!=pendingStock){require(stock==pendingStock-1,"ordinary withdrawal stock acknowledgement mismatch");pendingStock=-1;readyTick=tick+20;}}
+ int request(int stock,int tick){require(pendingStock<0&&tick>=readyTick&&stock>0,"ordinary withdrawal request before acknowledgement/settling");pendingStock=stock;return ++sequence;}
+};
+static WhiteWithdrawalCadence withdrawal;
+struct WhiteDepositCadence {
+ int sequence=0,lastStock=0,pendingStock=-1,readyTick=0;
+ void observe(int stock,int tick){
+  require(stock>=lastStock&&stock<=15,"ordinary deposit stock decreased/exceeded fifteen");
+  if(pendingStock>=0&&stock>pendingStock){pendingStock=-1;readyTick=tick+20;}
+  lastStock=stock;
+ }
+ bool ready(int tick,bool settled,int eligible)const{return pendingStock<0&&lastStock<15&&tick>=readyTick&&settled&&eligible>0;}
+ int request(int stock,int tick){require(pendingStock<0&&stock==lastStock&&stock<15&&tick>=readyTick,"ordinary deposit request before acknowledgement/settling");pendingStock=stock;return ++sequence;}
+};
+static WhiteDepositCadence deposit;
+static bool depositRegrouping=false,depositWhistling=false;
+static bool whiteDepositEligible(Piki* p,Navi* n,UfoItem* ship){
+ if(!p||!n||!ship||!p->isAlive()||!pc_p2_is_white(p)||!naturalBodies.count(p)||p->mNavi!=n||p->mMode!=PikiMode::FormationMode||p->getState()!=PIKISTATE_Normal||p->isHolding()||p->isStickTo())return false;
+ const float x=p->mSRT.t.x-ship->getGoalPos().x,z=p->mSRT.t.z-ship->getGoalPos().z;
+ return x*x+z*z<=240.f*240.f;
+}
 static void keyRequest(int sequence,const char* key){std::printf("P2_WHITE_NATIVE_KEY_REQUEST seq=%d key=%s actual_SDL_keyboard_required=1\n",sequence,key);std::fflush(stdout);}
 // Whistle radius also reaches non-target bodies. Let ordinary throws/captures
 // finish before any regroup whistle, even when the intended target is grounded.
@@ -119,14 +174,15 @@ public:CampaignInput():Kontroller(1){}
    if(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==27&&!unsettledWhitePluck()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==16&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||phase==25;
+   if(phase==18&&depositWhistling&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
+   const bool move=(phase==1&&gatheringReds)||phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||(phase==18&&!unsettledWhitePluck()&&!unsettledAcquisition())||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
     bool walk=phase==4||phase==17||phase==25||((phase==9||phase==10)&&separatingReds)||bx*bx+bz*bz>10000;
     if(walk||phaseTick%10==0){float dx=walk?bx:goal.x-n->mCursorWorldPos.x,dz=walk?bz:goal.z-n->mCursorWorldPos.z;float length=std::sqrt(dx*dx+dz*dz);
      if(length>(walk?15.f:3.f)){const auto& axis=n->mNaviCamera->mViewXAxis;float strength=walk?65.f:22.f;stickX=strength*(dx*axis.x+dz*axis.z)/length;stickY=strength*(dx*axis.z-dz*axis.x)/length;}}
    }
-   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:keys=KBBTN_DPAD_DOWN;break;case WhiteSaveIntent::Up:keys=KBBTN_DPAD_UP;break;case WhiteSaveIntent::Reveal:keys=KBBTN_B;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
+   if(phase==20&&phaseTick%20<4){switch(saveIntent){case WhiteSaveIntent::Pause:keys=KBBTN_START;break;case WhiteSaveIntent::Down:stickY=-65.f;break;case WhiteSaveIntent::Up:stickY=65.f;break;case WhiteSaveIntent::Reveal:keys=KBBTN_B;break;case WhiteSaveIntent::Confirm:case WhiteSaveIntent::Advance:keys=KBBTN_A;break;default:break;}}
   }
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_A,int((keys&KBBTN_A)!=0));
   SDL_JoystickSetVirtualButton(virtualPad,SDL_CONTROLLER_BUTTON_B,int((keys&KBBTN_B)!=0));
@@ -144,11 +200,12 @@ static CampaignInput* input=nullptr;
 class CampaignApp:public PlugPikiApp {
  bool initialized=false,sunsetSeen=false,physical=false,transportEnded=false;
  Pom* flowers[3]={};int baselinePellets=0,haulFrames=0,stable=0,dayBefore=0,expectedDay=0;
- unsigned saveIndexBefore=0;uint64_t generationBefore=0;
+ unsigned saveIndexBefore=0,saveReadyIndex=0,defaultReadyIndex=0;bool saveReadyCaptured=false,defaultReadySeen=false;uint64_t generationBefore=0;
  Vector3f haulStart,destination,resumeStart;float initialDistance=0;
  void next(int value){phase=value;phaseTick=0;}
 public:int idle()override{
  input->update();const int result=PlugPikiApp::idle();++frame;++phaseTick;require(frame<nativeFrameLimit,"absolute native frame bound");
+ if(phase==20){sunsetSeen=sunsetSeen||gameflow.mIsDayEndActive;dayAdvanced=sunsetSeen&&gameflow.mWorldClock.mCurrentDay==expectedDay;}
  Navi* n=naviMgr?naviMgr->getNavi():nullptr;
  if(n&&n->getCurrState()){
   initialized=true;if(std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))gameflow.mPauseAll=true; // Negative-only.
@@ -158,17 +215,38 @@ public:int idle()override{
   const bool expectedTeardown=phase==20&&sunsetSeen&&dayAdvanced&&gameflow.mCurrGameSectionID==SECTION_OnePlayer&&flowCont.mGameEndFlag==GAMEEND_None&&whiteStock()==15;
   if(!expectedTeardown){std::puts("P2_FIXTURE_CAPTAIN_DOWN missing_initialized_captain_or_state outcome=BLOCKED");std::fflush(nullptr);std::_Exit(86);}
  }
- if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+ if(phase!=20&&gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(phase==20){
-  sunsetSeen=sunsetSeen||gameflow.mIsDayEndActive;dayAdvanced=sunsetSeen&&gameflow.mWorldClock.mCurrentDay==expectedDay;
+  if(frame%60==0)redReturnLog(n,dayAdvanced,"P2_WHITE_CAMPAIGN_P1_DAYEND_STOCK");
   require(gameflow.mWorldClock.mCurrentDay<=expectedDay&&flowCont.mGameEndFlag==GAMEEND_None,"unexpected day/endgame transition");
-  auto pause=pc_pause_observe();auto save=pc_save_ui_observe();saveIntent=white_save_intent(saveRequested,dayAdvanced,pause,pc_diary_observe(),save);
+  auto pause=pc_pause_observe();auto save=pc_save_ui_observe();const auto diary=pc_diary_observe();saveIntent=white_save_intent(saveRequested,dayAdvanced,pause,diary,save);
+  if(frame%60==0)std::printf("P2_WHITE_CAMPAIGN_SAVE_UI frame=%d phase_tick=%d day=%d expected_day=%d requested=%d sunset=%d advanced=%d intent=%d pause_available=%d pause_state=%d main_ready=%d main_selection=%d sub_ready=%d sub_selection=%d diary=%d save_available=%d result_state=%d save_state=%d results_ready=%d primary_ready=%d primary_yes=%d secondary_ready=%d slot_ready=%d slot=%d memory_available=%d outer_memory_routed=%d default_available=%d memory_state=%d default_state=%d successful=%d typing_complete=%d confirmation_ready=%d nested_blocked=%d failure_available=%d failure_inactive=%d file_available=%d file_state=%d file_selection=%d\n",frame,phaseTick,gameflow.mWorldClock.mCurrentDay,expectedDay,int(saveRequested),int(sunsetSeen),int(dayAdvanced),int(saveIntent),int(pause.available),pause.state,int(pause.mainInputReady),pause.mainSelection,int(pause.sunsetInputReady),pause.subSelection,int(diary),int(save.available),save.resultState,save.saveState,int(save.resultsInputReady),int(save.primaryInputReady),int(save.primaryYes),int(save.secondaryInputReady),int(save.cardSlotInputReady),save.cardSlot,int(save.memoryAvailable),int(save.outerMemoryRouted),int(save.defaultFile.available),save.defaultFile.memoryState,save.defaultFile.state,int(save.defaultFile.successful),int(save.defaultFile.typingComplete),int(save.defaultFile.confirmationReady),int(save.nestedUiBlocked),int(save.failureAvailable),int(save.failureInactive),int(save.fileAvailable),save.fileState,int(save.fileSelection));
   require(saveIntent!=WhiteSaveIntent::Refuse,"unexpected actual native save UI choice");
   if(pause.available)saveRequested=true;
+  const unsigned currentIndex=unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex);
+  if(save.defaultFile.available&&save.defaultFile.successful){
+   if(!defaultReadySeen){
+    require(!saveReadyCaptured&&currentIndex==saveIndexBefore+4u,"default-file initialization counter history mismatch");
+    defaultReadySeen=true;defaultReadyIndex=currentIndex;
+    std::printf("P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY initial_index=%u measured_index=%u native_successful_default_observer=1\n",saveIndexBefore,defaultReadyIndex);
+   }else require(currentIndex==defaultReadyIndex,"default-file counter changed before native SAVE");
+  }
+  const unsigned spareIndex=unsigned(gameflow.mGamePrefs.mSpareMemCardSaveIndex);
+  const bool readyToSave=save.available&&save.saveState==zen::ogSaveMgr::ShowingSaveNotice
+   &&!save.nestedUiBlocked&&!save.defaultFile.available&&spareIndex>=1u&&spareIndex<=4u;
+  if(readyToSave){
+   if(!saveReadyCaptured){
+    require(currentIndex==(defaultReadySeen?defaultReadyIndex:saveIndexBefore),"native SAVE baseline has unexplained index changes");
+    uint64_t readyGeneration=0;uint8_t readyHash[32];
+    require(pc_randomizer_checkpoint_info(&readyGeneration,readyHash)&&readyGeneration==generationBefore,"native SAVE baseline already committed");
+    saveReadyCaptured=true;saveReadyIndex=currentIndex;
+    std::printf("P2_WHITE_CAMPAIGN_SAVE_READY initial_index=%u measured_index=%u default_created=%d backup_slot=%u source_notice_ready=1 generation_before=%llu\n",saveIndexBefore,saveReadyIndex,int(defaultReadySeen),spareIndex,(unsigned long long)generationBefore);
+   }else require(currentIndex==saveReadyIndex,"native SAVE notice counter changed");
+  }
   conservedBudget();require(whiteStock()==15&&p2whitetreasure::ledger.total()==180,"stock/budget/receipt changed during native day SAVE");
   uint64_t generation=0;uint8_t hash[32];
-  if(dayAdvanced&&gameflow.mGamePrefs.mHasSaveGame&&gameflow.mGamePrefs.mMostRecentSaveIndex!=saveIndexBefore&&pc_randomizer_checkpoint_info(&generation,hash)&&generation==generationBefore+1){
-   p1Require();p1Log("P2_WHITE_CAMPAIGN_P1_SAVE_STOCK");std::printf("P2_WHITE_CAMPAIGN_SAVE_PASS day_before=%d day=%d stock=15 white_leaf=15 spent=15 pokos=180 generation=%llu native_save_index_before=%u native_save_index_after=%u external_CAMPAIGN_SAVED_required=1 fresh_process_resume_pending=1\n",dayBefore,expectedDay,(unsigned long long)generation,saveIndexBefore,unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex));std::fflush(nullptr);std::_Exit(0);
+  if(dayAdvanced&&gameflow.mGamePrefs.mHasSaveGame&&saveReadyCaptured&&gameflow.mGamePrefs.mMostRecentSaveIndex==saveReadyIndex+1u&&pc_randomizer_checkpoint_info(&generation,hash)&&generation==generationBefore+1){
+   p1Require();p1Log("P2_WHITE_CAMPAIGN_P1_SAVE_STOCK");std::printf("P2_WHITE_CAMPAIGN_SAVE_PASS day_before=%d day=%d stock=15 white_leaf=15 spent=15 pokos=180 generation=%llu native_save_index_before=%u native_save_ready_index=%u native_save_index_after=%u external_CAMPAIGN_SAVED_required=1 fresh_process_resume_pending=1\n",dayBefore,expectedDay,(unsigned long long)generation,saveIndexBefore,saveReadyIndex,unsigned(gameflow.mGamePrefs.mMostRecentSaveIndex));std::fflush(nullptr);std::_Exit(0);
   }
   return result;
  }
@@ -177,7 +255,7 @@ public:int idle()override{
  int red=0,white=0,heads=0,followers=0,whiteFollowers=0,carriers=0;bool cargoSlot=false;PikiHeadItem* head=nullptr;
  std::set<unsigned> originals;std::set<Piki*> whites;
  Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);if(!p->isAlive())continue;
-  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if((phase>=7&&phase<18)||phase==26||phase==27||phase==28)require(naturalBodies.count(p),"natural White pointer membership changed");}
+  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if(naturalWhiteMembershipRequired(phase))require(naturalBodies.count(p),"natural White pointer membership changed");}
   else{require(pc_p2_species(p)==P2SpeciesRed&&p->mHappa==Leaf,"unexpected ordinary species/Red maturity");++red;if(!resumeMode)require(p->mGenerator&&uid(p)>=1&&uid(p)<=20&&originals.insert(uid(p)).second,"original Red identity changed");}
   if(p->mMode==PikiMode::FormationMode&&p->mNavi==n){++followers;if(pc_p2_is_white(p))++whiteFollowers;}
   if(cargo&&p->getStickObject()==cargo){const bool valid=pc_p2_is_white(p)&&naturalBodies.count(p)&&p->mMode==PikiMode::TransportMode&&pc_piki_carry_strength(p)==1&&std::abs(pc_piki_carry_power(p)-3)<.001;
@@ -207,6 +285,12 @@ public:int idle()override{
   if(resumeMode){p1ResumeExpected();require(red==0,"fresh resume duplicated original Red field bodies");p1Log("P2_WHITE_CAMPAIGN_P1_RESUME_STOCK");require(pc_randomizer_resumed()&&whiteStock()==15&&p2ship::stock.counts[1][Leaf]==15&&white==0&&heads==0&&p2whitetreasure::ledger.total()==180,"fresh native resume stock/maturity/ledger mismatch");conservedBudget();
    const char* expected=std::getenv("P2_WHITE_CAMPAIGN_EXPECT_DAY");char* end=nullptr;long day=expected?std::strtol(expected,&end,10):0;require(expected&&end&&!*end&&day>0&&day==gameflow.mWorldClock.mCurrentDay,"fresh native resumed day mismatch");
    Iterator source(pelletMgr);CI_LOOP(source){auto* p=static_cast<Pellet*>(*source);require(!p->isAlive()||!p->mGenerator||uid(p)!=26,"consumed retail source respawned on resume");}
+   // Read-only latest valid checkpoint under the same scan rules as the loader;
+   // host binds this observation to the unchanged full native card, resumed flag/day/stocks.
+   uint64_t checkpointGeneration=0;uint8_t checkpointHash[32]{};
+   require(pc_randomizer_checkpoint_info(&checkpointGeneration,checkpointHash)&&checkpointGeneration>0,"fresh resume valid native checkpoint observation missing");
+   std::printf("P2_WHITE_CAMPAIGN_RESUME_CHECKPOINT generation=%llu sha256=",static_cast<unsigned long long>(checkpointGeneration));
+   for(uint8_t byte:checkpointHash)std::printf("%02x",static_cast<unsigned int>(byte));std::putchar('\n');
    goal=itemMgr->getUfo()->getGoalPos();next(17);std::puts("P2_WHITE_CAMPAIGN_RESUME_BASELINE stock=15 leaf=15 spent=15 pokos=180 consumed_source_absent=1 native_checkpoint_resumed=1");return result;
   }
   p1Read(p1Before);for(int c=0;c<3;++c)for(int m=0;m<3;++m)p1Expected[c][m]=p1Before[c][m];p1Expected[Red][Leaf]+=5;p1Log("P2_WHITE_CAMPAIGN_P1_BEFORE_STOCK");
@@ -221,11 +305,25 @@ public:int idle()override{
   if(phase<7||phase==26||phase==27||phase==28)require(carriers==0,"premature ordinary cargo attachment");
  }else{p1Require();require(red==0&&white+whiteStock()==15&&heads==0,"fresh resumed original20 lineage lost/duplicated or unexpected Red bodies");}
 
- if(phase==1&&phaseTick>=30&&followers==20){goal=flowers[budIndex]->mSRT.t;next(2);}
+ if(phase==1){
+  // Starting performs the real ship landing; gather from actual free body positions.
+  Piki* target=nullptr;float best=1.0e30f;
+  if(followers<20){Iterator bodies(pikiMgr);CI_LOOP(bodies){auto* p=static_cast<Piki*>(*bodies);
+   if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed||uid(p)<1||uid(p)>20||p->mMode!=PikiMode::FreeMode||p->getState()!=PIKISTATE_Normal)continue;
+   const float x=p->mSRT.t.x-n->mSRT.t.x,z=p->mSRT.t.z-n->mSRT.t.z,d=x*x+z*z;
+   if(d<best){best=d;target=p;}
+  }}
+  gatheringReds=target!=nullptr;if(target)goal=target->mSRT.t;
+  if(frame%60==0){
+   std::printf("P2_WHITE_CAMPAIGN_INITIAL_GATHER frame=%d followers=%d target_uid=%u captain_x=%.4f captain_y=%.4f captain_z=%.4f cursor_x=%.4f cursor_y=%.4f cursor_z=%.4f goal_x=%.4f goal_y=%.4f goal_z=%.4f\n",frame,followers,target?uid(target):0,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.y,n->mCursorWorldPos.z,goal.x,goal.y,goal.z);
+   Iterator bodies(pikiMgr);CI_LOOP(bodies){auto* p=static_cast<Piki*>(*bodies);if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed)continue;std::printf("P2_WHITE_CAMPAIGN_INITIAL_RED uid=%u mode=%d state=%d owned=%d x=%.4f y=%.4f z=%.4f\n",uid(p),p->mMode,p->getState(),int(p->mNavi==n),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);}
+  }
+  if(phaseTick>=30&&followers==20){gatheringReds=false;goal=flowers[budIndex]->mSRT.t;next(2);}
+ }
  if(phase==2){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;if(x*x+z*z<64&&bx*bx+bz*bz>625){next(6);}}
  if(phase==6&&phaseTick>=20){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;next(x*x+z*z<64?3:2);}
- if(phase==3&&p2whitecampaign::budget.get({0,flowerIds[budIndex]})==5&&red==20-5*(budIndex+1)&&heads==5*(budIndex+1)){
-  std::printf("P2_WHITE_CAMPAIGN_IVORY_COMPLETE uid=%u natural_outputs=5 red=%d white_heads=%d spent=%d\n",flowerIds[budIndex],red,heads,spent());
+ if(phase==3&&ivoryOutputsComplete(budIndex,p2whitecampaign::budget.get({0,flowerIds[budIndex]}),red,white,heads,whiteStock())){
+  std::printf("P2_WHITE_CAMPAIGN_IVORY_COMPLETE uid=%u natural_outputs=5 red=%d white_heads=%d white_adults=%d spent=%d\n",flowerIds[budIndex],red,heads,white,spent());
   if(++budIndex<3){goal=flowers[budIndex]->mSRT.t;next(2);}else{conservedBudget();next(13);}
  }
  // A natural conversion can leave original Reds free; whistle the actual
@@ -268,9 +366,9 @@ public:int idle()override{
  if(phase==15&&held->getState()==PIKISTATE_Flying&&carriers==14){
   require(red==5&&followers-whiteFollowers==5,"all five original Reds must follow before ordinary separation");
   // The final projectile is already in native flight. Move the captain and
-  // Red squad toward unchanged source route5 while cargo takes its own route.
-  separatingReds=true;goal.set(110.f,0.f,-110.f);
-  std::printf("P2_WHITE_CAMPAIGN_SEPARATION_BEGIN frame=%d original_red=5 red_formation=5 flying_natural_white=1 attached_white=14 source_route=5 target_x=110 target_z=-110 captain_x=%.4f captain_z=%.4f\n",frame,n->mSRT.t.x,n->mSRT.t.z);
+  // Red squad toward the same receiver-relative separation while cargo hauls.
+  separatingReds=true;goal=destination;goal.x+=150.f;goal.z-=230.f;
+  std::printf("P2_WHITE_CAMPAIGN_SEPARATION_BEGIN frame=%d original_red=5 red_formation=5 flying_natural_white=1 attached_white=14 receiver_relative_separation=1 target_x=%.4f target_z=%.4f captain_x=%.4f captain_z=%.4f\n",frame,goal.x,goal.z,n->mSRT.t.x,n->mSRT.t.z);
  }
  if(phase==15&&(held->getState()==PIKISTATE_Flying||held->getStickObject()==cargo))next(9);
  if(phase==9&&held->getStickObject()==cargo){if(carriers==15){require(separatingReds,"final natural White flight not observed before separation");next(10);}else next(14);}
@@ -283,10 +381,25 @@ public:int idle()override{
   if(!cargoSlot||!cargo->isAlive()){require(physical&&p2whitetreasure::ledger.total()==180,"actual physical removal/once retail callback required");if(++stable==60){next(11);std::puts("P2_WHITE_CAMPAIGN_DELIVERED cargo_removed=1 pokos=180 stable_frames=60 natural_white=15");}}
  }
  if(phase==11){if(whiteFollowers==15){goal=itemMgr->getUfo()->getGoalPos();next(17);}else{for(Piki* p:whites)if(p->mMode!=PikiMode::FormationMode){goal=p->mSRT.t;break;}}}
- if(phase==17){goal=itemMgr->getUfo()->getGoalPos();float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<10000){if(resumeMode){keyRequest(1,"CTRL_F10");next(22);}else{keyRequest(1,"SHIFT_F10");next(18);}}}
- if(phase==18&&whiteStock()==15&&white==0){require(p2ship::stock.counts[1][Leaf]==15&&red==5&&heads==0,"ordinary ship deposit conservation");dayBefore=gameflow.mWorldClock.mCurrentDay;expectedDay=pc_randomizer_next_day(dayBefore);require(expectedDay==dayBefore+1,"ordinary next day required");saveIndexBefore=gameflow.mGamePrefs.mMostRecentSaveIndex;uint8_t hash[32];pc_randomizer_checkpoint_info(&generationBefore,hash);next(20);saveRequested=false;saveIntent=WhiteSaveIntent::Pause;std::puts("P2_WHITE_CAMPAIGN_SAVE_BEGIN actual_pause_day_UI_only=1 no_clock_write=1");}
- if(phase==22&&phaseTick>=30){keyRequest(2,"F10");next(23);}
- if(phase==23){require(whiteStock()+white==15&&heads==0&&p2whitetreasure::ledger.total()==180,"resumed ordinary withdrawal conservation");if(white==15&&whiteStock()==0){require(whiteFollowers==15,"resumed fifteen Whites not usable formation");naturalBodies=whites;resumeStart=n->mSRT.t;goal=resumeStart;goal.x+=60;next(25);}else if(phaseTick%20==0)keyRequest(2+phaseTick/20,"F10");}
+ if(phase==17){goal=itemMgr->getUfo()->getGoalPos();float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<10000){if(resumeMode){keyRequest(1,"CTRL_F10");next(22);}else{next(18);return result;}}}
+ if(phase==18){
+  require(white+whiteStock()==15&&heads==0&&red==5,"ordinary deposit full lineage changed");
+  deposit.observe(whiteStock(),phaseTick);auto* ship=itemMgr->getUfo();require(ship,"ordinary deposit ship unavailable");
+  int eligible=0;Piki* regroup=nullptr;float farthest=100.f*100.f;
+  for(Piki* p:whites){
+   eligible+=int(whiteDepositEligible(p,n,ship));
+   const float dx=p->mSRT.t.x-n->mSRT.t.x,dz=p->mSRT.t.z-n->mSRT.t.z,d=dx*dx+dz*dz;
+   if(!unsettledWhitePluck()&&!unsettledAcquisition()&&p->getState()==PIKISTATE_Normal&&!p->isHolding()&&!p->isStickTo()&&(! (p->mNavi==n&&p->mMode==PikiMode::FormationMode)||d>farthest)){regroup=p;farthest=d;}
+   if(frame%30==0)std::printf("P2_WHITE_CAMPAIGN_DEPOSIT_BODY frame=%d pointer=%p generated_uid=%u natural_member=%d alive=%d owned=%d mode=%d state=%d holding=%d sticking=%d eligible=%d stock=%d ship_x=%.4f ship_z=%.4f captain_x=%.4f captain_z=%.4f body_x=%.4f body_y=%.4f body_z=%.4f\n",frame,static_cast<void*>(p),p->mGenerator?uid(p):0,int(naturalBodies.count(p)),int(p->isAlive()),int(p->mNavi==n),p->mMode,p->getState(),int(p->isHolding()),int(p->isStickTo()),int(whiteDepositEligible(p,n,ship)),whiteStock(),ship->getGoalPos().x,ship->getGoalPos().z,n->mSRT.t.x,n->mSRT.t.z,p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);
+  }
+  depositRegrouping=regroup!=nullptr;depositWhistling=regroup&&!(regroup->mNavi==n&&regroup->mMode==PikiMode::FormationMode);goal=regroup?regroup->mSRT.t:ship->getGoalPos();
+  const float sx=n->mSRT.t.x-ship->getGoalPos().x,sz=n->mSRT.t.z-ship->getGoalPos().z;
+  const bool settled=n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID())&&!unsettledWhitePluck()&&!unsettledAcquisition();
+  if(!depositRegrouping&&sx*sx+sz*sz<=180.f*180.f&&deposit.ready(phaseTick,settled,eligible))keyRequest(deposit.request(whiteStock(),phaseTick),"SHIFT_F10");
+ }
+ if(phase==18&&whiteStock()==15&&white==0){redReturnLog(n,false,"P2_WHITE_CAMPAIGN_P1_PRE_SUNSET_STOCK");require(p2ship::stock.counts[1][Leaf]==15&&red==5&&heads==0,"ordinary ship deposit conservation");dayBefore=gameflow.mWorldClock.mCurrentDay;expectedDay=pc_randomizer_next_day(dayBefore);require(expectedDay==dayBefore+1,"ordinary next day required");saveIndexBefore=gameflow.mGamePrefs.mMostRecentSaveIndex;uint8_t hash[32];pc_randomizer_checkpoint_info(&generationBefore,hash);next(20);saveRequested=false;saveIntent=WhiteSaveIntent::Pause;std::puts("P2_WHITE_CAMPAIGN_SAVE_BEGIN actual_pause_day_UI_only=1 no_clock_write=1");}
+ if(phase==22&&phaseTick>=30&&(n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID()))){keyRequest(withdrawal.request(whiteStock(),0),"F10");next(23);return result;}
+ if(phase==23){require(whiteStock()+white==15&&heads==0&&p2whitetreasure::ledger.total()==180,"resumed ordinary withdrawal conservation");withdrawal.observe(whiteStock(),phaseTick);if(white==15&&whiteStock()==0){require(whiteFollowers==15,"resumed fifteen Whites not usable formation");naturalBodies=whites;resumeStart=n->mSRT.t;goal=resumeStart;goal.x+=60;next(25);}else if(withdrawal.ready(phaseTick,(n->getCurrState()&&whiteShipInputState(n->getCurrState()->getID()))))keyRequest(withdrawal.request(whiteStock(),phaseTick),"F10");}
  if(phase==25){float x=n->mSRT.t.x-resumeStart.x,z=n->mSRT.t.z-resumeStart.z;if(x*x+z*z>900&&white==15&&whiteFollowers==15){conservedBudget();std::printf("P2_WHITE_CAMPAIGN_RESUME_PASS day=%d white=15 stock=0 leaf=15 spent=15 pokos=180 original_red_conserved=5 original_white_conserved=15 original_population=20 red_field=0 displacement=%.4f native_checkpoint_resumed=1 ordinary_ship_keyboard=1\n",gameflow.mWorldClock.mCurrentDay,std::sqrt(x*x+z*z));std::fflush(nullptr);std::_Exit(0);}}
  require(phaseTick<1600,"ordinary bounded input phase timeout");return result;
  }
@@ -295,7 +408,7 @@ int main(int argc,char** argv){
  setvbuf(stdout,nullptr,_IONBF,0);SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");SDL_SetMainReady();pc_gpu_preference_apply();pc_bbft_init(argc,argv);
  require(pc_randomizer_enabled()&&pc_randomizer_white_campaign()&&pc_randomizer_white_treasure_campaign()&&!pc_pikipelago_room_preview(),"explicit ordinary White/retail seed required");
  resumeMode=std::getenv("P2_WHITE_CAMPAIGN_RESUME")!=nullptr;humanMode=std::getenv("P2_WHITE_CAMPAIGN_HUMAN")!=nullptr;require(!(resumeMode&&humanMode),"fixed modes exclusive");
- if(!resumeMode&&!humanMode&&!std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")&&!std::getenv("P2_WHITE_CAMPAIGN_FORCE_DOWN")&&!std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))nativeFrameLimit=6500;
+ if(!resumeMode&&!humanMode&&!std::getenv("P2_WHITE_CAMPAIGN_READY_ONLY")&&!std::getenv("P2_WHITE_CAMPAIGN_FORCE_DOWN")&&!std::getenv("P2_WHITE_CAMPAIGN_PAUSED_DOWN"))nativeFrameLimit=7200;
  if(!pc_window_init("White retail campaign acceptance",960,540))return 3;pc_settings_init();pc_window_set_control_mode(PC_CONTROL_CLASSIC);pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(960,540);pc_window_center();std::puts("Experimental preview window set to 960x540 windowed and centered");
  int device=SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,SDL_CONTROLLER_AXIS_MAX,SDL_CONTROLLER_BUTTON_MAX,0);require(device>=0,"ordinary virtual pad attach failed");
  char guid[64];SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(device),guid,sizeof(guid));std::string mapping=std::string(guid)+",White campaign pad,a:b0,b:b1,x:b2,y:b3,back:b4,guide:b5,start:b6,leftstick:b7,rightstick:b8,leftshoulder:b9,rightshoulder:b10,dpup:b11,dpdown:b12,dpleft:b13,dpright:b14,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a4,righttrigger:a5,";require(SDL_GameControllerAddMapping(mapping.c_str())>=0,"ordinary virtual pad mapping failed");

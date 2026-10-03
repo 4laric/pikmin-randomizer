@@ -103,6 +103,45 @@ def phase_limit(mode):
     return 240 if mode=='positive' else 60
 
 
+def assess_save_counter(text, save, generation):
+    ready = rows(text,'P2_WHITE_CAMPAIGN_SAVE_READY')
+    defaults = rows(text,'P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY')
+    if len(ready)!=1 or ready[0].get('source_notice_ready')!='1' or int(ready[0].get('backup_slot','0')) not in (1,2,3,4):
+        raise ValueError('One actual ready-to-save baseline required')
+    initial=int(save['native_save_index_before']);baseline=int(save['native_save_ready_index'])
+    if (int(ready[0]['initial_index'])!=initial or int(ready[0]['measured_index'])!=baseline
+            or int(ready[0]['generation_before'])!=generation-1
+            or int(save['native_save_index_after'])!=baseline+1):
+        raise ValueError('Exactly one native card save after measured baseline required')
+    if ready[0].get('default_created')=='1':
+        if (len(defaults)!=1 or defaults[0].get('native_successful_default_observer')!='1'
+                or int(defaults[0]['initial_index'])!=initial or int(defaults[0]['measured_index'])!=baseline
+                or baseline!=initial+4):
+            raise ValueError('Actual successful four-area first-file initialization required')
+    elif ready[0].get('default_created')!='0' or defaults or baseline!=initial:
+        raise ValueError('Unexplained native card baseline change')
+    if text.index('P2_WHITE_CAMPAIGN_SAVE_READY')>text.index('P2_WHITE_CAMPAIGN_SAVE_PASS'):
+        raise ValueError('Measured native save baseline must precede completion')
+    if defaults and text.index('P2_WHITE_CAMPAIGN_DEFAULT_FILE_READY')>text.index('P2_WHITE_CAMPAIGN_SAVE_READY'):
+        raise ValueError('Default initialization must precede actual save baseline')
+
+
+def assess_ivory_outputs(buds):
+    if len(buds)!=3:raise ValueError('Three actual natural budget witnesses required')
+    previous_adults=0
+    for i,(uid,bud) in enumerate(zip((25,28,29),buds)):
+        outputs=5*(i+1)
+        expected={'uid':str(uid),'natural_outputs':'5','red':str(20-outputs),'spent':str(outputs)}
+        if set(bud)!=set(expected)|{'white_heads','white_adults'} or any(bud[k]!=v for k,v in expected.items()):
+            raise ValueError('Exact source budget and ordered natural output fields required')
+        try:heads=int(bud['white_heads']);adults=int(bud['white_adults'])
+        except (TypeError,ValueError):raise ValueError('Native head/adult counts required') from None
+        if (str(heads)!=bud['white_heads'] or str(adults)!=bud['white_adults'] or heads<0
+                or adults<previous_adults or heads+adults!=outputs):
+            raise ValueError('Conserved cumulative natural heads/adults required')
+        previous_adults=adults
+
+
 def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_proof, phase_budget=60):
     if phase_budget not in (60,240):raise ValueError('Fixed positive assessment budget required')
     if (exit_code!=0 or timed_out or not math.isfinite(elapsed) or not 0<elapsed<=phase_budget
@@ -116,8 +155,7 @@ def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_p
     expected={'red':'20','white':'0','heads':'0','stock':'0','ivory':'3','spent':'0','cargo_uid':'26','minimum':'15','maximum':'25','value':'180'}
     if baseline != [expected]:raise ValueError('Original twenty Red/source retail baseline required')
     buds=rows(text,'P2_WHITE_CAMPAIGN_IVORY_COMPLETE')
-    expected_buds=[{'uid':str(uid),'natural_outputs':'5','red':str(20-5*(i+1)),'white_heads':str(5*(i+1)),'spent':str(5*(i+1))} for i,uid in enumerate((25,28,29))]
-    if buds!=expected_buds:raise ValueError('Three actual natural budget witnesses required')
+    assess_ivory_outputs(buds)
     acquired=rows(text,'P2_WHITE_CAMPAIGN_ACQUIRED')
     if acquired != [{'red':'5','white':'15','heads':'0','body_total':'20','spent':'15','ordinary_birth_pluck':'1'}]:raise ValueError('Fifteen ordinary White births/plucks required')
     samples=rows(text,'P2_WHITE_CAMPAIGN_HAUL')
@@ -139,7 +177,7 @@ def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_p
     if len(save)!=1 or any(save[0].get(k)!=v for k,v in {'stock':'15','white_leaf':'15','spent':'15','pokos':'180','external_CAMPAIGN_SAVED_required':'1','fresh_process_resume_pending':'1'}.items()):raise ValueError('Actual day UI SAVE witness required')
     generation=int(save[0]['generation'])
     if generation<1 or int(save[0]['day'])!=int(save[0]['day_before'])+1:raise ValueError('One ordinary day/generation required')
-    if int(save[0]['native_save_index_after'])!=int(save[0]['native_save_index_before'])+1:raise ValueError('Actual native card save index must advance')
+    assess_save_counter(text, save[0], generation)
     before=rows(text,'P2_WHITE_CAMPAIGN_P1_BEFORE_STOCK');saved=rows(text,'P2_WHITE_CAMPAIGN_P1_SAVE_STOCK')
     keys=['b_leaf','b_bud','b_flower','r_leaf','r_bud','r_flower','y_leaf','y_bud','y_flower']
     if len(before)!=1 or len(saved)!=1 or set(before[0])!=set(keys) or set(saved[0])!=set(keys):
@@ -270,8 +308,11 @@ def assess_resume(text, *, exit_code, elapsed, timed_out, saved_card, current_ca
     if not math.isfinite(displacement) or displacement<=30:
         raise ValueError('Actual usable fresh White formation movement required')
     commits=rows(text,'[Pikmin Randomizer] CAMPAIGN_RESUMED')
-    if commits!=[{'generation':str(saved_card['generation'])}]:
-        raise ValueError('Exactly the accepted paired native generation must resume')
+    if commits!=[{'day':str(expected_day)}]:
+        raise ValueError('Exactly the accepted ordinary native day must resume')
+    checkpoint=rows(text,'P2_WHITE_CAMPAIGN_RESUME_CHECKPOINT')
+    if checkpoint!=[{'generation':str(saved_card['generation']),'sha256':saved_card['sha256']}]:
+        raise ValueError('Loader-compatible checkpoint observation must match the unchanged paired card')
     if rows(text,'[Pikmin Randomizer] CAMPAIGN_SAVED'):
         raise ValueError('Unexpected additional save in read-only fresh resume witness')
     return {'fresh_resume_passed':True,'gameplay_accepted':False,
@@ -293,7 +334,7 @@ class ShipKeyProtocol:
         self.phase_budget=phase_budget
         self.backend=backend; self.clock=clock; self.started=clock() if started is None else started
         self.resume=resume; self.sequence=0; self.pending=None; self.closed=False
-        self.effects=[]
+        self.effects=[];self.deposit_stock=0
 
     def release(self):
         errors=[]
@@ -319,7 +360,9 @@ class ShipKeyProtocol:
         request=re.fullmatch(r'P2_WHITE_NATIVE_KEY_REQUEST seq=([1-9][0-9]*) key=(SHIFT_F10|CTRL_F10|F10) actual_SDL_keyboard_required=1',line.strip())
         if request:
             seq=int(request[1]);key=request[2]
-            valid = (key=='CTRL_F10' and seq==1) or (key=='F10' and seq>1) if self.resume else key=='SHIFT_F10' and seq==1
+            valid = ((key=='CTRL_F10' and seq==1) or (key=='F10' and seq>1)) if self.resume else (
+                key=='SHIFT_F10' and seq==self.sequence+1 and self.deposit_stock<15
+                and (self.sequence==0 or (self.effects and self.effects[-1]['sequence']==self.sequence)))
             if self.closed or seq<=self.sequence or self.pending or not valid:
                 self.close();raise ValueError('Unexpected/duplicate/overlapping native key request')
             self.backend.verify()
@@ -333,6 +376,13 @@ class ShipKeyProtocol:
             return
         if line.startswith('P2_WHITE_NATIVE_KEY_REQUEST'):
             self.close();raise ValueError('Malformed native key request')
+        if not self.resume:
+            deposit=re.fullmatch(r'P2_SHIP_DEPOSIT species=4 maturity=0 stored=([1-9]|1[0-5])',line.strip())
+            if deposit:
+                stock=int(deposit[1])
+                if self.closed or self.sequence==0 or stock!=self.deposit_stock+1:
+                    self.close();raise ValueError('Unrequested/non-consecutive actual White deposit effect')
+                self.deposit_stock=stock
         if self.pending:
             key=self.pending[1]
             effect = ((key=='CTRL_F10' and re.fullmatch(r'P2_SHIP_CHOICE captain=[01] species=4',line.strip()))

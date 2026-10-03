@@ -19,6 +19,48 @@ int main(int argc, char** argv) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--generated-cave-probe")) {
+        // Transport controls only: this harness has no game actors. Ordinary
+        // production credit remains in pc_p2_cave_items_deliver(Pellet*).
+        assert(pc_randomizer_generated_cave());
+        pc_randomizer_update();
+        // Synthetic card payload, real checkpoint serializer. This component
+        // control does not claim ordinary engine SAVE or actor preservation.
+        unsigned char card[32768] = {};
+        const bool resumed = pc_randomizer_load_campaign(card);
+        for (int i = 1; i < argc; ++i) {
+            if (!std::strcmp(argv[i], "--cave-bud-input")) {
+                assert(i + 6 < argc);
+                const auto seed = std::strtoull(argv[++i], nullptr, 10);
+                const char* cave = argv[++i]; const int floor = std::atoi(argv[++i]);
+                const char* slot = argv[++i]; const char* boundary = argv[++i];
+                const unsigned used = unsigned(std::strtoul(argv[++i], nullptr, 10));
+                pc_randomizer_generated_cave_bud_input(seed, cave, floor, slot, boundary, used);
+            } else if (!std::strcmp(argv[i], "--cave-budget")) {
+                assert(i + 2 < argc);
+                const auto seed = std::strtoull(argv[++i], nullptr, 10);
+                const char* boundary = argv[++i];
+                std::printf("CAVE_BUDGET blue=%d yellow=%d resumed=%d marker=%u\n",
+                    pc_randomizer_generated_cave_bud_used(seed, "forest_1", 1, "forest_1:f1:bud:0", boundary),
+                    pc_randomizer_generated_cave_bud_used(seed, "forest_1", 1, "forest_1:f1:bud:1", boundary),
+                    int(resumed), unsigned(card[0]));
+            } else if (!std::strcmp(argv[i], "--cave-save")) {
+                ++card[0];
+                pc_randomizer_save_campaign(card);
+            }
+        }
+        for (int i = 1; i < argc; ++i) if (!std::strcmp(argv[i], "--cave-delivery")) {
+            assert(i + 7 < argc);
+            const auto seed = std::strtoull(argv[++i], nullptr, 10);
+            const char* cave = argv[++i]; const int floor = std::atoi(argv[++i]);
+            const char* item = argv[++i]; const char* host = argv[++i];
+            const char* slot = argv[++i]; const char* boundary = argv[++i];
+            pc_randomizer_generated_cave_delivery(seed, cave, floor, item, host, slot, boundary);
+            assert(pc_randomizer_generated_cave_collected(seed, cave, floor, item, host, slot, boundary));
+        }
+        std::puts("GENERATED_CAVE_TRANSPORT_PROBE_PASS");
+        return 0;
+    }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--combined-campaign-layout-probe")) {
         // Uses production init/parser and resolver, without spawning an engine.
         // Campaign-mode driver only: compares with frozen 72-row assignments.

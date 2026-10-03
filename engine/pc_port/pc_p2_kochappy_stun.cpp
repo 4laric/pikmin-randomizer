@@ -1,4 +1,5 @@
 #include "pc_p2_kochappy_stun.h"
+#include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_purple_impact_policy.h"
 #include "TAI/Action.h"
 #include "teki.h"
@@ -40,12 +41,14 @@ bool pc_p2_kochappy_stun_receive(BTeki* actor, const p2purpleimpact::Event& even
 {
     auto found = actors.find(actor);
     if (found == actors.end()) return false;
+    const bool ownFSM = pc_p2_kochappy_fsm_suppress_ai(actor);
     const char* reason = nullptr;
     if (actor->mDeadState || !actor->isAlive()) reason = "dead";
     else if (!actor->mGroundTriangle) reason = "airborne";
     else if (actor->isFlying()) reason = "flying";
     else if (actor->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)) reason = "invincible";
-    else if (actor->mStateID < 4 || actor->mStateID == 13 || actor->mStateID == 14 || actor->mStateID > PurpleImpactState) reason = "state";
+    else if (ownFSM ? !pc_p2_kochappy_fsm_stun_eligible(actor)
+                    : (actor->mStateID < 4 || actor->mStateID == 13 || actor->mStateID == 14 || actor->mStateID > PurpleImpactState)) reason = "state";
     if (reason) {
         std::printf("P2_PURPLE_QUAKE token=%llu target=%p accepted=0 reason=%s health=%.1f\n",
             static_cast<unsigned long long>(event.attackToken), static_cast<void*>(actor), reason, actor->mHealth);
@@ -53,13 +56,14 @@ bool pc_p2_kochappy_stun_receive(BTeki* actor, const p2purpleimpact::Event& even
     }
 
     TaiStrategy* strategy = static_cast<TaiStrategy*>(actor->getStrategy());
-    if (!strategy || !strategy->transit(*static_cast<Teki*>(actor), PurpleImpactState)) {
+    if (!ownFSM && (!strategy || !strategy->transit(*static_cast<Teki*>(actor), PurpleImpactState))) {
         std::printf("P2_PURPLE_QUAKE token=%llu target=%p accepted=0 reason=transition health=%.1f\n",
             static_cast<unsigned long long>(event.attackToken), static_cast<void*>(actor), actor->mHealth);
         return false;
     }
     Runtime& runtime = found->second;
     p2purpleimpact::receive(runtime.state, runtime.lifetime);
+    if (ownFSM) pc_p2_kochappy_fsm_begin_stun(actor);
     actor->mVelocity.x = actor->mVelocity.z = 0.0f;
     actor->mTargetVelocity.x = actor->mTargetVelocity.z = 0.0f;
     actor->mVelocity.y = p2purpleimpact::bounceVelocity(1.0f, bounceRoll);

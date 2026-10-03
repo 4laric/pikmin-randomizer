@@ -1,5 +1,6 @@
 #include "pc_randomizer.h"
 #include "MapSelect.h"
+#include "MoviePlayer.h"
 #include <cstdint>
 
 #include "Camera.h"
@@ -224,6 +225,9 @@ public:
 			selectWindow                     = new zen::DrawCMcourseSelect;
 			selectWindow->start();
 		}
+#if defined(PIKI_PC_PORT)
+		mPcOwnedMap=mapWindow;
+#endif
 		gsys->setFade(1.0f);
 		// default target is to exit back to title unless we positively confirm otherwise
 		mNextSectionsFlag = PACK_NEXT_ONEPLAYER(ONEPLAYER_GameExit);
@@ -410,6 +414,22 @@ public:
 		}
 	}
 
+#if defined(PIKI_PC_PORT)
+	PcWorldMapSnapshot pcInputSnapshot() const {
+		PcWorldMapSnapshot value;
+		if (mSectionState!=Active || !mPcOwnedMap || mapWindow!=mPcOwnedMap) return value;
+		value.available=true;
+		if (gameflow.mIsChallengeMode || selectWindow || mActiveOverlayMenu || gameflow.mPauseAll
+		    || gameflow.mIsUIOverlayActive || gameflow.mIsTutorialTextActive
+		    || (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive)) return value;
+		value=mapWindow->pcInputSnapshot();
+		value.available=true;
+		value.contextReady=true;
+		value.menuIdentity=reinterpret_cast<std::uintptr_t>(mapWindow);
+		value.setupIdentity=reinterpret_cast<std::uintptr_t>(this);
+		return value;
+	}
+#endif
 	// _00     = VTBL
 	// _00-_20 = Node
 	u32 mSectionState;        ///< _20, whether screen is inactive, active, or exiting - see `State` enum.
@@ -420,7 +440,33 @@ public:
 	Font* mConsFont;          ///< _34, console font (for debug menu).
 	Font* mBigFont;           ///< _38, big font (for regular text).
 	Camera mCamera;           ///< _3C, dedicated camera - seemingly unused.
+#if defined(PIKI_PC_PORT)
+	const zen::DrawWorldMap* mPcOwnedMap=nullptr; // Appended identity only; live-tree membership precedes access.
+#endif
 };
+
+#if defined(PIKI_PC_PORT)
+PcWorldMapSnapshot pc_world_map_observe()
+{
+	PcWorldMapSnapshot value;
+	// The file-static mapWindow survives heap transitions. Never touch it until
+	// its actual owner is found in the current live OnePlayer section tree.
+	if (gameflow.mCurrGameSectionID!=SECTION_OnePlayer || !gameflow.mGameSection || !gsys) return value;
+	const auto owner=pc_world_map_live_owner(static_cast<CoreNode*>(gameflow.mGameSection));
+	if (!owner.map || !owner.setup) return value;
+	// Names and current tree membership establish liveness, not C++ type.
+	// Check both concrete owners before inspecting their UI state.
+	MapSelectSection* mapOwner=nullptr;
+	MapSelectSetupSection* setupOwner=nullptr;
+	if (!pc_world_map_typed_owner(owner,mapOwner,setupOwner)) return value;
+	value=setupOwner->pcInputSnapshot();
+	if (value.available) {
+		value.sectionIdentity=reinterpret_cast<std::uintptr_t>(mapOwner);
+		value.observedFrame=gsys->mTotalFrames;
+	}
+	return value;
+}
+#endif
 
 /**
  * @brief Constructs map select subsection - either challenge mode map select, or story mode world map.

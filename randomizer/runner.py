@@ -41,12 +41,20 @@ def native_bootstrap(session, token, purple_campaign=False):
     if type(white) is not bool or type(treasure) is not bool or (treasure and not white) or (white and (not session.manifest.get("p2_layout") or session.manifest.get("p2_purple_campaign") is not True)):
         raise ValueError("White bootstrap requires an explicit P2/Purple/White manifest")
     purple_campaign = bool(purple_campaign or white)
-    return ( f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
+    body = ( f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
                      f"SESSION {token}\nFINGERPRINT {session.fingerprint}\n" +
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
                      (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + ("MATURITY 1\n" if session.manifest.get("progressive_maturity") else "") + (f"DAY_LENGTH {session.manifest['progressive_day_length']} {session.manifest['day_length_step']}\n" if session.manifest.get("progressive_day_length") else "") + ("WHISTLE_PLUCK 1\n" if session.manifest.get("whistle_pluck_item") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + bootstrap_enemy_checks(session.manifest) + ("PURPLE 1\n" if purple_campaign else "") + ("WHITE 1\n" if white else "") + ("WHITE_TREASURE 1\n" if treasure else "") + ("CAPTAINS 2\n" if session.manifest.get("p2_second_captain") else "") + "END\n")
+    if 'generated_cave' in session.manifest:
+        from .cave_campaign import bootstrap_contract
+        from .catalog import active_names
+        cave = bootstrap_contract(session.manifest['generated_cave'],
+                                  session.manifest['seed'], session.manifest['slot'],
+                                  active_names(session.manifest))
+        body = body.removesuffix('END\n') + cave + 'END\n'
+    return body
 
 
 class NativeRun:
@@ -332,15 +340,15 @@ async def serve(session, run, process=None, server=None, password=None, updates=
 
 def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
            family_install=None, family_source=None, family_actors=None,
-           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
+           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None, white_bank=None):
     with SessionLock(session_dir):
         return _launch(manifest, session_dir, exe, assets, server, content_manifest,
-                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion)
+                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion, white_bank)
 
 
 def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
             family_install=None, family_source=None, family_actors=None,
-            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
+            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None, white_bank=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
     staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
@@ -359,6 +367,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
                          "run it with --purple-bank and --purple-motion")
     from .purple_campaign import bind_campaign_mode
     bind_campaign_mode(Path(session_dir), manifest, purple_bank, purple_motion)
+    from .white_campaign import bind_campaign_mode as bind_white_campaign
+    bind_white_campaign(Path(session_dir), manifest, white_bank)
     session = Session(manifest, session_dir)
     run = NativeRun(session, purple_campaign=purple_bank is not None)
     if family_install is not None:
@@ -419,6 +429,9 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
     if purple_bank is not None:
         from .purple_campaign import stage_campaign
         stage_campaign(run.directory, assets, purple_bank, purple_motion, manifest)
+    if white_bank is not None:
+        from .white_campaign import stage_campaign as stage_white_campaign
+        stage_white_campaign(run.directory, assets, white_bank, manifest)
     process = None
     overlay = None
     log = None

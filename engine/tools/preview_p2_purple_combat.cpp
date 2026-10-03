@@ -17,7 +17,12 @@
 #include "timing/pc_render_phase.h"
 #include "pc_diary_observer.h"
 #include "p2_purple_save_input.h"
+#include "pc_world_map_observer.h"
+#include "pc_pad_bindings.h"
 #include "pc_purple_save_budget.h"
+#include "pc_goal_population_accounting.h"
+#include "pc_p2_species.h"
+#include "BaseInf.h"
 #include "system.h"
 #include "App.h"
 #include "Node.h"
@@ -228,6 +233,22 @@ static void ordinaryInput(unsigned buttons=0,int y=0,int x=0,bool nativeAxisUnit
     SDL_JoystickSetVirtualAxis(ordinaryPad,SDL_CONTROLLER_AXIS_LEFTX,Sint16(nativeAxisUnits?x*256:x*32767/74));
     SDL_JoystickSetVirtualAxis(ordinaryPad,SDL_CONTROLLER_AXIS_LEFTY,Sint16(nativeAxisUnits?-y*256:-y*32767/74));
     SDL_JoystickUpdate();
+}
+static void ordinaryMapNavigation(PcWorldMapInput input) {
+    const int invert=pc_window_get_stick_invert(),deadZone=pc_window_get_stick_dead_zone();
+    int x=0,y=0;
+    require(pc_world_map_stick_command(input,invert,deadZone,true,false,x,y),"loaded map stick dead zone/inversion unsupported");
+    int bindings[PC_KEY_ACT_COUNT];
+    for(int i=0;i<PC_KEY_ACT_COUNT;++i)bindings[i]=pc_window_get_gamepad_binding(i);
+    PcPadRoute route;pc_pad_route_build(bindings,&route,invert,pc_window_get_cstick_invert());
+    PcPadRaw raw={};raw.axis[SDL_CONTROLLER_AXIS_LEFTX]=x*256;raw.axis[SDL_CONTROLLER_AXIS_LEFTY]=-y*256;
+    const int nativeX=(invert&1)?-x:x,nativeY=(invert&2)?-y:y;
+    const bool live=pc_pad_route_stick_live(route.stick,nativeX?nativeX:nativeY,nativeX==0);
+    bool extra=false;
+    for(int i=0;i<PC_KEY_ACT_COUNT;++i)if((i<PC_KEY_ACT_STICK_UP||i>PC_KEY_ACT_STICK_RIGHT)&&pc_pad_raw_bind_held(raw,route.bind[i]))extra=true;
+    require(pc_world_map_stick_command(input,invert,deadZone,live,extra,x,y),"loaded map stick cleared or bound to extra action");
+    ordinaryInput(0,y,x,true);
+    std::printf("P2_PURPLE_ORDINARY_RESUME_NAV native_x=%d native_y=%d SDL_x=%d SDL_y=%d invert=%d dead_zone=%d extra_action=0 settings_writes=0\n",nativeX,nativeY,x*256,-y*256,invert,deadZone);
 }
 static void ordinaryController() {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");
@@ -501,6 +522,7 @@ class PurpleCombatApp : public PlugPikiApp {
     Vector3f parkPosition;
     bool sunsetRequested=false, sunsetSeen=false;
     PcPurpleSaveBudget ordinarySaveBudget;
+    PcWorldMapResumeInput ordinaryResumeMapInput;
     int sunsetTicks=0, sunsetDay=-1, expectedDay=-1, savedMaturity=-1, resumeReady=0;
     int ordinaryMenuFrames=0,ordinaryDiaryFrames=0;
     bool releaseDiaryInput=false,diaryRevealObserved=false,diaryAdvanceObserved=false;
@@ -517,8 +539,69 @@ class PurpleCombatApp : public PlugPikiApp {
         const char* value=std::getenv("P2_PURPLE_COMBAT_MODE");
         return value && std::strcmp(value,name)==0;
     }
+    PcGoalPopulationAccounting birthPopulation;
+    std::size_t ledgerEventsPrinted=0,ledgerConversionsPrinted=0;
+    bool birthLedgerMode() const { return std::getenv("P2_PURPLE_BIRTH_LEDGER")!=nullptr; }
+    PcGoalPopulationCensus birthCensus(const char* stage) {
+        require(pikiMgr && itemMgr && itemMgr->getPikiHeadMgr(),"birth census live managers missing");
+        PcGoalPopulationCensus census;std::set<const void*> identities;int seen=0;
+        Iterator bodies(pikiMgr);CI_LOOP(bodies){
+            Piki* p=static_cast<Piki*>(*bodies);if(!p || !p->isAlive())continue;
+            require(++seen<=512 && identities.insert(p).second,"birth census duplicate/bounded field identity");
+            const int species=pc_p2_species(p),maturity=p->mHappa;
+            require(species>=0&&species<6&&maturity>=0&&maturity<3
+                &&int(p->mP2Purple)+int(p->mP2White)+int(p->mP2Bulbmin)<=1
+                &&std::isfinite(p->mHealth)&&p->mHealth>0
+                &&std::isfinite(p->mSRT.t.x)&&std::isfinite(p->mSRT.t.y)&&std::isfinite(p->mSRT.t.z),
+                "birth census malformed current field species/maturity/health/pose");
+            ++census.field[species][maturity];
+            std::printf("P2_PURPLE_BIRTH_FIELD stage=%s identity=%llu generator=%u species=%d maturity=%d read_only=1\n",stage,
+                static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(p)),p->mGenerator?unsigned(p->mGenerator->_70):0,species,maturity);
+        }
+        Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts){
+            PikiHeadItem* h=static_cast<PikiHeadItem*>(*sprouts);if(!h || !h->isAlive())continue;
+            require(++seen<=512 && identities.insert(h).second,"birth census duplicate/bounded sprout identity");
+            const int flags=int(h->mP2Purple)+int(h->mP2White)+int(h->mP2Bulbmin);
+            const int species=h->mP2Purple?3:h->mP2White?4:h->mP2Bulbmin?5:h->mSeedColor;
+            require(flags<=1&&species>=0&&species<6&&h->mFlowerStage>=0&&h->mFlowerStage<3
+                &&std::isfinite(h->mSRT.t.x)&&std::isfinite(h->mSRT.t.y)&&std::isfinite(h->mSRT.t.z),
+                "birth census malformed current sprout species/maturity/pose");
+            ++census.heads[species][h->mFlowerStage];
+            std::printf("P2_PURPLE_BIRTH_HEAD stage=%s identity=%llu species=%d maturity=%d parent_onion=%llu read_only=1\n",stage,
+                static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(h)),species,h->mFlowerStage,
+                static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(h->mParentOnion)));
+        }
+        for(int species=0;species<6;++species){
+            for(int maturity=0;maturity<3;++maturity){
+                census.stock[species][maturity]=species<3?pikiInfMgr.mPikiCounts[species][maturity]
+                    :species<5?p2ship::stock.counts[species-3][maturity]:0;
+                std::printf("P2_PURPLE_BIRTH_CENSUS stage=%s species=%d maturity=%d field=%d stock=%d heads=%d read_only=1\n",
+                    stage,species,maturity,census.field[species][maturity],census.stock[species][maturity],census.heads[species][maturity]);
+            }
+        }
+        require(census.valid(),"birth census invalid stock counts");return census;
+    }
+    void printBirthReceipts() {
+        if(!birthLedgerMode())return;
+        const auto& ledger=pc_goal_birth_ledger;
+        while(ledgerEventsPrinted<ledger.eventCount){
+            const auto& e=ledger.events[ledgerEventsPrinted++];
+            std::printf("P2_PURPLE_BIRTH_RECEIPT kind=%d frame=%llu receipt=%llu onion=%llu source=%llu head=%llu model=%u color=%d maturity=%d requested=%d pending_before=%d pending_after=%d physical_pellet_binding=0 logical_demand_accounting=1 read_only=1\n",
+                int(e.kind),static_cast<unsigned long long>(e.frame),static_cast<unsigned long long>(e.receipt),
+                static_cast<unsigned long long>(e.onion),static_cast<unsigned long long>(e.source),static_cast<unsigned long long>(e.head),
+                e.model,e.color,e.maturity,e.requested,e.pendingBefore,e.pendingAfter);
+        }
+        while(ledgerConversionsPrinted<ledger.conversionCount){
+            const auto& e=ledger.conversions[ledgerConversionsPrinted++];
+            std::printf("P2_PURPLE_CONVERSION_RECEIPT frame=%llu bud=%llu generator=%u input=%llu head=%llu input_species=%d input_maturity=%d output_species=3 one_to_one=1 read_only=1\n",
+                static_cast<unsigned long long>(e.frame),static_cast<unsigned long long>(e.bud),e.generator,
+                static_cast<unsigned long long>(e.input),static_cast<unsigned long long>(e.head),e.inputSpecies,e.inputMaturity);
+        }
+        require(ledger.armed&&ledger.complete,"birth ledger incomplete/overflow/unknown transition");
+    }
     bool sdlAcquisitionMode() const { return mode("sdl_acquire") || mode("sdl_dayend"); }
     bool ordinarySaveMode() const { return mode("natural_dayend") || mode("sdl_dayend"); }
+    bool ordinaryResumeMode() const { return mode("natural_resume") || mode("natural_resume_consistency"); }
     void injectInitializedGuard(Navi* n) {
         const char* test=std::getenv("P2_PURPLE_GUARD_CASE");
         if(!test && std::getenv("P2_FIXTURE_FORCE_CAPTAIN_DOWN")) test="health";
@@ -707,6 +790,11 @@ class PurpleCombatApp : public PlugPikiApp {
                 require(ordinarySaveBudget.saving() && ordinarySaveBudget.observe(now),"ordinary save phase deadline");
                 std::printf("P2_PURPLE_SAVE_BUDGET_FINISHED acquisition_seconds=%.6f save_seconds=%.6f whole_seconds=%.6f acquisition_limit=60 save_limit=60 whole_limit=120 monotonic=1 movie_skip=0\n",
                     ordinarySaveBudget.acquisitionSeconds(),ordinarySaveBudget.saveSeconds(now),now);
+            }
+            if(birthLedgerMode()){
+                const auto census=birthCensus("saved");
+                require(birthPopulation.closes(census,pc_goal_birth_ledger,true),"actual successful births/card-ready stock closure refused");
+                std::puts("P2_PURPLE_BIRTH_LEDGER_SAVE_PASS initial20=1 successful_births_only=1 exact_conversion=1 all15stock_maturities_observed=1 field0=1 heads0=1 external_card_match_required=1 read_only=1");
             }
             ordinaryInput();milestone("ordinary_checkpoint_committed",ticks);
             std::printf("P2_PURPLE_ORDINARY_SAVE_PASS day_before=%d day=%d maturity=%d stock=1 generations=1 direct_stock_helpers=0 clock_advanced=0 external_checkpoint_validation_required=1\n",
@@ -1290,9 +1378,49 @@ class PurpleCombatApp : public PlugPikiApp {
             "ordinary restored checkpoint/day/stock/maturity mismatch");
         if(++resumeReady<60) return;
         boundAdult(false);GameStat::update();
+        int registryRed=0,registryYellow=0,registryBlue=0,registryOther=0;
         Iterator bodies(pikiMgr);CI_LOOP(bodies) {
             Piki* p=static_cast<Piki*>(*bodies);
             require(!p || !p->isAlive() || !pc_p2_is_purple(p),"ordinary restore duplicate field Purple");
+            if(p&&p->isAlive()) {
+                if(p->mColor==Red)++registryRed;else if(p->mColor==Yellow)++registryYellow;
+                else if(p->mColor==Blue)++registryBlue;else ++registryOther;
+            }
+        }
+        std::printf("P2_PURPLE_ORDINARY_RESUME_POPULATION registry_red=%d registry_yellow=%d registry_blue=%d registry_other=%d map_red=%d map_yellow=%d map_blue=%d container_red=%d container_yellow=%d container_blue=%d all_red=%d all_yellow=%d all_blue=%d p2_stock=%d expected_total=%d read_only=1\n",
+            registryRed,registryYellow,registryBlue,registryOther,
+            GameStat::mapPikis[Red],GameStat::mapPikis[Yellow],GameStat::mapPikis[Blue],
+            GameStat::containerPikis[Red],GameStat::containerPikis[Yellow],GameStat::containerPikis[Blue],
+            GameStat::allPikis[Red],GameStat::allPikis[Yellow],GameStat::allPikis[Blue],p2ship::stock.total(),mode("natural_resume_consistency")?-1:20);
+        if(mode("natural_resume_consistency")) {
+            // This is a read-only stock observation, not the original starting
+            // population oracle. The host must compare every compartment to
+            // the independently pinned genuine card and preserve its hash.
+            require(registryRed==0 && registryYellow==0 && registryBlue==0 && registryOther==0,
+                "stock-only consistency unexpected live field body");
+            require(itemMgr->getPikiHeadMgr()!=nullptr,"stock-only consistency head manager missing");
+            int liveHeads=0;
+            Iterator sprouts(itemMgr->getPikiHeadMgr());CI_LOOP(sprouts) {
+                PikiHeadItem* head=static_cast<PikiHeadItem*>(*sprouts);
+                if(head && head->isAlive())++liveHeads;
+            }
+            require(liveHeads==0,"stock-only consistency unexpected live sprout");
+            require(int(GameStat::mapPikis)==0,"stock-only consistency registry/stat discrepancy");
+            for(int color=0;color<3;++color)for(int maturity=0;maturity<3;++maturity) {
+                const int count=pikiInfMgr.mPikiCounts[color][maturity];
+                require(count>=0 && count<=100000,"stock-only consistency invalid RGB count");
+                std::printf("P2_PURPLE_RESUME_STOCK kind=rgb color=%d maturity=%d count=%d read_only=1\n",color,maturity,count);
+            }
+            for(int color=0;color<3;++color)require(pikiInfMgr.getColorTotal(color)==GameStat::containerPikis[color]
+                && pikiInfMgr.getColorTotal(color)==GameStat::allPikis[color],"stock-only consistency RGB/stat discrepancy");
+            for(int species=0;species<2;++species)for(int maturity=0;maturity<3;++maturity) {
+                const int count=p2ship::stock.counts[species][maturity];
+                require(count>=0 && count<=p2ship::Capacity,"stock-only consistency invalid P2 count");
+                std::printf("P2_PURPLE_RESUME_STOCK kind=p2 color=%d maturity=%d count=%d read_only=1\n",species+3,maturity,count);
+            }
+            ordinaryInput();
+            std::printf("P2_PURPLE_RESUME_STOCK_OBSERVED day=%d generations=1 checkpoint_resumed=1 field=0 heads=0 starting_population_validated=0 external_card_comparison_required=1 saved_bytes_injected=0\n",expectedDay);
+            std::fflush(nullptr);std::_Exit(0);
         }
         require(int(GameStat::allPikis)+p2ship::stock.total()==20,"ordinary saved starting population conservation");
         ordinaryInput();milestone("ordinary_checkpoint_restored",ticks);
@@ -1432,6 +1560,7 @@ class PurpleCombatApp : public PlugPikiApp {
                 PikiHeadItem* h=static_cast<PikiHeadItem*>(*initialHeads);
                 require(!h || !h->isAlive() || !h->mP2Purple,"SDL pre-existing Purple sprout");
             }
+            if(birthLedgerMode())require(birthPopulation.begin(birthCensus("initial"),pc_goal_birth_ledger),"full initial20 field/stock/sprout census refused");
             sdlStarted=true;
             std::puts("P2_PURPLE_SDL_START field=20 red=20 scripted_throw=0 direct_throw_api=0 actor_state_writes=0 starting_withdrawal_fixture=1");
         }
@@ -1445,6 +1574,7 @@ class PurpleCombatApp : public PlugPikiApp {
             ordinaryInput();if(!follower)return nullptr;
             GameStat::update();require(alive==20 && red==19 && purple==1 && int(GameStat::mapPikis)==20,"SDL conversion population");
             require(sdlThrowObserved && pc_throw_selection_class(follower)==4 && pc_piki_carry_strength(follower)==10,"SDL native throw and Purple capabilities");
+            if(birthLedgerMode())require(birthPopulation.closes(birthCensus("acquired"),pc_goal_birth_ledger,false),"actual earned birth/replacement acquisition closure refused");
             milestone("SDL_acquisition_verified",ticks);
             if(mode("sdl_dayend")) {
                 const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
@@ -1801,6 +1931,7 @@ public:
         pc_purple_collision_trace_context(naviMgr ? naviMgr->getNavi() : nullptr,
             (sdlPulseActive || sdlPluckBraking || sdlPoseProbeActive) && sdlAcquisitionMode(),static_cast<std::uint64_t>(ticks)+1);
         const int result=PlugPikiApp::idle();
+        printBirthReceipts();
         if(mode("sdl_dayend")) {
             const double now=std::chrono::duration<double>(std::chrono::steady_clock::now()-fixtureStarted).count();
             require(ordinarySaveBudget.observe(now),"ordinary save acquisition or save phase deadline");
@@ -1826,25 +1957,49 @@ public:
         }
         require(ticks<(sunsetRequested?15000:6000),"global fixture timeout");
         if(mode("persistence_resume")) pc_p2_input_script_set(1,(!n || gameflow.mIsUIOverlayActive) && ticks%20<4?KBBTN_A:0,0,0);
-        if(mode("natural_resume")) ordinaryInput(); // No blind A presses into load/title/save UI.
+        if(ordinaryResumeMode()) {
+            const PcWorldMapSnapshot map=pc_world_map_observe();
+            const int expectedCourse=pc_randomizer_start_stage(); // Parsed from the actual seed profile, never a UI write.
+            const PcWorldMapInput intent=ordinaryResumeMapInput.observe(map,gsys->mTotalFrames,expectedCourse);
+            if(intent==PcWorldMapInput::Refuse) {
+                ordinaryInput();
+                std::printf("P2_PURPLE_ORDINARY_RESUME_MAP_REFUSAL available=%d context=%d frame=%llu observed=%llu mode=%d return=%d course=%d open=%d coursepoint=%d cursor=%d confirm=%d yes=%d section=%llu setup=%llu menu=%llu challenge=%d pause=%d overlay=%d tutorial=%d movie=%d read_only=1\n",
+                    int(map.available),int(map.contextReady),static_cast<unsigned long long>(gsys->mTotalFrames),static_cast<unsigned long long>(map.observedFrame),
+                    map.mode,map.returnStatus,map.selectedCourse,int(map.courseOpen),int(map.coursePointOperation),int(map.cursorMoveReady),int(map.confirmationActive),int(map.confirmationYes),
+                    static_cast<unsigned long long>(map.sectionIdentity),static_cast<unsigned long long>(map.setupIdentity),static_cast<unsigned long long>(map.menuIdentity),
+                    int(gameflow.mIsChallengeMode),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mIsTutorialTextActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive));
+            }
+            require(intent!=PcWorldMapInput::Refuse,"ordinary resume map identity/readiness/selection refused");
+            if(intent==PcWorldMapInput::Up||intent==PcWorldMapInput::Down||intent==PcWorldMapInput::Left||intent==PcWorldMapInput::Right)ordinaryMapNavigation(intent);
+            else ordinaryInput(intent==PcWorldMapInput::Confirm?KBBTN_A:0);
+            if(intent==PcWorldMapInput::Confirm) std::printf(
+                "P2_PURPLE_ORDINARY_RESUME_MAP edge=%u frame=%llu mode=%d course=%d open=%d cursor_ready=%d confirm_ready=%d yes=%d scene_identity=%llu setup_identity=%llu menu_identity=%llu observer_read_only=1 SDL_input=1 area_day_injected=0\n",
+                ordinaryResumeMapInput.keyEdges(),static_cast<unsigned long long>(map.observedFrame),map.mode,map.selectedCourse,
+                int(map.courseOpen),int(map.cursorMoveReady),int(map.confirmationActive),int(map.confirmationYes),
+                static_cast<unsigned long long>(map.sectionIdentity),static_cast<unsigned long long>(map.setupIdentity),
+                static_cast<unsigned long long>(map.menuIdentity));
+        }
         if(sunsetRequested) {
             if(ordinarySaveMode()) ordinarySunsetStep();else sunsetStep();
             if(!mode("sdl_dayend") && gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) gameflow.mMoviePlayer->requestSkip();
             return result;
         }
-        if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
+        if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive) {
+            if(!ordinaryResumeMode()) gameflow.mMoviePlayer->requestSkip();
+            return result;
+        }
         if(!n||!pikiMgr||!itemMgr||!bossMgr||!tekiMgr||!mapMgr||!n->getCurrState()
             ||gameflow.mPauseAll||gameflow.mIsUIOverlayActive) return result;
         if(!activeSeen && (n->getCurrState()->getID()==NAVISTATE_Walk || n->getCurrState()->getID()==NAVISTATE_Idle)) {
             activeSeen=true;milestone("active_gameplay",ticks);
         }
-        if(mode("persistence_resume") || mode("natural_resume")) {
+        if(mode("persistence_resume") || ordinaryResumeMode()) {
             // The restored captain exists during ship/map entry before the
             // playable stage actors are ready. Match the ordinary fixture's
             // active walk/idle gate before checking live combat bindings.
             const int state=n->getCurrState()->getID();
             if(state==NAVISTATE_Walk || state==NAVISTATE_Idle) {
-                if(mode("natural_resume")) ordinaryResume(n);else resumePersistence(n);
+                if(ordinaryResumeMode()) ordinaryResume(n);else resumePersistence(n);
             }
             return result;
         }
@@ -1923,14 +2078,17 @@ int main(int argc,char** argv) {
         || !std::strcmp(guardCase,"global") || !std::strcmp(guardCase,"dead_state") || !std::strcmp(guardCase,"missing")
         || !std::strcmp(guardCase,"health_pause") || !std::strcmp(guardCase,"missing_movie"),"unknown initialized guard case");
     const char* mode=std::getenv("P2_PURPLE_COMBAT_MODE");
-    if(mode && std::strcmp(mode,"sdl_acquire") && std::strcmp(mode,"sdl_dayend") && std::strcmp(mode,"natural_dayend") && std::strcmp(mode,"natural_resume") && std::strcmp(mode,"adult_direct") && std::strcmp(mode,"persistence_dayend") && std::strcmp(mode,"persistence_resume") && std::strcmp(mode,"transport_delivery") && std::strcmp(mode,"transport_positive") && std::strcmp(mode,"transport_red_control") && std::strcmp(mode,"transport_staged") && std::strcmp(mode,"transport_manual")) {
-        std::printf("P2_PURPLE_COMBAT_UNIMPLEMENTED mode=%s implemented=sdl_acquire,sdl_dayend,adult_direct,persistence_dayend,persistence_resume,natural_dayend,natural_resume,transport_delivery,transport_positive,transport_red_control,transport_staged,transport_manual\n",mode); return 2;
+    if(mode && std::strcmp(mode,"sdl_acquire") && std::strcmp(mode,"sdl_dayend") && std::strcmp(mode,"natural_dayend") && std::strcmp(mode,"natural_resume") && std::strcmp(mode,"natural_resume_consistency") && std::strcmp(mode,"adult_direct") && std::strcmp(mode,"persistence_dayend") && std::strcmp(mode,"persistence_resume") && std::strcmp(mode,"transport_delivery") && std::strcmp(mode,"transport_positive") && std::strcmp(mode,"transport_red_control") && std::strcmp(mode,"transport_staged") && std::strcmp(mode,"transport_manual")) {
+        std::printf("P2_PURPLE_COMBAT_UNIMPLEMENTED mode=%s implemented=sdl_acquire,sdl_dayend,adult_direct,persistence_dayend,persistence_resume,natural_dayend,natural_resume,natural_resume_consistency,transport_delivery,transport_positive,transport_red_control,transport_staged,transport_manual\n",mode); return 2;
     }
+    const char* birthFlag=std::getenv("P2_PURPLE_BIRTH_LEDGER");
+    require(!birthFlag || (!std::strcmp(birthFlag,"1") && mode && !std::strcmp(mode,"sdl_dayend") && !guardCase),"birth ledger requires explicit fresh sdl_dayend diagnostic optin");
+    if(birthFlag)require(pc_goal_birth_ledger.begin(),"birth ledger arm once");
     SDL_SetMainReady(); pc_gpu_preference_apply(); pc_bbft_init(argc,argv);
     require(pc_randomizer_purple_campaign() && pc_randomizer_p2_bridge(),"ordinary Purple seed campaign required");
     if(!pc_window_init(mode && !std::strcmp(mode,"transport_manual")?"Purple carry smoke - staged Purple - F7 resets":"Purple campaign combat fixture",960,540)) return 3;
     pc_settings_init(); pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
-    if(mode && (!std::strcmp(mode,"sdl_acquire") || !std::strcmp(mode,"sdl_dayend") || !std::strcmp(mode,"natural_dayend") || !std::strcmp(mode,"natural_resume"))) ordinaryController();
+    if(mode && (!std::strcmp(mode,"sdl_acquire") || !std::strcmp(mode,"sdl_dayend") || !std::strcmp(mode,"natural_dayend") || !std::strcmp(mode,"natural_resume") || !std::strcmp(mode,"natural_resume_consistency"))) ordinaryController();
     pc_window_set_window_size(960,540); pc_window_center();
     std::puts("Experimental preview window set to 960x540 windowed and centered");
     int w=0,h=0,x=0,y=0; SDL_Window* window=SDL_GL_GetCurrentWindow();
@@ -1939,7 +2097,7 @@ int main(int argc,char** argv) {
     std::printf("P2_FIXTURE_WINDOW width=%d height=%d x=%d y=%d\n",w,h,x,y);
     milestone("window_ready",0);
     std::printf("P2_PURPLE_COMBAT_SCOPE mode=%s natural_acquisition=%d player_controls_validated=0 production_collision_marker_required=1\n",
-        mode?mode:"adult_direct",int(!mode || (std::strcmp(mode,"natural_resume") && std::strcmp(mode,"persistence_resume") && std::strcmp(mode,"transport_red_control") && std::strcmp(mode,"transport_staged") && std::strcmp(mode,"transport_manual"))));
+        mode?mode:"adult_direct",int(!mode || (std::strcmp(mode,"natural_resume") && std::strcmp(mode,"natural_resume_consistency") && std::strcmp(mode,"persistence_resume") && std::strcmp(mode,"transport_red_control") && std::strcmp(mode,"transport_staged") && std::strcmp(mode,"transport_manual"))));
     gsys->Initialise(); pc_settings_p2d_init(); nodeMgr=new NodeMgr();
     gsys->run(new PurpleCombatApp()); return 0;
 }

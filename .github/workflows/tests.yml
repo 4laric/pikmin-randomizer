@@ -81,6 +81,9 @@ jobs:
           tests/test_pikmin2_generator_calendar.py
           tests/test_pikmin2_generator_objects.py
           tests/test_p2_tutorial_encounter.py
+          tests/test_p2_white_practice_scene.py
+          tests/test_p2_white_save_counter.py
+          tests/test_cave_mixed_route.py
           tests/test_pikmin2_cave_arena_overlay.py
           tests/test_pikmin2_cave_item_gate_placement.py
           tests/test_pikmin2_challenge_trial_arena_thin_v2.py
@@ -107,6 +110,10 @@ jobs:
           tests/test_pool_completion_evidence.py
           tests/test_pool_recovery_rebind.py
           tests/test_worker_roster.py
+          tests/test_elecbug_development_launch.py
+
+      - name: Private Kochappy launcher controls
+        run: python -m unittest scripts.test_purple_kochappy_fixture_inputs
 
       - name: Generate fixed P2 playable seeds (deterministic)
         shell: bash

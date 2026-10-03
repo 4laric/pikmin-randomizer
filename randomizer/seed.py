@@ -681,7 +681,7 @@ PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 P2_REQUIRES_PURPLE = {}
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_white_campaign=False, p2_white_treasure_campaign=False, p2_checks=False, p2_second_captain=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None, p2_density=None, p2_proxy_tier=None, progressive_maturity=False, progressive_day_length=0, day_length_step=25, whistle_pluck_item=False, p2_purple_campaign=False, p2_white_campaign=False, p2_white_treasure_campaign=False, p2_checks=False, p2_second_captain=False, generated_cave=False):
     from .benefits import DAY_LENGTH_LIMIT
     if type(progressive_maturity) is not bool: raise ValueError("invalid progressive_maturity")
     if type(whistle_pluck_item) is not bool: raise ValueError("invalid whistle_pluck_item")
@@ -723,6 +723,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
     if type(p2_checks) is not bool or (p2_checks and not p2_enemies): raise ValueError("p2_checks requires P2 enemies")
     if p2_checks: collection_checks = True
+    if type(generated_cave) is not bool: raise ValueError('invalid generated_cave')
+    if generated_cave and (not p2_enemies or not p2_checks or legacy_checks
+                           or starting_area != 'forest' or starting_color != 'red'):
+        raise ValueError('generated cave requires resolved P2 checks and a Red Forest start')
     if p2_proxy_tier is not None and p2_proxy_tier not in ("proven", "declared"):
         raise ValueError("p2_proxy_tier must be 'proven' or 'declared'")
     if type(p2_second_captain) is not bool: raise ValueError("invalid p2_second_captain")
@@ -973,6 +977,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if p2_second_captain:
         result['p2_second_captain'] = True
         result['capabilities'].append('p2-second-captain-v1')
+    if generated_cave:
+        from .cave_campaign import produce, location_ids, CAPABILITY
+        result['generated_cave'] = produce(result['seed'], result['slot'])
+        result['locations'] = location_ids(result['locations'])
+        result['capabilities'].append(CAPABILITY)
     validate(result)
     return result
 
@@ -980,6 +989,13 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
 def validate(m):
     expected = {"schema", "game", "seed", "slot", "mode", "profile", "catalog", "rng", "placement",
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
+    if type(m) is dict and 'generated_cave' in m:
+        expected.add('generated_cave')
+        if (m.get('schema') != 9 or not m.get('p2_layout') or not m.get('enemy_catalog')
+                or m.get('profile') != 'foh-day2' or m.get('starting_color') != 'red'):
+            raise ValueError('generated cave requires resolved P2 checks and a Red Forest start')
+        from .cave_campaign import validate_contract
+        validate_contract(m['generated_cave'], m.get('seed'), m.get('slot'))
     if type(m) is dict and m.get('schema', 0) in (4, 5, 6, 7, 8, 9):
         expected.add('starting_color')
     if type(m) is dict and m.get('schema') in (6, 7, 8, 9):
@@ -1261,6 +1277,9 @@ def validate(m):
     if m.get('p2_proxy_tier'): fixed['capabilities'].append('p2-proxy-tier-v1')
     if m.get('enemy_catalog'): fixed['capabilities'].append('resolved-enemy-checks-v1')
     if m.get('p2_second_captain'): fixed['capabilities'].append('p2-second-captain-v1')
+    if 'generated_cave' in m:
+        from .cave_campaign import CAPABILITY
+        fixed['capabilities'].append(CAPABILITY)
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
@@ -1271,6 +1290,9 @@ def validate(m):
         raise ValueError("mode must be solo or ap")
     from .enemy_catalog import location_ids as resolved_location_ids
     expected_locations = resolved_location_ids(m) if "enemy_catalog" in m else {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False), m.get("compact_population", False), m.get("no_sticks", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS
+    if 'generated_cave' in m:
+        from .cave_campaign import location_ids
+        expected_locations = location_ids(expected_locations)
     for key, value in (("assignments", ALL_PART_IDS if m["schema"] >= 5 else PART_IDS), ("locations", expected_locations)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")

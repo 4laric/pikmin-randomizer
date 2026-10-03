@@ -313,6 +313,31 @@ class X11Input:
         finally:
             if data.value:self.x.XFree(data)
 
+    def title_property(self,window,name,encodings):
+        # Bound the server read to 4096 bytes and require the entire 8-bit
+        # property. XFetchName cannot decode SDL's observed WM_NAME UTF-8 atom.
+        U=ctypes.c_ulong;actual=U();fmt=ctypes.c_int();count=U();after=U();data=ctypes.c_void_p()
+        rc=self.x.XGetWindowProperty(self.display,window,self.atom(name),0,1024,False,0,ctypes.byref(actual),ctypes.byref(fmt),ctypes.byref(count),ctypes.byref(after),ctypes.byref(data))
+        try:
+            if rc!=0:raise ValueError('X11 title property query failed')
+            if actual.value==0:
+                if fmt.value or count.value or after.value:raise ValueError('Malformed absent X11 title property')
+                return None
+            encoding=next(((atom,codec) for atom,codec in encodings if actual.value==self.atom(atom)),None)
+            if encoding is None or fmt.value!=8 or count.value>4096 or after.value or (count.value and not data.value):
+                raise ValueError('Unsupported or truncated X11 title property: '+name)
+            raw=ctypes.string_at(data.value,count.value) if count.value else b''
+            if b'\0' in raw:raise ValueError('Embedded NUL in X11 title property')
+            return raw.decode(encoding[1],errors='strict'),encoding[0]
+        finally:
+            if data.value:self.x.XFree(data)
+
+    def window_title(self,window):
+        title=self.title_property(window,'_NET_WM_NAME',[('UTF8_STRING','utf-8')])
+        if title is not None:return title[0],'_NET_WM_NAME',title[1]
+        title=self.title_property(window,'WM_NAME',[('STRING','latin-1'),('UTF8_STRING','utf-8'),('UTF-8','utf-8')])
+        return (title[0],'WM_NAME',title[1]) if title is not None else ('','absent','absent')
+
     def windows(self):
         U=ctypes.c_ulong;root=U();parent=U();children=ctypes.POINTER(U)();count=ctypes.c_uint()
         if not self.x.XQueryTree(self.display,self.x.XDefaultRootWindow(self.display),ctypes.byref(root),ctypes.byref(parent),ctypes.byref(children),ctypes.byref(count)) or count.value>4096:
@@ -325,12 +350,9 @@ class X11Input:
             attrs=WindowAttributes()
             if not self.x.XGetWindowAttributes(self.display,window,ctypes.byref(attrs)):continue
             transient=U();self.x.XGetTransientForHint(self.display,window,ctypes.byref(transient))
-            title=ctypes.c_void_p();text=''
-            if self.x.XFetchName(self.display,window,ctypes.byref(title)) and title.value:
-                try:text=ctypes.string_at(title).decode('utf-8',errors='strict')
-                finally:self.x.XFree(title)
+            text,title_source,title_encoding=self.window_title(window)
             pids=self.property(window,'_NET_WM_PID')
-            result.append(dict(window=window,title=text,transient_for=transient.value,pid=pids[0] if len(pids)==1 else None,owner_pid=self.owner_pid(window),
+            result.append(dict(window=window,title=text,title_source=title_source,title_encoding=title_encoding,transient_for=transient.value,pid=pids[0] if len(pids)==1 else None,owner_pid=self.owner_pid(window),
                 mapped=attrs.map_state==2,dialog=self.atom('_NET_WM_WINDOW_TYPE_DIALOG') in self.property(window,'_NET_WM_WINDOW_TYPE'),
                 modal=self.atom('_NET_WM_STATE_MODAL') in self.property(window,'_NET_WM_STATE')))
         return result

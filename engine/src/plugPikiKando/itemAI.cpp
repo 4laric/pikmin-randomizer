@@ -6,6 +6,7 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
 #include "netplay/pc_sim_rng.h"
+#include "pc_goal_birth_ledger.h"
 #endif
 #include "BaseInf.h"
 #include "BombItem.h"
@@ -776,9 +777,18 @@ void GoalAI::BootEmit::act(AICreature* item)
 		seed->mPcOwner = obj->mPcOwner;
 #endif
 		C_SAI(seed)->start(seed, PikiHeadAI::PIKIHEAD_Flying);
+#if defined(PIKI_PC_PORT)
+        if(pc_goal_birth_ledger.armed)pc_goal_birth_ledger.bootBirth(gsys->mTotalFrames,
+            reinterpret_cast<std::uintptr_t>(obj),obj->mOnionColour,reinterpret_cast<std::uintptr_t>(seed));
+#endif
 		return;
 	}
 
+#if defined(PIKI_PC_PORT)
+    // Boot recovery evicts an existing body/head before recursively retrying.
+    // Until those transfers have an exact census consumer, refuse this ledger.
+    pc_goal_birth_ledger.refuse();
+#endif
 	PRINT("BOOT EMIT PIKI FAILED !\n");
 	PikiHeadItem* oldSeed = nullptr;
 	f32 seeddist          = 0.0f;
@@ -870,6 +880,9 @@ void GoalAI::EmitPiki::act(AICreature* item)
 	}
 
 	if (item->mSAICtx.mCurrAnimId > 0) {
+#if defined(PIKI_PC_PORT)
+        const int birthPendingBefore=item->mSAICtx.mCurrAnimId;
+#endif
 		if (item->mObjType != OBJTYPE_Goal) {
 			char buf[256];
 			sprintf(buf, "%d : not goal", item->mObjType);
@@ -917,6 +930,11 @@ void GoalAI::EmitPiki::act(AICreature* item)
 		}
 
 		obj->mSAICtx.mCurrAnimId--;
+#if defined(PIKI_PC_PORT)
+        if(pc_goal_birth_ledger.armed)pc_goal_birth_ledger.birth(gsys->mTotalFrames,
+            reinterpret_cast<std::uintptr_t>(obj),obj->mOnionColour,
+            reinterpret_cast<std::uintptr_t>(seed),birthPendingBefore,obj->mSAICtx.mCurrAnimId,seed==nullptr);
+#endif
 	}
 	if (obj->mSAICtx.mCurrAnimId == 0 && obj->mSAICtx.mCounter == 0) {
 		obj->finishMotion();

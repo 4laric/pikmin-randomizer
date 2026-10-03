@@ -1,9 +1,11 @@
+#include "pc_midday_constructor_rewards.h"
 #include "pc_p2_ship_store.h"
 #include "pc_p2_white_campaign_policy.h"
 #include "pc_p2_white_treasure_policy.h"
 #include "pc_p2_campaign_policy.h"
 #include "pc_p2_boss_arena_policy.h"
 #include "pc_p2_proxy.h"
+#include "pc_p2_cave_seed_binding.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
@@ -133,6 +135,9 @@ bool p2ProxyTier = false;
 std::unordered_map<std::string, unsigned> p2Bindings;
 // Versioned manifest-owned native journal order. Empty for all historical seeds.
 std::vector<std::string> resolvedCheckNames, legacyCheckNames;
+bool generatedCave = false;
+P2CaveSeedBinding generatedCaveBinding;
+P2CaveSeedBudget generatedCaveBudget;
 std::unordered_map<unsigned, unsigned> p2CheckIndices;
 std::unordered_map<unsigned, std::set<std::pair<unsigned, int>>> p2CheckSources;
 unsigned campaignAssignments[72] = {};
@@ -208,6 +213,7 @@ struct CkptScan {
     unsigned used[7] = {};
     p2ship::Store ship;
     p2whitecampaign::Budget whiteBudget;
+    P2CaveSeedBudget caveBudget;
     p2whitetreasure::Ledger whiteTreasure;
     unsigned thelynkUsed[18] = {};
 };
@@ -238,8 +244,9 @@ CkptScanStatus scanCampaignCheckpoint(CkptScan& s) {
         p2whitetreasure::Config config;
         valid = valid && p2whitetreasure::read_config(config) && s.whiteTreasure.read(meta,config);
     }
+    if (generatedCave) valid = valid && s.caveBudget.read(meta);
     if (thelynk) for (int i = 0; i < 18; ++i) valid = valid && bool(meta >> s.thelynkUsed[i]) && s.thelynkUsed[i] <= 330;
-    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    if (!valid || !(meta >> hash) || magic != (thelynk ? "THELYNK_CAMPAIGN_1" : generatedCave ? "PIKMIN_CAMPAIGN_GENERATED_CAVE_1" : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1" : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1" : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1" : prereleaseTraps ? "PIKMIN_CAMPAIGN_5" : proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != s.generation || (meta >> extra))
         return kCkptMismatch;
     s.block.resize(32768);
@@ -265,6 +272,7 @@ void loadCampaignCheckpoint() {
     for (int i=0; i<7; ++i) consumedBenefits[i] = s.used[i];
     p2ship::stock = s.ship;
     p2whitecampaign::budget = s.whiteBudget;
+    generatedCaveBudget = s.caveBudget;
     p2whitetreasure::ledger = s.whiteTreasure;
     for (int i = 0; i < 18; ++i) thelynkUsed[i] = s.thelynkUsed[i];
     campaignResumed = true;
@@ -1002,7 +1010,7 @@ bool pc_randomizer_init(int argc, char** argv) {
         }
         if (p2CombinedEnemies && resolvedCheckNames.empty())
             fail("combined enemies require resolved checks");
-        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (end != "END" && end != "PURPLE" && end != "CAPTAINS" && end != "CAVE_CHECKS") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (p2CombinedEnemies && !p2EnemyBridge) fail("combined composition requires P2 bindings");
     if (end == "PURPLE") {
@@ -1032,6 +1040,15 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (!p2EnemyBridge || !(input >> count) || count != "2")
             fail("two captains require P2 campaign bridge and count 2");
         secondCaptain = true;
+        input >> end;
+    }
+    if (end == "CAVE_CHECKS") {
+        if (!p2EnemyBridge || resolvedCheckNames.empty() || thelynk
+            || !p2CaveSeedRead(input, checkCount, generatedCaveBinding))
+            fail("invalid generated cave contract or native check mapping");
+        for (unsigned i = 0; i < 2; ++i) resolvedCheckNames.push_back(p2CaveSeedCheckName(i));
+        checkCount += 2;
+        generatedCave = true;
         input >> end;
     }
     if (end != "END") fail("unsupported or malformed bootstrap");
@@ -1126,6 +1143,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (p2ProxyTier) hello << " p2-proxy-tier-v1";
     if (!resolvedCheckNames.empty()) hello << " resolved-enemy-checks-v1";
     if (secondCaptain) hello << " p2-second-captain-v1";
+    if (generatedCave) hello << " generated-cave-checks-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -2083,7 +2101,49 @@ bool pc_randomizer_checked(const char* name) {
     if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return false;
     return slot >= 0 && checks.count(unsigned(slot)) != 0;
 }
+bool pc_randomizer_generated_cave() { return enabled && generatedCave; }
+bool pc_randomizer_generated_cave_matches(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    return pc_randomizer_generated_cave() && cave && item && host && slot && boundaryToken
+        && p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                  boundaryToken);
+}
+bool pc_randomizer_generated_cave_collected(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    if (!pc_randomizer_generated_cave_matches(seed, cave, floor, item, host, slot, boundaryToken))
+        fail("physical cave item differs from seed-owned contract");
+    const auto* check = p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                             boundaryToken);
+    return checks.count(check->index) != 0;
+}
+void pc_randomizer_generated_cave_delivery(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    if (!ready || !pc_randomizer_generated_cave_matches(seed, cave, floor, item, host, slot, boundaryToken))
+        fail("unready or foreign physical cave delivery");
+    const auto* check = p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                             boundaryToken);
+    // The caller owns an actual tagged Pellet delivered to the physical Pod.
+    // Use the existing ready, session-bound, monotonic native check journal.
+    pc_randomizer_check(checkName(check->index));
+}
+int pc_randomizer_generated_cave_bud_used(std::uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken) {
+    if (!pc_randomizer_generated_cave() || !ready || !cave || !slot || !boundaryToken
+        || seed != generatedCaveBinding.seed || std::strcmp(cave, "forest_1")
+        || floor != 1 || generatedCaveBinding.token != boundaryToken)
+        fail("unready or foreign generated cave bud context");
+    const int index = p2CaveSeedBudIndex(slot);
+    if (index < 0) fail("foreign generated cave bud slot");
+    return int(generatedCaveBudget.used[index]);
+}
+void pc_randomizer_generated_cave_bud_input(std::uint64_t seed, const char* cave, int floor,
+    const char* slot, const char* boundaryToken, unsigned used) {
+    pc_randomizer_generated_cave_bud_used(seed, cave, floor, slot, boundaryToken);
+    if (!generatedCaveBudget.consume(p2CaveSeedBudIndex(slot), used))
+        fail("duplicate, retracted or excessive generated cave bud input");
+}
 void pc_randomizer_check(const char* name) {
+    if (pc_midday_construction_rewards_suppressed()) return;
     if (!enabled || !ready) return;
     const int slot = index(name);
     if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return;
@@ -2282,7 +2342,7 @@ bool write_campaign_checkpoint(const void* source, unsigned long long generation
         if (ec) return false;
     }
     std::ostringstream meta;
-    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    meta << (thelynk ? "THELYNK_CAMPAIGN_1 " : generatedCave ? "PIKMIN_CAMPAIGN_GENERATED_CAVE_1 " : whiteTreasureCampaign ? "PIKMIN_CAMPAIGN_WHITE_TREASURE_1 " : whiteCampaign ? "PIKMIN_CAMPAIGN_WHITE_1 " : purpleCampaign ? "PIKMIN_CAMPAIGN_PURPLE_1 " : prereleaseTraps ? "PIKMIN_CAMPAIGN_5 " : proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
     for (int i = 0; i < (prereleaseTraps ? 7 : proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     if (purpleCampaign) p2ship::stock.write(meta);
     if (whiteCampaign) p2whitecampaign::budget.write(meta);
@@ -2291,6 +2351,7 @@ bool write_campaign_checkpoint(const void* source, unsigned long long generation
         if (!p2whitetreasure::read_config(config)) {if(fatal)fail("White retail save descriptor/assets invalid");return false;}
         p2whitetreasure::ledger.write(meta,config);
     }
+    if (generatedCave) generatedCaveBudget.write(meta);
     if (thelynk) for (int i = 0; i < 18; ++i) meta << ' ' << thelynkUsed[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
@@ -2614,6 +2675,7 @@ bool pc_randomizer_adopt_checkpoint() {
     for (unsigned& used : thelynkUsed) used = 0;
     p2ship::stock = p2ship::Store();
     p2whitecampaign::budget = p2whitecampaign::Budget();
+    generatedCaveBudget = P2CaveSeedBudget();
     p2whitetreasure::ledger = p2whitetreasure::Ledger();
     loadCampaignCheckpoint();
     if (campaignResumed) {

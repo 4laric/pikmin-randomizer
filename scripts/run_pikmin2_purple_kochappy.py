@@ -3,7 +3,7 @@ import argparse,hashlib,json,os,re,subprocess,uuid
 from pathlib import Path
 from scripts.stage_pikmin2_purple_kochappy import prepare
 from scripts.run_pikmin2_cave_fixture import supervise
-from scripts.fixture_platform import is_windows, runtime_evidence, linux_admission
+from scripts.fixture_platform import is_windows, runtime_evidence, linux_admission, linux_development_context
 
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -45,9 +45,13 @@ def controlled_environment(ambient,exe,runtime_dir,save,mode):
     if mode in switches:env[switches[mode]]='1'
     return env
 
-def linux_runtime_inputs(exe,root,session,run,env,root_pin,native_pin,source_hash):
-    """ELF closure plus the actual fixed broker admission; no caller proof fallback."""
+def linux_runtime_inputs(exe,root,session,run,env,root_pin,native_pin,source_hash,development_launch=False):
+    """ELF closure plus explicit private development context or controller proof."""
+    if type(development_launch) is not bool:
+        raise TypeError('development_launch must be a bool')
     dependencies=runtime_evidence(exe,env=env,cwd=run)
+    if development_launch:
+        return dependencies,linux_development_context(exe,root,session,run,dependencies)
     proof=linux_admission(exe,root,session,run)
     if proof['pins']['FIXTURE_SUITE']!='purple-kochappy-runtime':
         raise ValueError('Fixed Purple runtime recipe required; compile proof is insufficient')
@@ -67,6 +71,7 @@ def main():
     p.add_argument('--exe-sha256',required=True);p.add_argument('--root-sha',required=True);p.add_argument('--native-sha',required=True)
     p.add_argument('--mode',choices=('ready','positive','forced-down','paused-down'),required=True)
     p.add_argument('--plan',action='store_true')
+    p.add_argument('--development-launch',action='store_true',help='Explicit private Linux execution with actual ELF/capacity/owned cleanup evidence; no controller admission claim')
     a=p.parse_args();root=Path(__file__).resolve().parent.parent
     for repo,pin in ((root,a.root_sha),(a.native,a.native_sha)):
         if subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()!=pin:
@@ -82,16 +87,22 @@ def main():
     run=prepare(a.assets.resolve(),a.bundle.resolve(),'c8598f04bb884ab396d126b8dfbed6a6ce78d2f6afc92e7b366a5e5c11ccc8d5',a.red_bank.resolve(),a.purple_bank.resolve(),a.motion.resolve(),a.pod.resolve(),output)
     (run/'private-save').mkdir()
     env=controlled_environment(os.environ,a.exe,a.runtime_dir,run/'private-save',a.mode)
-    admission=None
+    admission=None;development=None
     if not is_windows():
-        dependencies,admission=linux_runtime_inputs(a.exe,root,a.output.resolve(),run,env,a.root_sha,a.native_sha,sha(a.native/'tools/p2_purple_kochappy_runtime.cpp'))
-        (run/'admission.json').write_text(json.dumps(admission,indent=2)+'\n')
+        dependencies,context=linux_runtime_inputs(a.exe,root,a.output.resolve(),run,env,a.root_sha,a.native_sha,sha(a.native/'tools/p2_purple_kochappy_runtime.cpp'),development_launch=a.development_launch)
+        if a.development_launch:
+            development=context
+            (run/'development-runtime.json').write_text(json.dumps(development,indent=2)+'\n')
+        else:
+            admission=context
+            (run/'admission.json').write_text(json.dumps(admission,indent=2)+'\n')
     inputs=dict(root=a.root_sha,native=a.native_sha,fixture_sha256=sha(a.exe),mode=a.mode,
                 stage_inputs_sha256=sha(run/'purple-kochappy-inputs.json'),fresh_private_save=env['NECTAR_SAVE_DIR'],runtime_dependencies=dependencies,
                 controlled_environment={k:v for k,v in env.items() if k.startswith(('PIKMIN_','P2_','COOP_','NECTAR_'))},
                 source_fixture_sha256=sha(a.native/'tools/p2_purple_kochappy_runtime.cpp'),
                 scope='engineering preview natural receiver mechanic; tutorial/AP mixed OPEN',timeout_seconds=60,
-                platform='windows' if is_windows() else 'linux',broker_admission=admission)
+                platform='windows' if is_windows() else 'linux',broker_admission=admission,development_runtime=development,
+                source_pin_qualification='Requested source component metadata and actual executable hash; no compiled-source/controller attestation' if development else 'Controller pins on Linux; matching package on Windows')
     (run/'acceptance-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     if a.plan:print(json.dumps(dict(run=str(run),inputs=inputs),indent=2));return 0
     negative=a.mode.endswith('down');marker='P2_FIXTURE_CAPTAIN_DOWN' if negative else 'P2_PURPLE_KOCHAPPY_READY' if a.mode=='ready' else 'P2_PURPLE_KOCHAPPY_MECHANIC_RECOVERY_PASS'

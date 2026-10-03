@@ -1567,6 +1567,13 @@ std::string exe_path()
 	DWORD n = GetModuleFileNameA(nullptr, path, sizeof(path));
 	if (n == 0 || n >= sizeof(path)) return std::string();
 	return std::string(path, n);
+#elif defined(__linux__)
+	char path[4096];
+	const ssize_t n = readlink("/proc/self/exe", path, sizeof(path));
+	// readlink does not terminate its result and reports the buffer size when
+	// truncated. Neither a partial path nor argv[0] identifies the loaded ELF.
+	if (n <= 0 || static_cast<size_t>(n) >= sizeof(path)) return std::string();
+	return std::string(path, static_cast<size_t>(n));
 #else
 	return std::string();
 #endif
@@ -3148,12 +3155,13 @@ void compute_local_hello()
 	uint8_t exe[32] = { 0 };
 	std::string path = exe_path();
 	bool ok          = !path.empty() && sha_file(path.c_str(), exe);
-	memcpy(sLocal.exe, exe, 32);
-	sExeHexStr = ok ? to_hex(exe, 32) : std::string(64, '0');
 	if (!ok) {
-		printf("[netplay] warning: exe hash failed for %s; handshake uses zeros\n", path.c_str());
+		printf("[netplay] refusing session: could not hash running executable %s\n", path.c_str());
 		fflush(stdout);
+		std::exit(2);
 	}
+	memcpy(sLocal.exe, exe, 32);
+	sExeHexStr = to_hex(exe, 32);
 	// Config hash over the exact list in build_config_string().
 	std::string cfg = build_config_string();
 	sha_text(cfg, sLocal.cfg);
