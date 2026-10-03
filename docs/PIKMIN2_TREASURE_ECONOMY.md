@@ -179,3 +179,14 @@ inertia scaling, friction and dynamics mode. These are inputs for the original
 cargo provider; extraction does not activate it or establish collision fidelity.
 The held provider no longer renders a cave Pod model as the surface Ship. Actual
 Ship type 4 uses original object bank 2 and requires its own source provider.
+
+`randomizer.retail_treasure_bank.prepare` produces an unactivated
+`P2_TREASURE_RETAIL_1` aggregate descriptor. It binds the complete original
+campaign, unchanged held leaf at `p2-original/retail-cargo/held.txt`, full retail
+catalogue, original profile bytes and explicit model/archive/BMD hashes. The
+master digest is the sole treasury SOURCE. The native `verifyAssetBank` consumes
+authenticated selected-input buffers and checks those dependencies, including
+literal enemy and Ship source manifests, before publishing output. Assets do
+not authorize floor births: the actual floor provider must independently supply
+its prepared context, source placement and full birth identity. Runtime bootstrap
+admission, direct original cargo bodies and native graph restore remain pending.
