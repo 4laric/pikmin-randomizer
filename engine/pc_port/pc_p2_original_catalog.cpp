@@ -1,4 +1,5 @@
 #include "pc_p2_original_catalog.h"
+#include "pc_p2_retail_cave_context.h"
 #include "netplay/pc_netplay_sha256.h"
 #include <limits>
 #include <set>
@@ -21,6 +22,21 @@ bool Catalog::install(const std::string& fingerprint,const std::vector<CatalogRo
      row.enemy.uid!=originalGeneratorUid(row.sourceKey)||row.enemy.source>65535||row.enemy.count>10||row.enemy.deathCount>row.enemy.count)
    return fail(error,"invalid original catalog row");
   if(!validateOriginalRecord(row.enemy,error))return false;
+  if(row.sourceForm==SourceForm::CaveTekiInfo){
+   const auto* cave=p2retail::descriptor(row.course);
+   const auto* floor=cave?p2retail::definition(*cave,row.caveFloor):nullptr;
+   if(!floor||row.caveRow>=floor->rows.size()||row.member!=cave->source||
+      row.caveSourceSha256!=cave->sourceSha256||row.index!=(row.caveFloor*256+row.caveRow))
+    return fail(error,"invalid authenticated cave source association");
+   const auto& literal=floor->rows[row.caveRow];
+   if((literal.kind!="enemy"&&literal.kind!="cap_enemy")||literal.sourceId<0||
+      row.enemy.source!=unsigned(literal.sourceId)||row.enemy.count!=literal.minimum()||
+      row.enemy.generatorVersion!="CAVE"||!row.enemy.generatorTail.empty()||row.enemy.treasureCode||row.enemy.pelletProbability!=0)
+    return fail(error,"cave TekiInfo identity differs from literal source");
+   // CAVE is our association transport marker, not a retail GenEnemy version.
+   // Its common fields are never used by surface placement/drop generation.
+  }else if(row.sourceForm!=SourceForm::SurfaceGenEnemy||row.caveFloor||row.caveRow||!row.caveSourceSha256.empty())
+   return fail(error,"surface row carries cave provenance");
   if(!keys.insert(row.sourceKey).second||!candidate.emplace(row.enemy.uid,row).second)return fail(error,"duplicate original source key or generator UID");
   // Capability must inspect original source/version/tails/drop semantics;
   // a generic host selector is not an admission implementation.

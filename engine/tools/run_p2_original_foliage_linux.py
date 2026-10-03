@@ -15,8 +15,10 @@ p.add_argument('--source-pin', required=True)
 p.add_argument('--run-dir', type=Path, required=True)
 p.add_argument('--evidence', type=Path, required=True)
 p.add_argument('--mode', choices=['diagnostic', 'walk', 'refusal', 'captain-down'], default='diagnostic')
-p.add_argument('--batch', choices=['tutorial', 'forest'], default='tutorial')
+p.add_argument('--batch', choices=['tutorial', 'forest', 'dandelion', 'shoots', 'horsetails', 'brown-large', 'cave'], default='tutorial')
 a = p.parse_args()
+if a.batch == 'cave' and a.mode == 'walk':
+    p.error('cave batch is a bounded native birth/lifetime diagnostic; walking is not qualified')
 exe, run, evidence = a.exe.resolve(strict=True), a.run_dir.resolve(strict=True), a.evidence.resolve()
 actual = hashlib.sha256(exe.read_bytes()).hexdigest()
 if actual != a.exe_sha256:
@@ -32,7 +34,7 @@ if a.mode == 'refusal':
     (refusal_run / 'assets').symlink_to(run / 'assets', target_is_directory=True)
     run = refusal_run
 env = os.environ.copy()
-for key in ('P2_ORIGINAL_FOLIAGE_WALK','P2_ORIGINAL_FOLIAGE_REFUSE_RESOURCES','P2_ORIGINAL_FOLIAGE_FORCE_CAPTAIN_DOWN','P2_ORIGINAL_FOLIAGE_HUMAN','P2_ORIGINAL_FOLIAGE_FOREST'):
+for key in ('P2_ORIGINAL_FOLIAGE_WALK','P2_ORIGINAL_FOLIAGE_REFUSE_RESOURCES','P2_ORIGINAL_FOLIAGE_FORCE_CAPTAIN_DOWN','P2_ORIGINAL_FOLIAGE_HUMAN','P2_ORIGINAL_FOLIAGE_FOREST','P2_ORIGINAL_FOLIAGE_BATCH'):
     env.pop(key, None)
 env.update(SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540',
            NECTAR_SAVE_DIR=str(evidence/'cards'), PIKMIN_SETTINGS_PATH=str(evidence/'settings.conf'))
@@ -42,7 +44,9 @@ if a.mode in mode_keys:
     env[mode_keys[a.mode]] = '1'
 if a.batch == 'forest':
     env['P2_ORIGINAL_FOLIAGE_FOREST'] = '1'
-sources = [47, 49] if a.batch == 'forest' else [91, 88]
+elif a.batch != 'tutorial':
+    env['P2_ORIGINAL_FOLIAGE_BATCH'] = a.batch
+sources = dict(tutorial=[91,88],forest=[47,49],cave=[91,92,47],dandelion=[46,80],shoots=[51,52],horsetails=[90,88],**{'brown-large':[92,91]})[a.batch]
 source_marker = ','.join(map(str, sources))
 command = ['xvfb-run','-a','-s','-screen 0 1280x720x24',str(exe),'--experimental-pikmin2-surface','tutorial']
 inputs = dict(native=a.source_pin, exe_sha256=actual, exe=str(exe), cwd=str(run), mode=a.mode,
@@ -50,6 +54,9 @@ inputs = dict(native=a.source_pin, exe_sha256=actual, exe=str(exe), cwd=str(run)
               full_course=False, save_resume=False, initialized_placement=True,
               natural_input=a.mode=='walk', batch=a.batch, sources=sources,
               native_fixture_course='tutorial')
+if a.batch == 'cave':
+    inputs.update(cave_descriptor='tutorial_1', cave_floor=2, authored_counts=[6,4,2],
+                  cave_layout=False, caller_registry_retirement=True, other_families='skipped')
 (evidence/'run-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
 start = time.monotonic()
 timed_out = False
@@ -78,11 +85,14 @@ with (evidence/'native.log').open('wb') as log:
             code = child.wait(timeout=5)
 log = (evidence/'native.log').read_text(errors='replace')
 markers = dict(diagnostic='PASS ORIGINAL_FOLIAGE sources='+source_marker+' ', walk='PASS ORIGINAL_FOLIAGE_WALK sources='+source_marker+' ',
-               refusal=('PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL sources=47,49 ' if a.batch=='forest' else 'PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL births=0 '), **{'captain-down':'P2_FIXTURE_CAPTAIN_DOWN'})
+               refusal=('PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL sources='+source_marker+' ' if a.batch!='tutorial' else 'PASS ORIGINAL_FOLIAGE_RESOURCE_REFUSAL births=0 '), **{'captain-down':'P2_FIXTURE_CAPTAIN_DOWN'})
+if a.batch == 'cave':
+    markers.update(diagnostic='PASS ORIGINAL_CAVE_FOLIAGE sources=91,92,47 ',
+                   refusal='PASS ORIGINAL_CAVE_FOLIAGE_RESOURCE_REFUSAL sources=91,92,47 ')
 expected_code = 86 if a.mode=='captain-down' else 0
 passed = not timed_out and code == expected_code and markers[a.mode] in log
 if a.mode=='captain-down':
-    passed = passed and 'PASS ORIGINAL_FOLIAGE' not in log
+    passed = passed and 'PASS ORIGINAL_FOLIAGE' not in log and 'PASS ORIGINAL_CAVE_FOLIAGE' not in log
 result = dict(passed=passed, returncode=code, timed_out=timed_out, marker=markers[a.mode],
               elapsed_seconds=time.monotonic()-start, mode=a.mode, batch=a.batch, sources=sources)
 (evidence/'run-result.json').write_text(json.dumps(result,indent=2)+'\n')

@@ -247,6 +247,9 @@ public:
 	virtual f32 getiMass();                                    // _38
 	virtual void doStore(CreatureInf*);                        // _48
 	virtual void doRestore(CreatureInf*);                      // _4C
+	#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	virtual bool needFlick(Creature*) override;
+#endif
 	virtual bool ignoreAtari(Creature*);                       // _98
 	virtual bool stimulate(immut Interaction&);                // _A0
 	virtual void collisionCallback(immut CollEvent&);          // _A8

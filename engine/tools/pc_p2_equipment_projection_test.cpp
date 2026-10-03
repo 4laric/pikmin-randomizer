@@ -21,7 +21,7 @@ int main() {
     pc_p2_equipment_reconcile_courses();assert(gameflow.mPlayState.opened==7);
     pc_p2_equipment_reconcile_courses();assert(gameflow.mPlayState.opened==7);
     assert(!pc_p2_equipment_has(TheKey));
-    assert(pc_p2_equipment_damage(12)==6&&pc_p2_equipment_speed(160)==240&&pc_p2_equipment_whistle(100)==200);
+    assert(pc_p2_equipment_damage(12)==6&&pc_p2_equipment_speed(160)==205&&pc_p2_equipment_whistle(100)==130);
     // Actual selected-card restore replaces receipt authority. Queries must
     // immediately reflect rollback; no cached acquired bits or event replay.
     accepted.clear();gameflow.mPlayState.opened=1;

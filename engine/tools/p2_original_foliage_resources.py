@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pose-limit', type=int, default=12)
-    parser.add_argument('--sources', type=int, nargs='+', choices=(47, 49, 88, 91),
+    parser.add_argument('--sources', type=int, nargs='+', choices=(46, 47, 49, 51, 52, 80, 88, 90, 91, 92),
                         default=[91, 88],
                         help='Literal source IDs to convert; default preserves original 91/88 bank')
     args = parser.parse_args()
@@ -50,7 +50,14 @@ def main():
     catalog = {91: ('KareOoinu_s', 'kareooinu_s', 'normal', 0),
                88: ('Nekojarashi', 'nekojarashi', 'postshadow', 0),
                47: ('Clover', 'clover', 'normal', 0),
-               49: ('Ooinu_s', 'ooinu_s', 'normal', 2)}
+               49: ('Ooinu_s', 'ooinu_s', 'normal', 2),
+               46: ('Tanpopo', 'tanpopo', 'normal', 0),
+               51: ('Wakame_s', 'wakame_s', 'normal', 2),
+               52: ('Wakame_l', 'wakame_l', 'normal', 2),
+               80: ('Tukushi', 'tukushi', 'normal', 2),
+               90: ('Zenmai', 'zenmai', 'normal', 0),
+               92: ('KareOoinu_l', 'karaooinu_l', 'normal', 0)}
+
     species = [(source_id, *catalog[source_id]) for source_id in args.sources]
     index = disc_files(args.iso)
     hashes = {}
@@ -61,7 +68,8 @@ def main():
                   ['git', '-C', str(args.source), 'rev-parse', 'HEAD'], text=True).strip(),
               'native_runtime_validated': False,
               'limitations': ['Sampled flattened geometry and approximate source materials.',
-                              'No runtime behavior is executed by this converter.']}
+                              'No runtime behavior is executed by this converter.',
+                              'Fully culled touched-clock fidelity remains unqualified: retail lifecycle pauses the animator without visibility or nearby Pikmin cell activation.']}
     report['converter_sha256'] = {filename: sha((root / 'experimental' / filename).read_bytes())
         for filename in ('pikmin2_convert.py', 'pikmin2_skinning.py', 'pikmin2_rigid.py',
                          'pikmin2_purple.py', 'pikmin2_flora_assets.py')}
@@ -70,15 +78,21 @@ def main():
                          'src/plugProjectMorimuraU/plants.cpp',
                          'src/plugProjectMorimuraU/plantsMgr.cpp',
                          'src/plugProjectYamashitaU/enemyBase.cpp',
-                         'src/sysGCU/sysShape.cpp')}
+                         'src/sysGCU/sysShape.cpp',
+                         'src/plugProjectKandoU/creatureLOD.cpp',
+                         'src/sysCommonU/geomCylinder.cpp',
+                         'src/sysCommonU/camera.cpp')}
     report['parameter_order'] = ['health_fp00', 'territory_fp09', 'private_fp11',
                                  'home_fp10', 'lod_radius_fp32', 'floor_parameter_fp01']
     report['source_semantics'] = {
         'collision': 'Static frame0 joint transforms; root bounding sphere; child contact spheres.',
         'position': 'Authored generator position; no fp01 vertical translation. Plants::Obj::doSimulation is empty.',
         'animation': 'Idle frame0; contact/earthquake activates stop-at-end source clip; ordinary Plants::Obj behavior.',
-        'animation_end_clock': 'SysShape::Animator::animate (sysShape.cpp133-187) clamps manual timer at duration-1 and emits END. Registered LOOP_END keys govern repetition; these plant registrations have none. Raw BCA loop attribute49=2 is retained without repeating the actor touch clock.',
+        'animation_end_clock': 'SysShape::Animator::animate (sysShape.cpp133-187) clamps manual timer at duration-1 and emits END. Registered LOOP_END keys govern repetition; these plant registrations have none. Raw BCA loop attributes49/51/52/80=2 are retained without repeating the actor touch clock.',
+        'fully_culled_clock_caveat': 'EnemyBase lifecycle State::animation (enemyBase.cpp86-112) only calls doAnimationCullingOff when isCullingOff (1850-1857): not Cullable, visible, Pikmin in cell, or Dropping. Converter output does not implement or qualify that lifecycle gate.',
         'resources': 'Literal original species model.szs/anim.szs and parameter directory; no aliases.',
+        'brown_large_clip': 'Source92 registry karaOoinu_l.bca matches archive karaooinu_l.bca by casefold; the literal kara spelling is preserved.',
+        'fully_culled_clock_caveat': 'EnemyBase lifecycle State::animation (enemyBase.cpp86-112) only calls doAnimationCullingOff when isCullingOff (1850-1857): not Cullable, visible, Pikmin in cell, or Dropping. Converter output does not implement or qualify that lifecycle gate.',
         'rewards': 'Plants::Mgr plain EnemyParmsBase; invulnerable nonliving actor, carcass disabled.',
         'foxtail_lod': 'Cylinder origin offset -50*sin(face), -50*cos(face); height fp11; radius fp10.'}
     with args.iso.open('rb') as disc:
@@ -169,7 +183,14 @@ def main():
                 'clip': expected_clip, 'source_frames': duration, 'loop_attribute': raw[40],
                 'events': rows[0]['events'], 'poses': poses, 'world_poses': world_poses,
                 'layer': layer, 'geometry_flattened': True, 'converter_tolerances': {},
-                'source_envelopes': struct.unpack_from('>H', model_blocks['EVP1'], 8)[0]}
+                'source_envelopes': struct.unpack_from('>H', model_blocks['EVP1'], 8)[0],
+                'source_lod': {'kind': 'cylinder' if source_id in (51, 52, 80, 88, 90) else 'sphere',
+                    'sphere_center_y_offset_fp09': general['fp09'], 'sphere_radius_fp32': general['fp32'],
+                    'cylinder_height_fp11': general['fp11'] if source_id in (51, 52, 80, 88, 90) else None,
+                    'cylinder_radius_fp10': general['fp10'] if source_id in (51, 52, 80, 88, 90) else None,
+                    'backward_facing_offset': 50 if source_id == 88 else 0,
+                    'source_function': 'Game::' + name + '::Obj::getLODCylinder' if source_id in (51, 52, 80, 88, 90) else 'Game::Plants::Obj::setParameters',
+                    'source_cull_function': 'Sys::Cylinder::culled' if source_id in (51, 52, 80, 88, 90) else 'CullPlane::isPointVisible'}}
     args.output.joinpath('foliage-bank.txt').write_text('\n'.join(lines) + '\n', encoding='ascii')
     args.output.joinpath('foliage.json').write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
     output_hashes = {str(path.relative_to(args.output)): sha(path.read_bytes())
