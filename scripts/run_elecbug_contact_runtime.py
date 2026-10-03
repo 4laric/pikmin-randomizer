@@ -8,8 +8,9 @@ import re
 import sys
 import uuid
 
-from stage_elecbug_contact_runtime import prepare, sha, ROOT
-from run_pikmin2_cave_fixture import supervise
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.stage_elecbug_contact_runtime import prepare, sha, ROOT
+from scripts.run_pikmin2_cave_fixture import supervise
 
 
 def validate_artifact(exe, expected_sha, native_commit, native_tree):
