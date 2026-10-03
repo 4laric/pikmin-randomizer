@@ -84,6 +84,25 @@ def bridge_manifest(inventory, output):
     output.write_text('P2_ORIGINAL_BRIDGE_1 '+str(len(rows))+'\n'+'\n'.join(rows)+'\n', encoding='ascii')
 
 
+def barrel_manifest(inventory, output):
+    rows=[]
+    for member in json.loads(inventory.read_text(encoding='utf-8')):
+        for entry in member['records']:
+            actor=entry['actor']
+            if actor.get('item')!='barl':continue
+            payload,eof=actor['source_payload']
+            if (actor['object_version']!='0002' or payload[0]!=['barl']
+                or len(payload)!=5 or payload[4]!=['0000'] or eof!=[['_eof']]):
+                raise ValueError('Unsupported barrel source payload: '+entry['source_key'])
+            if actor['reserved']!=3 or actor['respawn_days']!=0:
+                raise ValueError('Unsupported barrel source cache/schedule')
+            fields=[entry['generator_uid'],entry['source_key'],member['source_sha256'],
+                    '0002','0000',actor['reserved'],actor['respawn_days'],entry.get('day_limit',-1),4000]
+            fields+=actor['position']+actor['offset']+actor['rotation']
+            rows.append(' '.join(map(str,fields)))
+    output.write_text('P2_ORIGINAL_BARREL_1 '+str(len(rows))+'\n'+'\n'.join(rows)+'\n',encoding='ascii')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--iso', type=Path, required=True)
@@ -93,4 +112,5 @@ if __name__ == '__main__':
     report = extract(args.iso, args.output)
     if args.inventory:
         bridge_manifest(args.inventory,args.output/'bridges.txt')
+        barrel_manifest(args.inventory,args.output/'barrels.txt')
     print(json.dumps(report, indent=2))
