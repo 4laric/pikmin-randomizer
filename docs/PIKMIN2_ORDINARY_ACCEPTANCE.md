@@ -62,7 +62,8 @@ card/profile and settings. The helper verifies the actual native PID/window,
 executable hash, focus, and centered dimensions before sending held ordinary
 keyboard input. PNGs read that window's framebuffer; no observer fixture or
 native actor/card edits are used. Run it within an owned 90-second user unit.
-Its internal work deadline is 70 seconds, with bounded child cleanup.
+Its internal work deadline is 80 seconds, with bounded child cleanup. Two-second
+holds allow the actual software-rendered engine to observe the keys at low FPS.
 
 The current script tests only selected-checkpoint startup and controls. It records
 actual `P2_CAPTAIN_SWITCH` events and screenshots for review. Sending a key is
@@ -79,6 +80,12 @@ living cave party was restored. The floor also failed to create two treasures
 because its setup searched for a live `pr05` template instead of the native
 configuration catalog. The cave owner owns both fixes under #930; builds and
 fresh ordinary-play reruns are required before replacing the frozen package.
+
+The generation-2 Linux route also enters `demo65.cin`: source review identifies
+this as the Forest P1 bonus/extinction-seed cinematic. It is the same premature
+startup check when the saved bonus-seed demo flag is already set. Longer waits
+or forced skips do not qualify the intended selected-checkpoint startup. The
+partial route now refuses either known startup flow and returns a failure.
 
 Windows short-tap automation also had concurrent foreground interference;
 unobserved taps are not mechanic evidence. Use a coordinated focus interval or

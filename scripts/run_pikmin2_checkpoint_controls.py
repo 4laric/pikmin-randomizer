@@ -83,20 +83,20 @@ def helper(args):
             time.sleep(.3)
             evidence.append(dict(key=key,held_seconds=seconds))
         screenshot(keys,args.work/'before.png')
-        press('ENTER',.25)
+        press('ENTER',2)
         time.sleep(2)
-        press('ENTER',.25)
+        press('ENTER',2)
         time.sleep(2)
-        press('SPACE',.25)
+        press('SPACE',2)
         time.sleep(2)
         screenshot(keys,args.work/'after-intro.png')
         time.sleep(6)
-        press('UP',.25)
+        press('UP',2)
         screenshot(keys,args.work/'switched.png')
-        press('D',1.0)
+        press('D',2)
         screenshot(keys,args.work/'moved.png')
-        press('UP',.25)
-        press('ENTER',.25)
+        press('UP',2)
+        press('ENTER',2)
         screenshot(keys,args.work/'paused.png')
         (args.work/'ordinary-inputs.json').write_text(json.dumps(evidence,indent=2)+'\n')
     finally:
@@ -174,13 +174,16 @@ def main():
                 game=subprocess.Popen([str(binary),'--randomizer-seed',str(native.bootstrap)],cwd=native.directory,env=env,stdout=log,stderr=subprocess.STDOUT)
                 processes.append(game);result.update(pid=game.pid,display=display)
                 helper_process=None
-                while game.poll() is None and time.monotonic()-started<70:
+                while game.poll() is None and time.monotonic()-started<80:
                     native.poll();native.write_state(True)
                     text=(args.work/'native.log').read_text(errors='replace')
+                    if 'tu_tx20.blo' in text or 'dataDir/cinemas/demo65.cin' in text:
+                        result['blocked_reason']='pre-restoration P1 bonus/extinction startup flow'
+                        break
                     if helper_process is None and 'P2_CAMPAIGN_SCENE_READY floor=0 restored_party=1' in text:
                         argv=[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:],'--helper',
                               '--native-pid',str(game.pid),'--xvfb-pid',str(display_process.pid),
-                              '--display',display,'--deadline',str(started+70)]
+                              '--display',display,'--deadline',str(started+80)]
                         helper_process=subprocess.Popen(argv,env=env,stdout=subprocess.DEVNULL,stderr=(args.work/'helper.stderr').open('wb'))
                         processes.append(helper_process)
                     if helper_process is not None and helper_process.poll() is not None:
@@ -197,7 +200,8 @@ def main():
         result.update(seconds=time.monotonic()-started,owned_children_reaped=all(p.poll() is not None for p in processes),
                       captain_switches=[line for line in text.splitlines() if line.startswith('P2_CAPTAIN_SWITCH ')],
                       restored_bodies=text.count('P2_CAMPAIGN_BODY_RESTORE key='),
-                      extinction_tutorial='tu_tx20.blo' in text)
+                      extinction_tutorial='tu_tx20.blo' in text,
+                      bonus_seed_movie='dataDir/cinemas/demo65.cin' in text)
         result['cards_unchanged']=cards=={f.relative_to(campaign).as_posix():sha(f)
             for f in campaign.rglob('*') if f.is_file() and 'shader_cache' not in f.relative_to(campaign).parts}
         (args.work/'result.json').write_text(json.dumps(result,indent=2)+'\n')
@@ -205,7 +209,7 @@ def main():
     return 0 if (result.get('input_helper_exit') == 0 and result.get('handshake')
                  and result.get('native_exit_before_stop') is None
                  and len(result['captain_switches']) >= 2 and result['cards_unchanged']
-                 and result['owned_children_reaped']) else 1
+                 and result['owned_children_reaped'] and not result.get('blocked_reason')) else 1
 
 
 def runtime_helper_display(fd,deadline,args):
