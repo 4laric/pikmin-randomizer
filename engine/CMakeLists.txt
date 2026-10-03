@@ -3294,3 +3294,11 @@ endif()
 # Real native factory/cache transport fixture; synthetic zero-birth admission only.
 pikmin_add_ci_fixture(original_gen_object tools/p2_original_gen_object_runtime.cpp)
 pikmin_add_ci_fixture(original_piki_init tools/p2_original_piki_init_runtime.cpp)
+
+# Compile the real rescue implementation against minimal observable engine doubles.
+if(PIKMIN_BUILD_TESTS)
+add_executable(rescue_actual_test tools/test_rescue_actual.cpp src/plugPikiKando/aiRescue.cpp)
+target_include_directories(rescue_actual_test BEFORE PRIVATE tools/rescue_stubs)
+target_compile_options(rescue_actual_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG -Wno-multichar)
+add_test(NAME rescue_actual_test COMMAND rescue_actual_test)
+endif()

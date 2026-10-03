@@ -1818,7 +1818,7 @@ public:
 	int exeApproach();
 	void initRescue();
 	int exeRescue();
-	void initGo();
+	bool initGo();
 	int exeGo();
 	void initThrow();
 	int exeThrow();
