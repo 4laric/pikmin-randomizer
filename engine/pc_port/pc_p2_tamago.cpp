@@ -142,6 +142,8 @@ struct Tamago {
     bool isGroupHost = false;
     // Campaign per-placement source FSM (#992).
     bool sourceMode = false;
+    bool ballFall = false;
+    bool bigFootDrop = false;
     bool born = false;
     int member = 0;
     bool hidden = true;
@@ -524,6 +526,63 @@ void pc_p2_tamago_birth_group(BTeki* host, int count) {
     std::fflush(stdout);
 }
 
+bool pc_p2_tamago_prepare_bigfoot() {
+    // BigFoot's Chappy vehicle already loads the child manager's host resources.
+    // P2 enemyInfo declares TamagoMushi as its dependency, even with no source68
+    // placements. Bank preload must not manufacture a generator or AP check.
+    const bool available = pc_p2_batch2_prepare_tamago();
+    std::printf("P2_BIGFOOT_MITITE_RESOURCE ready=%d\n", int(available));
+    if (available) ready = true;
+    return available;
+}
+
+int pc_p2_tamago_birth_bigfoot(BTeki* boss, unsigned generator, const Vector3f& position) {
+    if (!boss || !ready || !pc_p2_batch2_prepare_tamago()) return 0;
+    BTeki* leader = nullptr;
+    const int born = p2tamagopolicy::bigFootGroup([&](int member) {
+        Teki* child = boss->generateTeki(TEKI_Chappy);
+        if (!child) return false;
+        Vector3f pos = position;
+        const auto offset = p2tamagopolicy::bigFootOffset(member, rnd01(), rnd01());
+        pos.x += offset.x;
+        pos.z += offset.z;
+        const float yaw = offset.faceDir;
+        const float vy = p2tamagopolicy::bigFootFallSpeed(member, rnd01());
+        child->inputPosition(pos);
+        child->startAI(0);
+        child->resetCreatureFlag(CF_IsOnGround); // pooled/reset contact is not a fall impact
+        child->setDirection(yaw);
+        child->mHealth = LIFE;
+        child->mVelocity.set(0.0f, vy, 0.0f);
+        if (!leader) leader = child;
+        Tamago& s = actors[static_cast<PelletView*>(child)];
+        s = Tamago();
+        s.sourceMode = s.born = s.madeFellow = s.ballFall = true;
+        s.bigFootDrop = true;
+        s.hidden = false; // source setTypeBall: visible falling Wait, no atari
+        s.generator = s.leaderGenerator = generator;
+        s.member = member;
+        s.home = pos;
+        s.heading = yaw;
+        s.leaderActor = leader;
+        s.isLeader = child == leader;
+        s.speedFactor = 0.7f + 0.3f * rnd01();
+        s.turnFactor = 0.7f + 0.3f * rnd01();
+        s.activeMax = p2tamagopolicy::activeMaxTicks(rnd01());
+        enter(s, TAMAGO_WAIT, "wait");
+        child->clearTekiOption(TEKIOPT_Atari);
+        child->setTekiOption(TEKIOPT_Invincible);
+        pc_p2_batch2_bind_tamago(child);
+        // Deliberately no campaign/source binding: children are drops, not slots.
+        std::printf("P2_BIGFOOT_MITITE_BORN generator=%u member=%d x=%.1f y=%.1f z=%.1f vy=%.1f bound=0\n",
+                    generator, member, pos.x, pos.y, pos.z, vy);
+        return true;
+    });
+    std::printf("P2_BIGFOOT_MITITE_GROUP generator=%u count=%d requested=30\n", generator, born);
+    std::fflush(stdout);
+    return born;
+}
+
 float pc_p2_tamago_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
     if (idx == TPF_Life) return LIFE;
@@ -837,6 +896,31 @@ void pc_p2_tamago_update(BTeki* actor) {
     }
 
     if (s.sourceMode) {
+        if (s.ballFall && s.state != TAMAGO_DEAD) {
+            // P2 StateWait ends on bounceCallback. The P1 collision flag is set
+            // by the real terrain trace; do not freeze vertical falling velocity.
+            s.stateTime += dt;
+            s.phase = std::fmod(s.stateTime / clipDuration("wait"), 1.0f);
+            if (s.stateTime > dt && actor->isCreatureFlag(CF_IsOnGround)) {
+                s.ballFall = false;
+                s.hidden = false;
+                actor->setTekiOption(TEKIOPT_Atari);
+                actor->clearTekiOption(TEKIOPT_Invincible);
+                // Source bounceCallback: rise10, horizontal80, vertical35..50.
+                Vector3f bounced = actor->getPosition();
+                bounced.y += 10.0f;
+                actor->inputPosition(bounced);
+                actor->resetCreatureFlag(CF_IsOnGround);
+                actor->mVelocity.set(std::sin(s.heading) * 80.0f,
+                                     50.0f * (0.7f + 0.3f * rnd01()), std::cos(s.heading) * 80.0f);
+                appearPanic(actor, s);
+                s.walkMax = p2tamagopolicy::walkSeconds(rnd01());
+                pickGoal(actor, s);
+                enter(s, TAMAGO_WALK, "move");
+                std::printf("P2_BIGFOOT_MITITE_LAND generator=%u member=%d\n", generator, s.member);
+            }
+            return;
+        }
         if (s.state != TAMAGO_DEAD) astonishContactsSource(actor, s);
         s.stateTime += dt;
         switch (s.state) {
@@ -908,7 +992,9 @@ void pc_p2_tamago_update(BTeki* actor) {
             const float speed = s.speedFactor * p2tamagopolicy::MoveSpeed;
             const Vector3f drive(std::sin(s.heading) * speed, 0.0f, std::cos(s.heading) * speed);
             actor->inputDrive(drive);
-            actor->mVelocity.set(drive);
+            // Keep the source bounce's vertical arc through normal terrain physics.
+            const float vy = s.bigFootDrop && !actor->isCreatureFlag(CF_IsOnGround) ? actor->mVelocity.y : 0.0f;
+            actor->mVelocity.set(drive.x, vy, drive.z);
             s.activeTicks += dt / p2tamagopolicy::TickSeconds;
             if (distXZ(pos, s.goal) < 10.0f || s.stateTime > s.walkMax) {
                 std::printf("P2_TAMAGO_STATE generator=%u member=%d state=turn\n", generator, s.member);

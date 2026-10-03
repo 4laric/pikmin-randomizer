@@ -12,6 +12,30 @@ int main()
     // One placement is a leader plus nine fellows.
     assert(GroupCount == 10 && fellowCount(GroupCount) == 9);
     assert(EggGroupCount == 10 && BigFootGroupCount == 30);
+    bool consumed = false;
+    assert(!consumeBigFootDrop(false, false, consumed) && !consumed);
+    assert(consumeBigFootDrop(true, false, consumed) && consumed);
+    assert(!consumeBigFootDrop(true, false, consumed));
+    consumed = false;
+    assert(!consumeBigFootDrop(true, true, consumed) && consumed);
+    assert(!consumeBigFootDrop(true, false, consumed));
+    int attempts = 0;
+    assert(bigFootGroup([&](int) { ++attempts; return false; }) == 0 && attempts == 1);
+    attempts = 0;
+    assert(bigFootGroup([&](int n) { ++attempts; return n != 7 && n != 20; }) == 28 && attempts == 30);
+    assert(bigFootGroup([](int) { return true; }) == 30);
+    const Offset leader = bigFootOffset(0, 1.0f, 1.0f);
+    assert(leader.x == 0 && leader.z == 0 && leader.faceDir == 0);
+    for (int n = 1; n < 30; ++n) {
+        for (float r : {0.0f, 0.5f, 1.0f}) {
+            const Offset o = bigFootOffset(n, r, 0.5f);
+            const float radius = std::hypot(o.x, o.z);
+            assert(radius >= 9.999f && radius <= 50.001f);
+            assert(std::fabs(o.faceDir - 3.14159265f) < 1e-5f);
+        }
+        assert(bigFootFallSpeed(n, 0.5f) == ((n - 1) % 3 ? -50.0f : 50.0f));
+    }
+    assert(bigFootFallSpeed(0, 1.0f) == 0);
     assert(fellowCount(1) == 0 && fellowCount(0) == 0);
     // Pool guard mirrors Mgr::createGroup's getFreeNum() < count refusal.
     assert(poolHoldsGroup(10, 10) && !poolHoldsGroup(9, 10));
