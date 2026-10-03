@@ -279,6 +279,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_surface_topology.cpp
     pc_port/pc_p2_surface_water.cpp
+    pc_port/pc_blue_rescue.cpp
     # Deterministic netplay fixed-step mode, M1 (issue #878). Engine-free TUs;
     # they join pikmin_pc and the engine-free pc_bbft_test / pc_sim_rng_test.
     pc_port/netplay/pc_netplay_det.cpp
@@ -3304,8 +3305,19 @@ pikmin_add_ci_fixture(original_piki_init tools/p2_original_piki_init_runtime.cpp
 if(PIKMIN_BUILD_TESTS)
 add_executable(rescue_actual_test tools/test_rescue_actual.cpp src/plugPikiKando/aiRescue.cpp)
 target_include_directories(rescue_actual_test BEFORE PRIVATE tools/rescue_stubs)
-target_compile_options(rescue_actual_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG -Wno-multichar)
+target_compile_options(rescue_actual_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG -UPIKI_PC_PORT -Wno-multichar)
 add_test(NAME rescue_actual_test COMMAND rescue_actual_test)
+add_executable(blue_rescue_actual_test tools/test_blue_rescue_actual.cpp
+    src/plugPikiKando/aiRescue.cpp pc_port/pc_blue_rescue.cpp)
+target_include_directories(blue_rescue_actual_test BEFORE PRIVATE tools/blue_rescue_stubs pc_port)
+target_compile_definitions(blue_rescue_actual_test PRIVATE PIKI_PC_PORT=1)
+target_compile_options(blue_rescue_actual_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG -Wno-multichar)
+add_test(NAME blue_rescue_actual_test COMMAND blue_rescue_actual_test)
+endif()
+
+# Explicit ordinary-input Blue rescue scenario; local legal assets required.
+if(PIKMIN_BUILD_TESTS)
+pikmin_add_ci_fixture(blue_rescue tools/p2_blue_rescue_runtime.cpp)
 endif()
 # #1232: engine-free economy controls; actual carry/save acceptance is separate.
 add_executable(p2_campaign_economy_test tools/test_p2_campaign_economy.cpp)

@@ -1822,6 +1822,10 @@ public:
 	int exeGo();
 	void initThrow();
 	int exeThrow();
+	bool holdsVictim(const Piki* victim) const
+	{
+		return mDrowningPiki == victim && (mState == STATE_Go || mState == STATE_Throw);
+	}
 
 protected:
 	virtual void animationKeyUpdated(immut PaniAnimKeyEvent&); // _64

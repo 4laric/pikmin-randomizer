@@ -1,5 +1,6 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
+#include "pc_blue_rescue.h"
 #endif
 #include "pc_p2_gas_cloud.h"
 #include "pc_p2_astonish.h"
@@ -1844,6 +1845,9 @@ void PikiWaterHangedState::procAnimMsg(Piki* piki, MsgAnim* msg)
  */
 void PikiWaterHangedState::init(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	pc_blue_rescue_clear(piki);
+#endif
 	piki->mMotionSpeed = 30.0f;
 	piki->startMotion(PaniMotionInfo(PIKIANIM_Hang, piki), PaniMotionInfo(PIKIANIM_Hang));
 	piki->mHasCollChangedVelocity = 0;
@@ -1858,6 +1862,7 @@ void PikiWaterHangedState::init(Piki* piki)
 void PikiWaterHangedState::exec(Piki* piki)
 {
 #if defined(PIKI_PC_PORT)
+	if (pc_blue_rescue_tick(piki)) return;
 	// A P2 captor (Jellyfloat suction, Sarai, ...) clears Piki::mNavi when it
 	// captures a Pikmin; a captain's grab can still land on it afterwards. No
 	// captain means nothing to hang from: back to normal instead of reading
@@ -1879,6 +1884,9 @@ void PikiWaterHangedState::exec(Piki* piki)
  */
 void PikiWaterHangedState::cleanup(Piki* piki)
 {
+#if defined(PIKI_PC_PORT)
+	pc_blue_rescue_clear(piki);
+#endif
 	PRINT("water hang exit\n");
 	SeSystem::stopPlayerSe(SE_PIKI_FLYREADY);
 }

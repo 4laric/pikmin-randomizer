@@ -3,6 +3,9 @@
 #include "PikiAI.h"
 #include "PikiState.h"
 #include "zen/Math.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_blue_rescue.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -22,6 +25,7 @@ DEFINE_PRINT("aiRescue")
 ActRescue::ActRescue(Piki* piki)
     : Action(piki, true)
 {
+	mDrowningPiki = nullptr;
 	setName("Rescue");
 }
 
@@ -30,6 +34,9 @@ ActRescue::ActRescue(Piki* piki)
  */
 void ActRescue::init(Creature* target)
 {
+#if defined(PIKI_PC_PORT)
+	pc_blue_rescue_release(mDrowningPiki, mPiki);
+#endif
 	mTargetSurviveTimer = 0;
 	mGotAnimationAction = false;
 	mAnimationFinished = false;
@@ -59,6 +66,15 @@ int ActRescue::exec()
 	}
 
 	int state = mDrowningPiki->getState();
+#if defined(PIKI_PC_PORT)
+	// Whistle/state changes release the victim immediately. Do not keep moving
+	// a recovered victim for the legacy twenty-frame survivor grace period.
+	if ((mState == STATE_Go || mState == STATE_Throw)
+	    && !((state == PIKISTATE_WaterHanged && pc_blue_rescue_owned(mDrowningPiki, mPiki))
+	         || (mState == STATE_Throw && state == PIKISTATE_Flying))) {
+		return ACTOUT_Fail;
+	}
+#endif
 	if (state != PIKISTATE_Drown && state != PIKISTATE_WaterHanged && state != PIKISTATE_Flying) {
 		// target is somehow surviving on their own
 		mTargetSurviveTimer++;
@@ -171,7 +187,18 @@ int ActRescue::exeRescue()
 		if (!initGo()) {
 			return ACTOUT_Fail;
 		}
+#if defined(PIKI_PC_PORT)
+		// Another Blue may have picked up the same victim while this action's
+		// pickup animation was running. Never replace that rescuer's hold.
+		if (mDrowningPiki->getState() != PIKISTATE_Drown) return ACTOUT_Fail;
+#endif
 		mDrowningPiki->mFSM->transit(mDrowningPiki, PIKISTATE_WaterHanged);
+#if defined(PIKI_PC_PORT)
+		if (!pc_blue_rescue_begin(mDrowningPiki, mPiki)) {
+			mDrowningPiki->mFSM->transit(mDrowningPiki, PIKISTATE_Normal);
+			return ACTOUT_Fail;
+		}
+#endif
 	}
 
 	return ACTOUT_Continue;
@@ -281,4 +308,8 @@ int ActRescue::exeThrow()
  */
 void ActRescue::cleanup()
 {
+#if defined(PIKI_PC_PORT)
+	pc_blue_rescue_release(mDrowningPiki, mPiki);
+#endif
+	mDrowningPiki = nullptr;
 }
