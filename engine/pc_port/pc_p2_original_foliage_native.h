@@ -13,6 +13,10 @@ public:
  bool tick(BTeki*,float,std::string&);
  bool draw(BTeki*,Graphics&,const Matrix4f&,bool postShadow=false);
  void postShadow(Graphics&);
+ std::size_t watageParticles()const;
+ unsigned watageEmissions()const;
+ unsigned watageDrawQuads()const;
+ void requestWatageCameraControl();
  bool collision(BTeki*,Creature*,std::string&);
  bool earthquake(BTeki*,std::string&);
  void forget(Creature*);

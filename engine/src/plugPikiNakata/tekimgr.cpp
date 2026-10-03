@@ -288,6 +288,12 @@ void TekiMgr::update()
 {
 	gsys->mTimer->start("teki updt", true);
 	MonoObjectMgr::update();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    // Genuine finite Watage JPA bursts are detached from their plant roots.
+    // Advance once per simulation step, even if all those roots have retired.
+    extern void pc_p2_watage_tick_all(float);
+    pc_p2_watage_tick_all(gsys->getFrameTime());
+#endif
 	gsys->mTimer->stop("teki updt");
 }
 
