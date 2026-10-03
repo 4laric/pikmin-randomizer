@@ -9,11 +9,13 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import tempfile
 
 from experimental.pikmin2_assets import archive_files, disc_files
-from experimental.pikmin2_assembly import merge_rooms, transform
+from experimental.pikmin2_assembly import merge_rooms, merged_model, transform
 from experimental.pikmin2_cave import BASE
-from experimental.pikmin2_collision import decode_room, ground_height
+from experimental.pikmin2_collision import attach_collision, decode_room, ground_height, route_ini
+from experimental.pikmin2_convert import decode, write_model
 from experimental.pikmin2_retail_context import authenticate
 from experimental.pikmin2_retail_start import canonical as start_canonical, source_start
 
@@ -70,6 +72,28 @@ def prepare(catalog, iso, source, imported, assembled, floor, output):
     for key in ('vertices','triangles','mapcodes','routes'):
         if room[key] != expected[key]:
             raise ValueError('Selected geometry differs: '+key)
+    # A host may retain genuine decoded JSON beside a changed native MOD/INI.
+    # Rebuild both complete runtime buffers from the independently verified
+    # source models/texts and authenticated door records, before pinning hashes.
+    models = [((imported/'units'/name/'arc/view.bmd').read_bytes(), turn, offset)
+              for name, turn, offset in layout]
+    decoded = merged_model(models) if floor == 1 else decode(models[0][0], True)
+    proof_parent = output.parent.resolve()
+    proof_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='retail-floor-source-check-', dir=proof_parent) as temporary:
+        temporary_path = Path(temporary).resolve()
+        if temporary_path.parent != proof_parent:
+            raise ValueError('Source conversion proof directory escaped output parent')
+        expected_render = temporary_path/'render.mod'
+        write_model(decoded, expected_render, 'authenticated authored floor source check')
+        expected_mod = attach_collision(expected_render.read_bytes(), room)
+        if (geometry/'room.mod').read_bytes() != expected_mod:
+            raise ValueError('Converted MOD differs from authenticated source conversion')
+    expected_ini = route_ini(room['routes']).encode('ascii')
+    # write_text uses platform line endings; accept only the two exact native
+    # encodings of this source route text, with all other bytes unchanged.
+    if (geometry/'room.ini').read_bytes() not in (expected_ini, expected_ini.replace(b'\n', b'\r\n')):
+        raise ValueError('Converted INI differs from authenticated source routes')
     slots = []
     for unit, (original, _, turn, offset) in enumerate(instances):
         for index, slot in enumerate(original['spawns']):

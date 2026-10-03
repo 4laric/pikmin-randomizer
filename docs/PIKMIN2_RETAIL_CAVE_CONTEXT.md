@@ -157,3 +157,14 @@ companion pins the nine original source files documenting this rule; it does
 not grant World activity, perform native grounding or reproduce the entrance
 movie. Actual source map, captain bootstrap and collision checks still own
 these steps. This preserves both existing plan hashes.
+
+
+Before emitting any floor or start hash, preparation now regenerates the entire
+converted MOD from authenticated source BMDs, collision/text inputs, original
+unit/door definitions and the authored layout. The existing MOD must match that
+complete buffer. The route INI must exactly match source-derived routes in LF
+or CRLF encoding. Genuine decoded collision JSON cannot conceal altered native
+render vertices, collision data or routes. Both actual floors pass with unchanged
+asset/plan/start hashes; six changed native-buffer controls are refused before
+output creation. This source-export check does not replace native runtime
+parsing, actual installed terrain queries or gameplay qualification.
