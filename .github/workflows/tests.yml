@@ -58,6 +58,7 @@ jobs:
           --deselect tests/test_pikmin2_cave_arena_overlay.py::GuardAndPackageTest::test_guard_hash_pinned
           tests/test_miniboss_pool.py
           tests/test_p2_boss_arenas.py
+          tests/test_p2_bigfoot_child_content.py
           tests/test_p2_ground_placement_facts.py
           tests/test_p2_placement.py
           tests/test_p2_placement_audit.py

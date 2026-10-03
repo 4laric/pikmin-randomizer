@@ -1969,6 +1969,10 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
         'bindings': [dict(b) for b in bindings],
         'actor_bindings': {str(t): int(g) for t, g in actor_bindings.items()},
     }
+    # Invalidate pre-#1231 BigFoot caches which contain no child resources.
+    needs_bigfoot_children = any(b.get('source_id') == 69 for b in bindings)
+    if needs_bigfoot_children:
+        canonical['bigfoot_child_resources'] = 1
     plan_digest = hashlib.sha256(
         json.dumps(canonical, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
 
@@ -2012,6 +2016,13 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
             raise StagingError(f'actor generator for target {target!r} must be an int') from None
         plans.append((target, enum_name, family, source, generator))
 
+    child_source = None
+    if needs_bigfoot_children:
+        from experimental import pikmin2_tamago_content as tamago_content
+        child_source = Path(content_root) / 'TamagoMushi'
+        # Validate exact converted child content before any run mutation.
+        tamago_content.validate_source(child_source)
+
     if (run / 'assets').exists():
         raise StagingError('run assets already exist; conflicting p2 binding install')
 
@@ -2032,6 +2043,9 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
             receipt = _installer(family)(entry['source'], run, entry['actors'])
             for target in entry['targets']:
                 receipts[target] = receipt
+        dependencies = {}
+        if child_source is not None:
+            dependencies['BigFoot:TamagoMushi'] = tamago_content.stage_bigfoot_children(child_source, run)
     except BaseException:
         # A family installer that fails mid-copy must not leave a partial asset
         # tree or run-root sidecars (e.g. p2-snow.txt copied by the Snow adapter):
@@ -2049,6 +2063,8 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
     files = _content_files(run)
     aggregate = dict(schema=1, mode='identity-binding', plan_digest=plan_digest,
                      bindings=list(bindings), receipts=receipts, files=files)
+    if dependencies:
+        aggregate['resource_dependencies'] = dependencies
     receipt_path.write_text(json.dumps(aggregate, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     if cache_root is not None:
         _populate_cache(cache_root, run, files, aggregate)

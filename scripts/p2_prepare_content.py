@@ -1750,6 +1750,9 @@ def prepare_content_root(iso, out, research=None, pose_limit=DEFAULT_POSE_LIMIT,
     if wanted is None:
         wanted = admitted_source_ids()
     wanted = order_source_ids(wanted)
+    if 69 in wanted and 68 not in wanted:
+        # Raging Long Legs births Mitites on death even without a Mitite slot.
+        wanted = order_source_ids([*wanted, 68])
     supported, unsupported = split_supported(wanted)
     if out.exists() and any(out.iterdir()):
         raise ValueError(f"output dir already exists and is not empty: {out}")
