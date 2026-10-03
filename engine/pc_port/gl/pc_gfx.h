@@ -283,6 +283,8 @@ void pc_gfx_invalidate_resident_meshes(void);
 /// Vertex storage the CPU rewrites every frame (P2 pose blending): drop any
 /// resident mesh built from it and never cache one that reads it again.
 void pc_gfx_mark_dynamic_vertex_range(const void* addr, size_t bytes);
+/// Release an exact owned pose-storage registration before freeing its CPU arrays.
+void pc_gfx_forget_dynamic_vertex_range(const void* addr, size_t bytes);
 
 /// Toques sobre menús 2D: la pantalla anota su espacio de dibujo (ancho y
 /// alto de su P2DGrafContext) justo después de setPort(); un toque

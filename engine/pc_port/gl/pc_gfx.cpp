@@ -9131,6 +9131,16 @@ void pc_gfx_mark_dynamic_vertex_range(const void* addr, size_t bytes) {
     pc_gfx_invalidate_cpu_range(addr, bytes);
 }
 
+// Explicitly owned pose geometry can die before a whole renderer reset.
+// Remove only its exact registration before its CPU storage is freed.
+void pc_gfx_forget_dynamic_vertex_range(const void* addr, size_t bytes) {
+    if (!addr || bytes == 0) return;
+    pc_gfx_invalidate_cpu_range(addr, bytes);
+    const uintptr_t lo = uintptr_t(addr), hi = lo + bytes;
+    sDynamicVertexRanges.erase(std::remove(sDynamicVertexRanges.begin(), sDynamicVertexRanges.end(),
+        std::make_pair(lo, hi)), sDynamicVertexRanges.end());
+}
+
 static bool mesh_reads_dynamic_range(uintptr_t lo, uintptr_t hi) {
     for (const auto& r : sDynamicVertexRanges)
         if (r.first < hi && lo < r.second) return true;

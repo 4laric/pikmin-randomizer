@@ -1,3 +1,4 @@
+#include "pc_p2_original_pelplant_native.h"
 #include "pc_p2_ship.h"
 #include "pc_randomizer.h"
 #include "pc_p2_campaign_actor.h"
@@ -407,6 +408,13 @@ void GoalItem::suckMe(Pellet* item)
 	} else {
 		pikiNum = config->mNonMatchingOnyonSeeds();
 	}
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    unsigned originalPelplantToken=0;bool originalPelplantDuplicate=false;
+    if (pc_p2_original_pelplant_onion(item, originalPelplantToken, originalPelplantDuplicate)) {
+        if (originalPelplantDuplicate) pikiNum=0;
+        std::printf("P2_ORIGINAL_PELPLANT_ONION token=%u duplicate=%d seeds=%d\n", originalPelplantToken, int(originalPelplantDuplicate), pikiNum);
+    }
+#endif
 	// Permanent diagnostic (issue #1034): which Onion paid how many seeds for which pellet.
 	std::printf("[pellet] onion=%d kind=pellet type=%d size=%s seeds=%d matching=%d pcolor=%d match_seeds=%d nonmatch_seeds=%d\n",
 	    int(mOnionColour), int(config->mPelletType()), config->mModelId.mStringID, pikiNum, int(mOnionColour == config->mPelletType()),

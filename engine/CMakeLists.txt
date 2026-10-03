@@ -390,6 +390,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_gas_cloud.cpp
     pc_port/pc_p2_hiba.cpp
     pc_port/pc_p2_flora_actor.cpp
+    pc_port/pc_p2_original_pelplant.cpp
+    pc_port/pc_p2_original_pelplant_native.cpp
     pc_port/pc_p2_receipt_host.cpp
     pc_port/pc_p2_delivery_host.cpp
     pc_port/pc_p2_pom.cpp
@@ -3126,6 +3128,12 @@ pikmin_add_ci_fixture(captain_reentry tools/p2_captain_reentry_runtime.cpp)
 
 # #1079 local native card save/resume acceptance, built only on CI.
 pikmin_add_ci_fixture(captain_campaign_resume tools/p2_captain_campaign_resume_runtime.cpp)
+pikmin_add_ci_fixture(original_pelplant tools/p2_original_pelplant_runtime.cpp)
+add_executable(pc_p2_original_pelplant_test tools/test_p2_original_pelplant.cpp
+    pc_port/pc_p2_original_pelplant.cpp pc_port/pc_p2_original_spawn_plan.cpp)
+target_include_directories(pc_p2_original_pelplant_test PRIVATE pc_port)
+target_compile_options(pc_p2_original_pelplant_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME pc_p2_original_pelplant_test COMMAND pc_p2_original_pelplant_test)
 pikmin_add_ci_fixture(captain_onion_owner_sdl tools/p2_captain_onion_owner_sdl_fixture.cpp)
 if(TARGET pikmin_ci_fixture_captain_onion_owner_sdl)
     target_include_directories(pikmin_ci_fixture_captain_onion_owner_sdl PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
