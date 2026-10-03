@@ -20,6 +20,8 @@ def main(argv=None):
     parser.add_argument("--output", required=True, type=Path, help="fresh ignored output directory")
     parser.add_argument("--archive-sha256", required=True)
     parser.add_argument("--seeds", type=int, nargs="+", default=[1153, 1154])
+    parser.add_argument("--sample-yaml", type=Path,
+                        help="test the shipped player YAML unchanged, twice per seed")
     args = parser.parse_args(argv)
     source = Path(__file__).resolve().parents[1]
     common = Path(subprocess.check_output(
@@ -34,6 +36,7 @@ def main(argv=None):
     if hashlib.sha256(archive.read_bytes()).hexdigest() != args.archive_sha256:
         parser.error("private installed APworld hash does not match the selected candidate")
     output.mkdir(parents=True)
+    sample_bytes = args.sample_yaml.resolve().read_bytes() if args.sample_yaml else None
     os.chdir(ap)
     # Prevent checkout packages from masking missing archive imports.
     sys.path[:] = [str(ap)] + [p for p in sys.path if p and "pikmin-randomizer" not in p]
@@ -56,15 +59,20 @@ def main(argv=None):
     assert len(admitted) == 42
     cases = [("default", {}), ("disabled", {"p2_enemy_randomizer": False}),
              ("mixed", {"campaign_enemies": True, "p2_enemy_randomizer": True, "p2_enemy_pool": "all"})]
+    if sample_bytes is not None:
+        cases.extend((("shipped", None), ("shipped-repeat", None)))
     results = []
     for label, options in cases:
         for seed in args.seeds:
             attempt = output / f"{label}-{seed}"
             players = attempt / "players"
             players.mkdir(parents=True)
-            (players / "Player.yaml").write_text(yaml.safe_dump(
-                {"name": "LoaderGate", "game": "Pikmin Randomizer", "Pikmin Randomizer": options}),
-                encoding="utf-8")
+            if options is None:
+                (players / "Player.yaml").write_bytes(sample_bytes)
+            else:
+                (players / "Player.yaml").write_text(yaml.safe_dump(
+                    {"name": "LoaderGate", "game": "Pikmin Randomizer", "Pikmin Randomizer": options}),
+                    encoding="utf-8")
             arguments = Generate.mystery_argparse([
                 "--seed", str(seed), "--player_files_path", str(players),
                 "--outputpath", str(attempt / "generated"), "--spoiler", "2",
@@ -95,7 +103,7 @@ def main(argv=None):
                 assert len(names) == 1
                 assert json.loads(generated.read(names[0])) == manifest
             ids = {binding["source_id"] for binding in manifest.get("p2_layout", {}).get("bindings", [])}
-            if label == "mixed":
+            if label in ("mixed", "shipped", "shipped-repeat"):
                 assert ids <= admitted and ids
                 assert manifest["enemy_composition"] == "p1-then-p2-v1"
                 assert "combined-enemies-v1" in manifest["capabilities"]
@@ -103,14 +111,24 @@ def main(argv=None):
             else:
                 assert "p2_layout" not in manifest
             results.append(dict(label=label, seed=seed, fingerprint=fingerprint(manifest),
-                                checks=len(world.get_locations()), spheres=spheres, selected_p2_ids=sorted(ids)))
+                                manifest_sha256=hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+                                checks=len(world.get_locations()), spheres=spheres, selected_p2_ids=sorted(ids),
+                                p2_layout=manifest.get("p2_layout"), enemy_catalog=manifest.get("enemy_catalog")))
             print("ACTUAL LOADER/FILL PASS", label, seed, len(world.get_locations()), flush=True)
     for seed in args.seeds:
         values = {r["label"]: r["fingerprint"] for r in results if r["seed"] == seed}
         assert values["default"] == values["disabled"]
+        if sample_bytes is not None:
+            assert values["shipped"] == values["shipped-repeat"]
+            original = next(r for r in results if r["seed"] == seed and r["label"] == "shipped")
+            repeated = next(r for r in results if r["seed"] == seed and r["label"] == "shipped-repeat")
+            assert original["manifest_sha256"] == repeated["manifest_sha256"]
+            assert original["enemy_catalog"] == repeated["enemy_catalog"]
     (output / "results.json").write_text(json.dumps(dict(
         archive_sha256=args.archive_sha256, metadata=metadata, admitted_ids=sorted(admitted),
         results=results, default_disabled_equal=True,
+        shipped_yaml_sha256=hashlib.sha256(sample_bytes).hexdigest() if sample_bytes else None,
+        shipped_repeat_equal=sample_bytes is not None,
         scope="Actual AP loader/YAML/fill/slot-output/item-sphere checks; no native gameplay acceptance"),
         indent=2) + "\n", encoding="utf-8")
     return 0
