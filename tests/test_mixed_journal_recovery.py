@@ -5,9 +5,9 @@ from randomizer.seed import generate
 from randomizer.session import Session
 
 
-def mixed_manifest():
+def mixed_manifest(**options):
     return generate('1153', campaign_enemies=True, p2_enemies=True,
-                    p2_species='playable', p2_checks=True)
+                    p2_species='playable', p2_checks=True, **options)
 
 
 def journal(tmp_path, manifest):
@@ -17,8 +17,9 @@ def journal(tmp_path, manifest):
     return session, run
 
 
-def test_mixed_bootstrap_recovers_native_check_after_restart(tmp_path):
-    manifest = mixed_manifest()
+@pytest.mark.parametrize('proxy_tier', [None, 'declared'])
+def test_mixed_bootstrap_recovers_native_check_after_restart(tmp_path, proxy_tier):
+    manifest = mixed_manifest(**({'p2_proxy_tier': proxy_tier} if proxy_tier else {}))
     session, run = journal(tmp_path, manifest)
     assert 'ENEMY_COMPOSITION 1 campaign\n' in run.bootstrap.read_text()
     recovered = Session(manifest, tmp_path)
