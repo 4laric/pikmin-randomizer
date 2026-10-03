@@ -600,7 +600,7 @@ def execute_save_resume(a, m):
     a.session.mkdir(parents=True, exist_ok=False)
     report = {'passed': False, 'mode': a.mode, 'profile': a.profile,
         'timeout_seconds_per_native_child': {'sdl_dayend': engineering_acquisition_limit(a)+60, ('natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume'): 60},
-        'save_phase_limits_seconds': {'verified_acquisition': 60, 'ordinary_save': 60},
+        'save_phase_limits_seconds': {'verified_acquisition': engineering_acquisition_limit(a), 'ordinary_save': 60},
         'root_pin': a.root_pin, 'native_pin': a.native_pin, 'native_source_sha256': a.native_source_sha256,
         'exe_sha256': a.exe_sha256, 'phases': [], 'checkpoint_boundaries': [], 'live_AP_server': False, 'saved_bytes_injected': False,
         'scope': 'SDL acquisition/native day-save/fresh-process same-card resume; initial withdrawal fixture-assisted; no combat/delivery/ordinary withdrawal/live AP/human acceptance'}
