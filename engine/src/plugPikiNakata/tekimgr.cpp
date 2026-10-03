@@ -293,6 +293,10 @@ void TekiMgr::update()
     // Advance once per simulation step, even if all those roots have retired.
     extern void pc_p2_watage_tick_all(float);
     pc_p2_watage_tick_all(gsys->getFrameTime());
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    extern void pc_p2_shijimi_effect_tick_all(float);
+    pc_p2_shijimi_effect_tick_all(gsys->getFrameTime());
+#endif
 #endif
 	gsys->mTimer->stop("teki updt");
 }

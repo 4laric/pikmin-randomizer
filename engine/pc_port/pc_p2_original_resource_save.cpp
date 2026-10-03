@@ -12,6 +12,7 @@ template<class T> bool integer(std::istream& in,T& value){
 }
 bool encodeResources(const ResourceSnapshot& state,const std::string& campaign,const EggContents& graph,std::string& bytes,std::string& e){
  if(!sha(campaign)||state.completed.size()>maxRecords)return fail(e,"original resource card campaign/bound invalid");
+ for(const auto& event:state.completed)if(!event.child.ancestry.empty())return fail(e,"Egg resource codec rejects emitter ancestry");
  ResourceState check;if(!check.restore(state,graph,e))return false;
  std::ostringstream out;out.imbue(std::locale::classic());out<<"P2ORS1 "<<campaign<<' '<<state.version;
  for(auto n:state.sprayCounts)out<<' '<<n;

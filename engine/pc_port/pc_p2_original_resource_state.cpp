@@ -5,15 +5,15 @@ namespace p2originalresource { namespace {
 int index(HoneyKind kind){return kind==HoneyKind::Spicy?0:kind==HoneyKind::Bitter?1:-1;}
 bool fail(std::string& e,const char* why){e=why;return false;}
 bool bornSpray(const SprayCompletion& event,const EggContents& contents){
- if(event.captain>1||index(event.kind)<0)return false;
+ if(!event.child.ancestry.empty()||!validChildIdentity(event.child)||event.captain>1||index(event.kind)<0)return false;
  for(const auto& record:contents.snapshot())if(record.source==event.child.source&&record.complete)
-  for(const auto& child:record.children)if(child.identity.slot==event.child.slot&&child.born&&child.attempted)
+  for(const auto& child:record.children)if(child.identity==event.child&&child.born&&child.attempted)
    return child.kind==(event.kind==HoneyKind::Spicy?ChildKind::Spicy:ChildKind::Bitter);
  return false;
 }
 }
 bool SprayCompletion::operator<(const SprayCompletion& b)const {
- return std::tie(child.source,child.slot,captain)<std::tie(b.child.source,b.child.slot,b.captain);
+ return std::tie(child,captain)<std::tie(b.child,b.captain);
 }
 bool ResourceState::restore(const ResourceSnapshot& state,const EggContents& contents,std::string& e){
  if(state.version!=1||state.completed.size()>4096||state.sprayCounts[0]<0||state.sprayCounts[1]<0||state.berryCounts[0]<0||state.berryCounts[1]<0||state.sprayUses[0]<0||state.sprayUses[1]<0)return fail(e,"original resource snapshot bounds invalid");

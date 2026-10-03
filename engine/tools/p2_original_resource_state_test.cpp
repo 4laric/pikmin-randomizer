@@ -26,5 +26,6 @@ int main(){
  assert(berries.addBerry(HoneyKind::Bitter,22,10,e)&&berries.sprayCount(HoneyKind::Bitter)==3);assert(berries.snapshot(fresh,e)&&fresh.berryCounts[1]==1&&!berries.sprayMade(HoneyKind::Bitter));
  fresh.berryCounts[1]=9;assert(berries.restore(fresh,contents,e));assert(berries.addBerry(HoneyKind::Bitter,1,2,e)&&berries.snapshot(fresh,e)&&fresh.berryCounts[1]==0&&fresh.sprayCounts[1]==4);
  fresh.sprayCounts[1]=INT_MAX;assert(berries.restore(fresh,contents,e));assert(!berries.addBerry(HoneyKind::Bitter,2,2,e));ResourceSnapshot unchanged;assert(berries.snapshot(unchanged,e)&&unchanged.berryCounts==fresh.berryCounts);
+ auto emitterChild=child;emitterChild.ancestry={{EmitterKind::PlantSpectralid,0,0}};assert(!state.completeSpray(emitterChild,HoneyKind::Spicy,0,contents,e));auto emitterState=snapshot;emitterState.completed[0].child.ancestry=emitterChild.ancestry;assert(!restored.restore(emitterState,contents,e));
  std::puts("P2_ORIGINAL_RESOURCE_STATE_POLICY_PASS: real-born child validation, two-captain completion and atomic restore; no gameplay claim");
 }

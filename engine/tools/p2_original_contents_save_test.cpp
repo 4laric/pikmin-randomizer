@@ -38,6 +38,7 @@ int main(){
  refuses(replace(bytes,"child 0 0 1 2 3 0 250 0 0 0 0 1 1 1","child 0 0 1 2 3 0 250 0 0 0 0 1 0 1"));
  std::string untouched="sentinel";auto invalid=rows;invalid[0].complete=false;assert(!encodeContents(invalid,campaign,untouched,e)&&untouched=="sentinel");
  invalid=rows;invalid[0].children[0].identity.source.uid++;assert(!encodeContents(invalid,campaign,untouched,e)&&untouched=="sentinel");
+ invalid=rows;invalid[0].children[0].identity.ancestry={{EmitterKind::PlantSpectralid,0,0}};assert(!encodeContents(invalid,campaign,untouched,e)&&untouched=="sentinel");
  invalid=rows;invalid.push_back(invalid[0]);assert(!encodeContents(invalid,campaign,untouched,e)&&untouched=="sentinel");
  invalid=rows;invalid[0].children[0].velocity.y=std::numeric_limits<float>::infinity();assert(!encodeContents(invalid,campaign,untouched,e)&&untouched=="sentinel");
  std::vector<ContentsRecord> boundary;for(unsigned i=0;i<4096;++i)boundary.push_back(single(0x52000001u+i));

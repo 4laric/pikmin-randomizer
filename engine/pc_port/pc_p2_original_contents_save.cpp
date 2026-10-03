@@ -41,6 +41,7 @@ public:
 };
 bool restored(const std::vector<ContentsRecord>& records,std::string& e){
  if(records.size()>maxRecords)return fail(e,"Egg contents record count exceeds 4096");
+ for(const auto& record:records)for(const auto& child:record.children)if(!child.identity.ancestry.empty())return fail(e,"Egg contents codec rejects emitter ancestry");
  EggContents temporary;return temporary.restore(records,e);
 }
 }

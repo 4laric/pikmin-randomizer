@@ -9,6 +9,7 @@ bool hash(const std::string& s){if(s.size()!=64)return false;for(char c:s)if(!((
 bool finite(P2EggVec3 p){return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);}
 bool validate(const std::vector<Snapshot>& rows,const std::string& campaign,const std::string& bank,const std::array<ReceiverClip,7>& clips,const EggContents& contents,std::string& e){
  if(rows.size()>4096||!hash(campaign)||!hash(bank))return fail(e);
+ for(const auto& row:rows)if(!row.identity.ancestry.empty())return fail(e);
  const auto records=contents.snapshot();EggContents checked;if(!checked.restore(records,e))return false;
  std::map<std::pair<SourceIdentity,unsigned>,ChildOutcome> children;for(const auto& r:records){if(!r.complete)return fail(e);for(const auto& c:r.children)children.emplace(std::make_pair(c.identity.source,c.identity.slot),c);}
  std::set<std::pair<SourceIdentity,unsigned>> seen;unsigned live=0;

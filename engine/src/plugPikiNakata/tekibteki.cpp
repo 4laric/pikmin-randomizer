@@ -3,6 +3,9 @@
 #include "pc_p2_original_actor.h"
 #include "pc_p2_original_pelplant_native.h"
 #include "pc_p2_original_foliage_native.h"
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+#include "pc_p2_original_shijimi_native.h"
+#endif
 #include "pc_p2_demon_host.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_life_gauge_hooks.h"
@@ -199,6 +202,9 @@ f32 BTeki::viewGetHeight()
 void BTeki::viewDraw(Graphics& gfx, immut Matrix4f& mat)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_draw(this, gfx, mat)) return;
+#endif
     if (pc_p2_original_foliage_draw(this, gfx, mat)) return;
 #endif
 	gfx.useMatrix(Matrix4f::ident, 0);
@@ -537,6 +543,9 @@ void BTeki::startAI(int)
 void BTeki::update()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_update(this)) return;
+#endif
     if (pc_p2_original_foliage_update(this)) return;
     if (pc_p2_original_pelplant_update(this)) return;
 #endif
@@ -988,6 +997,9 @@ void BTeki::becomeCorpse()
 void BTeki::doKill()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    pc_p2_original_shijimi_forget(this);
+#endif
     pc_p2_original_foliage_forget(this);
     pc_p2_original_pelplant_forget_teki(this);
 #endif
@@ -1071,6 +1083,9 @@ void BTeki::updateTimers()
 bool BTeki::stimulate(immut Interaction& interaction)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_owned(this)) return false;
+#endif
     if (pc_p2_original_foliage_owned(this)) {
         if (dynamic_cast<const InteractPress*>(&interaction)) pc_p2_original_foliage_earthquake(this);
         return false;
@@ -2102,6 +2117,9 @@ void BTeki::eventPerformed(immut TekiEvent& event)
 void BTeki::collisionCallback(immut CollEvent& event)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_collision(this, event.mCollider)) return;
+#endif
     if (pc_p2_original_foliage_collision(this, event.mCollider)) return;
 #endif
 	if (!isAlive()) {
@@ -2163,6 +2181,9 @@ void BTeki::bounceCallback()
  */
 void BTeki::wallCallback(immut Plane& wallPlane, DynCollObject*)
 {
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_wall(this, wallPlane.mNormal.x, wallPlane.mNormal.y, wallPlane.mNormal.z)) return;
+#endif
 	pc_p2_dangomushi_wall(this, wallPlane); // #897: no-op unless a registered Crawbster
 	eventPerformed(TekiEvent(TekiEventType::Wall, static_cast<Teki*>(this)));
 }
@@ -2368,6 +2389,9 @@ void BTeki::updateLifeGauge()
 void BTeki::refresh(Graphics& gfx)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_refresh(this, gfx)) return;
+#endif
     if (pc_p2_original_foliage_refresh(this, gfx)) return;
     if (pc_p2_original_pelplant_refresh(this, gfx)) return;
 #endif
@@ -2468,6 +2492,9 @@ void BTeki::drawTekiShape(Graphics& gfx)
 	Matrix4f onCamMtx;
 	gfx.mCamera->mLookAtMtx.multiplyTo(mWorldMtx, onCamMtx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#if defined(PIKMIN_ORIGINAL_SENTINEL) && PIKMIN_ORIGINAL_SENTINEL
+    if (pc_p2_original_shijimi_draw(this, gfx, onCamMtx)) return;
+#endif
     if (pc_p2_original_foliage_draw(this, gfx, onCamMtx)) return;
     if (pc_p2_original_pelplant_draw(this, gfx, onCamMtx)) return;
 #endif
