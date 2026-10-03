@@ -56,9 +56,13 @@ def bank_files(bank):
     return models, profile
 
 
-def bind_campaign_mode(session, manifest, bank):
+def bind_campaign_mode(session, manifest, bank, treasure_bank=None):
     marker = Path(session) / 'white-campaign.json'
     enabled = manifest.get('p2_white_campaign') is True
+    if (manifest.get('p2_white_treasure_campaign') is True) != (treasure_bank is not None):
+        raise ValueError('Seed-bound White treasure bank required')
+    if treasure_bank is not None and not enabled:
+        raise ValueError('White treasure requires natural White campaign')
     if enabled != (bank is not None):
         raise ValueError('White manifest requires its explicit --white-bank; legacy seed cannot enable it')
     if not enabled:
@@ -67,12 +71,19 @@ def bind_campaign_mode(session, manifest, bank):
         return
     if not manifest.get('p2_layout') or manifest.get('p2_purple_campaign') is not True:
         raise ValueError('White requires the seed-bound P2/Purple campaign')
-    if manifest.get('p2_white_treasure_campaign') is True:
-        raise ValueError('White treasure requires its separate staged retail cargo provider; bank-only launch refused')
+    treasure_enabled = manifest.get('p2_white_treasure_campaign') is True
+    if treasure_enabled and manifest.get('starting_color', 'red') != 'red':
+        raise ValueError('Original Red Pod receiver requires a Red-start White treasure seed')
+    if treasure_enabled:
+        from .white_treasure_campaign import bank_files as treasure_files
+        treasure = treasure_files(treasure_bank)
     models, profile = bank_files(bank)
     expected = {'version': 1, 'supply': 'three-ivory-landing-v1',
                 'sha256': {n: hashlib.sha256(v).hexdigest()
                            for n, v in {**models, 'p2-white.txt': profile.encode('ascii')}.items()}}
+    if treasure_enabled:
+        expected['treasure'] = {'profile': 'dia_a_red-180-15-25-v1',
+                               'sha256': {n: hashlib.sha256(v).hexdigest() for n, v in treasure.items()}}
     if marker.exists():
         if json.loads(marker.read_text(encoding='utf-8')) != expected:
             raise ValueError('White bank differs from this session')
@@ -104,11 +115,14 @@ def add_ivory_supply(data, template, stage, color):
     return result, ids
 
 
-def stage_campaign(run, assets, bank, manifest):
+def stage_campaign(run, assets, bank, manifest, treasure_bank=None):
     if manifest.get('p2_white_campaign') is not True:
         raise ValueError('Explicit seed White campaign required')
-    if manifest.get('p2_white_treasure_campaign') is True:
-        raise ValueError('White treasure provider is outside bank-only staging')
+    treasure_enabled = manifest.get('p2_white_treasure_campaign') is True
+    if treasure_enabled != (treasure_bank is not None):
+        raise ValueError('Seed-bound White treasure bank required')
+    if treasure_enabled and manifest.get('starting_color', 'red') != 'red':
+        raise ValueError('Original Red receiver requires a Red-start treasure seed')
     models, profile = bank_files(bank)
     run, assets = Path(run).resolve(), Path(assets).resolve()
     stage = START_AREAS[manifest['profile']][0]; folder = STAGES[stage]
@@ -122,6 +136,25 @@ def stage_campaign(run, assets, bank, manifest):
         if any(struct.pack('<I', uid) in path.read_bytes() for uid in ids):
             raise ValueError('Reserved Ivory identity occurs in scheduled stage source')
     data, ids = add_ivory_supply(data, template, stage, {'blue': 0, 'red': 1, 'yellow': 2}[manifest.get('starting_color', 'red')])
+    treasure_sidecars = {}; treasure_facts = None
+    if treasure_enabled:
+        from .white_treasure_campaign import bank_files as treasure_files, append_cargo, sidecars as treasure_config
+        treasure = treasure_files(treasure_bank)
+        cargo_uid = 0x57545200 + stage
+        for path in (source / f'dataDir/stages/{folder}').glob('*.gen'):
+            if any(struct.unpack_from('<I', row, 8)[0] == cargo_uid for row in split_records(path.read_bytes())):
+                raise ValueError('Reserved diamond identity occurs in scheduled source')
+        cargo_template = next(row for row in split_records((assets / 'dataDir/stages/chal0/default.gen').read_bytes())
+                              if row[72:76] == b'tlep')
+        data, cargo_uid, receiver_uid = append_cargo(data, cargo_template, stage)
+        treasure_sidecars = treasure_config(treasure, stage, cargo_uid, receiver_uid)
+        models = {**models, **{name: treasure[name] for name in ('treasure.mod', 'pod.mod')}}
+        treasure_facts = {'source_id': 'dia_a_red', 'value': 180, 'minimum': 15, 'maximum': 25,
+                          'cargo_uid': cargo_uid, 'receiver_uid': receiver_uid,
+                          'receiver_source_bytes_preserved': True,
+                          'placement': 'source landing origin: (-225,+250)',
+                          'terrain_contact_verified': False, 'physical_delivery_accepted': False,
+                          'native_SAVE_resume_accepted': False}
     overrides = {key: data, **{f'dataDir/courses/pikmin2room/{n}': v for n, v in models.items()}}
     saved = run / 'white-base-assets'
     if saved.exists():
@@ -133,11 +166,14 @@ def stage_campaign(run, assets, bank, manifest):
     lines = profile.splitlines(); lines[2] = 'ivory_generators 3 ' + ' '.join(map(str, ids))
     sidecars = {'p2-white.txt': ('\n'.join(lines) + '\n').encode('ascii'),
                 'p2-white-campaign.txt': ('P2_WHITE_CAMPAIGN_1 3\n' + ''.join(f'{stage} {uid}\n' for uid in ids)).encode('ascii')}
+    sidecars.update(treasure_sidecars)
     for name, value in sidecars.items():
         (run / name).write_bytes(value)
     receipt = {'version': 1, 'stage': stage, 'generators': ids, 'budget_per_bud': 5,
                'engineering_placement': 'source landing origin: (-100,+100), (0,+150), (+100,+100)',
                'terrain_contact_verified': False, 'gameplay_accepted': False,
                'sha256': {n: hashlib.sha256(v).hexdigest() for n, v in {**overrides, **sidecars}.items()}}
+    if treasure_facts is not None:
+        receipt['treasure'] = treasure_facts
     (run / 'white-campaign-staging.json').write_text(json.dumps(receipt, indent=2) + '\n')
     return receipt
