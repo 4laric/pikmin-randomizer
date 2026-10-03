@@ -168,6 +168,19 @@ class Session:
                 if fields[-len(extension)-1:-1] != extension:
                     raise ValueError('native journal check catalog mismatch')
                 fields = fields[:-len(extension)-1] + ['END']
+            if manifest.get('enemy_composition'):
+                from .enemy_slots import bootstrap_slots
+                extension = bootstrap_slots(manifest).split()
+                # Validate the complete ordered P1/P2 block before removing its
+                # composition header for the legacy field-count check below.
+                if fields.count('ENEMY_COMPOSITION') != 1:
+                    raise ValueError('native journal enemy composition mismatch')
+                start = fields.index('ENEMY_COMPOSITION')
+                if fields[start:-1] != extension:
+                    raise ValueError('native journal enemy composition mismatch')
+                fields = fields[:start] + fields[start + 3:]
+            elif 'ENEMY_COMPOSITION' in fields:
+                raise ValueError('native journal enemy composition mismatch')
             if manifest.get('p2_proxy_tier'):
                 if fields[-3:] != ['P2_PROXY_TIER', '1', 'END']:
                     raise ValueError('native journal proxy tier mismatch')
