@@ -5,6 +5,9 @@ Native slice: `e7379fefa5109b347fb630261168ae4b4e4928d5` followed by course-mask
 API `99415c29184354e935012e2cd2e8b4f4ec702726` and held-whistle compatibility fix
 `2019cc1d156da04e63b4e65c42932382f3c7ddab`, based on the
 coordinator-approved `6d7943ed56807e59147b4c03f11004008adc6b1a`.
+Retail parameter correction `d7101cc357ebc90632813a64c613aae53716bf32` follows
+the composed `3f72bd8f19ab289eb5cea412cbba7e39842f2f6e` source: Boots speed 205
+and Amplifier radius 130 replace incorrectly projected constructor defaults.
 See [the source audit](PIKMIN2_EQUIPMENT_AUDIT.md) for all 13 source identities.
 
 `pc_p2_equipment` derives equipment from the selected original campaign's
@@ -28,11 +31,11 @@ menu reads `isStageOpen` before adding each course and omits locked entries.
 | Item | Implemented native path | Remaining acceptance |
 |---|---|---|
 | Dream Material | InteractDenki refuses electric damage/flick | Ordinary electric contact before/after acquisition |
-| Amplified Amplifier | 200-unit maximum for whistle recruitment and rendered circle, before existing Mods radius scale | Ordinary outside-base-radius recruitment |
+| Amplified Amplifier | Retail q007 130-unit maximum for whistle recruitment and rendered circle, before existing Mods radius scale | Ordinary outside-base-radius recruitment |
 | Professional Noisemaker | Existing native sprout self-unbury path enabled by ownership | Ordinary whistle pluck after collection, with Mods disabled |
 | Justice Alloy | Source 0.5 shield reduction on captain damage | Ordinary damaging contact comparison |
 | Forged Courage | InteractFire refuses fire damage/flick | Ordinary fire contact comparison |
-| Repugnant Appendage | Source 240-unit movement speed and wind refusal | Ordinary movement/wind; steep-slope slip remains unsupported |
+| Repugnant Appendage | Retail q006 205-unit movement speed and wind refusal | Ordinary movement/wind; steep-slope slip remains unsupported |
 | Spherical Atlas / Geographic Projection | Source course 1 / 2 projection | Actual source collection, travel, day-end, fresh process |
 | Brute Knuckles | Receipt ownership only | Source three-animation combo unsupported |
 | Stellar Orb | Receipt ownership only | Source cave light ramp unsupported |
@@ -40,7 +43,17 @@ menu reads `isStageOpen` before adding each course and omits locked entries.
 | Five-Man Napsack | Receipt ownership only | Source hold-X and carried captain unsupported |
 | The Key | No equipment bit | Separate mode effects unsupported here |
 
-Numbers come from GPVE01 `include/Game/NaviParms.h` defaults. Existing AP benefits,
+Equipment numbers use authored GPVE01 `user/Abe/piki/naviParms.txt`, not only
+`include/Game/NaviParms.h` constructor defaults. The private retail resource
+at disc offset 770319376 is 3172 bytes, SHA-256
+`dfcc8e0cf89195f06ea78fdc1a342631da4e5d2495d85380212af7d72eb2eba0`.
+It authors q006=205, q007=130 and q008=0.5. Source `naviWhistle.cpp` reads q007
+for the Amplifier. Earlier qualified 2019/composed 3f72 builds used constructor
+values 240/200 for Boots/Amplifier and remain historical evidence; they do not
+prove these corrected retail values. The correction passes both focused CTests
+and a focused no-work dry run; corrected production/gameplay qualification is
+pending with the integration owner. The legal resource stays private.
+Existing AP benefits,
 Mods and captain health settings keep their existing composition; original gear
 is applied only when its authenticated selected-session query succeeds.
 
