@@ -334,7 +334,7 @@ class ShipKeyProtocol:
         self.phase_budget=phase_budget
         self.backend=backend; self.clock=clock; self.started=clock() if started is None else started
         self.resume=resume; self.sequence=0; self.pending=None; self.closed=False
-        self.effects=[]
+        self.effects=[];self.deposit_stock=0
 
     def release(self):
         errors=[]
@@ -360,7 +360,9 @@ class ShipKeyProtocol:
         request=re.fullmatch(r'P2_WHITE_NATIVE_KEY_REQUEST seq=([1-9][0-9]*) key=(SHIFT_F10|CTRL_F10|F10) actual_SDL_keyboard_required=1',line.strip())
         if request:
             seq=int(request[1]);key=request[2]
-            valid = (key=='CTRL_F10' and seq==1) or (key=='F10' and seq>1) if self.resume else key=='SHIFT_F10' and seq==1
+            valid = ((key=='CTRL_F10' and seq==1) or (key=='F10' and seq>1)) if self.resume else (
+                key=='SHIFT_F10' and seq==self.sequence+1 and self.deposit_stock<15
+                and (self.sequence==0 or (self.effects and self.effects[-1]['sequence']==self.sequence)))
             if self.closed or seq<=self.sequence or self.pending or not valid:
                 self.close();raise ValueError('Unexpected/duplicate/overlapping native key request')
             self.backend.verify()
@@ -374,6 +376,13 @@ class ShipKeyProtocol:
             return
         if line.startswith('P2_WHITE_NATIVE_KEY_REQUEST'):
             self.close();raise ValueError('Malformed native key request')
+        if not self.resume:
+            deposit=re.fullmatch(r'P2_SHIP_DEPOSIT species=4 maturity=0 stored=([1-9]|1[0-5])',line.strip())
+            if deposit:
+                stock=int(deposit[1])
+                if self.closed or self.sequence==0 or stock!=self.deposit_stock+1:
+                    self.close();raise ValueError('Unrequested/non-consecutive actual White deposit effect')
+                self.deposit_stock=stock
         if self.pending:
             key=self.pending[1]
             effect = ((key=='CTRL_F10' and re.fullmatch(r'P2_SHIP_CHOICE captain=[01] species=4',line.strip()))
