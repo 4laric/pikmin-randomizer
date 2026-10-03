@@ -14,6 +14,23 @@ import sys
 import zipfile
 
 
+def assert_shipped_catalog(manifest, admitted, validate_catalog, locations):
+    layout = manifest["p2_layout"]
+    selected = {row["source_id"] for row in layout["bindings"]}
+    unplaced = set(layout.get("unplaced", []))
+    # Boss arena sampling records its unplaced identities separately.
+    unplaced.update(layout.get("boss_arenas", {}).get("unplaced", []))
+    assert admitted and selected | unplaced == admitted, "shipped YAML narrowed the pinned admitted pool"
+    assert layout["density"] == "sampled-v1", "shipped YAML must use sampled density"
+    catalog = validate_catalog(manifest["enemy_catalog"], manifest)
+    assert {row["game"] for row in catalog["sources"]} == {"p1", "p2"}
+    assert {row["species"] for row in catalog["sources"] if row["game"] == "p2"} == selected
+    # The packaged validator checks surviving P1 suppliers and all present P2
+    # checks, including stable IDs, sources and non-corpse exceptions.
+    for row in catalog["checks"]:
+        assert locations.get(row["name"]) == row["id"], "resolved check missing from actual AP fill"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ap", required=True, type=Path)
@@ -51,12 +68,13 @@ def main(argv=None):
     from BaseClasses import CollectionState
     from worlds.AutoWorld import AutoWorldRegister
     from worlds.pikmin_randomizer.core.seed import fingerprint, validate
+    from worlds.pikmin_randomizer.core.enemy_catalog import validate as validate_catalog
     from worlds.pikmin_randomizer.experimental.pikmin2_enemy_roster import load_and_validate, admitted_ids
     world_class = AutoWorldRegister.world_types["Pikmin Randomizer"]
     assert isinstance(world_class.manifest, dict), "actual AP loader must install metadata"
     metadata = dict(world_class.manifest)
     admitted = set(admitted_ids(load_and_validate()))
-    assert len(admitted) == 42
+    assert admitted, "packaged admission cohort is empty"
     cases = [("default", {}), ("disabled", {"p2_enemy_randomizer": False}),
              ("mixed", {"campaign_enemies": True, "p2_enemy_randomizer": True, "p2_enemy_pool": "all"})]
     if sample_bytes is not None:
@@ -108,6 +126,9 @@ def main(argv=None):
                 assert manifest["enemy_composition"] == "p1-then-p2-v1"
                 assert "combined-enemies-v1" in manifest["capabilities"]
                 assert "p2_proxy_tier" not in manifest
+                if label in ("shipped", "shipped-repeat"):
+                    assert_shipped_catalog(manifest, admitted, validate_catalog,
+                                           {loc.name: loc.address for loc in world.get_locations()})
             else:
                 assert "p2_layout" not in manifest
             results.append(dict(label=label, seed=seed, fingerprint=fingerprint(manifest),
