@@ -88,7 +88,7 @@ def main():
     if args.surface_assets:
         command=[str(exe),'--experimental-pikmin2-surface','tutorial','--bridge-manifest='+str(run.directory/'bridges.txt')]
     if args.captain_down:command.append('--force-captain-down')
-    if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX',*command]
+    if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX','stdbuf','-oL','-eL',*command]
     inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},surface_inputs=surface_inputs,fixture_landing_squad_adapters=bool(args.surface_assets),asset_overlay=overlay_mode,argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_completion=True)
     (run.directory/'run-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     print(json.dumps({'directory':str(run.directory),'inputs':inputs}),flush=True)

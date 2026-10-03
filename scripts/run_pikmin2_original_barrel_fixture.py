@@ -95,7 +95,7 @@ def main():
         command=[str(exe),'--experimental-pikmin2-surface','tutorial','--barrel-manifest='+str(run.directory/'barrels.txt')]
     command.append('--water-manifest='+str(run.directory/'assets/dataDir/courses/p2tutorial/full.water'))
     if args.captain_down:command.append('--force-captain-down')
-    if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX',*command]
+    if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX','stdbuf','-oL','-eL',*command]
     inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},surface_inputs=surface_inputs,fixture_landing_squad_adapters=bool(args.surface_assets),asset_overlay=overlay_mode,argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_damage=True,direct_creature_cache=True,full_generator_cache=False)
     (run.directory/'run-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     print(json.dumps({'directory':str(run.directory),'inputs':inputs}),flush=True)
