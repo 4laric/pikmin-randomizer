@@ -42,6 +42,61 @@ class Backend:
         self.keys.append(window)
 
 
+class TitlePropertyTests(unittest.TestCase):
+    def backend(self,properties):
+        backend=object.__new__(runtime.X11Input);backend.display=1
+        atoms={name:i+1 for i,name in enumerate(('_NET_WM_NAME','WM_NAME','UTF8_STRING','UTF-8','STRING','OTHER'))}
+        backend.atom=lambda name:atoms[name]
+        class X:
+            def __init__(self):self.buffers=[];self.queries=[];self.freed=0
+            def XGetWindowProperty(self,display,window,prop,start,length,delete,requested,actual,fmt,count,after,data):
+                self.queries.append(prop)
+                self.limit=length
+                p=properties.get(prop,{})
+                raw=p.get('raw',b'')
+                actual._obj.value=atoms[p['type']] if p.get('type') else 0
+                fmt._obj.value=p.get('format',8 if p.get('type') else 0)
+                count._obj.value=p.get('count',len(raw));after._obj.value=p.get('after',0)
+                if p.get('allocate',True):
+                    buffer=ctypes.create_string_buffer(raw);self.buffers.append(buffer);data._obj.value=ctypes.addressof(buffer)
+                return p.get('rc',0)
+            def XFree(self,data):self.freed+=1
+        backend.x=X();return backend,atoms
+
+    def test_standard_utf8_title_preferred_with_bounded_complete_read(self):
+        b,a=self.backend({1:dict(type='UTF8_STRING',raw='Emergence Cave é'.encode()),2:dict(type='OTHER',raw=b'ignored')})
+        self.assertEqual(b.window_title(22),('Emergence Cave é','_NET_WM_NAME','UTF8_STRING'))
+        self.assertEqual(b.x.queries,[a['_NET_WM_NAME']]);self.assertEqual(b.x.limit,1024);self.assertEqual(b.x.freed,1)
+        b,a=self.backend({1:dict(type='UTF8_STRING',raw=b'x'*4096)})
+        self.assertEqual(len(b.window_title(22)[0]),4096)
+
+    def test_only_explicit_legacy_encodings_used_when_modern_absent(self):
+        for encoding,raw,text in [('UTF-8',b'Emergence Cave','Emergence Cave'),('UTF8_STRING','é'.encode(),'é'),('STRING',b'caf\xe9','café')]:
+            with self.subTest(encoding=encoding):
+                b,a=self.backend({2:dict(type=encoding,raw=raw)})
+                self.assertEqual(b.window_title(22),(text,'WM_NAME',encoding));self.assertEqual(b.x.freed,2)
+        b,a=self.backend({});self.assertEqual(b.window_title(22),('','absent','absent'))
+
+    def test_malformed_modern_title_refuses_without_fallback(self):
+        bad=[dict(type='STRING',raw=b'Emergence Cave'),dict(type='UTF8_STRING',raw=b'\xff'),
+             dict(type='UTF8_STRING',raw=b'A\0B'),dict(type='UTF8_STRING',raw=b'A',after=1),
+             dict(type='UTF8_STRING',raw=b'A',format=16),dict(type='UTF8_STRING',raw=b'A',count=4097),
+             dict(type='UTF8_STRING',raw=b'A',allocate=False),dict(count=1),dict(rc=1)]
+        for prop in bad:
+            with self.subTest(prop=prop):
+                b,a=self.backend({1:prop,2:dict(type='STRING',raw=b'Emergence Cave')})
+                with self.assertRaises(ValueError):b.window_title(22)
+                self.assertEqual(b.x.queries,[a['_NET_WM_NAME']]);self.assertEqual(b.x.freed,0 if prop.get('allocate') is False else 1)
+
+    def test_wrong_or_empty_decoded_title_still_refuses_exact_modal_match(self):
+        for text in ('Other cave',''):
+            b,a=self.backend({1:dict(type='UTF8_STRING',raw=text.encode())})
+            items=windows();items[1]['title']=b.window_title(22)[0]
+            with self.assertRaises(ValueError):runtime.matching_modal(items,begin(),set())
+        b,a=self.backend({2:dict(type='OTHER',raw=b'Emergence Cave')})
+        with self.assertRaises(ValueError):b.window_title(22)
+
+
 class CaveLinuxRuntimePolicyTests(unittest.TestCase):
     def test_each_phase_clears_all_presence_based_switches(self):
         inherited = dict(zip(runtime.ENV_KEYS, ['', '1', 'false'])) | {'KEEP': 'yes'}
