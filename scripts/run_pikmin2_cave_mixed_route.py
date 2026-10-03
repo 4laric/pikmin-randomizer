@@ -18,6 +18,7 @@ from scripts.stage_pikmin2_playable_cave import stage
 from scripts.play_pikmin2_cave import checkpoint,receipts
 from scripts.fixture_platform import owned_process_options,wait_owned_process,terminate_owned_process
 from experimental.pikmin2_cave_items import parse_items_text
+from experimental.pikmin2_cave_lane41_generator import _seed_uint64
 from scripts.pikmin2_cave_linux_runtime import X11Input,matching_modal,validate_end
 
 PREFIX='P2_CAVE_NATIVE_DIALOG '
@@ -28,7 +29,7 @@ def require(value,message):
 def validate_boundary(state,manifest,placement,all_treasures=False):
     validate(manifest)
     if all_treasures:
-        require(str(placement['seed'])==manifest['table']['seed'],'canonical placement seed mismatch')
+        require(placement['seed']==_seed_uint64(manifest['table']['seed']),'canonical placement seed mismatch')
         require(Counter((t['treasure_id'],t['slot_id']) for t in manifest['table']['treasures'])==
                 Counter((t['item'],t['host']) for t in placement['items']),'canonical treasure/host binding mismatch')
     require(Counter(s for s,m in state['squad'])==Counter({1:18,0:1,2:1}),'actual boundary mixed stock mismatch')

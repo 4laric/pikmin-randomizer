@@ -1,12 +1,15 @@
 """Acceptance-result refusals; synthetic inputs do not prove native gameplay."""
 import copy
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
+import tempfile
 import unittest
 from randomizer.cave_floor import create,fingerprint
 from experimental.pikmin2_cave_items import parse_items_text,items_from_layout,items_text
+from experimental.pikmin2_cave_lane41_generator import _seed_uint64,write_native_table
 from scripts.play_pikmin2_cave import checkpoint
 from scripts.run_pikmin2_cave_mixed_route import validate_boundary,child_deadline_seconds
 from tests.test_playable_cave import fixture_layout
@@ -22,7 +25,7 @@ class BoundaryTests(unittest.TestCase):
 
     def fixture(self):
         manifest=create('930','Player1')
-        placement={'seed':int(manifest['table']['seed']),'items':[{'slot_id':'forest_1:f1:leaf:0','host':'forest_1:f1:leaf:0','item':'treasure_water'}]}
+        placement={'seed':_seed_uint64(manifest['table']['seed']),'items':[{'slot_id':'forest_1:f1:leaf:0','host':'forest_1:f1:leaf:0','item':'treasure_water'}]}
         water=next(x for x in placement['items'] if x['item']=='treasure_water')
         ledger=f"P2_RECEIPTS_1\n{placement['seed']} treasure:forest_1:f1:{water['slot_id']} {water['host']} cave_treasure\n"
         budgets='P2_CAVE_BUD_STATE_1 '+str(placement['seed'])+' forest_1 1 2\n'+''.join(b['slot_id']+' '+str(2 if b['species']=='blue' else 1)+'\n' for b in manifest['table']['buds'])
@@ -46,6 +49,17 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'canonical receipt'):validate_boundary(state,m,p,True)
         state,m,p=self.full_fixture();state['receipts']+=state['receipts'].splitlines()[-1]+'\n'
         with self.assertRaisesRegex(ValueError,'duplicate'):validate_boundary(state,m,p,True)
+
+    def test_canonical_seed_uses_actual_native_table_serialization(self):
+        state,m,p=self.full_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            table=write_native_table(m['table'],Path(directory)/'floor.txt')
+            native_seed=int(table.read_text().splitlines()[1].split()[1])
+        self.assertEqual(p['seed'],native_seed)
+        self.assertNotEqual(native_seed,int(m['table']['seed']))
+        validate_boundary(state,m,p,True)
+        p['seed']=int(m['table']['seed'])
+        with self.assertRaisesRegex(ValueError,'placement seed'):validate_boundary(state,m,p,True)
 
     def test_full_scope_rejects_incompatible_placement_and_descriptor(self):
         state,m,p=self.full_fixture();p['seed']+=1
