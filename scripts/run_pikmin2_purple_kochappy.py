@@ -1,4 +1,4 @@
-"""Supervise a fresh <=60s engineering mechanic diagnostic, never tutorial/AP approval."""
+"""Supervise a fresh bounded engineering mechanic diagnostic, never tutorial/AP approval."""
 import argparse,hashlib,json,os,re,subprocess,uuid
 from pathlib import Path
 from scripts.stage_pikmin2_purple_kochappy import prepare
@@ -63,6 +63,15 @@ def linux_runtime_inputs(exe,root,session,run,env,root_pin,native_pin,source_has
         raise ValueError('Broker source pins differ from requested Purple inputs')
     return dependencies,proof
 
+def diagnostic_seconds(mode, development_launch=False, engineering_route_180=False):
+    if type(development_launch) is not bool or type(engineering_route_180) is not bool:
+        raise ValueError('Diagnostic profile flags must be bool')
+    if mode not in ('ready','positive','forced-down','paused-down'):
+        raise ValueError('Unsupported diagnostic mode')
+    if engineering_route_180 and (mode != 'positive' or not development_launch):
+        raise ValueError('180-second route requires explicit development positive mode')
+    return 180 if engineering_route_180 else 60
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('exe','assets','bundle','red-bank','purple-bank','motion','pod','output','native'):
@@ -72,7 +81,8 @@ def main():
     p.add_argument('--mode',choices=('ready','positive','forced-down','paused-down'),required=True)
     p.add_argument('--plan',action='store_true')
     p.add_argument('--development-launch',action='store_true',help='Explicit private Linux execution with actual ELF/capacity/owned cleanup evidence; no controller admission claim')
-    a=p.parse_args();root=Path(__file__).resolve().parent.parent
+    p.add_argument('--engineering-route-180',action='store_true',help='Explicit bounded private positive route/acquisition/combat diagnostic; default60 preserved')
+    a=p.parse_args();seconds=diagnostic_seconds(a.mode,a.development_launch,a.engineering_route_180);root=Path(__file__).resolve().parent.parent
     for repo,pin in ((root,a.root_sha),(a.native,a.native_sha)):
         if subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()!=pin:
             raise ValueError('Actual source HEAD differs from requested pin')
@@ -87,6 +97,7 @@ def main():
     run=prepare(a.assets.resolve(),a.bundle.resolve(),'c8598f04bb884ab396d126b8dfbed6a6ce78d2f6afc92e7b366a5e5c11ccc8d5',a.red_bank.resolve(),a.purple_bank.resolve(),a.motion.resolve(),a.pod.resolve(),output)
     (run/'private-save').mkdir()
     env=controlled_environment(os.environ,a.exe,a.runtime_dir,run/'private-save',a.mode)
+    if a.engineering_route_180:env['P2_PURPLE_KOCHAPPY_ROUTE180']='1'
     admission=None;development=None
     if not is_windows():
         dependencies,context=linux_runtime_inputs(a.exe,root,a.output.resolve(),run,env,a.root_sha,a.native_sha,sha(a.native/'tools/p2_purple_kochappy_runtime.cpp'),development_launch=a.development_launch)
@@ -100,13 +111,13 @@ def main():
                 stage_inputs_sha256=sha(run/'purple-kochappy-inputs.json'),fresh_private_save=env['NECTAR_SAVE_DIR'],runtime_dependencies=dependencies,
                 controlled_environment={k:v for k,v in env.items() if k.startswith(('PIKMIN_','P2_','COOP_','NECTAR_'))},
                 source_fixture_sha256=sha(a.native/'tools/p2_purple_kochappy_runtime.cpp'),
-                scope='engineering preview natural receiver mechanic; tutorial/AP mixed OPEN',timeout_seconds=60,
+                scope='engineering preview natural receiver mechanic; tutorial/AP mixed OPEN',timeout_seconds=seconds,diagnostic_profile='engineering-route180' if a.engineering_route_180 else 'legacy60',
                 platform='windows' if is_windows() else 'linux',broker_admission=admission,development_runtime=development,
                 source_pin_qualification='Requested source component metadata and actual executable hash; no compiled-source/controller attestation' if development else 'Controller pins on Linux; matching package on Windows')
     (run/'acceptance-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     if a.plan:print(json.dumps(dict(run=str(run),inputs=inputs),indent=2));return 0
     negative=a.mode.endswith('down');marker='P2_FIXTURE_CAPTAIN_DOWN' if negative else 'P2_PURPLE_KOCHAPPY_READY' if a.mode=='ready' else 'P2_PURPLE_KOCHAPPY_MECHANIC_RECOVERY_PASS'
-    raw=supervise([str(a.exe.resolve()),'--experimental-pikmin2-room'],run,60,env,[marker])
+    raw=supervise([str(a.exe.resolve()),'--experimental-pikmin2-room'],run,seconds,env,[marker])
     log=(run/'native.log').read_text(errors='replace')
     passed=not raw.get('timed_out') and raw.get('exit_code')==(86 if negative else 0) and marker in log
     pauses=re.findall(r'P2_KOCHAPPY_STUN_PAUSE generator=(\d+) source_id=1 state=(\w+) state_time=([0-9.]+)',log)
