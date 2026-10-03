@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <set>
 using namespace p2originalresource;
 struct Fake : Engine {
     std::string calls;
@@ -10,12 +11,18 @@ struct Fake : Engine {
     bool failFirstHoney = false, checkedPending = false;
     unsigned honeyAttempts = 0;
     EggContents* reentrant = nullptr;
+    EggContents* scoped = nullptr;
     std::vector<ChildOutcome> births;
     float randFloat() noexcept override { calls += "F"; return roll; }
     int randInt(int count) noexcept override { assert(count == 3); calls += "I"; return 2; }
     bool sprayMade(HoneyKind) noexcept override { calls += "S"; return spray; }
     bool mititeManagerAvailable() noexcept override { calls += "M"; return manager; }
-    bool birthPellet(const ChildOutcome& c) noexcept override { calls += "P"; births.push_back(c); return pellet; }
+    bool birthPellet(const ChildOutcome& c) noexcept override {
+        calls += "P"; births.push_back(c);
+        if(scoped){const auto* row=scoped->find(c.identity.source);assert(row&&!row->complete&&row->children.size()==1);
+            const auto& pending=row->children.front();assert(pending.identity==c.identity&&pending.kind==c.kind&&pending.pelletColor==c.pelletColor&&pending.attempted&&!pending.born&&!pending.consumed);checkedPending=true;}
+        return pellet;
+    }
     bool birthHoney(HoneyKind, const ChildOutcome& c) noexcept override {
         calls += "H"; births.push_back(c);
         if (reentrant) {
@@ -138,5 +145,35 @@ int main() {
         next.ordinal++; e = Fake{}; e.roll = boundaries[i]; e.spray = true;
         assert(resumed.generate(next, cfg, {}, e, r, error) && r.type == types[i]);
     }
+    ContentsRequirements needed;
+    cfg.singleNectarChance=.5f;cfg.doubleNectarChance=.35f;cfg.mititesChance=cfg.spicyChance=cfg.bitterChance=.05f;
+    assert(requirements(cfg,needed,error));
+    assert(needed.nectar&&needed.spicy&&needed.bitter&&needed.mitites&&!needed.pelletOne&&!needed.pelletFive);
+    for(int forced=1;forced<=7;++forced){cfg.forcedDropType=forced;assert(requirements(cfg,needed,error));assert(needed.pelletOne==(forced==1));assert(needed.pelletFive==(forced==2));assert(needed.mitites==(forced==5));}
+    cfg=P2EggConfig{};cfg.singleNectarChance=1;cfg.mititesChance=1;cfg.spicyChance=1;
+    assert(requirements(cfg,needed,error)&&needed.nectar&&!needed.mitites&&!needed.spicy); // unreachable intervals beyond1
+    cfg=P2EggConfig{};cfg.forcedDropType=6;cfg.checkHasSpray=false;
+    assert(requirements(cfg,needed,error)&&needed.spicy&&!needed.nectar);
+    cfg.checkHasSpray=true;assert(requirements(cfg,needed,error)&&needed.spicy&&needed.nectar);
+    cfg.forcedDropType=8;auto unchanged=needed;assert(!requirements(cfg,needed,error));assert(needed.spicy==unchanged.spicy&&needed.nectar==unchanged.nectar);
+    const ChildIdentity ordinary{next,0};
+    const ChildIdentity spectralid0{next,0,{{EmitterKind::PlantSpectralid,0,0}}};
+    const ChildIdentity spectralid4{next,0,{{EmitterKind::PlantSpectralid,0,4}}};
+    assert(validChildIdentity(ordinary)&&validChildIdentity(spectralid0)&&validChildIdentity(spectralid4));
+    assert(!(ordinary==spectralid0)&&!(spectralid0==spectralid4));
+    assert(std::set<ChildIdentity>({ordinary,spectralid0,spectralid4}).size()==3);
+    auto badChild=spectralid4;badChild.ancestry[0].member=5;assert(!validChildIdentity(badChild));
+    badChild=spectralid0;badChild.ancestry[0].emissionOrdinal=1;assert(!validChildIdentity(badChild));
+    badChild=spectralid0;badChild.slot=1;assert(!validChildIdentity(badChild));
+    assert(!resumed.consume(spectralid0,error)); // cannot consume an Egg child through a different emitter path
+    const ChildIdentity mitite9{next,0,{{EmitterKind::EggMitite,0,9}}};
+    assert(validChildIdentity(mitite9)&&!(mitite9==ordinary)&&!(mitite9==spectralid4));
+    badChild=mitite9;badChild.ancestry[0].member=10;assert(!validChildIdentity(badChild));
+    SourceIdentity numberId=next;numberId.ordinal=120;cfg=P2EggConfig{};cfg.forcedDropType=1;e=Fake{};e.scoped=&resumed;
+    assert(!resumed.find(numberId));assert(resumed.generate(numberId,cfg,{2,3,4},e,r,error)&&e.checkedPending&&e.calls=="FIP");
+    const auto* numberRow=resumed.find(numberId);assert(numberRow&&numberRow->complete&&numberRow->children[0].born);
+    const auto callsBefore=e.calls;assert(resumed.generate(numberId,cfg,{},e,r,error)&&e.calls==callsBefore);
     std::cout << "P2_ORIGINAL_EGG_CONTENTS_PASS\n";
 }
+
+

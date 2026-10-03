@@ -53,6 +53,13 @@ class Manager final:public ObjectMgr {
 public:
  explicit Manager(Services&);~Manager();
  bool preflight(std::string&);
+ // Prepare original bodies privately; stage never searches, updates, renders,
+ // exposes ObjectMgr creatures or accepts contact/absorption receivers.
+ bool beginStaged(std::string&);
+ bool preflightPublishStaged(std::string&)const;
+ void publishStaged()noexcept;void abortStaged()noexcept;
+ // Cold SDK restore uses restore() exclusively and never birth/init RNG.
+ // Staged birth is only for other private, unpublished source spawns.
  bool birth(HoneyKind,const ChildOutcome&,Engine& rng,Creature*& out,std::string&);
  bool contact(Creature* honey,Creature* collider,std::string&);
  bool absorb(Creature*,std::string&);

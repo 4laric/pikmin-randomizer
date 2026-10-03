@@ -13,5 +13,6 @@ int main(){
  auto invalid=state;invalid.completed.push_back(invalid.completed.front());std::string unchanged="unchanged";assert(!encodeResources(invalid,campaign,graph,unchanged,e)&&unchanged=="unchanged");
  invalid=state;invalid.sprayUses[0]=-1;assert(!encodeResources(invalid,campaign,graph,unchanged,e));
  auto signedUid=bytes;auto at=signedUid.find("1379326868");signedUid.replace(at,10,"-1");assert(!decodeResources(signedUid,campaign,graph,out,e));
+ invalid=state;invalid.completed[0].child.ancestry={{EmitterKind::PlantSpectralid,0,0}};assert(!encodeResources(invalid,campaign,graph,unchanged,e)&&unchanged=="unchanged");
  std::puts("P2_ORIGINAL_RESOURCE_SAVE_POLICY_PASS: bounded atomic campaign-SHA card/prospective-child validation; no physical resume claim");
 }

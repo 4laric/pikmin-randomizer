@@ -54,6 +54,40 @@ bool SourceIdentity::operator<(const SourceIdentity& b) const {
     return std::tie(fingerprint, uid, ordinal, epoch, activation) < std::tie(b.fingerprint, b.uid, b.ordinal, b.epoch, b.activation);
 }
 bool SourceIdentity::operator==(const SourceIdentity& b) const { return !(*this < b) && !(b < *this); }
+bool EmissionIdentity::operator<(const EmissionIdentity& b) const {return std::tie(kind,emissionOrdinal,member)<std::tie(b.kind,b.emissionOrdinal,b.member);}
+bool EmissionIdentity::operator==(const EmissionIdentity& b) const {return !(*this<b)&&!(b<*this);}
+bool ChildIdentity::operator<(const ChildIdentity& b) const {return std::tie(source,ancestry,slot)<std::tie(b.source,b.ancestry,b.slot);}
+bool ChildIdentity::operator==(const ChildIdentity& b) const {return !(*this<b)&&!(b<*this);}
+bool validChildIdentity(const ChildIdentity& id) {
+    if(!validIdentity(id.source)||id.slot>1||id.ancestry.size()>1)return false;
+    if(id.ancestry.empty())return true;
+    const auto& emission=id.ancestry.front();
+    return id.slot==0&&emission.emissionOrdinal==0&&
+      ((emission.kind==EmitterKind::PlantSpectralid&&emission.member<5)||
+       (emission.kind==EmitterKind::EggMitite&&emission.member<10));
+}
+
+bool requirements(const P2EggConfig& c,ContentsRequirements& out,std::string& error) {
+    if(!validConfig(c)){error="invalid original Egg source outcome parameters";return false;}
+    ContentsRequirements next;
+    auto add=[&](P2EggDropType type){switch(type){
+    case P2EggDropType::OnePellets:next.pelletOne=true;break;
+    case P2EggDropType::FivePellets:next.pelletFive=true;break;
+    case P2EggDropType::SingleNectar:case P2EggDropType::DoubleNectar:next.nectar=true;break;
+    case P2EggDropType::Mitites:next.mitites=next.nectar=true;break;
+    case P2EggDropType::Spicy:next.spicy=true;if(c.checkHasSpray)next.nectar=true;break;
+    case P2EggDropType::Bitter:next.bitter=true;if(c.checkHasSpray)next.nectar=true;break;
+    }};
+    if(c.forcedDropType)add(static_cast<P2EggDropType>(c.forcedDropType-1));
+    else {
+        float lower=0;
+        const float chance[]={c.singleNectarChance,c.doubleNectarChance,c.mititesChance,c.spicyChance,c.bitterChance};
+        const P2EggDropType type[]={P2EggDropType::SingleNectar,P2EggDropType::DoubleNectar,P2EggDropType::Mitites,P2EggDropType::Spicy,P2EggDropType::Bitter};
+        for(unsigned i=0;i<5;++i){const float upper=lower+chance[i];if(lower<1&&upper>lower)add(type[i]);lower=upper;}
+        if(lower<1)add(P2EggDropType::SingleNectar);
+    }
+    out=next;error.clear();return true;
+}
 
 bool EggContents::generate(const SourceIdentity& id, const P2EggConfig& c,
                           const P2EggVec3& origin, Engine& e, ContentsRecord& out, std::string& error) {
@@ -118,6 +152,9 @@ bool EggContents::generate(const SourceIdentity& id, const P2EggConfig& c,
     }
     record.complete = true; out = record; return true;
 }
+const ContentsRecord* EggContents::find(const SourceIdentity& id) const {
+    auto record=mRecords.find(id);return record==mRecords.end()?nullptr:&record->second;
+}
 std::vector<ContentsRecord> EggContents::snapshot() const {
     std::vector<ContentsRecord> result; for (const auto& row : mRecords) result.push_back(row.second); return result;
 }
@@ -129,7 +166,7 @@ bool EggContents::restore(const std::vector<ContentsRecord>& rows, std::string& 
         }
         unsigned mask = 0;
         for (const auto& c : r.children) {
-            if (!(c.identity.source == r.source) || c.identity.slot > 1 || (mask & (1u << c.identity.slot)) || !c.attempted || (c.consumed && !c.born)
+            if (!(c.identity.source == r.source) || !c.identity.ancestry.empty() || c.identity.slot > 1 || (mask & (1u << c.identity.slot)) || !c.attempted || (c.consumed && !c.born)
                 || !finite(c.position) || !finite(c.velocity) || !std::isfinite(c.facing) || static_cast<int>(c.kind) < 0 || static_cast<int>(c.kind) > 5
                 || c.pelletColor < 0 || c.pelletColor > 2 || c.mititeCount != (c.kind == ChildKind::MititeGroup ? 10 : 0)) {
                 error = "invalid Egg child identity or outcome"; return false;
@@ -141,6 +178,7 @@ bool EggContents::restore(const std::vector<ContentsRecord>& rows, std::string& 
     mRecords.swap(next); return true;
 }
 bool EggContents::consume(const ChildIdentity& id, std::string& error) {
+    if(!id.ancestry.empty()){error="resource child is not an original Egg outcome";return false;}
     error.clear(); auto r = mRecords.find(id.source);
     if (r != mRecords.end()) for (auto& c : r->second.children) if (c.identity.slot == id.slot && c.born) { c.consumed = true; return true; }
     error = "resource consumption has no successful original child birth"; return false;

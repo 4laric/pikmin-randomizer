@@ -1,6 +1,7 @@
 #pragma once
 #include "pc_p2_original_foliage.h"
 class BTeki; class Graphics; struct Matrix4f;
+namespace p2original { namespace shijimi { class Native; } }
 namespace p2original { namespace foliage {
 // Real manager-owned scenery: chassis allocation/cleanup only, no borrowed AI,
 // host species drops or host geometry. Original GroupCourse owns identities.
@@ -9,6 +10,7 @@ public:
  Native(); ~Native();
  Native(const Native&)=delete; Native& operator=(const Native&)=delete;
  Provider& provider();
+ bool attachSentinel(shijimi::Native&,std::string&);
  bool owns(const Creature*)const;
  bool tick(BTeki*,float,std::string&);
  bool draw(BTeki*,Graphics&,const Matrix4f&,bool postShadow=false);

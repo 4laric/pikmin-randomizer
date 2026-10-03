@@ -28,9 +28,9 @@ namespace p2originalresource { namespace honey {
 namespace {
 bool fail(std::string& e,const char* why){e=why;return false;}
 void require(bool ok,const std::string& e){if(!ok){std::fprintf(stderr,"P2_ORIGINAL_HONEY refusal: %s\n",e.c_str());std::abort();}}
-bool same(const ChildIdentity& a,const ChildIdentity& b){return a.source==b.source&&a.slot==b.slot;}
+bool same(const ChildIdentity& a,const ChildIdentity& b){return a==b;}
 bool finite(P2EggVec3 p){return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z);}
-bool valid(const ChildIdentity& id){if(!id.source.uid||!id.source.activation||id.source.fingerprint.size()!=64||id.slot>1)return false;for(char c:id.source.fingerprint)if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')))return false;return true;}
+bool valid(const ChildIdentity& id){return validChildIdentity(id);}
 std::set<const Creature*>& honeyBodies(){static std::set<const Creature*> all;return all;}
 struct AppHeap {int previous;AppHeap():previous(gsys->setHeap(SYSHEAP_App)){}~AppHeap(){gsys->setHeap(previous);}};
 }
@@ -119,7 +119,7 @@ bool actorWorld(const Actor& a,Matrix4f& world,std::string& e){if(!finite(positi
 Shape& shape(Actor& a){return a.geometry->shape;}
 Creature& creature(Actor& a){return a;}
 struct Manager::Impl {
- Services& services;Resources resource;CreatureProp prop;bool ready=false;
+ Services& services;Resources resource;CreatureProp prop;bool ready=false,staged=false;
  std::vector<std::unique_ptr<Actor>> actors;
  std::vector<Snapshot> history;
  struct PikiReceiver final:public PikiState {
@@ -183,9 +183,9 @@ bool Manager::preflight(std::string& e){
 }
 bool Manager::birth(HoneyKind kind,const ChildOutcome& child,Engine& rng,Creature*& out,std::string& e){
  out=nullptr;if(!m->ready)return fail(e,"Honey native manager not prepared");
- for(const auto& a:m->actors)if(same(a->identity,child.identity)){out=a->isAlive()?a.get():nullptr;e.clear();return true;}
- for(const auto& row:m->history)if(same(row.identity,child.identity)){e.clear();return true;}
  if(!valid(child.identity)||!finite(child.position)||!finite(child.velocity)||static_cast<int>(kind)<0||static_cast<int>(kind)>2)return fail(e,"Honey invalid source birth");
+ for(const auto& a:m->actors)if(same(a->identity,child.identity)){if(a->policy.kind!=kind)return fail(e,"Honey source birth kind conflict");out=a->isAlive()?a.get():nullptr;e.clear();return true;}
+ for(const auto& row:m->history)if(same(row.identity,child.identity)){if(row.kind!=kind)return fail(e,"Honey source history kind conflict");e.clear();return true;}
  m->reap();
  // Dead bodies remain stable while an absorbing actor still references them.
  for(auto i=m->actors.begin();i!=m->actors.end();)if(!(*i)->isAlive()&&!(*i)->references&&(*i)->removable()){Snapshot row;row.identity=(*i)->identity;row.kind=(*i)->policy.kind;row.phase=Phase::Dead;row.firstConsumption=(*i)->firstConsumption;m->history.push_back(row);invalidateSearch();i=m->actors.erase(i);}else ++i;
@@ -194,19 +194,26 @@ bool Manager::birth(HoneyKind kind,const ChildOutcome& child,Engine& rng,Creatur
  if(!actor->beginMotion(e))return false;out=actor.get();Actor* actual=actor.get();actor->receiverContact=[this,actual](Creature* other){std::string error;if(other->mObjType==OBJTYPE_Piki)(void)start(static_cast<Piki*>(other),actual,error);else if(other->mObjType==OBJTYPE_Navi)(void)start(static_cast<Navi*>(other),actual,error);require(error.empty(),error);};m->actors.push_back(std::move(actor));e.clear();return true;
 }
 bool Manager::owns(const Creature* c)const{return m->find(c)!=nullptr;}
-bool Manager::absorb(Creature* c,std::string& e){auto* a=m->find(c);return a?a->absorb(e):fail(e,"absorb target is not actual original Honey");}
+bool Manager::beginStaged(std::string& e){if(!m->ready||m->staged||!m->actors.empty()||!m->history.empty()||!m->pikis.empty()||!m->navis.empty())return fail(e,"Honey stage requires prepared empty manager");m->staged=true;e.clear();return true;}
+bool Manager::preflightPublishStaged(std::string& e)const{if(!m->ready||!m->staged||!m->pikis.empty()||!m->navis.empty())return fail(e,"Honey stage not prepared or carries receivers");AppHeap heap;for(const auto& actor:m->actors){if(!validChildIdentity(actor->identity)||actor->references)return fail(e,"Honey staged body identity/references invalid");if(actor->isAlive()){std::string animation;if(!m->services.captureAnimation(*actor,animation,e)||!m->services.validateAnimation(actor->policy.phase,animation,e))return false;}}e.clear();return true;}
+void Manager::publishStaged()noexcept{m->staged=false;}
+void Manager::abortStaged()noexcept{if(!m->staged)return;std::string e;bool okay=cleanup(e);require(okay&&e.empty(),e);}
+bool Manager::absorb(Creature* c,std::string& e){if(m->staged)return fail(e,"Honey source stage unpublished");auto* a=m->find(c);return a?a->absorb(e):fail(e,"absorb target is not actual original Honey");}
 bool Manager::start(Piki* p,Creature* c,std::string& e){
+ if(m->staged)return fail(e,"Honey source stage unpublished");
  auto* a=m->find(c);e.clear();if(!a||!p||!p->isAlive()||p->getState()!=PIKISTATE_Normal||p->mHappa==Flower||a->policy.kind!=HoneyKind::Nectar||!a->policy.absorbable())return false;
  for(const auto& r:m->pikis)if(r->active&&r->piki==p)return false;
  AppHeap heap;auto r=std::make_unique<Impl::PikiReceiver>(*a,p);r->setMachine(p->mFSM);if(auto* old=p->getCurrState())old->cleanup(p);p->setCurrState(r.get());r->init(p);m->pikis.push_back(std::move(r));return true;
 }
 bool Manager::start(Navi* n,Creature* c,std::string& e){
+ if(m->staged)return fail(e,"Honey source stage unpublished");
  auto* a=m->find(c);e.clear();if(!a||!n||!n->isAlive()||!n->getCurrState()||n->getCurrState()->getID()!=NAVISTATE_Walk||a->policy.kind==HoneyKind::Nectar||!a->policy.absorbable())return false;
  for(const auto& r:m->navis)if(r->active&&r->navi==n)return false;
  unsigned captain;if(!m->services.captainIndex(n,captain,e)||captain>1)return fail(e,"Honey actual captain index unresolved");
  AppHeap heap;auto r=std::make_unique<Impl::NaviReceiver>(*a,n,m->services,captain);r->setMachine(n->mStateMachine);n->getCurrState()->cleanup(n);n->setCurrState(r.get());r->init(n);m->navis.push_back(std::move(r));return true;
 }
 bool Manager::contact(Creature* c,Creature* other,std::string& e){
+ if(m->staged)return fail(e,"Honey source stage unpublished");
  auto* a=m->find(c);if(!a||!other)return fail(e,"Honey contact outside actual bodies");
  if(!owns(other)){CollEvent event(other,nullptr,nullptr);a->collisionCallback(event);}
  e.clear();if(other->mObjType==OBJTYPE_Piki){(void)start(static_cast<Piki*>(other),c,e);return e.empty();}if(other->mObjType==OBJTYPE_Navi){(void)start(static_cast<Navi*>(other),c,e);return e.empty();}return true;
@@ -216,7 +223,7 @@ void Manager::forget(Navi* n){for(auto& r:m->navis)if(r->navi==n){r->active=fals
 bool Manager::cleanup(std::string& e){
  for(auto& r:m->pikis)if(r->active&&r->piki&&r->piki->getCurrState()==r.get())r->piki->mFSM->transit(r->piki,PIKISTATE_Normal);
  for(auto& r:m->navis)if(r->active&&r->navi&&r->navi->getCurrState()==r.get())r->navi->mStateMachine->transit(r->navi,NAVISTATE_Walk);
- m->pikis.clear();m->navis.clear();invalidateSearch();for(auto& a:m->actors)if(a->isAlive())a->kill(false);m->actors.clear();m->history.clear();m->ready=false;e.clear();return true;
+ m->pikis.clear();m->navis.clear();invalidateSearch();for(auto& a:m->actors)if(a->isAlive())a->kill(false);m->actors.clear();m->history.clear();m->ready=false;m->staged=false;e.clear();return true;
 }
 bool Manager::snapshot(std::vector<Snapshot>& out,std::string& e)const{
  for(const auto& p:m->pikis)if(p->active)return fail(e,"Honey snapshot requires Piki absorption/growth to finish");
@@ -227,17 +234,17 @@ bool Manager::snapshot(std::vector<Snapshot>& out,std::string& e)const{
 }
 bool Manager::restore(const std::vector<Snapshot>& rows,Engine& rng,std::string& e){
  if(!m->ready||!m->actors.empty()||!m->history.empty()||!m->pikis.empty()||!m->navis.empty())return fail(e,"Honey restore requires prepared empty original course");
- std::set<std::pair<SourceIdentity,unsigned>> seen;unsigned alive=0;
- for(const auto& row:rows){if(!valid(row.identity)||!finite(row.position)||!finite(row.velocity)||static_cast<int>(row.kind)<0||static_cast<int>(row.kind)>2||static_cast<int>(row.phase)<0||static_cast<int>(row.phase)>5||!seen.emplace(row.identity.source,row.identity.slot).second)return fail(e,"invalid Honey source snapshot");if(row.phase!=Phase::Dead){++alive;if(!m->services.validateAnimation(row.phase,row.animation,e))return false;}else if(!row.animation.empty())return fail(e,"dead Honey carries live animation");if(row.phase==Phase::Shrink&&!row.firstConsumption)return fail(e,"shrinking Honey missing actual consumption");}
+ std::set<ChildIdentity> seen;unsigned alive=0;
+ for(const auto& row:rows){if(!valid(row.identity)||!finite(row.position)||!finite(row.velocity)||static_cast<int>(row.kind)<0||static_cast<int>(row.kind)>2||static_cast<int>(row.phase)<0||static_cast<int>(row.phase)>5||!seen.insert(row.identity).second)return fail(e,"invalid Honey source snapshot");if(row.phase!=Phase::Dead){++alive;if(!m->services.validateAnimation(row.phase,row.animation,e))return false;}else if(!row.animation.empty())return fail(e,"dead Honey carries live animation");if(row.phase==Phase::Shrink&&!row.firstConsumption)return fail(e,"shrinking Honey missing actual consumption");}
  if(alive>24)return fail(e,"Honey restored source count exceeds actual manager capacity");
  std::vector<std::unique_ptr<Actor>> next;std::vector<Snapshot> dead;
  AppHeap heap;
  for(const auto& row:rows){if(row.phase==Phase::Dead){dead.push_back(row);continue;}ChildOutcome child;child.identity=row.identity;child.position=row.position;child.velocity=row.velocity;auto a=std::make_unique<Actor>(m->prop,m->resource,m->services,rng,child,row.kind,false);a->policy.phase=row.phase;a->policy.jiggling=row.jiggling;a->firstConsumption=row.firstConsumption;if(!m->services.restoreAnimation(*a,row.animation,e)||!a->followCollider(e))return false;Actor* actual=a.get();a->receiverContact=[this,actual](Creature* other){std::string error;if(other->mObjType==OBJTYPE_Piki)(void)start(static_cast<Piki*>(other),actual,error);else if(other->mObjType==OBJTYPE_Navi)(void)start(static_cast<Navi*>(other),actual,error);require(error.empty(),error);};next.push_back(std::move(a));}
  m->actors=std::move(next);m->history=std::move(dead);e.clear();return true;
 }
-Creature* Manager::getCreature(int i){return i>=0&&i<int(m->actors.size())?m->actors[i].get():nullptr;}
-int Manager::getFirst(){return 0;}int Manager::getNext(int i){return i+1;}bool Manager::isDone(int i){return i>=int(m->actors.size());}
-int Manager::getSize(){int n=0;for(const auto& a:m->actors)if(a->isAlive())++n;return n;}
-void Manager::update(){invalidateSearch();if(pikiMgr)search(pikiMgr);if(naviMgr)search(naviMgr);for(auto& a:m->actors)a->update();m->reap();}
-void Manager::refresh(Graphics& gfx){for(auto& a:m->actors)a->refresh(gfx);}
+Creature* Manager::getCreature(int i){return !m->staged&&i>=0&&i<int(m->actors.size())?m->actors[i].get():nullptr;}
+int Manager::getFirst(){return 0;}int Manager::getNext(int i){return i+1;}bool Manager::isDone(int i){return m->staged||i>=int(m->actors.size());}
+int Manager::getSize(){if(m->staged)return 0;int n=0;for(const auto& a:m->actors)if(a->isAlive())++n;return n;}
+void Manager::update(){if(m->staged)return;invalidateSearch();if(pikiMgr)search(pikiMgr);if(naviMgr)search(naviMgr);for(auto& a:m->actors)a->update();m->reap();}
+void Manager::refresh(Graphics& gfx){if(m->staged)return;for(auto& a:m->actors)a->refresh(gfx);}
 } }

@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pose-limit', type=int, default=12)
-    parser.add_argument('--sources', type=int, nargs='+', choices=(46, 47, 49, 51, 52, 80, 81, 88, 90, 91, 92),
+    parser.add_argument('--sources', type=int, nargs='+', choices=(46, 47, 49, 50, 51, 52, 80, 81, 87, 88, 90, 91, 92),
                         default=[91, 88],
                         help='Literal source IDs to convert; default preserves original 91/88 bank')
     args = parser.parse_args()
@@ -51,11 +51,13 @@ def main():
                88: ('Nekojarashi', 'nekojarashi', 'postshadow', 0),
                47: ('Clover', 'clover', 'normal', 0),
                49: ('Ooinu_s', 'ooinu_s', 'normal', 2),
+               50: ('Ooinu_l', 'ooinu_l', 'normal', 2),
                46: ('Tanpopo', 'tanpopo', 'normal', 0),
                51: ('Wakame_s', 'wakame_s', 'normal', 2),
                52: ('Wakame_l', 'wakame_l', 'normal', 2),
                80: ('Tukushi', 'tukushi', 'normal', 2),
                81: ('Watage', 'watage', 'postshadow', 0),
+               87: ('Magaret', 'magaret', 'normal', 0),
                90: ('Zenmai', 'zenmai', 'normal', 0),
                92: ('KareOoinu_l', 'karaooinu_l', 'normal', 0)}
 
@@ -201,6 +203,14 @@ def main():
                     'backward_facing_offset': 50 if source_id == 88 else 0,
                     'source_function': 'Game::' + name + '::Obj::getLODCylinder' if source_id in (51, 52, 80, 88, 90) else 'Game::Plants::Obj::setParameters',
                     'source_cull_function': 'Sys::Cylinder::culled' if source_id in (51, 52, 80, 88, 90) else 'CullPlane::isPointVisible'}}
+            if source_id in (50, 87):
+                report['species'][name]['sentinel_producer'] = {
+                    'condition': {'pellet_color': 0, 'pellet_size': 1},
+                    'child_source': 77, 'total_children': 5,
+                    'life_meter_height_fp27': general['fp27'],
+                    'ordinary_fields_preserved': True,
+                    'native_child_factory_qualified': False,
+                    'source_function': 'Plants::Obj::touched -> ShijimiChou::Mgr::createGroupByPlants'}
     args.output.joinpath('foliage-bank.txt').write_text('\n'.join(lines) + '\n', encoding='ascii')
     args.output.joinpath('foliage.json').write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
     output_hashes = {str(path.relative_to(args.output)): sha(path.read_bytes())

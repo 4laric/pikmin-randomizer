@@ -8,7 +8,7 @@ bool supported(unsigned);
 bool decode(const CatalogRow&,std::string&);
 // Authentication of a genuine cave TekiInfo association, never GenEnemy.
 bool caveDecode(const CatalogRow&,std::string&);
-struct Resources { bool model=false,clip=false,collider=false; float health=0; unsigned duration=0; };
+struct Resources { bool model=false,clip=false,collider=false; float health=0; unsigned duration=0; bool sentinelFactory=false; };
 struct Host {
  Creature* creature=nullptr; Generator* generator=nullptr; CatalogRow row;
  Position position; unsigned ordinal=0,token=0; float frame=0; bool active=false,touched=false;

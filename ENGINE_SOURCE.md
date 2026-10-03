@@ -1,4 +1,33 @@
-# Current ordinary White fixture source
+# Current maintained native source
+
+Native `825df79986a503b94dc59e1e9f60426f8c510d29` is exported from the clean
+private `output/native-sentinel-maintained-intake1284` working tree under
+#1284 and #1144. Its tree `dba463f336577fb0cb846bf644c35e8141795df2` matches
+maintained native `0b4f60ad37cdf3db77c57574831813a9a63fa381`. All 4,814 copied
+tracked files are verified against native bytes; 53 audited non-desktop binary
+resources are excluded. Legal assets, executables, saves and runtime state are
+not included.
+
+This includes the source77 factory, source ancestry and attachment consumers,
+and the explicit root `PIKMIN_ORIGINAL_SENTINEL` option, default OFF. ON links
+the ten production source files once with consistent game and fixture guards.
+The source77 group control is declared once by root CMake; its private wrapper
+retains CTest discovery without injecting production sources.
+
+The exact source passes the supported Linux production build, all 28 selected
+CTest controls, both Yellow runtime fixture builds, Ninja no-work and dependency
+checks. The profile uses Release, NETPLAY/JAUDIO/IPO ON, OPTIMIZE OFF and explicit
+link LTO1. Production SHA256 is
+`9cdae81b9f76649b4864aa6b3c914380f4bca2dd19c22ae2092319152ed41636`.
+The group-only successor planned two test object compilations and one link;
+production and both fixture executables remained unchanged from qualified4908.
+
+Source77 scene services and independent whole-party admission, the genuine
+twenty-Pikmin body factory, ordinary gameplay, and complete native SAVE/resume
+acceptance remain open. Build and source-export evidence do not establish those
+mechanics. Prior build profiles and failure logs remain separately preserved.
+
+# Historical ordinary White fixture source
 
 Native `c00b6006ae54603762eb2efc8b8a9be9c8ccf5ad` exported from clean private source; 4274 files verified byte-for-byte, 53 audited binary exclusions. Adds the reviewed opt-in `pikmin_ci_fixture_white_campaign` target and its two reviewed C++ files (trailing whitespace normalized). Current-header syntax passed. No production actor/physics change or blocked Python supervision was imported. Matching runner build and ordinary acquisition, carry, delivery, native save/resume acceptance remain open. #1195 direct coordination applies; no administrative runtime packet is required.
 

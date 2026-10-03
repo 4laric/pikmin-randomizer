@@ -19,15 +19,15 @@ bool sameRow(const CatalogRow& a,const CatalogRow& b){
 }
 
 }
-bool supported(unsigned source){return source==46||source==47||source==49||source==51||source==52||source==80||source==81||source==88||source==90||source==91||source==92;}
+bool supported(unsigned source){return source==46||source==47||source==49||source==50||source==51||source==52||source==80||source==81||source==87||source==88||source==90||source==91||source==92;}
 bool decode(const CatalogRow& row,std::string& e){
  if(!supported(row.enemy.source))return reject(e,"unsupported original foliage source");
  if(row.sourceForm!=SourceForm::SurfaceGenEnemy||row.caveFloor||row.caveRow||!row.caveSourceSha256.empty())return reject(e,"surface foliage requires surface provenance");
  if(!validateOriginalRecord(row.enemy,e))return false;
  if(row.enemy.generatorVersion!="????"||!row.enemy.generatorTail.empty())return reject(e,"Plants default generator requires literal ???? and empty tail");
- // These admitted sources reserve no Spectralid child slot. Their immutable common
- // fields remain in the catalog, but an invulnerable plant never pays drops.
- if(row.enemy.pelletColor==0&&row.enemy.pelletSize==1)return reject(e,"foliage Spectralid sentinel requires a qualified child provider");
+ // Source50/87 reserve actual native source77 services in resource preflight.
+ // Their literal common fields remain unchanged in the source catalog.
+ if(row.enemy.pelletColor==0&&row.enemy.pelletSize==1&&row.enemy.source!=50&&row.enemy.source!=87)return reject(e,"foliage Spectralid sentinel requires a qualified child provider");
  e.clear();return true;
 }
 bool caveDecode(const CatalogRow& row,std::string& e){
@@ -68,6 +68,7 @@ bool Provider::prepare(const std::vector<CatalogRow>& rows,bool cave,std::string
   if(!resources.count(r.enemy.source)){Resources bank;
    if(!mEngine.resources(r.enemy.source,bank,e))return false;
    if(!bank.model||!bank.clip||!bank.collider||bank.duration<2||!std::isfinite(bank.health)||bank.health<=0)return reject(e,"original foliage physical bank incomplete");
+   if((r.enemy.source==50||r.enemy.source==87)&&!bank.sentinelFactory)return reject(e,"original foliage source50/87 requires actual native source77 services");
    resources.emplace(r.enemy.source,bank);
   }
  }
