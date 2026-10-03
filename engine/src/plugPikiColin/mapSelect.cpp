@@ -200,7 +200,15 @@ public:
 
 		// The candidate uses native course selection and landing without P1 map labels.
         if(pc_pikipelago_surface_campaign()) {
+            // This section owns its console Font; fix only campaign glyph UVs.
+            // Reversing the projection would also invert row order and input cues.
+            for(int i=0;i<16*8;++i) {
+                RectArea& uv=mConsFont->mChars[i].mTextureCoords;
+                const int top=uv.mMinY;uv.mMinY=uv.mMaxY;uv.mMaxY=top;
+            }
             makeMapsMenu();
+            mMapListMenu->mCenterPoint.mMinX=glnWidth/4;
+            mMapListMenu->mCenterPoint.mMinY=glnHeight/4;
             mActiveOverlayMenu=mMapListMenu;
             mMapListMenu->open(false);
             mapWindow=nullptr; selectWindow=nullptr;
@@ -414,7 +422,12 @@ public:
 
 		// draw debug menu over the top
 		Matrix4f orthoMtxDebug;
-		gfx.setOrthogonal(orthoMtxDebug.mMtx, AREA_FULL_SCREEN(gfx));
+		if(pc_pikipelago_surface_campaign()) {
+            // Twice-size campaign text, preserving the ordinary Menu lifecycle.
+            gfx.setOrthogonal(orthoMtxDebug.mMtx, RectArea(0,0,gfx.mScreenWidth/2,gfx.mScreenHeight/2));
+        } else {
+            gfx.setOrthogonal(orthoMtxDebug.mMtx, AREA_FULL_SCREEN(gfx));
+        }
 
 		if (mActiveOverlayMenu) {
 			mActiveOverlayMenu->draw(gfx, 1.0f);
