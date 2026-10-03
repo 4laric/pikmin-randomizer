@@ -56,10 +56,14 @@ Full native build evidence is tracked in issue #141; build success does not prov
 the behavior above.
 
 The treasure and SAVE owners retain physical receipt and card authority. Both
-maps have retail min/max weight 101. The source lowers minimum carriers only for
-a story boss drop on a cave's last floor, to the actual live squad count (positive
-only); it leaves maximum slots unchanged. An unadjusted surface copy cannot be
-used to claim ordinary collection with the 20-Pikmin baseline.
+maps have retail min/max weight 101. Literal source placements are loose treasures:
+Atlas is on `tutorial_1` floor 2 (Emergence Cave), and Projection is
+`forest/initgen.txt` record 16 at (-1698.020142, -50, 2117.864746).
+`PelletItem::Mgr::generatorBirth` / `genPellet::birth` do not set a squad-adjusted
+minimum. The separate boss/story/last-floor exception does not apply to either
+placement. Keep weight 101 and acquire actual Purple Pikmin for weighted carrying;
+ten Purples plus one ordinary Pikmin supply 101 strength within the starting
+20-Pikmin population. Do not relabel a loose map as a boss drop or lower its weight.
 
 When the actual source provider and selected-card restore are composed:
 
@@ -68,10 +72,12 @@ When the actual source provider and selected-card restore are composed:
    the actual tested item at the start in its valid source context and verify its
    source binding. Disable optional whistle-pluck/radius/health/speed Mods for the
    respective observations.
-2. For a map, defeat its actual source boss on the last cave floor and carry the
-   dropped map to the treasure receiver using ordinary controls. Confirm the real
+2. For Atlas, reach actual Emergence Cave floor 2, acquire Purples through its
+   actual Violet Candypop Buds and carry the loose map to the treasure receiver.
+   For Projection, carry its actual loose Awakening Wood map with sufficient
+   Purple strength. Use ordinary controls. Confirm the real
    suction receipt, correct unique source ID and 200-Poko value. Do not edit the
-   receipt bitmap or lower an unrelated surface item's weight.
+   receipt bitmap, claim the boss-drop exception or lower either map's weight.
 3. Return to travel. Atlas must enable Awakening Wood; Projection must enable
    Perplexing Pool. The other unearned course and Wistful Wild remain locked.
 4. Complete and save the day normally, quit, then start a fresh process with the
