@@ -55,6 +55,11 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_snakejoint.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_snagret_bank.h"
+#include "pc_p2_original_snagret_death.h"
+#include "pc_p2_original_drop_engine.h"
+#include "pc_p2_original_bulblax_snagret_native.h"
 #include "pc_p2_captor_host.h"
 #include "MapMgr.h"
 #include "pc_p2_campaign_actor.h"
@@ -184,6 +189,8 @@ struct Snake {
     float phase = 0.0f;
     unsigned rng = 1;
     bool deadLogged = false;
+    bool original = false;
+    p2original::bulblax_snagret::DeathItems deathItems;
     bool escaped = false;
     float logTimer = 0.0f;
     // Slice-2 vulnerability gate: EB_Invulnerable only while buried (Stay).
@@ -195,6 +202,11 @@ std::map<PelletView*, Snake> actors;
 std::map<PelletView*, unsigned> corpses; // dead-actor delivery registry
 std::map<std::string, std::map<std::string, Clip>> clipBank; // species -> clip
 bool ready = false;
+bool originalBank = false;
+unsigned identityToken(const BTeki* actor) {
+ const unsigned original=pc_p2_original_actor_token(static_cast<const Creature*>(actor));
+ return original?original:(actor->mGenerator?pc_p2_campaign_token(actor):0u);
+}
 
 float wrapPi(float a) {
     while (a > PI) a -= TAU;
@@ -541,12 +553,18 @@ void attackFollowUp(BTeki* a, Snake& s, const Vector3f& pos) {
 }
 
 void pc_p2_snakejoint_reset() {
+    for(const auto& entry:actors)if(entry.second.original){
+        std::fprintf(stderr,"P2_ORIGINAL_SNAKECROW reset with live physical actor\n");
+        std::abort();
+    }
+    originalBank = false;
     actors.clear();
     corpses.clear();
     clipBank.clear();
     ready = false;
 }
 void pc_p2_snakejoint_forget(BTeki* actor) {
+    pc_p2_original_bulblax_snagret_forget(actor);
     // Slice-2 cleanup observability: the centralized forget seam is the P1
     // analogue of scene exit/death teardown; log the release so the fixture can
     // prove the dead snagret is removed without a stale reference.
@@ -557,7 +575,7 @@ void pc_p2_snakejoint_forget(BTeki* actor) {
     if (it != actors.end()) {
         p2captorhost::release(actor, it->second.held); // teardown frees the mouth
         std::printf("P2_SNAKEJOINT_FORGET generator=%u source_id=%d\n",
-                    actor->mGenerator ? pc_p2_campaign_token(actor) : 0u,
+                    identityToken(actor),
                     it->second.parms->sourceId);
         std::fflush(stdout);
     }
@@ -640,10 +658,8 @@ bool pc_p2_snakejoint_invulnerable(const BTeki* actor) {
     return true;
 }
 
-void pc_p2_snakejoint_setup() {
-    pc_p2_snakejoint_reset();
-    if (!tekiMgr) return;
-
+namespace {
+void loadBank() {
     std::ifstream bank("p2-snagret-bank.txt");
     if (bank) {
         std::string token;
@@ -696,6 +712,16 @@ void pc_p2_snakejoint_setup() {
             }
         }
     }
+
+}
+}
+
+void pc_p2_snakejoint_setup() {
+    if(originalBank || pc_p2_original_bulblax_snagret_admitted())return;
+    pc_p2_snakejoint_reset();
+    if (!tekiMgr) return;
+
+    loadBank();
 
     std::ifstream in("p2-snagret-actors.txt");
     if (!in && !pc_randomizer_p2_bridge()) return;
@@ -790,7 +816,7 @@ void pc_p2_snakejoint_update(BTeki* actor) {
     if (dt <= 0.0f || dt > 0.5f) return;
     holdBurrow(actor, s);
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+    const unsigned generator = identityToken(actor);
 
     if (actor->mHealth <= 0.0f && s.state != SNAKE_DEAD) {
         if (!s.deadLogged) {
@@ -801,10 +827,11 @@ void pc_p2_snakejoint_update(BTeki* actor) {
         }
         // Keep the generator for Pod receipt after the engine tears down
         // the host into a carriable pellet.
-        if (generator) corpses[static_cast<PelletView*>(actor)] = generator;
+        if (generator && !s.original) corpses[static_cast<PelletView*>(actor)] = generator;
         setState(actor, s, SNAKE_DEAD, "dead");
     }
 
+    const float previousStateTime=s.stateTime;
     s.stateTime += dt;
     switch (s.state) {
     case SNAKE_STAY: {
@@ -961,6 +988,16 @@ void pc_p2_snakejoint_update(BTeki* actor) {
     }
     case SNAKE_DEAD:
         stop(actor);
+        // Retail StateDead KEYEVENT_3 (frame131) throws source items before
+        // END kills. Never route original drops through an AP/P1 personality.
+        if(s.deathItems.advance(s.original,previousStateTime,s.stateTime)){
+            if(!pc_p2_original_spawn_items(actor)){
+                std::fputs("P2_ORIGINAL_SNAKECROW death event lost original registry\n",stderr);
+                std::abort();
+            }
+            std::printf("P2_ORIGINAL_SNAKECROW_DROP generator=%u frame=131 before_end=1\n",generator);
+            std::fflush(stdout);
+        }
         // dieSoon() only runs inside the P1 doAI block, which is suppressed
         // for registered snagrets; pcEscapeNow() finalizes the corpse outside
         // doAI, fired exactly once when the dead clip completes. Mirrors frog.
@@ -989,9 +1026,10 @@ bool pc_p2_snakejoint_receipt(PelletView* view, unsigned& generator) {
     if (!view) return false;
     auto i = actors.find(view);
     if (i != actors.end()) {
+        if(i->second.original)return false;
         // Live lookup needs the bound token, not the retail _70.
         BTeki* t = static_cast<BTeki*>(view);
-        generator = (t && t->mGenerator) ? pc_p2_campaign_token(t) : 0u;
+        generator = t ? identityToken(t) : 0u;
         if (!generator) return false;
         return true;
     }
@@ -1003,4 +1041,38 @@ bool pc_p2_snakejoint_receipt(PelletView* view, unsigned& generator) {
 
 int pc_p2_snakejoint_bound_count() {
     return int(actors.size() + corpses.size());
+}
+
+// Original bank admission requires complete authored clips and event timing.
+// It never reads an AP roster and never manufactures fallback timings.
+bool pc_p2_snakejoint_original_resources(std::string& error) {
+ if(!actors.empty()||!corpses.empty()){error="original Snagret resources with live family actors";return false;}
+ if(ready&&!originalBank){error="original Snagret cannot reuse AP resource owner";return false;}
+ if(!originalBank){
+  std::ifstream bank("p2-snagret-bank.txt");
+  if(!p2original::bulblax_snagret::validateSnagretBank(bank,error))return false;
+  clipBank.clear();loadBank();
+ }
+ const char* required[]={"dead","appear1","appear2","wait1","hit","waitact1","dive","waitact2","type5","hit_near","hit_far","hit_r","hit_l"};
+ for(const char* name:required){auto* clip=findClip("SnakeCrow",name);
+  if(!clip||clip->duration<=0||clip->events.empty()){error=std::string("original SnakeCrow authored clip unavailable: ")+name;return false;}}
+ for(const auto& requiredEvent:std::vector<std::pair<const char*,std::pair<int,int>>>{{"hit",{34,3}},{"waitact1",{42,2}},{"dive",{12,2}}}) {
+  const auto* clip=findClip("SnakeCrow",requiredEvent.first);
+  bool found=false;for(const auto& event:clip->events)if(event==requiredEvent.second)found=true;
+  if(!found){error="original SnakeCrow required retail animation event unavailable";return false;}
+ }
+ originalBank=true;ready=true;error.clear();return true;
+}
+bool pc_p2_snakejoint_bind_original(BTeki* actor,unsigned token,std::string& error) {
+ unsigned source=0,bound=0;
+ if(!actor||!originalBank||actor->mTekiType!=TEKI_Chappy
+  ||!p2original::originalActors().query(static_cast<Creature*>(actor),source,bound)
+  ||source!=34||bound!=token||!token||actors.count(static_cast<PelletView*>(actor))) {error="original SnakeCrow physical/registry identity mismatch";return false;}
+ Snake state;state.original=true;state.parms=&SNAKE_CROW;
+ state.home=actor->getPosition();state.heading=actor->getDirection();state.moveTarget=state.home;
+ state.rng=(token*2654435761u)|1u;state.burrowPos=state.home;
+ enter(state,SNAKE_STAY,"appear1");actor->mHealth=actor->mMaxHealth=SNAKE_CROW.life;
+ auto inserted=actors.emplace(static_cast<PelletView*>(actor),std::move(state));
+ applyBurrowVisibility(actor,inserted.first->second,token);
+ error.clear();return true;
 }

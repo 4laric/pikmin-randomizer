@@ -1,6 +1,9 @@
 #include "DebugLog.h"
 #include <cstdint>
 #include "Generator.h"
+#include "pc_p2_original_gen_object.h"
+#include "pc_p2_original_course.h"
+#include "pc_p2_original_progress.h"
 #include <cstdio>
 #include "OnePlayerSection.h"
 #include "Pellet.h"
@@ -348,8 +351,9 @@ bool GeneratorCache::preload(u32 stageID)
 			gen->read(stream);
 			PRINT("generator read done\n");
 			Generator::ramMode = false;
+			const bool originalGroup=dynamic_cast<GenObjectOriginalEnemy*>(gen->mGenObject)!=nullptr;
 			if (!stream.isValid() || stream.getPosition() <= startPosition || stream.getPosition() > stream.getLength()
-			    || !gen->mGenObject || !gen->mGenArea || !gen->mGenType) {
+			    || !gen->mGenObject || (!originalGroup&&(!gen->mGenArea || !gen->mGenType))) {
 				delete gen;
 				valid = false;
 				break;
@@ -548,7 +552,10 @@ void GeneratorCache::endSave()
  */
 void GeneratorCache::saveGenerator(Generator* gen)
 {
-	if (gen->mDayLimit == -1 || gen->mDayLimit > gameflow.mWorldClock.mCurrentDay) {
+ if(pc_p2_original_course_shadow(gen))return; // authoritative cached UID owns OGC2
+ const bool original=pc_p2_original_course_prepared()&&dynamic_cast<GenObjectOriginalEnemy*>(gen->mGenObject);
+ const unsigned saveDay=original?p2original::originalProgress().context().day:unsigned(gameflow.mWorldClock.mCurrentDay);
+	if (gen->mDayLimit == -1 || gen->mDayLimit > int(saveDay)) {
 		Cache* cache = findCache(mDeadCacheList, mCurrentSaveCacheIdx);
 		if (!cache) {
 			ERROR("currID(%d) is broken !\n", mCurrentSaveCacheIdx);

@@ -53,6 +53,7 @@
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_enemy.h"
 #include "pc_p2_kochappy_policy.h"
 #include "pc_p2_kochappy_stun.h"
 #include "Pellet.h"
@@ -466,9 +467,9 @@ void enter(BTeki* actor, FsmActor& state, State next)
 	state.flickFired   = false;
  // Retail StateDead::init calls deathProcedure/throwupItem before its
  // death motion. The suppressed P1 strategy cannot emit generator pellets;
- // Red1's mapped personality owns this exactly-once ordinary drop boundary.
+ // The original Red1/Snow45 mapped personality owns this ordinary drop boundary.
  // Orange44 remains unchanged until its separately-owned payload audit.
- if ((next == p2kochappyfsm::STATE_DEAD || (next == p2kochappyfsm::STATE_PRESS && state.original)) && state.sourceId == 1 && !state.itemsSpawned) {
+ if ((next == p2kochappyfsm::STATE_DEAD || (next == p2kochappyfsm::STATE_PRESS && state.original)) && (state.sourceId == 1 || (state.original && state.sourceId == 45)) && !state.itemsSpawned) {
   state.itemsSpawned = true;
   actor->spawnItems();
  }
@@ -527,7 +528,7 @@ void pc_p2_kochappy_fsm_begin_stun(BTeki* actor)
 
 void pc_p2_kochappy_fsm_setup()
 {
-    for(const auto& row:p2original::originalActors().rows())if(row.second.enemy.source==1)return;
+    for(const auto& row:p2original::originalActors().rows())if((row.second.enemy.source==1||row.second.enemy.source==45))return;
 	pc_p2_kochappy_fsm_reset();
 	if (!tekiMgr) return;
  // Orange44 retains its existing bridge/default and explicit-preview rules.
@@ -588,15 +589,15 @@ void pc_p2_kochappy_fsm_setup()
 
 bool pc_p2_kochappy_fsm_bind_original(BTeki* actor,unsigned token,std::string& error){
  unsigned source=0,actual=0;
- if(!actor||!actor->mGenerator||!token||!pc_p2_kochappy_registered(actor)
- ||!p2original::originalActors().query(actor,source,actual)||source!=1||actual!=token
- ||actors.count(static_cast<PelletView*>(actor))){error="original Red FSM registry/visual ownership mismatch";return false;}
- FsmActor state;state.sourceId=1;state.original=true;state.params=p2kochappyfsm::redDefaults();
+ if(!actor||!actor->mGenerator||!token||(!pc_p2_kochappy_registered(actor)&&!pc_p2_enemy_name(actor))
+ ||!p2original::originalActors().query(actor,source,actual)||(source!=1&&source!=45)||actual!=token
+ ||actors.count(static_cast<PelletView*>(actor))){error="original Kochappy FSM registry/visual ownership mismatch";return false;}
+ FsmActor state;state.sourceId=source;state.original=true;state.params=source==45?p2kochappyfsm::snowDefaults():p2kochappyfsm::redDefaults();
  state.home=actor->getPosition();state.heading=actor->getDirection();state.healthAsserted=true;
  actor->mSRT.s.set(1,1,1);actor->mHealth=actor->mMaxHealth=state.params.health;
  auto i=actors.emplace(static_cast<PelletView*>(actor),std::move(state)).first;
  enter(actor,i->second,p2kochappyfsm::STATE_WAIT);ready=true;
- std::printf("P2_ORIGINAL_RED_FSM_BIND source=1 token=%u health=200 move_speed=50 behavior=KochappyBase\n",token);std::fflush(stdout);
+ std::printf("P2_ORIGINAL_KOCHAPPY_FSM_BIND source=%u token=%u health=%.0f move_speed=50 behavior=KochappyBase\n",source,token,state.params.health);std::fflush(stdout);
  error.clear();return true;
 }
 bool pc_p2_kochappy_fsm_suppress_ai(const BTeki* actor)
@@ -871,7 +872,7 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 		stop(actor);
 		if (state.stateTime >= PRESS_DURATION) {
             // Original StatePress goes straight to source Demo/kill at END.
-            if(state.original){if(!state.died){state.died=true;actor->pcEscapeNow();adoptRedCorpse(actor);}return;}
+            if(state.original){if(!state.died){state.died=true;const unsigned source=state.sourceId;actor->pcEscapeNow();if(source==1)adoptRedCorpse(actor);}return;}
 			enter(actor, state, p2kochappyfsm::STATE_DEAD);
 		}
 		break;
@@ -891,6 +892,7 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 			// doAI, which this module suppresses. pcEscapeNow() finalizes the
 			// death (carcass birth) outside doAI (teki.h family-lane helper #219).
             const bool red = state.sourceId == 1;
+            const bool original = state.original;
             actor->pcEscapeNow();
             if (red) {
                 adoptRedCorpse(actor);

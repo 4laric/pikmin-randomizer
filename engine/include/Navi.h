@@ -11,6 +11,7 @@
 #include "types.h"
 #if defined(PIKI_PC_PORT)
 #include "Dolphin/gx.h"
+#include "pc_p2_original_contact_clock.h"
 #endif
 
 class CPlate;
@@ -190,6 +191,7 @@ public:
 	/// dinámica es la vista realmente mostrada (lerp unificada->propia), no
 	/// mNaviCamera; nullptr = mNaviCamera.
 	Camera* mControlCamera = nullptr;
+	p2original::ContactClock mOriginalP2ContactClock;
 	Camera* controlCamera() { return mControlCamera ? mControlCamera : mNaviCamera; }
 	/// Coop: color de la luz de la antena según capitán/tinte. Llamar tras
 	/// cada changeEffect.

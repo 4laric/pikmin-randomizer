@@ -3,8 +3,9 @@
 namespace p2original {namespace {
 bool fail(std::string& e,const char* s){e=s;return false;}
 }
-bool GroupCourse::install(const std::vector<GroupBinding>& bindings,GroupProvider& provider,std::string& e){
- if(mProvider||!mGroups.empty()||bindings.empty()||bindings.size()!=mActors.rows().size())return fail(e,"original course already owned or empty");
+bool GroupCourse::install(const std::vector<GroupBinding>& bindings,GroupProvider& provider,std::string& e,bool selectedInventory){
+ if(mProvider||!mGroups.empty()||(!selectedInventory&&(bindings.empty()||bindings.size()!=mActors.rows().size())))return fail(e,"original course already owned or empty");
+ if(!mFrontier.initialize(mActors.fingerprint(),e))return false;
  std::map<Generator*,Group> next;std::vector<CatalogRow> rows;
  for(const auto& b:bindings){
   const auto* row=mActors.find(b.state.uid);std::string encoded;
@@ -29,9 +30,9 @@ bool GroupCourse::initialize(Generator* generator,unsigned day,bool disc,const M
  auto i=mGroups.find(generator);if(i==mGroups.end()||!mProvider)return fail(e,"unbound original generator");auto& group=i->second;
  if(group.started||group.initialized||!group.actors.empty())return fail(e,"original activation already initialized");
  const auto* row=mActors.find(group.state.uid);if(!row)return fail(e,"original catalog row retired");
- GenerationDecision decision;if(!decideOriginalGeneration(group.state,day,disc,decision,e))return false;
+ GenerationDecision decision;if(!mFrontier.activate(group.state,day,disc,decision,e))return false;
  if(decision.expired){group.state=decision.next;group.initialized=true;e.clear();return true;}
- GeneratorState activated;if(!beginOriginalActivation(decision.next,activated,e))return false;
+ const GeneratorState activated=decision.next;
  // Reserve the activation before externally visible construction. An aborted
  // attempt may never replay its retired identities in this owning session.
  group.state=activated;group.started=true;
@@ -119,5 +120,9 @@ bool GroupCourse::unload(std::string& e){
   group=mGroups.erase(group);
  }
  mGroups.clear();mProvider=nullptr;e.clear();return true;
+}
+bool GroupCourse::decodeFrontier(const std::string& campaign,const std::string& bytes,std::string& e){
+ if(mProvider||!mGroups.empty()||mCleaning)return fail(e,"original incarnation adoption requires unloaded scene");
+ return mFrontier.decode(campaign,bytes,e);
 }
 }

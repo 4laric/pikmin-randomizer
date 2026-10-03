@@ -1,5 +1,9 @@
 #include "DebugLog.h"
 #include "pc_p2_gas_cloud.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_original_piki_origin.h"
+#include "pc_p2_cave_campaign_party_engine.h"
+#endif
 #include "EffectMgr.h"
 #include "FlowController.h"
 #include "GameStat.h"
@@ -16,6 +20,7 @@
 #include "pc_randomizer.h"
 #include "pc_p2_purple_flight.h"
 #include "pc_p2_purple_impact.h"
+#include "pc_p2_cave_campaign_party_engine.h"
 
 /**
  * @todo: Documentation
@@ -123,6 +128,13 @@ void Piki::doKill()
 	mFSM->transit(this, PIKISTATE_Dead);
 	_500.reset();
 	pikiMgr->mDeadPikis++;
+#if defined(PIKI_PC_PORT)
+ // Existing death observers above must see source identity before retirement.
+ // Retire before physical pool reuse; selected SAVE restoration requires its
+ // separately authenticated selected survivor body, not this old pointer.
+ pc_p2_cave_campaign_party_forget(this);
+ pc_p2_original_piki_origin_forget(this);
+#endif
 	pikiMgr->kill(this);
 
 	STACK_PAD_VAR(10);

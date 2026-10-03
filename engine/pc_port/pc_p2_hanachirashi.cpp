@@ -1,3 +1,4 @@
+#include "pc_p2_hanachirashi_source.h"
 // Family-owned flying-remainder source behavior for the batch-3 P1 Puffy
 // Blowhog placement vehicle: Withering Blowhog (Hanachirashi, EnemyID 55).
 // Implements a bounded slice of source HanachirashiState.cpp: Wait (hover/
@@ -11,17 +12,12 @@
 // Laugh.
 //
 // Port adaptations (recorded, not retail-faithful):
-//   * The P1 engine has no InteractWind / InteractHanaChirashi. The source
-//     withering wind (Hanachirashi.cpp::windTarget 752; StateAttack::exec 877)
-//     is resolved here as a single InteractFlick blow/stagger on eligible
-//     Pikmin at the source attack KEYEVENT_2 frame (attack bank event 50:2),
-//     not every frame. The source windTarget runs each active frame with a
-//     radius ramped by mWindScaleTimer; the single-frame port uses the full
-//     fp22 attack radius. InteractHanaChirashi::actPiki rejects invincible/
-//     Purple/KokeDamage/dead receivers; on the P1 host that maps to isAlive(),
-//     with the P2 invincible and KokeDamage states not representable. A Purple
-//     receiver in the cone strips a bud/flower to Leaf (mHappa = Leaf) and is
-//     not blown, matching InteractHanaChirashi. Damage is fp24=0 (no HP loss).
+//   * Withering wind follows the authored KEYEVENT_2 active window each
+//     frame and ramps radius with the retail 3*dt scale. P1 InteractFlick is
+//     the receiver bridge: accepted ordinary receivers lose maturity; Purple
+//     loses maturity without blowing and never triggers Laugh. P2 invincible
+//     states are not fully represented; the native invincibility setting is
+//     honored. Captain wind remains a fidelity gap.
 //   * The source wind direction is a 3D vector with a vertical component
 //     ((1-slide)*50 + slide*10); InteractFlick takes a scalar heading, so the
 //     flattened wind heading and the source fp17 shake knockback (150) are used
@@ -31,10 +27,10 @@
 //     half-angle is a documented port value).
 //   * A successful windTarget selects Laugh at the source attack END
 //     (HanachirashiState.cpp:883/897); this port tracks any affected receiver
-//     as the success bit.
+//     as the success bit; Purple stripping alone is not a successful blow.
 //   * Fall/Land/Ground/TakeOff/FlyFlick/GroundFlick depend on the P2
 //     stuck-Pikmin counter (mStuckPikminCount) and the P2 mouth/attach system,
-//     which the P1 host does not simulate. They are bounded gaps: fly states
+//     not yet connected in this module. They are bounded gaps: fly states
 //     hold source flight height (fp01=70) with the fp05/fp06 vertical swing and
 //     ground/shake states are not entered. Death always uses the fly death
 //     clip (HANACHIANIM_DeadFly = "dead").
@@ -42,6 +38,11 @@
 //     view-angle/FOV search is a documented port adaptation.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_hanachirashi.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_drop_engine.h"
+#include "pc_p2_original_hanachirashi_native.h"
+#include "pc_p2_original_hanachirashi_bank.h"
+#include "settings/pc_settings.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -53,6 +54,7 @@
 #include "MapMgr.h"
 #include "GlobalGameOptions.h"
 #include "gameflow.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -123,6 +125,9 @@ struct Hana {
     Vector3f moveTarget;
     int attackFrame = FALLBACK_ATTACK_FRAME;
     bool blowFired = false;
+    float windScale = 0.0f;
+    bool original = false;
+    unsigned token = 0;
     bool windHit = false;
     std::set<int> firedEvents;
     std::string clip = "move1";
@@ -187,6 +192,7 @@ void enter(Hana& s, State state, const char* clip) {
     s.stateTime = 0.0f;
     s.firedEvents.clear();
     s.blowFired = false;
+    s.windScale = 0.0f;
     s.windHit = false;
     if (clip) s.clip = clip;
 }
@@ -249,7 +255,9 @@ void setRandTarget(Hana& s) {
 // living receivers; a Purple bud/flower in the cone strips to Leaf and is not
 // blown; other eligible Pikmin are blown (staggered). KokeDamage and the P2
 // invincible state have no P1 equivalent.
-bool blowWind(BTeki* a, Hana& s) {
+bool blowWind(BTeki* a, Hana& s, float dt) {
+    s.windScale = std::min(1.0f, s.windScale + 3.0f * dt);
+    const float attackRadius = s.windScale * ATTACK_RADIUS;
     if (!pikiMgr) return false;
     const Vector3f start = a->getPosition();
     const float sn = std::sin(s.heading), cs = std::cos(s.heading);
@@ -271,11 +279,11 @@ bool blowWind(BTeki* a, Hana& s) {
     Iterator it(pikiMgr);
     CI_LOOP(it) {
         Piki* p = static_cast<Piki*>(*it);
-        if (!p || !p->isAlive()) continue;
+        if (!p || !p->isAlive() || pc_settings_get_piki_invincible()) continue;
         const Vector3f q = p->getPosition();
         const float sx = q.x - start.x, sy = q.y - start.y, sz = q.z - start.z;
         const float dot = dx * sx + dy * sy + dz * sz;
-        if (dot <= 0.0f || dot >= ATTACK_RADIUS) continue;
+        if (dot <= 0.0f || dot >= attackRadius) continue;
         const float coneRadius = dot * slope;
         const float dotsX = nx * sx + nz * sz;
         const float dotsY = cx * sx + cy * sy + cz * sz;
@@ -290,17 +298,19 @@ bool blowWind(BTeki* a, Hana& s) {
         const float wx = strength * (dx * dotsY + nx * dotsX);
         const float wz = strength * (dz * dotsY + nz * dotsX);
         const float angle = std::atan2(wx, wz);
-        p->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, 0.0f, angle));
-        ++blown;
+        if (p->stimulate(InteractFlick(a, SHAKE_KNOCKBACK, 0.0f, angle))) {
+            p->mHappa = Leaf;
+            ++blown;
+        }
     }
     const int affected = blown + stripped;
-    const unsigned generator = a->mGenerator ? a->mGenerator->_70 : 0u;
+    const unsigned generator = s.original ? s.token : (a->mGenerator ? a->mGenerator->_70 : 0u);
     if (affected > 0) {
         std::printf("P2_HANACHIRASHI_BLOW generator=%u pikmin=%d\n", generator, affected);
         std::fflush(stdout);
     }
-    s.windHit = affected > 0;
-    return s.windHit;
+    s.windHit = s.windHit || blown > 0;
+    return blown > 0;
 }
 
 void setPhase(Hana& s) {
@@ -317,13 +327,16 @@ void setPhase(Hana& s) {
 }
 
 void pc_p2_hanachirashi_reset() {
+    if(p2hana::active()){std::fprintf(stderr,"P2_ORIGINAL_HANACHIRASHI reset with live source actor\n");std::abort();}
+    for(const auto& actor:actors) if(actor.second.original) {std::fprintf(stderr,"P2_ORIGINAL_HANACHIRASHI reset with live actor\n");std::abort();}
     actors.clear();
     clips.clear();
     ready = false;
 }
-void pc_p2_hanachirashi_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_hanachirashi_forget(BTeki* actor) { p2hana::forget(actor); actors.erase(static_cast<PelletView*>(actor)); pc_p2_original_hanachirashi_forget(actor); }
 
 float pc_p2_hanachirashi_param_f(const BTeki* actor, int idx, float fallback) {
+    if (p2hana::has(actor)) { if(idx==TPF_Life)return 1800; if(idx==TPF_LifeRecoverRate)return 0; return fallback; }
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
     if (idx == TPF_Life) return LIFE;
     if (idx == TPF_LifeRecoverRate) return 0.0f;
@@ -344,6 +357,7 @@ float pc_p2_hanachirashi_param_f(const BTeki* actor, int idx, float fallback) {
 }
 
 bool pc_p2_hanachirashi_clip(const BTeki* actor, const char*& name, float& phase) {
+    if(p2hana::clip(actor,name,phase))return true;
     if (!ready) return false;
     auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
     if (it == actors.end()) return false;
@@ -352,10 +366,8 @@ bool pc_p2_hanachirashi_clip(const BTeki* actor, const char*& name, float& phase
     return true;
 }
 
-void pc_p2_hanachirashi_setup() {
-    pc_p2_hanachirashi_reset();
-    if (!tekiMgr) return;
-
+namespace {
+bool loadClips(std::string& error) {
     std::ifstream bank("p2-flying-bank.txt");
     if (bank) {
         std::string token;
@@ -381,6 +393,7 @@ void pc_p2_hanachirashi_setup() {
                     if (value != "status") status = value;
                     else if (!(bank >> status)) break;
                     if (species == "Hanachirashi") {
+                        if(frames<2||frames>10000||poses<1||poses>64||marker!="poses"||status!="converted"||clips.count(name)){error="invalid Hanachirashi authored clock row";return false;}
                         Clip clip;
                         clip.name = name;
                         clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
@@ -412,6 +425,35 @@ void pc_p2_hanachirashi_setup() {
             }
         }
     }
+
+    for(const char* required:{"move1","attack","laugh","dead"}) {
+        auto clip=clips.find(required);
+        if(clip==clips.end()||clip->second.duration<=0.0f) {error="Hanachirashi authored animation clip missing";return false;}
+    }
+    bool attackEvent=false;for(const auto& event:clips.at("attack").events)if(event.second==2&&event.first==50&&event.first<clips.at("attack").duration*30.0f)attackEvent=true;
+    if(!attackEvent){error="Hanachirashi authored attack KEYEVENT_2 missing";return false;}
+    error.clear();return true;
+}
+}
+bool pc_p2_hanachirashi_original_resources(unsigned source,std::string& error){
+ if(source!=55){error="invalid original Hanachirashi source";return false;}
+ if(!actors.empty()){error="original Hanachirashi cannot reuse AP/family actors";return false;}
+ std::ifstream authored("p2-flying-bank.txt");if(!p2original::hanachirashi::validateBank(authored,error))return false;
+ return p2hana::resources(error);
+}
+bool pc_p2_hanachirashi_original_birth(BTeki* actor,unsigned source,unsigned uid,unsigned ordinal,std::string& error){
+ if(source!=55){error="invalid original Hanachirashi source";return false;}
+ return p2hana::birth(actor,uid,ordinal,error);
+}
+bool pc_p2_hanachirashi_original_registry(BTeki* actor,unsigned token,std::string& error){return p2hana::registry(actor,token,error);}
+bool pc_p2_hanachirashi_suppress_ai(const BTeki* actor){return p2hana::has(actor)||(ready&&actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))));}
+void pc_p2_hanachirashi_setup() {
+    if(pc_p2_original_hanachirashi_admitted()) return;
+    pc_p2_hanachirashi_reset();
+    if (!tekiMgr) return;
+
+    std::string clipError;
+    if(!loadClips(clipError)) return;
 
     std::ifstream in("p2-flying-actors.txt");
     if (!in) return;
@@ -470,6 +512,7 @@ void pc_p2_hanachirashi_setup() {
 }
 
 void pc_p2_hanachirashi_update(BTeki* actor) {
+    if(p2hana::update(actor))return;
     if (!ready) return;
     auto it = actors.find(static_cast<PelletView*>(actor));
     if (it == actors.end()) return;
@@ -477,7 +520,8 @@ void pc_p2_hanachirashi_update(BTeki* actor) {
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned generator = s.original ? s.token : (actor->mGenerator ? actor->mGenerator->_70 : 0u);
+    if(actor->mStoredDamage>0.0f) actor->makeDamaged();
 
     if (actor->mHealth <= 0.0f && s.state != HANA_DEAD) {
         if (!s.deadLogged) {
@@ -547,10 +591,9 @@ void pc_p2_hanachirashi_update(BTeki* actor) {
     case HANA_ATTACK: {
         stopFlying(actor, s, dt);
         const float frame = s.stateTime * 30.0f;
-        if (!s.blowFired && frame >= float(s.attackFrame)) {
-            s.blowFired = true;
-            blowWind(actor, s);
-        }
+        // Retail exec applies active wind before processing KEYEVENT_2.
+        if(s.blowFired) blowWind(actor,s,dt);
+        if(!s.blowFired&&frame>=float(s.attackFrame)) s.blowFired=true;
         if (s.stateTime >= clipDuration("attack")) {
             if (s.windHit) {
                 std::printf("P2_HANACHIRASHI_STATE generator=%u state=laugh\n", generator);
@@ -578,7 +621,16 @@ void pc_p2_hanachirashi_update(BTeki* actor) {
     }
     case HANA_DEAD:
         stopFlying(actor, s, dt);
-        if (s.stateTime >= clipDuration("dead")) actor->die();
+        if (s.stateTime >= clipDuration("dead")) {
+            if(s.original) {
+                // StateDead::exec END throws authored items and kills. Retail
+                // onInit disables EB_LeaveCarcass; do not run Mar dieSoon.
+                pc_p2_original_spawn_items(actor);
+                actor->die();actor->kill(false);
+                return; // The native forget funnel erased this Hana state.
+            }
+            actor->pcEscapeNow();
+        }
         break;
     default:
         break;

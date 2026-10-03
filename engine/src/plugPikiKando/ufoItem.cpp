@@ -1,4 +1,5 @@
 #include "UfoItem.h"
+#include "pc_p2_campaign_treasure_held.h"
 #if defined(PIKI_PC_PORT)
 #include "netplay/pc_netplay_policy.h"
 #include "netplay/pc_netplay_present.h"
@@ -513,6 +514,7 @@ Vector3f UfoItem::getSuckPos()
  */
 void UfoItem::suckMe(Pellet* pelt)
 {
+    if(pc_p2_campaign_treasure_held_owns(pelt))return; // No P1 part animation/sound.
 	PRINT("UFO ** SUCK PELLET\n");
 	if (playerState->isUfoBroken()) {
 		mAnimator.startMotion(0, stack_new(PaniMotionInfo)(UfoMotion::WaitTutorial, this));
@@ -1014,6 +1016,7 @@ void UfoItem::refresh(Graphics& gfx)
  */
 void UfoItem::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 {
+    if(pc_p2_campaign_treasure_held_draw_receiver(this,gfx,*mtx))return;
 	int i;
 
 	for (i = 0; i < 4; i++) {

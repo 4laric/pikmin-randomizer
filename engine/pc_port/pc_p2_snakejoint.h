@@ -55,3 +55,7 @@ bool pc_p2_snakejoint_invulnerable(const BTeki*);
 inline bool pc_p2_snakejoint_attack_rejected(bool registered, bool buriedStay) {
     return registered && buriedStay;
 }
+
+#include <string>
+bool pc_p2_snakejoint_original_resources(std::string& error);
+bool pc_p2_snakejoint_bind_original(BTeki*,unsigned token,std::string& error);

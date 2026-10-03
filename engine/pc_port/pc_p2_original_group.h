@@ -24,7 +24,7 @@ public:
  GroupCourse& operator=(const GroupCourse&)=delete;
  // The caller owns provider/resource lifetime until unload succeeds. All
  // bindings must be actual source generators, not surrogate host/AP slots.
- bool install(const std::vector<GroupBinding>&,GroupProvider&,std::string&);
+ bool install(const std::vector<GroupBinding>&,GroupProvider&,std::string&,bool selectedInventory=false);
  bool owns(const Generator*)const;
  bool initialize(Generator*,unsigned day,bool disc,const Math&,const std::function<bool(const Position&,float&,std::string&)>& floor,std::string&);
  bool death(Generator*,Creature*,std::string&);
@@ -34,9 +34,15 @@ public:
  bool restoreState(Generator*,const std::string& fingerprint,const std::string& bytes,std::string&);
  bool state(const Generator*,GeneratorState&,unsigned& alive)const;
  bool unload(std::string&);
+ bool encodeFrontier(std::string& bytes,std::string& e)const{return mFrontier.encode(bytes,e);}
+ bool initializeFrontier(const std::string& campaign,std::string& e){return mFrontier.initialize(campaign,e);}
+ bool nextActivation(unsigned uid,std::uint64_t& activation,std::string& e){return mFrontier.nextActivation(uid,activation,e);}
+ // Checkpoint owner must adopt before scene construction, never over live groups.
+ bool decodeFrontier(const std::string& campaign,const std::string& bytes,std::string&);
 private:
  struct Actor {Creature* pointer=nullptr;unsigned token=0;std::uint64_t handle=0;bool dead=false,released=false,registryBound=false;};
  struct Group {GeneratorState state;std::uint64_t handle=0;bool initialized=false,started=false;std::vector<Actor> actors;};
  ActorRegistry& mActors;GroupProvider* mProvider=nullptr;bool mCleaning=false;std::map<Generator*,Group> mGroups;
+ IncarnationFrontier mFrontier;
 };
 }

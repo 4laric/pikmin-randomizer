@@ -3,6 +3,11 @@
 #include "pc_crowd_handover.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_original_piki_init.h"
+#include "pc_p2_original_piki_recruit.h"
+#include "pc_p2_original_piki_origin.h"
+#include "pc_coop.h"
+#include "MoviePlayer.h"
+#include "gameflow.h"
 #endif
 #include "Navi.h"
 #include "PikiAI.h"
@@ -209,8 +214,27 @@ void ActFree::procCollideMsg(Piki* piki, MsgCollide* msg)
 	}
 
 	Creature* collider = msg->mEvent.mCollider;
+#if defined(PIKI_PC_PORT)
+    std::string originalRecruitError;
+#endif
 	if (collider->mObjType == OBJTYPE_Navi && !piki->isKinoko() && !collider->mStickListHead && !mTouchedPlayer
-	    && (piki->mPlayerId == -1 || static_cast<Navi*>(collider)->mNaviID == piki->mPlayerId)) {
+        && (
+#if defined(PIKI_PC_PORT)
+            pc_p2_original_piki_contact_owner_allowed(piki,piki->mPlayerId,
+                static_cast<Navi*>(collider)->mNaviID,pc_vs_active(),originalRecruitError)
+#else
+            piki->mPlayerId == -1 || static_cast<Navi*>(collider)->mNaviID == piki->mPlayerId
+#endif
+        )) {
+#if defined(PIKI_PC_PORT)
+        auto* captain=static_cast<Navi*>(collider);
+        OriginalPikiBody originalBody;
+        if(pc_p2_original_piki_body_query(piki,originalBody)
+            &&(!captain->mKontroller||!captain->mOriginalP2ContactClock.formationable()))return;
+        const bool movieActive=!gameflow.mMoviePlayer||gameflow.mMoviePlayer->mIsActive;
+        const bool nativeEligible=captain->isAlive()&&piki->isAlive()&&piki->mIsCallable&&!piki->isDamaged();
+        if(!pc_p2_original_piki_recruit_accepted(piki,captain->mNaviID,movieActive,nativeEligible,originalRecruitError))return;
+#endif
 		rumbleMgr->start(RUMBLE_Unk2, static_cast<Navi*>(collider)->mNaviID, nullptr);
 		mTouchedPlayer = true;
 		pc_crowd_handover::abandonSquadBeforeHandover(piki, static_cast<Navi*>(collider));

@@ -20,6 +20,7 @@ struct BridgeState {
 int bridgeStageCount(int type);
 bool validateBridge(const BridgeRecord&,std::string&);
 std::string bridgeDigest(const BridgeRecord&);
+bool parseBridges(const std::string& bytes,std::vector<BridgeRecord>&,std::string&);
 bool readBridges(const std::string&,std::vector<BridgeRecord>&,std::string&);
 BridgeState bridgeInitial(const BridgeRecord&);
 bool bridgeStateValid(const BridgeRecord&,const BridgeState&,std::string&);

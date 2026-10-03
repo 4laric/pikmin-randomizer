@@ -59,6 +59,8 @@
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_white_treasure.h"
+#include "pc_p2_campaign_treasure.h"
+#include "pc_p2_campaign_treasure_held.h"
 #include "pc_p2_white_treasure_policy.h"
 #include "pc_p2_cave_bud_actor.h"
 #include "FlowController.h"
@@ -229,7 +231,7 @@ static void podTitle(const std::string& recent) {
     }
 }
 Suckable* pc_p2_preview_goal(){return pc_pikipelago_room_preview()?podAnchor:nullptr;}
-bool pc_p2_preview_is_pod(GoalItem* goal){return pc_p2_cave_items_is_pod(goal) || pc_p2_white_treasure_is_pod(goal) || (pc_pikipelago_room_preview() && podAnchor && goal==podAnchor);}
+bool pc_p2_preview_is_pod(GoalItem* goal){return pc_p2_campaign_treasure_is_pod(goal) || pc_p2_cave_items_is_pod(goal) || pc_p2_white_treasure_is_pod(goal) || (pc_pikipelago_room_preview() && podAnchor && goal==podAnchor);}
 int pc_p2_preview_pokos(){return podAnchor?economy.total():-1;}
 bool pc_p2_preview_ready() { return pc_pikipelago_room_preview() && previewShape && previewTreasure; }
 bool pc_p2_preview_cargo_free_ready() { return pc_pikipelago_room_preview() && cargoFree && setupComplete; }
@@ -295,6 +297,7 @@ void pc_p2_preview_setup() {
         }
         if (tutorialRed && !pc_randomizer_p2_bridge()) pc_p2_kochappy_fsm_setup();
         pc_p2_white_treasure_setup();
+        pc_p2_campaign_treasure_setup();
         return;
     }
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;
@@ -482,7 +485,9 @@ void pc_p2_preview_setup() {
 }
 
 bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
+    if(pc_p2_campaign_treasure_held_draw(pellet,gfx,matrix))return true;
     if(pc_p2_white_treasure_draw(pellet,gfx,matrix))return true;
+    if(pc_p2_campaign_treasure_draw(pellet,gfx,matrix))return true;
     if(!pc_pikipelago_room_preview() || !pellet)return false;
     if(pc_p2_cave_items_draw_pellet(pellet,gfx,matrix))return true;  // lane 46 (#484)
     Cargo* c=cargoFor(pellet);Shape* shape=c?c->shape:(pellet==previewTreasure?previewShape:nullptr);
@@ -493,8 +498,10 @@ bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
 }
 
 bool pc_p2_preview_deliver(Pellet* pellet) {
+    if(pc_p2_campaign_treasure_held_deliver(pellet))return true;
     if(!pellet)return false;
     if(pc_p2_white_treasure_deliver(pellet))return true;
+    if(pc_p2_campaign_treasure_deliver(pellet))return true;
     if(pc_p2_cave_items_deliver(pellet))return true;  // lane 46 (#484) physical cave treasure
     if(pc_pikipelago_room_preview() && podAnchor) {
         // P1's long-idle captain can be carried like a pellet. Returning him to
@@ -605,6 +612,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
 bool pc_p2_preview_draw_pod(GoalItem* goal,Graphics& gfx,Matrix4f& matrix) {
     if(pc_p2_cave_items_draw_pod(goal,gfx,matrix))return true;
     if(pc_p2_white_treasure_draw_pod(goal,gfx,matrix))return true;
+    if(pc_p2_campaign_treasure_draw_pod(goal,gfx,matrix))return true;
     if(!pc_p2_preview_is_pod(goal) || !podShape)return false;
     // Static visual uses the existing destination's suction height; animation is deferred.
     Matrix4f world,view;Vector3f position=goal->mSRT.t;position.y+=74;

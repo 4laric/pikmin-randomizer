@@ -1,9 +1,11 @@
+#include "pc_p2_hanachirashi_receiver.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
 #include "pc_blue_rescue.h"
 #include "pc_p2_original_red_native.h"
 #endif
 #include "pc_p2_gas_cloud.h"
+#include "pc_p2_original_blackpom_native.h"
 #include "pc_p2_astonish.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
@@ -12,6 +14,7 @@
 #include "pc_p2_white.h"
 #include "pc_p2_breadbug_teki.h"
 #include "PikiState.h"
+#include "pc_p2_sprays.h"
 #include "AIConstant.h"
 #include "BombItem.h"
 #include "CPlate.h"
@@ -156,8 +159,10 @@ void PikiStateMachine::init(Piki* piki)
 {
 	memStat->start("pikistate");
 	create(PIKISTATE_Count);
+	registerState(pc_p2_hanachirashi_piki_state_create());
 
 	registerState(new PikiNormalState());
+	registerState(pc_p2_spicy_state());
 	registerState(new PikiFlickState());
 	registerState(new PikiFlownState());
 	registerState(new PikiEmitState());
@@ -2152,8 +2157,16 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	if (piki->isHolding()) {
 		return;
 	}
-	PcP2PurpleFlightSample collisionFlight = pc_p2_purple_flight_sample(piki);
-	if (collisionFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
+    PcP2PurpleFlightSample collisionFlight = pc_p2_purple_flight_sample(piki);
+    if (collisionFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
+    const auto originalPom = pc_p2_original_blackpom_flying_press(collider,piki,
+        msg->mEvent.mColliderPart,piki->mVelocity.y < 0.0f);
+    if (originalPom.handled) {
+        // Successful intake retains the actual native swallow state. Rejected
+        // source contacts land normally and never inherit generic P1 Boss stick.
+        if (!originalPom.accepted) { transit(piki,PIKISTATE_Normal);piki->restartAI(); }
+        return;
+    }
 	const bool specialFlightContact = collisionFlight.phase == PcP2PurpleFlightPhase::EntryPause
 	                               || collisionFlight.phase == PcP2PurpleFlightPhase::Descent;
 	if (specialFlightContact && colliderType == OBJTYPE_Piki) return;

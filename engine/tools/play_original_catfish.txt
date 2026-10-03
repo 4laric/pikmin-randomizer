@@ -1,0 +1,32 @@
+Original Catfish source26 direct gameplay acceptance (#1256)
+
+Use the startup owner's composed original-course build after all source rows are
+admitted. Do not filter unsupported rows to make a launch appear successful.
+Keep a new private output arena and existing saves/assets untouched. The fixture
+baseline is 20 Pikmin, a centered 960x540 window, active gameplay, no forced HP,
+no disabled extinction, and bounded cleanup only of the launched game process.
+Record exact native commit, executable hash, catalog and bank hashes, native.log,
+and a short screen recording. Build/provider tests alone do not pass these steps.
+
+1. On day5 tutorial course, approach source26 rows25/26 near x341,z869 and
+   x146,z618, or rows27/28 near x-679,z-25 and x-810,z-379. Respect source water
+   terrain: use Blues for submerged fighting/transport. Confirm the two-actor
+   row27 and single actors on rows25/26/28; positions may spread by literal
+   spawnType/radius. Observe autonomous movement and home return.
+2. With an ordinary squad, bait a bite, recall, and let a separate bite complete.
+   Verify capture at authored attack frame17 and swallow at75, at most two
+   distinct Pikmin per attack and no repeat kill. White consumption should apply
+   source poison300 once; keep a separate non-White control.
+3. Throw/attack normally. Confirm visible hit response, flick at authored25/47,
+   ordinary death animation and one carryable corpse. Carry it to an Onion with
+   normal Pikmin; verify population reward once, no AP/proxy reward or duplicate
+   body/drop. Literal number drops are probabilistic and need repeated runs.
+4. Leave and reenter the course, then test the source respawn interval3. Confirm
+   no stale mouth/geometry/corpse pointer or duplicate actor. Save at the normal
+   supported checkpoint, relaunch, and verify generator/death state and real
+   squad/population persistence. Keep the pre-save run and resumed run logs.
+
+Current fidelity limitations to inspect: captured mouths use a proximity sweep
+rather than joint-local mouth slots; turning/view/flick thresholds retain port
+adaptations. Record those differences explicitly. Any blocked/untested mechanic,
+cleanup, campaign resume or natural-combat gate remains open.

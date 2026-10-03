@@ -1,6 +1,8 @@
 #include "ItemMgr.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_coop.h"
+#include "pc_randomizer.h"
+#include "pc_p2_original_gate_native.h"
 #include "pc_p2_original_barrel_native.h"
 #endif
 #if defined(PIKI_PC_PORT)
@@ -906,6 +908,9 @@ bool InteractPullout::actItem(ItemCreature* item) immut
  */
 bool InteractBomb::actItem(ItemCreature* item) immut
 {
+#if defined(PIKI_PC_PORT)
+    if(pc_p2_original_gate_owned(item)){bool handled=false;return pc_p2_original_gate_damage(static_cast<BuildingItem*>(item),mDamage,handled);}
+#endif
 	if (item->isSluice()) {
 		BuildingItem* wall = static_cast<BuildingItem*>(item);
 		if (wall->mCurrStage >= wall->mNumStages) {
@@ -990,6 +995,9 @@ void BuildingItem::playEffect(int id)
  */
 bool InteractAttack::actItem(ItemCreature* item) immut
 {
+#if defined(PIKI_PC_PORT)
+    if(pc_p2_original_gate_owned(item)){bool handled=false;return pc_p2_original_gate_damage(static_cast<BuildingItem*>(item),mDamage,handled);}
+#endif
 	if (item->mObjType == OBJTYPE_SluiceBomb || item->mObjType == OBJTYPE_SluiceBombHard) {
 		item->playEventSound(item, SEB_HARDESTWALL_HIT);
 		return false;
@@ -1214,6 +1222,10 @@ void BuildingItem::refresh2d(Graphics&)
 void BuildingItem::doKill()
 {
 	mPlatMgr.release();
+#if defined(PIKI_PC_PORT)
+    // Source gates belong to MeltingPot's nodes, never the pooled item array.
+    if(pc_p2_original_gate_forget(this))return;
+#endif
 	ItemCreature::doKill();
 }
 
@@ -1222,6 +1234,11 @@ void BuildingItem::doKill()
  */
 void BuildingItem::doSave(RandomAccessStream& output)
 {
+#if defined(PIKI_PC_PORT)
+    bool gateHandled=false;std::string gateError;
+    if(!pc_p2_original_gate_save(this,output,gateHandled,gateError)){std::fprintf(stderr,"P2_ORIGINAL_GATE_SAVE_FAIL %s\n",gateError.c_str());std::abort();}
+    if(gateHandled)return;
+#endif
 	output.writeFloat(mHealth);
 	output.writeFloat(mMaxHealth);
 	output.writeInt(mCurrStage);
@@ -1235,6 +1252,11 @@ void BuildingItem::doSave(RandomAccessStream& output)
  */
 void BuildingItem::doLoad(RandomAccessStream& input)
 {
+#if defined(PIKI_PC_PORT)
+    bool gateHandled=false;std::string gateError;
+    if(!pc_p2_original_gate_load(this,input,gateHandled,gateError)){std::fprintf(stderr,"P2_ORIGINAL_GATE_LOAD_FAIL %s\n",gateError.c_str());std::abort();}
+    if(gateHandled)return;
+#endif
 	mHealth             = input.readFloat();
 	mMaxHealth          = input.readFloat();
 	mCurrStage          = input.readInt();
@@ -1415,7 +1437,7 @@ PikiHeadMgr::PikiHeadMgr(ItemMgr* mgr)
 	mPikiHeadAI    = new PikiHeadAI();
 #if defined(PIKI_PC_PORT)
 	// Buried sprouts have their own pool, sized from the same limit.
-	create(pc_settings_get_piki_limit());
+	create(pc_randomizer_original_session() ? 100 : pc_settings_get_piki_limit());
 #else
 	create(MAX_PIKI_ON_FIELD);
 #endif

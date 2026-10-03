@@ -1,4 +1,7 @@
 #include "TAI/Beatle.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "pc_p2_kabuto_fsm.h"
+#endif
 
 #include "DebugLog.h"
 #include "Pcam/CameraManager.h"
@@ -1094,6 +1097,11 @@ TAIbeatleStrategy::TAIbeatleStrategy()
  */
 bool TAIbeatleStrategy::interact(Teki& teki, immut TekiInteractionKey& key)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+ // Original larvae inherit EnemyBase::damageCallBack (ordinary body hits).
+ // The borrowed P1 armour-portion gate must not control their damage.
+ if(key.mInteractionType==TekiInteractType::Attack&&pc_p2_kabuto_original_actor(&teki))return teki.interactDefault(key);
+#endif
 	STACK_PAD_VAR(1);
 
 	switch (key.mInteractionType) {

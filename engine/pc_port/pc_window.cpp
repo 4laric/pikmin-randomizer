@@ -8,6 +8,7 @@
 #include "pc_background_virtual_pad.h"
 #include "pc_bbft.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_surface_save.h"
 #include "pc_dev_console.h"
 #include "pc_gyro.h"
 #include "pc_pad_bindings.h"
@@ -1051,6 +1052,12 @@ void pc_window_poll_events(PADStatus* pad) {
 #endif
                 if (event.key.keysym.scancode == SDL_SCANCODE_F6 && !event.key.repeat && !sSettingsMenuOpen) {
                     if (!hotkeysBlocked) pc_p2_cave_request();
+#if PIKI_NETPLAY_BUILD
+                    else ++sNetplayBlockedHotkeys;
+#endif
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_F11 && !event.key.repeat && !sSettingsMenuOpen) {
+                    if (!hotkeysBlocked) pc_p2_surface_save_request();
 #if PIKI_NETPLAY_BUILD
                     else ++sNetplayBlockedHotkeys;
 #endif

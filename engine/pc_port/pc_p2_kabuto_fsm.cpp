@@ -11,6 +11,13 @@
 // lane and the source Wait/Turn/Move selection (pc_p2_kabuto_aim.h), not the
 // old 180 / 0.5 rad cone.
 #include "pc_p2_kabuto_fsm.h"
+#include "pc_p2_original_cannon_bank.h"
+#include "pc_p2_original_cannon_combat.h"
+#include "pc_p2_attachments.h"
+#include "pc_p2_body_coll.h"
+#include "pc_p2_original_cannon_native.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_drop_engine.h"
 #include "pc_p2_sfx.h"
 #include "pc_p2_kabuto_fsm_policy.h"
 #include "pc_p2_kabuto_stone_fleet.h"
@@ -59,10 +66,12 @@ std::map<PelletView*,bool> actors;
 std::map<std::string,std::vector<Shape*>> animated;
 std::map<std::string,p2animation::Clip> timing;
 std::set<PelletView*> drawn,drawnCorpse;
-enum KState { KB_DEAD=0,KB_WAIT=1,KB_TURN=2,KB_MOVE=3,KB_FLICK=4,KB_ATTACK=5 };
+enum KState { KB_DEAD=0,KB_WAIT=1,KB_TURN=2,KB_MOVE=3,KB_FLICK=4,KB_ATTACK=5,KB_FIXSTAY=6,KB_FIXAPPEAR=7,KB_FIXHIDE=8,KB_FIXWAIT=9,KB_FIXTURN=10,KB_FIXATTACK=11,KB_FIXFLICK=12 };
 const float PI_F=3.14159265f;
 constexpr int FLICK_STUCK_MIN=3;
 struct KabutoFsm {
+    unsigned source=75;bool original=false;KState next=KB_WAIT;
+    p2attach::Instance sockets;p2attach::Token socketToken=0;std::uint64_t socketTick=0;
     KState state=KB_WAIT;float stateTime=0.0f;float heading=0.0f;
     Vector3f home;Vector3f targetPos;bool targetValid=false;
     unsigned rng=1;unsigned token=0;bool deadLogged=false;bool fireDone=false;bool flickDone=false;bool escaped=false;float deathPrior=0.0f;bool deathPriorSet=false;
@@ -102,6 +111,18 @@ float distXZ(const Vector3f& a,const Vector3f& b){const float dx=a.x-b.x,dz=a.z-
 float clipSeconds(const std::string& name){auto it=timing.find(name);return it==timing.end()?1.0f:it->second.duration/30.0f;}
 p2posefamily::Bank poseBank("KABUTO"); // #895 interpolated draw
 p2posefamily::Actors poseVis;
+struct OriginalResources {
+ p2posefamily::Bank bank{"ORIGINAL_CANNON"};
+ std::map<std::string,std::vector<Shape*>> shapes;
+ std::map<std::string,p2animation::Clip> clocks;
+};
+OriginalResources originalResources[2];
+OriginalResources originalStoneResource;
+bool slotOriginal[p2kabutostone::kFleetCapacity]={};
+std::shared_ptr<const p2attach::Bank> originalSockets;
+const auto& clocks(const KabutoFsm& s){return s.original?originalResources[s.source-95].clocks:timing;}
+float seconds(const KabutoFsm& s,const std::string& clip){auto i=clocks(s).find(clip);return i==clocks(s).end()?1.0f:i->second.duration/30.0f;}
+const char* stateName(int s){static const char* names[]={"dead","wait","turn","move","flick","attack","fixstay","fixappear","fixhide","fixwait","fixturn","fixattack","fixflick"};return s>=0&&s<13?names[s]:"null";}
 void loadAnimation(const std::vector<p2animation::Clip>& bank){
     // #895: compact loader (few Shapes + decoded vectors per clip); the Shapes
     // stay the nearest-pose fallback. Fail-closed as before.
@@ -152,7 +173,11 @@ void buildAim(AimSnapshot& a){
 }
 float rngUnit(KabutoFsm& s){s.rng=s.rng*1664525u+1013904223u;return float((s.rng>>8)&0xffffffu)/16777216.0f;}
 int stuckPikminCount(Creature* c){int n=0;for(Creature* s=c->mStickListHead;s;s=s->mNextSticker){if(!s||!s->isPiki()||!s->isAlive())continue;++n;}return n;}
-bool shouldFlick(BTeki* a){return stuckPikminCount(a)>=FLICK_STUCK_MIN;}
+bool shouldFlick(BTeki* a){auto f=fsms.find(static_cast<PelletView*>(a));
+ // Retail all four blow thresholds are3: rounded flick timer must exceed3.
+ // Every accepted EnemyBase::damageCallBack adds1; original Attack uses
+ // interactDefault's damage count instead of the P1 armour-portion gate.
+ return f!=fsms.end()&&f->second.original?a->mDamageCount>=4.0f:stuckPikminCount(a)>=FLICK_STUCK_MIN;}
 // Lane evidence on every natural Attack entry (Kabuto.cpp:226-262 gate).
 void logLane(unsigned gen,const char* from,const KabutoFsm& s,const Vector3f& pos,const AimSnapshot& a){
     const p2kabutoaim::Vec3 p=aimVec(pos);
@@ -191,31 +216,39 @@ void logStoneFire(KabutoFsm& s,unsigned gen,const p2kabutostone::AttackStep& ste
         return;
     }
     if(step.action!=p2kabutostone::AttackAction::Fired)return;
-    pc_p2_sfx(75,gen,p2sfx::Event::Shot,Vector3f(step.birth.x,step.birth.y,step.birth.z));
+    pc_p2_sfx(s.source,gen,p2sfx::Event::Shot,Vector3f(step.birth.x,step.birth.y,step.birth.z));
     const int slot=step.slot;
-    slotGen[slot]=gen;slotPosTicks[slot]=0;slotRoll[slot]=0.0f;slotDustTicks[slot]=0;
+    slotOriginal[slot]=s.original;slotGen[slot]=gen;slotPosTicks[slot]=0;slotRoll[slot]=0.0f;slotDustTicks[slot]=0;
     p1BeetleShotBurst(step.birth,s.heading);
-    const auto at=timing.find("attack");
-    std::printf("P2_KABUTO_STONE_BIRTH generator=%u source_id=75 stone=%u stone_type=74 slot=%d homing=%d frame=%d t=%.4f clip_frames=%d birth=(%.2f,%.2f,%.2f) face_deg=%.1f mouth_source=joint pose_frame=%d mouth_local=(%.3f,%.3f) active=%d\n",
-        gen,step.id,slot,int(fleet.stone(slot).homing()),p2kabutostone::kAttackKey2Frame,s.stateTime,at==timing.end()?0:at->second.duration,
-        step.birth.x,step.birth.y,step.birth.z,s.heading*180.0f/PI_F,p2kabutostone::kMouthPoseFrame,p2kabutostone::kMouthLocalX,p2kabutostone::kMouthLocalZ,fleet.active());
+    const auto& resource=clocks(s);const auto at=resource.find(s.source==96?"K_attack":"attack");
+    std::printf("P2_KABUTO_STONE_BIRTH generator=%u source_id=%u stone=%u stone_type=74 slot=%d homing=%d frame=%d t=%.4f clip_frames=%d birth=(%.2f,%.2f,%.2f) face_deg=%.1f mouth_source=joint pose_frame=%d mouth_local=(%.3f,%.3f) active=%d\n",
+        gen,s.source,step.id,slot,int(fleet.stone(slot).homing()),s.source==96?55:50,s.stateTime,at==resource.end()?0:at->second.duration,
+        step.birth.x,step.birth.y,step.birth.z,s.heading*180.0f/PI_F,s.source==96?56:51,p2kabutostone::kMouthLocalX,p2kabutostone::kMouthLocalZ,fleet.active());
     std::fflush(stdout);
 }
-int doFlick(BTeki* actor){
+int doFlick(BTeki* actor,bool stuckOnly=false,bool backwards=false){
+    const auto f=fsms.find(static_cast<PelletView*>(actor));const bool original=f!=fsms.end()&&f->second.original;const float range=original?45.0f:120.0f;
     const Vector3f pos=actor->getPosition();
     int hit=0;
     std::vector<Piki*> pikis;
     if(pikiMgr){Iterator it(pikiMgr);CI_LOOP(it){Piki* q=static_cast<Piki*>(*it);if(!q||!q->isAlive())continue;
-        if(distXZ(q->getPosition(),pos)<120.0f)pikis.push_back(q);}}
+        if((!stuckOnly&&distXZ(q->getPosition(),pos)<range)||(original&&q->mStickTarget==actor))pikis.push_back(q);}}
     for(Piki* q:pikis){if(!q||!q->isAlive())continue;
-        if(q->stimulate(InteractFlick(actor,300.0f,0.0f,FLICK_BACKWARDS_ANGLE)))++hit;}
-    for(Navi* n:pc_p2_navis()){if(n->isAlive()&&distXZ(n->getPosition(),pos)<120.0f)
-        if(n->stimulate(InteractFlick(actor,300.0f,0.0f,FLICK_BACKWARDS_ANGLE)))++hit;}
-    return hit;
+        const float angle=original?p2original::cannon::pikminFlickAngle(actor->getDirection(),backwards,FLICK_BACKWARDS_ANGLE):FLICK_BACKWARDS_ANGLE;
+        if(q->stimulate(InteractFlick(actor,original?400.0f:300.0f,original?1.0f:0.0f,angle)))++hit;}
+    for(Navi* n:pc_p2_navis()){if(!stuckOnly&&n->isAlive()&&distXZ(n->getPosition(),pos)<range)
+        if(n->stimulate(InteractFlick(actor,original?400.0f:300.0f,original?1.0f:0.0f,FLICK_BACKWARDS_ANGLE)))++hit;}
+    if(original)actor->mDamageCount=0.0f;return hit;
 }
-void setPhase(KabutoFsm& s){const float d=clipSeconds(s.clip);float ph=s.stateTime/d;if(ph>1.0f)ph=1.0f;s.phase=ph;}
+void setPhase(KabutoFsm& s){const float d=seconds(s,s.clip);float ph=s.stateTime/d;if(ph>1.0f)ph=1.0f;s.phase=ph;}
 void transition(BTeki* a,KabutoFsm& s,KState st,const char* clip,unsigned gen){
     s.state=st;s.stateTime=0.0f;s.fireDone=false;s.flickDone=false;if(clip)s.clip=clip;
+    if(s.source==96){
+     if(st==KB_FIXSTAY){a->clearTekiOption(TEKIOPT_Atari|TEKIOPT_ShapeVisible|TEKIOPT_LifeGaugeVisible);a->setTekiOption(TEKIOPT_Invincible);}
+     else {a->setTekiOption(TEKIOPT_Atari|TEKIOPT_ShapeVisible|TEKIOPT_LifeGaugeVisible);if(st==KB_FIXHIDE)a->setTekiOption(TEKIOPT_Invincible);else a->clearTekiOption(TEKIOPT_Invincible);}
+     if(st==KB_FIXAPPEAR){a->mStoredDamage=0.0f;a->mHealth=std::min(a->mHealth+1.0f,a->mMaxHealth);doFlick(a,false,true);}
+     s.next=st;
+    }
     // Per-state init (KabutoState.cpp): StateWait::init resets its timer and
     // latch and draws a new wander target (:76-82); StateMove::init resets its
     // timer (:192); StateAttack::init clears the alert timer (:334).
@@ -224,35 +257,90 @@ void transition(BTeki* a,KabutoFsm& s,KState st,const char* clip,unsigned gen){
         s.wander=p2kabutoaim::wanderTarget(aimVec(a->getPosition()),aimVec(s.home),u0,u1);}
     if(st==KB_MOVE)s.moveTimer=0.0f;
     if(st==KB_ATTACK)s.alert=0.0f;
-    std::printf("P2_KABUTO_STATE generator=%u state=%s\n",gen,p2kabutofsm::stateName(st));std::fflush(stdout);
+    std::printf("P2_KABUTO_STATE generator=%u state=%s\n",gen,stateName(st));std::fflush(stdout);
     // P1 Cannon Beetle bank approximation (output-only, #946).
-    if(st==KB_DEAD)pc_p2_sfx(75,gen,p2sfx::Event::Dead,a);
-    if(st==KB_FLICK)pc_p2_sfx(75,gen,p2sfx::Event::Flick,a);
+    if(st==KB_DEAD)pc_p2_sfx(s.source,gen,p2sfx::Event::Dead,a);
+    if(st==KB_FLICK)pc_p2_sfx(s.source,gen,p2sfx::Event::Flick,a);
 }
 void die(BTeki* a,KabutoFsm& s,unsigned gen,float prior){
-    if(!s.deadLogged){s.deadLogged=true;std::printf("P2_KABUTO_DEAD generator=%u source_id=75 health=0 prior_health=%.1f\n",gen,prior);std::fflush(stdout);}
-    transition(a,s,KB_DEAD,"dead",gen);
+    if(!s.deadLogged){s.deadLogged=true;std::printf("P2_KABUTO_DEAD generator=%u source_id=%u health=0 prior_health=%.1f\n",gen,s.source,prior);std::fflush(stdout);}
+    if(s.original&&!pc_p2_original_spawn_items(a)){std::fputs("original cannon death lost registry ownership\n",stderr);std::abort();}
+    transition(a,s,KB_DEAD,s.source==96?"K_dead":"dead",gen);
 }
 }
-void pc_p2_kabuto_fsm_reset(){poseBank.reset();poseVis.clear();
+void pc_p2_kabuto_fsm_reset(){
+ for(const auto& f:fsms)if(f.second.original){std::fputs("P2_ORIGINAL_CANNON reset requires physical actor retirement\n",stderr);std::abort();}
+ originalSockets.reset();poseBank.reset();poseVis.clear();originalStoneResource.bank.reset();originalStoneResource.shapes.clear();originalStoneResource.clocks.clear();for(auto& r:originalResources){r.bank.reset();r.shapes.clear();r.clocks.clear();}
     if(fleet.active()>0){std::printf("P2_KABUTO_STONE_RESET active=%d\n",fleet.active());std::fflush(stdout);}
     fleet.reset();stoneDebt=0.0;stoneMap.proxy.clear();stoneDrawLogged=false;shooters.clear();
-    for(int i=0;i<p2kabutostone::kFleetCapacity;++i){slotGen[i]=0;slotPosTicks[i]=0;slotRoll[i]=0.0f;slotDustTicks[i]=0;}
+    for(int i=0;i<p2kabutostone::kFleetCapacity;++i){slotOriginal[i]=false;slotGen[i]=0;slotPosTicks[i]=0;slotRoll[i]=0.0f;slotDustTicks[i]=0;}
     actors.clear();fsms.clear();drawn.clear();drawnCorpse.clear();animated.clear();timing.clear();ready=false;}
 void pc_p2_kabuto_fsm_forget(BTeki* a){poseVis.forget(a);auto* v=static_cast<PelletView*>(a);
     // The shooter is gone; its stones keep flying and Press is no longer
     // attributed to it (no dangling actor pointer is kept).
     const std::uint64_t tok=tokenOf(a);const int orphaned=fleet.forgetOwner(tok);shooters.erase(tok);
     if(orphaned>0){auto f=fsms.find(v);std::printf("P2_KABUTO_STONE_ORPHAN generator=%u stones=%d\n",f!=fsms.end()?f->second.token:0u,orphaned);std::fflush(stdout);}
-    pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
+    auto f=fsms.find(v);if(f==fsms.end()||!f->second.original)pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);pc_p2_original_cannon_forget(a);}
+bool pc_p2_kabuto_original_resources(unsigned source,std::string& error){
+ if(source!=95&&source!=96){error="invalid original cannon source";return false;}
+ std::ifstream in("p2-original-cannon-bank.txt");p2original::cannon::Banks banks;
+ if(!p2original::cannon::parseBank(in,banks,error))return false;
+ if(!originalSockets){std::ifstream socketFile("p2-original-cannon-attach.txt");auto staged=p2attach::read(socketFile);
+  if(!staged||staged->joint("mouth")<0){error="original cannon literal mouth socket unavailable";return false;}
+  for(const char* name:{"attack","K_attack"}){const int index=staged->clip(name);if(index<0||staged->clips[index].duration!=95){error="original cannon authored socket clip missing";return false;}
+   const int fire=std::string(name)=="attack"?51:56;const auto& frames=staged->clips[index].frames;
+   if(std::find(frames.begin(),frames.end(),fire)==frames.end()){error="original cannon exact firing-pose socket missing";return false;}}
+  originalSockets=std::move(staged);
+ }
+ auto& resident=originalResources[source-95];const auto& clips=banks[source-95];
+ if(!resident.clocks.empty()){
+  if(resident.clocks.size()!=clips.size()){error="resident cannon inventory changed";return false;}
+  for(const auto& c:clips){auto f=resident.clocks.find(c.name);if(f==resident.clocks.end()||f->second.frames!=c.frames||f->second.duration!=c.duration||f->second.count!=c.count){error="resident cannon bank changed";return false;}}
+ }else{
+  OriginalResources staged;p2poseload::Shared shared;size_t total=0;
+  for(const auto& c:clips){
+   if(!p2posefamily::loadFamilyClip(staged.bank,c.name,std::string("cannon_")+(source==95?"Rkabuto":"Fkabuto")+"_"+c.name,c.count,c.duration,c.frames,shared,total,staged.shapes[c.name],error))return false;
+   auto* physical=staged.bank.clip(c.name);if(!physical||physical->poses.size()!=size_t(c.count)){error="original cannon physical vectors missing";return false;}staged.clocks[c.name]=c;
+  }
+  resident=std::move(staged);
+ }
+ const std::string bodyKey=source==95?"original_cannon|Rkabuto":"original_cannon|Fkabuto";pc_p2_body_coll_manage(bodyKey,true);
+ const auto* body=resident.bank.clip("wait");if(!body||body->poses.empty()||!pc_p2_body_coll_register_pose(bodyKey,body->poses.front())){error="original cannon visible body collision unavailable";return false;}
+ if(!resident.bank.ready()||resident.bank.clipCount()!=14){error="original cannon physical bank unavailable";return false;}
+ std::ifstream stoneFile("p2-original-stone-bank.txt");std::vector<p2animation::Clip> stones;if(!p2original::cannon::parseStoneBank(stoneFile,stones,error))return false;
+ if(originalStoneResource.clocks.empty()){
+  OriginalResources staged;p2poseload::Shared shared;size_t total=0;
+  for(const auto& c:stones){if(!p2posefamily::loadFamilyClip(staged.bank,c.name,"cannon_Stone_"+c.name,c.count,c.duration,c.frames,shared,total,staged.shapes[c.name],error))return false;
+   const auto* physical=staged.bank.clip(c.name);if(!physical||physical->poses.size()!=size_t(c.count)){error="original Stone physical vectors missing";return false;}staged.clocks[c.name]=c;}
+  originalStoneResource=std::move(staged);
+ }else for(const auto& c:stones){auto f=originalStoneResource.clocks.find(c.name);if(f==originalStoneResource.clocks.end()||f->second.frames!=c.frames||f->second.duration!=c.duration||f->second.count!=c.count){error="resident original Stone bank changed";return false;}}
+ error.clear();return true;
+}
+bool pc_p2_kabuto_original_birth(BTeki* actor,unsigned source,unsigned uid,unsigned ordinal,std::string& error){
+ if(!actor||(source!=95&&source!=96)||!uid||actor->mTekiType!=TEKI_Beatle||actors.count(static_cast<PelletView*>(actor))){error="invalid or reused original cannon actor";return false;}
+ auto& resource=originalResources[source-95];if(!resource.bank.ready()){error="original cannon resources not admitted";return false;}
+ auto* view=static_cast<PelletView*>(actor);auto inserted=fsms.try_emplace(view);if(!inserted.second){error="original cannon FSM address owned";return false;}
+ auto& f=inserted.first->second;f.socketToken=f.sockets.bind(originalSockets);if(!f.socketToken){error="original cannon socket instance failed";return false;}f.original=true;f.source=source;f.home=actor->getPosition();f.heading=actor->getDirection();f.token=uid;f.rng=((uid^ordinal)*2654435761u)|1u;
+ f.lastHealth=source==96?2000.0f:850.0f;actor->mHealth=actor->mMaxHealth=f.lastHealth;actor->mDamageCount=0.0f;actor->setTekiOption(TEKIOPT_DamageCountable);actors[view]=true;shooters[tokenOf(actor)]=actor;
+ if(source==96){f.state=KB_FIXSTAY;f.clip="K_appear";actor->clearTekiOption(TEKIOPT_Atari|TEKIOPT_LifeGaugeVisible|TEKIOPT_ShapeVisible);actor->setTekiOption(TEKIOPT_Invincible);}
+ else {const float u0=rngUnit(f),u1=rngUnit(f);f.wander=p2kabutoaim::wanderTarget(aimVec(f.home),aimVec(f.home),u0,u1);}
+ if(!poseVis.draw(actor,resource.bank,f.clip,0,uid)){error="original cannon private geometry allocation failed";return false;}
+ std::printf("P2_ORIGINAL_CANNON_BIRTH source=%u uid=%u ordinal=%u state=%s health=%.1f x=%.3f y=%.3f z=%.3f\n",source,uid,ordinal,stateName(f.state),actor->mHealth,f.home.x,f.home.y,f.home.z);
+ pc_p2_body_coll_assign(actor,source==95?"original_cannon|Rkabuto":"original_cannon|Fkabuto");
+ ready=true;error.clear();return true;
+}
+bool pc_p2_kabuto_original_registry(BTeki* actor,unsigned token,std::string& error){auto f=fsms.find(static_cast<PelletView*>(actor));if(f==fsms.end()||!f->second.original||!token||pc_p2_original_actor_token(actor)!=token){error="original cannon registry mismatch";return false;}f->second.token=token;error.clear();return true;}
 float pc_p2_kabuto_fsm_param_f(const BTeki* a,int idx,float fb){
     auto i=actors.find(static_cast<PelletView*>(const_cast<BTeki*>(a)));if(i==actors.end())return fb;
     const auto& p=p2kabutofsm::params();
+    auto f=fsms.find(static_cast<PelletView*>(const_cast<BTeki*>(a)));if(f!=fsms.end()&&f->second.original){if(idx==TPF_Life)return f->second.source==96?2000.0f:850.0f;if(idx==TPF_LifeRecoverRate)return .0001f;if(idx==TPF_Scale)return 1.0f;if(idx==TPF_CollisionRadius)return 45.0f;}
     switch(idx){case TPF_Life:return p.health;case TPF_VisibleRange:return p.sight;
     case TPF_AttackableRange:return p.attackRange;case TPF_AttackPower:return p.attackDamage;default:return fb;}
 }
+bool pc_p2_kabuto_original_actor(const BTeki* actor){auto f=fsms.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));return f!=fsms.end()&&f->second.original;}
 bool pc_p2_kabuto_fsm_suppress_ai(const BTeki* a){return ready&&actors.count(static_cast<PelletView*>(const_cast<BTeki*>(a)))!=0;}
 void pc_p2_kabuto_fsm_setup(){
+    if(pc_p2_original_cannon_admitted())return;
     pc_p2_kabuto_fsm_reset();
     std::printf("P2_KABUTO_SETUP\n");std::fflush(stdout);
     const bool bridge=pc_randomizer_p2_bridge()&&!pc_pikipelago_room_preview();
@@ -297,7 +385,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
     KabutoFsm& s=ft->second;
     const float dt=gsys->getFrameTime();if(dt<=0.0f||dt>0.5f)return;
     const Vector3f pos=actor->getPosition();
-    const unsigned live=actor->mGenerator?pc_p2_campaign_token(actor):0u;
+    const unsigned live=s.original?pc_p2_original_actor_token(actor):(actor->mGenerator?pc_p2_campaign_token(actor):0u);
     if(live)s.token=live;
     const unsigned gen=s.token?s.token:live;
     if(actor->mStoredDamage>0.0f)actor->makeDamaged();
@@ -305,8 +393,8 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
     if(actor->mHealth<=0.0f&&!s.deathPriorSet&&previousHealth>0.0f){s.deathPrior=previousHealth;s.deathPriorSet=true;}
     const float priorForDeath=s.deathPriorSet?s.deathPrior:previousHealth;
     if(actor->mHealth<s.lastHealth&&actor->mHealth>0.0f){
-        pc_p2_sfx(75,gen,p2sfx::Event::Damage,actor);
-        std::printf("P2_KABUTO_DAMAGE generator=%u source_id=75 health=%.1f\n",gen,actor->mHealth);std::fflush(stdout);}
+        pc_p2_sfx(s.source,gen,p2sfx::Event::Damage,actor);
+        std::printf("P2_KABUTO_DAMAGE generator=%u source_id=%u health=%.1f\n",gen,s.source,actor->mHealth);std::fflush(stdout);}
     s.lastHealth=actor->mHealth;
     if(s.poolFullCooldown>0.0f)s.poolFullCooldown-=dt;
     // updateCaution (Kabuto.cpp:296-305): damage or stuck Pikmin re-arm the
@@ -323,6 +411,32 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         if(t>=0){s.alert=0.0f;s.targetPos=aim.creatures[size_t(t)]->getPosition();s.targetValid=true;}
         return t>=0;};
     switch(s.state){
+    case KB_FIXSTAY:{stop(actor);s.stateTime=0.0f;if(searched()){face(actor,s,std::atan2(s.targetPos.x-pos.x,s.targetPos.z-pos.z));transition(actor,s,KB_FIXAPPEAR,"K_appear",gen);}break;}
+    case KB_FIXHIDE:{stop(actor);doFlick(actor,true,true);if(s.stateTime>=seconds(s,"K_hide"))transition(actor,s,KB_FIXSTAY,"K_appear",gen);break;}
+    case KB_FIXAPPEAR:case KB_FIXWAIT:case KB_FIXTURN:case KB_FIXATTACK:case KB_FIXFLICK:{
+     stop(actor);
+     const KState state=s.state;
+     if(state!=KB_FIXAPPEAR&&state!=KB_FIXFLICK&&actor->mHealth<=0.0f){die(actor,s,gen,priorForDeath);break;}
+     const bool has=searched();buildAim(aim);
+     const bool lane=p2kabutoaim::attackableIndex(apos,s.heading,aim.cands.data(),int(aim.cands.size()))>=0;
+     const float angle=has?wrapPi(std::atan2(s.targetPos.x-pos.x,s.targetPos.z-pos.z)-s.heading):0.0f;
+     auto select=[&](){if(actor->mHealth<=0.0f)return KB_DEAD;if(shouldFlick(actor))return KB_FIXFLICK;if(lane)return KB_FIXATTACK;if(!has)return KB_FIXHIDE;return std::fabs(angle)<=0.0f?KB_FIXWAIT:KB_FIXTURN;};
+     if(state==KB_FIXTURN&&has){const float step=std::max(-7.5f*PI_F/180.0f,std::min(7.5f*PI_F/180.0f,angle*.075f));face(actor,s,s.heading+step);}
+     if(state==KB_FIXWAIT||state==KB_FIXTURN){if(shouldFlick(actor))s.next=KB_FIXFLICK;else if(lane)s.next=KB_FIXATTACK;else if(!has)s.next=KB_FIXHIDE;else if(state==KB_FIXWAIT&&std::fabs(angle)>0.0f)s.next=KB_FIXTURN;else if(state==KB_FIXTURN&&std::fabs(angle)<=0.0f)s.next=KB_FIXWAIT;}
+     if(state==KB_FIXATTACK&&!s.fireDone&&prevStateTime<(56.0f/30.0f-1e-4f)&&s.stateTime>=(56.0f/30.0f-1e-4f)){
+      s.fireDone=true;p2attach::Affine world;const float cs=std::cos(s.heading),sn=std::sin(s.heading);
+      world.m[0][0]=cs;world.m[0][2]=sn;world.m[2][0]=-sn;world.m[2][2]=cs;world.m[0][3]=pos.x;world.m[1][3]=pos.y;world.m[2][3]=pos.z;
+      p2attach::Affine mouth;if(!s.sockets.sample(s.socketToken,originalSockets->clip("K_attack"),56.0f,world,++s.socketTick)||!s.sockets.socket(s.socketToken,originalSockets->joint("mouth"),mouth)){std::fputs("fixed cannon mouth sampling failed\n",stderr);std::abort();}
+      p2kabutostone::AttackStep step;step.birth={mouth.m[0][3],pos.y+25.0f,mouth.m[2][3]};step.slot=fleet.fire(tokenOf(actor),step.birth,s.heading,step.id,false,71.0f/30.0f);step.action=step.slot>=0?p2kabutostone::AttackAction::Fired:p2kabutostone::AttackAction::PoolFull;logStoneFire(s,gen,step);
+     }
+     if(state==KB_FIXFLICK&&!s.flickDone&&s.stateTime>=(31.0f/30.0f-1e-4f)){s.flickDone=true;doFlick(actor);if(actor->mHealth<=0.0f){die(actor,s,gen,priorForDeath);break;}}
+     if(s.stateTime>=seconds(s,s.clip)){
+      KState next=(state==KB_FIXWAIT||state==KB_FIXTURN)?s.next:select();
+      if(state==KB_FIXFLICK)next=actor->mHealth<=0.0f?KB_DEAD:KB_FIXATTACK;
+      if(next==KB_DEAD)die(actor,s,gen,priorForDeath);
+      else transition(actor,s,next,next==KB_FIXFLICK?"K_flick":next==KB_FIXATTACK?"K_attack":next==KB_FIXWAIT?"K_wait":next==KB_FIXTURN?"K_pivot":"K_hide",gen);
+     }
+     break;}
     case KB_WAIT:{
         // StateWait::exec (KabutoState.cpp:89-110): a searched target or
         // > 3 s latches Turn; the transit happens when the wait clip ends.
@@ -333,9 +447,9 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         if(shouldFlick(actor)){transition(actor,s,KB_FLICK,"flick",gen);break;}
         if(p2kabutoaim::waitWantsTurn(s.waitTimer,searched()))s.waitNextTurn=true;
         s.waitTimer+=dt;
-        if(s.stateTime>=clipSeconds(s.clip)){
+        if(s.stateTime>=seconds(s,s.clip)){
             s.stateTime=0.0f;
-            if(s.waitNextTurn)transition(actor,s,KB_TURN,"wait",gen);
+            if(s.waitNextTurn)transition(actor,s,KB_TURN,s.original?"pivot":"wait",gen);
         }
         break;}
     case KB_TURN:{
@@ -356,7 +470,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         break;}
     case KB_MOVE:{
         // StateMove::exec (KabutoState.cpp:203-260) via p2kabutoaim::moveExec.
-        pc_p2_sfx_stride(75,gen,actor,24.0f);
+        pc_p2_sfx_stride(s.source,gen,actor,24.0f);
         if(actor->mHealth<=0.0f){die(actor,s,gen,priorForDeath);break;}
         if(shouldFlick(actor)){stop(actor);transition(actor,s,KB_FLICK,"flick",gen);break;}
         buildAim(aim);
@@ -365,7 +479,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         face(actor,s,r.faceDir);
         s.moveTimer+=dt;
         if(r.next==p2kabutoaim::Next::Attack){stop(actor);logLane(gen,"move",s,pos,aim);transition(actor,s,KB_ATTACK,"attack",gen);}
-        else if(r.next==p2kabutoaim::Next::Turn){stop(actor);transition(actor,s,KB_TURN,"wait",gen);}
+        else if(r.next==p2kabutoaim::Next::Turn){stop(actor);transition(actor,s,KB_TURN,s.original?"pivot":"wait",gen);}
         else if(r.next==p2kabutoaim::Next::Wait){stop(actor);transition(actor,s,KB_WAIT,"wait",gen);}
         else if(r.walk)driveForward(actor,s,p2kabutoaim::params().moveSpeed);
         else stop(actor);
@@ -377,21 +491,33 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         // then KEYEVENT_2 (retail attack event frame 50, seen after 51 frames
         // at 30 fps) births the Stone at the mouth exactly once.
         const Vector3f ap=actor->getPosition();
-        const p2kabutostone::AttackStep step=p2kabutostone::attackStep(fleet,tokenOf(actor),actor->mHealth,s.fireDone,prevStateTime,s.stateTime,{ap.x,ap.y,ap.z},s.heading);
+        p2kabutostone::AttackStep step;
+        if(s.original){
+         if(actor->mHealth<=0.0f)step.action=p2kabutostone::AttackAction::Die;
+         else if(!s.fireDone&&p2kabutostone::key2Crossed(prevStateTime,s.stateTime)){
+          s.fireDone=true;p2attach::Affine world;const float cs=std::cos(s.heading),sn=std::sin(s.heading);
+          world.m[0][0]=cs;world.m[0][2]=sn;world.m[2][0]=-sn;world.m[2][2]=cs;world.m[0][3]=ap.x;world.m[1][3]=ap.y;world.m[2][3]=ap.z;
+          p2attach::Affine mouth;if(!s.sockets.sample(s.socketToken,originalSockets->clip("attack"),51.0f,world,++s.socketTick)||!s.sockets.socket(s.socketToken,originalSockets->joint("mouth"),mouth)){std::fputs("original cannon mouth sampling failed\n",stderr);std::abort();}
+          step.birth={mouth.m[0][3],ap.y+25.0f,mouth.m[2][3]};step.slot=fleet.fire(tokenOf(actor),step.birth,s.heading,step.id,s.source==95,71.0f/30.0f);
+          step.action=step.slot>=0?p2kabutostone::AttackAction::Fired:p2kabutostone::AttackAction::PoolFull;
+         }
+        }else step=p2kabutostone::attackStep(fleet,tokenOf(actor),actor->mHealth,s.fireDone,prevStateTime,s.stateTime,{ap.x,ap.y,ap.z},s.heading);
         if(step.action==p2kabutostone::AttackAction::Die){die(actor,s,gen,priorForDeath);break;}
         logStoneFire(s,gen,step);
-        if(s.stateTime>=clipSeconds("attack")){
+        if(s.stateTime>=seconds(s,"attack")){
             // KEYEVENT_END (KabutoState.cpp:360-372): Flick, else Turn when a
             // target is searched, else Wait.
             if(shouldFlick(actor))transition(actor,s,KB_FLICK,"flick",gen);
-            else if(searched())transition(actor,s,KB_TURN,"wait",gen);
+            else if(searched())transition(actor,s,KB_TURN,s.original?"pivot":"wait",gen);
             else transition(actor,s,KB_WAIT,"wait",gen);
         }
         break;}
     case KB_FLICK:{
         stop(actor);
-        if(!s.flickDone){s.flickDone=true;int hit=doFlick(actor);std::printf("P2_KABUTO_FLICK generator=%u source_id=75 hit=%d\n",gen,hit);std::fflush(stdout);}
-        if(s.stateTime>=clipSeconds("flick")){
+        const auto key=s.original?p2original::cannon::flickKey(s.flickDone,s.stateTime,actor->mHealth):p2original::cannon::FlickKey::None;
+        if((!s.original&&!s.flickDone)||key!=p2original::cannon::FlickKey::None){s.flickDone=true;int hit=doFlick(actor);std::printf("P2_KABUTO_FLICK generator=%u source_id=%u hit=%d\n",gen,s.source,hit);std::fflush(stdout);
+         if(key==p2original::cannon::FlickKey::FlickDead){die(actor,s,gen,priorForDeath);break;}}
+        if(s.stateTime>=seconds(s,"flick")){
             // KEYEVENT_END (KabutoState.cpp:306-311): Dead, else Attack.
             if(actor->mHealth<=0.0f){die(actor,s,gen,priorForDeath);break;}
             buildAim(aim);logLane(gen,"flick",s,pos,aim);
@@ -400,7 +526,7 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
         break;}
     case KB_DEAD:{
         stop(actor);
-        if(!s.escaped&&s.stateTime>=clipSeconds("dead")){s.escaped=true;actor->pcEscapeNow();}
+        if(!s.escaped&&s.stateTime>=seconds(s,s.clip)){s.escaped=true;actor->pcEscapeNow();}
         // KB_DEAD has no mDeadState assignment; silence unused-enum warning.
         break;}
     default:break;
@@ -409,19 +535,27 @@ void pc_p2_kabuto_fsm_update(BTeki* actor){
     s.logTimer+=dt;
     if(s.logTimer>=1.0f){s.logTimer=0.0f;const Vector3f now=actor->getPosition();
         std::printf("P2_KABUTO_FSM_POS species=Kabuto generator=%u state=%s x=%.2f y=%.2f z=%.2f health=%.1f\n",
-            gen,p2kabutofsm::stateName(s.state),now.x,now.y,now.z,actor->mHealth);std::fflush(stdout);}
+            gen,stateName(s.state),now.x,now.y,now.z,actor->mHealth);std::fflush(stdout);}
 }
 bool pc_p2_kabuto_fsm_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     auto it=actors.find(static_cast<PelletView*>(actor));if(it==actors.end())return false;
     {
         auto* v=static_cast<PelletView*>(actor);
         auto ftok=fsms.find(v);
-        const unsigned liveTok=actor->mGenerator?pc_p2_campaign_token(actor):0u;
+        const unsigned liveTok=(ftok!=fsms.end()&&ftok->second.original)?pc_p2_original_actor_token(actor):(actor->mGenerator?pc_p2_campaign_token(actor):0u);
         const unsigned token=liveTok?liveTok:(ftok!=fsms.end()?ftok->second.token:0u);
-        if(drawn.insert(v).second&&!corpse){std::printf("P2_KABUTO_DRAW generator=%u source_id=75 species=Kabuto corpse=%d\n",token,int(corpse));std::fflush(stdout);}
-        if(corpse&&drawnCorpse.insert(v).second){std::printf("P2_KABUTO_CORPSE_DRAW generator=%u source_id=75 species=Kabuto\n",token);std::fflush(stdout);}
+        if(drawn.insert(v).second&&!corpse){std::printf("P2_KABUTO_DRAW generator=%u source_id=%u corpse=%d\n",token,ftok!=fsms.end()?ftok->second.source:75u,int(corpse));std::fflush(stdout);}
+        if(corpse&&drawnCorpse.insert(v).second){std::printf("P2_KABUTO_CORPSE_DRAW generator=%u source_id=%u\n",token,ftok!=fsms.end()?ftok->second.source:75u);std::fflush(stdout);}
     }
     auto ft=fsms.find(static_cast<PelletView*>(actor));
+    if(ft!=fsms.end()&&ft->second.original){const auto& s=ft->second;
+     if(!corpse&&s.state==KB_FIXSTAY)return true;
+     const auto& r=originalResources[s.source-95];const std::string name=corpse?"carry":s.clip;
+     auto c=r.clocks.find(name);if(c==r.clocks.end())return false;
+     const float frame=corpse?0.0f:std::min(float(c->second.duration-1),s.stateTime*30.0f);
+     Shape* shape=poseVis.draw(actor,r.bank,name,frame,s.token);if(!shape)return false;
+     shape->updateAnim(gfx,matrix,nullptr,actor);shape->drawshape(gfx,*gfx.mCamera,nullptr);return true;
+    }
     const char* name=corpse?"dead":(ft!=fsms.end()?ft->second.clip.c_str():p2kabutofsm::motionClip(actor->mTekiAnimator->getCurrentMotionIndex()));
     Shape* shape=animated.at("wait").front();
     if(name){float phase=corpse?1.0f:(ft!=fsms.end()?ft->second.phase:0.0f);shape=animated.at(name).at(timing.at(name).index(phase,corpse));
@@ -472,6 +606,7 @@ void snapshotAdd(StoneSnapshot& snap,Creature* c,P2CannonStoneContactKind kind,c
     const Vector3f centre=c->getCentre();
     p2kabutostone::Target t;t.token=tokenOf(c);t.centre={centre.x,centre.y,centre.z};t.radius=c->getCentreSize();
     t.kind=kind;t.onFloor=c->mGroundTriangle!=nullptr;t.alive=true;
+    const auto p=c->getPosition();t.position={p.x,p.y,p.z};t.homingSearchable=c->mObjType==OBJTYPE_Navi||(c->isPiki()&&pikminPhase(static_cast<Piki*>(c))==p2kabutoaim::PikminPhase::Active);
     snap.targets.push_back(t);snap.creatures.push_back(c);snap.kinds.push_back(code);
 }
 // Host target snapshot: every Navi (co-op), live Pikmin, live Teki including
@@ -511,7 +646,7 @@ bool kabutoHostStoneAttack(Creature* target,float damage,P2ProjectileEngineHit& 
     // InteractAttack::actCommon visibility gate (interactBattle.cpp:450-456)
     // and the Beatle strategy's invincible gate (TAIbeatle.cpp:1102-1104).
     if(t->isVisible()&&!t->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){
-        t->mStoredDamage+=damage;t->setCreaturePointer(1,nullptr);hit.applied=true;}
+        t->mStoredDamage+=damage;if(pc_p2_kabuto_original_actor(t))t->mDamageCount+=1.0f;t->setCreaturePointer(1,nullptr);hit.applied=true;}
     hit.healthAfter=t->mHealth;hit.storedDamageAfter=t->mStoredDamage;hit.rejected=!hit.applied&&t->isAlive();
     return true;
 }
@@ -535,7 +670,7 @@ void stoneTick(StoneSnapshot& snap){
     p2kabutostone::Strike strikes[64];p2kabutostone::DeadEvent deads[p2kabutostone::kFleetCapacity];p2kabutostone::Released rel[p2kabutostone::kFleetCapacity];
     int sn=0,dn=0,rn=0;
     fleet.tick(p2kabutostone::kStoneGravity,&stoneTrace,&stoneMap,snap.targets.data(),int(snap.targets.size()),
-        strikes,64,sn,deads,p2kabutostone::kFleetCapacity,dn,rel,p2kabutostone::kFleetCapacity,rn);
+        strikes,64,sn,deads,p2kabutostone::kFleetCapacity,dn,rel,p2kabutostone::kFleetCapacity,rn,pc_p2_navis().size()==1?tokenOf(pc_p2_navis().first()):0);
     // Receivers run only after the whole snapshot/tick, since they may change
     // actor state (snapshot-before-stimulate).
     for(int i=0;i<sn;++i){const auto& k=strikes[i];
@@ -606,6 +741,12 @@ void pc_p2_kabuto_fsm_update_stones(){
 // stand-in shows that clip's frame-0 pose. Without anim data, no draw.
 void pc_p2_kabuto_fsm_draw_stones(Graphics& gfx){
     if(fleet.active()==0||!gfx.mCamera)return;
+    for(int i=0;i<p2kabutostone::kFleetCapacity;++i){if(!slotOriginal[i]||!fleet.used(i))continue;
+     const auto& st=fleet.stone(i);const bool dead=st.phase()==P2CannonStonePhase::Dead;if(!dead&&st.phase()!=P2CannonStonePhase::Move)continue;
+     const std::string clip=dead?"dead":"run";const auto& timing=originalStoneResource.clocks.at(clip);const auto& shapes=originalStoneResource.shapes.at(clip);
+     const float frame=dead?std::min(float(timing.duration-1),fleet.deadSeconds(i)*30.0f):std::fmod(st.timer()*30.0f,float(timing.duration));Shape* model=shapes.at(timing.index(frame/float(timing.duration-1),false));
+     Matrix4f world,view;world.makeSRT(Vector3f(st.scale(),st.scale(),st.scale()),Vector3f(0,st.faceDir(),0),Vector3f(st.position().x,st.position().y,st.position().z));gfx.mCamera->mLookAtMtx.multiplyTo(world,view);model->updateAnim(gfx,view,nullptr,nullptr);model->drawshape(gfx,*gfx.mCamera,nullptr);
+    }
     TekiShapeObject* so=tekiMgr?tekiMgr->getTekiShapeObject(TEKI_Iwagon):nullptr;
     Shape* shape=so?so->mShape:nullptr;
     AnimData* const sharedAnim=so?so->mAnimContext.mData:nullptr;
@@ -620,7 +761,7 @@ void pc_p2_kabuto_fsm_draw_stones(Graphics& gfx){
     gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx,gfx.mCamera->mFov,gfx.mCamera->mAspectRatio,gfx.mCamera->mNear,gfx.mCamera->mFar,1.f);
     gfx.useMaterial(nullptr);gfx.setDepth(true);
     for(int i=0;i<p2kabutostone::kFleetCapacity;++i){
-        if(!fleet.used(i))continue;
+        if(slotOriginal[i]||!fleet.used(i))continue;
         const P2CannonStone& st=fleet.stone(i);
         if(st.phase()!=P2CannonStonePhase::Move&&st.phase()!=P2CannonStonePhase::Dead)continue;
         // P1 boulder, sized to the Stone's map sphere (r25, mPosition is the

@@ -1,4 +1,11 @@
 #include "pc_p2_enemy.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_snow_native.h"
+#include "pc_p2_kochappy_policy.h"
+#include "pc_p2_original_snow_bank.h"
+#include "pc_p2_kochappy_fsm.h"
+#include "pc_p2_kochappy_stun.h"
+#include <sstream>
 #include "pc_p2_kabuto_host.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_animation.h"
@@ -40,7 +47,8 @@ std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
 bool interpolation=false;
 bool crossfade=false;
-bool campaignMode=false;
+bool campaignMode=false,originalBank=false;
+std::set<PelletView*> originalSnow;
 std::shared_ptr<const p2skin::Mesh> skin;
 std::shared_ptr<const p2attach::Bank> skeleton;
 std::map<std::string,std::vector<p2pose::Baked>> baked;
@@ -101,14 +109,14 @@ void kabutoGeneratedTick(BTeki* actor,float) {
 }
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { interpolation=false;crossfade=false;campaignMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset();kabutoHost.reset();kabutoGeneratedBank.reset();kabutoGeneratedBankLoaded=false; }
+void pc_p2_snow_reset() { pc_p2_original_snow_resources_reset(); interpolation=false;crossfade=false;campaignMode=false;originalBank=false;originalSnow.clear();skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset();kabutoHost.reset();kabutoGeneratedBank.reset();kabutoGeneratedBankLoaded=false; }
 void pc_p2_snow_update(BTeki* actor,float seconds){
     kabutoGeneratedTick(actor,seconds);
     if(!crossfade)return;
     auto it=instances.find(static_cast<PelletView*>(actor));
     if(it!=instances.end())it->second.transition.advance(seconds,gameflow.mPauseAll||gameflow.mIsUIOverlayActive);
 }
-void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); if(actor && actor->mGenerator)kabutoHost.release(pc_randomizer_generator_id(actor->mGenerator)); }
+void pc_p2_snow_forget(BTeki* actor) { pc_p2_original_snow_forget(actor);pc_p2_kochappy_stun_forget(actor); originalSnow.erase(static_cast<PelletView*>(actor));instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); if(actor && actor->mGenerator)kabutoHost.release(pc_randomizer_generator_id(actor->mGenerator)); }
 // Cannon Beetle family generated-session bind (lane 20, #424). Called from
 // genteki.cpp at birth for a P2-bound actor; declared in pc_p2_kabuto_host.h.
 // The source aborted on a non-Beatle vehicle because its dispatch forced
@@ -175,7 +183,8 @@ namespace {
 void bindSnow(Teki* teki) {
     if(actors.count(static_cast<PelletView*>(teki)))return;
     if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
-    const unsigned identity=campaignMode?0:teki->mGenerator->_70;
+    unsigned identity=campaignMode?0:teki->mGenerator->_70;
+    if(originalBank){unsigned source=0;p2original::originalActors().query(teki,source,identity);}
     Shape* shared=clips.begin()->second.front();
     const int previousHeap=gsys->setHeap(SYSHEAP_App);
             actors.insert(static_cast<PelletView*>(teki));
@@ -210,7 +219,7 @@ void bindSnow(Teki* teki) {
                 std::printf("P2_SNOW_POLICY generator=%u health=%.1f max_health=%.1f previous=%.1f source=YellowKochappy_fp00\n",
                             identity,teki->mHealth,teki->getParameterF(TPF_Life),oldHealth);
             }
-            std::printf("P2_ENEMY_READY species=YellowKochappy source_id=45 native_family=Chappy generator=%u behavior=P1\n",identity);
+            std::printf("P2_ENEMY_READY species=YellowKochappy source_id=45 native_family=Chappy generator=%u behavior=%s\n",identity,originalBank?"await_source_FSM_bind":"P1");
     gsys->setHeap(previousHeap);
 }
 }
@@ -224,71 +233,75 @@ void pc_p2_snow_campaign_setup() {
     gsys->setHeap(previousHeap);
 }
 
-void pc_p2_snow_setup() {
+namespace {
+bool setupSnow(bool original,std::string& error) {
     pc_p2_snow_reset();
-    std::ifstream campaign("assets/p2-snow-all-dwarfs.txt");
-    if(campaign){std::string magic,extra;if(!(campaign>>magic)||magic!="P2_SNOW_ALL_DWARFS_1"||(campaign>>extra)||pc_pikipelago_room_preview())std::abort();campaignMode=true;}
-    if(!pc_pikipelago_room_preview() && !campaignMode)return;
-    std::ifstream in(campaignMode?"assets/p2-snow.txt":"p2-snow.txt");if(!in){if(campaignMode)std::abort();return;}
+    std::ifstream campaign; if(!original)campaign.open("assets/p2-snow-all-dwarfs.txt");
+    if(campaign){std::string magic,extra;if(!(campaign>>magic)||magic!="P2_SNOW_ALL_DWARFS_1"||(campaign>>extra)||pc_pikipelago_room_preview()){error="Snow resource validation failed";return false;}campaignMode=true;}
+    if(!original && !pc_pikipelago_room_preview() && !campaignMode)return true;
+    std::ifstream in(campaignMode?"assets/p2-snow.txt":"p2-snow.txt");if(!in){if(campaignMode){error="missing Snow bank";return false;}return !original;}
     const auto started=std::chrono::steady_clock::now();
     std::ifstream blendOption(campaignMode?"assets/p2-snow-interpolation.txt":"p2-snow-interpolation.txt");
-    if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
+    if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra)){error="Snow resource validation failed";return false;}interpolation=true;}
     std::ifstream skinOption(campaignMode?"assets/p2-snow-skeletal.txt":"p2-snow-skeletal.txt");
-    if(skinOption){std::string magic,extra;if(!(skinOption>>magic)||magic!="P2_SNOW_SKELETAL_1"||(skinOption>>extra)||!interpolation)std::abort();
+    if(skinOption){std::string magic,extra;if(!(skinOption>>magic)||magic!="P2_SNOW_SKELETAL_1"||(skinOption>>extra)||!interpolation){error="Snow resource validation failed";return false;}
         std::ifstream mesh(campaignMode?"assets/p2-snow-skin.txt":"p2-snow-skin.txt");
         std::ifstream joints(campaignMode?"assets/p2-snow-joints.txt":"p2-snow-joints.txt");
         skin=p2skin::read(mesh);skeleton=p2attach::read(joints);
-        if(!skin||!skeleton||skin->joints!=skeleton->joints.size())std::abort();}
+        if(!skin||!skeleton||skin->joints!=skeleton->joints.size()){error="Snow resource validation failed";return false;}}
     std::ifstream fadeOption(campaignMode?"assets/p2-snow-crossfade.txt":"p2-snow-crossfade.txt");
-    if(fadeOption){std::string magic,extra;if(!(fadeOption>>magic)||magic!="P2_SNOW_CROSSFADE_1"||(fadeOption>>extra)||!skin)std::abort();crossfade=true;}
+    if(fadeOption){std::string magic,extra;if(!(fadeOption>>magic)||magic!="P2_SNOW_CROSSFADE_1"||(fadeOption>>extra)||!skin){error="Snow resource validation failed";return false;}crossfade=true;}
     std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
-    if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal()))std::abort();
-    if(!campaignMode) {
+    if(original){
+        if(!p2original::snow::bank(in,manifest)){error="invalid original Snow source motion bank";return false;}interpolation=true;
+        std::istringstream policy("P2_SNOW_POLICY_1 health 150");if(!healthPolicy.read(policy)){error="Snow health profile invalid";return false;}
+    }else if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal())){error="invalid Snow bank or preview";return false;}
+    if(!campaignMode && !original) {
     std::ifstream policy("p2-snow-policy.txt");
-    if(policy && !healthPolicy.read(policy))std::abort();
+    if(policy && !healthPolicy.read(policy)){error="Snow resource validation failed";return false;}
     std::ifstream attack("p2-snow-attack.txt");
-    if(attack && !attackPolicy.read(attack))std::abort();
+    if(attack && !attackPolicy.read(attack)){error="Snow resource validation failed";return false;}
     std::ifstream turn("p2-snow-turn.txt");
-    if(turn && !turnPolicy.read(turn))std::abort();
+    if(turn && !turnPolicy.read(turn)){error="Snow resource validation failed";return false;}
     std::ifstream chase("p2-snow-chase.txt");
-    if(chase && !chasePolicy.read(chase))std::abort();
+    if(chase && !chasePolicy.read(chase)){error="Snow resource validation failed";return false;}
     }
     // Validate the entire bank before allocating Shapes or uploading textures.
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
     for(const auto& clip:manifest) {
-        if(interpolation && clip.frames.empty())std::abort();
+        if(interpolation && clip.frames.empty()){error="Snow resource validation failed";return false;}
         size_t clipBytes=0;
         for(int i=0;i<clip.count;++i) {
             if(skin && (clip.name!="wait1" || i!=0))continue;
             char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
             std::ifstream file(path,std::ios::binary|std::ios::ate);
-            if(!file)std::abort();
+            if(!file){error="Snow resource validation failed";return false;}
             auto bytes=file.tellg();
-            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total)std::abort();
+            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total){error="Snow resource validation failed";return false;}
             clipBytes+=size_t(bytes);total+=size_t(bytes);
             file.seekg(0);
             std::vector<unsigned char> data(size_t(bytes),0),resources;
-            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))std::abort();
-            if(!reference.empty() && reference!=resources)std::abort();
+            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources)){error="Snow resource validation failed";return false;}
+            if(!reference.empty() && reference!=resources){error="Snow resource validation failed";return false;}
             reference=resources;
             if(interpolation){p2pose::Baked pose;
-                if(!p2pose::decodeBaked(data,pose) || (!topology.empty() && topology!=pose.topology))std::abort();
+                if(!p2pose::decodeBaked(data,pose) || (!topology.empty() && topology!=pose.topology)){error="Snow resource validation failed";return false;}
                 topology=pose.topology;baked[clip.name].push_back(std::move(pose));}
         }
     }
-    if(skin && baked.find("wait1")==baked.end())std::abort();
+    if(skin && baked.find("wait1")==baked.end()){error="Snow resource validation failed";return false;}
     Shape* shared=nullptr;
     int attachments=0;
     timing.clear();
     for(const auto& clip:manifest) {
         timing[clip.name]=clip;
-        if(skeleton){int ci=skeleton->clip(clip.name);if(ci<0||skeleton->clips[ci].duration!=clip.duration)std::abort();}
+        if(skeleton){int ci=skeleton->clip(clip.name);if(ci<0||skeleton->clips[ci].duration!=clip.duration){error="Snow resource validation failed";return false;}}
         for(int i=0;i<clip.count;++i) {
             if(skin && (clip.name!="wait1" || i!=0))continue;
             char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
-            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
+            Shape* shape=gameflow.loadShape(path,true);if(!shape){error="Snow resource validation failed";return false;}
             if(!shared) {
                 shared=shape;
                 for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture) {
@@ -299,13 +312,13 @@ void pc_p2_snow_setup() {
                 // use one immutable material/texture set for every render path.
                 // loadShape still allocates CPU resource copies on the scene heap.
                 if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount ||
-                   shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
+                   shape->mTevInfoCount!=shared->mTevInfoCount){error="Snow resource validation failed";return false;}
                 for(int j=0;j<shape->mTotalMatpolyCount;++j) {
                     auto* poly=shape->mMatpolyList[j];
                     if(!poly || !poly->mMaterial)continue;
                     int material=-1;
                     for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
-                    if(material<0)std::abort();
+                    if(material<0){error="Snow resource validation failed";return false;}
                     poly->mMaterial=&shared->mMaterialList[material];
                 }
                 shape->mMaterialList=shared->mMaterialList;
@@ -318,25 +331,50 @@ void pc_p2_snow_setup() {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
     std::printf("P2_SNOW_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f load_budget_seconds=5 budget_exceeded=%d\n",
                 poses,total,attachments,seconds,int(seconds>5));
+    if(original){originalBank=true;error.clear();return true;}
     if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor);++count;}}
-        std::printf("P2_SNOW_CAMPAIGN_READY dwarfs=%d interpolation=%d native_rewards=1\n",count,int(interpolation));return;}
+        std::printf("P2_SNOW_CAMPAIGN_READY dwarfs=%d interpolation=%d native_rewards=1\n",count,int(interpolation));return true;}
     std::string word;
     std::ifstream placements("p2-snow-actors.txt");int count;
-    if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100)std::abort();
+    if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100){error="Snow resource validation failed";return false;}
     std::set<unsigned long> wanted;
-    for(int i=0;i<count;++i){unsigned long id;if(!(placements>>id) || id>0xffffffffUL || !wanted.insert(id).second)std::abort();}
-    if(placements>>word)std::abort();
+    for(int i=0;i<count;++i){unsigned long id;if(!(placements>>id) || id>0xffffffffUL || !wanted.insert(id).second){error="Snow resource validation failed";return false;}}
+    if(placements>>word){error="Snow resource validation failed";return false;}
     Iterator it(tekiMgr);CI_LOOP(it) {
         Teki* teki=static_cast<Teki*>(*it);
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
-            if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
+            if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki)){error="Snow resource validation failed";return false;}
             bindSnow(teki);
         }
     }
-    if(!wanted.empty())std::abort();
+    if(!wanted.empty()){error="Snow resource validation failed";return false;}    error.clear();return true;
 }
+}
+void pc_p2_snow_setup(){
+ for(const auto& row:p2original::originalActors().rows())if(row.second.enemy.source==45)return;
+ std::string error;if(!setupSnow(false,error))std::abort();
+}
+bool pc_p2_snow_prepare_original(std::string& error){
+ if(originalBank){error.clear();return true;}
+ if(!actors.empty()){error="original Snow resources while actors owned";return false;}
+ return setupSnow(true,error);
+}
+bool pc_p2_snow_bind_original(BTeki* actor,unsigned token,std::string& error){
+ unsigned source=0,actual=0;
+ if(!originalBank||!actor||!actor->mGenerator||!token||actor->mTekiType!=TEKI_Chappy
+ ||actors.count(static_cast<PelletView*>(actor))||!p2original::originalActors().query(actor,source,actual)
+ ||source!=45||actual!=token){error="original Snow registry/chassis mismatch";return false;}
+ bindSnow(static_cast<Teki*>(actor));originalSnow.insert(actor);actor->mHealth=actor->mMaxHealth=150;
+ pc_p2_kochappy_stun_register(actor,5);error.clear();return true;
+}
+
 namespace {
 void snowClock(BTeki* teki,bool corpse,const char*& name,float& phase,float& sourceFrame) {
+    if(originalSnow.count(teki)){
+        const auto state=pc_p2_kochappy_fsm_observe(teki);
+        if(!state.available||!p2kochappy::originalFrame(state.state,state.stateTime,corpse,name,sourceFrame))std::abort();
+        phase=sourceFrame/float(timing.at(name).duration-1);return;
+    }
     int motion=teki->mTekiAnimator->getCurrentMotionIndex();
     // Chappy Type1 is the lethal squash path (TaiDyingAction), not idle.
     // Requested/residual velocity can remain nonzero during wait/turn states;

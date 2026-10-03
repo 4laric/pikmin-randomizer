@@ -5,6 +5,7 @@
 #include "pc_p2_white_campaign_policy.h"
 #include "pc_p2_white_treasure_policy.h"
 #include "pc_p2_campaign_economy.h"
+#include "pc_p2_campaign_treasure_state.h"
 #include "pc_randomizer.h"
 #include "Piki.h"
 #include "PikiMgr.h"
@@ -76,13 +77,20 @@ void pc_p2_ship_tick(Navi* navi, bool active) {
     }
     if (whiteLoaded) {
         std::string economy;
-        if (pc_randomizer_white_treasure_campaign()) {
+        if (pc_randomizer_white_treasure_campaign() || p2treasurestate::state.active()) {
             static p2treasure::Catalog catalog;
             static const bool catalogReady = [] {
                 const char* path = std::getenv("PIKMIN_P2_TREASURE_CATALOG");
                 return catalog.load_retail(path && path[0] ? path : "p2-treasure-catalog.txt");
             }();
-            economy = p2economy::ship_summary(p2whitetreasure::ledger.delivered, catalogReady ? &catalog : nullptr) + " | ";
+            if (catalogReady && p2treasurestate::state.active()) {
+                const auto progress=p2treasurestate::state.progress(catalog,
+                    pc_randomizer_white_treasure_campaign() && p2whitetreasure::ledger.delivered);
+                const char* phase=progress.phase()==p2economy::Phase::Complete ? "Complete"
+                    : progress.phase()==p2economy::Phase::TreasureHunt ? "Treasure Hunt" : "Repaying Debt";
+                economy=std::to_string(progress.pokos)+" Pokos | Debt "+std::to_string(progress.remaining())
+                    +" | "+std::to_string(progress.collected)+"/201 | "+phase+" | ";
+            } else economy = p2economy::ship_summary(p2whitetreasure::ledger.delivered, catalogReady ? &catalog : nullptr) + " | ";
         }
         char title[320];const auto& counts=p2ship::stock.counts[choice[captain]-3];
         std::snprintf(title,sizeof(title),"Pikipelago Ship: %s%s (%d leaf/%d bud/%d flower) | F10 withdraw, Shift+F10 deposit, Ctrl+F10 species",economy.c_str(),choice[captain]==4?"White":"Purple",counts[0],counts[1],counts[2]);

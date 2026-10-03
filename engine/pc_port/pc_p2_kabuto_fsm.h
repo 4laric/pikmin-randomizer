@@ -11,3 +11,9 @@ bool pc_p2_kabuto_fsm_suppress_ai(const BTeki*);
 // the stand-in draw. Called from gameCoreSection next to the projectile host.
 void pc_p2_kabuto_fsm_update_stones();
 void pc_p2_kabuto_fsm_draw_stones(Graphics&);
+
+#include <string>
+bool pc_p2_kabuto_original_resources(unsigned,std::string&);
+bool pc_p2_kabuto_original_birth(BTeki*,unsigned,unsigned,unsigned,std::string&);
+bool pc_p2_kabuto_original_registry(BTeki*,unsigned,std::string&);
+bool pc_p2_kabuto_original_actor(const BTeki*);

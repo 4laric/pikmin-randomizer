@@ -1028,6 +1028,10 @@ public:
 	void setDayLimit(int);
 	void updateUseList();
 	void read(RandomAccessStream&, bool);
+#if defined(PIKI_PC_PORT)
+	Generator* originalSourceHead() const { return mGenListHead; }
+	int originalSourceCount() const { return mGenCount; }
+#endif
 
 	// unused/inlined:
 	void write(RandomAccessStream&);

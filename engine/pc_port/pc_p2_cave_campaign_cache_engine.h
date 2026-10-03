@@ -1,4 +1,8 @@
 #pragma once
+#include <string>
+// Shared native image rollback; these do not switch surface/cave banks.
+std::string pc_p2_campaign_cache_image();
+void pc_p2_campaign_cache_restore_image(const std::string&);
 // Called by the ordinary stage provider at its committed entry/return boundary.
 // These operations only switch native generator-cache images; no preview flags,
 // actor health/count writes, scene loads, or standalone transfer files.

@@ -4,6 +4,7 @@
 #include "pc_vs.h"
 #include "GoalItem.h"
 #include "PikiHeadItem.h"
+#include "pc_randomizer.h"
 #endif
 #include "AIConstant.h"
 #include "DebugLog.h"
@@ -17,8 +18,10 @@
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 #include "Piki.h"
 #include "pc_p2_bulbmin.h"
+#include "pc_p2_cave_campaign_party_engine.h"
 #include "pc_p2_captain.h"
 #include "pc_p2_captor_forget.h"
+#include "pc_p2_original_piki_origin.h"
 #endif
 
 PikiMgr* pikiMgr;
@@ -44,6 +47,30 @@ DEFINE_PRINT("pikiMgr");
  */
 Creature* PikiMgr::birth()
 {
+    return birthWithFieldLimit(AICONST.mMaxPikisOnField(), meBirthMode);
+}
+#if defined(PIKI_PC_PORT)
+Creature* PikiMgr::birthOriginalP2()
+{
+    // Refuse a nested ordinary sprout/onion transaction. Never adjust its mode
+    // or the global AP/AICONST field limit on behalf of the source factory.
+    if (meBirthMode || containerExitMode) return nullptr;
+    return birthWithFieldLimit(100, false);
+}
+Creature* PikiMgr::birthOriginalP2Container()
+{
+    if (!pc_randomizer_original_session() || !containerExitMode || meBirthMode
+        || !itemMgr || itemMgr->getContainerExitCount() <= 0) return nullptr;
+    return birthWithFieldLimit(100, false);
+}
+Creature* PikiMgr::birthOriginalP2Sprout()
+{
+    if (!pc_randomizer_original_session() || !meBirthMode || containerExitMode) return nullptr;
+    return birthWithFieldLimit(100, true);
+}
+#endif
+Creature* PikiMgr::birthWithFieldLimit(int fieldLimit, bool allowSproutExtra)
+{
 	int totalPikis = GameStat::mapPikis;
 	if (itemMgr) {
 		totalPikis += itemMgr->getContainerExitCount();
@@ -53,11 +80,11 @@ Creature* PikiMgr::birth()
 		totalPikis--;
 	}
 
-	if (meBirthMode) {
-		if (totalPikis >= AICONST.mMaxPikisOnField() + 1) {
+	if (allowSproutExtra) {
+		if (totalPikis >= fieldLimit + 1) {
 			return nullptr;
 		}
-	} else if (totalPikis >= AICONST.mMaxPikisOnField()) {
+	} else if (totalPikis >= fieldLimit) {
 		return nullptr;
 	}
 
@@ -67,9 +94,11 @@ Creature* PikiMgr::birth()
 	// occupant's dependent id/leader. Lane 12 (#130): the same slot must not
 	// inherit a stale captain-capture actor id. Both inert unless opted in.
 	if (born) {
+        pc_p2_cave_campaign_party_forget(static_cast<Piki*>(born));
 		pc_p2_bulbmin_forget(static_cast<Piki*>(born));
 		pc_p2_captain_forget_piki(static_cast<Piki*>(born));
 		pc_p2_captor_forget_piki(static_cast<Piki*>(born)); // #886 captor mouths
+		pc_p2_original_piki_origin_forget(static_cast<Piki*>(born));
 	}
 #endif
 	return born;

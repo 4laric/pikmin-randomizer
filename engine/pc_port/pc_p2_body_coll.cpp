@@ -2,6 +2,7 @@
 
 #include "pc_p2_body_fit.h"
 #include "pc_p2_campaign_actor.h"
+#include "pc_p2_original_actor.h"
 #include "pc_p2_flyer_coll.h"
 #include "pc_p2_pose_bank.h"
 #include "gl/pc_gfx.h"
@@ -225,9 +226,13 @@ void pc_p2_body_coll_update(BTeki* actor)
             return;
         }
         b.bound = true;
+        unsigned source=0,token=0;
+        if(!p2original::originalActors().query(actor,source,token)){
+            token=pc_p2_campaign_token(actor);source=pc_p2_campaign_source(actor);
+        }
         std::printf("P2_BODY_COLL_BIND key=%s generator=%u source=%u spheres=%d scale=%.2f host_root_r=%.1f "
                     "own_root_r=%.1f\n",
-                    b.key.c_str(), pc_p2_campaign_token(actor), pc_p2_campaign_source(actor), b.table.count - 1,
+                    b.key.c_str(), token, source, b.table.count - 1,
                     double(b.scale), double(hostRoot), double(b.table.spheres[0].radius * b.scale));
         std::fflush(stdout);
     }

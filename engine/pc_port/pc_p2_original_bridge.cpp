@@ -1,3 +1,4 @@
+#include <sstream>
 #include "pc_p2_original_bridge.h"
 #include "netplay/pc_netplay_sha256.h"
 #include <cmath>
@@ -32,14 +33,18 @@ std::string bridgeDigest(const BridgeRecord& r){
  for(const auto* a:{&r.position,&r.offset,&r.rotation})for(float f:*a)number(bytes,f);
  unsigned char digest[32];pc_netplay_sha::sha256(bytes.data(),bytes.size(),digest);std::string out;const char* hex="0123456789abcdef";for(auto c:digest){out+=hex[c>>4];out+=hex[c&15];}return out;
 }
-bool readBridges(const std::string& path,std::vector<BridgeRecord>& out,std::string& e){
- std::ifstream in(path);std::string magic;unsigned count=0;if(!(in>>magic>>count)||magic!="P2_ORIGINAL_BRIDGE_1"||count>4096)return fail(e,"invalid bridge manifest");
+static bool parseBridgesStream(std::istream& in,std::vector<BridgeRecord>& out,std::string& e){
+ std::string magic;unsigned count=0;if(!(in>>magic>>count)||magic!="P2_ORIGINAL_BRIDGE_1"||count>4096)return fail(e,"invalid bridge manifest");
  std::vector<BridgeRecord> next;std::set<unsigned> seen;std::set<std::string> keys;
  for(unsigned i=0;i<count;++i){BridgeRecord r;std::string object,local;if(!(in>>r.uid>>r.sourceKey>>r.sourceSha>>object>>local>>r.reserved>>r.resurrectionDays>>r.dayLimit>>r.type>>r.stageLife))return fail(e,"truncated bridge source");
   for(auto* a:{&r.position,&r.offset,&r.rotation})for(float& f:*a)if(!(in>>f))return fail(e,"truncated bridge placement");
   if(object!="0002"||local!="0001"||!validateBridge(r,e))return fail(e,"unsupported bridge source");if(!seen.insert(r.uid).second||!keys.insert(r.sourceKey).second)return fail(e,"duplicate bridge source");next.push_back(r);
  }
  if(in>>magic)return fail(e,"trailing bridge source");out.swap(next);e.clear();return true;
+}
+bool readBridges(const std::string& path,std::vector<BridgeRecord>& out,std::string& e){std::ifstream input(path);return parseBridgesStream(input,out,e);}
+bool parseBridges(const std::string& bytes,std::vector<BridgeRecord>& out,std::string& e){
+ if(bytes.empty()||bytes.size()>4*1024*1024)return fail(e,"original typed item input bound invalid");std::istringstream input(bytes);return parseBridgesStream(input,out,e);
 }
 BridgeState bridgeInitial(const BridgeRecord& r){BridgeState s;for(int i=0;i<bridgeStageCount(r.type);++i)s.health[i]=r.stageLife;return s;}
 bool bridgeStateValid(const BridgeRecord& r,const BridgeState& s,std::string& e){

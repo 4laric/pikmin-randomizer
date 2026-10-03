@@ -159,7 +159,7 @@ struct Native::Impl final:Engine {
  bool reserve(unsigned roots,const std::array<unsigned,4>& pellets,std::string& e)override{
   unsigned count=0;for(unsigned n:pellets)count+=n;
   if(tekiMgr->getMax()-tekiMgr->getSize()<int(roots)||pelletMgr->getMax()-pelletMgr->getSize()<int(count))return reject(e,"Pelplant actual native actor/pellet pool capacity insufficient");
-  if(!tekiMgr->hasModel(TEKI_Palm))return reject(e,"Pelplant manager chassis has not been initialized");return true;
+  if(!tekiMgr->hasModel(TEKI_Palm)||!tekiMgr->getTekiShapeObject(TEKI_Palm))return reject(e,"Pelplant manager chassis has not been initialized");return true;
  }
  bool allocate(Host& h,const Position& position,float facing,std::string& e)override{
   AppHeapScope heap;

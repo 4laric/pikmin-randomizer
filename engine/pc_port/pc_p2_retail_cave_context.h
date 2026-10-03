@@ -22,7 +22,7 @@ struct CaveDescriptor {
  std::string cave,source,sourceSha256,catalogSha256; unsigned maxFloor;
  std::vector<FloorDefinition> definitions;
 };
-#include "pc_p2_retail_cave_catalog.inc"
+const std::vector<CaveDescriptor>& retailCatalog();
 
 inline const CaveDescriptor* descriptor(const std::string& cave){
  for(const auto& row:retailCatalog())if(row.cave==cave)return &row;
@@ -73,6 +73,8 @@ public:
  virtual bool install(const CaveDescriptor&,const FloorDefinition&,unsigned,
                       const SceneIdentity&,const std::vector<BirthIdentity>&,
                       std::vector<LiveBinding>&,std::string&)=0;
+ // Nonmutating ordinary boundary refusal keeps the installed floor active.
+ virtual bool canRelease(std::string&)const{return true;}
  // Must release even a partial install; false retains the session for recovery.
  virtual bool release(std::string&)=0;
  // True only for the actual native release event emitted by this owning floor.
@@ -84,6 +86,7 @@ public:
  virtual bool verifyAbsent(const CaveDescriptor&,unsigned,const ContentRow&,
                            const SceneIdentity&,const BirthIdentity& expected,
                            const LiveBinding&)const{(void)expected;return false;}
+ virtual bool commit(const Snapshot&,std::string&){return true;}
 };
 inline bool hex64(const std::string& s){
  if(s.size()!=64)return false;
@@ -120,8 +123,11 @@ public:
    }
    expectedBirths.push_back(next);
   }
-  if(!provider.preflight(*desc,*def,floor,scene,error))return false;
-  mProvider=&provider; // retain ownership even if a partial birth cannot release
+  mProvider=&provider; // retain ownership even if preparation cannot release
+  if(!provider.preflight(*desc,*def,floor,scene,error)){
+   std::string cleanup;if(provider.release(cleanup))mProvider=nullptr;else error+=";release_failed:"+cleanup;
+   return false;
+  }
   std::vector<LiveBinding> bindings;
   bool installed=provider.install(*desc,*def,floor,scene,expectedBirths,bindings,error);
   std::set<std::string> expected,seen;std::set<const void*> pointers;
@@ -155,7 +161,12 @@ public:
   if(!installed){std::string cleanup;if(provider.release(cleanup))mProvider=nullptr;
    else error+=";release_failed:"+cleanup;
    return false;}
-  mSnapshot={desc->cave,desc->source,desc->sourceSha256,desc->catalogSha256,floor,desc->maxFloor,scene,story,true};
+  Snapshot candidate={desc->cave,desc->source,desc->sourceSha256,desc->catalogSha256,floor,desc->maxFloor,scene,story,true};
+  if(!provider.commit(candidate,error)){
+   std::string cleanup;if(provider.release(cleanup))mProvider=nullptr;else error+=";release_failed:"+cleanup;
+   return false;
+  }
+  mSnapshot=std::move(candidate);
   mDefinition=def;mBindings=std::move(bindings);mActive=true;return true;
  }
  bool snapshot(const SceneIdentity& scene,Snapshot& out)const{
@@ -163,6 +174,7 @@ public:
   out=mSnapshot;return true;
  }
  bool unload(std::string& error){
+  if(mProvider&&!mProvider->canRelease(error))return false;
   // Revoke authority before touching native content. A failed release cannot
   // grant last-floor/boss authority but keeps provider ownership for retry.
   mActive=false;

@@ -18,6 +18,7 @@ struct BarrelState {
 };
 bool validateBarrel(const BarrelRecord&,std::string&);
 std::string barrelDigest(const BarrelRecord&);
+bool parseBarrels(const std::string&,std::vector<BarrelRecord>&,std::string&);
 bool readBarrels(const std::string&,std::vector<BarrelRecord>&,std::string&);
 bool barrelStateValid(const BarrelRecord&,const BarrelState&,float deadDuration,std::string&);
 bool barrelDamage(BarrelState&,float);

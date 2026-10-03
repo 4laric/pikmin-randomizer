@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <map>
 namespace p2original {
 // Original gameGenerator.cpp enemy-group cache, not P1 alive/latest-spawn-day
 // semantics. count is the prevalidated Teki count (retail placement capacity10);
@@ -25,4 +26,21 @@ bool originalDeath(const GeneratorState&,GeneratorState&,std::string&);
 // outputs atomically; enclosing native cache owns publication and actor state.
 bool encodeOriginalState(const std::string& fingerprint,const GeneratorState&,std::string& bytes,std::string&);
 bool decodeOriginalState(const std::string& fingerprint,unsigned uid,unsigned count,const std::string& bytes,GeneratorState&,std::string&);
+// Incarnation allocation survives uncached disc reentry. This contains only
+// identity high-water marks; source deaths/day/respawn remain in GeneratorState.
+// Checkpoint adoption merges monotonically in a running process so rollback
+// cannot replay retired identities. Fresh-process adoption restores saved marks.
+class IncarnationFrontier {
+public:
+ bool initialize(const std::string& campaign,std::string&);
+ bool activate(const GeneratorState&,unsigned day,bool disc,GenerationDecision&,std::string&);
+ // Typed non-enemy source records have their own lifecycle/count schema.
+ // Allocate only their incarnation number, never reinterpret them as enemies.
+ bool nextActivation(unsigned sourceUid,std::uint64_t& activation,std::string&);
+ bool encode(std::string& bytes,std::string&)const;
+ bool decode(const std::string& campaign,const std::string& bytes,std::string&);
+private:
+ std::string mCampaign;
+ std::map<unsigned,std::pair<std::uint64_t,std::uint64_t>> mMarks;
+};
 }
