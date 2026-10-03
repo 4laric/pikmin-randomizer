@@ -42,3 +42,9 @@ inline bool pc_kochappy_clock_resumed(const PcKochappyFsmSnapshot& before,const 
   &&std::isfinite(before.stateTime)&&std::isfinite(now.stateTime)
   &&(before.state!=now.state||now.stateTime>before.stateTime);
 }
+#include <string>
+// Binds exact original registry source1 to shared KochappyBase FSM/Red defaults.
+bool pc_p2_kochappy_fsm_bind_original(BTeki*,unsigned token,std::string&);
+class Creature;
+bool pc_p2_kochappy_fsm_original_pressed(BTeki*,Creature*);
+void pc_p2_kochappy_fsm_original_bittered(BTeki*,bool);

@@ -1,3 +1,5 @@
+#include <set>
+#include <string>
 #pragma once
 class BTeki;
 class Creature;
@@ -36,3 +38,7 @@ void pc_p2_armor_set_bittered(BTeki*, bool);
 // of TEKIOPT_Pressed (documented port analogue) and finish on the falling edge.
 void pc_p2_armor_start_stone(BTeki*);
 void pc_p2_armor_finish_stone(BTeki*);
+
+// Original catalog resources and physical binding, separate from AP/arena rosters.
+bool pc_p2_armor_prepare_original(const std::set<unsigned>&,std::string&);
+bool pc_p2_armor_bind_original(BTeki*,unsigned token,std::string&);

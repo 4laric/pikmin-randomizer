@@ -38,6 +38,10 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_uji.h"
+#include "pc_p2_batch2.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_uji_native.h"
+#include "pc_p2_original_drop_engine.h"
 #include "pc_p2_uji_policy.h"
 #include "pc_p2_captor_host.h"
 #include "pc_randomizer.h"
@@ -94,6 +98,7 @@ struct Clip {
 
 struct Uji {
     Kind kind = UJIA;
+    bool original = false;
     int sourceId = 12;
     Parms parms;
     Fsm fsm;
@@ -128,7 +133,7 @@ float distXZ(const Vector3f& a, const Vector3f& b) {
     const float dx = a.x - b.x, dz = a.z - b.z;
     return std::sqrt(dx * dx + dz * dz);
 }
-unsigned genOf(const BTeki* actor) { return pc_p2_campaign_token(const_cast<BTeki*>(actor)); }
+unsigned genOf(const BTeki* actor) { const unsigned original=pc_p2_original_actor_token(actor);return original?original:pc_p2_campaign_token(const_cast<BTeki*>(actor)); }
 Uji* lookup(BTeki* actor) {
     auto it = actors.find(static_cast<PelletView*>(actor));
     return it == actors.end() ? nullptr : &it->second;
@@ -367,10 +372,43 @@ void pc_p2_uji_forget(BTeki* actor) {
     // recycled actor address can never inherit it and credit the P1 proxy
     // as an onion:p2 grant. The central pc_p2_forget_teki seam also clears
     // it; this is idempotent.
-    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     auto it = actors.find(static_cast<PelletView*>(actor));
+    if(it==actors.end()||!it->second.original)pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     if (it != actors.end()) p2captorhost::release(actor, it->second.held); // teardown frees the mouth
     actors.erase(static_cast<PelletView*>(actor));
+    pc_p2_original_uji_forget(actor);
+}
+
+bool pc_p2_uji_original_resources(unsigned source,std::string& error) {
+    const Kind kind=source==12?UJIA:source==13?UJIB:TOBI;
+    if(source<12||source>14){error="invalid original Uji source";return false;}
+    std::vector<p2batch2clock::Row> rows;
+    if(!pc_p2_batch2_original_uji_resources(source,rows,error))return false;
+    std::map<std::string,Clip> clips;
+    for(const auto& row:rows){Clip clip;clip.name=row.name;clip.duration=float(row.sourceFrames)/30.0f;clip.loop=row.name=="move"||row.name=="fly";
+        for(const auto& event:row.events){if(event.key.size()!=1||event.key[0]<'0'||event.key[0]>'4'){error="invalid original Uji event key";return false;}clip.events.emplace_back(event.frame,event.key[0]-'0');}
+        clips.emplace(row.name,std::move(clip));
+    }
+    const char* required[]={"dead","dead_p","appear","dive","move","attack1","type5","attack2","eat","fly"};
+    const unsigned count=kind==UJIA?7:kind==UJIB?9:10;
+    if(clips.size()!=count){error="original Uji clip inventory differs from source registry";return false;}
+    for(unsigned i=0;i<count;++i)if(!clips.count(required[i])){error="original Uji authored clip missing";return false;}
+    if(kind!=UJIA){
+        const std::vector<std::pair<int,int>> strike={{5,2},{12,3},{14,4}},eat={{53,2}};
+        if(clips.at("attack2").events!=strike||clips.at("eat").events!=eat){error="original Uji bite/swallow authored events changed";return false;}
+    }
+    bankClips[kindName(kind)]=std::move(clips);error.clear();return true;
+}
+bool pc_p2_uji_original_birth(BTeki* actor,unsigned source,std::string& error) {
+    if(!actor||source<12||source>14||actors.count(static_cast<PelletView*>(actor))){error="invalid or reused original Uji actor";return false;}
+    const Kind kind=source==12?UJIA:source==13?UJIB:TOBI;
+    if(actor->mTekiType!=p2uji_policy::hostTypeFor(kind)||!bankClips.count(kindName(kind))){error="original Uji physical resources were not admitted";return false;}
+    Uji s;s.original=true;s.kind=kind;s.sourceId=int(source);s.parms=p2uji_policy::parmsFor(kind);
+    s.self=actor;s.home=actor->getPosition();s.heading=actor->getDirection();s.lastHealth=s.parms.life;
+    actor->mHealth=actor->mMaxHealth=s.parms.life;s.fsm.reset();s.clip="dive";s.phase=0;
+    auto inserted=actors.emplace(static_cast<PelletView*>(actor),std::move(s));
+    applyBurrowGate(actor,inserted.first->second,actor->mGenerator?actor->mGenerator->_70:0);
+    ready=true;error.clear();return true;
 }
 void pc_p2_uji_forget_piki(Piki* piki) {
     for (auto& entry : actors) entry.second.held.forget(piki);
@@ -415,6 +453,9 @@ const char* pc_p2_uji_state_name(const BTeki* actor) {
 }
 
 void pc_p2_uji_setup() {
+    // Original-course provider already admitted these resources/births. The
+    // legacy roster scan must not reset them after GeneratorMgr initializes.
+    if(pc_p2_original_uji_admitted())return;
     pc_p2_uji_reset();
     {
         int live = 0;
@@ -587,6 +628,11 @@ void pc_p2_uji_update(BTeki* actor) {
     s.lastHealth = actor->mHealth;
 
     if (actor->mHealth <= 0.0f && s.fsm.state != UJI_DEAD) {
+        // Ujia/Ujib/Tobi StateDead::init invokes deathProcedure, whose
+        // EnemyBase implementation throws common items at death entry.
+        if(s.original&&!pc_p2_original_spawn_items(actor)){
+            std::fprintf(stderr,"P2_ORIGINAL_UJI death lost original registry ownership\n");std::abort();
+        }
         if (!s.deadLogged) {
             std::printf("P2_UJI_DEAD generator=%u source_id=%d health=0\n", generator, s.sourceId);
             std::fflush(stdout);

@@ -17,3 +17,7 @@ bool pc_p2_frog_suppress_ai(const BTeki*);
 // of a registered frog (state name, current clip, clip phase) for the Groink
 // movement/animation evidence. Never mutates the actor or FSM.
 bool pc_p2_frog_probe(const BTeki*, const char** state, const char** clip, float* phase);
+// Direct original-course path. Does not register an AP source or scan P1 slots.
+#include <string>
+bool pc_p2_frog_prepare_original(std::string&);
+bool pc_p2_frog_bind_original(BTeki*,unsigned source,unsigned token,std::string&);

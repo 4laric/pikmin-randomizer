@@ -16,3 +16,6 @@ bool pc_p2_kochappy_geometry(BTeki*,p2pose::Pose&,std::string& clip,float& frame
 // First registered Kochappy actor, used as the lane-11 Mother Bulbmin
 // stand-in. Null when no Kochappy actor is registered.
 BTeki* pc_p2_kochappy_first_registered();
+// Original source1 resources and registrations; no P1/AP actor scan.
+bool pc_p2_kochappy_prepare_original(std::string&);
+bool pc_p2_kochappy_bind_original(BTeki*,unsigned token,std::string&);

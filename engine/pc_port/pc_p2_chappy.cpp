@@ -1,4 +1,5 @@
 #include "pc_p2_chappy.h"
+#include "pc_p2_original_chappy_native.h"
 #include "pc_p2_chappy_policy.h"
 #include "pc_p2_chappy_fsm.h"
 #include "pc_p2_chappy_adult.h"
@@ -75,6 +76,7 @@ std::map<PelletView*, std::string> lastClip;
 std::map<PelletView*, unsigned> corpseGenerators; // delivered-corpse lookup (preview path)
 p2chappy::Health health;
 bool bankLoaded = false;
+bool originalBank = false;
 std::set<PelletView*> drawnLive, drawnCorpse;
 size_t bankBytes = 0;
 // #895: decoded pose vectors per species + per-actor private geometry
@@ -1210,6 +1212,7 @@ void pc_p2_chappy_reset()
     fsms.clear();
     health.reset();
     bankLoaded = false;
+    originalBank = false;
     drawnLive.clear();
     drawnCorpse.clear();
     bankBytes = 0;
@@ -1219,6 +1222,7 @@ void pc_p2_chappy_reset()
 
 void pc_p2_chappy_forget(BTeki* actor)
 {
+    pc_p2_original_chappy_retired(actor);
     PelletView* view = static_cast<PelletView*>(actor);
     if (actors.erase(view)) {
         std::printf("P2_CHAPPY_FORGET registered=1\n");
@@ -1327,12 +1331,13 @@ bool pc_p2_chappy_receipt(PelletView* view, unsigned& generator)
     return true;
 }
 
-void pc_p2_chappy_setup()
+static void setupChappy(const std::set<unsigned>* originalSources, bool* prepared)
 {
     pc_p2_chappy_reset();
     std::ifstream bank("p2-chappy-bank.txt"), bindings("p2-chappy-actors.txt");
+    if (originalSources && (!bank || !tekiMgr)) return;
     if (!bank && !bindings) return;
-    if (!bank || !bindings || !tekiMgr) std::abort();
+    if (!bank || (!bindings && !originalSources) || !tekiMgr) std::abort();
     // Bank: P2_CHAPPY_BANK_1, species rows, clip rows.
     std::string token;
     if (!(bank >> token) || token != "P2_CHAPPY_BANK_1") std::abort();
@@ -1381,28 +1386,46 @@ void pc_p2_chappy_setup()
         }
     }
     if (banks.empty()) std::abort();
-    // Actors: P2_CHAPPY_ACTORS_1 <count> + <generator> <Species> rows.
-    if (!(bindings >> word)) std::abort();
-    int count = 0;
-    if (word != "P2_CHAPPY_ACTORS_1" || !(bindings >> count) || count < 1 || count > 100) std::abort();
     std::map<unsigned, std::string> wanted;
-    for (int i = 0; i < count; ++i) {
-        unsigned long long generator = 0;
-        std::string species;
-        if (!(bindings >> generator >> species)) std::abort();
-        if (!generator || generator > 0xffffffffULL) std::abort();
-        if (!p2chappy::speciesForEnum(species) || !wanted.emplace((unsigned)generator, species).second) std::abort();
-    }
-    if (bindings >> word) std::abort();
-    if (pc_randomizer_p2_bridge()) {
-        // Campaign identity comes from the seed, not the filed placeholders.
-        // This bridge arm runs in campaign sessions via pc_p2_preview_setup.
-        wanted.clear();
-        for (const auto& entry : banks) {
-            for (unsigned id : pc_p2_campaign_ids(entry.second.source)) wanted[id] = entry.second.species;
+    if (originalSources) {
+        // This is resource preparation only: no synthetic actor roster and no
+        // actor scan/bind. Exact compiled source profiles were checked by the
+        // caller; every required physical bank must be present before births.
+        for (unsigned source : *originalSources) {
+            const auto* spec = p2chappy::speciesForSource(source);
+            auto found = banks.find(spec->enumName);
+            if (found == banks.end() || found->second.source != source) return;
+            // Admit every authored adult state, including the source sleep
+            // start clip. A bank containing only a decorative wait is refused.
+            const char* required[]={"dead","attack","flick","move1","waitact1","wait2","type1"};
+            for(const char* clip:required)if(!found->second.clips.count(clip))return;
         }
+        for(auto i=banks.begin();i!=banks.end();){
+            if(!originalSources->count(i->second.source))i=banks.erase(i);else ++i;
+        }
+    } else {
+        // Actors: P2_CHAPPY_ACTORS_1 <count> + <generator> <Species> rows.
+        if (!(bindings >> word)) std::abort();
+        int count = 0;
+        if (word != "P2_CHAPPY_ACTORS_1" || !(bindings >> count) || count < 1 || count > 100) std::abort();
+        for (int i = 0; i < count; ++i) {
+            unsigned long long generator = 0;
+            std::string species;
+            if (!(bindings >> generator >> species)) std::abort();
+            if (!generator || generator > 0xffffffffULL) std::abort();
+            if (!p2chappy::speciesForEnum(species) || !wanted.emplace((unsigned)generator, species).second) std::abort();
+        }
+        if (bindings >> word) std::abort();
+        if (pc_randomizer_p2_bridge()) {
+            // Campaign identity comes from the seed, not the filed placeholders.
+            // This bridge arm runs in campaign sessions via pc_p2_preview_setup.
+            wanted.clear();
+            for (const auto& entry : banks) {
+                for (unsigned id : pc_p2_campaign_ids(entry.second.source)) wanted[id] = entry.second.species;
+            }
+        }
+        if (wanted.empty()) return;
     }
-    if (wanted.empty()) return;
     // Load the staged pose bank before touching actors (fail-closed on a
     // missing pose). #895: the compact loader keeps a few full Shapes per clip
     // and decodes every pose's vectors, so dense banks fit the resident budget.
@@ -1465,6 +1488,7 @@ void pc_p2_chappy_setup()
     }
     std::printf("P2_CHAPPY_BANK resident_bytes=%zu species=%zu\n", bankBytes, banks.size());
     bankLoaded = true;
+    if (originalSources) { originalBank=true;*prepared = true; return; }
     // Bind the actors.
     std::set<unsigned> found;
     Iterator it(tekiMgr);
@@ -1514,12 +1538,50 @@ void pc_p2_chappy_setup()
     std::fflush(stdout);
 }
 
-bool pc_p2_chappy_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned sourceId)
+void pc_p2_chappy_setup() {
+    // Original startup owns prebirth resource preparation and exact binding.
+    // The ordinary scene scan must not reset that family or require AP rosters.
+    if(originalBank)return;
+    for(const auto& row:p2original::originalActors().rows())
+        if(row.second.enemy.source==2||row.second.enemy.source==43||row.second.enemy.source==33)return;
+    setupChappy(nullptr, nullptr);
+}
+
+bool pc_p2_chappy_prepare_original(const std::set<unsigned>& sources, std::string& error)
+{
+    if (sources.empty() || sources.size() > 7) {
+        error = "empty/oversized original Chappy source request";
+        return false;
+    }
+    for (unsigned source : sources) {
+        if ((source!=2&&source!=43&&source!=33)||!p2chappy::speciesForSource(source)) {
+            error = "original source has no concrete Chappy profile";
+            return false;
+        }
+    }
+    if (!actors.empty() || !corpseGenerators.empty()) {
+        error = "original resource preparation requires an unbound family stage";
+        return false;
+    }
+    if(bankLoaded){
+        if(!originalBank){error="original Chappy cannot reuse an AP/preview resource owner";return false;}
+        for(unsigned source:sources){const auto* spec=p2chappy::speciesForSource(source);
+            if(!banks.count(spec->enumName)){error="original Chappy reentry needs a newly staged species bank";return false;}}
+        error.clear();return true;
+    }
+    bool prepared = false;
+    setupChappy(&sources, &prepared);
+    if (!prepared) { error = "required original Chappy physical bank/manager unavailable"; return false; }
+    error.clear();
+    return true;
+}
+
+static bool bindChappy(BTeki* actor, unsigned generatorId, unsigned sourceId,bool original)
 {
     const p2chappy::SpeciesParams* spec = p2chappy::speciesForSource(sourceId);
     if (!spec || !actor || !generatorId) return false;
     PelletView* view = static_cast<PelletView*>(actor);
-    if (actors.count(view)) return true;
+    if (actors.count(view)) return !original;
     // Only staged species bind: the pose bank arrives with the stage setup,
     // so an unstaged family member refuses here and keeps its P1/proxy path.
     // #948: every refusal names its runtime reason; none is silent.
@@ -1544,7 +1606,8 @@ bool pc_p2_chappy_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned sour
     actors[view] = spec;
     actor->mHealth = spec->health;
     initFsm(view, actor, spec, generatorId);
-    pc_randomizer_p2_bind_source(view, sourceId, generatorId);
+    if(original)actor->mMaxHealth=spec->health;
+    if(!original)pc_randomizer_p2_bind_source(view, sourceId, generatorId);
     std::printf("P2_CHAPPY_DELIVERY_BIND generator=%u source_id=%u key=chappy|%s\n", generatorId,
                 sourceId, spec->enumName);
     const auto& pos = actor->getPosition();
@@ -1560,6 +1623,14 @@ bool pc_p2_chappy_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned sour
                 fsms[view].clip.c_str());
     std::fflush(stdout);
     return true;
+}
+
+bool pc_p2_chappy_bind_dynamic(BTeki* actor,unsigned generator,unsigned source){return bindChappy(actor,generator,source,false);}
+bool pc_p2_chappy_bind_original(BTeki* actor,unsigned token,unsigned source){
+    unsigned boundSource=0,boundToken=0;
+    if(!actor||(source!=2&&source!=43&&source!=33)||!p2original::originalActors().query(static_cast<Creature*>(actor),boundSource,boundToken)
+       ||boundSource!=source||boundToken!=token)return false;
+    return bindChappy(actor,token,source,true);
 }
 
 namespace {

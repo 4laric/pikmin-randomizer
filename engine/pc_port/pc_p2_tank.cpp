@@ -6,6 +6,10 @@
 // tick and the P1 host AI is suppressed. Legacy visual-only preview path
 // (p2-tank-visual.txt) is retained when no identity bank is staged.
 #include "pc_p2_tank.h"
+#include "pc_p2_original_tank_bank.h"
+#include "pc_p2_original_tank_native.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_drop_engine.h"
 #include "pc_p2_tank_policy.h"
 #include "pc_p2_tank_breath.h"
 #include "pc_p2_tank_stream.h"
@@ -74,6 +78,7 @@ constexpr float FACE_OK_ANGLE=0.174533f;
 constexpr int FLICK_STUCK_MIN=3;
 constexpr float BREATH_TICK_S=1.0f/30.0f;
 struct TankFsm {
+    bool original=false;
     int kind=0;TState state=TNK_WAIT;float stateTime=0.0f;float heading=0.0f;
     Vector3f home;Vector3f targetPos;bool targetValid=false;
     float groundY=0.0f;bool blowing=false;bool breathDone=false;bool flickDone=false;bool escaped=false;
@@ -245,12 +250,72 @@ void transition(BTeki* actor,TankFsm& s,TState st,const char* clip,unsigned gen)
     std::fflush(stdout);
 }
 void die(BTeki* actor,TankFsm& s,unsigned gen,float priorHealth){
+    // TankState::StateDead::init invokes EnemyBase::deathProcedure before
+    // starting the dead clip; common original drops belong to this entry.
+    if(s.original&&!pc_p2_original_spawn_items(actor)){
+        std::fprintf(stderr,"P2_ORIGINAL_TANK death lost original registry ownership\n");std::abort();
+    }
     if(!s.deadLogged){s.deadLogged=true;const unsigned sourceId=s.kind?25u:24u;std::printf("P2_TANK_DEAD species=%s generator=%u source_id=%u health=0 prior_health=%.1f\n",ids[s.kind],gen,sourceId,priorHealth);std::fflush(stdout);}
     transition(actor,s,TNK_DEAD,"dead",gen);
 }
 }
 void pc_p2_tank_reset(){for(auto& b:poseBank)b.reset();poseVis.clear();vactors.clear();vlogged.clear();for(auto& c:vclips)c=VClip{};water=nullptr;waterLogged=false;vbytesTotal=0;actors.clear();fsms.clear();drawn.clear();drawnCorpse.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();ready=false;}
-void pc_p2_tank_forget(BTeki* actor){poseVis.forget(actor);vactors.erase(actor);vlogged.erase(actor);auto* v=static_cast<PelletView*>(actor);pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
+void pc_p2_tank_forget(BTeki* actor){poseVis.forget(actor);vactors.erase(actor);vlogged.erase(actor);auto* v=static_cast<PelletView*>(actor);
+ auto f=fsms.find(v);if(f==fsms.end()||!f->second.original)pc_randomizer_p2_forget_source(v);
+ actors.erase(v);fsms.erase(v);drawn.erase(v);drawnCorpse.erase(v);pc_p2_original_tank_forget(actor);
+}
+
+bool pc_p2_tank_original_resources(unsigned source,std::string& error){
+ if(source!=24&&source!=25){error="invalid original Tank source";return false;}
+ std::ifstream in("p2-original-tank-bank.txt");p2original::tank::Banks banks;
+ if(!p2original::tank::parseBank(in,banks,error))return false;
+ const int kind=int(source-24);
+ if(!timing[kind].empty()){
+  if(timing[kind].size()!=banks[kind].size()){error="resident original Tank clip inventory changed";return false;}
+  for(const auto& clip:banks[kind]){auto found=timing[kind].find(clip.name);
+   if(found==timing[kind].end()||found->second.count!=clip.count||found->second.duration!=clip.duration||found->second.frames!=clip.frames){error="resident original Tank sampled resources changed";return false;}
+  }
+ }else{
+  p2poseload::Shared shared;size_t total=0;
+  p2posefamily::Bank staged("TANK");
+  std::map<std::string,std::vector<Shape*>> stagedShapes;
+  std::map<std::string,p2animation::Clip> stagedTiming;
+  for(const auto& clip:banks[kind]){
+   if(!p2posefamily::loadFamilyClip(staged,clip.name,std::string("tank_")+ids[kind]+"_"+clip.name,clip.count,clip.duration,clip.frames,shared,total,stagedShapes[clip.name],error))return false;
+   const auto* physical=staged.clip(clip.name);
+   if(!physical||physical->poses.size()!=size_t(clip.count)||stagedShapes[clip.name].size()!=size_t(clip.count)){error="original Tank physical vectors/meshes incomplete";return false;}
+   stagedTiming[clip.name]=clip;
+  }
+  // Publish only complete physical resources. Failed first-load attempts
+  // leave the resident tables empty so a corrected retry can proceed.
+  poseBank[kind]=std::move(staged);animated[kind]=std::move(stagedShapes);timing[kind]=std::move(stagedTiming);
+ }
+ if(!poseBank[kind].ready()||poseBank[kind].clipCount()!=7){error="original Tank physical pose bank not ready";return false;}
+ for(const auto& clip:banks[kind]){const auto* physical=poseBank[kind].clip(clip.name);
+  if(!physical||physical->frames!=clip.frames||physical->duration!=clip.duration||physical->poses.size()!=size_t(clip.count)){error="resident original Tank physical sampled bank differs";return false;}
+ }
+ error.clear();return true;
+}
+bool pc_p2_tank_original_birth(BTeki* actor,unsigned source,unsigned uid,unsigned ordinal,std::string& error){
+ if(!actor||(source!=24&&source!=25)||!uid||actor->mTekiType!=TEKI_Tank||actors.count(static_cast<PelletView*>(actor))){error="invalid or reused original Tank physical actor";return false;}
+ const int kind=int(source-24);
+ if(!poseBank[kind].ready()||timing[kind].size()!=7){error="original Tank resources not admitted before birth";return false;}
+ auto* view=static_cast<PelletView*>(actor);auto inserted=fsms.try_emplace(view);
+ if(!inserted.second){error="original Tank FSM address is already owned";return false;}
+ TankFsm& f=inserted.first->second;f.original=true;f.kind=kind;f.home=actor->getPosition();f.heading=actor->getDirection();
+ f.targetPos=f.home;f.targetValid=true;f.rng=((uid^ordinal)*2654435761u)|1u;f.token=uid;
+ f.state=TNK_WAIT;f.clip="waitact1";f.phase=0;f.lastHealth=p2tank::params(kind).health;
+ actor->mHealth=actor->mMaxHealth=f.lastHealth;actors.emplace(view,kind);
+ // Allocate owned geometry now, before any original actor can be admitted
+ // without its actual draw path. A failure returns the owned partial actor.
+ if(!poseVis.draw(actor,poseBank[kind],f.clip,0,uid)){error="original Tank private physical geometry allocation failed";return false;}
+ ready=true;error.clear();return true;
+}
+bool pc_p2_tank_original_registry(BTeki* actor,unsigned token,std::string& error){
+ auto found=fsms.find(static_cast<PelletView*>(actor));
+ if(found==fsms.end()||!found->second.original||!token||pc_p2_original_actor_token(actor)!=token){error="original Tank registry token mismatch";return false;}
+ found->second.token=token;error.clear();return true;
+}
 float pc_p2_tank_param_f(const BTeki* actor,int idx,float fallback){
     auto i=actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));if(i==actors.end())return fallback;
     const p2tank::Params& p=p2tank::params(i->second);
@@ -265,6 +330,7 @@ float pc_p2_tank_param_f(const BTeki* actor,int idx,float fallback){
 }
 bool pc_p2_tank_suppress_ai(const BTeki* actor){return ready&&actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))!=0;}
 void pc_p2_tank_setup(){
+ if(pc_p2_original_tank_admitted())return;
  pc_p2_tank_reset();
  std::printf("P2_TANK_SETUP\n");std::fflush(stdout);
  const bool bridge=pc_randomizer_p2_bridge()&&!pc_pikipelago_room_preview();
@@ -337,7 +403,7 @@ void pc_p2_tank_update(BTeki* actor){
     TankFsm& s=ft->second;
     const float dt=gsys->getFrameTime();if(dt<=0.0f||dt>0.5f)return;
     const Vector3f pos=actor->getPosition();
-    const unsigned live=actor->mGenerator?pc_p2_campaign_token(actor):0u;
+    const unsigned live=s.original?pc_p2_original_actor_token(actor):(actor->mGenerator?pc_p2_campaign_token(actor):0u);
     if(live)s.token=live;
     const unsigned gen=s.token?s.token:live;
     const unsigned sourceId=s.kind?25u:24u;
@@ -474,7 +540,7 @@ bool pc_p2_tank_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view,bool corpse
    {
     auto* v=static_cast<PelletView*>(actor);
     auto ftok=fsms.find(v);
-    const unsigned liveTok=actor->mGenerator?pc_p2_campaign_token(actor):0u;
+    const unsigned liveTok=(ftok!=fsms.end()&&ftok->second.original)?pc_p2_original_actor_token(actor):(actor->mGenerator?pc_p2_campaign_token(actor):0u);
     const unsigned token=liveTok?liveTok:(ftok!=fsms.end()?ftok->second.token:0u);
     const unsigned sourceId=kind?25u:24u;
     if(drawn.insert(v).second&&!corpse){
@@ -495,7 +561,8 @@ bool pc_p2_tank_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view,bool corpse
        // #895: lerp + crossfade into a private Shape; nearest pose stays the fallback.
        const p2animation::Clip& clipTiming=timing[kind].at(name);
        const float sourceFrame=corpse?float(clipTiming.duration-1):std::max(0.f,std::min(1.f,phase))*float(clipTiming.duration-1);
-       if(Shape* smooth=poseVis.draw(actor,poseBank[kind],name,sourceFrame,actor->mGenerator?pc_p2_campaign_token(actor):0u))shape=smooth;
+       const unsigned token=(ft!=fsms.end()&&ft->second.original)?ft->second.token:(actor->mGenerator?pc_p2_campaign_token(actor):0u);
+       if(Shape* smooth=poseVis.draw(actor,poseBank[kind],name,sourceFrame,token))shape=smooth;
    }
    shape->updateAnim(gfx,view,nullptr,actor);
    pc_gfx_specular_family_scope(1);
