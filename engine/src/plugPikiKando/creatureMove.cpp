@@ -9,6 +9,7 @@
 #include "KMath.h"
 #include "MapMgr.h"
 #include "Pellet.h"
+#include "pc_p2_original_corpse_native.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -244,7 +245,11 @@ void Creature::moveNew(f32 deltaTime, bool applyGravity)
 			f32 cylinderHeight = pellet->getCylinderHeight();
 			f32 grabOffset     = -pellet->getPickOffset();
 
-			Vector3f heightVector(0.0f, 0.5f * cylinderHeight, 0.0f);
+			// P1 pellets use a bottom origin; original source corpses already
+			// store the cylinder center. Trace their center directly so the
+			// terrain solver cannot lower the source pickup sphere into ground.
+			const bool sourceCentered = pc_p2_original_corpse_profile(pellet) != nullptr;
+			Vector3f heightVector(0.0f, sourceCentered ? 0.0f : 0.5f * cylinderHeight, 0.0f);
 			Matrix4f rotationMtx;
 			rotationMtx.makeVQS(Vector3f(0.0f, 0.0f, 0.0f), pellet->mRotationQuat, Vector3f(1.0f, 1.0f, 1.0f));
 			heightVector.multMatrix(rotationMtx);
@@ -265,9 +270,14 @@ void Creature::moveNew(f32 deltaTime, bool applyGravity)
 				adjustedPos.y -= mGroundOffset;
 			}
 
+			// MapMgr::traceMove adds/subtracts radius around its bottom-origin
+			// input. Cancel that adapter for a source-centered corpse.
+			const bool sourceCentered = pc_p2_original_corpse_profile(pellet) != nullptr;
+			if (sourceCentered) adjustedPos.y -= mCollisionRadius;
 			// don't ignore dynamic collisions when moving
 			MoveTrace trace(adjustedPos, mVelocity, mCollisionRadius, false);
 			mapMgr->traceMove(this, trace, deltaTime);
+			if (sourceCentered) trace.mPosition.y += mCollisionRadius;
 
 			mVelocity = trace.mVelocity;
 			mSRT.t    = trace.mPosition;

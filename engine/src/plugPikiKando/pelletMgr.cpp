@@ -1,4 +1,5 @@
 #include "pc_p2_original_pelplant_native.h"
+#include "pc_p2_original_corpse_native.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_cargo_ground.h"
 #include "pc_randomizer.h"
@@ -176,15 +177,17 @@ void PelletView::becomePellet(u32 id, Vector3f NRef pos, f32 direction)
 		return;
 	}
 
-	f32 minY = mapMgr->getMinY(pos.x, pos.z, true);
-	f32 maxY = mapMgr->getMaxY(pos.x, pos.z, true);
-
-	if (absF(pos.y - maxY) < absF(pos.y - minY)) {
-		pos.y = maxY;
-	} else {
-		pos.y = minY;
+	if (!pc_p2_original_corpse_profile(pellet)) {
+		f32 minY = mapMgr->getMinY(pos.x, pos.z, true);
+		f32 maxY = mapMgr->getMaxY(pos.x, pos.z, true);
+		if (absF(pos.y - maxY) < absF(pos.y - minY)) {
+			pos.y = maxY;
+		} else {
+			pos.y = minY;
+		}
 	}
 
+	pc_p2_original_corpse_position(pellet,pos,direction);
 	pellet->init(pos);
 	pellet->mFaceDirection = direction;
 	pellet->mRotationQuat.fromEuler(Vector3f(0.0f, direction, 0.0f));
@@ -197,6 +200,7 @@ void PelletView::becomePellet(u32 id, Vector3f NRef pos, f32 direction)
 	pellet->_B0.set(0.0f, 0.0f, 0.0f);
 	pellet->startAI(0);
 	pellet->useRealDynamics();
+	pc_p2_original_corpse_collision(pellet);
 
 	mPellet = pellet;
 }
@@ -262,6 +266,7 @@ void Pellet::finishWaterEffect()
 void Pellet::doKill()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    pc_p2_original_corpse_forget(this);
     pc_p2_original_pelplant_forget_pellet(this);
 #endif
 	setTrySound(false);
@@ -512,6 +517,7 @@ void Pellet::doCarry(Creature* carryingPiki, immut Vector3f& direction, u16 carr
  */
 f32 Pellet::getBottomRadius()
 {
+	if (const auto* p=pc_p2_original_corpse_profile(this)) return p->radius;
 	if (mPelletView) {
 		return mPelletView->viewGetBottomRadius();
 	}
@@ -560,6 +566,7 @@ Vector3f Pellet::getCentre()
  */
 f32 Pellet::getCylinderHeight()
 {
+	if (const auto* p=pc_p2_original_corpse_profile(this)) return p->height;
 	if (mPelletView) {
 		return mPelletView->viewGetHeight();
 	}
@@ -571,6 +578,7 @@ f32 Pellet::getCylinderHeight()
  */
 f32 Pellet::getSize()
 {
+	if (const auto* p=pc_p2_original_corpse_profile(this)) return p->pickRadius;
 	if (mPelletView) {
 		Vector3f viewScale(mPelletView->viewGetScale());
 		return viewScale.x * mPelletView->viewGetBottomRadius();
@@ -733,6 +741,12 @@ int Pellet::getRandomFreeSlotIndex()
  */
 Vector3f Pellet::getSlotLocalPos(int slotID, f32 offset)
 {
+	if (const auto* p=pc_p2_original_corpse_profile(this)) {
+		const float angle=slotID==-2?mStuckAngle:(TAU/p->maximum)*slotID;
+		const float radius=p->pickRadius+offset;
+		const float y=(p->height*0.5f+1.0f+(mPickOffset!=0.0f?4.0f:0.0f))*(isFrontFace()?-1.0f:1.0f);
+		return Vector3f(radius*sinf(angle),y,radius*cosf(angle));
+	}
 	f32 grabAngle;
 	if (slotID == -2) {
 		grabAngle = mStuckAngle;
@@ -1179,6 +1193,7 @@ static u32 bounceSounds[] = {
  */
 void Pellet::update()
 {
+	pc_p2_original_corpse_collision(this);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
     if (pc_p2_original_pelplant_capture_update(this)) return;
 #endif
@@ -1358,6 +1373,7 @@ void Pellet::update()
 	mStateMachine->exec(this);
 	ASSERT_POSITION_NOTNAN("pellet nan before dual!");
 	DualCreature::update();
+	pc_p2_original_corpse_collision(this);
 	ASSERT_POSITION_NOTNAN("pellet nan after dual!");
 
 	if (mGroundTriangle && isDynFlag(1)) {
@@ -1416,7 +1432,9 @@ void Pellet::doRender(Graphics& gfx, Matrix4f& mtx)
 
 	if (mPelletView) {
 		if (aiCullable()) {
-			mPelletView->viewDraw(gfx, mtx);
+			Matrix4f viewMatrix=mtx;
+			pc_p2_original_corpse_view_matrix(this,viewMatrix);
+			mPelletView->viewDraw(gfx, viewMatrix);
 		}
 		return;
 	}
@@ -1448,6 +1466,17 @@ void Pellet::doRender(Graphics& gfx, Matrix4f& mtx)
 void Pellet::doCreateColls(Graphics& gfx)
 {
 	STACK_PAD_VAR(2); // this is ACTUALLY from unused temps according to the DLL
+	if (const auto* p=pc_p2_original_corpse_profile(this)) {
+		// Source corpses use a centered cylinder. Terrain contact must share
+		// that frame with source carrier slots rather than P1's bottom origin.
+		mMass=0.0f;
+		for (int i=0;i<4;++i) {
+			const float a=(TAU/4)*i;
+			addParticle(0.75f,Vector3f(p->pickRadius*cosf(a),-p->height*0.5f,p->pickRadius*sinf(a)));
+			addParticle(0.0f,Vector3f(p->pickRadius*cosf(a),p->height*0.5f,p->pickRadius*sinf(a)));
+		}
+		return;
+	}
 
 	mMass              = 0.0f;
 	f32 rad            = getBottomRadius();
@@ -1571,6 +1600,7 @@ Pellet* PelletMgr::newNumberPellet(int color, int type)
 Pellet* PelletMgr::newPellet(u32 pelletID, PelletView* view)
 {
 	PelletConfig* config = getConfig(pelletID);
+	config=pc_p2_original_corpse_config(view,config);
 	if (!config) {
 		return nullptr;
 	}
@@ -1586,9 +1616,11 @@ Pellet* PelletMgr::newPellet(u32 pelletID, PelletView* view)
 			Pellet* pellet = static_cast<Pellet*>(birth());
 #if defined(VERSION_PIKIDEMO) || defined(VERSION_GPIJ01_01)
 			pellet->initPellet(view, config);
+			pc_p2_original_corpse_born(pellet,view);
 #else
 			if (pellet) {
 				pellet->initPellet(view, config);
+				pc_p2_original_corpse_born(pellet,view);
 			}
 #endif
 			return pellet;

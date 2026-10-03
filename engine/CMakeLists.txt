@@ -266,6 +266,9 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_spawn_plan.cpp
     pc_port/pc_p2_original_catalog.cpp
     pc_port/pc_p2_original_actor.cpp
+    pc_port/pc_p2_original_corpse_profile.cpp
+    pc_port/pc_p2_original_corpse_ledger.cpp
+    pc_port/pc_p2_original_corpse_native.cpp
     pc_port/pc_p2_original_lifecycle.cpp
     pc_port/pc_p2_original_armor.cpp
     pc_port/pc_p2_original_armor_native.cpp
@@ -3235,6 +3238,18 @@ if(NOT PIKMIN_NATIVE_JAUDIO)
 endif()
 
 if(PIKMIN_BUILD_TESTS AND NOT ANDROID)
+add_executable(pc_p2_original_corpse_ledger_test tools/pc_p2_original_corpse_ledger_test.cpp
+    pc_port/pc_p2_original_corpse_ledger.cpp)
+target_include_directories(pc_p2_original_corpse_ledger_test PRIVATE pc_port)
+add_test(NAME p2_original_corpse_ledger COMMAND pc_p2_original_corpse_ledger_test)
+add_executable(pc_p2_original_corpse_profile_test tools/pc_p2_original_corpse_profile_test.cpp
+    pc_port/pc_p2_original_corpse_profile.cpp)
+target_include_directories(pc_p2_original_corpse_profile_test PRIVATE pc_port)
+add_test(NAME p2_original_corpse_profile COMMAND pc_p2_original_corpse_profile_test)
+add_executable(pc_p2_original_corpse_death_policy_test tools/pc_p2_original_corpse_death_policy_test.cpp
+    pc_port/pc_p2_original_corpse_ledger.cpp)
+target_include_directories(pc_p2_original_corpse_death_policy_test PRIVATE pc_port)
+add_test(NAME p2_original_corpse_death_policy COMMAND pc_p2_original_corpse_death_policy_test)
 add_executable(pc_midday_audio_fence_test tools/pc_midday_audio_fence_test.cpp pc_port/pc_midday_audio_fence.cpp)
 target_include_directories(pc_midday_audio_fence_test PRIVATE pc_port)
 target_link_libraries(pc_midday_audio_fence_test PRIVATE ${SDL2_LIBRARIES})

@@ -1,4 +1,5 @@
 #include "pc_p2_original_pelplant_native.h"
+#include "pc_p2_original_corpse_native.h"
 #include "pc_p2_ship.h"
 #include "pc_randomizer.h"
 #include "pc_p2_campaign_actor.h"
@@ -366,9 +367,11 @@ Vector3f GoalItem::getSuckPos()
 void GoalItem::suckMe(Pellet* item)
 {
 	PelletConfig* config = item->mConfig;
+    unsigned originalCorpseGrant=0;
+    const bool originalCorpse=pc_p2_original_corpse_onion(item,this,originalCorpseGrant);
     // Non-ship pellets reach this callback after their absorption finishes.
     // Corpse IDs identify the actual spawned species, including replacements.
-    if (pc_randomizer_collection_checks() && config->mPelletType() == PELTYPE_Corpse
+    if (!originalCorpse && pc_randomizer_collection_checks() && config->mPelletType() == PELTYPE_Corpse
         && config->mPelletColor() == -1 && flowCont.mCurrentStage) {
         for (int type = 0; type < TEKI_TypeCount; ++type) {
             if (config->mModelId.mId == static_cast<u32>(TekiMgr::getTypeId(type))) {
@@ -403,7 +406,9 @@ void GoalItem::suckMe(Pellet* item)
         }
     }
 	int pikiNum;
-	if (mOnionColour == config->mPelletType()) {
+	if (originalCorpse) {
+		pikiNum=int(originalCorpseGrant);
+	} else if (mOnionColour == config->mPelletType()) {
 		pikiNum = config->mMatchingOnyonSeeds();
 	} else {
 		pikiNum = config->mNonMatchingOnyonSeeds();
