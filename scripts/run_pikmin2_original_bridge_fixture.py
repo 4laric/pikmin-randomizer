@@ -50,6 +50,7 @@ def main():
         cli.add_argument('--'+field,type=Path,required=True)
     cli.add_argument('--expected-native',required=True)
     cli.add_argument('--captain-down',action='store_true')
+    cli.add_argument('--debugger',type=Path,help='Private Linux GDB for a diagnostic attempt; never qualifies gameplay')
     cli.add_argument('--surface-assets',type=Path,
                      help='Read-only qualified tutorial surface bank; fixture landing/squad adapters stay explicitly labeled')
     args=cli.parse_args()
@@ -88,8 +89,14 @@ def main():
     if args.surface_assets:
         command=[str(exe),'--experimental-pikmin2-surface','tutorial','--bridge-manifest='+str(run.directory/'bridges.txt')]
     if args.captain_down:command.append('--force-captain-down')
+    if args.debugger:
+        debugger=args.debugger.resolve(strict=True)
+        if os.name=='nt':raise ValueError('Private GDB diagnostic requires Linux')
+        env['LD_LIBRARY_PATH']=str(debugger.parent.parent/'lib/x86_64-linux-gnu')
+        env['DEBUGINFOD_URLS']=''
+        command=[str(debugger),'-nx','-batch','-ex','set pagination off','-ex','set confirm off','-ex','run','-ex','thread apply all bt 15','--args',*command]
     if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX','stdbuf','-oL','-eL',*command]
-    inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},surface_inputs=surface_inputs,fixture_landing_squad_adapters=bool(args.surface_assets),asset_overlay=overlay_mode,argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_completion=True)
+    inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},surface_inputs=surface_inputs,fixture_landing_squad_adapters=bool(args.surface_assets),asset_overlay=overlay_mode,argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_completion=True,debugger_sha256=sha(args.debugger) if args.debugger else None)
     (run.directory/'run-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     print(json.dumps({'directory':str(run.directory),'inputs':inputs}),flush=True)
     start=time.monotonic();proc=None;timed_out=False
@@ -114,7 +121,7 @@ def main():
     marker='PASS ORIGINAL_BRIDGE_NATIVE'
     if args.captain_down:passed=code==86 and 'P2_FIXTURE_CAPTAIN_DOWN' in text and marker not in text
     else:passed=code==0 and marker in text and 'ORIGINAL_BRIDGE_BASELINE pikmin=20 window=960x540' in text and 'P2_FIXTURE_CAPTAIN_DOWN' not in text
-    result=dict(passed=passed and not timed_out,exit_code=code,timed_out=timed_out,seconds=time.monotonic()-start,handshake=run.handshaken,log_sha256=sha(run.directory/'native.log'),owned_pid=proc.pid,child_reaped=proc.poll() is not None,full_course_gameplay=False,injected_completion=True)
+    result=dict(passed=passed and not timed_out and not args.debugger,exit_code=code,timed_out=timed_out,seconds=time.monotonic()-start,handshake=run.handshaken,log_sha256=sha(run.directory/'native.log'),owned_pid=proc.pid,child_reaped=proc.poll() is not None,full_course_gameplay=False,injected_completion=True)
     (run.directory/'runtime-result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result),flush=True)
     return 0 if result['passed'] else 1
 
