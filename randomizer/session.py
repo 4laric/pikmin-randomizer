@@ -133,6 +133,15 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
+            if 'generated_cave' in manifest:
+                from .cave_campaign import bootstrap_contract
+                extension = bootstrap_contract(manifest['generated_cave'],
+                    manifest['seed'], manifest['slot'], self.names).split()
+                if fields[-len(extension)-1:] != extension + ['END']:
+                    raise ValueError('native journal generated cave contract mismatch')
+                fields = fields[:-len(extension)-1] + ['END']
+            if 'CAVE_CHECKS' in fields:
+                raise ValueError('native journal generated cave mode mismatch')
             # The seed-bound captain extension is last, after optional Purple.
             # Never infer opt-in from a journal belonging to a legacy manifest.
             if manifest.get('p2_second_captain'):
