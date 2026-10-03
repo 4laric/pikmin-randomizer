@@ -6,6 +6,12 @@ uses their names and ordinary `MapSelect` → `NewPikiGame` transitions. Static 
 and topology ownership follow the selected course. Existing tutorial preview and
 ordinary Pikmin 1 launches retain their entrypoints.
 
+An invisible fifth record preserves native player-state and card bookkeeping,
+which dereferences five stage nodes. It has no generator schedules or playable
+destination. Startup requires ordered IDs/indices 0–3 for visible courses and
+the exact reserved invisible ID/index 4 record. This does not make ordinary
+Pikmin 1 saves compatible with the candidate; its cards remain isolated.
+
 This is an implementation increment, not full playable Pikmin 2 acceptance.
 Story unlocks are open for travel testing. Original retail enemies, treasures,
 plants and objects remain the original-course provider lane's work. The candidate

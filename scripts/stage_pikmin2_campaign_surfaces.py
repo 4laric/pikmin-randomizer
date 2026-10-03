@@ -20,8 +20,11 @@ WATER_COUNTS = (3, 5, 8, 2)
 
 def stage_table():
     # Replace the P1 story table: duplicate story IDs would pick a P1 destination.
-    return ''.join(f'new_map visible {{\n name "{name}"\n id {i}\n file stages/p2_{course}.ini\n}}\n'
-                   for i, (course, name) in enumerate(zip(COURSES, NAMES))).encode('ascii')
+    visible = ''.join(f'new_map visible {{\n name "{name}"\n id {i}\n file stages/p2_{course}.ini\n}}\n'
+                      for i, (course, name) in enumerate(zip(COURSES, NAMES)))
+    # PlayerState's initialized flags and native card codec require five linked
+    # slots. The fifth is invisible bookkeeping, never a travel destination.
+    return (visible+'new_map hidden {\n name "Reserved native save slot"\n id 4\n file stages/p2_unused.ini\n}\n').encode('ascii')
 
 
 def mapcode(code):

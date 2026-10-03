@@ -13,6 +13,8 @@ class CampaignSurfaceTests(unittest.TestCase):
     def test_distinct_story_destinations(self):
         table = stage_table().decode()
         self.assertEqual(table.count('new_map visible'),4)
+        self.assertEqual(table.count('new_map '),5)
+        self.assertIn('new_map hidden {\n name "Reserved native save slot"\n id 4\n file stages/p2_unused.ini',table)
         for i,c in enumerate(('tutorial','forest','yakushima','last')):
             self.assertIn(f'id {i}\n file stages/p2_{c}.ini',table)
         self.assertNotIn('stages/stage',table)

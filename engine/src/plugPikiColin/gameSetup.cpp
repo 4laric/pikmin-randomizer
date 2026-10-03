@@ -284,13 +284,24 @@ void GameSetupSection::update()
             stage = selected;
             if (pc_pikipelago_surface_campaign()) {
                 int counts[4]={0,0,0,0};
+                int reserved=0;
                 for(StageInfo* candidate=static_cast<StageInfo*>(flowCont.mStageList.mChild); candidate;
                     candidate=static_cast<StageInfo*>(candidate->mNext)) {
+                    if(candidate->mStageID==4) {
+                        if(candidate->mStageIndex!=4 || candidate->mIsVisible ||
+                           candidate->mChalStageID!=CHALSTAGE_NOT || candidate->mGenFileList.getChildCount()!=0 ||
+                           std::strcmp(candidate->mFileName,"stages/p2_unused.ini") || ++reserved!=1) {
+                            std::fprintf(stderr,"Invalid P2 campaign reserved native save slot\n");std::exit(2);
+                        }
+                        continue;
+                    }
                     const char* path=pc_pikipelago_surface_stage_for(candidate->mStageID);
-                    if(!path || std::strcmp(path,candidate->mFileName) || ++counts[candidate->mStageID]!=1) {
+                    if(!path || !candidate->mIsVisible || candidate->mStageIndex!=candidate->mStageID ||
+                       candidate->mChalStageID!=CHALSTAGE_NOT || std::strcmp(path,candidate->mFileName) || ++counts[candidate->mStageID]!=1) {
                         std::fprintf(stderr,"P2 campaign requires exactly four unique surface stages\n");std::exit(2);
                     }
                 }
+                if(reserved!=1) {std::fprintf(stderr,"Missing P2 campaign reserved native save slot\n");std::exit(2);}
                 for(int id=0;id<4;++id) {
                     if(counts[id]!=1) {std::fprintf(stderr,"Missing P2 campaign surface stage\n");std::exit(2);}
                     gameflow.mPlayState.openStage(id);
