@@ -35,9 +35,10 @@ struct PikiHeadItem;
 
 #if defined(PIKI_PC_PORT)
 extern "C" int pc_settings_get_whistle_radius_pct(void);
+#include "pc_p2_equipment.h"
 // Mod "Whistle Radius": el radio máximo escalado; el mínimo no cambia.
 #define NAVI_WHISTLE_MAX_RADIUS(navi) \
-	(C_NAVI_PARM(navi, mWhistleMaxRadius) * (f32)pc_settings_get_whistle_radius_pct() / 100.0f)
+	(pc_p2_equipment_whistle(C_NAVI_PARM(navi, mWhistleMaxRadius)) * (f32)pc_settings_get_whistle_radius_pct() / 100.0f)
 #else
 #define NAVI_WHISTLE_MAX_RADIUS(navi) C_NAVI_PARM(navi, mWhistleMaxRadius)
 #endif

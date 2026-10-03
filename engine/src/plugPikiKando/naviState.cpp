@@ -1910,7 +1910,7 @@ void NaviGatherState::exec(Navi* navi)
 	navi->mWhistleRadiusFrac = pc_whistle_fraction(navi->mWhistleTimer);
 	navi->mWhistleCircleMode = 2;
 	mWhistleCallRadius = (C_NAVI_PARM(navi, mWhistleMinRadius)
-	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
+	    + navi->mWhistleRadiusFrac * (pc_p2_equipment_whistle(C_NAVI_PARM(navi, mWhistleMaxRadius)) - C_NAVI_PARM(navi, mWhistleMinRadius)))
 	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 	if (!gameflow.mPauseAll) {
 		navi->callPikis(mWhistleCallRadius, (down && mTapState.recallWorkers) || pc_whistle_recall_workers(navi->mWhistleTimer, down));
