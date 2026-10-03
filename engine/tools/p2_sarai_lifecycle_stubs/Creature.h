@@ -13,12 +13,14 @@ struct CollPart {
 };
 
 class Graphics;
+class Generator;
 
 struct SRT;
 
 
 class Creature {
 public:
+    Generator* mGenerator = nullptr;
     SRT mSRT;
     virtual ~Creature() = default;
     virtual void update() {}
