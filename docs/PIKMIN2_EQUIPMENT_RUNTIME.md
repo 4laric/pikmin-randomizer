@@ -108,3 +108,53 @@ When the actual source provider and selected-card restore are composed:
 Until those steps pass, map collection, card persistence and captain effect
 gameplay gates remain open. Asset presence and synthetic receipts satisfy none
 of them.
+
+## Short direct-play sequence
+
+Use the verified current package's normal bindings: WASD movement, Space/left
+click to throw, Left Shift/right click to whistle, and Enter to confirm. Check
+F1 input settings if bindings were changed. Each effect segment should take
+30–90 seconds with the actual item and its test target close to the start.
+
+Before the package is handed to a player, its owner must verify the live source
+item/receiver bindings, retain the item's retail weight and source context, and
+confirm its actual original-session authority. Source actors, source assets and
+an empty receipt state are prerequisites; do not create an acquired item bit.
+Start with the supported squad/window baseline and unmodified captain health.
+Save all logs and captures privately. Stop the segment on captain knockout.
+
+1. **No-receipt comparison, 30–45 seconds:** keep Whistle Pluck OFF and radius,
+   captain health and speed at 100%. Whistle a nearby grounded sprout; it must
+   stay buried. With no Amplifier, a Pikmin outside the normal whistle circle
+   must stay outside the squad. Record captain motion and one ordinary safe
+   damage contact. A P1/AP fallback run proves only that fallback; it cannot be
+   used as an original-campaign no-receipt run.
+2. **Acquisition, 30–90 seconds:** direct Pikmin onto the actual source item and
+   wait for their ordinary haul and completed receiver suction. Record its
+   unique source ID/value in the treasury log. Repeat the matched comparison
+   without changing settings: Professional Noisemaker should whistle-pluck the
+   sprout; Amplifier should recruit the distant Pikmin. For Dream Material or
+   Forged Courage, use the same actual electric/fire contact as the comparison.
+   Justice Alloy should halve that accepted damage; Boots should change travel
+   speed and reject the registered `InteractWind` impulse. Keep each separate
+   effect test short and stop on captain danger. Wind adaptations that use a
+   different receiver still need their own source review.
+3. **Atlas haul:** on the actual Emergence floor-2 source, throw Reds into its
+   Violet Buds and pluck the resulting Purples normally. Carry the actual loose
+   weight-101 Atlas with at least ten Purples plus one ordinary Pikmin. Finish
+   receiver suction, then return to travel and select newly available Awakening
+   Wood. Do not lower weight, convert colors directly, move the captain/actors
+   through a script, or edit the receipt state.
+4. **Day-end/fresh-process:** use normal day completion and Save, quit fully,
+   then relaunch the same package/card. Repeat the effect and travel selection;
+   consumed cargo stays absent and no extra Pokos/acquisition event appears.
+
+Current source-package boundary: the qualified equipment executable contains
+the real effect hooks, but its original-session/treasury dependencies are
+intentionally inactive until the actual providers are composed. The SAVE
+foundation rejects missing typed course/resource providers before admitting an
+original session. Metadata-only packages and the existing White diamond or
+held-watch scaffolds cannot establish equipment acquisition. The cargo owner
+will supply the first actual gear producer; the retail cave owner supplies the
+loose Atlas floor and Violet Bud context. Do not turn those incomplete inputs
+into an artificial successful runtime.
