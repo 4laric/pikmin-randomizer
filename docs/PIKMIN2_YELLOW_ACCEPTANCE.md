@@ -2,7 +2,8 @@
 
 Implementation owner: Codex through the shared GitHub account `4laric`.
 Native change: [PR 172](https://github.com/4laric/Open-Nectar---Pikmin-Native-PC-Port/pull/172),
-reviewed commit `63a72cec7f8c21515bfe6e89e210af1cd48c47e2`.
+trajectory commit `63a72cec7f8c21515bfe6e89e210af1cd48c47e2`, followed by
+factory-capacity correction at `745ce74925936005a789257400761000deed6443`.
 
 ## Bounded trajectory check
 
@@ -56,3 +57,25 @@ the course owner must first supply its launch command and safe approach route:
 This script remains unqualified until the source scene, receiver, emitter and
 save transport are actually exercised. Source review, unit tests, build success,
 and synthetic flags cannot supply those results.
+
+## Bounded electric contact check
+
+[Native PR 178](https://github.com/4laric/Open-Nectar---Pikmin-Native-PC-Port/pull/178)
+adds an explicitly staged Yellow mode to the existing ElecBug contact fixture.
+The engineered pair's natural discharge and ordinary throw must dispatch the
+actual electric receiver for the exact staged Yellow. The witness requires its
+rejection without changing Flying state, followed by actual grounded survival
+and 20 living Pikmin. Held, flying, drowning and death states cannot qualify
+the final survivor. Run a separate fresh vulnerable Red control:
+
+```powershell
+py -3.12 scripts/run_pikmin2_yellow_electric.py --exe <contact-fixture.exe> --expected-exe-sha256 <sha256> --content <private-ElecBug-bank> --mode yellow-electric
+py -3.12 scripts/run_pikmin2_yellow_electric.py --exe <contact-fixture.exe> --expected-exe-sha256 <sha256> --content <private-ElecBug-bank> --mode red-electric
+```
+
+Each launch is hash checked, privately staged and supervised for at most 60
+seconds. A process candidate marker alone cannot pass: the launcher correlates
+the exact actor through the actual receiver/contact/recovery log sequence.
+The Red control establishes an accepted DenkiDying reaction, not final death.
+Neither run establishes original acquisition, source campaign placement, or
+save/resume. Build and actual contact results remain pending.
