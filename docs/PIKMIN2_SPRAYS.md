@@ -9,7 +9,7 @@ Native branch `codex/p2-sprays-142` implements captain Walk-state D-pad Up
 ultra-spicy use. It consumes one spray from the original campaign's single
 `p2originalresource::ResourceState`, then visits the captain's actual CPlate
 formation. Normal, living Pikmin enter a separate spicy reaction state with
-a random 0–0.3 second delay. A real host GROWUP1 action callback starts the
+a random 0–0.3 second delay. The verified retail GROWUP1 action key starts the
 effect; no nectar or maturity credit occurs. Existing affected Pikmin refresh
 their duration without stacking stats. An empty formation still spends a spray,
 matching source Navi use. Zero stock and an uninstalled inventory refuse use.
@@ -30,8 +30,11 @@ Source values were read from the user's private US GPVE01 revision 0 disc:
 Reference behavior: `Navi::applyDopes`, `InteractDope::actPiki`,
 `PikiDopeState`, `Piki::getSpeed/getAttackDamage/doAnimation` and
 `FakePiki::doAnimation` in the local read-only P2 research checkout.
-The host GROWUP1 action timing is an adaptation, not a claim of source animation
-bank/event fidelity. Native Pani animation rate applies after fixed-speed selection.
+The #1252 SourceBank validates the staged receiver table and its hashes.
+GROWUP1 has 35 source frames and action key 2 at frame 14; its shared
+ReceiverClock uses strict key.frame < int(timer), and END1000 returns to Normal.
+Inherited P1 character keys do not drive this mechanic; the character motion is
+presentation only. Native Pani animation rate applies after fixed-speed selection.
 
 ## Composition boundary
 
@@ -43,17 +46,21 @@ Save #1229 owns authoritative fresh-campaign installation and atomic campaign
 checkpoint restore, including the physical source/drop graph.
 
 After the actual resources and authoritative campaign state are installed,
-startup calls `pc_p2_sprays_bind(&resourceState)`. It calls
-`pc_p2_sprays_bind(nullptr)` before that object is destroyed. An isolated
+startup calls `pc_p2_sprays_bind(&resourceState, &resources.receiverClips[1], error)`
+using Resources from the verified Honey SourceBank. It calls
+`pc_p2_sprays_bind(nullptr, nullptr, error)` before that object is destroyed. An isolated
 ResourceSnapshot codec roundtrip does not establish gameplay save/resume.
-Per-Pikmin remaining spicy duration is not yet carried by the campaign codec.
+Per-Pikmin remaining spicy duration has a validated atomic `restore(float)`
+method (finite 0–40 seconds), but is not yet carried by the campaign codec.
+Saving during the pending Dope reaction must wait for its source END or serialize
+the entire pending clock; a remaining-duration scalar alone cannot restore it.
 
 ## Verification and gameplay script
 
-The compiled `pc_p2_spicy_policy_test` covers expiry boundaries, pause,
+The compiled `pc_p2_spicy_policy_test` covers source key/END boundaries, expiry, pause,
 invalid/negative delta, refresh, recovery, zero/uninstalled stock, ten-berry
 production and actual use counting. Local MinGW checks pass. Four edited
-production translation units and the replacement-main fixture pass syntax
+production translation units, the Honey bank/backend and the replacement-main fixture pass syntax
 checks using the engine's forced `pc_types.h` and permissive legacy flags.
 
 `tools/p2_spicy_runtime.cpp` is a guarded engine regression. It requires a fresh
