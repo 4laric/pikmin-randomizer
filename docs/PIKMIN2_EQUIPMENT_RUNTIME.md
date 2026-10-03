@@ -52,8 +52,15 @@ rollback, The Key exclusion and idempotent course reconciliation. The projection
 test binds engine doubles to the actual `pc_p2_equipment.cpp`; it is engineering
 evidence, not gameplay or card I/O acceptance. The five source-audit Python tests
 also pass with `PIKMIN2_SOURCE` pointing at the private local research tree.
-Full native build evidence is tracked in issue #141; build success does not prove
-the behavior above.
+The initial `e7379fefa` Linux production build and both focused CTests pass,
+with no-work dry run and executable SHA-256
+`552bc4681c0ca7f1d826a11826f19c992540c8300e78a06c013c0c04c7793268`.
+Final `2019cc1d1` Windows/MinGW configuration in private
+`output/native-equipment-141-build` compiles all four changed real translation
+units (`navi.cpp`, `naviState.cpp`, equipment and whistle-pluck), passes both focused
+CMake tests and has a no-work dry run for those objects/tests. This is not a full
+Windows link. Final Linux incremental evidence is tracked in issue #141;
+build success does not prove the gameplay behavior above.
 
 The treasure and SAVE owners retain physical receipt and card authority. Both
 maps have retail min/max weight 101. Literal source placements are loose treasures:
