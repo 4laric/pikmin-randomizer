@@ -30,6 +30,10 @@ ActRescue::ActRescue(Piki* piki)
  */
 void ActRescue::init(Creature* target)
 {
+	mTargetSurviveTimer = 0;
+	mGotAnimationAction = false;
+	mAnimationFinished = false;
+	mThrowReady = false;
 	if (!target || !target->isPiki()) {
 		mDrowningPiki = nullptr;
 	} else {
@@ -161,8 +165,13 @@ int ActRescue::exeRescue()
 {
 	mPiki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	if (mGotAnimationAction) {
+		// Imported fields may have no open dry rescue waypoint. Resolve the
+		// destination before holding the victim so a refused rescue leaves its
+		// drowning/whistle recovery state intact.
+		if (!initGo()) {
+			return ACTOUT_Fail;
+		}
 		mDrowningPiki->mFSM->transit(mDrowningPiki, PIKISTATE_WaterHanged);
-		initGo();
 	}
 
 	return ACTOUT_Continue;
@@ -171,10 +180,13 @@ int ActRescue::exeRescue()
 /**
  * @todo: Documentation
  */
-void ActRescue::initGo()
+bool ActRescue::initGo()
 {
-	mState                = STATE_Go;
-	WayPoint* wp          = routeMgr->findNearestWayPoint('test', mPiki->mSRT.t, true);
+	WayPoint* wp = routeMgr ? routeMgr->findNearestWayPoint('test', mPiki->mSRT.t, true) : nullptr;
+	if (!wp) {
+		return false;
+	}
+	mState = STATE_Go;
 	mRescueTargetPosition = wp->mPosition;
 	Vector3f dir          = mPiki->mSRT.t - mRescueTargetPosition;
 	f32 dist              = dir.normalise();
@@ -183,6 +195,7 @@ void ActRescue::initGo()
 	}
 
 	mRescueTargetPosition.y += 30.0f;
+	return true;
 }
 
 /**
