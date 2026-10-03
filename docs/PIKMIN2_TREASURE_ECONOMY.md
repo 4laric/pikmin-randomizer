@@ -87,3 +87,53 @@ is introduced. #1232 stays open for the remaining ordinary source collectors,
 unified surface/cave receipt and save coverage, actual 10000-Poko crossing,
 post-debt/full-Hoard ending progression, current whole-engine gameplay acceptance
 and full-campaign human sign-off. Existing cave/SAVE/provider owners retain scope.
+# Source-bound collector continuation (#1232)
+
+The general collector adds a 201-bit unique receipt snapshot (`P2TR1`, exactly
+188 bytes) inside the campaign owner's authenticated native card. It has no
+standalone file persistence. Production callers must verify the pinned retail
+catalog, bind the selected placement digest and authenticate the enclosing card
+before restoring. White's existing diamond record remains its own authority;
+the displayed economy unions both sources by treasure ID.
+
+`randomizer.campaign_treasures.prepare` builds private generator/model inputs
+from explicit engineering positions. `experimental.pikmin2_campaign_treasures`
+converts any explicitly selected catalog models from the user's legal ISO. The
+helpers return data without activating a campaign or changing installed assets.
+The caller must check reserved UID collisions in every scheduled generator file
+and bind the exact descriptor digest through explicit seed/session activation.
+
+The bounded `P2_TREASURE_PLACEMENTS_1` descriptor contains the pinned catalog
+digest, converted Pod model hash and row count. Each row contains stage, cargo
+UID, receiver UID, catalog ID, converted model hash and final `default.gen` hash.
+The native surface provider routes only these actual cargo actors to their
+bound receiver. Receipt occurs at completed native suction, suppressing native
+P1 seed/repair rewards for that cargo. On authenticated resume, collected source
+actors are removed during reconstruction. Changed actor identity, profiles,
+receiver, models or generator bytes are refused. White cargo IDs cannot alias
+general treasure IDs; a shared receiver requires the identical verified model.
+
+Current limits: the new provider uses native physical pellet hosts and explicit
+engineering positions on surface stages 0–4. It does not implement the full
+retail placement map, source collision geometry, enemy-held drops or cave-floor
+actor lifecycle. Cave entry preserves the receipt state and leaves actor
+ownership with the cave provider. Ship debt/hoard phase is a projection; actual
+debt-crossing cinematics and ending transitions remain open.
+
+Before gameplay acceptance, compose the campaign owner's explicit activation,
+optional authenticated SAVE record and source getter, then build that exact
+source. Run a fresh private 20-Pikmin, centred 960×540 ordinary campaign:
+
+1. Reach each explicitly staged treasure with a living captain. Carry it using
+   the actual catalog minimum and show arrival, native suction and one receipt.
+2. Confirm its Pokos and unique count appear at the ship, with no P1 repair or
+   Onion seed reward. Leave unrelated pellets/corpses on their ordinary paths.
+3. Complete the native day-boundary SAVE. Exit the process and launch a fresh
+   process from that same authenticated card. Confirm consumed cargo stays
+   absent and total/unique state survives without another receipt.
+4. Test changed generator/model/descriptor refusal using separate private runs;
+   preserve failure logs. Natural debt crossing and all-201 completion require
+   actual collection evidence before claiming ending acceptance.
+
+Synthetic codec/descriptor controls and successful model extraction do not
+qualify ordinary carrying, native SAVE or endings.
