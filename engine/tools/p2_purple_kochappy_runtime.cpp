@@ -458,6 +458,7 @@ class PurpleKochappyApp:public PlugPikiApp {
  int receiverWaypoint=0;
  bool gatherDiverted=false;
  PcKochappyReentryProgress reentryProgress;
+ PcKochappyRouteCatchup routeCatchup;
  bool seenCaptain=false,wasActive=false,sawFit=false,sawPause=false,recovered=false,deathDuringStun=false;
  Teki* enemy=nullptr;Pom* violet=nullptr;Piki* purple=nullptr;
  PcKochappyFsmSnapshot pausedFsm;
@@ -507,6 +508,43 @@ class PurpleKochappyApp:public PlugPikiApp {
    age,live,purpleHeads,otherHeads,live+purpleHeads+otherHeads,captured,int(GameStat::deadPikis),int(GameStat::fallPikis),int(GameStat::victimPikis),int(GameStat::bornPikis),int(GameStat::mapPikis),int(GameStat::allPikis),violet->mGenerator?unsigned(violet->mGenerator->_70):0,violet->getCurrentState(),BossObserver::motion(*violet),BossObserver::frame(*violet),C_POM_PARM(violet,mMaxPikiPerCycle),C_POM_PARM(violet,mMinCycles),C_POM_PARM(violet,mMaxCycles),enemy->mHealth,enemy->mSRT.t.x,enemy->mSRT.t.y,enemy->mSRT.t.z);
   std::fflush(nullptr);
  }
+ bool catchupRoute(Navi* n,float radius) {
+  require(routeCatchup.active,"catchup requires an actually visited guide");
+  bool present[20]={};int count=0;float lag=0;
+  Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);
+   if(!p)continue;
+   int slot=-1;for(int i=0;i<initialBodyCount;++i)if(initialBodies[i]==p){slot=i;break;}
+   require(slot>=0&&!present[slot],"catchup foreign/duplicate current body");present[slot]=true;++count;
+   require(p->isAlive()&&std::isfinite(p->mHealth)&&p->mHealth>0&&p->mGenerator
+    &&unsigned(p->mGenerator->_70)==initialGeneratorIds[slot]&&initialGeneratorIds[slot]!=0,
+    "catchup original live generator identity lost");
+   require(p->getCurrState()&&p->getState()==PIKISTATE_Normal&&p->mMode==PikiMode::FormationMode
+    &&p->mNavi==n&&!p->isStickTo()&&!pc_p2_is_purple(p)&&!p->mP2White&&p->mColor==Red,
+    "catchup original owned Normal Formation roster lost");
+   require(rvfinite({p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z})&&p->mInWaterTimer==0
+    &&p->mGroundTriangle&&std::isfinite(p->mGroundTriangle->mTriangle.mNormal.y)
+    &&p->mGroundTriangle->mTriangle.mNormal.y>.5f,"catchup original body contact/hazard changed");
+   const float d=distance(n->mSRT.t,p->mSRT.t);require(std::isfinite(d),"catchup finite roster lag");
+   lag=std::max(lag,d);
+  }
+  bool roster=initialBodyCount==20&&count==20;
+  for(int i=0;i<initialBodyCount;++i)roster=roster&&present[i];
+  const float whistle=C_NAVI_PARM(n,mWhistleMaxRadius);
+  require(pc_kochappy_gather_input(0,radius,whistle,C_NAVI_PARM(n,mNeutralStickThreshold),
+    C_NAVI_PARM(n,mCursorMoveStickThreshold))==PcKochappyGatherInput::Cursor,
+    "catchup cursor input must be movement-neutral under loaded bands");
+  const float speed=std::sqrt(n->mVelocity.x*n->mVelocity.x+n->mVelocity.z*n->mVelocity.z);
+  const auto command=routeCatchup.observe(roster,lag,radius+whistle*.5f,speed);
+  require(command!=PcKochappyCatchupInput::Refuse,"bounded ordinary route catchup stalled/invalid");
+  if(routeCatchup.elapsed==1||routeCatchup.elapsed%30==0||command==PcKochappyCatchupInput::Continue)
+   std::printf("P2_PURPLE_KOCHAPPY_ROUTE_CATCHUP age=%d visited=%d next=%d elapsed=%d lag=%.4f limit=%.4f captain_speed=%.4f stable=%d continue=%d roster=20 SDL_cursor_whistle=1 actor_writes=0\n",
+    age,routeCatchup.guide,receiverWaypoint,routeCatchup.elapsed,lag,radius+whistle*.5f,speed,
+    routeCatchup.stable,int(command==PcKochappyCatchupInput::Continue));
+  // Aim the ordinary cursor at the current captain, without walking or
+  // assuming its previous world position was within whistle range.
+  point(n,n->mSRT.t,false,KeyConfig::_instance->mSetCursorKey.mBind);
+  return command!=PcKochappyCatchupInput::Continue;
+ }
  float pausedCounter=0,lastCounter=0,activeSeconds=0;
 public:
  int idle() override {
@@ -551,6 +589,10 @@ public:
    observePopulation(live);
    const float radius=C_NAVI_PARM(n,mCursorMaxRadius);
    require(std::isfinite(radius)&&radius>20,"loaded cursor radius permits ordinary approach");
+   if(routeCatchup.active){
+    receiverObservedClearance(n,routeCatchup.guide,age);
+    if(catchupRoute(n,radius))return result;
+   }
    const float approach=std::min(65.f,radius*.5f);
    if(age%30==0){
     std::printf("P2_PURPLE_KOCHAPPY_APPROACH_OBSERVE age=%d state=%d actual_pad_b=%d actual_mainstick=%.4f,%.4f loaded_radius=%.4f loaded_neutral=%.4f loaded_move_threshold=%.4f distance=%.4f approach=%.4f captain=%.4f,%.4f,%.4f velocity=%.4f,%.4f,%.4f violet=%.4f,%.4f,%.4f terrain_mid=%.4f terrain_bud=%.4f followers=%d\n",
@@ -610,7 +652,10 @@ public:
      if(distance(n->mSRT.t,goal)>ReceiverRouteReach)break;
      std::printf("P2_PURPLE_KOCHAPPY_ROUTE_REACHED age=%d waypoint=%d followers=%d captain=%.4f,%.4f,%.4f actor_writes=0\n",age,receiverWaypoint,n->getPlatePikis(),n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z);
      ++receiverWaypoint;
+     require(routeCatchup.begin(receiverWaypoint-1),"catchup visited-guide transition invalid");
+     break;
     }
+    if(routeCatchup.active&&catchupRoute(n,radius))return result;
     if(receiverWaypoint<ReceiverRouteCount){
      const auto& w=ReceiverRoute[receiverWaypoint];const Vector3f goal(w.x,0.f,w.z);
      if(age%30==0)std::printf("P2_PURPLE_KOCHAPPY_ROUTE_TARGET age=%d waypoint=%d total=%d target_xz=%.4f,%.4f distance=%.4f reach=%.4f followers=%d live=%d SDL_walk=1 actor_writes=0\n",age,receiverWaypoint,ReceiverRouteCount,w.x,w.z,distance(n->mSRT.t,goal),ReceiverRouteReach,n->getPlatePikis(),live);

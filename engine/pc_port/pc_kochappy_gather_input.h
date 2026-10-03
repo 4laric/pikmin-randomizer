@@ -39,3 +39,30 @@ struct PcKochappyReentryProgress {
         ++count;retainedNext=next;return true;
     }
 };
+
+enum class PcKochappyCatchupInput { Refuse, Hold, Continue };
+// Fixture input pacing only; clocks, roster and positions remain native-owned.
+struct PcKochappyRouteCatchup {
+    bool active=false;
+    int guide=-1, elapsed=0, stable=0, lastProgress=0;
+    float best=-1;
+    bool begin(int visitedGuide) {
+        if(active || visitedGuide<0 || visitedGuide>=128)return false;
+        active=true;guide=visitedGuide;elapsed=stable=lastProgress=0;best=-1;
+        return true;
+    }
+    PcKochappyCatchupInput observe(bool originalRoster, float lag, float limit, float captainSpeed) {
+        using I=PcKochappyCatchupInput;
+        if(!active || !originalRoster || !std::isfinite(lag) || lag<0
+            || !std::isfinite(limit) || limit<=0 || limit>=512
+            || !std::isfinite(captainSpeed) || captainSpeed<0)return I::Refuse;
+        ++elapsed;
+        if(best<0 || lag<best-1.f){best=lag;lastProgress=elapsed;}
+        // Ordinary neutral input does not freeze native collision/slip motion.
+        // Read the roster against the current pose on every observation.
+        if(lag<=limit)++stable;else stable=0;
+        if(stable>=3){active=false;return I::Continue;}
+        if(elapsed>=180 || elapsed-lastProgress>=90)return I::Refuse;
+        return I::Hold;
+    }
+};

@@ -1,6 +1,7 @@
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_kochappy_gather_input.h"
 #include <cstdio>
+#include <initializer_list>
 #include <limits>
 #define CHECK(x) do {if(!(x)){std::fprintf(stderr,"FSM observation check failed: %s line%d\n",#x,__LINE__);return 1;}}while(false)
 int main(){
@@ -36,6 +37,36 @@ int main(){
  CHECK(!progress.mayBegin(8)&&!progress.mayBegin(30));
  CHECK(progress.begin(31,9));CHECK(progress.begin(32,10));CHECK(progress.begin(33,11));
  CHECK(!progress.begin(34,12)&&progress.count==4); // finite total reentry budget
+ using C=PcKochappyCatchupInput;
+ PcKochappyRouteCatchup catchup;
+ CHECK(!catchup.begin(-1)&&!catchup.begin(128));
+ CHECK(catchup.begin(29)&&!catchup.begin(30));
+ CHECK(catchup.observe(true,200,145,160)==C::Hold);
+ CHECK(catchup.observe(true,145,145,0)==C::Hold);
+ CHECK(catchup.observe(true,145,145,0)==C::Hold);
+ CHECK(catchup.observe(true,145,145,0)==C::Continue&&!catchup.active);
+ CHECK(catchup.observe(true,0,145,0)==C::Refuse); // no invented visited boundary
+ CHECK(catchup.begin(0)); // legitimate replay after separately guarded reentry
+ CHECK(catchup.observe(true,100,145,2)==C::Hold); // native residual motion remains observed
+ CHECK(catchup.observe(false,100,145,0)==C::Refuse);
+ for(int field=0;field<3;++field){PcKochappyRouteCatchup invalid;CHECK(invalid.begin(0));
+  float v[3]={200,145,0};v[field]=nan;
+  CHECK(invalid.observe(true,v[0],v[1],v[2])==C::Refuse);
+ }
+ for(float limit:{0.f,-1.f,512.f}){PcKochappyRouteCatchup invalid;CHECK(invalid.begin(0));
+  CHECK(invalid.observe(true,200,limit,0)==C::Refuse);}
+ PcKochappyRouteCatchup stalled;CHECK(stalled.begin(1));
+ for(int i=0;i<90;++i)CHECK(stalled.observe(true,200,145,0)==C::Hold);
+ CHECK(stalled.observe(true,200,145,0)==C::Refuse);
+ PcKochappyRouteCatchup improving;CHECK(improving.begin(1));
+ for(int i=0;i<179;++i)CHECK(improving.observe(true,1000.f-i*2,145,0)==C::Hold);
+ CHECK(improving.observe(true,642,145,0)==C::Refuse); // hard180 even with progress
+ PcKochappyRouteCatchup unstable;CHECK(unstable.begin(1));
+ CHECK(unstable.observe(true,140,145,0)==C::Hold);
+ CHECK(unstable.observe(true,146,145,0)==C::Hold&&unstable.stable==0);
+ CHECK(unstable.observe(true,140,145,0)==C::Hold);
+ CHECK(unstable.observe(true,140,145,0)==C::Hold);
+ CHECK(unstable.observe(true,140,145,0)==C::Continue);
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;
