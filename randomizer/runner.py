@@ -428,9 +428,12 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
         if content_manifest is None and family_install is None and p2_content is None and purple_bank is None:
-            # Windows directory junction, only into the new private runtime directory.
-            import _winapi
-            _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
+            # Link only inside this new private runtime directory.
+            if sys.platform == "win32":
+                import _winapi
+                _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
+            else:
+                (run.directory / "assets").symlink_to(Path(assets).resolve(), target_is_directory=True)
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
         from .native_settings import bind_settings
@@ -445,18 +448,22 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             apply_test_run_env(env)
             startup_show = 4  # SW_SHOWNOACTIVATE: a watched window must not take focus
         log = (run.directory / "native.log").open("w", encoding="utf-8")
-        startup = subprocess.STARTUPINFO()
-        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        startup.wShowWindow = startup_show  # Win32 SW_*; not exported by subprocess.
+        launch_options = {}
+        if sys.platform == "win32":
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = startup_show  # Win32 SW_*; not exported by subprocess.
+            launch_options["startupinfo"] = startup
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
-            cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
+            cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, **launch_options)
         overlay_manifest = run.directory / 'overlay-manifest.json'
         atomic_write(overlay_manifest, json.dumps(manifest))
         try:
-            overlay = subprocess.Popen([sys.executable, '-m', 'randomizer.overlay',
-                '--manifest', str(overlay_manifest.resolve()), '--session-dir', str(session_dir.resolve()),
-                '--pid', str(process.pid)], cwd=Path(__file__).resolve().parents[1],
-                stdout=log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+            if sys.platform == "win32":
+                overlay = subprocess.Popen([sys.executable, '-m', 'randomizer.overlay',
+                    '--manifest', str(overlay_manifest.resolve()), '--session-dir', str(session_dir.resolve()),
+                    '--pid', str(process.pid)], cwd=Path(__file__).resolve().parents[1],
+                    stdout=log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
         except OSError as exc:
             print(f'Overlay unavailable: {exc}', flush=True)
     print(f"Native bootstrap: {run.bootstrap.resolve()}", flush=True)
