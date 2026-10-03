@@ -2480,6 +2480,9 @@ endif()
 add_executable(pc_randomizer_probe pc_port/pc_randomizer_probe.cpp pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
 # Same engine-header preinclude as pc_bbft_test above (pc_p2_proxy.cpp needs it).
 target_compile_options(pc_randomizer_probe PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_executable(p2_cave_seed_binding_test tools/p2_cave_seed_binding_test.cpp)
+target_include_directories(p2_cave_seed_binding_test PRIVATE pc_port)
+add_test(NAME p2_cave_seed_binding_test COMMAND p2_cave_seed_binding_test)
 
 # Netplay M4 lane A snapshot codec + reassembler test (issue #885).
 # Engine-free (no gekkonet/game/SDL link), registered in every build.

@@ -4,6 +4,7 @@
 #include "pc_p2_campaign_policy.h"
 #include "pc_p2_boss_arena_policy.h"
 #include "pc_p2_proxy.h"
+#include "pc_p2_cave_seed_binding.h"
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
@@ -133,6 +134,8 @@ bool p2ProxyTier = false;
 std::unordered_map<std::string, unsigned> p2Bindings;
 // Versioned manifest-owned native journal order. Empty for all historical seeds.
 std::vector<std::string> resolvedCheckNames, legacyCheckNames;
+bool generatedCave = false;
+P2CaveSeedBinding generatedCaveBinding;
 std::unordered_map<unsigned, unsigned> p2CheckIndices;
 std::unordered_map<unsigned, std::set<std::pair<unsigned, int>>> p2CheckSources;
 unsigned campaignAssignments[72] = {};
@@ -1002,7 +1005,7 @@ bool pc_randomizer_init(int argc, char** argv) {
         }
         if (p2CombinedEnemies && resolvedCheckNames.empty())
             fail("combined enemies require resolved checks");
-        if (end != "END" && end != "PURPLE" && end != "CAPTAINS") fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (end != "END" && end != "PURPLE" && end != "CAPTAINS" && end != "CAVE_CHECKS") fail("P2 enemy bridge cannot mix other enemy layouts");
     }
     if (p2CombinedEnemies && !p2EnemyBridge) fail("combined composition requires P2 bindings");
     if (end == "PURPLE") {
@@ -1032,6 +1035,15 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (!p2EnemyBridge || !(input >> count) || count != "2")
             fail("two captains require P2 campaign bridge and count 2");
         secondCaptain = true;
+        input >> end;
+    }
+    if (end == "CAVE_CHECKS") {
+        if (!p2EnemyBridge || resolvedCheckNames.empty() || thelynk
+            || !p2CaveSeedRead(input, checkCount, generatedCaveBinding))
+            fail("invalid generated cave contract or native check mapping");
+        for (unsigned i = 0; i < 2; ++i) resolvedCheckNames.push_back(p2CaveSeedCheckName(i));
+        checkCount += 2;
+        generatedCave = true;
         input >> end;
     }
     if (end != "END") fail("unsupported or malformed bootstrap");
@@ -1126,6 +1138,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (p2ProxyTier) hello << " p2-proxy-tier-v1";
     if (!resolvedCheckNames.empty()) hello << " resolved-enemy-checks-v1";
     if (secondCaptain) hello << " p2-second-captain-v1";
+    if (generatedCave) hello << " generated-cave-checks-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -2082,6 +2095,31 @@ bool pc_randomizer_checked(const char* name) {
     const int slot = index(name);
     if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return false;
     return slot >= 0 && checks.count(unsigned(slot)) != 0;
+}
+bool pc_randomizer_generated_cave() { return enabled && generatedCave; }
+bool pc_randomizer_generated_cave_matches(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    return pc_randomizer_generated_cave() && cave && item && host && slot && boundaryToken
+        && p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                  boundaryToken);
+}
+bool pc_randomizer_generated_cave_collected(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    if (!pc_randomizer_generated_cave_matches(seed, cave, floor, item, host, slot, boundaryToken))
+        fail("physical cave item differs from seed-owned contract");
+    const auto* check = p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                             boundaryToken);
+    return checks.count(check->index) != 0;
+}
+void pc_randomizer_generated_cave_delivery(std::uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken) {
+    if (!ready || !pc_randomizer_generated_cave_matches(seed, cave, floor, item, host, slot, boundaryToken))
+        fail("unready or foreign physical cave delivery");
+    const auto* check = p2CaveSeedPhysicalCheck(generatedCaveBinding, seed, cave, floor, item, host, slot,
+                                             boundaryToken);
+    // The caller owns an actual tagged Pellet delivered to the physical Pod.
+    // Use the existing ready, session-bound, monotonic native check journal.
+    pc_randomizer_check(checkName(check->index));
 }
 void pc_randomizer_check(const char* name) {
     if (!enabled || !ready) return;

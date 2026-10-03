@@ -9,6 +9,8 @@
 #include "pc_p2_cave_items_engine.h"
 #include "pc_p2_cave_rooms_engine.h"
 #include "pc_p2_receipt_host.h"
+#include "pc_randomizer.h"
+#include "pc_p2_cave.h"
 
 #include "Camera.h"
 #include "Graphics.h"
@@ -172,6 +174,16 @@ void pc_p2_cave_items_setup()
         std::fflush(stdout);
         return;
     }
+    if (pc_randomizer_generated_cave()) {
+        if (!pc_randomizer_ready() || placement.items.size() != 2)
+            receiptFailure();
+        for (const auto& entry : placement.items)
+            if (!entry.tagged || !pc_randomizer_generated_cave_matches(
+                    placement.seed, placement.cave.c_str(), placement.floor,
+                    entry.item.c_str(), entry.host.c_str(), entry.slot_id.c_str(),
+                    pc_p2_cave_boundary_token().c_str()))
+                receiptFailure();
+    }
 
     PelletConfig* templateConfig = treasureTemplate();
     if (!templateConfig) {
@@ -191,12 +203,18 @@ void pc_p2_cave_items_setup()
     }
 
     const char* receiptEnv = std::getenv("PIKMIN_P2_ITEM_RECEIPT_PATH");
-    receiptHandle = pc_p2_receipt_host_open(receiptEnv && receiptEnv[0] ? receiptEnv : "p2-cave-item-receipts.txt");
-    if (!receiptHandle) receiptFailure();
+    if (!pc_randomizer_generated_cave()) {
+        receiptHandle = pc_p2_receipt_host_open(receiptEnv && receiptEnv[0] ? receiptEnv : "p2-cave-item-receipts.txt");
+        if (!receiptHandle) receiptFailure();
+    }
     for (const P2CaveItemEntry& entry : placement.items) {
         const std::string seed = std::to_string(placement.seed);
-        const int collected = pc_p2_receipt_host_has(receiptHandle, seed.c_str(),
-            rewardId(entry).c_str(), entry.host.c_str(), "cave_treasure");
+        const int collected = pc_randomizer_generated_cave()
+            ? int(pc_randomizer_generated_cave_collected(placement.seed,
+                  placement.cave.c_str(), placement.floor, entry.item.c_str(),
+                  entry.host.c_str(), entry.slot_id.c_str(), pc_p2_cave_boundary_token().c_str()))
+            : pc_p2_receipt_host_has(receiptHandle, seed.c_str(),
+                  rewardId(entry).c_str(), entry.host.c_str(), "cave_treasure");
         if (collected < 0) receiptFailure();
         if (collected) {
             std::printf("P2_CAVE_ITEM_RESTORE item=%s collected=1 spawn=0\n", entry.item.c_str());
@@ -256,6 +274,20 @@ bool pc_p2_cave_items_deliver(Pellet* pellet)
     const int index = indexOf(pellet);
     if (index < 0) return false;
     const P2CaveItemEntry& entry = spawned[index].entry;
+
+    if (pc_randomizer_generated_cave()) {
+        const bool duplicate = pc_randomizer_generated_cave_collected(placement.seed,
+            placement.cave.c_str(), placement.floor, entry.item.c_str(),
+            entry.host.c_str(), entry.slot_id.c_str(), pc_p2_cave_boundary_token().c_str());
+        pc_randomizer_generated_cave_delivery(placement.seed, placement.cave.c_str(),
+            placement.floor, entry.item.c_str(), entry.host.c_str(), entry.slot_id.c_str(), pc_p2_cave_boundary_token().c_str());
+        if (!duplicate) ++deliveredCount;
+        ++deliveryEventCount;
+        std::printf("P2_CAVE_CAMPAIGN_CHECK item=%s host=%s new=%d\n",
+                    entry.item.c_str(), entry.host.c_str(), duplicate ? 0 : 1);
+        std::fflush(stdout);
+        return true;
+    }
 
     if (!receiptHandle) {
         const char* env = std::getenv("PIKMIN_P2_ITEM_RECEIPT_PATH");

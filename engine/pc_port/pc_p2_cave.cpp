@@ -413,7 +413,7 @@ void pc_p2_cave_setup(){
     // Lane 46 (#484) physical cave-item placement: opt-in only. Validates the
     // host bridge's P2_CAVE_ITEMS_1 config against the live rooms layout and
     // spawns one real Pellet per item. Proxy geometry/model, never a generation PASS.
-    pc_p2_cave_items_setup();
+    if (!pc_randomizer_generated_cave()) pc_p2_cave_items_setup();
     // Lane 48 (#486) real seeded Candypop bud actor: opt-in only, reads the live
     // lane-44 rooms layout so the bud sits at the seeded bud node's segment and
     // the ordinary throw/convert path grants the colour naturally.
@@ -483,6 +483,9 @@ void pc_p2_cave_setup(){
     }
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
+    // Seed-owned items require the validated entry boundary; token is parsed
+    // after room setup. Historical standalone setup keeps its original order.
+    if (pc_randomizer_generated_cave()) pc_p2_cave_items_setup();
     if(!beasts && tutorialEntry){
         // In-band descend-policy proof (#757/#807): emitted from the engine
         // on tutorial-admitted entries only; floors 1-8 descend, floor 9

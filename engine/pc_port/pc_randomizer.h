@@ -1,7 +1,17 @@
 #pragma once
+
 #include "netplay/pc_netplay_randstate.h"
 #include <cstddef>
 #include <cstdint>
+
+// Seed-owned generated cave transport; absent for every historical seed.
+bool pc_randomizer_generated_cave();
+bool pc_randomizer_generated_cave_matches(uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken);
+bool pc_randomizer_generated_cave_collected(uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken);
+void pc_randomizer_generated_cave_delivery(uint64_t seed, const char* cave, int floor,
+    const char* item, const char* host, const char* slot, const char* boundaryToken);
 enum PcPikminStat { PC_PIKI_DAMAGE, PC_PIKI_MOVEMENT, PC_PIKI_ATTACK_RATE };
 bool pc_randomizer_color_stats();
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat);
