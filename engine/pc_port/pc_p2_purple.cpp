@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_goal_birth_ledger.h"
 #include "pc_p2_purple_campaign_policy.h"
 #include "FlowController.h"
 #include "pc_p2_purple_impact.h"
@@ -167,7 +168,12 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
         float angle=converted*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;
         sprout->mVelocity.set(horizontal*std::sin(angle),vertical,horizontal*std::cos(angle));
         sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
+        const int birthInputSpecies=pc_goal_birth_ledger.armed?pc_p2_species(p):-1;
+        const int birthInputMaturity=pc_goal_birth_ledger.armed?p->mHappa:-1;
         p->setEraseKill();p->kill(false);it.dec();++converted;
+        if(pc_goal_birth_ledger.armed)pc_goal_birth_ledger.violetConversion(gsys->mTotalFrames,
+            reinterpret_cast<std::uintptr_t>(pom),pom->mGenerator?unsigned(pom->mGenerator->_70):0,
+            reinterpret_cast<std::uintptr_t>(p),reinterpret_cast<std::uintptr_t>(sprout),birthInputSpecies,birthInputMaturity);
         if(!sameColor)++used;
         if(body)pc_p2_cave_bud_body_output(pom,sameColor);
         // Diagnostic only: sequence is process-local, not a durable Pikmin identity.
