@@ -2110,6 +2110,15 @@ void BTeki::collisionCallback(immut CollEvent& event)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+bool BTeki::needFlick(Creature* target)
+{
+    // Retail Plants disables collision flick: callbacks still run, physics does not.
+    if (pc_p2_original_foliage_owned(this)) return false;
+    return Creature::needFlick(target);
+}
+#endif
+
 bool BTeki::ignoreAtari(Creature* target)
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT

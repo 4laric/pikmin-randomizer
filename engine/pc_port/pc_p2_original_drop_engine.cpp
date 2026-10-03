@@ -1,6 +1,7 @@
 #include "pc_p2_original_drop_engine.h"
 #include "pc_p2_original_drop.h"
 #include "pc_p2_original_actor.h"
+#include "pc_p2_retail_cave_drop.h"
 #include "Pellet.h"
 #include "teki.h"
 #include "netplay/pc_sim_rng.h"
@@ -14,6 +15,14 @@ std::set<unsigned> droppedTokens;
 [[noreturn]] void failure(const std::string& e){std::fprintf(stderr,"P2_ORIGINAL_DROP_FAIL %s\n",e.c_str());std::abort();}
 }
 bool pc_p2_original_drop_resources(const p2original::CatalogRow& row,std::string& e){
+ if(row.sourceForm==p2original::SourceForm::CaveTekiInfo){
+  const auto* cave=p2retail::descriptor(row.course);const auto* floor=cave?p2retail::definition(*cave,row.caveFloor):nullptr;
+  if(!floor||row.caveRow>=floor->rows.size()){e="retail cave drop descriptor missing";return false;}
+  if(!floor->rows[row.caveRow].heldTreasure.empty()&&!p2retail::heldDropHandler()){
+   e="retail cave held drop provider unavailable";return false;
+  }
+  e.clear();return true; // No GenEnemy number-pellet parameters exist in TekiInfo.
+ }
  if(!p2original::validateOriginalDrop(row.enemy,e))return false;
  if(row.enemy.treasureCode){e="original treasure birth/delivery provider is not implemented";return false;}
  if(!pelletMgr){e="original number pellet manager unavailable";return false;}
@@ -31,6 +40,10 @@ bool pc_p2_original_spawn_items(BTeki* actor){
  if(!p2original::originalActors().query(static_cast<Creature*>(actor),source,token,&identity))return false;
  if(droppedTokens.count(token))return true;
  const auto* row=p2original::originalActors().find(identity.generator);std::string e;
+ if(row&&row->sourceForm==p2original::SourceForm::CaveTekiInfo){
+  if(!p2retail::drop(static_cast<Creature*>(actor),*row,e))failure(e);
+  droppedTokens.insert(token);return true;
+ }
  if(!row||!pc_p2_original_drop_resources(*row,e))failure(e);
  if(droppedTokens.size()>=1048576)failure("original drop session token capacity exhausted");
  droppedTokens.insert(token); // Latch before physical callbacks, no P1 fallback.

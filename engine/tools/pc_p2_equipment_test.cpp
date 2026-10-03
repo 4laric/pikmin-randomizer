@@ -15,7 +15,7 @@ int main() {
     // Reconstructing in a fresh process/state needs only accepted saved receipts.
     const auto saved=receipts;receipts.clear();assert(read().bits==0);receipts=saved;assert(read().bits==before);
     for(int i=0;i<TheKey;++i) {receipts.insert(Sources[i].id);assert(read().has(i));assert(item(Sources[i].id)==i);}
-    k=read();assert(k.bits==0xfff&&k.damage(12)==6&&k.whistle(100)==200&&k.speed(160)==240);
+    k=read();assert(k.bits==0xfff&&k.damage(12)==6&&k.whistle(100)==130&&k.speed(160)==205);
     assert(!k.has(-1)&&!k.has(13)&&item(nullptr)==-1&&item("map01extra")==-1);
     assert(Sources[SphericalAtlas].dictionary==184&&Sources[GeographicProjection].dictionary==185);
 }

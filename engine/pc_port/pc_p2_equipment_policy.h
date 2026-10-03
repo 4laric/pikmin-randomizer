@@ -26,8 +26,10 @@ struct Kit {
         return 1u | (has(SphericalAtlas)?2u:0u) | (has(GeographicProjection)?4u:0u);
     }
     float damage(float original) const { return has(JusticeAlloy)?original*0.5f:original; }
-    float whistle(float original) const { return has(AmplifiedAmplifier)?200.0f:original; }
-    float speed(float original) const { return has(RepugnantAppendage)?240.0f:original; }
+    // GPVE01 user/Abe/piki/naviParms.txt q007 overrides the ctor default 200.
+    float whistle(float original) const { return has(AmplifiedAmplifier)?130.0f:original; }
+    // GPVE01 user/Abe/piki/naviParms.txt q006 overrides the ctor default 240.
+    float speed(float original) const { return has(RepugnantAppendage)?205.0f:original; }
 };
 template<class Seen> Kit project(Seen seen) {
     Kit kit;

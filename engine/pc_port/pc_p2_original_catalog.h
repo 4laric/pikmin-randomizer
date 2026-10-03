@@ -6,7 +6,12 @@
 #include <set>
 #include <tuple>
 namespace p2original {
-struct CatalogRow {std::string course,member,sourceKey;unsigned index=0; EnemyRecord enemy;};
+enum class SourceForm { SurfaceGenEnemy, CaveTekiInfo };
+struct CatalogRow {
+ std::string course,member,sourceKey;unsigned index=0; EnemyRecord enemy;
+ SourceForm sourceForm=SourceForm::SurfaceGenEnemy;
+ unsigned caveFloor=0,caveRow=0;std::string caveSourceSha256;
+};
 unsigned originalGeneratorUid(const std::string& sourceKey);
 struct InstanceIdentity {
  std::string catalog; unsigned generator=0,ordinal=0; std::uint64_t epoch=0,activation=1;

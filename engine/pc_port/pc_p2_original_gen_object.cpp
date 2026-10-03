@@ -10,6 +10,7 @@ GenObject* makeOriginal(){return new GenObjectOriginalEnemy;}
 bool validate(const p2original::GeneratorState& state,std::string& e){
  const auto& actors=p2original::originalActors();const auto* row=actors.find(state.uid);std::string checked;
  if(!row||state.count!=row->enemy.count){e="original object UID/count not in admitted catalog";return false;}
+ if(row->sourceForm!=p2original::SourceForm::SurfaceGenEnemy){e="surface GenEnemy object cannot consume cave TekiInfo";return false;}
  return p2original::encodeOriginalState(actors.fingerprint(),state,checked,e);
 }
 }
