@@ -67,6 +67,18 @@ int main(){
  CHECK(unstable.observe(true,140,145,0)==C::Hold);
  CHECK(unstable.observe(true,140,145,0)==C::Hold);
  CHECK(unstable.observe(true,140,145,0)==C::Continue);
+ // A native Formation slot may be 181 units from the captain. Completion
+ // concerns its own target's 30-unit flat walking rest zone, not recruitment.
+ PcKochappyRouteCatchup formation;CHECK(formation.begin(1));
+ CHECK(formation.observe(true,40,30,0)==C::Hold);
+ CHECK(formation.observe(true,30,30,0)==C::Hold);
+ CHECK(formation.observe(true,30.001f,30,0)==C::Hold&&formation.stable==0);
+ CHECK(formation.observe(true,30,30,0)==C::Hold);
+ CHECK(formation.observe(true,29,30,0)==C::Hold);
+ CHECK(formation.observe(true,28,30,0)==C::Continue);
+ PcKochappyRouteCatchup formationStalled;CHECK(formationStalled.begin(1));
+ for(int i=0;i<90;++i)CHECK(formationStalled.observe(true,35,30,0)==C::Hold);
+ CHECK(formationStalled.observe(true,35,30,0)==C::Refuse);
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;

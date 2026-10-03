@@ -20,6 +20,8 @@
 #include "NaviState.h"
 #include "Camera.h"
 #include "Piki.h"
+#include "PikiAI.h"
+#include "FormationMgr.h"
 #include "PikiState.h"
 #include "PikiMgr.h"
 #include "PikiHeadItem.h"
@@ -59,6 +61,25 @@ constexpr unsigned Target=0x50323101;
 struct BossObserver:Boss {
  static float frame(Boss& b){return (b.*(&BossObserver::mAnimator)).getCounter();}
  static int motion(Boss& b){return (b.*(&BossObserver::mAnimator)).getCurrentMotionIndex();}
+};
+// Read-only inherited member pointers applied to the genuine current action,
+// as with BossObserver above. No layout change, fake derived object or AI call.
+struct FormationObserver:ActFormation {
+ static bool target(Piki& p,Navi& n,Vector3f& out,bool& lastCentre) {
+  if(p.mNavi!=&n||!n.mFormMgr||!p.mActiveAction
+   ||p.mActiveAction->mCurrActionIdx!=PikiAction::Formation
+   ||!p.mActiveAction->mChildActions||p.mActiveAction->mChildCount<=PikiAction::Formation)return false;
+  auto* a=static_cast<ActFormation*>(p.mActiveAction->getCurrAction());
+  if(!a||a->mPiki!=&p||(a->*(&FormationObserver::mFormMgr))!=n.mFormMgr)return false;
+  lastCentre=a->*(&FormationObserver::mUseLastFormationPosition);
+  if(lastCentre)out=n.mFormMgr->getLastCentre();
+  else {
+   if(!p.mFormPoint||p.mFormPoint->mFormMgr!=n.mFormMgr
+    ||p.mFormPoint->getOwner()!=&p)return false;
+   out=p.mFormPoint->getPos();
+  }
+  return std::isfinite(out.x)&&std::isfinite(out.y)&&std::isfinite(out.z);
+ }
 };
 SDL_Joystick* pad=nullptr;
 bool human(){return std::getenv("P2_PURPLE_KOCHAPPY_HUMAN")!=nullptr;}
@@ -510,7 +531,7 @@ class PurpleKochappyApp:public PlugPikiApp {
  }
  bool catchupRoute(Navi* n,float radius) {
   require(routeCatchup.active,"catchup requires an actually visited guide");
-  bool present[20]={};int count=0;float lag=0;
+  bool present[20]={};int count=0;float lag=0,targetError=0;
   Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);
    if(!p)continue;
    int slot=-1;for(int i=0;i<initialBodyCount;++i)if(initialBodies[i]==p){slot=i;break;}
@@ -525,7 +546,16 @@ class PurpleKochappyApp:public PlugPikiApp {
     &&p->mGroundTriangle&&std::isfinite(p->mGroundTriangle->mTriangle.mNormal.y)
     &&p->mGroundTriangle->mTriangle.mNormal.y>.5f,"catchup original body contact/hazard changed");
    const float d=distance(n->mSRT.t,p->mSRT.t);require(std::isfinite(d),"catchup finite roster lag");
+   require(d<512.f,"catchup original body outside verified route clearance");
    lag=std::max(lag,d);
+   Vector3f target;bool lastCentre=false;
+   require(FormationObserver::target(*p,*n,target,lastCentre),"catchup actual owned Formation target missing");
+   const float span=distance(n->mSRT.t,target),error=distance(p->mSRT.t,target);
+   require(std::isfinite(span)&&span<512.f&&std::isfinite(error),"catchup Formation target outside verified route clearance");
+   targetError=std::max(targetError,error);
+   if(routeCatchup.elapsed==0||routeCatchup.elapsed%30==0)
+    std::printf("P2_PURPLE_KOCHAPPY_FORMATION_TARGET age=%d generator=%u last_centre=%d body_span=%.4f target_span=%.4f target_error=%.4f target_xyz=%.4f,%.4f,%.4f body_xyz=%.4f,%.4f,%.4f read_only=1\n",
+     age,unsigned(p->mGenerator->_70),int(lastCentre),d,span,error,target.x,target.y,target.z,p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);
   }
   bool roster=initialBodyCount==20&&count==20;
   for(int i=0;i<initialBodyCount;++i)roster=roster&&present[i];
@@ -534,11 +564,13 @@ class PurpleKochappyApp:public PlugPikiApp {
     C_NAVI_PARM(n,mCursorMoveStickThreshold))==PcKochappyGatherInput::Cursor,
     "catchup cursor input must be movement-neutral under loaded bands");
   const float speed=std::sqrt(n->mVelocity.x*n->mVelocity.x+n->mVelocity.z*n->mVelocity.z);
-  const auto command=routeCatchup.observe(roster,lag,radius+whistle*.5f,speed);
+  // ActFormation::exec stops walking at flat target error <=30. A healthy
+  // follower's own slot can lie beyond the captain's whistle range.
+  const auto command=routeCatchup.observe(roster,targetError,30.f,speed);
   require(command!=PcKochappyCatchupInput::Refuse,"bounded ordinary route catchup stalled/invalid");
   if(routeCatchup.elapsed==1||routeCatchup.elapsed%30==0||command==PcKochappyCatchupInput::Continue)
-   std::printf("P2_PURPLE_KOCHAPPY_ROUTE_CATCHUP age=%d visited=%d next=%d elapsed=%d lag=%.4f limit=%.4f captain_speed=%.4f stable=%d continue=%d roster=20 SDL_cursor_whistle=1 actor_writes=0\n",
-    age,routeCatchup.guide,receiverWaypoint,routeCatchup.elapsed,lag,radius+whistle*.5f,speed,
+   std::printf("P2_PURPLE_KOCHAPPY_ROUTE_CATCHUP age=%d visited=%d next=%d elapsed=%d lag=%.4f target_error=%.4f limit=%.4f captain_speed=%.4f stable=%d continue=%d roster=20 SDL_cursor_whistle=1 actor_writes=0\n",
+    age,routeCatchup.guide,receiverWaypoint,routeCatchup.elapsed,lag,targetError,30.f,speed,
     routeCatchup.stable,int(command==PcKochappyCatchupInput::Continue));
   // Aim the ordinary cursor at the current captain, without walking or
   // assuming its previous world position was within whistle range.

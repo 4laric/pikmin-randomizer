@@ -91,6 +91,15 @@ static void p1ResumeExpected(){const char* text=std::getenv("P2_WHITE_CAMPAIGN_E
 static int whiteStock(){const auto& c=p2ship::stock.counts[1];return c[0]+c[1]+c[2];}
 static int spent(){int total=0;for(unsigned id:flowerIds)total+=p2whitecampaign::budget.get({0,id});return total;}
 static void conservedBudget(){for(unsigned id:flowerIds)require(p2whitecampaign::budget.get({0,id})==5,"three lifetime budgets not exactly five");}
+// Observe actual native stock as the acknowledgement; never publish a second
+// key while its predecessor is pending. Twenty neutral ticks leave key-up input.
+struct WhiteWithdrawalCadence {
+ int sequence=1,pendingStock=-1,readyTick=0;
+ bool ready(int tick,bool walking)const{return pendingStock<0&&tick>=readyTick&&walking;}
+ void observe(int stock,int tick){if(pendingStock>=0&&stock!=pendingStock){require(stock==pendingStock-1,"ordinary withdrawal stock acknowledgement mismatch");pendingStock=-1;readyTick=tick+20;}}
+ int request(int stock,int tick){require(pendingStock<0&&tick>=readyTick&&stock>0,"ordinary withdrawal request before acknowledgement/settling");pendingStock=stock;return ++sequence;}
+};
+static WhiteWithdrawalCadence withdrawal;
 static void keyRequest(int sequence,const char* key){std::printf("P2_WHITE_NATIVE_KEY_REQUEST seq=%d key=%s actual_SDL_keyboard_required=1\n",sequence,key);std::fflush(stdout);}
 // Whistle radius also reaches non-target bodies. Let ordinary throws/captures
 // finish before any regroup whistle, even when the intended target is grounded.
@@ -341,8 +350,8 @@ public:int idle()override{
  if(phase==11){if(whiteFollowers==15){goal=itemMgr->getUfo()->getGoalPos();next(17);}else{for(Piki* p:whites)if(p->mMode!=PikiMode::FormationMode){goal=p->mSRT.t;break;}}}
  if(phase==17){goal=itemMgr->getUfo()->getGoalPos();float x=goal.x-n->mSRT.t.x,z=goal.z-n->mSRT.t.z;if(x*x+z*z<10000){if(resumeMode){keyRequest(1,"CTRL_F10");next(22);}else{keyRequest(1,"SHIFT_F10");next(18);}}}
  if(phase==18&&whiteStock()==15&&white==0){redReturnLog(n,false,"P2_WHITE_CAMPAIGN_P1_PRE_SUNSET_STOCK");require(p2ship::stock.counts[1][Leaf]==15&&red==5&&heads==0,"ordinary ship deposit conservation");dayBefore=gameflow.mWorldClock.mCurrentDay;expectedDay=pc_randomizer_next_day(dayBefore);require(expectedDay==dayBefore+1,"ordinary next day required");saveIndexBefore=gameflow.mGamePrefs.mMostRecentSaveIndex;uint8_t hash[32];pc_randomizer_checkpoint_info(&generationBefore,hash);next(20);saveRequested=false;saveIntent=WhiteSaveIntent::Pause;std::puts("P2_WHITE_CAMPAIGN_SAVE_BEGIN actual_pause_day_UI_only=1 no_clock_write=1");}
- if(phase==22&&phaseTick>=30){keyRequest(2,"F10");next(23);}
- if(phase==23){require(whiteStock()+white==15&&heads==0&&p2whitetreasure::ledger.total()==180,"resumed ordinary withdrawal conservation");if(white==15&&whiteStock()==0){require(whiteFollowers==15,"resumed fifteen Whites not usable formation");naturalBodies=whites;resumeStart=n->mSRT.t;goal=resumeStart;goal.x+=60;next(25);}else if(phaseTick%20==0)keyRequest(2+phaseTick/20,"F10");}
+ if(phase==22&&phaseTick>=30&&(n->getCurrState()&&n->getCurrState()->getID()==NAVISTATE_Walk)){keyRequest(withdrawal.request(whiteStock(),0),"F10");next(23);return result;}
+ if(phase==23){require(whiteStock()+white==15&&heads==0&&p2whitetreasure::ledger.total()==180,"resumed ordinary withdrawal conservation");withdrawal.observe(whiteStock(),phaseTick);if(white==15&&whiteStock()==0){require(whiteFollowers==15,"resumed fifteen Whites not usable formation");naturalBodies=whites;resumeStart=n->mSRT.t;goal=resumeStart;goal.x+=60;next(25);}else if(withdrawal.ready(phaseTick,(n->getCurrState()&&n->getCurrState()->getID()==NAVISTATE_Walk)))keyRequest(withdrawal.request(whiteStock(),phaseTick),"F10");}
  if(phase==25){float x=n->mSRT.t.x-resumeStart.x,z=n->mSRT.t.z-resumeStart.z;if(x*x+z*z>900&&white==15&&whiteFollowers==15){conservedBudget();std::printf("P2_WHITE_CAMPAIGN_RESUME_PASS day=%d white=15 stock=0 leaf=15 spent=15 pokos=180 original_red_conserved=5 original_white_conserved=15 original_population=20 red_field=0 displacement=%.4f native_checkpoint_resumed=1 ordinary_ship_keyboard=1\n",gameflow.mWorldClock.mCurrentDay,std::sqrt(x*x+z*z));std::fflush(nullptr);std::_Exit(0);}}
  require(phaseTick<1600,"ordinary bounded input phase timeout");return result;
  }
