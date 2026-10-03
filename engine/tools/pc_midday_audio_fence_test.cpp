@@ -17,6 +17,23 @@ int main(){
  auto device=SDL_OpenAudioDevice(nullptr,0,&wanted,nullptr,0);check(device!=0);check(registerConstructionAudioDevice(device,e));SDL_PauseAudioDevice(device,0);
  for(unsigned i=0;i<100&&!callbacks.load();++i)SDL_Delay(2);
  check(callbacks.load()>0);
+#if defined(PIKI_USE_JAUDIO) && PIKI_USE_JAUDIO
+ // Native JAudio ownership is deliberately unsupported. Refusal must happen
+ // before pausing the real device or enabling constructor command suppression.
+ AudioConstructionFence unsupported;auto commandsBefore=suppressedAudioConstructionCommands();
+ check(!unsupported.begin(e)&&e=="native JAudio construction fence is not implemented");
+ check(!unsupported.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PLAYING);
+ check(!pc_midday_audio_command_suppressed()&&suppressedAudioConstructionCommands()==commandsBefore);
+ auto running=callbacks.load();for(unsigned i=0;i<100&&callbacks.load()==running;++i)SDL_Delay(2);
+ check(callbacks.load()>running);
+ check(!unsupported.release(false,e)&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PLAYING);
+ SDL_PauseAudioDevice(device,1);
+ check(!unsupported.begin(e)&&!unsupported.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PAUSED);
+ check(!pc_midday_audio_command_suppressed()&&suppressedAudioConstructionCommands()==commandsBefore);
+ SDL_PauseAudioDevice(device,0);check(unregisterConstructionAudioDevice(e));
+ SDL_CloseAudioDevice(device);SDL_Quit();
+ std::cout<<checks<<" actual SDL device/native JAudio refusal controls PASS\n";return 0;
+#endif
  AudioConstructionFence guard;check(guard.begin(e));check(guard.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PAUSED);
  check(!resumeConstructionAudioDevice(e));auto stopped=callbacks.load();SDL_Delay(30);check(callbacks.load()==stopped);auto commands=suppressedAudioConstructionCommands();check(pc_midday_audio_command_suppressed()&&suppressedAudioConstructionCommands()==commands+1);
  AudioConstructionFence nested;check(!nested.begin(e));check(!unregisterConstructionAudioDevice(e));

@@ -35,6 +35,26 @@ int main(int argc,char**argv){
  SDL_AudioSpec spec{};spec.freq=48000;spec.format=AUDIO_S16SYS;spec.channels=2;spec.samples=256;spec.callback=callback;
  auto device=SDL_OpenAudioDevice(nullptr,0,&spec,nullptr,0);check(device!=0&&registerConstructionAudioDevice(device,e));SDL_PauseAudioDevice(device,0);
  pc_sim_rng_note_main_thread();ConstructorFence noProfile;check(!noProfile.begin(e));check(pc_sim_rng_begin_offline(123,456,e));PcSimRngCheckpoint before;check(pc_sim_rng_capture(before,e));
+#if defined(PIKI_USE_JAUDIO) && PIKI_USE_JAUDIO
+ // Portable RNG does not make native JAudio construction eligible. A failed
+ // begin must leave all actual device, RNG and reward writer state untouched.
+ ConstructorFence unsupported;auto rewardsBefore=suppressedConstructionRewards();
+ check(!unsupported.begin(e)&&e=="native JAudio construction fence is not implemented");
+ check(!unsupported.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PLAYING);
+ PcSimRngCheckpoint unchanged;check(pc_sim_rng_capture(unchanged,e)&&same(before,unchanged));
+ check(!pc_midday_construction_rewards_suppressed()&&!pc_midday_audio_command_suppressed());
+ check(suppressedConstructionRewards()==rewardsBefore);
+ auto running=callbacks.load();for(unsigned i=0;i<100&&callbacks.load()==running;++i)SDL_Delay(2);check(callbacks.load()>running);
+ check(!unsupported.applySavedRng(before,e)&&!unsupported.finish(false,e));
+ check(pc_sim_rng_capture(unchanged,e)&&same(before,unchanged));
+ const char*normalCheck="Pikmin: Positron Generator";pc_randomizer_check(normalCheck);
+ check(pc_randomizer_checked(normalCheck)&&fs::exists(run/"checks.txt")&&suppressedConstructionRewards()==rewardsBefore);
+ SDL_PauseAudioDevice(device,1);
+ check(!unsupported.begin(e)&&!unsupported.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PAUSED);
+ check(pc_sim_rng_capture(unchanged,e)&&same(before,unchanged)&&!pc_midday_construction_rewards_suppressed());
+ check(unregisterConstructionAudioDevice(e));SDL_CloseAudioDevice(device);SDL_Quit();
+ std::cout<<checks<<" actual device/RNG/reward native JAudio refusal controls PASS\n";return 0;
+#endif
  ConstructorFence fence;check(fence.begin(e));check(fence.held()&&SDL_GetAudioDeviceStatus(device)==SDL_AUDIO_PAUSED);auto n=callbacks.load();SDL_Delay(25);check(callbacks.load()==n);
  auto rewards=suppressedConstructionRewards();const char*name="Pikmin: Positron Generator";pc_randomizer_check(name);check(suppressedConstructionRewards()==rewards+1&&!pc_randomizer_checked(name)&&!fs::exists(run/"checks.txt"));
  int first=pc_sim_rand(),cosmetic=pc_cosmetic_rand();for(int i=0;i<8;++i)check(pc_sim_rand()==first&&pc_cosmetic_rand()==cosmetic);pc_sim_srand(999);pc_cosmetic_srand(888);check(pc_sim_rng_state()==before.simState&&pc_cosmetic_rng_state()==before.cosmeticState);
