@@ -146,7 +146,12 @@ int pc_p2_convert_ivory(Pom* pom,int remaining){
     CI_LOOP(it){Creature* creature=*it;if(!creature||!creature->isAlive()||!creature->isPiki())continue;Piki* p=static_cast<Piki*>(creature);
         const bool alreadyWhite=pc_p2_is_white(p);
         if((body && budget.slots>=remaining) || !budget.accepts(alreadyWhite)){releaseIvoryInput(pom,p,released++);it.dec();continue;}
+        // Native one-for-one burying reserves a transient replacement slot.
+        // Preserve the seed field cap and refund the living input if birth fails.
+        const bool oldBuryMode = PikiHeadMgr::buryMode;
+        PikiHeadMgr::buryMode = true;
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
+        PikiHeadMgr::buryMode = oldBuryMode;
         if(!sprout){releaseIvoryInput(pom,p,released++);it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);pc_p2_set_species(sprout,P2SpeciesWhite);
         float angle=budget.births*1.256637f;const float horizontal=body?110.f:120.f,vertical=body?750.f:500.f;

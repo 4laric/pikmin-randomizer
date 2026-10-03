@@ -1,3 +1,4 @@
+#include "pc_p2_original_drop_engine.h"
 #include "pc_p2_demon_host.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_life_gauge_hooks.h"
@@ -1157,6 +1158,9 @@ void BTeki::createSoulEffect()
  */
 void BTeki::spawnItems()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if(pc_p2_original_spawn_items(this))return;
+#endif
 	// spawn item
 	ID32& id = mPersonality->mID;
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT

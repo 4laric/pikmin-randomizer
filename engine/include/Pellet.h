@@ -423,6 +423,9 @@ public:
  * @note Size: 0x204.
  */
 class PelletMgr : public MonoObjectMgr {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	friend struct P2OriginalDropAccess; // Read-only prebirth config/shape admission.
+#endif
 	friend class Pellet;
 
 	// `PlayerState` is one of very few 100% confirmed breaches of interface in the codebase, as the ILK tells us the access modifiers
