@@ -19,6 +19,17 @@ COURSES = ('tutorial', 'forest', 'yakushima', 'last')
 DIGEST = re.compile(r'[0-9a-f]{64}\Z')
 MAX_DESCRIPTOR = 16 * 1024 * 1024
 MAX_FILE = 128 * 1024 * 1024
+ROOT_INPUTS = (
+    'p2-treasure-placements.txt', 'p2-treasure-catalog.txt',
+    'p2-pelplant-resources.txt', 'p2-chappy-bank.txt', 'p2-frog.txt',
+    'p2-uji-bank.txt', 'p2-ground-bank.txt', 'p2-original-red-bank.txt',
+    'p2-kochappy-profile.txt', 'p2-original-tank-bank.txt', 'foliage-bank.txt',
+    'p2-aquatic-bank.txt', 'p2-snagret-bank.txt', 'p2-flying-bank.txt',
+    'p2-hanachirashi-joints.txt', 'p2-original-cannon-bank.txt',
+    'p2-original-cannon-attach.txt', 'p2-original-stone-bank.txt',
+    'p2-original-gas-bank.txt', 'p2-original-egg-bank.txt',
+    'p2-original-wisp-bank.txt', 'p2-original-honey-bank.txt',
+) + tuple(f'size{size}-{kind}.txt' for size in (1, 5, 10, 20) for kind in ('bank', 'joints'))
 
 
 def sha(data):
@@ -72,7 +83,7 @@ def source_identity(bundles, calendar):
 
 
 def safe_path(name):
-    if name in ('p2-treasure-placements.txt', 'p2-treasure-catalog.txt'):
+    if name in ROOT_INPUTS:
         return True
     path = PurePosixPath(name)
     return (len(name) <= 512 and name.startswith(('assets/', 'p2-original/'))
@@ -165,7 +176,7 @@ def descriptor(prepared, campaign):
             if not data or len(data) > MAX_FILE:
                 raise ValueError('Prepared runtime file exceeds native verification bounds: ' + name)
             files[name] = sha(data)
-    for name in ('p2-treasure-placements.txt', 'p2-treasure-catalog.txt'):
+    for name in ROOT_INPUTS:
         if (prepared / name).exists():
             data = (prepared / name).read_bytes()
             if not data or len(data) > MAX_FILE:
@@ -203,7 +214,7 @@ class OriginalRun:
         # Private copies keep maintained assets and other running sessions intact.
         for name in ('assets', 'p2-original'):
             shutil.copytree(prepared / name, self.directory / name)
-        for name in ('p2-treasure-placements.txt', 'p2-treasure-catalog.txt'):
+        for name in ROOT_INPUTS:
             if (prepared / name).exists():
                 shutil.copy2(prepared / name, self.directory / name)
         if treasure_source and (not (self.directory / 'p2-treasure-placements.txt').exists() or sha((self.directory / 'p2-treasure-placements.txt').read_bytes()) != treasure_source):

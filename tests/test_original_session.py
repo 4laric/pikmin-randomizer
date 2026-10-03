@@ -91,6 +91,18 @@ class OriginalSessionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             descriptor(self.prepared, self.campaign)
 
+    def test_named_resource_roles_are_selected_and_privately_copied(self):
+        bank = self.prepared / 'p2-original-egg-bank.txt'
+        bank.write_bytes(b'explicit source resource bank')
+        selected = descriptor(self.prepared, self.campaign)
+        self.assertIn(b'p2-original-egg-bank.txt ' + sha(bank.read_bytes()).encode(), selected)
+        run = OriginalRun(OriginalSession(self.root / 'session', selected), self.prepared)
+        self.assertEqual((run.directory / bank.name).read_bytes(), bank.read_bytes())
+        bank.write_bytes(b'changed source resource bank')
+        with self.assertRaises(ValueError):
+            OriginalRun(run.session, self.prepared)
+        self.assertFalse(safe_path('p2-original-unknown-bank.txt'))
+
     def test_wrong_manifest_campaign_and_terrain_only_refuse(self):
         with self.assertRaises(ValueError):
             descriptor(self.prepared, 'b' * 64)
