@@ -200,9 +200,14 @@ guards and state transitions. Do not reduce again at flick initialization or
 transit. Do not use `pcNaviHurt` for this source receiver: that private wrapper
 also applies P1 Mods and hardmode scaling.
 
-The qualified equipment pin is `2019cc1d156da04e63b4e65c42932382f3c7ddab`.
+The historical standalone equipment qualification pin is
+`2019cc1d156da04e63b4e65c42932382f3c7ddab`.
 Its initial equipment implementation is `e7379fefa5109b347fb630261168ae4b4e4928d5`,
 followed by the course-mask API and held-whistle compatibility fix. Runtime
 composition also needs the canonical treasure provider and genuine original
 session bootstrap; linking the weak API alone grants nothing. This integration
-guidance does not qualify actual armor acquisition or gameplay.
+guidance does not qualify actual armor acquisition or gameplay. The current
+qualified composition is `dc89ca98788209f9fda28be5b93a8ecf2457de97`, including
+the retail parameter correction and byte-identical source export in merged
+[PR #1293](https://github.com/4laric/pikmin-randomizer/pull/1293). Ordinary armor
+acquisition and gameplay remain open.
