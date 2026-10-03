@@ -425,6 +425,8 @@ public:
 		if(pc_pikipelago_surface_campaign()) {
             // Twice-size campaign text, preserving the ordinary Menu lifecycle.
             gfx.setOrthogonal(orthoMtxDebug.mMtx, RectArea(0,0,gfx.mScreenWidth/2,gfx.mScreenHeight/2));
+            gfx.setViewport(AREA_FULL_SCREEN(gfx));
+            gfx.setScissor(AREA_FULL_SCREEN(gfx));
         } else {
             gfx.setOrthogonal(orthoMtxDebug.mMtx, AREA_FULL_SCREEN(gfx));
         }
