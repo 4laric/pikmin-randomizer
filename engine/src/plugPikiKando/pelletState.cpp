@@ -1,5 +1,6 @@
 #include "PelletState.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_original_corpse_native.h"
 #include "DebugLog.h"
 #include "FlowController.h"
 #include "GoalItem.h"
@@ -357,7 +358,11 @@ void PelletGoalState::exec(Pellet* pelt)
 	mSuckSpeed += gsys->getFrameTime() * 720.0f;
 
 	if (mSuckProgress >= 1.0f) {
-		if (pc_p2_preview_deliver(pelt)) {
+		if (pc_p2_original_corpse_profile(pelt)) {
+			// Actual source corpse completion belongs to ordinary Onion stock;
+			// it cannot enter a preview/treasure economy receipt path.
+			pelt->mTargetGoal->suckMe(pelt);
+		} else if (pc_p2_preview_deliver(pelt)) {
 			// Private treasure receipt; no Onion seeds or ship repair side effects.
 		} else if (pelt->mConfig->mPelletType() == PELTYPE_UfoPart) {
 			pelt->mTargetGoal->finishSuck(pelt);
