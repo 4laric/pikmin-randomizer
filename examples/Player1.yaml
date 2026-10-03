@@ -1,4 +1,4 @@
-# Current playtest settings. Install pikmin_randomizer-0.32.0.apworld to generate.
+# Current playtest settings. Install the matching pikmin_randomizer APWorld to generate.
 name: Player1
 game: Pikmin Randomizer
 Pikmin Randomizer:
@@ -42,5 +42,8 @@ Pikmin Randomizer:
   group_spawn_enemies: false
   per_spawn_enemies: false
   enemy_shuffle: false
+  p2_enemy_randomizer: false # Experimental; opt in with ExperimentalP2Enemies.yaml
+  p2_enemy_pool: all # Full pinned admitted pool when enabled; excludes withdrawn imports
+  p2_density: sampled # Records species that cannot fit this seed's compatible slots
 
 # New seeds contain 30 Ship Repairs; 25 are required to finish.

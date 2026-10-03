@@ -1,0 +1,19 @@
+# Experimental combined P1 + full admitted P2 enemy randomization.
+# Use the matching APWorld, native build and converted P2 content package.
+# Assets are user supplied. Generation alone does not verify gameplay.
+# This selects admitted source behavior; "full" additionally selects model proxies.
+name: Player1
+game: Pikmin Randomizer
+Pikmin Randomizer:
+  goal: emperor_bulblax
+  all_areas: true
+  collection_checks: true
+  permanent_checks: true
+  campaign_enemies: true
+  p2_enemy_randomizer: true
+  p2_enemy_pool: all
+  p2_density: sampled
+  # Empty means the full pinned pool; do not silently replace it with an early cohort.
+  p2_species: []
+  # Individual seeds sample compatible slots; not every species must appear.
+  # Physical combat/carrying, mixed-scene saves and co-op need release qualification.
