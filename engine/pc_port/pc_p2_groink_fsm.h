@@ -83,6 +83,9 @@ enum KeyType : int {
 struct Params {
     float accel = 0.1f;            // s003 CreatureProps accel
     float health = 100.0f;         // fp00
+    // fp31 is a fraction of max HP per source update, not per second.
+    // Keep unstaged legacy previews unchanged; retail files supply the rate.
+    float regenerationRate = 0.0f;
     float moveSpeed = 80.0f;       // fp06
     float turnSpeed = 0.1f;        // fp08 (rate per source update)
     float maxTurnAngle = 10.0f;    // fp28 (degrees per source update)
@@ -114,6 +117,11 @@ struct Params {
 // without fp00) are told apart by content, never by position. Fails closed on
 // a malformed file, a missing general block or a nonphysical value.
 bool parseEnemyParm(std::istream& in, Params& out, std::string& error);
+
+// EnemyBase::lifeRecover, called only for a live non-carcass actor. No alert,
+// target or damage delay exists in the source. Invoke once per 30 Hz update,
+// before draining stored injury; a zero-health actor must never be revived.
+float recoverLivingHealth(float health, const Params& params, bool living);
 
 struct KeyEvent { int frame = 0; int type = 0; };
 struct Clip {

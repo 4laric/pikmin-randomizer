@@ -1,10 +1,12 @@
 // Engine-free regressions for the Gatling Groink source FSM port
 // (pc_port/pc_p2_groink_fsm.*). Each block names the source lines it pins.
 #include "pc_p2_groink_fsm.h"
+#include "pc_p2_groink_clock.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
+#include <limits>
 #include <vector>
 
 using namespace p2groinkfsm;
@@ -135,7 +137,7 @@ int main() {
             "# CreatureProps\n{\n\t{s003} 4 0.200000 \t# accel\n{_eof}\n}\n"
             "# EnemyParmsBase\n{\n\t{fp00} 4 750.000000 \t# life\n\t{fp11} 4 70.000000 \t# private\n"
             "\t{fp12} 4 400.000000 \t# sight\n\t{fp14} 4 350.000000 \t# search\n"
-            "\t{fp24} 4 12.500000 \t# dmg\n\t{ip01} 4 4 \t# blowA\n{_eof}\n}\n"
+            "\t{fp24} 4 12.500000 \t# dmg\n\t{fp31} 4 0.000010\n\t{ip01} 4 4 \t# blowA\n{_eof}\n}\n"
             "# EnemyParmsBase\n{\n\t{fp11} 4 25.000000 \t# gauge\n\t{fp12} 4 8.000000 \t# respawn\n{_eof}\n}\n");
         Params p;
         std::string err;
@@ -144,9 +146,53 @@ int main() {
         check(p.healthGaugeTimer == 25.0f && p.respawnRate == 8.0f, "proper fp11/fp12 not confused with general");
         check(p.searchDistance == 350.0f && p.attackDamage == 12.5f && p.shakeOffBlowA == 4 && p.accel == 0.2f, "other rows");
         check(p.moveSpeed == 80.0f, "missing rows keep the source default");
+        check(near(p.regenerationRate, 0.00001f, 1e-9f), "general fp31 retail regeneration rate");
         std::istringstream bad("{\n\t{fp06} 4 80.0\n{_eof}\n}\n");
         Params q;
         check(!parseEnemyParm(bad, q, err) && !q.retail, "no general block fails closed");
+        for (const char* rate : {"-0.01", "1.01", "nan", "inf"}) {
+            std::istringstream invalid(std::string("{\n{fp00} 4 1200\n{fp14} 4 350\n{fp31} 4 ") + rate + "\n{_eof}\n}\n");
+            Params unchanged;
+            check(!parseEnemyParm(invalid, unchanged, err) && unchanged.regenerationRate == 0.0f,
+                  "invalid fp31 fails without mutating parameters");
+        }
+    }
+
+    // EnemyBase LivingState::update: recover before injure, once per source
+    // tick, even under attack; no target/caution timer gates the recovery.
+    {
+        Params p;
+        p.health = 1200.0f;
+        p.regenerationRate = 0.00001f;
+        check(near(recoverLivingHealth(600.0f, p, true), 600.012f), "retail rate is max HP fraction per tick");
+        check(recoverLivingHealth(1199.999f, p, true) == 1200.0f, "full health clamp");
+        check(recoverLivingHealth(0.0f, p, true) == 0.0f, "zero health cannot revive");
+        check(recoverLivingHealth(-1.0f, p, true) == -1.0f, "negative health cannot revive");
+        check(recoverLivingHealth(600.0f, p, false) == 600.0f, "dead or carcass actor cannot recover");
+        p.regenerationRate = 0.0f;
+        check(recoverLivingHealth(600.0f, p, true) == 600.0f, "zero rate disables recovery");
+        p.regenerationRate = std::numeric_limits<float>::infinity();
+        check(recoverLivingHealth(600.0f, p, true) == 600.0f, "invalid direct rate cannot corrupt health");
+        p.regenerationRate = 0.01f;
+        check(recoverLivingHealth(1200.0f, p, true) - 30.0f == 1170.0f,
+              "recover clamps before pending injury, cannot refund a full-health hit");
+        float outcomes[2] = {};
+        for (int rate = 0; rate < 2; ++rate) {
+            P2GroinkSourceClock clock;
+            float hp = 600.0f;
+            int count = 0;
+            for (int frame = 0; frame < (rate ? 120 : 60); ++frame) {
+                const int ticks = clock.step(rate ? 1.0/120.0 : 1.0/60.0, true);
+                for (int tick = 0; tick < ticks; ++tick) {
+                    hp = recoverLivingHealth(hp, p, true);
+                    ++count;
+                }
+            }
+            check(count == 30, "one second drives exactly 30 recovery ticks");
+            outcomes[rate] = hp;
+            check(clock.step(1.0/30.0, false) == 0, "pause cannot recover health");
+        }
+        check(outcomes[0] == outcomes[1] && near(outcomes[0], 960.0f), "render FPS cannot multiply recovery");
     }
 
     // ---- Bank parser.

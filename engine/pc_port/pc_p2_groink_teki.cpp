@@ -288,10 +288,11 @@ void loadParams() {
             sParams[k] = p2groinkfsm::Params{};
         }
         std::printf("P2_GROINK_PARMS source_id=%u retail=%d health=%.1f move=%.1f sight=%.1f search=%.1f "
-                    "attack_radius=%.1f hit_angle=%.1f damage=%.1f territory=%.1f\n",
+                    "attack_radius=%.1f hit_angle=%.1f damage=%.1f territory=%.1f regeneration=%.8f\n",
                     k ? 97u : 78u, sParams[k].retail ? 1 : 0, sParams[k].health, sParams[k].moveSpeed,
                     sParams[k].sightRadius, sParams[k].searchDistance, sParams[k].attackRadius,
-                    sParams[k].attackHitAngle, sParams[k].attackDamage, sParams[k].territoryRadius);
+                    sParams[k].attackHitAngle, sParams[k].attackDamage, sParams[k].territoryRadius,
+                    sParams[k].regenerationRate);
     }
 }
 
@@ -674,6 +675,15 @@ void restoreColl(BTeki* t, Binding& b) {
 bool ownTick(BTeki* t, Binding& b, float dt) {
     buildColl(t, b);
     updateColl(t, b);
+    const int ticks = b.clock.step(double(dt), true);
+    if (ticks <= 0) return false;
+    const auto recover = [&]() {
+        t->mHealth = p2groinkfsm::recoverLivingHealth(t->mHealth, b.fsm.params(),
+            b.fsm.state() != p2groinkfsm::State::Dead && t->mDeadState == 0 && !t->mPellet);
+    };
+    // LivingState::update recovers before injure. Do not multiply by render
+    // delta: fp31 is applied once per source update, including during combat.
+    recover();
     // The suppressed P1 strategy normally applies stored damage through its
     // damage reaction; drain it here so Pikmin hits reach mHealth (natural
     // death). Every InteractAttack also bumps mDamageCount
@@ -689,14 +699,13 @@ bool ownTick(BTeki* t, Binding& b, float dt) {
                     sourceOf(b), t->mHealth, b.lastHealth, b.pendingHits);
     if (t->mHealth > 0.0f) b.lastPositiveHealth = t->mHealth;
     b.lastHealth = t->mHealth;
-    const int ticks = b.clock.step(double(dt), true);
-    if (ticks <= 0) return false;
     Snapshot snap;
     buildSnapshot(t, snap);
     p2groinkfsm::State shown = b.fsm.state();
     p2groinkfsm::TickOutput last;
     bool kill = false;
     for (int k = 0; k < ticks && !kill; ++k) {
+        if (k > 0) recover();
         p2groinkfsm::TickInput in;
         const Vector3f pos = t->getPosition();
         in.position = {pos.x, pos.y, pos.z};
