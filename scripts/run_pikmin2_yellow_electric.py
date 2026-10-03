@@ -41,7 +41,7 @@ def main():
     os.environ.update(PIKMIN_SETTINGS_PATH=str(config / 'pikmin-settings.ini'), NECTAR_SAVE_DIR=str(save), P2_ELECBUG_MODE=args.mode)
     if args.captain_down:
         os.environ['P2_ELECBUG_FORCE_CAPTAIN_DOWN'] = '1'
-    print('Engineered ElecBug contact; Yellow is explicitly staged. Original acquisition/campaign/save untested.')
+    print(f'Engineered ElecBug contact; one canonical {args.mode.split("-")[0]} is explicitly staged. Original acquisition/campaign/save untested.')
     print('Fresh evidence:', run, flush=True)
     marker = 'P2_FIXTURE_CAPTAIN_DOWN' if args.captain_down else 'P2_ELECBUG_CONTACT_CANDIDATE'
     result = launch(exe, run, ['--experimental-pikmin2-room'], [marker],

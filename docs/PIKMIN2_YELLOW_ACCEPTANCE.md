@@ -66,7 +66,9 @@ and synthetic flags cannot supply those results.
 ## Bounded electric contact check
 
 [Native PR 178](https://github.com/4laric/Open-Nectar---Pikmin-Native-PC-Port/pull/178)
-adds an explicitly staged Yellow mode to the existing ElecBug contact fixture.
+adds explicitly staged Yellow and separate canonical Red control modes to the
+existing ElecBug contact fixture. Each replaces one of the 20 baseline Reds
+near the captain before the encounter; the Red control still has 20 Reds.
 The engineered pair's natural discharge and ordinary throw must dispatch the
 actual electric receiver for the exact staged Yellow. The witness requires its
 rejection without changing Flying state, followed by actual grounded survival
