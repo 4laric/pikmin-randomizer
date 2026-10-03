@@ -720,7 +720,11 @@ public:
 class GenObjectFactory : public Factory<GenObject> {
 protected:
 	GenObjectFactory()
+#if defined(PIKI_PC_PORT)
+	    : Factory<GenObject>(13) // Additional original-course object; no host/AP slot.
+#else
 	    : Factory<GenObject>(12)
+#endif
 	{
 	}
 
