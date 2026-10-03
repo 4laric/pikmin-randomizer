@@ -64,10 +64,10 @@ reconnect tests must reuse it and the same server save. Keep older player saves
 and installations untouched. Asset staging and its cache need additional free
 disk space beyond the prepared-content directory.
 
-This candidate is **not yet gameplay-qualified**. The full-pool Linux installer
-attempt passed source-file verification but stopped when its disk filled;
-complete staging, actual admitted P2 births in mixed scenes, ordinary combat
-and real AP checks remain to be observed. Native day-end save, fresh resume,
+This candidate is **not yet gameplay-qualified**. Full-pool Linux staging and
+cache creation passed after resolving an initial disk-capacity failure. Actual
+admitted P2 births in mixed scenes, ordinary combat and real AP checks remain
+to be observed. Native day-end save, fresh resume,
 and client/server reconnect also remain unverified for the exact packaged seed.
 Do not advertise co-op support based on this solo release test.
 
