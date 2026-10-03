@@ -108,6 +108,8 @@ def main():
     for name in ('inputs','exe','work','host-root'):
         parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--exe-sha256',required=True)
+    parser.add_argument('--source-pin',required=True)
+    parser.add_argument('--scene',choices=('surface','floor'),default='surface')
     parser.add_argument('--host-sha256',required=True)
     parser.add_argument('--helper',action='store_true')
     parser.add_argument('--native-pid',type=int)
@@ -125,12 +127,15 @@ def main():
         raise ValueError('Exact qualified Linux production executable required')
     args.work.mkdir(exist_ok=False,parents=True)
     package = args.work/'inputs'
-    shutil.copytree(args.inputs,package,ignore=shutil.ignore_patterns('__pycache__'))
+    # The producer's immutable index may include cache files. Preserve every
+    # indexed byte; -B prevents this run from writing new Python caches.
+    shutil.copytree(args.inputs,package)
     for name,expected in json.loads((package/'input-sha256.json').read_text()).items():
         if sha(package/name) != expected:
             raise ValueError('Frozen input differs: '+name)
     sys.path.insert(0,str(package))
-    runtime = load(package/'linux-production-resume39.py','checkpoint_package')
+    runtime = load(package/('linux-production-resume39.py' if args.scene=='surface'
+                            else 'linux-production-floor41.py'),'checkpoint_package')
     from randomizer.session import Session, SessionLock
     from randomizer.runner import NativeRun
     runtime.overlay(Path('/srv/game-ci/assets/pikmin/pikmin1/assets'),args.work/'assets',
@@ -145,7 +150,7 @@ def main():
     if sha(binary) != args.exe_sha256:
         raise ValueError('Private executable copy differs')
     processes = []
-    result = dict(executable_sha256=args.exe_sha256,ordinary_keyboard_only=True,
+    result = dict(executable_sha256=args.exe_sha256,source_pin=args.source_pin,scene=args.scene,ordinary_keyboard_only=True,
                   full_campaign_accepted=False,work=str(args.work))
     (args.work/'input-pins.json').write_text(json.dumps(dict(
         executable_sha256=args.exe_sha256,host_sha256=args.host_sha256,
@@ -180,8 +185,9 @@ def main():
                     if 'tu_tx20.blo' in text or 'dataDir/cinemas/demo65.cin' in text:
                         result['blocked_reason']='pre-restoration P1 bonus/extinction startup flow'
                         break
-                    if helper_process is None and 'P2_CAMPAIGN_SCENE_READY floor=0 restored_party=1' in text:
-                        argv=[sys.executable,str(Path(__file__).resolve()),*sys.argv[1:],'--helper',
+                    marker=f"P2_CAMPAIGN_SCENE_READY floor={int(args.scene=='floor')} restored_party=1"
+                    if helper_process is None and marker in text:
+                        argv=[sys.executable,'-B',str(Path(__file__).resolve()),*sys.argv[1:],'--helper',
                               '--native-pid',str(game.pid),'--xvfb-pid',str(display_process.pid),
                               '--display',display,'--deadline',str(started+80)]
                         helper_process=subprocess.Popen(argv,env=env,stdout=subprocess.DEVNULL,stderr=(args.work/'helper.stderr').open('wb'))

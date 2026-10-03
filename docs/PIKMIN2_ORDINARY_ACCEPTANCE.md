@@ -55,8 +55,9 @@ qualified source providers and checkpoints.
 
 ## Isolated Linux partial route
 
-`scripts/run_pikmin2_checkpoint_controls.py` uses the frozen resume39 input
-package, exact production ELF hash, and a hash-pinned canonical
+`scripts/run_pikmin2_checkpoint_controls.py` uses a frozen resume39 surface or
+floor41 cave input package (`--scene surface|floor`), exact production ELF hash,
+explicit `--source-pin`, and a hash-pinned canonical
 `OwnedX11Keys` helper. It creates its own displayfd Xvfb, private copied executable,
 card/profile and settings. The helper verifies the actual native PID/window,
 executable hash, focus, and centered dimensions before sending held ordinary
@@ -86,6 +87,18 @@ this as the Forest P1 bonus/extinction-seed cinematic. It is the same premature
 startup check when the saved bonus-seed demo flag is already set. Longer waits
 or forced skips do not qualify the intended selected-checkpoint startup. The
 partial route now refuses either known startup flow and returns a failure.
+
+Corrected native `3a2f4c11ad9dc1b06e0f7f1fed0ff6ac9654cdef` passed
+the owner's fresh floor startup with 20 restored bodies and two treasure actors.
+Independent generation-2 surface controls05 also avoided both startup defects,
+preserved its card, and reaped its children, but recorded no captain switches.
+The native party restore leaves captain FSMs in their landing state; the owner
+is investigating surface readiness. Independent floor08 on that same corrected
+ELF passed actual captain switches in both directions with ordinary held input
+in 33.813 seconds. Screenshots show the cave, 20 followers, and the native pause
+menu; the card remained unchanged and owned processes were reaped. This floor
+control result does not certify bud conversion, treasure delivery, or campaign
+save/resume.
 
 Windows short-tap automation also had concurrent foreground interference;
 unobserved taps are not mechanic evidence. Use a coordinated focus interval or
