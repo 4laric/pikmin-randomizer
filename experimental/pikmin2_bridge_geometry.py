@@ -61,6 +61,21 @@ def platforms(data, matrices):
     return result
 
 
+def collision_prism(vertices, triangles, rooms, vertex_offset=0):
+    # BaseShape reads every RoomInfo as one int, then aligns once before tris.
+    # Per-room padding corrupts multi-room assets although a one-room map works.
+    payload = struct.pack('>II', len(triangles), len(rooms)) + bytes(16)
+    payload += b''.join(struct.pack('>i', joint) for joint in rooms)
+    payload += bytes((-(8+len(payload))) % 32)
+    for room, face in triangles:
+        if not 0 <= room < len(rooms) or len(face) != 3 or any(not 0 <= v < len(vertices) for v in face):
+            raise ValueError('Invalid bridge platform triangle')
+        payload += struct.pack('>IIIIhhhhffff', 0x02000000,
+                               *(v+vertex_offset for v in face), room, -1, -1, -1,
+                               *plane(vertices, face))
+    return chunk(256, payload)
+
+
 def convert_bridge(model, platform, output):
     b = blocks(model)
     matrices = joint_matrices(b)
@@ -112,11 +127,7 @@ def convert_bridge(model, platform, output):
         if u32(raw,0)==16:
             points = decoded[1][9]+vertices
             chunks[i]=chunk(16,struct.pack('>I',len(points))+bytes(20)+b''.join(struct.pack('>3f',*v) for v in points))
-    payload=struct.pack('>II',len(triangles),len(rooms))+bytes(16)
-    for joint in rooms: payload+=struct.pack('>i',joint)+bytes(28)
-    for room, face in triangles:
-        payload+=struct.pack('>IIIIhhhhffff',0x02000000,*(v+position_offset for v in face),room,-1,-1,-1,*plane(vertices,face))
-    chunks.append(chunk(256,payload))
+    chunks.append(collision_prism(vertices, triangles, rooms, position_offset))
     lo=[min(v[k] for v in vertices)-64 for k in range(3)];hi=[max(v[k] for v in vertices)+64 for k in range(3)]
     nx=math.ceil((hi[0]-lo[0])/64)+1;nz=math.ceil((hi[2]-lo[2])/64)+1
     payload=bytes(24)+struct.pack('>7fiii',*lo,*hi,64.,nx,nz,1)+struct.pack('>hh',0,len(triangles))+b''.join(struct.pack('>i',i) for i in range(len(triangles)))+bytes(4*nx*nz)
