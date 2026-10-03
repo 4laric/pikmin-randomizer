@@ -28,8 +28,8 @@ class ExportNativeSourceTest(unittest.TestCase):
     def test_copies_text_and_skips_android_binaries(self):
         source, target = self._repo({
             'src/game.cpp': b'int main() {}\n',
-            'android/app/icon.png': b'\x89PNG\x00\x01',
-            'third_party/SDL2-android/demo/font.bmp': b'BM\x00\x00',
+            'android/app/src/main/res/mipmap-hdpi/ic_launcher.png': b'\x89PNG\x00\x01',
+            'third_party/SDL2-android/Xcode-iOS/Demos/data/bitmapfont/kromasky_16x16.bmp': b'BM\x00\x00',
             'pc_port/touch/assets/art/whistle.png': b'\x89PNG\x00\x02',
             'packaging/icon/nectar.ico': b'\x00\x00\x01\x00',
         })
@@ -48,6 +48,16 @@ class ExportNativeSourceTest(unittest.TestCase):
         })
         with self.assertRaisesRegex(ValueError, 'pc_port/stray.bin'):
             export_native_source.export(source, target)
+        self.assertFalse(target.exists())
+
+    def test_new_binary_in_a_known_asset_directory_is_not_silently_skipped(self):
+        source, target = self._repo({
+            'src/game.cpp': b'int main() {}\n',
+            'android/app/icon.png': b'\x89PNG\x00\x01',
+        })
+        with self.assertRaisesRegex(ValueError, 'android/app/icon.png'):
+            export_native_source.export(source, target)
+        self.assertFalse(target.exists())
 
 
 if __name__ == '__main__':
