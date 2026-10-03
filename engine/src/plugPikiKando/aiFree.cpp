@@ -1,6 +1,9 @@
 #include "DebugLog.h"
 #include "GameStat.h"
 #include "pc_crowd_handover.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_original_piki_init.h"
+#endif
 #include "Navi.h"
 #include "PikiAI.h"
 #include "PikiMgr.h"
@@ -82,15 +85,24 @@ void ActFree::exeBoid()
  */
 void ActFree::init(Creature*)
 {
+#if defined(PIKI_PC_PORT)
+	const bool originalP2Birth = pc_p2_original_piki_free_init_consume(mPiki);
+#else
+	const bool originalP2Birth = false;
+#endif
 	mIsBoidActive           = false;
 	mCollisionCooldownTimer = 1.0f;
-	mBoidTimer              = C_PIKI_PARM(mPiki, mDefaultFreeBoidTime) + (3.0f * gsys->getRand(1.0f));
+	mBoidTimer              = C_PIKI_PARM(mPiki, mDefaultFreeBoidTime)
+	                        + (originalP2Birth ? 0.0f : (3.0f * gsys->getRand(1.0f)));
 	_20                     = 0.9f * mBoidTimer;
 	_24                     = 0.8f * mBoidTimer;
 
 	mPiki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	if (mPiki->isHolding()) {
 		PRINT("### piki is holding !\n");
+		mPiki->startMotion(PaniMotionInfo(PIKIANIM_Wait, this), PaniMotionInfo(PIKIANIM_Wait));
+	} else if (originalP2Birth) {
+		// P2 default ActFree::init starts WAIT without choosing a random motion.
 		mPiki->startMotion(PaniMotionInfo(PIKIANIM_Wait, this), PaniMotionInfo(PIKIANIM_Wait));
 	} else {
 		f32 r         = gsys->getRand(1.0f);

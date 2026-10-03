@@ -1,4 +1,7 @@
 #include "Boss.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_original_piki_init.h"
+#endif
 #include "DebugLog.h"
 #include "Dolphin/os.h"
 #include "ItemMgr.h"
@@ -48,7 +51,13 @@ void ActFreeSelect::init(Creature* creature)
 	mIsTimerActive = true;
 	mCurrActionIdx = CHILD_NULL;
 
-	_1C                  = PI * (gsys->getRand(1.0f) - 0.5f) / 3.0f;
+#if defined(PIKI_PC_PORT)
+	// Initial P2 source birth has no random boredom angle; subsequent host
+	// free-action transitions retain the original draw and behaviour.
+	_1C = pc_p2_original_piki_bore_init_consume(mPiki) ? 0.0f : PI * (gsys->getRand(1.0f) - 0.5f) / 3.0f;
+#else
+	_1C = PI * (gsys->getRand(1.0f) - 0.5f) / 3.0f;
+#endif
 	mIsChildActionActive = false;
 	mIsFinished          = false;
 }

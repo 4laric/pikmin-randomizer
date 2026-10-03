@@ -269,6 +269,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_lifecycle.cpp
     pc_port/pc_p2_original_group.cpp
     pc_port/pc_p2_original_group_engine.cpp
+    pc_port/pc_p2_original_piki_init.cpp
+    pc_port/pc_p2_original_piki_spawn.cpp
     pc_port/pc_p2_original_drop.cpp
     pc_port/pc_p2_original_drop_engine.cpp
     pc_port/pc_p2_original_gen_object.cpp
@@ -3234,6 +3236,17 @@ add_test(NAME pc_midday_render_graph COMMAND pc_midday_render_graph_test)
         pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_group_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
     add_test(NAME p2_original_group COMMAND pc_p2_original_group_test)
+
+    add_executable(pc_p2_original_piki_init_test tools/pc_p2_original_piki_init_test.cpp
+        pc_port/pc_p2_original_piki_init.cpp)
+    target_include_directories(pc_p2_original_piki_init_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
+    find_package(Threads REQUIRED)
+    target_link_libraries(pc_p2_original_piki_init_test PRIVATE Threads::Threads)
+    add_test(NAME p2_original_piki_init COMMAND pc_p2_original_piki_init_test)
+    add_executable(pc_p2_original_piki_spawn_test tools/pc_p2_original_piki_spawn_test.cpp
+        pc_port/pc_p2_original_piki_spawn.cpp)
+    target_include_directories(pc_p2_original_piki_spawn_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
+    add_test(NAME p2_original_piki_spawn COMMAND pc_p2_original_piki_spawn_test)
     add_executable(pc_p2_original_lifecycle_test tools/pc_p2_original_lifecycle_test.cpp
         pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_lifecycle_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
@@ -3272,3 +3285,4 @@ endif()
 
 # Real native factory/cache transport fixture; synthetic zero-birth admission only.
 pikmin_add_ci_fixture(original_gen_object tools/p2_original_gen_object_runtime.cpp)
+pikmin_add_ci_fixture(original_piki_init tools/p2_original_piki_init_runtime.cpp)
