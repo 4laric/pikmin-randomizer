@@ -59,8 +59,13 @@ Final `2019cc1d1` Windows/MinGW configuration in private
 `output/native-equipment-141-build` compiles all four changed real translation
 units (`navi.cpp`, `naviState.cpp`, equipment and whistle-pluck), passes both focused
 CMake tests and has a no-work dry run for those objects/tests. This is not a full
-Windows link. Final Linux incremental evidence is tracked in issue #141;
-build success does not prove the gameplay behavior above.
+Windows link. Final `2019cc1d156da04e63b4e65c42932382f3c7ddab` Linux production
+link and both focused CTests also pass, with no-work dry run, clean ldd and ELF
+SHA-256 `7d633981b5110377daeb04c9d9fc9d98419f81923f46366d7bcbf2f1998d1dbc`
+(15,590,160 bytes). SharedRunner unit `equipment-141-final2019` succeeded in the
+same private build graph after preserving the initial executable and result.
+Final build evidence is tracked in issue #141; build success does not prove the
+gameplay behavior above.
 
 The treasure and SAVE owners retain physical receipt and card authority. Both
 maps have retail min/max weight 101. Literal source placements are loose treasures:
