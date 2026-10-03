@@ -71,6 +71,7 @@ the final survivor. Run a separate fresh vulnerable Red control:
 ```powershell
 py -3.12 scripts/run_pikmin2_yellow_electric.py --exe <contact-fixture.exe> --expected-exe-sha256 <sha256> --content <private-ElecBug-bank> --mode yellow-electric
 py -3.12 scripts/run_pikmin2_yellow_electric.py --exe <contact-fixture.exe> --expected-exe-sha256 <sha256> --content <private-ElecBug-bank> --mode red-electric
+py -3.12 scripts/run_pikmin2_yellow_electric.py --exe <contact-fixture.exe> --expected-exe-sha256 <sha256> --content <private-ElecBug-bank> --captain-down
 ```
 
 Each launch is hash checked, privately staged and supervised for at most 60
