@@ -158,3 +158,28 @@ held-watch scaffolds cannot establish equipment acquisition. The cargo owner
 will supply the first actual gear producer; the retail cave owner supplies the
 loose Atlas floor and Violet Bud context. Do not turn those incomplete inputs
 into an artificial successful runtime.
+
+## Source flick receiver integration
+
+The source receiver owner calls `pc_p2_equipment_damage(rawDamage)` from
+`pc_p2_equipment.h` once when applying Koke END damage. Justice Alloy derives
+ownership from the selected original session and authenticated `suit_powerup`
+receipt (dictionary 193, OlimarData index 5). Missing authority or receipt returns
+the input unchanged. The source shield parameter `q008` defaults to 0.5.
+
+Retail `NaviKokeDamageState::onKeyEvent` moves Fall to Lay on END, then calls
+`addDamage(mDamage, mPlaySoundOnDamage)`. Retail `addDamage` first requires an
+inactive/absent movie and an active game world, applies armor, rejects a dead or
+state-invincible captain and actor invincibility, subtracts the accepted damage,
+emits optional feedback, and enters Dead when HP is strictly below 1.0. The
+equipment API supplies only the armor projection; the receiver retains these
+guards and state transitions. Do not reduce again at flick initialization or
+transit. Do not use `pcNaviHurt` for this source receiver: that private wrapper
+also applies P1 Mods and hardmode scaling.
+
+The qualified equipment pin is `2019cc1d156da04e63b4e65c42932382f3c7ddab`.
+Its initial equipment implementation is `e7379fefa5109b347fb630261168ae4b4e4928d5`,
+followed by the course-mask API and held-whistle compatibility fix. Runtime
+composition also needs the canonical treasure provider and genuine original
+session bootstrap; linking the weak API alone grants nothing. This integration
+guidance does not qualify actual armor acquisition or gameplay.
