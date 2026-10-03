@@ -58,7 +58,7 @@ static int phase=0,phaseTick=0,frame=0,budIndex=0;
 static Vector3f goal;
 static SDL_Joystick* virtualPad=nullptr;
 static int nativeFrameLimit=5000;
-static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false;
+static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=false,separatingReds=false,gatheringReds=false;
 static WhiteSaveIntent saveIntent=WhiteSaveIntent::Neutral;
 static Piki* held=nullptr;
 static std::set<Piki*> naturalBodies;
@@ -139,7 +139,7 @@ public:CampaignInput():Kontroller(1){}
    if(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==27&&!unsettledWhitePluck()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
    if(phase==16&&!unsettledAcquisition()&&phaseTick%30<20)keys=KeyConfig::_instance->mSetCursorKey.mBind;
-   const bool move=phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||phase==25;
+   const bool move=(phase==1&&gatheringReds)||phase==2||phase==4||phase==7||phase==11||(phase==16&&!unsettledAcquisition())||(phase==27&&!unsettledWhitePluck())||(phase==28&&!unsettledWhitePluck()&&!unsettledAcquisition())||((phase==9||phase==10)&&separatingReds)||phase==17||phase==25;
    if(move&&n&&n->mNaviCamera){
     float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;
     bool walk=phase==4||phase==17||phase==25||((phase==9||phase==10)&&separatingReds)||bx*bx+bz*bz>10000;
@@ -263,7 +263,21 @@ public:int idle()override{
   if(phase<7||phase==26||phase==27||phase==28)require(carriers==0,"premature ordinary cargo attachment");
  }else{p1Require();require(red==0&&white+whiteStock()==15&&heads==0,"fresh resumed original20 lineage lost/duplicated or unexpected Red bodies");}
 
- if(phase==1&&phaseTick>=30&&followers==20){goal=flowers[budIndex]->mSRT.t;next(2);}
+ if(phase==1){
+  // Starting performs the real ship landing; gather from actual free body positions.
+  Piki* target=nullptr;float best=1.0e30f;
+  if(followers<20){Iterator bodies(pikiMgr);CI_LOOP(bodies){auto* p=static_cast<Piki*>(*bodies);
+   if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed||uid(p)<1||uid(p)>20||p->mMode!=PikiMode::FreeMode||p->getState()!=PIKISTATE_Normal)continue;
+   const float x=p->mSRT.t.x-n->mSRT.t.x,z=p->mSRT.t.z-n->mSRT.t.z,d=x*x+z*z;
+   if(d<best){best=d;target=p;}
+  }}
+  gatheringReds=target!=nullptr;if(target)goal=target->mSRT.t;
+  if(frame%60==0){
+   std::printf("P2_WHITE_CAMPAIGN_INITIAL_GATHER frame=%d followers=%d target_uid=%u captain_x=%.4f captain_y=%.4f captain_z=%.4f cursor_x=%.4f cursor_y=%.4f cursor_z=%.4f goal_x=%.4f goal_y=%.4f goal_z=%.4f\n",frame,followers,target?uid(target):0,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,n->mCursorWorldPos.x,n->mCursorWorldPos.y,n->mCursorWorldPos.z,goal.x,goal.y,goal.z);
+   Iterator bodies(pikiMgr);CI_LOOP(bodies){auto* p=static_cast<Piki*>(*bodies);if(!p->isAlive()||pc_p2_species(p)!=P2SpeciesRed)continue;std::printf("P2_WHITE_CAMPAIGN_INITIAL_RED uid=%u mode=%d state=%d owned=%d x=%.4f y=%.4f z=%.4f\n",uid(p),p->mMode,p->getState(),int(p->mNavi==n),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z);}
+  }
+  if(phaseTick>=30&&followers==20){gatheringReds=false;goal=flowers[budIndex]->mSRT.t;next(2);}
+ }
  if(phase==2){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;if(x*x+z*z<64&&bx*bx+bz*bz>625){next(6);}}
  if(phase==6&&phaseTick>=20){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;next(x*x+z*z<64?3:2);}
  if(phase==3&&p2whitecampaign::budget.get({0,flowerIds[budIndex]})==5&&red==20-5*(budIndex+1)&&heads==5*(budIndex+1)){
