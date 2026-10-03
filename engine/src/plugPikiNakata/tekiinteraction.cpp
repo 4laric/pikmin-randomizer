@@ -47,7 +47,7 @@ TekiInteractionKey::TekiInteractionKey(int type, immut Interaction* interaction)
 bool InteractAttack::actTeki(Teki* teki) immut
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-    if (pc_p2_original_pelplant_damage(teki, mDamage, mCollPart ? mCollPart->getCode().mStringID : nullptr)) return true;
+    if (pc_p2_original_pelplant_damage(teki, mDamage, mCollPart ? mCollPart->getCode().mId : 0)) return true;
 #endif
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (teki->isP2Dying()) return false;

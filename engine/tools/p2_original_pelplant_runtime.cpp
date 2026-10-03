@@ -20,6 +20,7 @@
 #include "NaviState.h"
 #include "Camera.h"
 #include "Piki.h"
+#include "PikiAI.h"
 #include "PikiState.h"
 #include "PikiMgr.h"
 #include "PikiHeadItem.h"
@@ -36,6 +37,7 @@
 #include "pc_window.h"
 #include "pc_gpu_preference.h"
 #include "pc_p2_original_pelplant_native.h"
+#include "pc_p2_original_pelplant_code.h"
 #include "pc_p2_original_actor.h"
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
@@ -43,7 +45,7 @@ namespace {
 using namespace p2original;
 using namespace p2original::pelplant;
 SDL_Joystick* pad=nullptr;
-bool refusal=false;
+bool refusal=false,naturalCombat=false,naturalDiagnostic=false;
 void require(bool yes,const char* text){if(!yes){std::printf("FAIL P2_ORIGINAL_PELPLANT %s\n",text);std::fflush(nullptr);std::_Exit(1);}}
 void checked(bool yes,const std::string& error){if(!yes)std::fprintf(stderr,"P2_ORIGINAL_PELPLANT_ERROR %s\n",error.c_str());require(yes,"actual native provider call");}
 float distance(const Vector3f& a,const Vector3f& b){float x=a.x-b.x,z=a.z-b.z;return std::sqrt(x*x+z*z);}
@@ -84,6 +86,8 @@ class PelplantApp final:public PlugPikiApp {
  std::array<std::uint64_t,7> generatorHandles{};std::vector<Instance> instances;
  int frame=0,ready=0,phase=0,age=0,caseIndex=0,phaseStart=0,settled=0,baseline=0,growthControl=0;
  bool captainSeen=false,carried=false,nearGoal=false;float travel=0;
+ bool naturalStarted=false,naturalAttack=false,naturalStick=false,naturalHeadStick=false,naturalHealthLoss=false;
+ float naturalInitialHealth=0;
  GoalItem* onion=nullptr;
  const unsigned cases[3]={0,4,7};
  Instance& current(){return instances[cases[caseIndex]];}
@@ -98,7 +102,7 @@ class PelplantApp final:public PlugPikiApp {
   std::printf("P2_ORIGINAL_PELPLANT_POSITION stage=death_end amount=%u actor=%.3f,%.3f,%.3f pellet=%.3f,%.3f,%.3f flags=%08x dynamics=%d state=%d\n",found->amount,actor->mSRT.t.x,actor->mSRT.t.y,actor->mSRT.t.z,p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,unsigned(p->mCreatureFlags),int(p->isRealDynamics()),p->getState());
   found->release=p->mSRT.t;found->expectedSeeds=p->mConfig->mPelletColor()==Red?p->mConfig->mMatchingOnyonSeeds():p->mConfig->mNonMatchingOnyonSeeds();
   found->dead=true;
-  std::printf("P2_ORIGINAL_PELPLANT_RELEASE source=0 uid=%u ordinal=%u token=%u amount=%u same_pointer=1 captured=0 direct_damage_control=1\n",source[found->row].enemy.uid,found->ordinal,found->token,found->amount);
+  std::printf("P2_ORIGINAL_PELPLANT_RELEASE source=0 uid=%u ordinal=%u token=%u amount=%u same_pointer=1 captured=0 direct_damage_control=%d natural_combat=%d\n",source[found->row].enemy.uid,found->ordinal,found->token,found->amount,int(!naturalCombat),int(naturalCombat));
   if(!native->provider().release(actor,found->token,error))return false;
   if(!catalog.retire(actor,found->handle)){error="original fixture instance retirement failed";return false;}return true;
  }
@@ -173,8 +177,8 @@ class PelplantApp final:public PlugPikiApp {
   require(instances.size()==8&&provider.size()==8,"seven rows eight actual native births");
   // Small/Middle full-only damage control, followed by source farm-triggered
   // Middleâ†’Full growth with authentic runtime animation events.
-  auto& middle=instances[7];auto* h=provider.lookup(middle.actor);require(h&&h->state==State::Middle&&!h->captured,"actual10 initialMiddle");
-  const float health=h->health;checked(provider.damage(middle.actor,100,"s__0",error),error);require(h->damage==0&&h->health==health,"Middle rejects damaging head-hit");checked(provider.farm(middle.actor,-1,error),error);
+  if(!naturalCombat){auto& middle=instances[7];auto* h=provider.lookup(middle.actor);require(h&&h->state==State::Middle&&!h->captured,"actual10 initialMiddle");
+   const float health=h->health;checked(provider.damage(middle.actor,100,"s__0",error),error);require(h->damage==0&&h->health==health,"Middle rejects damaging head-hit");checked(provider.farm(middle.actor,-1,error),error);}
   std::puts("P2_ORIGINAL_PELPLANT_READY rows=7 births=8 source0_distinguished=1 resources_before_birth=1 baseline=20 direct_initialization=1 original_positions=0");
  }
 public:
@@ -190,9 +194,37 @@ public:
    int live=0,red=0;Iterator it(pikiMgr);CI_LOOP(it){auto* p=static_cast<Piki*>(*it);if(p->isAlive()){++live;red+=p->mColor==Red;}}
    require(live==20&&red==20,"actual20 fieldRed baseline");onion=itemMgr->getContainer(Red);require(onion,"real Red Onion, no pod receiver");setup();phase=1;}
   ++age;auto& i=current();std::string error;
-  if(growthControl==0){auto& middle=instances[7];auto* h=native->provider().lookup(middle.actor);require(h,"source growth control actor retained");
+  if(!naturalCombat&&growthControl==0){auto& middle=instances[7];auto* h=native->provider().lookup(middle.actor);require(h,"source growth control actor retained");
    if(h->state==State::Small){const float hp=h->health;checked(native->provider().damage(middle.actor,100,"s__0",error),error);require(h->health==hp&&h->damage==0&&!h->captured,"Small rejects damaging head-hit after actual wither blend");checked(native->provider().farm(middle.actor,1,error),error);growthControl=1;std::puts("P2_ORIGINAL_PELPLANT_FULL_ONLY Small=1 Middle=1 actual_wither_blend=1");}}
   if(phase==1){auto* h=native->provider().lookup(i.actor);require(h&&!h->dead,"live actual provider actor");
+   if(naturalCombat){
+    if(!naturalStarted){require(h->state==State::Full,"natural combat begins at actual Full");naturalInitialHealth=h->health;naturalStarted=true;
+     i.pellet=h->captured;require(i.pellet&&native->captured(i.pellet),"natural Full starts with actual captured pellet");
+     baseline=rewards();carried=nearGoal=false;travel=0;settled=0;phaseStart=age;
+     std::puts("P2_ORIGINAL_PELPLANT_NATURAL_BEGIN amount=1 direct_damage=0 farm_control=0 diagnostic_birth=1 ordinary_SDL=1");}
+    Iterator attackers(pikiMgr);CI_LOOP(attackers){auto* p=static_cast<Piki*>(*attackers);if(!p->isAlive())continue;
+     if(p->mActiveAction&&p->mActiveAction->mCurrActionIdx==PikiAction::Attack){auto* action=static_cast<ActAttack*>(p->mActiveAction->getCurrAction());
+      if(action&&action->targets(i.actor)){if(!naturalAttack)std::printf("P2_ORIGINAL_PELPLANT_NATURAL_ATTACK ordinary_Piki_action=1 target_actual_actor=1 attached=%d direct_damage=0\n",int(p->getStickObject()==i.actor));naturalAttack=true;}}
+     if(p->getStickObject()!=i.actor||!p->getStickPart())continue;
+     const unsigned id=p->getStickPart()->getCode().mId;const auto code=sourceCode(id);const bool head=id==0x735f5f30u;
+     if(!naturalStick||(head&&!naturalHeadStick))std::printf("P2_ORIGINAL_PELPLANT_NATURAL_CONTACT piki=1 attached_to_actual_actor=1 part=%s native_id=%08x head=%d\n",code.data(),id,int(head));
+     naturalStick=true;naturalHeadStick|=head;
+    }
+    if(h->health<naturalInitialHealth){if(!naturalHealthLoss)std::printf("P2_ORIGINAL_PELPLANT_NATURAL_HEALTH before=%.3f after=%.3f head_contact=%d direct_damage=0\n",naturalInitialHealth,h->health,int(naturalHeadStick));naturalHealthLoss=true;}
+    if(h->state==State::Dead){require(naturalAttack&&naturalHealthLoss,"real Piki attack targeting actual actor and health loss precede natural death");phase=2;phaseStart=age;input();return result;}
+    auto* observedHead=i.actor->mCollInfo->getSphere('head');require(observedHead,"actual source head collider available");
+    if(age%60==0||age==phaseStart){int flying=0,formation=0,inSearch=0;float nearest=1e9f;Iterator roster(pikiMgr);CI_LOOP(roster){auto* p=static_cast<Piki*>(*roster);if(!p->isAlive())continue;
+     flying+=p->getState()==PIKISTATE_Flying;formation+=p->mMode==PikiMode::FormationMode;inSearch+=p->mSearchBuffer.getIndex(i.actor)>=0;nearest=std::min(nearest,distance(p->mSRT.t,observedHead->mCentre));}
+     std::printf("P2_ORIGINAL_PELPLANT_NATURAL_DIAG age=%d hp=%.3f state=%d actor=%.2f,%.2f,%.2f alive=%d visible=%d atari=%d head=%.2f,%.2f,%.2f radius=%.2f code=%s navi=%.2f,%.2f,%.2f head_distance=%.2f cursor_distance=%.2f followers=%d flying=%d formation=%d nearest_piki=%.2f piki_searches_with_actor=%d actor_grid=%d,%d,%d actor_ai_culled=%d navi_grid=%d,%d,%d\n",age,h->health,int(h->state),i.actor->mSRT.t.x,i.actor->mSRT.t.y,i.actor->mSRT.t.z,int(i.actor->isAlive()),int(i.actor->isVisible()),int(i.actor->isAtari()),observedHead->mCentre.x,observedHead->mCentre.y,observedHead->mCentre.z,observedHead->mRadius,observedHead->getCode().mStringID,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,distance(n->mSRT.t,observedHead->mCentre),distance(n->mCursorWorldPos,observedHead->mCentre),n->getPlatePikis(),flying,formation,nearest,inSearch,int(i.actor->mGrid.mGridPositionX),int(i.actor->mGrid.mGridPositionY),int(i.actor->mGrid.mGridPositionZ),int(i.actor->mGrid.aiCulling()),int(n->mGrid.mGridPositionX),int(n->mGrid.mGridPositionY),int(n->mGrid.mGridPositionZ));std::fflush(nullptr);
+    }
+    require(age-phaseStart<(naturalDiagnostic?600:2400),"bounded natural Piki combat diagnostic");
+    if(n->getPlatePikis()<10){Piki* nearest=nullptr;float closest=1e9f;Iterator roster(pikiMgr);CI_LOOP(roster){auto* p=static_cast<Piki*>(*roster);if(p->isAlive()&&p->mColor==Red&&p->getStickObject()!=i.actor&&distance(n->mSRT.t,p->mSRT.t)<closest){closest=distance(n->mSRT.t,p->mSRT.t);nearest=p;}}
+     if(nearest&&closest>50)point(n,nearest->mSRT.t,true);else input(KeyConfig::_instance->mSetCursorKey.mBind);return result;}
+    auto* head=i.actor->mCollInfo->getSphere('head');require(head&&head->isStickable(),"actual source head collider admits Piki attachment");
+    if(distance(n->mSRT.t,head->mCentre)>90){point(n,head->mCentre,true);return result;}
+    const unsigned keys=(age-phaseStart)%60<15?KeyConfig::_instance->mThrowKey.mBind:0;
+    point(n,head->mCentre,false,keys);return result;
+   }
    if(h->state!=State::Full)return result;
    i.pellet=h->captured;require(i.pellet&&native->captured(i.pellet)&&i.pellet->mConfig,"actual configured captured number pellet");
    std::printf("P2_ORIGINAL_PELPLANT_POSITION stage=full_before_damage amount=%u actor=%.3f,%.3f,%.3f pellet=%.3f,%.3f,%.3f\n",i.amount,i.actor->mSRT.t.x,i.actor->mSRT.t.y,i.actor->mSRT.t.z,i.pellet->mSRT.t.x,i.pellet->mSRT.t.y,i.pellet->mSRT.t.z);
@@ -223,17 +255,18 @@ public:
   input();require(carried&&nearGoal&&travel>25,"cargo disappeared without actual Piki carry and Onion approach");
   if(++settled<90)return result;
   require(i.delivered&&i.receipts==1&&i.duplicates==0,"actual ordinary Onion hook exactly once");require(rewards()-baseline==i.expectedSeeds,"actual Onion population conservation");
-  std::printf("P2_ORIGINAL_PELPLANT_CASE_PASS amount=%u same_pointer=1 ordinary_SDL_Piki_carry=1 ordinary_Onion=1 receipts=1 duplicates=0 rewards=%d direct_damage_control=1 natural_attack=0\n",i.amount,rewards()-baseline);
-  if(++caseIndex<3){phase=1;return result;}
+  std::printf("P2_ORIGINAL_PELPLANT_CASE_PASS amount=%u same_pointer=1 ordinary_SDL_Piki_carry=1 ordinary_Onion=1 receipts=1 duplicates=0 rewards=%d direct_damage_control=%d natural_attack=%d natural_head_contact=%d\n",i.amount,rewards()-baseline,int(!naturalCombat),int(naturalCombat),int(naturalHeadStick));
+  if(++caseIndex<(naturalCombat?1:3)){phase=1;return result;}
   auto& provider=native->provider();for(auto& owned:instances)if(provider.lookup(owned.actor)){checked(provider.release(owned.actor,owned.token,error),error);require(catalog.retire(owned.actor,owned.handle),"owned final registry cleanup");}
   for(unsigned row=0;row<source.size();++row)require(catalog.retireGenerator(generators[row].get(),generatorHandles[row]),"owned generator retirement after family cleanup");
   require(provider.size()==0,"no retained family-owned roots");
-  std::puts("PASS P2_ORIGINAL_PELPLANT_RUNTIME seven_rows=1 eight_births=1 literal_amounts=1,5,10 full_only_damage=1 actual_animation_release=1 ordinary_Piki_Onion=1 exactly_once=1 owned_cleanup=1 fixture_placements=1 natural_attack=0 save_resume=0");std::fflush(nullptr);std::_Exit(0);
+  if(naturalCombat)std::printf("PASS P2_ORIGINAL_PELPLANT_NATURAL_RUNTIME amount=1 ordinary_Piki_attack_target=1 health_loss=1 actual_animation_release=1 same_pointer=1 ordinary_Piki_Onion=1 exactly_once=1 owned_cleanup=1 direct_damage=0 natural_attachment=%d natural_head_contact=%d fixture_placements=1 save_resume=0\n",int(naturalStick),int(naturalHeadStick));
+  else std::puts("PASS P2_ORIGINAL_PELPLANT_RUNTIME seven_rows=1 eight_births=1 literal_amounts=1,5,10 full_only_damage=1 actual_animation_release=1 ordinary_Piki_Onion=1 exactly_once=1 owned_cleanup=1 fixture_placements=1 natural_attack=0 save_resume=0");std::fflush(nullptr);std::_Exit(0);
  }
 };
 }
 int main(int argc,char**argv){
- for(int i=1;i<argc;++i)if(!std::strcmp(argv[i],"--refuse-resources"))refusal=true;
+ for(int i=1;i<argc;++i){if(!std::strcmp(argv[i],"--refuse-resources"))refusal=true;if(!std::strcmp(argv[i],"--natural-combat"))naturalCombat=true;if(!std::strcmp(argv[i],"--natural-diagnostic"))naturalCombat=naturalDiagnostic=true;}
  SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS,"1");SDL_SetMainReady();pc_gpu_preference_apply();pc_bbft_init(argc,argv);
  require(pc_pikipelago_surface_course()&&!std::strcmp(pc_pikipelago_surface_course(),"tutorial")&&!pc_pikipelago_room_preview(),"ordinary tutorial lifecycle, not Pod preview");
  require(pc_window_init("P2 original Pelplant actual provider fixture",960,540),"window init");pc_settings_init();pc_window_set_control_mode(PC_CONTROL_CLASSIC);pc_window_set_display_mode(0);pc_window_set_window_size(960,540);pc_window_center();

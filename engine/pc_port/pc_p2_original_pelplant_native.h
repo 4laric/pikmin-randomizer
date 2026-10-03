@@ -44,8 +44,8 @@ private:
 bool pc_p2_original_pelplant_update(BTeki*);
 bool pc_p2_original_pelplant_refresh(BTeki*,Graphics&);
 bool pc_p2_original_pelplant_draw(BTeki*,Graphics&,const Matrix4f&);
-bool pc_p2_original_pelplant_damage(BTeki*,float,const char special[4]);
-bool pc_p2_original_pelplant_stick(BTeki*,const char special[4]);
+bool pc_p2_original_pelplant_damage(BTeki*,float,unsigned nativeCode);
+bool pc_p2_original_pelplant_stick(BTeki*,unsigned nativeCode);
 bool pc_p2_original_pelplant_captured(const Pellet*);
 bool pc_p2_original_pelplant_capture_update(Pellet*);
 bool pc_p2_original_pelplant_capture_draw(Pellet*,Graphics&,const Matrix4f&);

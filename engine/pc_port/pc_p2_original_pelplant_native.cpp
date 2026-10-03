@@ -13,6 +13,7 @@
 #include "pc_p2_original_actor.h"
 #include "pc_p2_original_drop_engine.h"
 #include "pc_p2_original_pelplant_blend.h"
+#include "pc_p2_original_pelplant_code.h"
 #include "pc_p2_original_pelplant_geometry.h"
 #include "sysNew.h"
 #include <fstream>
@@ -173,6 +174,7 @@ struct Native::Impl final:Engine {
   actor->mPellet=nullptr;actor->mCollisionRadius=55;actor->mSize=45;
   for(int i=0;i<4;++i)actor->mParticleGenerators[i]=nullptr;
   actor->mGenerator=h.generator;actor->mSRT.t.set(position.x,position.y,position.z);actor->mFaceDirection=facing;
+  actor->mGrid.updateGrid(actor->mSRT.t);actor->mGrid.updateAIGrid(actor->mSRT.t,false);
   actor->mSRT.r.set(0,facing,0);actor->mSRT.s.set(1,1,1);actor->mHealth=actor->mMaxHealth=h.parameters.maxHealth;
   actor->mVelocity.set(0,0,0);actor->setCreatureFlag(CF_DisableMovement);actor->setCreatureFlag(CF_IsAiDisabled);
   actor->clearTekiOption(BTeki::TEKI_OPTION_GRAVITATABLE);actor->setTekiOption(BTeki::TEKI_OPTION_VISIBLE);
@@ -296,6 +298,9 @@ bool Native::owns(const Creature* actor)const{return m->tracks.count(const_cast<
 bool Native::captured(const Pellet* pellet)const{return m->cargo.count(const_cast<Pellet*>(pellet))!=0;}
 bool Native::updateCaptured(Pellet* pellet){auto it=m->cargo.find(pellet);if(it==m->cargo.end())return false;m->follow(*it->second);return true;}
 bool Native::tick(BTeki* actor,float dt,std::string& e){Host* h=m->provider.lookup(actor);if(!h)return false;
+ // Owned update bypasses Creature::update; retain its ordinary spatial/search
+ // maintenance without running the borrowed Palm AI or movement.
+ actor->mGrid.updateGrid(actor->mSRT.t);actor->mGrid.updateAIGrid(actor->mSRT.t,false);
  auto& t=*m->tracks.at(actor);const unsigned motion=t.motion;const float previous=t.frame;t.frame+=dt*30;
  Event event=Event::None;if(t.blend){t.blendTime+=dt;if(t.blendTime>=1)event=Event::EndBlend;}
  else if(t.frame>=m->variants[0][motion].duration){event=Event::End;if(motion>=4&&motion<=6){t.frame=std::fmod(t.frame,float(m->variants[0][motion].duration));event=Event::LoopEnd;}}
@@ -364,8 +369,8 @@ bool pc_p2_original_pelplant_refresh(BTeki* actor,Graphics& gfx){
  n->draw(actor,gfx,view);return true;
 }
 bool pc_p2_original_pelplant_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view){Native* n=owner(actor);return n&&n->draw(actor,gfx,view);}
-bool pc_p2_original_pelplant_damage(BTeki* actor,float damage,const char special[4]){Native* n=owner(actor);if(!n)return false;std::string e;require(n->provider().damage(actor,damage,special,e),e);return true;}
-bool pc_p2_original_pelplant_stick(BTeki* actor,const char special[4]){Native* n=owner(actor);if(!n)return false;std::string e;require(n->provider().stick(actor,special,e),e);return true;}
+bool pc_p2_original_pelplant_damage(BTeki* actor,float damage,unsigned nativeCode){Native* n=owner(actor);if(!n)return false;auto special=p2original::pelplant::sourceCode(nativeCode);std::string e;require(n->provider().damage(actor,damage,nativeCode?special.data():nullptr,e),e);return true;}
+bool pc_p2_original_pelplant_stick(BTeki* actor,unsigned nativeCode){Native* n=owner(actor);if(!n)return false;auto special=p2original::pelplant::sourceCode(nativeCode);std::string e;require(n->provider().stick(actor,nativeCode?special.data():nullptr,e),e);return true;}
 bool pc_p2_original_pelplant_captured(const Pellet* p){return cargoOwner(p)!=nullptr;}
 bool pc_p2_original_pelplant_capture_update(Pellet* p){Native* n=cargoOwner(p);return n&&n->updateCaptured(p);}
 bool pc_p2_original_pelplant_capture_draw(Pellet* p,Graphics& gfx,const Matrix4f& view){Native* n=cargoOwner(p);return n&&n->drawCaptured(p,gfx,view);}
