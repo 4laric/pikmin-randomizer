@@ -340,15 +340,15 @@ async def serve(session, run, process=None, server=None, password=None, updates=
 
 def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
            family_install=None, family_source=None, family_actors=None,
-           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
+           p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None, white_bank=None):
     with SessionLock(session_dir):
         return _launch(manifest, session_dir, exe, assets, server, content_manifest,
-                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion)
+                       family_install, family_source, family_actors, p2_content, p2_actors, purple_bank, purple_motion, white_bank)
 
 
 def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
             family_install=None, family_source=None, family_actors=None,
-            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None):
+            p2_content=None, p2_actors=None, purple_bank=None, purple_motion=None, white_bank=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
     staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
@@ -367,6 +367,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
                          "run it with --purple-bank and --purple-motion")
     from .purple_campaign import bind_campaign_mode
     bind_campaign_mode(Path(session_dir), manifest, purple_bank, purple_motion)
+    from .white_campaign import bind_campaign_mode as bind_white_campaign
+    bind_white_campaign(Path(session_dir), manifest, white_bank)
     session = Session(manifest, session_dir)
     run = NativeRun(session, purple_campaign=purple_bank is not None)
     if family_install is not None:
@@ -427,6 +429,9 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
     if purple_bank is not None:
         from .purple_campaign import stage_campaign
         stage_campaign(run.directory, assets, purple_bank, purple_motion, manifest)
+    if white_bank is not None:
+        from .white_campaign import stage_campaign as stage_white_campaign
+        stage_white_campaign(run.directory, assets, white_bank, manifest)
     process = None
     overlay = None
     log = None
