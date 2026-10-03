@@ -62,3 +62,35 @@ save/resume qualification. Source Snow45, foliage92, Violet bud6, physical cargo
 selected collision/routes/exits and live provider installation must all compose
 before those gates can pass. Engineering Atlas relocation and P1 dwarf templates
 are not accepted as literal content.
+
+
+`pc_p2_retail_cave_native.h` supplies the actual `NativeFloor` orchestrator.
+Its default source45 adapter calls the Snow leaf's real resource, reservation,
+birth and association functions. Additional `FamilyOps` must provide their own
+native prepare/birth/bind/release/cancel/retired operations. The source registry
+uses strict `SourceForm::CaveTekiInfo` provenance; `CAVE` is our association
+transport marker, not a retail GenEnemy version. Source Generator leases survive
+until their last actual actor retires.
+
+The required `SceneOps` owner verifies selected card/session bytes, actual mode,
+StageInfo, installed geometry/routes, Pod, exit and cargo before installation.
+`prior` checks the independently selected ledger before enemy birth; verified
+`RetiredNative` entries stay absent. Physical suppression still comes from the
+actual Pom population query. Cargo adapters use `placement` only while the exact
+selected scene is prepared; it reparses the raw source-plan bytes against the
+whole-plan SHA on every lookup. `FloorProvider::commit` runs after the complete
+roster is verified and before `FloorSession` publishes active authority.
+
+BlackPom natural death already invokes its floor callback and then its own leaf
+cleanup before manager reuse. Its family retirement callback must be an explicit
+no-op; its `Native::onDeath` callback performs the floor receipt/registry step.
+Explicit teardown instead sets `retireBeforeRelease` and calls `Native::release`.
+Calling `nativeRetired` before explicit release would discard leaf ownership too
+early. A partial cleanup failure must retain the owner and native allocations.
+
+The immutable catalog accessor now compiles once in
+`pc_p2_retail_cave_catalog.cpp`. CMake links its archive to native consumers;
+direct standalone policy builds must also compile that source. Private context
+and registry CTests pass, as do the native orchestrator and group-engine object
+compiles. The actual selected `SceneOps`, full linked build, ordinary Emergence
+mechanics and fresh SAVE restore remain unqualified.
