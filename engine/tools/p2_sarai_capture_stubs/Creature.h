@@ -7,8 +7,4 @@
 
 class CollPart;
 
-class Creature {
-public:
-    Creature() = default;
-    virtual ~Creature() = default;
-};
+#include "../p2_sarai_common_stubs/Creature.h"

@@ -13,6 +13,8 @@
 #include <cstdio>
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
+#include "pc_p2_original_group_engine.h"
+#include <cstdlib>
 #include "pc_p2_species_unit.h"
 #include <cmath>
 
@@ -603,6 +605,13 @@ void Generator::saveCreature(RandomAccessStream& output)
  */
 void Generator::init()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool originalHandled=false;std::string originalError;
+    if(!pc_p2_original_generator_init(this,originalHandled,originalError)) {
+        std::fprintf(stderr,"P2_ORIGINAL_GENERATOR_INIT_FAIL %s\n",originalError.c_str());std::abort();
+    }
+    if(originalHandled)return;
+#endif
 	// we're past our day limit, do nothing.
 	if (isExpired()) {
 		PRINT("*** OK ! NOTHING IS MADE\n");
@@ -681,6 +690,13 @@ void Generator::init()
  */
 void Generator::informDeath(Creature* creature)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool originalHandled=false;std::string originalError;
+    if(!pc_p2_original_generator_death(this,creature,originalHandled,originalError)) {
+        std::fprintf(stderr,"P2_ORIGINAL_GENERATOR_DEATH_FAIL %s\n",originalError.c_str());std::abort();
+    }
+    if(originalHandled)return;
+#endif
 	if (creature == mLatestSpawnCreature) {
 		mLatestSpawnCreature = nullptr;
 	}

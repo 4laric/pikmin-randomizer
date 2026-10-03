@@ -27,6 +27,7 @@ public:
  bool install(const std::string& fingerprint,const std::vector<CatalogRow>&,const Capability&,std::string&);
  const CatalogRow* find(unsigned uid)const;
  const std::string& fingerprint()const{return mFingerprint;}
+ const std::map<unsigned,CatalogRow>& rows()const{return mRows;}
  bool bindGenerator(const void* generator,unsigned uid,std::uint64_t& handle,std::string&);
  bool generatorUid(const void* generator,std::uint64_t handle,unsigned& uid)const;
  bool forgetGenerator(const void* generator,std::uint64_t handle);

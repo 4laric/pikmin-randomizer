@@ -4,6 +4,7 @@
 // health, transform, aliveness, position). PelletView is the delivery-seam
 // base so the manager's static_casts compile exactly as in production.
 #include "Generator.h"
+#include "Creature.h"
 #include "Vector.h"
 #include <cstddef>
 #include <vector>
@@ -12,12 +13,10 @@ struct PelletView {
     virtual ~PelletView() = default;
 };
 
-class BTeki : public PelletView {
+class BTeki : public Creature, public PelletView {
 public:
-    Generator* mGenerator = nullptr;
     int mTekiType = 0;
     float mHealth = 0.0f;
-    SRT mSRT;
     bool alive = true;
     bool isAlive() const { return alive; }
     Vector3f getPosition() const { return mSRT.t; }

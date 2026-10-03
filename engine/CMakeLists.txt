@@ -267,6 +267,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_catalog.cpp
     pc_port/pc_p2_original_actor.cpp
     pc_port/pc_p2_original_lifecycle.cpp
+    pc_port/pc_p2_original_group.cpp
+    pc_port/pc_p2_original_group_engine.cpp
     pc_port/pc_p2_campaign_goal_probe.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_surface_topology.cpp
@@ -1999,7 +2001,9 @@ add_test(NAME p2_sarai_seed_bridge_test COMMAND p2_sarai_seed_bridge_test)
 # campaign-shaped hosts (pc_p2_campaign_policy.h vehicle + pc_p2_campaign_actor.h
 # token). Asserts a capture and a teardown strand no Pikmin.
 add_executable(p2_sarai_campaign_test tools/p2_sarai_campaign_test.cpp
-    pc_port/pc_p2_sarai_capture_bridge.cpp)
+    pc_port/pc_p2_sarai_capture_bridge.cpp
+    pc_port/pc_p2_original_actor.cpp pc_port/pc_p2_original_catalog.cpp
+    pc_port/pc_p2_original_spawn_plan.cpp)
 target_include_directories(p2_sarai_campaign_test BEFORE PRIVATE
     tools/p2_sarai_capture_stubs tools/p2_sarai_campaign_stubs pc_port)
 target_compile_options(p2_sarai_campaign_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -2013,7 +2017,9 @@ add_test(NAME p2_sarai_campaign_test COMMAND p2_sarai_campaign_test)
 # binding; optional log mode classifies a campaign-behavior run
 # (shared-review registration only).
 add_executable(p2_sarai_campaign_behavior_test tools/p2_sarai_campaign_behavior_test.cpp
-    pc_port/pc_p2_sarai_capture_bridge.cpp)
+    pc_port/pc_p2_sarai_capture_bridge.cpp
+    pc_port/pc_p2_original_actor.cpp pc_port/pc_p2_original_catalog.cpp
+    pc_port/pc_p2_original_spawn_plan.cpp)
 target_include_directories(p2_sarai_campaign_behavior_test BEFORE PRIVATE
     tools/p2_sarai_capture_stubs tools/p2_sarai_campaign_stubs pc_port)
 target_compile_options(p2_sarai_campaign_behavior_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -2763,7 +2769,9 @@ target_compile_options(p2_sarai_campaign_behavior_runtime_compile PRIVATE ${NATI
 # forget, death retention, reset central-drop, rebind exactly-once and bridge
 # routing (registration only).
 add_executable(p2_sarai_lifecycle_test tools/p2_sarai_lifecycle_test.cpp
-    pc_port/pc_p2_sarai_manager.cpp pc_port/pc_p2_delivery_host.cpp)
+    pc_port/pc_p2_sarai_manager.cpp pc_port/pc_p2_delivery_host.cpp
+    pc_port/pc_p2_original_actor.cpp pc_port/pc_p2_original_catalog.cpp
+    pc_port/pc_p2_original_spawn_plan.cpp)
 target_include_directories(p2_sarai_lifecycle_test BEFORE PRIVATE
     tools/p2_sarai_lifecycle_stubs pc_port)
 target_compile_options(p2_sarai_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -3207,6 +3215,12 @@ add_test(NAME pc_midday_render_graph COMMAND pc_midday_render_graph_test)
         pc_port/pc_p2_original_spawn_plan.cpp pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_actor_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
     add_test(NAME p2_original_actor COMMAND pc_p2_original_actor_test)
+    add_executable(pc_p2_original_group_test tools/pc_p2_original_group_test.cpp
+        pc_port/pc_p2_original_group.cpp pc_port/pc_p2_original_actor.cpp
+        pc_port/pc_p2_original_catalog.cpp pc_port/pc_p2_original_spawn_plan.cpp
+        pc_port/pc_p2_original_lifecycle.cpp)
+    target_include_directories(pc_p2_original_group_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
+    add_test(NAME p2_original_group COMMAND pc_p2_original_group_test)
     add_executable(pc_p2_original_lifecycle_test tools/pc_p2_original_lifecycle_test.cpp
         pc_port/pc_p2_original_lifecycle.cpp)
     target_include_directories(pc_p2_original_lifecycle_test PRIVATE "${PROJECT_SOURCE_DIR}/pc_port")
