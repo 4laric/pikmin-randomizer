@@ -122,6 +122,7 @@ bool parseEnemyParm(std::istream& in, Params& out, std::string& error) {
     f(g, "fp17", p.shakeKnockback); f(g, "fp18", p.shakeDamage); f(g, "fp19", p.shakeRange);
     f(g, "fp21", p.maxAttackAngle); f(g, "fp22", p.attackRadius); f(g, "fp23", p.attackHitAngle);
     f(g, "fp24", p.attackDamage); f(g, "fp29", p.alertDuration);
+    f(g, "fp31", p.regenerationRate);
     i(g, "ip01", p.shakeOffBlowA); i(g, "ip02", p.shakeOffSticking1); i(g, "ip03", p.shakeOffBlowB);
     i(g, "ip04", p.shakeOffSticking2); i(g, "ip05", p.shakeOffBlowC); i(g, "ip06", p.shakeOffSticking3);
     i(g, "ip07", p.shakeOffBlowD);
@@ -129,13 +130,21 @@ bool parseEnemyParm(std::istream& in, Params& out, std::string& error) {
     if (!(p.health > 0.0f) || !(p.accel > 0.0f) || !(p.searchDistance > 0.0f) || p.moveSpeed < 0.0f
         || p.turnSpeed < 0.0f || p.maxTurnAngle < 0.0f || p.homeRadius <= 0.0f
         || p.territoryRadius <= 0.0f || p.attackRadius < 0.0f || p.attackHitAngle < 0.0f
-        || p.attackDamage < 0.0f || !(p.respawnRate > 0.0f) || p.healthGaugeTimer < 0.0f) {
+        || p.attackDamage < 0.0f || !(p.respawnRate > 0.0f) || p.healthGaugeTimer < 0.0f
+        || !finite(p.regenerationRate) || p.regenerationRate < 0.0f || p.regenerationRate > 1.0f) {
         error = "nonphysical parameter value";
         return false;
     }
     p.retail = true;
     out = p;
     return true;
+}
+
+float recoverLivingHealth(float health, const Params& params, bool living) {
+    if (!living || !finite(health) || health <= 0.0f || !finite(params.health)
+        || params.health <= 0.0f || !finite(params.regenerationRate)
+        || params.regenerationRate < 0.0f || params.regenerationRate > 1.0f) return health;
+    return std::min(health + params.health * params.regenerationRate, params.health);
 }
 
 // ---------------------------------------------------------------- bank

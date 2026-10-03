@@ -204,6 +204,31 @@ inline bool withinCone(const Vec3& actor, float heading, const Vec3& q, float ra
     return std::fabs(a) <= halfAngle;
 }
 
+// Obj::isAttackStart's final Blind-only getNearestNavi branch. Search inside
+// the cone before choosing the nearest captain: one behind the animal must
+// not mask another in front. Never assign the Ranging Bloyster's targetNavi.
+template <class NaviType, class Roster, class Eligible, class Position>
+inline NaviType* blindAttackNavi(bool blind, const Roster& navis, const Vec3& actor,
+                                float heading, float radius, float halfAngle,
+                                Eligible eligible, Position position)
+{
+    if (!blind) return nullptr;
+    NaviType* best = nullptr;
+    float bestSq = radius * radius;
+    for (NaviType* n : navis) {
+        if (!n || !eligible(n)) continue;
+        const Vec3 q = position(n);
+        if (!withinCone(actor, heading, q, radius, halfAngle)) continue;
+        const float dx = q.x - actor.x, dz = q.z - actor.z;
+        const float distanceSq = dx * dx + dz * dz;
+        if (distanceSq < bestSq) {
+            best = n;
+            bestSq = distanceSq;
+        }
+    }
+    return best;
+}
+
 // ---- Lock-on aim at the tail bulb ---------------------------------------------------------------
 // The lock-on mod pins the throw cursor on the target's feet, but the only stickable part is the raised
 // tail bulb (~75 units up, ~130 behind). A thrown Pikmin flies a parabola that ends at the cursor (flight

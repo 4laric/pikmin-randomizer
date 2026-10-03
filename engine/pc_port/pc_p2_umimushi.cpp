@@ -478,6 +478,18 @@ bool isAttackStart(BTeki* a, Umi& s) {
         s.goal = piki->getPosition();
         return true;
     }
+    // Blind never stores targetNavi (isChangeNavi returns false), but the
+    // source explicitly queries nearby captains here after the Pikmin path.
+    // Attack key 5 still evaluates all live captains against the tongue slots;
+    // this acquisition does not turn Blind into a captain-chasing Ranging.
+    Navi* navi = p2umi::blindAttackNavi<Navi>(s.blind, pc_p2_navis(), p2captorhost::vec(pos),
+        s.heading, ATTACK_HIT, ATTACK_HIT_ANGLE,
+        [](Navi* n) { return n->isAlive() && n->isVisible() && !n->isStickToMouth(); },
+        [](Navi* n) { return p2captorhost::vec(n->getPosition()); });
+    if (navi) {
+        s.goal = navi->getPosition();
+        return true;
+    }
     return false;
 }
 bool isNeedTurn(BTeki* a, Umi& s) {

@@ -197,6 +197,37 @@ int main()
         require(!(std::hypot(behind.x - actor.x, behind.z - actor.z) < shakeRange(0.5f)), "new Toady reach does not");
     }
 
+    // Blind does not retain a targetNavi, so a lone captain must use the
+    // source's separate acquisition branch. Exercise the actual selector.
+    {
+        struct Captain { Vec3 pos; bool alive = true, visible = true, held = false; };
+        Captain rear{{0, 0, -10}}, front{{0, 0, 100}}, closer{{0, 0, 60}};
+        Captain* roster[] = {nullptr, &rear, &front, &closer};
+        const Vec3 actor{0, 0, 0};
+        const float cone = AttackHitAngleDeg * Pi / 180.0f;
+        auto eligible = [](Captain* n) { return n->alive && n->visible && !n->held; };
+        auto position = [](Captain* n) { return n->pos; };
+        auto select = [&](bool blind) {
+            return blindAttackNavi<Captain>(blind, roster, actor, 0, 170, cone, eligible, position);
+        };
+        require(select(true) == &closer, "Blind chooses nearest captain inside cone, skips closer rear captain");
+        require(select(false) == nullptr, "Ranging does not independently acquire captains for attack");
+        closer.alive = false;
+        require(select(true) == &front, "dead nearest captain does not mask living captain two");
+        front.visible = false;
+        require(select(true) == nullptr, "hidden captain is not acquired");
+        front.visible = true; front.held = true;
+        require(select(true) == nullptr, "mouth-held captain is not acquired");
+        front.held = false; front.pos = Vec3{0, 0, 170};
+        require(select(true) == nullptr, "radius boundary excluded");
+        front.pos = Vec3{100, 0, 20};
+        require(select(true) == nullptr, "side captain outside angle excluded");
+        front.pos = Vec3{0, 200, 100};
+        require(select(true) == &front, "source captain acquisition uses XZ separation");
+        rear.pos = front.pos;
+        require(select(true) == &rear, "equal distance preserves manager index order");
+    }
+
     // ---- hit polar: straight ahead 0, directly behind 180 ----
     {
         const Vec3 actor{0.0f, 0.0f, 0.0f};
