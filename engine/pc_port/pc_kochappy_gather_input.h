@@ -51,7 +51,7 @@ struct PcKochappyRouteCatchup {
         active=true;guide=visitedGuide;elapsed=stable=lastProgress=0;best=-1;
         return true;
     }
-    PcKochappyCatchupInput observe(bool originalRoster, float lag, float limit, float captainSpeed) {
+    PcKochappyCatchupInput observe(bool originalRoster, float lag, float limit, float captainSpeed, bool settled=true) {
         using I=PcKochappyCatchupInput;
         if(!active || !originalRoster || !std::isfinite(lag) || lag<0
             || !std::isfinite(limit) || limit<=0 || limit>=512
@@ -60,9 +60,24 @@ struct PcKochappyRouteCatchup {
         if(best<0 || lag<best-1.f){best=lag;lastProgress=elapsed;}
         // Ordinary neutral input does not freeze native collision/slip motion.
         // Read the roster against the current pose on every observation.
-        if(lag<=limit)++stable;else stable=0;
+        if(lag<=limit && settled)++stable;else stable=0;
         if(stable>=3){active=false;return I::Continue;}
         if(elapsed>=180 || elapsed-lastProgress>=90)return I::Refuse;
         return I::Hold;
     }
+};
+
+// Read-only observations of the actual modern ActCrowd/CPlate party action.
+// Unk0, trips and native routes may settle; Sort and foreign slots refuse.
+struct PcKochappyCrowdObservation {
+    bool actionOwner=false,plateOwner=false,slotsAvailable=false;
+    bool occupantOwner=false,listenerOwner=false,finiteGeometry=false;
+    bool neutral=false,tripping=false,route=false;
+    int state=-1,slot=-1,used=-1,capacity=-1;
+    bool valid() const {
+        return actionOwner && plateOwner && slotsAvailable && occupantOwner && listenerOwner
+            && finiteGeometry && (state==0 || state==1)
+            && capacity>0 && used>0 && used<=capacity && slot>=0 && slot<used;
+    }
+    bool settled() const { return valid() && state==1 && neutral && !tripping && !route; }
 };

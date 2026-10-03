@@ -242,8 +242,18 @@ class CaveMixedRouteApp final : public PlugPikiApp {
     }
     bool attachedCarrier(Pellet* treasure,int species){
         bool attached=false;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
-            if(treasure&&p&&p->isAlive()&&p->getStickObject()==treasure){require(pc_p2_species(p)==species,"wrong electric handoff carrier");attached=true;}}
+            if(treasure&&p&&p->isAlive()&&p->getStickObject()==treasure){require(pc_p2_species(p)==species&&p->mMode==PikiMode::TransportMode,"wrong electric handoff carrier or transport mode");attached=true;}}
         return attached;
+    }
+    bool canonicalElectricOpened(){
+        const P2CaveCarryPlan* plan=pc_p2_cave_carry_plan();require(plan&&plan->cave=="forest_1"&&plan->floor==1,"canonical electric plan missing");
+        int electric=0;for(const auto& door:plan->doors)if(door.carry_block=="elec")++electric;
+        const auto* leaf=p2CaveCarryFindDoor(*plan,"forest_1:f1:leaf:1");
+        const auto* gate=p2CaveCarryFindDoor(*plan,"gate:forest_1:f1:leaf:1");
+        require(electric==2&&leaf&&gate&&leaf->kind=="leaf"&&gate->kind=="gate"&&leaf->hazard=="elec"&&gate->hazard=="elec"&&leaf->carry_block=="elec"&&gate->carry_block=="elec"&&leaf->key=="yellow"&&gate->key=="yellow","canonical paired electric blockers changed");
+        // Only electric blockers increment this counter; water never opens.
+        require(pc_p2_cave_carry_opened()<=2,"unexpected electric blocker opens");
+        return pc_p2_cave_carry_opened()==2;
     }
     void colourThrow(Navi* n,float x,float z,int preferred,int species){
         const int state=n->getCurrState()->getID();
@@ -319,7 +329,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         }
         if(phase==21){
             require(pc_p2_cave_carry_active(),"electric carry plan missing");
-            if(pc_p2_cave_carry_opened()==1){std::puts("P2_CAVE_ELECTRIC_CLEAR source=ordinary_Yellow_contact");next(22);return;}
+            if(canonicalElectricOpened()){std::puts("P2_CAVE_ELECTRIC_CLEAR source=ordinary_Yellow_contact leaf=forest_1:f1:leaf:1 gate=gate:forest_1:f1:leaf:1 opened=2");next(22);return;}
             colourThrow(n,800,-460,int(Yellow),P2SpeciesYellow);return;
         }
         if(phase==22){
@@ -354,7 +364,7 @@ class CaveMixedRouteApp final : public PlugPikiApp {
         }
         if(phase==26){
             require(pc_p2_cave_items_delivered()<=2,"duplicate canonical delivery");fixturePad(0);
-            if(pc_p2_cave_items_delivered()==2){require(electricYellowPickup&&electricBluePickup&&pc_p2_cave_carry_opened()==1,"electric receipt without physical handoff");std::puts("P2_CAVE_CANONICAL_DELIVERED water=1 electric=1 source=physical_Pod");next(27);}return;
+            if(pc_p2_cave_items_delivered()==2){require(electricYellowPickup&&electricBluePickup&&canonicalElectricOpened(),"electric receipt without physical handoff");std::puts("P2_CAVE_CANONICAL_DELIVERED water=1 electric=1 source=physical_Pod");next(27);}return;
         }
         if(phase==27){
             static const float path[][2]={{800,-300},{800,-200},{800,-100},{800,0},{800,100}};

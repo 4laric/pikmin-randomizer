@@ -79,6 +79,39 @@ int main(){
  PcKochappyRouteCatchup formationStalled;CHECK(formationStalled.begin(1));
  for(int i=0;i<90;++i)CHECK(formationStalled.observe(true,35,30,0)==C::Hold);
  CHECK(formationStalled.observe(true,35,30,0)==C::Refuse);
+ // Modern neutral Crowd completion is strictly below60 and actually Formed.
+ const float crowdLimit=std::nextafter(60.f,0.f);
+ PcKochappyRouteCatchup crowd;CHECK(crowd.begin(0));
+ CHECK(crowd.observe(true,crowdLimit,crowdLimit,0,false)==C::Hold&&crowd.stable==0);
+ CHECK(crowd.observe(true,crowdLimit,crowdLimit,0,true)==C::Hold&&crowd.stable==1);
+ CHECK(crowd.observe(true,60.f,crowdLimit,0,true)==C::Hold&&crowd.stable==0);
+ CHECK(crowd.observe(true,59.f,crowdLimit,0,true)==C::Hold);
+ CHECK(crowd.observe(true,59.f,crowdLimit,0,false)==C::Hold&&crowd.stable==0);
+ CHECK(crowd.observe(true,crowdLimit,crowdLimit,0,true)==C::Hold);
+ CHECK(crowd.observe(true,59.f,crowdLimit,0,true)==C::Hold);
+ CHECK(crowd.observe(true,59.f,crowdLimit,0,true)==C::Continue);
+ PcKochappyCrowdObservation owned;
+ owned.actionOwner=owned.plateOwner=owned.slotsAvailable=owned.occupantOwner=owned.listenerOwner=owned.finiteGeometry=owned.neutral=true;
+ owned.state=1;owned.slot=19;owned.used=20;owned.capacity=110;
+ CHECK(owned.valid()&&owned.settled());
+ auto initial=owned;initial.state=0;CHECK(initial.valid()&&!initial.settled());
+ for(int i=0;i<16;++i){if(i==6||i==7)continue;auto bad=owned;
+  switch(i){case 0:bad.actionOwner=false;break;case 1:bad.plateOwner=false;break;
+   case 2:bad.slotsAvailable=false;break;case 3:bad.occupantOwner=false;break;
+   case 4:bad.listenerOwner=false;break;case 5:bad.finiteGeometry=false;break;
+   case 6:bad.tripping=true;break;case 7:bad.route=true;break;case 8:bad.state=2;break;
+   case 9:bad.state=-1;break;case 10:bad.slot=-1;break;case 11:bad.slot=20;break;
+   case 12:bad.used=111;break;case 13:bad.capacity=0;break;case 14:bad.used=0;break;
+   case 15:bad.slot=110;break;}
+  CHECK(!bad.valid()&&!bad.settled());
+ }
+ for(int i=0;i<2;++i){auto transient=owned;if(i==0)transient.tripping=true;else transient.route=true;
+  CHECK(transient.valid()&&!transient.settled());
+  PcKochappyRouteCatchup wait;CHECK(wait.begin(0));
+  CHECK(wait.observe(true,59,crowdLimit,0,true)==C::Hold&&wait.stable==1);
+  CHECK(wait.observe(true,59,crowdLimit,0,transient.settled())==C::Hold&&wait.stable==0);
+ }
+ auto nonneutral=owned;nonneutral.neutral=false;CHECK(nonneutral.valid()&&!nonneutral.settled());
  PcKochappyFsmSnapshot paused;paused.available=true;paused.stunPaused=true;paused.state=3;paused.stateTime=.75f;paused.attackFired=true;
  CHECK(pc_kochappy_overlay_preserved(paused,paused));
  for(int i=0;i<8;++i){auto bad=paused;
