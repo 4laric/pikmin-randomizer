@@ -75,20 +75,24 @@ effect or accelerate its clock. Earlier timeouts and setup failures remain prese
 the final fixture observes recovery independently of the captain's idle state.
 Injected stock/input cannot qualify the following ordinary gameplay script.
 
-Supported production and focused policy checks pass at native
-`53491014472f839dadc382b0fa8d7ccd88578f36` (executable SHA-256
-`0e426411496eec36123d2c852835e0952bc467ce7ab60d05a065a094b36b1b1b`).
-That pin corrects Honey pose hash verification to use the same canonical disk
-path as the actual geometry loader; closure checks remain enforced.
-The fixture from `3af767d7aee8bb85e2c4bb358e56560e8ba5861b`, linked against
-that production object's verified unchanged inputs, passes with all 20 live
+Final source and fixture `b110c415e729efd19fe523223a66c6d236f87b1b` compose
+against canonical base `5f9581743e89853b3de8c27cca00b2565b5fd67a`.
+Supported production, focused policy CTest and dependency checks pass (production
+SHA-256 `28a3c5c0c3e9a3d003989edeb60d7336d7e64d85b954f8a3313ac2688490c5bf`).
+The five-file delta preserves canonical resource providers/checkpoint APIs and
+corrects Honey pose hash verification to use the same canonical disk path as
+the actual geometry loader; closure checks remain enforced.
+The same-pin fixture, linked against verified unchanged production inputs, passes with all 20 live
 formation Pikmin. It observes source activation, 10 damage/190 speed,
 unchanged maturity, pause freeze, refresh, zero-stock refusal and recovery at
-40.025 active seconds. Wall time is 67.129 seconds. Fixture SHA-256 is
-`53077984b9ce6424981fed87f20448fd85d7f357483194e981966cefea5f13e7`.
+40.031 active seconds. Wall time is 50.725 seconds. Fixture SHA-256 is
+`99e353161e18fe7717139b41f803dfd7dd5af9d44dc0e97a0024327267cab9a1`.
 Negative captain guard exits 86; the successful run confirms centered 960×540,
 returns zero, and leaves no live owned process/cgroup or dirty production graph.
 This is explicitly an injected-stock/input/whistle engine regression.
+Final receipts and full runtime log are private under
+`output/spicy142-evidence-build06` and `output/spicy142-evidence-runtime10`.
+Prior 447 and 534 qualifications and all failed attempts remain preserved.
 
 Once the Honey provider and original campaign binding are composed, run this
 60–90 second smoke in a fresh private 20-Pikmin/960×540 room:
