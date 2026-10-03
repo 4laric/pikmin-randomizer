@@ -88,4 +88,7 @@ The Red control establishes an accepted DenkiDying reaction, not final death.
 Its distinct synthetic catalog identity is disclosed and must match the exact
 held, thrown and electrocuted pointer; it cannot claim an original Red birth.
 Neither run establishes original acquisition, source campaign placement, or
-save/resume. Build and actual contact results remain pending.
+save/resume. The Linux staged Yellow run passed the exact receiver and grounded
+survival witness in 36.092 seconds at native `e0a1fabe1`, with 20 living Pikmin.
+The separate Red contact control remains unqualified; its failed runs are
+preserved. The latest Windows build and original-scene gameplay remain pending.
