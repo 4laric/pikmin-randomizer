@@ -31,6 +31,12 @@ def prepare(source, destination, seconds=600):
             path = source / name
             if not path.resolve().is_relative_to(source) or digest(path) != expected:
                 raise ValueError('Frozen host differs from pin: ' + name)
+    for name, expected in metadata.get('sidecar_files_sha256', {}).items():
+        path = source / name
+        if not path.resolve().is_relative_to(source) or digest(path) != expected:
+            raise ValueError('Frozen sidecar differs from pin: ' + name)
+    if metadata.get('manifest_sha256') and digest(source / 'manifest.json') != metadata['manifest_sha256']:
+        raise ValueError('Frozen manifest differs from pin')
     for name, expected in metadata['binaries'].items():
         path = source / 'bin' / name
         if path.resolve().parent != (source / 'bin').resolve() or digest(path) != expected:
@@ -46,15 +52,25 @@ def prepare(source, destination, seconds=600):
             raise ValueError('Legal local boot asset is unavailable: ' + name)
     original = (source / 'play.py').read_text()
     old = 'if args.smoke_seconds and time.monotonic()-started>=args.smoke_seconds:break'
-    if original.count(old) != 1:
+    revised = ('if args.smoke_seconds and time.monotonic() - started >= args.smoke_seconds:\n'
+               '                        break')
+    if original.count(old) == 1:
+        bounded = original.replace(old,
+            f"if time.monotonic()-started >= (args.smoke_seconds or {seconds}):result['owned_stop_reason']='wall-clock-bound';break")
+        old_return = 'return 0 if args.smoke_seconds else process.returncode'
+        new_return = "return 0 if args.smoke_seconds or result.get('owned_stop_reason') == 'wall-clock-bound' else process.returncode"
+    elif original.count(revised) == 1:
+        bounded = original.replace(revised,
+            f"if time.monotonic() - started >= (args.smoke_seconds or {seconds}):\n"
+            "                        result['owned_stop_reason'] = 'wall-clock-bound'\n"
+            '                        break')
+        old_return = '        return process.returncode\n'
+        new_return = "        return 0 if result.get('owned_stop_reason') == 'wall-clock-bound' else process.returncode\n"
+    else:
         raise ValueError('Unsupported manual host version; inspect before adapting')
-    bounded = original.replace(old,
-        f"if time.monotonic()-started >= (args.smoke_seconds or {seconds}):result['owned_stop_reason']='wall-clock-bound';break")
-    old_return = 'return 0 if args.smoke_seconds else process.returncode'
     if original.count(old_return) != 1:
         raise ValueError('Unsupported manual host exit handling')
-    bounded = bounded.replace(old_return,
-        "return 0 if args.smoke_seconds or result.get('owned_stop_reason') == 'wall-clock-bound' else process.returncode")
+    bounded = bounded.replace(old_return, new_return)
     destination.mkdir(parents=True)
     # Exact package modules, including the roster docs needed by seed validation.
     for name in ('bin', 'randomizer', 'experimental', 'docs', 'sidecars', 'starting-session'):
@@ -62,6 +78,8 @@ def prepare(source, destination, seconds=600):
                         ignore=shutil.ignore_patterns('__pycache__'))
     for name in ('package.json', 'manifest.json', 'README.md'):
         shutil.copy2(source / name, destination / name)
+    if (source / 'evidence').is_dir():
+        shutil.copytree(source / 'evidence', destination / 'evidence')
     shutil.copytree(source / 'starting-session', destination / 'human-session')
     (destination / 'play.py').write_text(bounded, encoding='utf-8')
     (destination / 'Start.cmd').write_text(

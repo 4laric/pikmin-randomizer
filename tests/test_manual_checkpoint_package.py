@@ -67,6 +67,30 @@ class ManualCheckpointPackageTest(unittest.TestCase):
             prepare(self.source, self.root / 'private', 60)
         self.assertFalse((self.root / 'private').exists())
 
+    def test_revised_host_preserves_smoke_verdict_and_card(self):
+        revised = ('def main():\n'
+                   '    if True:\n'
+                   '        if True:\n'
+                   '            if True:\n'
+                   '                while True:\n'
+                   '                    if args.smoke_seconds and time.monotonic() - started >= args.smoke_seconds:\n'
+                   '                        break\n'
+                   '        if args.smoke_seconds:\n'
+                   '            return 0 if run.handshaken else 1\n'
+                   '        return process.returncode\n')
+        (self.source / 'play.py').write_text(revised)
+        metadata_path = self.source / 'package.json'
+        metadata = json.loads(metadata_path.read_text())
+        metadata['launcher_sha256']['play.py'] = hashlib.sha256((self.source / 'play.py').read_bytes()).hexdigest()
+        metadata_path.write_text(json.dumps(metadata))
+        target = self.root / 'private'
+        prepare(self.source, target, 600)
+        bounded = (target / 'play.py').read_text()
+        compile(bounded, 'bounded-host', 'exec')
+        self.assertIn('return 0 if run.handshaken else 1', bounded)
+        self.assertEqual((target / 'human-session' / 'card.sav').read_bytes(), self.card.read_bytes())
+        self.assertEqual((self.source / 'play.py').read_text(), revised)
+
 
 if __name__ == '__main__':
     unittest.main()
