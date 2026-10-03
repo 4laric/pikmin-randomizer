@@ -200,12 +200,6 @@ public:
 
 		// The candidate uses native course selection and landing without P1 map labels.
         if(pc_pikipelago_surface_campaign()) {
-            // This section owns its console Font; fix only campaign glyph UVs.
-            // Reversing the projection would also invert row order and input cues.
-            for(int i=0;i<16*8;++i) {
-                RectArea& uv=mConsFont->mChars[i].mTextureCoords;
-                const int top=uv.mMinY;uv.mMinY=uv.mMaxY;uv.mMaxY=top;
-            }
             makeMapsMenu();
             mMapListMenu->mCenterPoint.mMinX=glnWidth/4;
             mMapListMenu->mCenterPoint.mMinY=glnHeight/4;
