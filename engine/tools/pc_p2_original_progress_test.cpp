@@ -15,5 +15,8 @@ int main(){Progress p;std::string e,bytes;check(p.met(5));check(!p.booted(5)&&!p
  // Unsaved discoveries roll back with the selected native checkpoint.
  check(restored.restore(fresh,e));check(!restored.met(1)&&!restored.booted(1));auto bad=fresh;bad.boot=8;check(!restored.restore(bad,e));bad=fresh;bad.met=32;check(!restored.restore(bad,e));bad=fresh;bad.container=32;check(!restored.restore(bad,e));bad=fresh;bad.campaign=std::string(64,'b');check(!restored.restore(bad,e));
  check(restored.discover(4,e));check(restored.container(4)&&!restored.met(4));check(!restored.discover(5,e));check(restored.met(5)&&!restored.booted(5)&&!restored.container(5));
+ check(!restored.captainAllowed(2,true));check(restored.captainAllowed(0,true)&&!restored.captainAllowed(0,false));check(restored.captainAllowed(1,false)&&!restored.captainAllowed(1,true));
+ const auto initialContext=restored.context();std::string context;check(restored.encodeContext(context,e));check(context.size()==106);check(restored.reunite(e));check(restored.captainAllowed(0,false)&&restored.captainAllowed(1,true));check(restored.decodeContext(context,campaign,e));check(!restored.captainAllowed(0,false));check(restored.nextDay(e));check(restored.context().day==1&&restored.captainAllowed(0,false));
+ check(restored.restoreContext(initialContext,e));auto other=initialContext;other.campaign=std::string(64,'b');check(!restored.restoreContext(other,e));for(size_t n=0;n<context.size();++n)check(!restored.decodeContext(context.substr(0,n),campaign,e));context[70]^=1;check(!restored.decodeContext(context,campaign,e));
  std::cout<<"PASS original PlayData progression "<<checks<<" controls\n";
 }
