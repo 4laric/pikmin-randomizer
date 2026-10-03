@@ -21,6 +21,29 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def asset_overlay(source,destination,overrides):
+    # The runner's canonical legal assets are read-only. Link unchanged inputs
+    # there to avoid 650 MiB copies for every fresh diagnostic session.
+    readonly=os.name!='nt' and not os.access(source,os.W_OK) and all(
+        not p.is_symlink() and not os.access(p,os.W_OK) for p in source.rglob('*'))
+    if not readonly:
+        overlay(source,destination,overrides)
+        return 'private-copy'
+    def stage(src,dst,replacements):
+        dst.mkdir(parents=True,exist_ok=False)
+        names={p.name for p in src.iterdir()} if src.is_dir() else set()
+        names.update(k.split('/')[0] for k in replacements)
+        for name in sorted(names):
+            original=src/name;target=dst/name
+            if name in replacements:
+                target.write_bytes(replacements[name]);continue
+            children={k[len(name)+1:]:v for k,v in replacements.items() if k.startswith(name+'/')}
+            if children:stage(original,target,children)
+            else:target.symlink_to(original,target_is_directory=original.is_dir())
+    stage(source,destination,overrides)
+    return 'read-only-baseline-links'
+
+
 def main():
     cli=argparse.ArgumentParser(description=__doc__)
     for field in ['exe','native','session','assets','resources']:
@@ -40,7 +63,7 @@ def main():
     (session/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     state=Session(manifest,session);run=NativeRun(state);run.write_state(True)
     overrides={'p2-original/bridges/type%d.mod'%i:(resources/folder/'bridge.mod').read_bytes() for i,folder in enumerate(['s_bridge','slope_u','l_bridge'])}
-    overlay(assets,run.directory/'assets',overrides)
+    overlay_mode=asset_overlay(assets,run.directory/'assets',overrides)
     source=resources/'bridges.txt';(run.directory/'bridges.txt').write_bytes(source.read_bytes())
     home=session/'private-home'
     for part in ['','config','cache','data','state','save']:(home/part).mkdir(parents=True,exist_ok=True)
@@ -49,7 +72,7 @@ def main():
     command=[str(exe),'--randomizer-seed',str(run.bootstrap),'--bridge-manifest='+str(run.directory/'bridges.txt')]
     if args.captain_down:command.append('--force-captain-down')
     if os.name!='nt':command=['xvfb-run','-a','-s','-screen 0 1280x720x24 +extension GLX',*command]
-    inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_completion=True)
+    inputs=dict(native=head,root=roothead,exe_sha256=sha(exe),manifest_sha256=sha(source),geometry={key:hashlib.sha256(data).hexdigest() for key,data in overrides.items()},asset_overlay=overlay_mode,argv=command,timeout=65,baseline='20Pikmin 960x540 centered',full_course_gameplay=False,injected_completion=True)
     (run.directory/'run-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     print(json.dumps({'directory':str(run.directory),'inputs':inputs}),flush=True)
     start=time.monotonic();proc=None;timed_out=False
