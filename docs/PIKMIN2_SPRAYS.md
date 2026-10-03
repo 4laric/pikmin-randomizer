@@ -65,10 +65,14 @@ checks using the engine's forced `pc_types.h` and permissive legacy flags.
 
 `tools/p2_spicy_runtime.cpp` is a guarded engine regression. It requires a fresh
 20-Pikmin room and verifies a 960×540 centered window. It injects two stocks and
-Up input, observes actual reaction callbacks, unchanged maturity, speed/damage,
+Up input and whistle aim, gathers the full squad through the actual whistle receiver,
+and observes actual reaction callbacks, unchanged maturity, speed/damage,
 pause freeze, refresh, zero-stock refusal and full 40-second recovery. The
 captain remains unprotected. `--guard-negative` must exit 86 before window boot;
-runtime must be supervised for at most 90 seconds and preserve its logs.
+runtime must preserve logs and use a bounded wall limit (90 seconds normally;
+up to 180 on the software renderer). This allowance does not change the 40-active-second
+effect or accelerate its clock. The first 90-second run reached source callbacks
+but timed out at approximately 11 FPS before recovery, and remains preserved.
 Injected stock/input cannot qualify the following ordinary gameplay script.
 
 Once the Honey provider and original campaign binding are composed, run this
