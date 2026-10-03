@@ -196,6 +196,11 @@ static Controller* sP2Controller = nullptr;
 // la sección sigue dibujando (resultados, tarjeta). Mientras esté a false,
 // nada del port toca gamecore.
 static bool sGamecoreLive = false;
+
+bool pc_coop_right_map_menu_open(void)
+{
+	return sGamecoreLive && pc_coop_active() && menuWindow2 != nullptr;
+}
 #endif
 
 /// Text ("tutorial") pop-ups/overlays.
