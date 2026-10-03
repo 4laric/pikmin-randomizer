@@ -427,10 +427,12 @@ def reject_legacy_routes(log):
                     'Legacy persistence/scripted route forbidden')
 
 
-def save_observations(result, log, handshaken, errors, acquisition_limit=60):
+def save_observations(result, log, handshaken, errors, acquisition_limit=60, birth_ledger=False):
     native_success(result, log, handshaken, errors, timeout_seconds=acquisition_limit+60)
     budget = save_budget_observations(log, acquisition_limit)
     acquisition = oracle('sdl_acquire', result, log, handshaken, errors)
+    if birth_ledger:
+        acquisition['actual_compartments'] = importlib.import_module('scripts.purple_birth_ledger').validate_acquisition_report(log, acquisition)
     require(acquisition.get('selection') == '4' and acquisition.get('strength') == '10', 'Acquired Purple identity/strength missing')
     begin = fields(log, 'P2_PURPLE_ORDINARY_SAVE_BEGIN')
     saved = fields(log, 'P2_PURPLE_ORDINARY_SAVE_PASS')
@@ -537,7 +539,7 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
             reject_legacy_routes(log)
             report['observations'] = m['scripts.purple_birth_ledger'].compare_stock_observation(log, expected['card_stock'])
         else:
-            report['observations'] = (save_observations(result, log, run.handshaken, errors, acquisition_limit=acquisition_limit) if mode == 'sdl_dayend'
+            report['observations'] = (save_observations(result, log, run.handshaken, errors, acquisition_limit=acquisition_limit, birth_ledger=getattr(a, 'birth_ledger', False)) if mode == 'sdl_dayend'
                 else resume_observations(result, log, run.handshaken, errors, expected))
         if getattr(a, 'birth_ledger', False):
             cleanup = result.get('cleanup', {})
