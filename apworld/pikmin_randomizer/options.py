@@ -56,8 +56,8 @@ class P2SecondCaptain(Toggle):
 
 
 class P2EnemyPool(Choice):
-    """playable: the current admitted production cohort with launcher support. all: every admitted species. full: the production cohort plus proven model proxies; proxies do not earn source-behavior delivery checks. Each seed stores its resolved encounter/check catalog."""
-    display_name = 'Pikmin 2 enemy pool'
+    """Experimental. playable: the current admitted production cohort with launcher support. all: the full pinned admitted P2 pool, excluding unadmitted or withdrawn imports. full: the production cohort plus proven model proxies; proxies do not earn source-behavior delivery checks. Use sampled density if not every eligible species fits; each seed stores its exact encounter/check catalog. Enable Campaign Enemy Randomizer too for combined P1/P2 randomization."""
+    display_name = 'Pikmin 2 Enemy Pool (experimental)'
     option_playable = 0
     option_all = 1
     option_full = 2

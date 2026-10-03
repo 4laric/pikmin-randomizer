@@ -644,8 +644,9 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
     # density the seed then samples the pool (sampled-v1): each target gets a
     # distinct species and the species that did not fit are recorded as
     # ``unplaced``. A pool that fits keeps the legacy fill byte-for-byte, and
-    # an explicitly requested density still fails closed below.
-    sampled = density is None and len(admitted) > len(eligible)
+    # Explicit sampling uses the same path; explicit all-target/bounded policies
+    # retain their complete-coverage requirement below.
+    sampled = policy == DENSITY_SAMPLED or (density is None and len(admitted) > len(eligible))
     if sampled:
         policy = DENSITY_SAMPLED
 
