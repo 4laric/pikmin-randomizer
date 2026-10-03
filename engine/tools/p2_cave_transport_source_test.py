@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--compiler', default='g++')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    source = args.source.read_text()
+    source = args.source.read_text(encoding='utf-8')
     methods = '\n'.join(method(source, s) for s in
                         ('void ActTransport::initWait()', 'void ActTransport::decideGoal(Creature* cargo)'))
     setup = r'''
@@ -112,7 +112,7 @@ int main(){
 }
 '''
     cpp = args.output / 'transport-methods.cpp'
-    cpp.write_text(setup + methods + controls)
+    cpp.write_text(setup + methods + controls, encoding='utf-8', newline='\n')
     binary = args.output / 'transport-methods'
     compiled = subprocess.run([args.compiler, '-std=c++17', '-Wall', '-Wextra',
         '-Werror', '-Wno-unused-parameter', str(cpp), '-o', str(binary)], capture_output=True)
