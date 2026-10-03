@@ -2,7 +2,8 @@
 
 Implementation owner: Codex through shared GitHub account `4laric`.
 Native slice: `e7379fefa5109b347fb630261168ae4b4e4928d5` followed by course-mask
-API `99415c29184354e935012e2cd2e8b4f4ec702726`, based on the
+API `99415c29184354e935012e2cd2e8b4f4ec702726` and held-whistle compatibility fix
+`2019cc1d156da04e63b4e65c42932382f3c7ddab`, based on the
 coordinator-approved `6d7943ed56807e59147b4c03f11004008adc6b1a`.
 See [the source audit](PIKMIN2_EQUIPMENT_AUDIT.md) for all 13 source identities.
 
