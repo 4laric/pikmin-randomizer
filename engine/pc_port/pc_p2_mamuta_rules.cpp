@@ -1,6 +1,7 @@
 // P2 Miulin bury semantics for bound P1 Miurin actors (family lane #221, opt-in).
 #include "pc_p2_mamuta_rules.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_navi_hit.h"
 #include "pc_bbft.h"
 #include "GameStat.h"
 #include "Interactions.h"
@@ -68,12 +69,8 @@ int pc_p2_mamuta_bury_piki(Creature* owner, Piki* piki) {
 
 int pc_p2_mamuta_bury_navi(Creature* owner, Navi* navi) {
     if (!enabled || !owner || !owner->isTeki() || !navi || !pc_p2_mamuta_is_bound(static_cast<BTeki*>(owner))) return -1;
-    // P2 actNavi: invincible rejection, then damage only - no captain burial.
-    NaviState* state = navi->mStateMachine->getNaviState(navi);
-    if (state->invincible(navi)) return 0;
-    navi->mHealth -= P2_NAVI_BURY_DAMAGE;
-    navi->startDamageEffect();
-    navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
+    // P2 actNavi: damage only, with the normal receiver owning rejection.
+    if (!pc_p2_mamuta_hit_navi(owner, navi, P2_NAVI_BURY_DAMAGE)) return 0;
     std::printf("P2_MAMUTA_NAVI damage=%.1f health=%.3f\n", P2_NAVI_BURY_DAMAGE, navi->mHealth);
     return 1;
 }

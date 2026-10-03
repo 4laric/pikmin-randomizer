@@ -1944,6 +1944,12 @@ target_compile_options(p2_kabuto_stone_wiring_test PRIVATE ${NATIVE_COMPILE_OPTI
 add_test(NAME p2_kabuto_stone_wiring_test COMMAND p2_kabuto_stone_wiring_test)
 
 # Mamuta OWN FSM policy (own44 #871): engine-free params/state/config contract.
+add_executable(p2_mamuta_navi_hit_test tools/p2_mamuta_navi_hit_test.cpp)
+target_include_directories(p2_mamuta_navi_hit_test BEFORE PRIVATE tools/mamuta_navi_hit_stubs pc_port)
+target_compile_definitions(p2_mamuta_navi_hit_test PRIVATE P2_MAMUTA_SOURCE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_options(p2_mamuta_navi_hit_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_mamuta_navi_hit_test COMMAND p2_mamuta_navi_hit_test)
+
 add_executable(p2_mamuta_fsm_policy_test tools/p2_mamuta_fsm_policy_test.cpp)
 target_include_directories(p2_mamuta_fsm_policy_test PRIVATE pc_port)
 target_compile_options(p2_mamuta_fsm_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})

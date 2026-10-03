@@ -41,6 +41,7 @@
 #include "pc_p2_mamuta_fsm_policy.h"
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_mamuta_navi_hit.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Interactions.h"
@@ -273,10 +274,7 @@ void doBury(BTeki* actor, unsigned generator)
 			if (dx * dx + dz * dz <= params.attackRange * params.attackRange) {
 				const float dy = np.y - pos.y;
 				if (dy <= VERTICAL_BAND && dy >= -VERTICAL_BAND && params.naviDamage > 0.0f) {
-					navi->mHealth -= params.naviDamage;
-					navi->startDamageEffect();
-					navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
-					naviHit = 1;
+					if (pc_p2_mamuta_hit_navi(actor, navi, params.naviDamage)) ++naviHit;
 				}
 			}
 		}
