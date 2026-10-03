@@ -76,3 +76,39 @@ def witness(text):
         except (KeyError, ValueError):
             return None
     return None
+
+
+def staged_red_witness(text):
+    """Bind the inherited vulnerable control chain to its disclosed debug body."""
+    from scripts.run_elecbug_contact_runtime import contact_witness
+    staged = None
+    held = False
+    for line in text.splitlines():
+        tag, _, tail = line.partition(' ')
+        if tag not in ('P2_ELECBUG_RED_STAGED', 'P2_ELECBUG_THROW'):
+            continue
+        try:
+            pairs = [part.split('=', 1) for part in tail.split()]
+            if any(len(pair) != 2 for pair in pairs) or len({p[0] for p in pairs}) != len(pairs):
+                return None
+            fields = dict(pairs)
+            pointer = int(fields['piki'], 16)
+            if not pointer:
+                return None
+            if tag == 'P2_ELECBUG_RED_STAGED':
+                if staged is not None or not all(fields.get(key) == value for key, value in {
+                    'species': '1', 'synthetic_control': '1', 'non_story_fixture': '1',
+                    'acquisition': '0', 'campaign': '0',
+                    'catalog_key': 'fixture-red-control/initgen.txt#0',
+                    'fingerprint': '8926e466ec3c5d6fb8b9db2f93a7164cf5ff87d4719b5454a61eb9688ae368b3',
+                }.items()):
+                    return None
+                staged = pointer
+            elif fields.get('phase') == 'held' and pointer == staged:
+                held = True
+        except (KeyError, ValueError):
+            return None
+    proof = contact_witness(text, 'red-electric')
+    if staged is None or not held or not proof or proof['piki_hex'] != hex(staged):
+        return None
+    return dict(proof, synthetic_control=True, original_acquisition=False)

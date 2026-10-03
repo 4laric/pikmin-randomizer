@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.pikmin2_yellow_electric_witness import witness
+from scripts.pikmin2_yellow_electric_witness import witness, staged_red_witness
 
 
 LOG = '''P2_ELECBUG_YELLOW_STAGED piki=0xabc species=2 relocated_debug_member=1 acquisition=0 campaign=0
@@ -17,6 +17,21 @@ P2_ELECBUG_CONTACT_CANDIDATE frame=140 generator=346002 piki=0xabc observed_reve
 
 
 class ElectricWitnessTest(unittest.TestCase):
+    def test_red_control_identity(self):
+        red = LOG.replace('YELLOW_STAGED', 'RED_STAGED').replace('species=2', 'species=1').replace('yellow-electric', 'red-electric')
+        red = red.replace('relocated_debug_member=1 acquisition=0 campaign=0',
+            'relocated_debug_member=1 acquisition=0 campaign=0 synthetic_control=1 non_story_fixture=1 '
+            'catalog_key=fixture-red-control/initgen.txt#0 fingerprint=8926e466ec3c5d6fb8b9db2f93a7164cf5ff87d4719b5454a61eb9688ae368b3')
+        red = red.replace('PRESS_IMMUNE', 'PRESS_DENKI').replace('accepted=0 state_before=14 target_state=14 alive=1',
+            'accepted=1 target=1 target_state=35(DenkiDying)')
+        self.assertTrue(staged_red_witness(red)['synthetic_control'])
+        for before, after in (('piki=0xabc species=1 relocated', 'piki=0xdef species=1 relocated'),
+                              ('synthetic_control=1', 'synthetic_control=0'),
+                              ('fixture-red-control/initgen.txt#0', 'tutorial/initgen.txt#2'),
+                              ('target_state=35(DenkiDying)', 'target_state=0(Normal)')):
+            with self.subTest(after=after):
+                self.assertIsNone(staged_red_witness(red.replace(before, after)))
+
     def test_complete_chain(self):
         result = witness(LOG)
         self.assertEqual(result['piki'], '0xabc')

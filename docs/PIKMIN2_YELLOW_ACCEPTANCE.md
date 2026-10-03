@@ -66,7 +66,7 @@ and synthetic flags cannot supply those results.
 ## Bounded electric contact check
 
 [Native PR 178](https://github.com/4laric/Open-Nectar---Pikmin-Native-PC-Port/pull/178)
-adds explicitly staged Yellow and separate canonical Red control modes to the
+adds explicitly staged Yellow and separate synthetic Red control modes to the
 existing ElecBug contact fixture. Each replaces one of the 20 baseline Reds
 near the captain before the encounter; the Red control still has 20 Reds.
 The engineered pair's natural discharge and ordinary throw must dispatch the
@@ -85,5 +85,7 @@ Each launch is hash checked, privately staged and supervised for at most 60
 seconds. A process candidate marker alone cannot pass: the launcher correlates
 the exact actor through the actual receiver/contact/recovery log sequence.
 The Red control establishes an accepted DenkiDying reaction, not final death.
+Its distinct synthetic catalog identity is disclosed and must match the exact
+held, thrown and electrocuted pointer; it cannot claim an original Red birth.
 Neither run establishes original acquisition, source campaign placement, or
 save/resume. Build and actual contact results remain pending.

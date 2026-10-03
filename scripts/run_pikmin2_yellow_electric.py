@@ -10,8 +10,7 @@ import uuid
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(SOURCE_ROOT), str(SOURCE_ROOT / 'scripts')]
 from scripts.stage_elecbug_contact_runtime import prepare
-from scripts.run_elecbug_contact_runtime import contact_witness
-from scripts.pikmin2_yellow_electric_witness import witness
+from scripts.pikmin2_yellow_electric_witness import witness, staged_red_witness
 from scripts.run_pikmin2_fixture import launch
 
 WORKSPACE = SOURCE_ROOT.parent.parent if SOURCE_ROOT.parent.name == 'output' else SOURCE_ROOT
@@ -47,7 +46,7 @@ def main():
     result = launch(exe, run, ['--experimental-pikmin2-room'], [marker],
                     timeout=60, canonical_root=WORKSPACE, development_launch=os.name != 'nt')
     text = (run / 'native.log').read_text(encoding='utf-8', errors='replace') if (run / 'native.log').exists() else ''
-    proof = witness(text) if args.mode == 'yellow-electric' else contact_witness(text, args.mode)
+    proof = witness(text) if args.mode == 'yellow-electric' else staged_red_witness(text)
     expected_stop = (args.captain_down and result.get('exit_code') == 86 and marker in text
                      and 'PASS ' not in text and 'P2_ELECBUG_CONTACT_CANDIDATE' not in text)
     assessment = {'process': result, 'mode': args.mode, 'witness': proof,
