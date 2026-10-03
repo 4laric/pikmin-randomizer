@@ -160,8 +160,9 @@ def prepare(assets, bundles, output):
         'Four-course terrain travel candidate. Retail actors and story unlocks are pending.\n'
         'Start with --experimental-pikmin2-campaign tutorial from this run directory.\n'
         'Check centered 960x540 window, live twenty-red squad and terrain movement.\n'
-        'End day through the ordinary pause menu. On the course menu select each course\n'
-        'with Up/Down and A. Check its name/terrain, live squad and P2_SURFACE_TRAVEL log.\n'
+        'Press Enter for pause; use W/S for Go to Sunset and Space to confirm.\n'
+        'Use W/S and Space in the course menu (controller main stick and A).\n'
+        'Check its name/terrain, live squad and P2_SURFACE_TRAVEL log.\n'
         'Repeat a previously visited course. Preserve logs and native card saves.\n'
         'This candidate does not establish fresh-process campaign resume.\n')
     return run

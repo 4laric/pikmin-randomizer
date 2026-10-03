@@ -43,7 +43,8 @@ directory. Use another staged output for another fresh test.
 
 Direct acceptance: observe the centered 960×540 window and twenty live Reds;
 move/whistle/throw on the actual terrain, end the day through the ordinary pause
-menu, then select each named course with Up/Down and A. Confirm the corresponding
+menu, then select each named course with the main stick and A. On the default
+keyboard bindings, Enter opens pause; W/S navigates both menus and Space confirms. Confirm the corresponding
 terrain and `P2_SURFACE_TRAVEL` log, and revisit a previously visited course.
 Record actual day-end/card-write behavior and any failed landing. Conversion,
 unit tests and compile success do not establish these gameplay observations.
