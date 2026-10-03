@@ -92,3 +92,35 @@ are **UNTESTED**. Actual berry harvest/carry-to-ship production, bitter spray
 enemy receivers/immunity/petrification/recovery, source effect visuals, and
 transient spicy-duration save/resume remain open. A build or policy PASS does
 not clear those gates.
+
+## Bitter Stone implementation boundary
+
+The first bounded original enemy receiver is Armor (source ID 15), coordinated
+with its family owner. Existing `TEKIOPT_Pressed`/`set_bittered` hooks do not
+implement source Stone. Source `dopeCallBack` may queue under NoInterrupt and
+returns false even when the effect was accepted; its return value cannot serve
+as the admission result. Entry backs up enemy events, stops the authored motion
+and velocity, and invokes the family-specific Stone callback. Recovery restores
+the event backup and resumes the same family state rather than resetting its FSM.
+
+The private GPVE01 `enemy/parm/enemyParms.szs` member `armor/enemyparm.txt`
+(SHA-256 `3fb448374d10a483a8fb3422d16349bacc9fcec33121006863a8694b35f2a57c`)
+sets fp35 to 1.0 second. This is the threshold for starting source shake,
+not the total petrification duration. `armor/enemystoneinfo.txt` defines 17
+authored stone pieces; source draw clocks stagger their start and proceed through
+five shake phases with strict time comparisons. Recovery requires the actual
+viewed-demo, Shake and Break flags as well as a living enemy. An immediate
+one-second timeout cannot qualify this mechanic.
+
+Stone death bypasses the ordinary `becomePellet` path. Source `EnemyBase::kill`
+calls Stone `dead`, `deathProcedure` (including carried-cargo throw-up), authored
+Honey drops and `becomeCarcass`; that last function removes the enemy through
+its manager. The normal carryable body must therefore be suppressed before
+host corpse activation. Armor is BDT_Strong: one Honey roll chooses nectar below
+0.9, spicy below 0.95, otherwise bitter. Corpse #1261 owns the typed activation
+suppression API, while resource #1252 owns actual Honey factories and child
+identity. Stone cannot create a second normal corpse or an independent drop store.
+
+This source audit is preparation only. Original Stone admission, source stone
+geometry, per-piece clocks, actual shatter/drop and save/resume remain unimplemented
+and unqualified in the spicy candidate.
