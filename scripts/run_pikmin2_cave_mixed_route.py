@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from randomizer.cave_floor import create,fingerprint,ITEMS
+from randomizer.cave_floor import create,fingerprint,validate,ITEMS
 from scripts.stage_pikmin2_playable_cave import stage
 from scripts.play_pikmin2_cave import checkpoint,receipts
 from scripts.fixture_platform import owned_process_options,wait_owned_process,terminate_owned_process
@@ -25,9 +25,16 @@ PREFIX='P2_CAVE_NATIVE_DIALOG '
 def require(value,message):
     if not value:raise ValueError(message)
 
-def validate_boundary(state,manifest,placement):
+def validate_boundary(state,manifest,placement,all_treasures=False):
+    validate(manifest)
+    if all_treasures:
+        require(str(placement['seed'])==manifest['table']['seed'],'canonical placement seed mismatch')
+        require(Counter((t['treasure_id'],t['slot_id']) for t in manifest['table']['treasures'])==
+                Counter((t['item'],t['host']) for t in placement['items']),'canonical treasure/host binding mismatch')
     require(Counter(s for s,m in state['squad'])==Counter({1:18,0:1,2:1}),'actual boundary mixed stock mismatch')
-    require(receipts(state['receipts'],placement)==[ITEMS['treasure_water']],'actual once-only water receipt mismatch')
+    expected=([ITEMS[t['treasure_id']] for t in manifest['table']['treasures']]
+              if all_treasures else [ITEMS['treasure_water']])
+    require(Counter(receipts(state['receipts'],placement))==Counter(expected),'actual once-only canonical receipt mismatch' if all_treasures else 'actual once-only water receipt mismatch')
     words=state['buds'].split();expected=manifest['table']['buds']
     used={words[5+2*i]:int(words[6+2*i]) for i in range(len(expected))}
     require(used=={b['slot_id']:2 if b['species']=='blue' else 1 for b in expected},'actual boundary bud budgets mismatch')
@@ -46,7 +53,8 @@ def child_deadline_seconds(scenario):
     # Actual Cave08 reached the far traversal at 60s after one physical
     # delivery and two successful Blue-only separations; the complete route
     # needs its own finite budget. Restore performs no traversal.
-    require(scenario in ('route','restore'),'unknown native scenario')
+    require(scenario in ('route','restore','route_all','restore_all'),'unknown native scenario')
+    if scenario=='route_all':return 180
     return 120 if scenario=='route' else 60
 
 
@@ -103,8 +111,10 @@ def launch(run,scenario,receipt_path,token):
                 if data:pending+=data
                 if pending:raw.extend(pending.decode(errors='replace').splitlines())
                 break
-        if scenario=='route':require(exit_code==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
-        else:require(exit_code==0 and any('PASS CAVE_MIXED_ROUTE_RESTORE' in line for line in raw),'actual native reload failed')
+        if scenario in ('route','route_all'):require(exit_code==42 and begin and end and pressed,'actual confirmed boundary exit42 missing')
+        else:
+            marker='PASS CAVE_CANONICAL_ROUTE_RESTORE' if scenario=='restore_all' else 'PASS CAVE_MIXED_ROUTE_RESTORE'
+            require(exit_code==0 and any(marker in line for line in raw),'actual native reload failed')
     except BaseException as exc:
         error=repr(exc);raise
     finally:
@@ -132,6 +142,7 @@ def launch(run,scenario,receipt_path,token):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('assets','pod','fixture','generator','output'):parser.add_argument('--'+name,type=Path,required=True)
+    parser.add_argument('--all-treasures',action='store_true',help='Require both canonical treasures and actual Yellow-to-Blue carry handoff')
     args=parser.parse_args();require(os.name!='nt','Linux supervised route entrypoint')
     output=args.output.resolve();require(not output.exists(),'fresh output required');output.mkdir(parents=True)
     asset_bytes=sum(p.stat().st_size for p in args.assets.rglob('*') if p.is_file())
@@ -144,13 +155,13 @@ def main():
     receipt_path=output/'receipts.txt';receipt_path.write_text('P2_RECEIPTS_1\n')
     initial=output/'route';stage(manifest,args.assets,args.pod,args.fixture,args.generator,initial)
     placement=parse_items_text((initial/'p2-cave-items.txt').read_text())
-    launch(initial,'route',receipt_path,token)
+    launch(initial,'route_all' if args.all_treasures else 'route',receipt_path,token)
     state=checkpoint((initial/'p2-cave-transfer.txt').read_text(),(initial/'p2-cave-bud-transfer.txt').read_text(),receipt_path.read_text(),manifest,placement)
-    validate_boundary(state,manifest,placement)
+    validate_boundary(state,manifest,placement,args.all_treasures)
     (output/'checkpoint.json').write_text(json.dumps(state,indent=2)+'\n')
     before=receipt_path.read_bytes();reload=output/'reload'
     stage(manifest,args.assets,args.pod,args.fixture,args.generator,reload,checkpoint=state)
-    launch(reload,'restore',receipt_path,token);require(receipt_path.read_bytes()==before,'reload changed durable receipts')
-    (output/'result.json').write_text(json.dumps({'passed':True,'ordinary_SDL_route':True,'production_F6_confirmed':True,'actual_mixed_reload':True,'campaign_SAVE_accepted':False},indent=2)+'\n')
+    launch(reload,'restore_all' if args.all_treasures else 'restore',receipt_path,token);require(receipt_path.read_bytes()==before,'reload changed durable receipts')
+    (output/'result.json').write_text(json.dumps({'passed':True,'ordinary_SDL_route':True,'production_F6_confirmed':True,'actual_mixed_reload':True,'canonical_treasures_complete':args.all_treasures,'campaign_SAVE_accepted':False},indent=2)+'\n')
 
 if __name__=='__main__':main()

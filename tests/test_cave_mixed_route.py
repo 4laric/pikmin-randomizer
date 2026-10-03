@@ -15,6 +15,8 @@ class BoundaryTests(unittest.TestCase):
     def test_finite_route_and_restore_deadlines_unknown_scenario_refused(self):
         self.assertEqual(child_deadline_seconds('route'),120)
         self.assertEqual(child_deadline_seconds('restore'),60)
+        self.assertEqual(child_deadline_seconds('route_all'),180)
+        self.assertEqual(child_deadline_seconds('restore_all'),60)
         with self.assertRaisesRegex(ValueError,'unknown native scenario'):
             child_deadline_seconds('campaign')
 
@@ -30,6 +32,28 @@ class BoundaryTests(unittest.TestCase):
 
     def test_exact_mixed_boundary_and_budget(self):
         state,m,p=self.fixture();validate_boundary(state,m,p)
+
+    def full_fixture(self):
+        state,m,p=self.fixture()
+        electric=dict(slot_id='forest_1:f1:leaf:1',host='forest_1:f1:leaf:1',item='treasure_elec')
+        p['items'].append(electric)
+        state['receipts']+=f"{p['seed']} treasure:forest_1:f1:{electric['slot_id']} {electric['host']} cave_treasure\n"
+        return state,m,p
+
+    def test_full_scope_requires_both_canonical_receipts_exactly_once(self):
+        state,m,p=self.full_fixture();validate_boundary(state,m,p,True)
+        state['receipts']='\n'.join(state['receipts'].splitlines()[:2])+'\n'
+        with self.assertRaisesRegex(ValueError,'canonical receipt'):validate_boundary(state,m,p,True)
+        state,m,p=self.full_fixture();state['receipts']+=state['receipts'].splitlines()[-1]+'\n'
+        with self.assertRaisesRegex(ValueError,'duplicate'):validate_boundary(state,m,p,True)
+
+    def test_full_scope_rejects_incompatible_placement_and_descriptor(self):
+        state,m,p=self.full_fixture();p['seed']+=1
+        with self.assertRaisesRegex(ValueError,'placement seed'):validate_boundary(state,m,p,True)
+        state,m,p=self.full_fixture();p['items'][1]['host']='forest_1:f1:leaf:0'
+        with self.assertRaisesRegex(ValueError,'host binding'):validate_boundary(state,m,p,True)
+        state,m,p=self.full_fixture();m['table']['treasures'][1]['slot_id']='forest_1:f1:leaf:0'
+        with self.assertRaisesRegex(ValueError,'incompatible'):validate_boundary(state,m,p,True)
 
     def test_wrong_stock_and_wrong_budget_refuse(self):
         state,m,p=self.fixture();bad=copy.deepcopy(state);bad['squad'][-1]=[1,0]
