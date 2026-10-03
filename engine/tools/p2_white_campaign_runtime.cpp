@@ -62,6 +62,14 @@ static bool saveRequested=false,dayAdvanced=false,resumeMode=false,humanMode=fal
 static WhiteSaveIntent saveIntent=WhiteSaveIntent::Neutral;
 static Piki* held=nullptr;
 static std::set<Piki*> naturalBodies;
+// Membership binds the fifteen-adult snapshot taken after all ordinary plucks;
+// acquisition regroup16 and pre-pluck disband13 precede that snapshot.
+static bool naturalWhiteMembershipRequired(int p){
+ switch(p){case 7:case 8:case 9:case 10:case 11:case 12:case 14:case 15:case 17:case 25:case 26:case 27:case 28:return true;default:return false;}
+}
+static bool ivoryOutputsComplete(int bud,int budget,int red,int white,int heads,int stock){
+ return bud>=0&&bud<3&&budget==5&&stock==0&&red==20-5*(bud+1)&&white>=0&&heads>=0&&white+heads==5*(bud+1);
+}
 static Pellet* cargo=nullptr;
 static int p1Before[3][3]={};
 static int p1Expected[3][3]={};
@@ -229,7 +237,7 @@ public:int idle()override{
  int red=0,white=0,heads=0,followers=0,whiteFollowers=0,carriers=0;bool cargoSlot=false;PikiHeadItem* head=nullptr;
  std::set<unsigned> originals;std::set<Piki*> whites;
  Iterator bodies(pikiMgr);CI_LOOP(bodies){Piki* p=static_cast<Piki*>(*bodies);if(!p->isAlive())continue;
-  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if((phase>=7&&phase<18)||phase==26||phase==27||phase==28)require(naturalBodies.count(p),"natural White pointer membership changed");}
+  if(pc_p2_is_white(p)){++white;whites.insert(p);require(p->mHappa==Leaf,"natural/resumed White maturity changed");if(naturalWhiteMembershipRequired(phase))require(naturalBodies.count(p),"natural White pointer membership changed");}
   else{require(pc_p2_species(p)==P2SpeciesRed&&p->mHappa==Leaf,"unexpected ordinary species/Red maturity");++red;if(!resumeMode)require(p->mGenerator&&uid(p)>=1&&uid(p)<=20&&originals.insert(uid(p)).second,"original Red identity changed");}
   if(p->mMode==PikiMode::FormationMode&&p->mNavi==n){++followers;if(pc_p2_is_white(p))++whiteFollowers;}
   if(cargo&&p->getStickObject()==cargo){const bool valid=pc_p2_is_white(p)&&naturalBodies.count(p)&&p->mMode==PikiMode::TransportMode&&pc_piki_carry_strength(p)==1&&std::abs(pc_piki_carry_power(p)-3)<.001;
@@ -296,8 +304,8 @@ public:int idle()override{
  }
  if(phase==2){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;float bx=goal.x-n->mSRT.t.x,bz=goal.z-n->mSRT.t.z;if(x*x+z*z<64&&bx*bx+bz*bz>625){next(6);}}
  if(phase==6&&phaseTick>=20){float x=goal.x-n->mCursorWorldPos.x,z=goal.z-n->mCursorWorldPos.z;next(x*x+z*z<64?3:2);}
- if(phase==3&&p2whitecampaign::budget.get({0,flowerIds[budIndex]})==5&&red==20-5*(budIndex+1)&&heads==5*(budIndex+1)){
-  std::printf("P2_WHITE_CAMPAIGN_IVORY_COMPLETE uid=%u natural_outputs=5 red=%d white_heads=%d spent=%d\n",flowerIds[budIndex],red,heads,spent());
+ if(phase==3&&ivoryOutputsComplete(budIndex,p2whitecampaign::budget.get({0,flowerIds[budIndex]}),red,white,heads,whiteStock())){
+  std::printf("P2_WHITE_CAMPAIGN_IVORY_COMPLETE uid=%u natural_outputs=5 red=%d white_heads=%d white_adults=%d spent=%d\n",flowerIds[budIndex],red,heads,white,spent());
   if(++budIndex<3){goal=flowers[budIndex]->mSRT.t;next(2);}else{conservedBudget();next(13);}
  }
  // A natural conversion can leave original Reds free; whistle the actual
