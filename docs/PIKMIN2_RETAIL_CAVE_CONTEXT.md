@@ -92,7 +92,11 @@ The immutable catalog accessor now compiles once in
 `pc_p2_retail_cave_catalog.cpp`. CMake links its archive to native consumers;
 direct standalone policy builds must also compile that source. Private context
 and registry CTests pass, as do the native orchestrator and group-engine object
-compiles. The actual selected `SceneOps`, full linked build, ordinary Emergence
+compiles. A supported private Linux production build at native commit
+`537e7b9b114b881a11eb49e4762dfccc4ffc9c05` passed all five requested
+CTests, dependency checks and a Ninja no-work check. That qualification predates
+the later live-reader and release-readiness changes; it does not qualify their
+complete production composition. Actual selected `SceneOps`, ordinary Emergence
 mechanics and fresh SAVE restore remain unqualified.
 
 
@@ -115,3 +119,22 @@ state after a fresh process. This is a pending human script, not recorded eviden
 Do not substitute engineering Atlas relocation, reduced weight, synthetic intake,
 receipt injection or a mocked restored roster for these mechanics. Partial exits
 with uncollected cargo additionally require actual settled-body graph retention.
+
+
+`NativeFloor` now exposes read-only source-birth facts for actual installing and
+committed scenes. Every lookup rechecks the owning scene's selected session and
+native serial; live pointers additionally require the exact registry token and
+full instance identity. `knownSourceBirth` retains an actual parent incarnation
+after natural retirement. It is not a successful converted-output receipt or
+a travel journal. Emission and carried-body readers must check their own real
+output and transition records.
+
+Before teardown, `FloorSession` and `NativeFloor` call the provider's nonmutating
+`canRelease` query. An ordinary refusal, such as unfinished Pod intake, keeps
+the existing floor active without calling release. Once release starts, native
+source readers revoke before any actor or stage address can be reused. A cleanup
+failure retains resources in that revoked state for retry. The scene's prepared
+context must survive through actual cargo and Pod cleanup; it cannot depend on
+the already revoked committed getter. These changes are published at native
+`4c588145065ade2ceb46b0e09578f50b38a6fe12`, with focused context tests
+and private native object compilation passing.
