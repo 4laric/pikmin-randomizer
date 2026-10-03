@@ -15,6 +15,7 @@ from experimental.pikmin2_assembly import merge_rooms, transform
 from experimental.pikmin2_cave import BASE
 from experimental.pikmin2_collision import decode_room, ground_height
 from experimental.pikmin2_retail_context import authenticate
+from experimental.pikmin2_retail_start import canonical as start_canonical, source_start
 
 POLICY = 'authored-emergence-source-slots/1'
 
@@ -30,6 +31,14 @@ def prepare(catalog, iso, source, imported, assembled, floor, output):
     cave = context['caves'][0]
     definition = cave['floors'][floor-1]
     inventory = json.loads((imported/'manifest.json').read_bytes())
+    catalog_data = json.loads(catalog.read_bytes())
+    pool = catalog_data['unit_pools'][definition['unit_pool']]
+    pool_units = {u['name']: u for u in pool['units']}
+    if inventory['floors'][floor-1]['unit_candidates'] != list(pool_units):
+        raise ValueError('Imported unit candidates differ from authenticated pool')
+    for name, unit in pool_units.items():
+        if inventory['units'][name]['definition'] != unit:
+            raise ValueError('Imported unit/door definition differs from authenticated pool')
     if inventory['cave'] != cave['cave_id']:
         raise ValueError('Imported cave identity differs')
     layout = [('room_north_tutorial_1_snow',0,[0,0,0]),('way2_snow',0,[0,0,510]),
@@ -139,9 +148,27 @@ def prepare(catalog, iso, source, imported, assembled, floor, output):
                   ' '.join(format(v,'.9g') for v in (*anchor['position'],anchor['yaw']))+'\n'
     native += 'transition '+('hole' if floor==1 else 'geyser')+'\n'
     result['layout_sha256'] = hashlib.sha256(native.encode('ascii')).hexdigest()
+    unit_name = layout[start['unit']][0]
+    layout_member = f'{BASE}/arc/{unit_name}/texts.szs/layout.txt'
+    with iso.open('rb') as stream:
+        at, size = files[pool['source']]
+        stream.seek(at)
+        pool_raw = stream.read(size)
+    if len(pool_raw) != size or hashlib.sha256(pool_raw).hexdigest() != catalog_data['source_sha256'][pool['source']]:
+        raise ValueError('Original unit pool changed during preparation')
+    start_record = source_start(source, result, pool['source'],
+                                catalog_data['source_sha256'][pool['source']],
+                                layout_member, hashlib.sha256((imported/'units'/unit_name/'texts/layout.txt').read_bytes()).hexdigest(),
+                                pool_units[unit_name])
+    start_record['slot']['archive_sha256'] = inventory['source_sha256'][f'{BASE}/arc/{unit_name}/texts.szs']
+    start_record.pop('record_sha256')
+    start_record['record_sha256'] = hashlib.sha256(start_canonical(start_record)).hexdigest()
     output.mkdir(parents=True,exist_ok=False)
     (output/'floor.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     (output/'p2-retail-floor.txt').write_bytes(native.encode('ascii'))
+    (output/'p2-retail-start.json').write_bytes(start_canonical(start_record)+b'\n')
+    (output/'p2-retail-unit-pool.txt').write_bytes(pool_raw)
+    (output/'p2-retail-start-layout.txt').write_bytes((imported/'units'/unit_name/'texts/layout.txt').read_bytes())
     return result
 
 
