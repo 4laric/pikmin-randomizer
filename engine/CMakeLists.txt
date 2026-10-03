@@ -271,6 +271,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_original_group_engine.cpp
     pc_port/pc_p2_original_drop.cpp
     pc_port/pc_p2_original_drop_engine.cpp
+    pc_port/pc_p2_original_gen_object.cpp
     pc_port/pc_p2_campaign_goal_probe.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_surface_topology.cpp
@@ -3268,3 +3269,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 endif()
+
+# Real native factory/cache transport fixture; synthetic zero-birth admission only.
+pikmin_add_ci_fixture(original_gen_object tools/p2_original_gen_object_runtime.cpp)
