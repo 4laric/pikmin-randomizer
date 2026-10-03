@@ -22,15 +22,22 @@
 #include "PikiMgr.h"
 #include "PikiHeadItem.h"
 #include "ItemMgr.h"
+#include "UfoItem.h"
 #include "Boss.h"
 #include "Pom.h"
 #include "pc_p2_white.h"
 #include "pc_p2_species.h"
+#include "pc_p2_original_throw.h"
+#include "pc_p2_original_piki_physical.h"
+#include "pc_p2_original_piki_recruit.h"
+#include "pc_p2_original_progress.h"
+#include "pc_p2_original_source_uid.h"
 #include "Generator.h"
 #include "teki.h"
 #include "Collision.h"
 #include "GameStat.h"
 #include "KeyConfig.h"
+#include "Kontroller.h"
 #include "pc_bbft.h"
 #include "pc_window.h"
 #include "pc_gpu_preference.h"
@@ -44,7 +51,8 @@ SDL_Joystick* pad=nullptr;
 constexpr unsigned Target=346002, Partner=346010;
 const char* mode="landing";
 bool electric(){return std::strcmp(mode,"landing")!=0;}
-int desiredSpecies(){return !std::strcmp(mode,"white-electric")?P2SpeciesWhite:P2SpeciesRed;}
+int desiredSpecies(){return !std::strcmp(mode,"white-electric")?P2SpeciesWhite:
+    !std::strcmp(mode,"yellow-electric")?P2SpeciesYellow:P2SpeciesRed;}
 // Production SDL->PAD conversion divides by256; preserve intended PAD strength.
 constexpr int contact_sdl_axis(int padAxis) { return padAxis * 256; }
 void require(bool ok,const char* why){
@@ -65,7 +73,7 @@ void point(Navi* n,const Vector3f& goal,bool walk,unsigned keys=0){
     const Vector3f from=walk?n->mSRT.t:n->mCursorWorldPos;
     const float dx=goal.x-from.x,dz=goal.z-from.z,d=std::hypot(dx,dz);
     int x=0,y=0;
-    if(d>(walk?15.f:6.f)){
+    if(d>(walk?15.f:(!std::strcmp(mode,"red-electric")?3.f:6.f))){
         const Vector3f axis=n->controlCamera()->mViewXAxis;
         const float power=walk?65.f:22.f;
         x=int(std::lround(power*(dx*axis.x+dz*axis.z)/d));
@@ -78,13 +86,65 @@ Teki* find(unsigned token){
         if(t&&t->mGenerator&&t->mGenerator->_70==token)return t;}
     return nullptr;
 }
+Vector3f pressAim(Navi* n,Teki* enemy,Teki* partner){
+    Vector3f goal=enemy->mSRT.t;
+    if(!std::strcmp(mode,"red-electric")){
+        // Aim at the actual fitted rear body, clear of the arc endpoint.
+        // Measured landing centre was nine units short with a ten-unit aim
+        // lead: the throw starts behind the captain and its model trails the
+        // root. Ordinary cursor input accounts for that observed gap.
+        CollPart* rear=enemy->mCollInfo&&enemy->mCollInfo->hasInfo()
+            ?enemy->mCollInfo->getSphere('bod2'):nullptr;
+        require(rear&&std::isfinite(rear->mCentre.x)&&std::isfinite(rear->mCentre.z),
+                "actual rear collision part for Red aim");
+        goal=rear->mCentre;
+        Vector3f direction=goal-n->mSRT.t;direction.y=0;
+        require(direction.length()>1.f,"distinct Red aim target");
+        direction.normalise();goal=goal+direction*19.f;
+    }
+    return goal;
+}
 class ContactApp:public PlugPikiApp {
-    int frame=0,age=0,ready=0,throwTicks=0;
+    int frame=0,age=0,ready=0,throwTicks=0,neutralThrowTicks=0,uiResumeTicks=0;
+    int redApproach=0;
+    Vector3f redApproachSide;
     bool captainSeen=false,started=false,offContactSeen=false,reverseSeen=false;
     bool slotSeen[2]={false,false};
     int acquisition=0,acquisitionTicks=0,whiteGather=0,ivoryThrowTicks=0;
     bool sawWhiteSprout=false,ivoryCaptured=false;
     Piki* acquiredWhite=nullptr;
+    Piki* stagedRgb=nullptr;
+    bool yellowRecovered() const {
+        if(!stagedRgb||!stagedRgb->isAlive()||!stagedRgb->isCreatureFlag(CF_IsOnGround))return false;
+        const int state=stagedRgb->getState();
+        return state!=PIKISTATE_Flying&&state!=PIKISTATE_Hanged&&state!=PIKISTATE_Dying
+            &&state!=PIKISTATE_Dead&&state!=PIKISTATE_Drown&&state!=PIKISTATE_DenkiDying;
+    }
+    void stageRgb(Navi* captain){
+        Iterator actors(pikiMgr);actors.first();auto* replace=static_cast<Piki*>(*actors);
+        require(replace&&replace->isAlive(),"owned baseline replacement exists");
+        replace->setEraseKill();replace->kill(false);
+        const int species=desiredSpecies();
+        // Red is an explicitly synthetic control identity, never a relabelled
+        // original Yellow record. Both fixtures exclude acquisition claims.
+        const std::string key=species==P2SpeciesYellow?"tutorial/initgen.txt#2":"fixture-red-control/initgen.txt#0";
+        const std::string fingerprint=species==P2SpeciesYellow
+            ?"b8a4fb5a39f8371a879eec4ece9025bee75977a4b4394111d5825e6ec79c0bbf"
+            :"8926e466ec3c5d6fb8b9db2f93a7164cf5ff87d4719b5454a61eb9688ae368b3";
+        const unsigned uid=p2original::originalSourceCatalogUid(key);
+        std::string error;
+        require(pc_p2_original_piki_origin_install(fingerprint,{{key,uid,20,species}},error),"RGB fixture catalog");
+        const std::string campaign="6a012015368158125b7b88bdd14000ed2a10613f02474b0f08830d9a3b5ec029";
+        require(p2original::originalProgress().initialize(campaign,error),"RGB fixture progress");
+        auto context=p2original::originalProgress().context();context.story=false;
+        require(p2original::originalProgress().restoreContext(context,error),"disclosed non-story RGB fixture context");
+        require(pc_p2_original_piki_recruit_bind(campaign,fingerprint,error),"RGB paired recruitment");
+        OriginalPikiBody body{{key,uid,0,1,fingerprint},{species,false,false}};
+        const auto& pos=captain->mSRT.t;
+        require(pc_p2_original_piki_physical_birth(body,{{pos.x+12,pos.y,pos.z}},stagedRgb,error)==p2original::PikiBirthResult::Born,"disclosed RGB replacement");
+        require(pc_p2_original_rgb_throw_species(stagedRgb)==species,"canonical staged RGB");
+        std::printf("P2_ELECBUG_%s_STAGED piki=%p species=%d relocated_debug_member=1 non_story_fixture=1 acquisition=0 campaign=0 synthetic_control=%d catalog_key=%s fingerprint=%s\n",species==P2SpeciesYellow?"YELLOW":"RED",static_cast<void*>(stagedRgb),species,int(species==P2SpeciesRed),key.c_str(),fingerprint.c_str());
+    }
     std::map<Piki*,int> observedSpecies;
     void guardCaptains(){
         const char* mask=std::getenv("P2_ELECBUG_GUARD_MASK");
@@ -182,15 +242,25 @@ public:
         ++frame;
         require(frame<3600,"frame bound; requires separate60s wall supervisor");
         if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
-        if(!initialized||!pikiMgr||!tekiMgr||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
+        if(!initialized||!pikiMgr||!tekiMgr||gameflow.mPauseAll||gameflow.mIsUIOverlayActive){
+            if(frame%60==0){std::printf("P2_ELECBUG_WAIT frame=%d initialized=%d pause=%d overlay=%d captain_state=%d buttons=%08x\n",frame,int(initialized),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),initialized?n->getCurrState()->getID():-1,initialized?n->mKontroller->mCurrentInput:0);std::fflush(nullptr);}
+            if(initialized&&gameflow.mIsUIOverlayActive&&electric()&&desiredSpecies()!=P2SpeciesWhite){
+                // Ordinary B first reveals the message, then advances it.
+                input(frame%8<4?KBBTN_B:0);aHeld=false;uiResumeTicks=15;
+            }
+            return result;
+        }
+        if(uiResumeTicks>0){--uiResumeTicks;input();return result;}
         if(!started&&(n->getCurrState()->getID()!=NAVISTATE_Walk||++ready<45))return result;
         Teki* enemy=find(Target);Teki* partner=find(Partner);
         require(enemy&&partner&&pc_p2_elecbug_registered(enemy)&&pc_p2_elecbug_registered(partner),"two bound ElecBugs");
         int live=0,red=0;
         Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p&&p->isAlive()){++live;if(pc_p2_species(p)==P2SpeciesRed)++red;}}
         if(!started){
+            std::printf("P2_ELECBUG_BASELINE live=%d red=%d captain=%.3f,%.3f,%.3f\n",live,red,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z);std::fflush(nullptr);
             require(live==20&&red==20,"fresh20 nativeRed1 baseline");
             require(enemy->mCollInfo&&enemy->mCollInfo->hasInfo(),"initialized enemy geometry");
+            if(desiredSpecies()==P2SpeciesYellow||!std::strcmp(mode,"red-electric"))stageRgb(n);
             started=true;
             std::printf("P2_ELECBUG_CONTACT_READY live=%d red=%d captain_hp=%.3f source_id=28 generators=%u,%u\n",live,red,n->mHealth,Target,Partner);
             if(std::getenv("P2_ELECBUG_READY_ONLY")){
@@ -201,6 +271,11 @@ public:
         if(mask&&!std::strcmp(mask,"inactive"))require(false,"inactive guard mask unavailable: no initialized inactive captain");
         if(!acquireWhite(n))return result;
         ++age;
+        if(desiredSpecies()==P2SpeciesYellow){
+            require(live==20&&stagedRgb&&stagedRgb->isAlive(),"Yellow encounter preserves20 living Pikmin");
+            require(pc_p2_original_rgb_throw_species(stagedRgb)==2,"Yellow source identity retained");
+            require(stagedRgb->getState()!=PIKISTATE_DenkiDying,"Yellow must reject electric death");
+        }
         const char* state=pc_p2_elecbug_state_name(enemy);
         require(state,"registered state exists");
         if(!std::strcmp(state,"reverse"))reverseSeen=true;
@@ -221,7 +296,7 @@ public:
             int& phase=flight[p];
             observedSpecies[p]=pc_p2_species(p);
             const int pstate=p->getState();
-            if(aHeld&&p->mNavi==n&&pstate==PIKISTATE_Hanged&&phase!=1&&pc_p2_species(p)==desiredSpecies()&&(desiredSpecies()!=P2SpeciesWhite||p==acquiredWhite)){phase=1;witness(p,"held");}
+            if(aHeld&&p->mNavi==n&&pstate==PIKISTATE_Hanged&&phase!=1&&pc_p2_species(p)==desiredSpecies()&&(desiredSpecies()!=P2SpeciesWhite||p==acquiredWhite)&&(!stagedRgb||p==stagedRgb)){phase=1;witness(p,"held");}
             if(phase==2){
                 if(pstate==PIKISTATE_Flying&&p->mVelocity.y>.01f){phase=3;witness(p,"rising");}
                 else {
@@ -261,20 +336,65 @@ public:
             std::printf("P2_ELECBUG_CONTACT_PROGRESS age=%d live=%d target_distance=%.2f state=%s throw_ticks=%d off_contact=%d contacts=%d\n",
                 age,live,distance(n->mSRT.t,enemy->mSRT.t),state,throwTicks,offContactSamples,contactSamples);
             std::fflush(nullptr);
+            if(stagedRgb){std::printf("P2_ELECBUG_SELECTION age=%d a_held=%d neutral=%d captain_state=%d buttons=%08x throw_bind=%08x yellow_state=%d yellow_mode=%d yellow_navi=%p captain=%p yellow_distance=%.3f next=%p\n",age,int(aHeld),neutralThrowTicks,n->getCurrState()->getID(),n->mKontroller->mCurrentInput,KeyConfig::_instance->mThrowKey.mBind,stagedRgb->getState(),stagedRgb->mMode,static_cast<void*>(stagedRgb->mNavi),static_cast<void*>(n),distance(stagedRgb->mSRT.t,n->mSRT.t),static_cast<void*>(n->mNextThrowPiki));std::fflush(nullptr);}
         }
         if(offContactSeen&&reverseSeen){
             for(const auto& entry:flight)if(entry.second==5&&(desiredSpecies()!=P2SpeciesWhite||entry.first==acquiredWhite)){
+                if(desiredSpecies()==P2SpeciesYellow){
+                    if(entry.first!=stagedRgb||!yellowRecovered())continue;
+                    std::printf("P2_ELECBUG_YELLOW_SURVIVED frame=%d piki=%p species=2 alive=1 grounded=1 live=%d state=%d\n",frame,static_cast<void*>(stagedRgb),live,stagedRgb->getState());
+                }
                 // Exit supplies a candidate only. The launcher must correlate
                 // production contact-dispatch evidence to this exact Pikmin.
                 std::printf("P2_ELECBUG_CONTACT_CANDIDATE frame=%d generator=%u piki=%p observed_reverse=1 mode=%s species=%d\n",frame,Target,static_cast<void*>(entry.first),mode,observedSpecies[entry.first]);
             }
-            std::fflush(nullptr);std::_Exit(0);
+            // Yellow waits for actual ground recovery after the dispatch.
+            if(desiredSpecies()!=P2SpeciesYellow ||
+                (flight.count(stagedRgb)&&flight[stagedRgb]==5
+                 &&yellowRecovered())){
+                std::fflush(nullptr);std::_Exit(0);
+            }
         }
         // Only virtual-pad input. Gather, approach, aim during A hold, release.
-        if(age<90){input(KBBTN_B);return result;}
+        if(age<(!std::strcmp(mode,"red-electric")?30:90)){input(KBBTN_B);return result;}
+        if (!std::strcmp(mode,"red-electric") && redApproach < 2) {
+            Vector3f away=enemy->mSRT.t-partner->mSRT.t;
+            away.y=0;
+            require(away.length()>1.f,"distinct Red approach endpoints");
+            away.normalise();
+            if (redApproach==0 && redApproachSide.length()==0) {
+                redApproachSide.set(-away.z,0,away.x);
+                if (redApproachSide.DP(n->mSRT.t-enemy->mSRT.t)<0) redApproachSide.multiply(-1.f);
+            }
+            // Walk around the live arc to the outside of its endpoint. This
+            // uses ordinary pad movement; no enemy/Pikmin/receiver state writes.
+            Vector3f goal=enemy->mSRT.t+away*70.f;
+            if (redApproach==0) goal=goal+redApproachSide*50.f;
+            if(age%30==0){std::printf("P2_ELECBUG_RED_ROUTE phase=%d captain=%.3f,%.3f,%.3f goal=%.3f,%.3f,%.3f distance=%.3f ordinary_pad=1\n",redApproach,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,goal.x,goal.y,goal.z,distance(n->mSRT.t,goal));std::fflush(nullptr);}
+            if (distance(n->mSRT.t,goal)>20.f) {
+                neutralThrowTicks=0;point(n,goal,true);return result;
+            }
+            ++redApproach;
+            std::printf("P2_ELECBUG_RED_APPROACH phase=%d ordinary_pad=1\n",redApproach);
+            input();return result;
+        }
+        UfoItem* ship=itemMgr?itemMgr->getUfo():nullptr;
+        if(electric()&&desiredSpecies()!=P2SpeciesWhite&&!aHeld&&ship){
+            const Vector3f goal=ship->getGoalPos();
+            const Vector3f offset=goal-n->mSRT.t;
+            // Walk's recovery A action uses the offset goal, not ship origin.
+            if(offset.length()<=60.f||distance(n->mSRT.t,ship->mSRT.t)<=70.f){
+                neutralThrowTicks=0;point(n,enemy->mSRT.t,true);return result;
+            }
+        }
         if(distance(n->mSRT.t,enemy->mSRT.t)>140.f){
             if(aHeld){for(const auto& entry:flight)witness(entry.first,"invalidated");flight.clear();aHeld=false;}
+            neutralThrowTicks=0;
             point(n,enemy->mSRT.t,true);return result;
+        }
+        if(electric()&&desiredSpecies()!=P2SpeciesWhite&&neutralThrowTicks<15){
+            input();if(n->getCurrState()->getID()==NAVISTATE_Walk)++neutralThrowTicks;
+            return result;
         }
         Piki* held=nullptr;
         Iterator holding(pikiMgr);CI_LOOP(holding){Piki* p=static_cast<Piki*>(*holding);if(p&&p->isAlive()&&p->mNavi==n&&p->getCurrState()&&p->getState()==PIKISTATE_Hanged)held=p;}
@@ -282,21 +402,28 @@ public:
             // Hold and select with the ordinary pad while awaiting real discharge.
             const bool discharging=!std::strcmp(state,"discharge")||!std::strcmp(state,"childdischarge");
             if(held&&desiredSpecies()==P2SpeciesWhite&&pc_p2_species(held)==P2SpeciesWhite)require(held==acquiredWhite,"held White must be acquired witness");
-            if(held&&pc_p2_species(held)!=desiredSpecies()){
-                aHeld=true;point(n,enemy->mSRT.t,false,KBBTN_A|(age%6==0?KBBTN_DPAD_RIGHT:0));return result;
+            if(held&&(pc_p2_species(held)!=desiredSpecies()||(stagedRgb&&held!=stagedRgb))){
+                aHeld=true;point(n,pressAim(n,enemy,partner),false,KBBTN_A|(age%6==0?KBBTN_DPAD_RIGHT:0));return result;
             }
             bool pending=false;for(const auto& entry:flight)if(entry.second>=2)pending=true;
             if(!aHeld&&pending){input();return result;}
-            if(!held&&!aHeld){aHeld=true;point(n,enemy->mSRT.t,false,KBBTN_A);return result;}
-            if(aHeld&&!discharging){point(n,enemy->mSRT.t,false,KBBTN_A);return result;}
+            if(!held&&!aHeld){aHeld=true;point(n,pressAim(n,enemy,partner),false,KBBTN_A);return result;}
+            if(aHeld&&!discharging){point(n,pressAim(n,enemy,partner),false,KBBTN_A);return result;}
             if(aHeld){
+                if(!std::strcmp(mode,"red-electric")) {
+                    const Vector3f goal=pressAim(n,enemy,partner);
+                    const float error=distance(n->mCursorWorldPos,goal);
+                    require(std::isfinite(error),"finite Red cursor alignment");
+                    if(error>3.f){point(n,goal,false,KBBTN_A);return result;}
+                    std::printf("P2_ELECBUG_RED_AIM frame=%d error=%.6f cursor=%.6f,%.6f goal=%.6f,%.6f ordinary_pad=1\n",frame,error,n->mCursorWorldPos.x,n->mCursorWorldPos.z,goal.x,goal.z);
+                }
                 input();for(auto& entry:flight)if(entry.second==1){entry.second=2;releasedAt[entry.first]=frame;witness(entry.first,"released");}
                 aHeld=false;return result;
             }
             if(pending){input();return result;}
         }
         const int cycle=throwTicks++%45;
-        if(cycle<22){aHeld=true;point(n,enemy->mSRT.t,false,KBBTN_A);}
+        if(cycle<22){aHeld=true;point(n,pressAim(n,enemy,partner),false,KBBTN_A);}
         else {
             input();
             if(aHeld)for(auto& entry:flight)if(entry.second==1){entry.second=2;releasedAt[entry.first]=frame;witness(entry.first,"released");}
@@ -308,7 +435,7 @@ public:
 }
 int main(int argc,char** argv){
     if(const char* requested=std::getenv("P2_ELECBUG_MODE"))mode=requested;
-    require(!std::strcmp(mode,"landing")||!std::strcmp(mode,"red-electric")||!std::strcmp(mode,"white-electric"),"known mode");
+    require(!std::strcmp(mode,"landing")||!std::strcmp(mode,"red-electric")||!std::strcmp(mode,"white-electric")||!std::strcmp(mode,"yellow-electric"),"known mode");
     if(const char* mask=std::getenv("P2_ELECBUG_GUARD_MASK"))require(!std::strcmp(mask,"active")||!std::strcmp(mask,"inactive")||!std::strcmp(mask,"null-state")||!std::strcmp(mask,"missing-manager"),"known negative observation mask");
     std::printf("P2_ELECBUG_MODE mode=%s species=%d\n",mode,desiredSpecies());
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);

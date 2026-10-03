@@ -1,6 +1,7 @@
 #include "pc_p2_hanachirashi_receiver.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
+#include "pc_p2_cave_visible.h"
 #include "pc_bbft.h"
 #include <cstring>
 #endif
@@ -652,6 +653,10 @@ void NaviWalkState::exec(Navi* navi)
 		navi->finishFixPosition();
 	}
 
+#if defined(PIKI_PC_PORT)
+	// The nearby cave actor consumes the mapped action before throw/Onion input.
+	if (pc_p2_cave_visible_interact(navi)) return;
+#endif
 	for (int i = 0; i < 3; i++) {
 #if defined(PIKI_PC_PORT)
 		// VS: cada capitán solo abre sus cebollas.

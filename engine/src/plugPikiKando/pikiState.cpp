@@ -3,6 +3,7 @@
 #include "pc_p2_captive_navi_policy.h"
 #include "pc_blue_rescue.h"
 #include "pc_p2_original_red_native.h"
+#include "pc_p2_elecbug.h"
 #endif
 #include "pc_p2_gas_cloud.h"
 #include "pc_p2_original_blackpom_native.h"
@@ -2276,6 +2277,12 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	}
 
 	#if defined(PIKI_PC_PORT)
+    if(colliderType==OBJTYPE_Teki&&pc_p2_elecbug_flying_press(static_cast<BTeki*>(static_cast<Teki*>(collider)),piki)){
+        // Keep receiver-selected DenkiDying. An immune presser still completes
+        // the ordinary flying collision instead of entering the host stick AI.
+        if(piki->getState()==PIKISTATE_Flying){piki->restartAI();transit(piki,PIKISTATE_Normal);}
+        return;
+    }
     // Retail PikiFlyingState sends press on an actual descending contact.
     // Only an admitted original Red and its accepted callback consume it.
     if(colliderType==OBJTYPE_Teki&&piki->mVelocity.y<0&&pc_p2_original_red_owned(static_cast<BTeki*>(static_cast<Teki*>(collider)))
@@ -2401,6 +2408,12 @@ void PikiFlyingState::procBounceMsg(Piki* piki, MsgBounce*)
 	if (flight.phase != PcP2PurpleFlightPhase::Ascent) {
 		pc_p2_purple_impact_emit(piki, "ground_bounce");
 	}
+#if defined(PIKI_PC_PORT)
+    if (pc_p2_elecbug_ground_press(piki) && piki->getState() != PIKISTATE_Flying) {
+        // A real Red press selects DenkiDying; never replace it with Normal.
+        return;
+    }
+#endif
 	if (mHasBounced) {
 		piki->restartAI();
 		transit(piki, PIKISTATE_Normal);

@@ -1,4 +1,5 @@
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_visible.h"
 #include "pc_p2_cave_generate.h"
 #include "pc_p2_cave_nav_diagnostics.h"
 #include "pc_p2_cave_anchor.h"
@@ -669,6 +670,8 @@ void pc_p2_cave_tick(){
 void pc_p2_cave_draw_transition(Graphics& gfx){
     if(gfx.mCamera && pc_p2_cave_rooms_active())pc_p2_cave_rooms_draw(gfx);
     if(gfx.mCamera && pc_p2_cave_geometry_active())pc_p2_cave_geometry_draw(gfx);  // lane 45 (#483)
+    // Keep room geometry; the legacy solid anchor model covers the authored mouth.
+    if(pc_p2_cave_visible_active())return;
     if((!active() && !surfaceRouteLoaded) || !anchor.enabled || !gfx.mCamera)return;
     if(navRate.enabled)++navDrawCalls;
     if(!navMarkerLogged){std::puts("P2_CAVE_MARKER_DRAW");navMarkerLogged=true;}

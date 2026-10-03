@@ -1939,8 +1939,16 @@ void Piki::stickToCallback(Creature*)
  */
 void Piki::bounceCallback()
 {
+#if defined(PIKI_PC_PORT)
+    const bool wasFlying = getState() == PIKISTATE_Flying;
+#endif
 	MsgBounce msg(Vector3f(0.0f, 1.0f, 0.0f));
 	sendMsg(&msg);
+#if defined(PIKI_PC_PORT)
+    // A simultaneous ElecBug landing can select electric death in MsgBounce.
+    // Preserve that receiver result before the generic water landing path.
+    if (wasFlying && getState() == PIKISTATE_DenkiDying) return;
+#endif
 
 	int attr = ATTR_NULL;
 	if (mGroundTriangle) {
