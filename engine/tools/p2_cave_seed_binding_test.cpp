@@ -1,4 +1,5 @@
 #include "pc_p2_cave_seed_binding.h"
+#include "pc_p2_cave_campaign_cache.h"
 #undef NDEBUG
 #include <cassert>
 #include <sstream>
@@ -21,6 +22,31 @@ static std::string changed(const std::string& from, const std::string& to) {
     s.replace(at, from.size(), to); return s;
 }
 int main() {
+    auto cacheImage=[](unsigned char marker) {
+        std::string image(P2CaveCacheBanks::imageSize,'\0');
+        image[6]=char(0x6c); // big-endian freeSize = native heap size
+        image[8]=char(marker);
+        for(unsigned i=0;i<5;++i){const unsigned at=8+P2CaveCacheBanks::heapSize+i*37;
+            image[at]=char(255);image[at+4]=char(i);}
+        return image;
+    };
+    const auto surface=cacheImage(65),floor=cacheImage(66);
+    P2CaveCacheBanks banks;
+    assert(banks.valid() && banks.enter(surface) && banks.captureFloor(floor));
+    assert(!banks.enter(floor) && banks.surface==surface && banks.floor==floor);
+    std::ostringstream cacheWire;banks.write(cacheWire);
+    P2CaveCacheBanks restored;std::istringstream cacheInput(cacheWire.str());
+    assert(restored.read(cacheInput) && restored.inside && restored.surface==surface && restored.floor==floor);
+    auto corrupt=floor;corrupt[0]=1;
+    assert(!restored.captureFloor(corrupt) && restored.floor==floor);
+    for(const char* text:{"CAVE_CACHE 1 1 - -","CAVE_CACHE 1 2 - -","CAVE_CACHE 2 0 - -",
+            "CAVE_CACHE 1 0 ff -","CAVE_CACHE 1 0 - FF"}) {
+        std::istringstream bad(text);
+        assert(!restored.read(bad) && restored.inside && restored.surface==surface && restored.floor==floor);
+    }
+    assert(restored.leave(floor) && !restored.inside && restored.surface.empty() && restored.floor==floor);
+    assert(!restored.leave(surface));
+    assert(restored.enter(surface) && restored.floor==floor);
     int receiver = 1, foreignReceiver = 2;
     assert(p2CaveSeedReceiverMatch(true, true, &receiver, &receiver));
     assert(!p2CaveSeedReceiverMatch(true, true, &receiver, &foreignReceiver));

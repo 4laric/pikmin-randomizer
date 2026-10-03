@@ -3,6 +3,9 @@
 #include "netplay/pc_netplay_randstate.h"
 #include <cstddef>
 #include <cstdint>
+struct P2CaveCacheBanks;
+const P2CaveCacheBanks& pc_randomizer_generated_cave_cache();
+void pc_randomizer_generated_cave_cache_set(const P2CaveCacheBanks& banks);
 
 // Seed-owned generated cave transport; absent for every historical seed.
 bool pc_randomizer_generated_cave();

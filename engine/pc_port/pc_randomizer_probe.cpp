@@ -1,6 +1,9 @@
 #include <filesystem>
 #include "pc_p2_ship_store.h"
 #include "pc_randomizer.h"
+#include "pc_p2_cave_campaign_cache.h"
+#include <fstream>
+#include <iterator>
 #include "pc_randomizer_catalog.h"
 #include <cstdlib>
 #include <chrono>
@@ -29,7 +32,24 @@ int main(int argc, char** argv) {
         unsigned char card[32768] = {};
         const bool resumed = pc_randomizer_load_campaign(card);
         for (int i = 1; i < argc; ++i) {
-            if (!std::strcmp(argv[i], "--cave-bud-input")) {
+            if (!std::strcmp(argv[i], "--cave-cache-enter") || !std::strcmp(argv[i], "--cave-cache-floor")
+                || !std::strcmp(argv[i], "--cave-cache-return")) {
+                const std::string action=argv[i];
+                assert(i+1<argc);
+                std::ifstream image(argv[++i],std::ios::binary);
+                assert(image);
+                const std::string bytes{std::istreambuf_iterator<char>(image),std::istreambuf_iterator<char>()};
+                auto banks=pc_randomizer_generated_cave_cache();
+                const bool ok=action=="--cave-cache-enter"?banks.enter(bytes):
+                    action=="--cave-cache-floor"?banks.captureFloor(bytes):banks.leave(bytes);
+                if(!ok){std::fputs("INVALID_CAVE_CACHE_CONTROL\n",stderr);return 2;}
+                pc_randomizer_generated_cave_cache_set(banks);
+            } else if (!std::strcmp(argv[i], "--cave-cache-state")) {
+                const auto& banks=pc_randomizer_generated_cave_cache();
+                std::printf("CAVE_CACHE_STATE inside=%d surface=%u floor=%u\n",int(banks.inside),
+                    banks.surface.empty()?0:unsigned(static_cast<unsigned char>(banks.surface[8])),
+                    banks.floor.empty()?0:unsigned(static_cast<unsigned char>(banks.floor[8])));
+            } else if (!std::strcmp(argv[i], "--cave-bud-input")) {
                 assert(i + 6 < argc);
                 const auto seed = std::strtoull(argv[++i], nullptr, 10);
                 const char* cave = argv[++i]; const int floor = std::atoi(argv[++i]);

@@ -2,6 +2,7 @@
 #include "Boss.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
+#include "pc_p2_cave_campaign_cache_engine.h"
 #include <cstdlib>
 #endif
 #include "BaseInf.h"
@@ -962,6 +963,9 @@ void MemoryCard::saveCurrentGame()
 	writeOneGameFile(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1);
 	waitPolling();
 #if defined(PIKI_PC_PORT)
+	// Keep the cave's native cache separate from the captured surface image.
+	// The wrapper hashes both images together with this ordinary card payload.
+	pc_p2_cave_campaign_cache_capture();
 	if (pc_randomizer_netplay_save_barrier_active()) {
 		// Netplay M4 lane B2 (issue #885): the day-end save barrier. The
 		// outcome below is sim-visible (the early return and the slot swap),
