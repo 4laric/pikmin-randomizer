@@ -27,6 +27,11 @@ constexpr float TickSeconds = 1.0f / 30.0f; // P2 update tick (one tick per fram
 constexpr int GroupCount = 10;              // Obj::createFellow -> createGroup(this, 10, false)
 constexpr int EggGroupCount = 10;           // egg.cpp EGGDROP_Mitites
 constexpr int BigFootGroupCount = 30;       // TAMAGOMUSHI_GROUP_COUNT, Raging Long Legs drop
+inline bool consumeBigFootDrop(bool key2, bool heldPart, bool& consumed) {
+    if (!key2 || consumed) return false;
+    consumed = true;
+    return !heldPart; // source mPelletDropCode.isNull()
+}
 constexpr float AppearRange = 120.0f;       // proper fp02 (disc), isFound search radius
 constexpr float PanicRadius = 150.0f;       // Parms::mPanicInduceRadius, appearPanic
 constexpr float SurvivalTicks = 180.0f;     // proper fp01 (disc)
@@ -76,6 +81,26 @@ inline Offset fellowOffset(int i, int count, float rand01)
     return o;
 }
 inline int fellowCount(int groupCount) { return groupCount > 1 ? groupCount - 1 : 0; }
+// tamagoMushiMgr::createGroupByBigFoot (102-113,187-239). Allocation failure
+// of the leader aborts; later failed births are skipped without replacing them.
+template<class Birth> int bigFootGroup(Birth birth) {
+    int born = 0;
+    for (int member = 0; member < BigFootGroupCount; ++member) {
+        if (birth(member)) ++born;
+        else if (member == 0) break;
+    }
+    return born;
+}
+inline Offset bigFootOffset(int member, float radiusRand, float yawRand) {
+    if (member == 0) return {0.0f, 0.0f, 0.0f};
+    const float tau = 6.28318531f;
+    const float angle = tau * float(member - 1) / float(BigFootGroupCount);
+    const float radius = 50.0f * (0.8f * radiusRand + 0.2f);
+    return {radius * std::sin(angle), radius * std::cos(angle), tau * yawRand};
+}
+inline float bigFootFallSpeed(int member, float rand01) {
+    return member == 0 ? 0.0f : ((member - 1) % 3 ? -100.0f : 100.0f) * rand01;
+}
 // Mgr::createGroup(BirthArg, ...) refuses when the pool cannot hold the group.
 inline bool poolHoldsGroup(int freeSlots, int groupCount) { return freeSlots >= groupCount; }
 

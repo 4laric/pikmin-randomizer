@@ -30,6 +30,8 @@
 #include "pc_p2_long_legs_pose.h"
 #include "pc_p2_pose_family.h"
 #include "pc_p2_bigfoot_fsm.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_tamago_policy.h"
 #include "pc_p2_bigfoot_coll.h"
 #include "pc_p2_bigfoot_skin.h"
 #include "pc_p2_bigfoot_tables.h"
@@ -164,6 +166,7 @@ struct ActorState {
     // legs, the retail enemycoll tree swapped onto the host, foot press, and
     // the stuck-Pikmin-only hurtbox. Replaces the shared P2LongLegsFsm path.
     bool isBigFoot = false;
+    bool bfDropDone = false;
     P2BigFootFsm bigfoot;
     CollInfo* bfOwnColl = nullptr;
     CollInfo* bfHostColl = nullptr;
@@ -1981,10 +1984,15 @@ void bigfootTick(BTeki* actor, ActorState& state, float dt) {
         bigfootStomp(actor, state, out);
         state.damageable = after != P2LongLegsState::Stay && after != P2LongLegsState::Dead;
         state.bitterImmune = out.bitterImmune;
-        if (out.deadKey2) {
-            // StateDead key 2: throwupItem + createItemAndEnemy (30 Mitites when
-            // no treasure). Children are lane objects: logged, not spawned.
-            std::printf("P2_LONG_LEGS_BIRTH species=BigFoot generator=%u count=30\n", state.generator);
+        const bool heldPart = actor->mPersonality && Pellet::isUfoPartsID(actor->mPersonality->mID.mId);
+        if (p2tamagopolicy::consumeBigFootDrop(out.deadKey2, heldPart, state.bfDropDone)) {
+            // BigFoot::getThrowupItemPosition: kosi world translation minus100Y.
+            const p2ik::M34& hip = state.bigfoot.jointsWorld()[0];
+            Vector3f drop(hip.m[0][3], hip.m[1][3] - 100.0f, hip.m[2][3]);
+            // The host's actual held ship part is its pellet-drop code (#901).
+            // External AP rewards alone must not suppress the source Mitite drop.
+            const int born = pc_p2_tamago_birth_bigfoot(actor, state.generator, drop);
+            std::printf("P2_LONG_LEGS_BIRTH species=BigFoot generator=%u count=%d requested=30\n", state.generator, born);
         }
         if (out.deadEnd && !state.deadEscapeDone) {
             // StateDead: kill, no carcass (BigFoot.cpp:69). #1088 owner ruling: no
@@ -2325,6 +2333,7 @@ void pc_p2_long_legs_setup() {
                         state.houdai.parms().burstCooldown, state.houdai.parms().maxAimSeconds);
         }
         if (match->second == "BigFoot") {
+            pc_p2_tamago_prepare_bigfoot();
             // #1018 own brain: source BigFoot FSM + IK (disc parms), hit counter
             // via TEKIOPT_DamageCountable, retail collision tree on first tick,
             // hidden until the drop-in (StateStay EB_ModelHidden).

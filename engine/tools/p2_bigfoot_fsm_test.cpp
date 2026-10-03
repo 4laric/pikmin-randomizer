@@ -231,13 +231,14 @@ int main()
         P2BigFootOutput out;
         fsm.update(in, out);
         assert(fsm.state() == S::Dead && out.entered);
-        int key2 = -1, end = -1;
-        for (int i = 1; i <= 320 && end < 0; ++i) {
+        int key2 = -1, end = -1, key2Count = 0;
+        for (int i = 1; i <= 640; ++i) {
             fsm.update(in, out);
-            if (out.deadKey2) key2 = i;
-            if (out.deadEnd) end = i;
+            if (out.deadKey2) { key2 = i; ++key2Count; }
+            if (out.deadEnd && end < 0) end = i;
         }
         assert(key2 >= 84 && key2 <= 86 && end >= 299 && end <= 301);
+        assert(key2Count == 1); // no additional groups during terminal frames
     }
 
     // Skin: rigid and envelope draw matrices reproduce the J3D maths.

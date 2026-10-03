@@ -1,6 +1,7 @@
 #pragma once
 class BTeki;
 class Creature;
+struct Vector3f;
 
 // Family-owned ground-invertebrate source behavior: Mitite (TamagoMushi,
 // EnemyID 68) on the batch-2 Chappy placement vehicle (#165/#407).
@@ -27,6 +28,9 @@ bool pc_p2_tamago_clip(const BTeki*, const char*& name, float& phase);
 // and links them as follower. P1-derived: born actors are Chappy-vehicle Teki
 // (no per-actor generator), documented + logged P2_TAMAGO_BIRTH/BIRTH_ONCE.
 void pc_p2_tamago_birth_group(BTeki* host, int count);
+// Source createGroupByBigFoot: independent, unbound 30-member falling group.
+bool pc_p2_tamago_prepare_bigfoot();
+int pc_p2_tamago_birth_bigfoot(BTeki* boss, unsigned generator, const Vector3f& position);
 // Registration observability for the group-birth lifecycle fixture.
 unsigned long pc_p2_tamago_count();
 bool pc_p2_tamago_registered(BTeki*);

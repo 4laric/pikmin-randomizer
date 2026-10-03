@@ -1493,7 +1493,7 @@ add_executable(p2_bigfoot_fsm_test
     pc_port/pc_p2_long_legs_ik.cpp
     pc_port/pc_p2_long_legs_fsm.cpp)
 target_include_directories(p2_bigfoot_fsm_test PRIVATE pc_port)
-target_compile_options(p2_bigfoot_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_compile_options(p2_bigfoot_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_bigfoot_fsm_test COMMAND p2_bigfoot_fsm_test)
 
 add_executable(p2_inst_legs_policy_test

@@ -48,6 +48,9 @@ unsigned long pc_p2_batch2_count();
 bool pc_p2_batch2_registered(BTeki*);
 // Runtime-born group member (Mitite fellows, #992): copy the host visual key.
 void pc_p2_batch2_adopt(BTeki* child, BTeki* host);
+// BigFoot's child dependency: preload a bank without a staged Mitite actor.
+bool pc_p2_batch2_prepare_tamago();
+bool pc_p2_batch2_bind_tamago(BTeki* child);
 // Runtime evidence helper: count of authored clock events delivered exactly once
 // by the sampled clock (#431). Does not execute damage/capture/drops.
 unsigned long long pc_p2_batch2_event_count();

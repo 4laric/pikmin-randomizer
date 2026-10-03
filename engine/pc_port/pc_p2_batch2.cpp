@@ -1117,6 +1117,27 @@ void pc_p2_batch2_adopt(BTeki* child, BTeki* host) {
     if (it == actors.end()) return;
     actors[child] = it->second;
 }
+bool pc_p2_batch2_prepare_tamago() {
+    const std::string key = "ground|TamagoMushi";
+    if (banks.count(key)) return true;
+    for (const FamilyDef& family : FAMILIES) {
+        if (std::string(family.name) != "ground") continue;
+        std::map<std::string, std::vector<p2batch2clock::Row>> rows;
+        std::string error;
+        if (!parseBank(family.bank, rows, &error) || !rows.count("TamagoMushi")) return false;
+        const size_t before = bytesTotal;
+        Bank bank = loadBank(family, "TamagoMushi", rows["TamagoMushi"], &error);
+        if (!error.empty()) { bytesTotal = before; return false; }
+        banks[key] = std::move(bank);
+        return true;
+    }
+    return false;
+}
+bool pc_p2_batch2_bind_tamago(BTeki* child) {
+    if (!child || !banks.count("ground|TamagoMushi")) return false;
+    actors[child] = "ground|TamagoMushi";
+    return true;
+}
 unsigned long long pc_p2_batch2_event_count() {
     return eventCount;
 }
