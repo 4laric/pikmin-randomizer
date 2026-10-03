@@ -20,7 +20,7 @@ def verified_entries(catalog):
     entries = {}
     for line in data[1:]:
         fields = line.split()
-        entries[fields[0]] = dict(dictionary=int(fields[4]), value=int(fields[5]),
+        entries[fields[0]] = dict(kind=fields[1], index=int(fields[3]), dictionary=int(fields[4]), value=int(fields[5]),
                                   minimum=int(fields[6]), maximum=int(fields[7]))
     return entries
 

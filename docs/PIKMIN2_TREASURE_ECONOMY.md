@@ -137,3 +137,35 @@ source. Run a fresh private 20-Pikmin, centred 960×540 ordinary campaign:
 
 Synthetic codec/descriptor controls and successful model extraction do not
 qualify ordinary carrying, native SAVE or endings.
+
+## Literal held-drop continuation
+
+`randomizer.held_treasures.prepare` binds a `P2_TREASURE_HELD_1` descriptor to
+unchanged original `P2OC1` and typed Onyon manifests, selected campaign, actual
+enemy UID/source/treasure code and original converted models. It returns private
+data without activating the campaign. Runtime repeats the native source parser
+checks and requires the campaign owner's authenticated `TREASURE_SOURCE` binding.
+The first targeted literal is tutorial `initgen.txt#17`, source 33, code 841:
+`watch`, dictionary 87, 110 Pokos, carry strength 30 and 40 physical slots. The
+receiver is the original typed ship at tutorial `defaultgen.txt#0`, not an
+engineering Onion. Neither source generator nor its held code is replaced.
+
+The native held provider preflights models before enemy birth, emits actual cargo
+through the original death/drop path, and grants a unique receipt only after
+completed native ship suction. Pending released cargo is a physical graph, not
+a collection bit: course teardown and SAVE must refuse it until that graph has
+an authenticated restore implementation. This guard is a development limitation;
+it does not establish ordinary pending-cargo persistence or course-exit acceptance.
+
+Atlas (`map01`, item index 10, dictionary 184) is a loose treasure on Emergence
+Cave floor 2. Projection Sphere (`map02`, item index 11, dictionary 185) is a loose
+surface source at `forest/initgen.txt#16`. Both catalogue profiles are 200 Pokos,
+101 carry strength and 101 slots. Neither placement qualifies for the original
+boss-held/story/cave/last-floor squad-weight adjustment. Preserve their weights
+and require actual Purple carrying strength; floor context alone cannot lower
+a loose treasure's weight. Collection must produce the equipment owner's normal
+map unlock, followed by native SAVE and fresh-process verification.
+
+Held native commit `9a2aaba90e218bfea4cd2c45f1c73bfd51cdfcdf` passed all three
+hosted focused CTests and a no-work Ninja check. These are codec/descriptor checks,
+not a production compile or a death/carry/save/resume gameplay result.
