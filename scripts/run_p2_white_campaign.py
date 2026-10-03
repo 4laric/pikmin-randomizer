@@ -126,6 +126,22 @@ def assess_save_counter(text, save, generation):
         raise ValueError('Default initialization must precede actual save baseline')
 
 
+def assess_ivory_outputs(buds):
+    if len(buds)!=3:raise ValueError('Three actual natural budget witnesses required')
+    previous_adults=0
+    for i,(uid,bud) in enumerate(zip((25,28,29),buds)):
+        outputs=5*(i+1)
+        expected={'uid':str(uid),'natural_outputs':'5','red':str(20-outputs),'spent':str(outputs)}
+        if set(bud)!=set(expected)|{'white_heads','white_adults'} or any(bud[k]!=v for k,v in expected.items()):
+            raise ValueError('Exact source budget and ordered natural output fields required')
+        try:heads=int(bud['white_heads']);adults=int(bud['white_adults'])
+        except (TypeError,ValueError):raise ValueError('Native head/adult counts required') from None
+        if (str(heads)!=bud['white_heads'] or str(adults)!=bud['white_adults'] or heads<0
+                or adults<previous_adults or heads+adults!=outputs):
+            raise ValueError('Conserved cumulative natural heads/adults required')
+        previous_adults=adults
+
+
 def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_proof, phase_budget=60):
     if phase_budget not in (60,240):raise ValueError('Fixed positive assessment budget required')
     if (exit_code!=0 or timed_out or not math.isfinite(elapsed) or not 0<elapsed<=phase_budget
@@ -139,8 +155,7 @@ def assess_positive(text, *, exit_code, elapsed, timed_out, source_proof, card_p
     expected={'red':'20','white':'0','heads':'0','stock':'0','ivory':'3','spent':'0','cargo_uid':'26','minimum':'15','maximum':'25','value':'180'}
     if baseline != [expected]:raise ValueError('Original twenty Red/source retail baseline required')
     buds=rows(text,'P2_WHITE_CAMPAIGN_IVORY_COMPLETE')
-    expected_buds=[{'uid':str(uid),'natural_outputs':'5','red':str(20-5*(i+1)),'white_heads':str(5*(i+1)),'spent':str(5*(i+1))} for i,uid in enumerate((25,28,29))]
-    if buds!=expected_buds:raise ValueError('Three actual natural budget witnesses required')
+    assess_ivory_outputs(buds)
     acquired=rows(text,'P2_WHITE_CAMPAIGN_ACQUIRED')
     if acquired != [{'red':'5','white':'15','heads':'0','body_total':'20','spent':'15','ordinary_birth_pluck':'1'}]:raise ValueError('Fifteen ordinary White births/plucks required')
     samples=rows(text,'P2_WHITE_CAMPAIGN_HAUL')
