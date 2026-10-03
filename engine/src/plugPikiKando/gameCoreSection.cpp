@@ -1,3 +1,4 @@
+#include "pc_p2_original_foliage_native.h"
 #include "pc_p2_ship.h"
 #include "pc_p2_white_poison.h"
 #include "pc_dev_console.h"
@@ -5497,6 +5498,9 @@ void GameCoreSection::draw(Graphics& gfx)
 	gfx.setCBlending(blend);
 	gfx.setDepth(true);
 	MATCHING_STOP_TIMER("shadow draw");
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (!hideTeki()) pc_p2_original_foliage_post_shadow(gfx);
+#endif
 	mMapMgr->postrefresh(gfx);
     static bool bbftWorldDrawn = false;
     if (!bbftWorldDrawn && pc_bbft_enabled()) {

@@ -1,3 +1,4 @@
+#include "pc_p2_original_foliage_native.h"
 #include "pc_p2_original_pelplant_native.h"
 #include "DebugLog.h"
 #include "Interactions.h"
@@ -48,6 +49,9 @@ TekiInteractionKey::TekiInteractionKey(int type, immut Interaction* interaction)
  */
 bool InteractAttack::actTeki(Teki* teki) immut
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_foliage_owned(teki)) return false;
+#endif
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
     if (pc_p2_original_pelplant_damage(teki, mDamage, mCollPart ? mCollPart->getCode().mId : 0)) return true;
 #endif
@@ -144,6 +148,9 @@ bool InteractAttack::actTeki(Teki* teki) immut
  */
 bool InteractBomb::actTeki(Teki* teki) immut
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_foliage_owned(teki)) return false;
+#endif
 	if (pc_p2_hana_rejects_attack(teki)) {
 		return true; // registered Hana is buried: bomb swallowed, no damage
 	}
@@ -189,6 +196,9 @@ bool InteractBomb::actTeki(Teki* teki) immut
  */
 bool InteractHitEffect::actTeki(Teki* teki) immut
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    if (pc_p2_original_foliage_owned(teki)) return false;
+#endif
 	return teki->interact(TekiInteractionKey(TekiInteractType::HitEffect, this));
 }
 
@@ -207,6 +217,10 @@ bool InteractPress::actTeki(Teki* teki) immut
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (pc_p2_original_red_owned(teki)) return pc_p2_kochappy_fsm_original_pressed(teki,mOwner);
+
+    if (pc_p2_original_foliage_earthquake(teki)) return false;
+#endif
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (pc_p2_elecbug_pressed(teki, mOwner)) return true;
 	if (pc_p2_sokkuri_pressed(teki, mOwner)) return true;
 	if (pc_p2_hardlanes_fuefuki_pressed(teki, mOwner)) return true;
