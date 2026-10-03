@@ -1,5 +1,6 @@
 #include "pc_p2_original_group_engine.h"
 #include "pc_p2_original_group.h"
+#include "pc_p2_original_drop_engine.h"
 #include "Generator.h"
 #include "MapMgr.h"
 #include "gameflow.h"
@@ -8,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 namespace {
+p2original::GroupCourse& groupCourse(){static p2original::GroupCourse course(p2original::originalActors());return course;}
 void mirror(Generator* generator){
  p2original::GeneratorState state;unsigned alive=0;
  if(!pc_p2_original_groups().state(generator,state,alive))return;
@@ -18,7 +20,14 @@ void mirror(Generator* generator){
  generator->mCarryOverFlags=state.reserved;generator->mLatestSpawnCreature=nullptr;
 }
 }
-p2original::GroupCourse& pc_p2_original_groups(){static p2original::GroupCourse course(p2original::originalActors());return course;}
+const p2original::GroupCourse& pc_p2_original_groups(){return groupCourse();}
+bool pc_p2_original_course_install(const std::vector<p2original::GroupBinding>& bindings,p2original::GroupProvider& provider,std::string& error){
+ // Real engine entry cannot bypass common physical-drop admission. All rows
+ // are checked before provider reservation, RNG, actor construction or bind.
+ for(const auto& row:p2original::originalActors().rows())if(!pc_p2_original_drop_resources(row.second,error))return false;
+ return groupCourse().install(bindings,provider,error);
+}
+bool pc_p2_original_course_unload(std::string& error){return groupCourse().unload(error);}
 bool pc_p2_original_generator_init(Generator* generator,bool& handled,std::string& error){
  handled=pc_p2_original_groups().owns(generator);if(!handled)return true;
  p2original::Math math;
@@ -28,18 +37,18 @@ bool pc_p2_original_generator_init(Generator* generator,bool& handled,std::strin
  // Original map-null semantics preserve authored height; otherwise query the
  // actual installed terrain per actor immediately before its physical birth.
  auto floor=[](const p2original::Position& position,float& y,std::string&){y=mapMgr?mapMgr->getMinY(position.x,position.z,true):position.y;return true;};
- if(!pc_p2_original_groups().initialize(generator,unsigned(gameflow.mWorldClock.mCurrentDay),!Generator::ramMode,math,floor,error))return false;
+ if(!groupCourse().initialize(generator,unsigned(gameflow.mWorldClock.mCurrentDay),!Generator::ramMode,math,floor,error))return false;
  mirror(generator);return true;
 }
 bool pc_p2_original_generator_death(Generator* generator,Creature* creature,bool& handled,std::string& error){
  handled=pc_p2_original_groups().owns(generator);if(!handled)return true;
- if(!pc_p2_original_groups().death(generator,creature,error))return false;
+ if(!groupCourse().death(generator,creature,error))return false;
  mirror(generator);return true;
 }
 
 void pc_p2_original_native_retired(Creature* creature){
  std::string error;
- if(!pc_p2_original_groups().retiredNative(creature,error)){
+ if(!groupCourse().retiredNative(creature,error)){
   std::fprintf(stderr,"P2_ORIGINAL_NATIVE_RETIRE_FAIL %s\n",error.c_str());std::abort();
  }
 }
