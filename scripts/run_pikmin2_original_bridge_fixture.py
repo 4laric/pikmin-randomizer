@@ -64,7 +64,7 @@ def main():
     validate(manifest);session.mkdir(parents=True)
     (session/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     state=Session(manifest,session);run=NativeRun(state);run.write_state(True)
-    overrides={'p2-original/bridges/type%d.mod'%i:(resources/folder/'bridge.mod').read_bytes() for i,folder in enumerate(['s_bridge','slope_u','l_bridge'])}
+    overrides={'dataDir/p2-original/bridges/type%d.mod'%i:(resources/folder/'bridge.mod').read_bytes() for i,folder in enumerate(['s_bridge','slope_u','l_bridge'])}
     surface_inputs={}
     if args.surface_assets:
         bank=args.surface_assets.resolve(strict=True)
