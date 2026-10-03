@@ -293,8 +293,11 @@ def assess_resume(text, *, exit_code, elapsed, timed_out, saved_card, current_ca
     if not math.isfinite(displacement) or displacement<=30:
         raise ValueError('Actual usable fresh White formation movement required')
     commits=rows(text,'[Pikmin Randomizer] CAMPAIGN_RESUMED')
-    if commits!=[{'generation':str(saved_card['generation'])}]:
-        raise ValueError('Exactly the accepted paired native generation must resume')
+    if commits!=[{'day':str(expected_day)}]:
+        raise ValueError('Exactly the accepted ordinary native day must resume')
+    checkpoint=rows(text,'P2_WHITE_CAMPAIGN_RESUME_CHECKPOINT')
+    if checkpoint!=[{'generation':str(saved_card['generation']),'sha256':saved_card['sha256']}]:
+        raise ValueError('Loader-compatible checkpoint observation must match the unchanged paired card')
     if rows(text,'[Pikmin Randomizer] CAMPAIGN_SAVED'):
         raise ValueError('Unexpected additional save in read-only fresh resume witness')
     return {'fresh_resume_passed':True,'gameplay_accepted':False,
