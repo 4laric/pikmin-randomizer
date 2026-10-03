@@ -30,7 +30,7 @@ def main():
     if hashlib.sha256(exe.read_bytes()).hexdigest() != args.expected_exe_sha256.lower():
         parser.error('Executable differs from supplied reviewed fixture hash')
     run = WORKSPACE / 'output/p2-yellow-1263' / ('electric-' + uuid.uuid4().hex)
-    prepare(args.assets.resolve(), args.content.resolve(), run)
+    prepare(args.assets.resolve(), args.content.resolve(), run, safe_squad=True)
     for key in list(os.environ):
         if key.upper().startswith(('PIKMIN_', 'P2_', 'BBFT_', 'NECTAR_', 'SDL_')):
             del os.environ[key]
