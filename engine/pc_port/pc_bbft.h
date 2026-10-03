@@ -40,3 +40,10 @@ int pc_pikipelago_challenge_level();
 bool pc_pikipelago_room_preview();
 const char* pc_pikipelago_surface_course();
 const char* pc_pikipelago_surface_stage();
+
+// Four-course travel candidate. The active course changes only with a matching native stage.
+bool pc_pikipelago_surface_campaign();
+int pc_pikipelago_surface_index();
+bool pc_pikipelago_surface_select(int stageId, const char* stagePath);
+
+const char* pc_pikipelago_surface_stage_for(int stageId);

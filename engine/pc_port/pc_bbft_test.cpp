@@ -31,7 +31,24 @@ void bbft_warp_out() { ++warps; held = 1; }
 void bbft_check(const char*) { ++checks; }
 void bbft_logf(const char*, ...) {}
 }
-int main(int argc, char**) {
+int main(int argc, char** args) {
+    if (argc > 1 && !std::strcmp(args[1], "--p2-flags")) {
+        pc_bbft_init(argc-1,args+1);
+        assert(pc_pikipelago_surface_campaign());
+        assert(pc_pikipelago_surface_index()>=0 && pc_pikipelago_surface_index()<4);
+        assert(!pc_pikipelago_surface_select(-1,"stages/p2_tutorial.ini"));
+        assert(!pc_pikipelago_surface_select(0,"stages/practice.ini"));
+        const char* courses[]={"tutorial","forest","yakushima","last"};
+        const char* stages[]={"stages/p2_tutorial.ini","stages/p2_forest.ini","stages/p2_yakushima.ini","stages/p2_last.ini"};
+        for(int i=0;i<4;++i) {
+            assert(pc_pikipelago_surface_select(i,stages[i]));
+            assert(!std::strcmp(pc_pikipelago_surface_course(),courses[i]));
+            assert(!std::strcmp(pc_pikipelago_surface_stage(),stages[i]));
+        }
+        assert(!std::strcmp(pc_bbft_save_root(),"save/p2-campaign"));
+        std::puts("P2 travel selector tests passed");
+        return 0;
+    }
     assert(pc_bbft_focus_hold_policy(false, false) && !pc_bbft_focus_hold_policy(false, true));
     assert(!pc_bbft_focus_hold_policy(true, false) && !pc_bbft_focus_hold_policy(true, true));
     _putenv_s("PIKMIN_RANDOMIZER_TEST_VISIBLE", "1");
