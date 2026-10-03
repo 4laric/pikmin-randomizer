@@ -658,6 +658,17 @@ CollInfo::CollInfo(int maxParts)
 	}
 }
 
+#if defined(PIKI_PC_PORT)
+CollInfo::CollInfo(int count, CollPart* parts, u32* ids)
+    : mUseDefaultMaxParts(false), mCollParts(parts), mPartIDs(ids),
+      mPartsCount(0), mMaxParts(count > 0 && count <= 65535 ? count : 0), mShape(nullptr)
+{
+    if (!mMaxParts || !parts || !ids) {
+        ERROR("code-owned CollInfo requires bounded arrays\n");
+    }
+}
+#endif
+
 /**
  * @brief Enables sticking on all parts.
  */

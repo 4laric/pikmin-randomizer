@@ -28,6 +28,8 @@ void restore(std::string bytes) {
     if(stream.getPosition()!=int(bytes.size()))invalid("native restore length");
 }
 }
+std::string pc_p2_campaign_cache_image(){return capture();}
+void pc_p2_campaign_cache_restore_image(const std::string& bytes){restore(bytes);}
 void pc_p2_cave_campaign_cache_enter(int surfaceStage) {
     if(!pc_randomizer_ready())invalid("unready entry");
     if(surfaceStage!=STAGE_Forest)invalid("foreign entry surface");

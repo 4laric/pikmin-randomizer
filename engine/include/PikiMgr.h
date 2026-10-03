@@ -229,6 +229,17 @@ public:
 	virtual void update();                  // _4C
 	virtual void refresh(Graphics&);        // _58
 	virtual Creature* birth();              // _78
+#if defined(PIKI_PC_PORT)
+    // Original GenPiki has its own literal source field limit, not AP Flarlic.
+    // Only the admitted canonical physical adapter calls this entrypoint.
+    Creature* birthOriginalP2();
+    // Call only from verified original source container/head transactions.
+    Creature* birthOriginalP2Container();
+    Creature* birthOriginalP2Sprout();
+#endif
+private:
+    Creature* birthWithFieldLimit(int fieldLimit, bool allowSproutExtra);
+public:
 	virtual Creature* createObject();       // _80
 	virtual void read(RandomAccessStream&); // _84
 

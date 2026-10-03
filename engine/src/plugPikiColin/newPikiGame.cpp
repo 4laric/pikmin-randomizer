@@ -1,6 +1,8 @@
+#include "pc_p2_surface_save.h"
 #include "pc_randomizer.h"
 #include "pc_bbft.h"
 #if defined(PIKI_PC_PORT)
+#include "pc_p2_original_course.h"
 #include "netplay/pc_netplay_camlead.h"
 #include "netplay/pc_netplay_det.h"
 #include "netplay/pc_netplay_present.h"
@@ -991,6 +993,9 @@ ModeState* IntroGameModeState::update(u32& result)
 ModeState* RunningModeState::update(u32& result)
 {
 #if defined(PIKI_PC_PORT)
+    if(pc_p2_surface_save_update(mParentSection->mController)){result=UPDATE_NONE;return this;}
+#endif
+#if defined(PIKI_PC_PORT)
 	// VS: revancha o título, pedidos desde la pantalla final.
 	if (const int vsExit = pc_vs_take_exit_request()) {
 		gameflow.mPauseAll                         = FALSE;
@@ -1896,7 +1901,14 @@ ModeState* DayOverModeState::initialisePhaseTwo()
 #if defined(PIKI_PC_PORT)
 		if (!pc_settings_get_no_day_advance()) // cheat "No Day Limit"
 #endif
-		gameflow.mWorldClock.mCurrentDay = pc_randomizer_next_day(gameflow.mWorldClock.mCurrentDay);
+		{
+#if defined(PIKI_PC_PORT)
+			// Observe the accepted day completion, not pure day predictions or
+			// map-screen debug controls. P2 context owns its zero-based counter.
+			if (!gameflow.mIsChallengeMode) pc_p2_original_course_day_advanced();
+#endif
+			gameflow.mWorldClock.mCurrentDay = pc_randomizer_next_day(gameflow.mWorldClock.mCurrentDay);
+		}
 		if (!gameflow.mIsChallengeMode) {
 			// story mode - get a diary entry to show at the end of the day, along with how many pages/screens it has
 			int pageCount              = 0;
@@ -2271,7 +2283,7 @@ public:
 			gameflow.mMoviePlayer->startMovie(DEMOID_OlimarWakeUp, 0, nullptr, nullptr, nullptr, CAF_AllVisibleMask, true);
 		} else if (flowCont.mCurrentStage->mStageID < STAGE_COUNT
 #if defined(PIKI_PC_PORT)
-		           && !pc_vs_active() // VS: directo al mapa, todo ya colocado
+		           && !pc_vs_active() && !pc_p2_surface_save_living_scene() // A living SAVE has already landed.
 #endif
 		) {
 			// landing cutscene if we have a valid stage!

@@ -34,6 +34,11 @@
 // Every hook is a no-op for unregistered actors; no other lane's module is
 // modified.
 #include "pc_p2_catfish.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_original_catfish_bank.h"
+#include "pc_p2_original_catfish_native.h"
+#include "pc_p2_batch3.h"
+#include <sstream>
 #include "pc_p2_catfish_events.h"
 #include "pc_p2_catfish_residual_policy.h"
 #include "pc_p2_campaign_actor.h"
@@ -106,6 +111,8 @@ struct Clip {
 };
 
 struct Catfish {
+    bool original = false;
+    unsigned uid = 0, ordinal = 0, token = 0;
     State state = CATFISH_WAIT;
     float stateTime = 0.0f;
     float heading = 0.0f;
@@ -414,6 +421,7 @@ bool attackable(const Catfish& s, const Vector3f& pos, Creature* target) {
 }
 
 void pc_p2_catfish_reset() {
+    for (const auto& a : actors) if (a.second.original) { std::fprintf(stderr,"P2_ORIGINAL_CATFISH reset with live actor\n"); std::abort(); }
     actors.clear();
     clips.clear();
     corpses.clear();
@@ -421,6 +429,7 @@ void pc_p2_catfish_reset() {
 }
 
 void pc_p2_catfish_forget(BTeki* actor) {
+    pc_p2_original_catfish_forget(actor);
     actors.erase(static_cast<PelletView*>(actor));
     corpses.erase(actor);
 }
@@ -458,7 +467,66 @@ bool pc_p2_catfish_clip(const BTeki* actor, const char*& name, float& phase) {
     return true;
 }
 
+
+bool pc_p2_catfish_original_resources(std::string& error) {
+    if (!gsys) { error="Catfish system unavailable"; return false; }
+    std::ifstream authored("p2-aquatic-bank.txt");
+    if(!p2original::catfish::validateCatfishBank(authored,error))return false;
+    if (!pc_p2_batch3_original_resources(26,error)) return false;
+    std::ifstream input("p2-aquatic-bank.txt"); std::string line;
+    if (!std::getline(input,line) || line!="P2_AQUATIC_BANK_1") { error="Catfish authored bank header missing"; return false; }
+    std::map<std::string,Clip> staged;
+    while(std::getline(input,line)) {
+        std::istringstream row(line); std::string kind,species,name,events,marker,status;
+        if (!(row>>kind) || kind!="clip") continue;
+        int frames=0,poses=0;
+        if (!(row>>species>>name>>frames>>events>>marker>>poses>>status)) { error="malformed aquatic clip row";return false; }
+        if (species!="Catfish") continue;
+        if(frames<2 || poses<1 || poses>64 || marker!="poses" || status!="converted" || staged.count(name)) { error="invalid Catfish authored clip";return false; }
+        Clip c; c.name=name;c.duration=float(frames)/30.0f;c.loop=name=="wait1"||name=="move1";
+        p2catfishevents::Row timing;timing.name=name;timing.sourceFrames=frames;timing.poseCount=poses;timing.loop=c.loop;
+        if(events!="-") {
+            std::istringstream list(events); std::string event;
+            while(std::getline(list,event,',')) {
+                const auto colon=event.find(':');int frame=-1;std::string key,extra;
+                std::istringstream number(event.substr(0,colon));
+                if(colon==std::string::npos || !(number>>frame) || (number>>extra) || frame<0 || frame>=frames) {error="invalid Catfish authored event";return false;}
+                key=event.substr(colon+1);if(key.empty()) {error="missing Catfish authored key";return false;}
+                timing.events.push_back({frame,key});
+            }
+        }
+        c.sampled=p2catfishevents::makeClip(timing);p2catfishevents::Receiver receiver;
+        if(!receiver.start(c.sampled,name)) {error="Catfish authored clock rejected";return false;}
+        staged.emplace(name,std::move(c));
+    }
+    for(const char* name:{"wait1","move1","attack","flick","dead"}) if(!staged.count(name)) {error="Catfish required authored clip missing";return false;}
+    const auto has=[&](const char* clip,int frame,const char* key) {for(const auto& e:staged.at(clip).sampled.events)if(e.frame==frame&&e.key==key)return true;return false;};
+    if(!has("attack",17,"2")||!has("attack",75,"3")||!has("flick",25,"2")||!has("flick",47,"3")) {error="Catfish source bite/swallow/flick events missing";return false;}
+    if (!actors.empty() && !ready) {error="Catfish live registry without ready clock";return false;}
+    // Preflight before any original birth; never invalidate existing actor clocks.
+    if(actors.empty()) clips=std::move(staged);
+    ready=true;error.clear();return true;
+}
+bool pc_p2_catfish_original_birth(BTeki* actor,unsigned uid,unsigned ordinal,std::string& error) {
+    auto* teki=static_cast<Teki*>(actor);
+    if(!ready||!actor||!uid||teki->mTekiType!=TEKI_Namazu||actors.count(static_cast<PelletView*>(actor))) {error="Catfish original birth lacks unique prepared chassis";return false;}
+    if(!pc_p2_batch3_original_birth(actor,26,error))return false;
+    Catfish state;state.original=true;state.uid=uid;state.ordinal=ordinal;
+    state.home=actor->getPosition();state.heading=actor->getDirection();state.wanderTarget=state.home;
+    state.rng=(uid*2654435761u+ordinal*2246822519u)|1u;
+    if(!state.events.start(clips.at("wait1").sampled,"wait1")) {error="Catfish original initial clock failed";return false;}
+    actor->mHealth=actor->mMaxHealth=LIFE;actors.emplace(static_cast<PelletView*>(actor),std::move(state));
+    error.clear();return true;
+}
+bool pc_p2_catfish_original_registry(BTeki* actor,unsigned token,std::string& error) {
+    auto entry=actors.find(static_cast<PelletView*>(actor));unsigned source=0,found=0;p2original::InstanceIdentity id;
+    if(entry==actors.end()||!entry->second.original||entry->second.token||!token||!p2original::originalActors().query(static_cast<Creature*>(actor),source,found,&id)||source!=26||found!=token||id.generator!=entry->second.uid||id.ordinal!=entry->second.ordinal) {error="Catfish original registry identity mismatch";return false;}
+    entry->second.token=token;
+    std::printf("P2_ORIGINAL_CATFISH_BIRTH source=26 uid=%u ordinal=%u token=%u epoch=%llu activation=%llu\n",id.generator,id.ordinal,token,(unsigned long long)id.epoch,(unsigned long long)id.activation);
+    error.clear();return true;
+}
 void pc_p2_catfish_setup() {
+    if (pc_p2_original_catfish_admitted()) return;
     pc_p2_catfish_reset();
     if (!tekiMgr) return;
 
@@ -601,7 +669,7 @@ void pc_p2_catfish_update(BTeki* actor) {
     // it would discard crossed animation events and break exactly-once timing.
     if (dt > 0.5f) dt = 0.5f;
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+    const unsigned generator = s.original ? s.uid : (actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
 
     // Host-AI suppression drain (rev6-misc5 Finding 1): the P1 TAI reaction
     // path (TaiDamagingAction) normally applies stored damage through

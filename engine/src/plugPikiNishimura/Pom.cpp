@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_original_blackpom_native.h"
 #include "pc_p2_white.h"
 #include "Pom.h"
 #include "Collision.h"
@@ -82,6 +83,9 @@ void Pom::setColor(int color)
  */
 void Pom::doKill()
 {
+    if (pc_p2_original_blackpom_before_kill(this)) {
+        setIsAlive(false);setIsAtari(false);bossMgr->kill(this);return;
+    }
 	setIsAlive(false);
 	setIsAtari(false);
 	mPomAi->killCallBackEffect(false);
@@ -93,6 +97,7 @@ void Pom::doKill()
  */
 void Pom::exitCourse()
 {
+	if (p2original::blackpom::Native::owner(this)) return;
 	mPomAi->killCallBackEffect(true);
 }
 
@@ -101,6 +106,7 @@ void Pom::exitCourse()
  */
 void Pom::update()
 {
+    if (pc_p2_original_blackpom_update(this)) return;
 	doAI();
 	doAnimation();
 }
@@ -110,6 +116,7 @@ void Pom::update()
  */
 void Pom::refresh(Graphics& gfx)
 {
+    if (pc_p2_original_blackpom_refresh(this,gfx)) return;
 	if (isAlive()) {
 		mWorldMtx.makeSRT(mSRT.s, mSRT.r, mSRT.t);
 		Matrix4f mtx;
@@ -128,6 +135,9 @@ void Pom::refresh(Graphics& gfx)
  */
 void Pom::drawShape(Graphics& gfx)
 {
+	// Source owner draws its actual sampled bank during refresh. Do not also
+	// draw the inherited P1 flower or read its uninitialized material context.
+	if (p2original::blackpom::Native::owner(this)) return;
 	if (isAlive()) {
 		gfx.useMatrix(Matrix4f::ident, 0);
         // Materials are shared by all flowers: tint only this draw and restore.
@@ -183,6 +193,7 @@ void Pom::doAnimation()
  */
 void Pom::collisionCallback(immut CollEvent& event)
 {
+    if (pc_p2_original_blackpom_collision(this,event.mCollider)) return;
 	if (event.mCollider->mObjType == OBJTYPE_Piki || event.mCollider->mObjType == OBJTYPE_Navi) {
 		if (!mIsPikiOrPlayerTouching) {
 			mIsPikiOrPlayerTouching = true;

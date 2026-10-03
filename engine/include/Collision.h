@@ -243,6 +243,12 @@ class CollInfo {
 
 public:
 	CollInfo(int);
+#if defined(PIKI_PC_PORT)
+    // Code-owned native source tree; arrays outlive every attached sticker.
+    // Borrows storage and performs no allocation, so its owning leaf can clean
+    // up once all actual references have been detached.
+    CollInfo(int, CollPart* parts, u32* ids);
+#endif
 
 	void enableStick();
 	void disableStick();

@@ -166,6 +166,7 @@ public:
     float health() const { return mHealth; }
     bool hasHealthZeroed() const { return mHealthZeroed; }
     std::uint64_t sourceToken() const { return mSourceToken; }
+    void forgetSource(){mSourceToken=0;}
     std::uint64_t selfToken() const { return mSelfToken; }
     const P2CannonStoneVec3& position() const { return mPosition; }
     const P2CannonStoneVec3& velocity() const { return mVelocity; }

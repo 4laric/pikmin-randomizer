@@ -78,6 +78,8 @@ inline Params redDefaults()
  return p;
 }
 
+inline Params snowDefaults(){Params p=redDefaults();p.health=150.0f;return p;}
+
 inline bool parseConfig(std::istream& in, Params& out,
                         const char* expectedMagic = "P2_DWARF_ORANGE_FSM_1",
                         Params params = Params())

@@ -17,6 +17,10 @@
 #include "pc_randomizer.h"
 #include "pc_p2_cave_transfer.h"
 #include "pc_p2_teki_lifetime.h"
+#include "pc_p2_original_actor.h"
+#include "pc_p2_purple.h"
+#include <map>
+#include "pc_p2_original_pom_clock.h"
 #include "Pom.h"
 #include "Generator.h"
 #include "Stickers.h"
@@ -40,6 +44,40 @@
 #include <vector>
 
 namespace {
+// Separate from the WFG layout registry: complete original-course authority.
+struct OriginalPom {
+    p2original::InstanceIdentity identity;
+    unsigned token=0;
+    unsigned long scene=0;
+    bool started=false;
+    int used=0, refunds=0;
+    std::set<const Piki*> pending;
+    unsigned outputs=0;
+    bool canTouch=false, canSwallow=false, touched=false;
+    PcOriginalPomHeadCallback headCallback=nullptr;
+    PcOriginalPomDonorSnapshot donorSnapshot=nullptr;
+    void* headContext=nullptr;
+    p2original::pom::Clock clock;
+};
+std::map<const Pom*,OriginalPom> originalPoms;
+bool livePom(const Pom* pom) {
+    if(!pom||!bossMgr)return false;
+    Iterator it(bossMgr);
+    CI_LOOP(it){Creature* c=*it;if(c==pom)return c->mObjType==OBJTYPE_Pom;}
+    return false;
+}
+OriginalPom* originalBound(const Pom* pom) {
+    auto it=originalPoms.find(pom);
+    if(it==originalPoms.end()||!livePom(pom))return nullptr;
+    unsigned source=0,token=0;p2original::InstanceIdentity identity;
+    if(!p2original::originalActors().query(pom,source,token,&identity)||source!=6
+        ||token!=it->second.token||!(identity==it->second.identity)
+        ||it->second.scene!=pc_p2_scene_generation()
+        ||!pom->mGenerator||pom->mGenerator->_70!=identity.generator)return nullptr;
+    return &it->second;
+}
+bool originalRefuse(std::string& e,const char* message){e=message;return false;}
+
 struct BudActor {
     std::string slot_id;
     std::string colour;
@@ -474,4 +512,112 @@ bool pc_p2_cave_bud_save(const char* path)
         << layout->floor << ' ' << actors.size() << '\n';
     for (const BudActor& actor : actors) out << actor.slot_id << ' ' << actor.used << '\n';
     return pc_p2_receipt_host_atomic_write(path,out.str().c_str());
+}
+
+// Source6 core API. Leaf owns actual allocation/resources and registry lifecycle.
+bool pc_p2_original_pom_preflight(std::string& e) {
+    if(!bossMgr)return originalRefuse(e,"original Pom requires actual BossMgr");
+    e.clear();return true;
+}
+bool pc_p2_original_pom_bind(Pom* pom,const p2original::InstanceIdentity& identity,unsigned token,std::string& e) {
+    if(!livePom(pom))return originalRefuse(e,"original Pom is not an active native manager member");
+    if(originalPoms.count(pom))return originalRefuse(e,"original Pom core already bound");
+    unsigned source=0,actualToken=0;p2original::InstanceIdentity actual;
+    if(!token||identity.catalog.empty()||!identity.generator||!identity.epoch||!identity.activation
+        ||!p2original::originalActors().query(pom,source,actualToken,&actual)||source!=6
+        ||actualToken!=token||!(actual==identity)||!pom->mGenerator||pom->mGenerator->_70!=identity.generator)
+        return originalRefuse(e,"original Pom identity/token/generator mismatch");
+    OriginalPom record;record.identity=identity;record.token=token;record.scene=pc_p2_scene_generation();
+    originalPoms.emplace(pom,std::move(record));e.clear();return true;
+}
+bool pc_p2_original_pom_start(Pom* pom,std::string& e) {
+    auto* b=originalBound(pom);
+    if(!b||b->started||!itemMgr||!pikiMgr||!pc_p2_purples_enabled())
+        return originalRefuse(e,"original Pom start lacks fresh binding/species/managers");
+    b->started=true;
+    // Pom::init supplies intrinsic native organic/invincible/radius/shadow and
+    // touch fields, then our managed PomAi::initAI branch. It does not replace
+    // the leaf's already-installed source CollInfo or call Boss::initBoss again.
+    pom->init(pom->mSRT.t);
+    pom->resetCreatureFlag(CF_IsAiDisabled); // publish only after initialization
+    e.clear();return true;
+}
+bool pc_p2_original_pom_release(Pom* pom,std::string& e) {
+    originalPoms.erase(pom);e.clear();return true;
+}
+bool pc_p2_original_pom_managed(const Pom* pom){return originalPoms.count(pom)!=0;}
+bool pc_p2_original_pom_ready(const Pom* pom){auto* b=originalBound(pom);return b&&b->started;}
+int pc_p2_original_pom_remaining(const Pom* pom){auto* b=originalBound(pom);return b&&b->started?5-b->used:-1;}
+bool pc_p2_original_pom_intake(Pom* pom,Piki* donor,CollPart* mouth) {
+    auto* b=originalBound(pom);
+    if(!b||!b->started||!b->canSwallow||!donor||!mouth||!pikiMgr
+        ||b->used+int(b->pending.size())>=5||b->pending.count(donor))return false;
+    bool live=false;Iterator it(pikiMgr);
+    CI_LOOP(it){if(*it==donor){live=true;break;}}
+    if(!live||!donor->isAlive()||donor->isStickToMouth())return false;
+    // Reserve storage before native mutation; failed stimulation rolls it back.
+    b->pending.insert(donor);
+    InteractSwallow swallow(pom,mouth,0);
+    if(!donor->stimulate(swallow)){b->pending.erase(donor);return false;}
+    pom->setWalkTimer(0);
+    return true;
+}
+void pc_p2_original_pom_touch(Pom* pom,Creature* collider){
+    auto* b=originalBound(pom);
+    if(b&&b->started&&b->canTouch&&collider
+        &&(collider->isPiki()||collider->mObjType==OBJTYPE_Navi||collider->isTeki()))b->touched=true;
+}
+bool pc_p2_original_pom_press(Pom* pom,Creature* donor,CollPart* hit){
+    auto* b=originalBound(pom);
+    if(!b||!b->started||!donor||!pikiMgr||!pom->mCollInfo)return false;
+    bool live=false;Iterator current(pikiMgr);CI_LOOP(current){if(*current==donor){live=true;break;}}
+    if(!live||!donor->isPiki())return false;
+    // Authenticate the supplied hit by actual per-body collision-tree identity
+    // before dereferencing it. The source leaf builds exactly one slot receptor.
+    CollPart* slot=pom->mCollInfo->getSphere('slot');
+    if(!slot||hit!=slot)return false;
+    return pc_p2_original_pom_intake(pom,static_cast<Piki*>(donor),slot);
+}
+bool pc_p2_original_pom_take_touch(Pom* pom){auto* b=originalBound(pom);if(!b||!b->started)return false;const bool yes=b->touched;b->touched=false;return yes;}
+bool pc_p2_original_pom_reserved(const Pom* pom,const Piki* p){auto* b=originalBound(pom);return b&&b->started&&b->pending.count(p);}
+int pc_p2_original_pom_pending(const Pom* pom){auto* b=originalBound(pom);return b&&b->started?int(b->pending.size()):-1;}
+bool pc_p2_original_pom_set_head_callback(Pom* pom,PcOriginalPomDonorSnapshot snapshot,PcOriginalPomHeadCallback callback,void* context){
+    auto* b=originalBound(pom);if(!b||b->started||!snapshot||!callback)return false;
+    b->donorSnapshot=snapshot;b->headCallback=callback;b->headContext=context;return true;
+}
+bool pc_p2_original_pom_snapshot(const Pom* pom,Piki* donor,std::string& receipt){
+    receipt.clear();auto* b=originalBound(pom);
+    if(!b||!b->started||!b->pending.count(donor)||!pikiMgr)return false;
+    bool live=false;Iterator it(pikiMgr);CI_LOOP(it){if(*it==donor){live=true;break;}}
+    if(!live||!donor->isAlive()||!donor->isStickToMouth())return false;
+    // Absence is disclosed no-provenance mode, never a manufactured origin.
+    if(!b->donorSnapshot)return true;
+    return b->donorSnapshot(pom,b->identity,b->token,donor,receipt,b->headContext)&&!receipt.empty();
+}
+void pc_p2_original_pom_output(const Pom* pom,const Piki* consumed,PikiHeadItem* head,bool sameSpecies,const std::string& donorReceipt) {
+    auto* b=originalBound(pom);
+    if(!b||!b->started||!head||!b->pending.erase(consumed)||b->used>=5)invalidBody("unauthorized original source6 output");
+    if(sameSpecies)++b->refunds;else ++b->used;
+    const unsigned ordinal=++b->outputs;
+    std::printf("P2_ORIGINAL_POM_OUTPUT token=%u uid=%u ordinal=%u epoch=%llu activation=%llu output=%u refund=%d used=%d budget=5\n",
+        b->token,b->identity.generator,b->identity.ordinal,(unsigned long long)b->identity.epoch,
+        (unsigned long long)b->identity.activation,ordinal,int(sameSpecies),b->used);
+    if(b->headCallback)b->headCallback(pom,b->identity,b->token,ordinal,head,sameSpecies,donorReceipt,b->headContext);
+}
+bool pc_p2_original_pom_pose(const Pom* pom,unsigned& motion,float& frame) {
+    auto* b=originalBound(pom);if(!b||!b->started)return false;
+    motion=b->clock.motion;frame=b->clock.frame;return true;
+}
+void pc_p2_original_pom_motion(Pom* pom,unsigned motion) {
+    auto* b=originalBound(pom);if(!b||!b->started||motion>5)invalidBody("invalid original source motion");
+    b->clock.reset(motion);b->touched=false;
+    b->canTouch=false;
+    if(motion!=5)b->canSwallow=false; // Swing retains source Open swallowing eligibility.
+}
+PcOriginalPomEvents pc_p2_original_pom_advance(Pom* pom,float seconds) {
+    auto* b=originalBound(pom);p2original::pom::Events event;
+    if(!b||!b->started||!b->clock.advance(seconds,event))invalidBody("invalid original source animation step");
+    if(event.action&&b->clock.motion==2){b->canTouch=true;b->canSwallow=true;}
+    if(event.finished&&b->clock.motion==5)b->canTouch=true;
+    return {event.action,event.finished};
 }

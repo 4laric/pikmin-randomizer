@@ -1,3 +1,4 @@
+#include "pc_p2_hanachirashi_receiver.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
 #include "pc_bbft.h"
@@ -10,6 +11,7 @@
 #endif
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
+#include "pc_p2_sprays.h"
 #include "pc_p2_breadbug_teki.h"
 #include "NaviState.h"
 #if defined(PIKI_PC_PORT)
@@ -125,6 +127,7 @@ void NaviStateMachine::transit(Navi* navi, int next)
 void NaviStateMachine::init(Navi* navi)
 {
 	create(NAVISTATE_Count);
+	registerState(pc_p2_hanachirashi_navi_state_create());
 #if defined(PIKI_PC_PORT)
 	registerState(pc_demon_drop_state_create());
 	registerState(pc_demon_escape_state_create());
@@ -745,6 +748,8 @@ void NaviWalkState::exec(Navi* navi)
 	}
 	STACK_PAD_VAR(1);
 	navi->makeVelocity(false);
+
+    if (pc_p2_sprays_input(navi)) return;
 
 	if (!playerState->isTutorial() && navi->mGroundTriangle && navi->mKontroller->keyClick(KBBTN_DPAD_DOWN)) {
 		navi->mStateMachine->transit(navi, NAVISTATE_Pellet);
@@ -3707,7 +3712,7 @@ void NaviStartingState::init(Navi* navi)
 		mWalkTargetPos   = ufo->getGoalPos();
 	}
 #if defined(PIKI_PC_PORT)
-	else if (pc_pikipelago_surface_course() && !std::strcmp(pc_pikipelago_surface_course(), "tutorial")) {
+	else if (pc_pikipelago_surface_course()) {
 		// The opt-in bootstrap has no ship; no authored landing walk exists.
 		mWalkTargetPos = navi->mSRT.t;
 	}
@@ -3750,7 +3755,7 @@ void NaviStartingState::exec(Navi* navi)
 		mWalkTargetPos = ufo->getGoalPos();
 	}
 #if defined(PIKI_PC_PORT)
-	else if (pc_pikipelago_surface_course() && !std::strcmp(pc_pikipelago_surface_course(), "tutorial")) {
+	else if (pc_pikipelago_surface_course()) {
 		// GenMgr may place the captain after init; use the current position.
 		// Preserve the ordinary delay/start animation and Walk transition.
 		mWalkTargetPos = navi->mSRT.t;

@@ -34,3 +34,7 @@ void pc_p2_snow_campaign_bind(Teki*);
 
 // Authoritative current clock, independent of whether this actor was rendered.
 bool pc_p2_snow_clock(BTeki*, const char*& clip, float& sourceFrame, bool corpse=false);
+
+// Source45 original provider; resources load before any birth.
+bool pc_p2_snow_prepare_original(std::string&);
+bool pc_p2_snow_bind_original(BTeki*,unsigned token,std::string&);

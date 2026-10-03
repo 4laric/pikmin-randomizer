@@ -1,6 +1,11 @@
 #include "Age.h"
 #if defined(PIKI_PC_PORT)
 #include "GlobalGameOptions.h"
+#include "pc_p2_original_onyon_native.h"
+#include "pc_p2_original_gate_native.h"
+#include "pc_p2_original_bridge_native.h"
+#include "pc_p2_original_barrel_native.h"
+#include "pc_p2_original_cave_native.h"
 #include "settings/pc_settings.h"
 #endif
 #include "Animator.h"
@@ -122,6 +127,15 @@ void StdSystem::resetHeap(int heapIdx, int flag)
 	// out a pointer into freed storage. See GfxobjInfo::mOwnerHeap.
 	invalidateObjsForHeap(heapIdx);
 	mHeaps[heapIdx].reset(flag);
+#if defined(PIKI_PC_PORT)
+	// ItemMgr permanently owns Goal/Ufo nodes until stage heap disposal; clear
+	// source associations only after that boundary, before the next course load.
+	if (heapIdx == SYSHEAP_App) pc_p2_original_onyon_unload();
+    if(heapIdx==SYSHEAP_App)pc_p2_original_gate_unload();
+    if(heapIdx==SYSHEAP_App)pc_p2_original_bridge_unload();
+    if(heapIdx==SYSHEAP_App)pc_p2_original_barrel_unload();
+    if(heapIdx==SYSHEAP_App)pc_p2_original_cave_unload();
+#endif
 }
 
 /**

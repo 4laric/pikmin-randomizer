@@ -190,6 +190,8 @@ struct Target {
     P2CannonStoneContactKind kind = P2CannonStoneContactKind::NaviPiki;
     bool onFloor = false;
     bool alive = false;
+    bool homingSearchable = false;
+    P2CannonStoneVec3 position;
 };
 
 enum class DeadReason { Wall, Contact, Timeout, Invalid };
@@ -257,7 +259,7 @@ public:
     // createStoneAttack. Kabuto 75: homing is always false. Returns the slot,
     // or -1 on exhaustion/invalid input with no state change.
     int fire(std::uint64_t owner, const P2CannonStoneVec3& birth, float faceDir,
-             std::uint32_t& id)
+             std::uint32_t& id, bool homing=false, float deathDuration=kDeadHoldSeconds)
     {
         for (int i = 0; i < kFleetCapacity; ++i) {
             Slot& s = mSlots[i];
@@ -266,7 +268,7 @@ public:
             }
             const std::uint32_t next = mNextId + 1u;
             s.stone.reset(stoneConfig());
-            if (!s.stone.birth(birth, faceDir, /*homing*/ false, owner, selfToken(next))) {
+            if (!s.stone.birth(birth, faceDir, homing, owner, selfToken(next))) {
                 s.stone.reset(stoneConfig());
                 return -1;
             }
@@ -274,6 +276,7 @@ public:
             s.used = true;
             s.id = next;
             s.owner = owner;
+            s.deathDuration=deathDuration;
             s.birth = birth;
             s.dirX = std::sin(s.stone.faceDir());
             s.dirZ = std::cos(s.stone.faceDir());
@@ -294,6 +297,7 @@ public:
         for (Slot& s : mSlots) {
             if (s.used && s.owner == owner) {
                 s.owner = 0;
+                s.stone.forgetSource();
                 ++n;
             }
         }
@@ -303,7 +307,8 @@ public:
     // One 30 Hz source tick over every used slot.
     void tick(float gravity, TraceFn trace, void* traceCtx, const Target* targets, int targetCount,
               Strike* strikes, int strikeCap, int& strikeCount, DeadEvent* deads, int deadCap,
-              int& deadCount, Released* released, int releasedCap, int& releasedCount)
+              int& deadCount, Released* released, int releasedCap, int& releasedCount,
+              std::uint64_t activeNavi=0)
     {
         strikeCount = deadCount = releasedCount = 0;
         const float dt = P2CannonStone::kSourceDelta;
@@ -323,7 +328,7 @@ public:
             if (phase == P2CannonStonePhase::Dead) {
                 // Dead disables atari (RockState.cpp:275-281): no contacts.
                 s.deadHold += dt;
-                if (s.deadHold >= kDeadHoldSeconds) {
+                if (s.deadHold >= s.deathDuration) {
                     s.stone.finishDeath();
                 }
                 continue;
@@ -331,7 +336,17 @@ public:
 
             // ROCK_Move.
             TraceAdapter adapter{ trace, traceCtx, gravity, &s.vy, false };
-            s.stone.update(dt, P2CannonStoneTarget{}, &TraceAdapter::call, &adapter);
+            P2CannonStoneTarget target;
+            if(s.stone.homing()){
+                float best=stoneConfig().sightRadius*stoneConfig().sightRadius;
+                for(int n=0;n<targetCount;++n){const auto& q=targets[n];
+                    if(!q.homingSearchable||!q.alive)continue;
+                    if(activeNavi&&q.token==activeNavi){target.hasTarget=true;target.position=q.position;break;}
+                    const float dx=q.position.x-s.stone.position().x,dz=q.position.z-s.stone.position().z;
+                    const float d=dx*dx+dz*dz;if(d<best){best=d;target.hasTarget=true;target.position=q.position;}
+                }
+            }
+            s.stone.update(dt, target, &TraceAdapter::call, &adapter);
             updateMetrics(s);
             if (!s.stone.isAlive()) {
                 DeadEvent e;
@@ -427,6 +442,7 @@ public:
     std::uint64_t graceIgnored() const { return mGraceIgnored; }
     // Contacts left for a later tick because the host strike buffer was full.
     std::uint64_t strikesDeferred() const { return mStrikesDeferred; }
+    float deadSeconds(int slot)const{return slot>=0&&slot<kFleetCapacity?mSlots[slot].deadHold:0.0f;}
     int ownedBy(std::uint64_t owner) const
     {
         int n = 0;
@@ -446,6 +462,7 @@ private:
         float dirX = 0.0f, dirZ = 1.0f;
         float vy = 0.0f;
         float deadHold = 0.0f;
+        float deathDuration=kDeadHoldSeconds;
         float travel = 0.0f;
         float maxLateral = 0.0f;
         float closest = 1.0e30f;

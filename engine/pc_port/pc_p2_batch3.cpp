@@ -16,6 +16,7 @@
 // damage receiver, reward or collision semantics are implemented here; those
 // stay tracked on the family issues and #186.
 #include "pc_p2_batch3.h"
+#include "pc_p2_original_actor.h"
 #include "Pellet.h"
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_setup_failsafe.h"
@@ -212,12 +213,13 @@ bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) 
     return true;
 }
 
-bool parseBank(const std::string& path, std::map<std::string, std::vector<ClipRow>>& out) {
+bool parseBank(const std::string& path, std::map<std::string, std::vector<ClipRow>>& out, std::string* error=nullptr) {
+    auto reject=[&](const char* why)->bool {if(error){*error=why;return false;}fail(why);};
     std::ifstream in(path);
     if (!in) return false;
     std::string word;
     if (!(in >> word) || word.size() < 9 || word.compare(0, 3, "P2_") != 0
-            || word.compare(word.size() - 7, 7, "_BANK_1") != 0) fail("invalid bank header");
+            || word.compare(word.size() - 7, 7, "_BANK_1") != 0) return reject("invalid bank header");
     std::string pending;
     bool havePending = false;
     auto nextToken = [&](std::string& tok) -> bool {
@@ -235,16 +237,16 @@ bool parseBank(const std::string& path, std::map<std::string, std::vector<ClipRo
     while (nextToken(word)) {
         if (word == "species") {
             std::string species, identity;
-            if (!(in >> species >> identity)) fail("invalid bank species row");
+            if (!(in >> species >> identity)) return reject("invalid bank species row");
             // Batch-3 families currently differ: aquatic/snagret write the
             // numeric enemy id, the flying install writes `clips <count>`.
             if (identity == "clips") {
                 int clips = 0;
-                if (!(in >> clips) || clips < 0) fail("invalid bank species row");
+                if (!(in >> clips) || clips < 0) return reject("invalid bank species row");
             } else {
                 char* end = nullptr;
                 std::strtoull(identity.c_str(), &end, 10);
-                if (end == identity.c_str() || *end != '\0') fail("invalid bank species row");
+                if (end == identity.c_str() || *end != '\0') return reject("invalid bank species row");
             }
             out.emplace(species, std::vector<ClipRow>());
         } else if (word == "clip") {
@@ -252,12 +254,12 @@ bool parseBank(const std::string& path, std::map<std::string, std::vector<ClipRo
             int frames = 0, poses = 0;
             if (!(in >> species >> name >> frames >> events >> marker >> poses)
                     || marker != "poses" || poses < 0 || poses > 64
-                    || !out.count(species)) fail("invalid bank clip row");
+                    || !out.count(species)) return reject("invalid bank clip row");
             // The flying install writes a literal `status` token before the
             // value; aquatic/snagret write the value directly.
-            if (!(in >> value)) fail("invalid bank clip row");
+            if (!(in >> value)) return reject("invalid bank clip row");
             if (value != "status") status = value;
-            else if (!(in >> status)) fail("invalid bank clip row");
+            else if (!(in >> status)) return reject("invalid bank clip row");
             ClipRow row;
             row.name = name;
             row.sourceFrames = frames;
@@ -309,14 +311,14 @@ bool parseBank(const std::string& path, std::map<std::string, std::vector<ClipRo
             }
             out[species].push_back(std::move(row));
         } else {
-            fail("invalid bank token");
+            return reject("invalid bank token");
         }
     }
     return true;
 }
 
 Bank loadBank(const FamilyDef& family, const std::string& species,
-              const std::vector<ClipRow>& rows) {
+              const std::vector<ClipRow>& rows, std::string* outError=nullptr) {
     Bank bank;
     bank.prefix = family.prefix;
     bank.fileSpecies = species;
@@ -354,7 +356,10 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
         std::string error;
         if (!p2poseload::loadClip(family.prefix, species, clip.name, clip.poseCount, limits, shared,
                                   bytesTotal, loaded, error))
+        {
+            if (outError) { *outError=error.empty()?"pose load failed":error; return bank; }
             fail(error.empty() ? "pose load failed" : error.c_str());
+        }
         if (!loaded.shapes.empty()) bank.clips[clip.name] = loaded.shapes;  // 0-pose rows stay undrawable
         bank.interp[clip.name] = interpolation && !clip.framesMalformed && clip.poseCount >= 2;
         if (loaded.vectors) {
@@ -666,6 +671,7 @@ static void setupBridgeWorms() {
 }
 
 void pc_p2_batch3_setup() {
+    for(const auto& actor:actors) if([&](){unsigned source=0,token=0;return p2original::originalActors().query(static_cast<Creature*>(actor.first),source,token);}()) return;
     pc_p2_batch3_reset();
     interpolation = readBatch3InterpolationFlag();
     if (interpolation) std::printf("P2_BATCH3_INTERPOLATION_READY interpolation=1 gameplay_clock=P1\n");
@@ -977,4 +983,44 @@ bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     shape->updateAnim(gfx, matrix, nullptr, actor);
     shape->drawshape(gfx, *gfx.mCamera, nullptr);
     return true;
+}
+
+namespace {
+bool originalProfile(unsigned source,const FamilyDef*& family,const char*& species) {
+    const char* name=nullptr;
+    switch(source) {case 26:name="aquatic";species="Catfish";break;case 34:name="snagret";species="SnakeCrow";break;case 55:name="flying";species="Hanachirashi";break;default:return false;}
+    for(const auto& f:FAMILIES)if(std::string(f.name)==name){family=&f;return true;}
+    return false;
+}
+}
+bool pc_p2_batch3_original_resources(unsigned source,std::string& error) {
+    error.clear();
+    const FamilyDef* family=nullptr;const char* species=nullptr;
+    if(!gsys||!originalProfile(source,family,species)){error="original batch3 concrete profile unavailable";return false;}
+    const std::string key=std::string(family->name)+"|"+species;
+    if(banks.count(key)){error.clear();return true;}
+    std::map<std::string,std::vector<ClipRow>> table;
+    if(!parseBank(family->bank,table,&error)){if(error.empty())error="original batch3 bank missing";return false;}
+    auto found=table.find(species);
+    if(found==table.end()||found->second.empty()){error="original batch3 species clips missing";return false;}
+    std::set<std::string> names;
+    for(const auto& row:found->second){
+        if(row.sourceFrames<2||row.poseCount<1||row.framesMalformed||!names.insert(row.name).second){error="original batch3 malformed or undrawable authored clip";return false;}
+    }
+    interpolation=readBatch3InterpolationFlag();
+    const int heap=gsys->setHeap(SYSHEAP_App);
+    Bank staged=loadBank(*family,species,found->second,&error);
+    gsys->setHeap(heap);
+    if(!error.empty())return false;
+    if(staged.baked.size()!=found->second.size()){error="original batch3 requires deformable source geometry";return false;}
+    banks.emplace(key,std::move(staged));error.clear();return true;
+}
+bool pc_p2_batch3_original_birth(BTeki* actor,unsigned source,std::string& error) {
+    const FamilyDef* family=nullptr;const char* species=nullptr;
+    if(!actor||!originalProfile(source,family,species)||static_cast<Teki*>(actor)->mTekiType!=expectedType(family->name,species)||actors.count(actor)){error="original batch3 unique chassis profile mismatch";return false;}
+    const std::string key=std::string(family->name)+"|"+species;
+    if(!banks.count(key)){error="original batch3 birth without prepared bank";return false;}
+    actors.emplace(actor,key);
+    if(!ensureBlendState(actor,key)){pc_p2_batch3_forget(actor);error="original batch3 private geometry allocation failed";return false;}
+    pc_p2_body_coll_assign(actor,key);error.clear();return true;
 }

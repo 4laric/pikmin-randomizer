@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <set>
+#include <sstream>
 namespace p2original {
 namespace {
 bool fail(std::string& e,const char* why){e=why;return false;}
@@ -18,11 +19,18 @@ float number(const std::vector<std::uint8_t>& b,size_t p){auto w=word(b,p);float
 }
 bool validateBarrel(const BarrelRecord& r,std::string& e){if(r.life!=4000)return fail(e,"barrel source life must be 4000");return validateBridge(common(r),e);}
 std::string barrelDigest(const BarrelRecord& r){auto shared=bridgeDigest(common(r));std::string source="barl:0002:0000:"+shared;unsigned char digest[32];pc_netplay_sha::sha256(source.data(),source.size(),digest);const char* hex="0123456789abcdef";std::string out;for(auto c:digest){out+=hex[c>>4];out+=hex[c&15];}return out;}
-bool readBarrels(const std::string& path,std::vector<BarrelRecord>& out,std::string& e){
- std::ifstream in(path);std::string magic;unsigned count=0;if(!(in>>magic>>count)||magic!="P2_ORIGINAL_BARREL_1"||count>4096)return fail(e,"invalid barrel source manifest");
+bool parseBarrels(const std::string& bytes,std::vector<BarrelRecord>& out,std::string& e){
+ if(bytes.size()>4*1024*1024)return fail(e,"barrel source manifest exceeds bound");
+ std::istringstream in(bytes);std::string magic;unsigned count=0;if(!(in>>magic>>count)||magic!="P2_ORIGINAL_BARREL_1"||count>4096)return fail(e,"invalid barrel source manifest");
  std::vector<BarrelRecord> next;std::set<unsigned> ids;std::set<std::string> keys;
  for(unsigned i=0;i<count;++i){BarrelRecord r;std::string outer,local;if(!(in>>r.uid>>r.sourceKey>>r.sourceSha>>outer>>local>>r.reserved>>r.resurrectionDays>>r.dayLimit>>r.life))return fail(e,"truncated barrel source");for(auto* a:{&r.position,&r.offset,&r.rotation})for(float& f:*a)if(!(in>>f))return fail(e,"truncated barrel placement");if(outer!="0002"||local!="0000"||!validateBarrel(r,e))return fail(e,"unsupported barrel source");if(!ids.insert(r.uid).second||!keys.insert(r.sourceKey).second)return fail(e,"duplicate barrel identity");next.push_back(r);}
  if(in>>magic)return fail(e,"trailing barrel source");out.swap(next);e.clear();return true;
+}
+bool readBarrels(const std::string& path,std::vector<BarrelRecord>& out,std::string& e){
+ std::ifstream in(path,std::ios::binary|std::ios::ate);if(!in)return fail(e,"barrel source manifest missing");
+ const auto n=in.tellg();if(n<=0||n>4*1024*1024)return fail(e,"barrel source manifest size invalid");
+ std::string bytes(size_t(n),'\0');in.seekg(0);if(!in.read(bytes.data(),n))return fail(e,"barrel source manifest read failed");
+ return parseBarrels(bytes,out,e);
 }
 bool barrelStateValid(const BarrelRecord& r,const BarrelState& s,float duration,std::string& e){
  if(!validateBarrel(r,e))return false;

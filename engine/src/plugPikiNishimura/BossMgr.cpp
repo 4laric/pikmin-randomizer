@@ -644,6 +644,29 @@ Boss* BossMgr::createBoss(int bossID)
 	return boss;
 }
 
+#if defined(PIKI_PC_PORT)
+int BossMgr::pcOriginalPomCapacity() const
+{
+    if (!mFreeNodes || !mShapeObjects || !mShapeObjects[BOSS_Pom]) return 0;
+    int count = 0;
+    for (CoreNode* node = mFreeNodes[BOSS_Pom].mChild; node; node = node->mNext) ++count;
+    return count;
+}
+
+Boss* BossMgr::pcAllocateOriginalPom(BirthInfo& info)
+{
+    if (!info.mGenerator || pcOriginalPomCapacity() == 0) return nullptr;
+    Boss* body = createBoss(BOSS_Pom);
+    if (!body) return nullptr;
+    body->initBoss(info, OBJTYPE_Pom);
+    body->mGenerator = info.mGenerator;
+    // No GenObjectBoss/P1 container gate or P1 generator tail. The original
+    // catalog binding and qualified conversion hook precede Pom::init.
+    body->setCreatureFlag(CF_IsAiDisabled);
+    return body;
+}
+#endif
+
 /**
  * @todo: Documentation
  */

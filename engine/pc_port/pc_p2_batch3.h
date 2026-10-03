@@ -13,3 +13,8 @@ bool pc_p2_batch3_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
 bool pc_p2_batch3_corpse_drawn();
 int pc_p2_batch3_actor_count();
 int pc_p2_batch3_bank_count();
+
+#include <string>
+// Original-source visual admission before actor birth; no AP roster lookup.
+bool pc_p2_batch3_original_resources(unsigned source,std::string& error);
+bool pc_p2_batch3_original_birth(BTeki*,unsigned source,std::string& error);

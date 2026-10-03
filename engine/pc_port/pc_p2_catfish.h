@@ -38,3 +38,9 @@ void pc_p2_catfish_update(BTeki*);
 bool pc_p2_catfish_suppress_ai(const BTeki*);
 float pc_p2_catfish_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_catfish_clip(const BTeki*, const char*& name, float& phase);
+
+#include <string>
+// Direct original-source admission; no AP/campaign token binding.
+bool pc_p2_catfish_original_resources(std::string&);
+bool pc_p2_catfish_original_birth(BTeki*,unsigned uid,unsigned ordinal,std::string&);
+bool pc_p2_catfish_original_registry(BTeki*,unsigned token,std::string&);

@@ -45,8 +45,21 @@ static bool enabled = false;
 static int challengeLevel = -1;
 static bool p2RoomPreview = false;
 static bool p2SurfaceTutorial = false;
-const char* pc_pikipelago_surface_course() { return p2SurfaceTutorial ? "tutorial" : nullptr; }
-const char* pc_pikipelago_surface_stage() { return p2SurfaceTutorial ? "stages/p2_tutorial.ini" : nullptr; }
+static bool p2SurfaceCampaign = false;
+static int p2SurfaceIndex = 0;
+static const char* p2Courses[] = {"tutorial", "forest", "yakushima", "last"};
+static const char* p2Stages[] = {"stages/p2_tutorial.ini", "stages/p2_forest.ini", "stages/p2_yakushima.ini", "stages/p2_last.ini"};
+bool pc_pikipelago_surface_campaign() { return p2SurfaceCampaign; }
+int pc_pikipelago_surface_index() { return p2SurfaceIndex; }
+const char* pc_pikipelago_surface_stage_for(int id) {return id>=0 && id<4 ? p2Stages[id] : nullptr;}
+bool pc_pikipelago_surface_select(int id, const char* path) {
+    if (!p2SurfaceCampaign || id < 0 || id >= 4 || !path || std::strcmp(path,p2Stages[id])) return false;
+    p2SurfaceIndex=id;
+    std::printf("P2_SURFACE_TRAVEL course=%s stage=%d file=%s\n",p2Courses[id],id,path);
+    return true;
+}
+const char* pc_pikipelago_surface_course() { return p2SurfaceTutorial ? p2Courses[p2SurfaceIndex] : nullptr; }
+const char* pc_pikipelago_surface_stage() { return p2SurfaceTutorial ? p2Stages[p2SurfaceIndex] : nullptr; }
 bool pc_pikipelago_room_preview() { return p2RoomPreview; }
 int pc_pikipelago_challenge_level() { return challengeLevel; }
 static std::string p2ChallengeStage;
@@ -172,6 +185,8 @@ void pc_bbft_milestone(const char* text) {
 #endif
 }
 const char* pc_bbft_save_root() {
+    if(pc_randomizer_original_session())return pc_randomizer_save_root();
+    if (p2SurfaceCampaign) return "save/p2-campaign";
     if (pc_randomizer_enabled()) return pc_randomizer_save_root();
     if (!enabled && challengeLevel < 0 && p2ChallengeStage.empty() && !p2SurfaceTutorial) return "save";
     // A quick-boot run must never reuse a user's named memory-card slot.
@@ -238,7 +253,15 @@ bool pc_bbft_take_skip() {
 }
 void pc_bbft_init(int argc, char** argv) {
     for (int i=1; i<argc; ++i) {
-        if (!std::strcmp(argv[i], "--experimental-pikmin2-surface")) {
+        if (!std::strcmp(argv[i], "--experimental-pikmin2-campaign")) {
+            if (++i >= argc || challengeLevel >= 0 || !p2ChallengeStage.empty() || p2SurfaceTutorial) {
+                std::fprintf(stderr,"Campaign requires one course and no other preview\n"); std::exit(2);
+            }
+            int selected=-1;
+            for(int c=0;c<4;++c) if(!std::strcmp(argv[i],p2Courses[c])) selected=c;
+            if(selected<0) {std::fprintf(stderr,"Campaign course must be tutorial forest yakushima last\n");std::exit(2);}
+            p2SurfaceIndex=selected; p2SurfaceCampaign=true; p2SurfaceTutorial=true;
+        } else if (!std::strcmp(argv[i], "--experimental-pikmin2-surface")) {
             if (++i >= argc || challengeLevel >= 0 || !p2ChallengeStage.empty() || p2SurfaceTutorial || std::strcmp(argv[i], "tutorial")) {
                 std::fprintf(stderr,"--experimental-pikmin2-surface requires tutorial and no other preview\n"); std::exit(2);
             }
@@ -269,6 +292,13 @@ void pc_bbft_init(int argc, char** argv) {
     if (p2SurfaceTutorial) {
         const char* port = std::getenv("BBFT_PORT");
         if (port && *port) { std::fprintf(stderr,"Surface boot cannot use BBFT sessions\n"); std::exit(2); }
+        bool originalSession=false;
+        for(int i=1;i<argc;++i)if(!std::strcmp(argv[i],"--randomizer-seed"))originalSession=true;
+        if(p2SurfaceCampaign&&originalSession){
+            for(int i=1;i<argc;++i)if(!std::strcmp(argv[i],"--bbft-port")){std::fprintf(stderr,"Original campaign cannot use BBFT\n");std::exit(2);}
+            if(!pc_randomizer_init(argc,argv)||!pc_randomizer_original_session()){std::fprintf(stderr,"Campaign requires authenticated original session\n");std::exit(2);}
+            enabled=true;return;
+        }
         for (int i=1; i<argc; ++i) if (!std::strcmp(argv[i],"--randomizer-seed") || !std::strcmp(argv[i],"--bbft-port")) {
             std::fprintf(stderr,"Surface boot cannot use AP or BBFT sessions\n"); std::exit(2);
         }

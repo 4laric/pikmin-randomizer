@@ -69,6 +69,7 @@ enum EObjType {
 	OBJTYPE_Navi   = 54, // Captain
 	OBJTYPE_Teki   = 55, // Enemy
 	OBJTYPE_NULL   = 57,
+	OBJTYPE_P2Pod  = 58, // Original P2 cave Pod, separate from P1 Goal/Ufo.
 
 };
 

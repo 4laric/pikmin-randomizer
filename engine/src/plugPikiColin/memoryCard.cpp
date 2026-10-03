@@ -932,6 +932,11 @@ void MemoryCard::saveCurrentGame()
 #if defined(PIKI_PC_PORT)
 	// Netplay M4 lane B2 fix round 1: this save runs the day-end barrier.
 	bool netBarrier = false;
+	if(pc_randomizer_original_session()){
+		mDidSaveFail=true;gsys->mIsCardSaving=FALSE;
+		OSReport("[PC Port] Original graph SAVE held before card I/O: restore coverage incomplete\n");
+		return;
+	}
 	// Direct boot can reach the save UI before a physical backup slot has
 	// been selected. Index zero would write at cardData - 0x2000.
 	if (gameflow.mGamePrefs.mSpareMemCardSaveIndex < 1 || gameflow.mGamePrefs.mSpareMemCardSaveIndex > 4) {

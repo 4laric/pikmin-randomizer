@@ -59,6 +59,7 @@ ObjType _info[] = {
 	{ OBJTYPE_XXX3, "boss:XXX3" },
 	{ OBJTYPE_Plant, "PLANT" },
 	{ OBJTYPE_Pellet, "PELLET" },
+	{ OBJTYPE_P2Pod, "P2 cave Pod" },
 	{ OBJTYPE_NULL, "" }
 };
 

@@ -29,7 +29,7 @@ inline bool bank(std::istream& in,std::vector<p2animation::Clip>& clips){
     return p2animation::parse(parsed,clips);
 }
 inline bool originalPressAccepted(unsigned source,bool registered,float health,bool ownerPiki,bool ownerAlive,bool bittered){
- return source==1&&registered&&std::isfinite(health)&&health>0&&ownerPiki&&ownerAlive&&!bittered;
+ return (source==1||source==45)&&registered&&std::isfinite(health)&&health>0&&ownerPiki&&ownerAlive&&!bittered;
 }
 inline const char* originalClip(int state){
  switch(state){case 0:return "wait1";case 1:return "dead";case 2:case 6:return "waitact1";case 3:case 7:return "move1";case 4:return "attack";case 5:return "flick";case 8:return "type1";default:return nullptr;}

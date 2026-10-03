@@ -394,6 +394,10 @@ public:
 	void refresh2d(Graphics&);
 	void finalSetup();
 #if defined(PIKI_PC_PORT)
+    // Original BlackPom leaf: reserve/check only this manager family. The
+    // caller must bind actual source identity before starting ordinary Pom AI.
+    int pcOriginalPomCapacity() const;
+    Boss* pcAllocateOriginalPom(BirthInfo&);
     void pcTestPullCaptains(); // TEST_ONLY, issue #1036
     bool beginPrereleaseTrap();
     void tickPrereleaseTrap(float seconds);

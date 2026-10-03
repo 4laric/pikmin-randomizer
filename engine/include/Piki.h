@@ -9,6 +9,7 @@
 #include "StateMachine.h"
 #include "UtEffect.h"
 #include "types.h"
+#include "pc_p2_spicy_policy.h"
 
 // Redundant parenthesis surrounding the call to `Parm::Operator()` fixes matching for the DLL
 #define PIKI_PARM(parm)         C_PIKI_PARM(this, parm)
@@ -348,6 +349,7 @@ public:
 	SearchData mPikiSearchData[6];        // _53C
 	bool mEraseOnKill;                    // _584
     // Experimental sequel identity, never an index into legacy three-color arrays.
+    p2sprays::SpicyStatus mP2Spicy;
     bool mP2Purple = false;
     bool mP2White = false;
     bool mP2Bulbmin = false; // source Piki.h Bulbmin = 5; cave-only, wild by default

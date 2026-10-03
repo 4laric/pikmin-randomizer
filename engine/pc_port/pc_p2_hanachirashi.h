@@ -15,3 +15,9 @@ void pc_p2_hanachirashi_forget(BTeki*);
 void pc_p2_hanachirashi_update(BTeki*);
 float pc_p2_hanachirashi_param_f(const BTeki*, int idx, float fallback);
 bool pc_p2_hanachirashi_clip(const BTeki*, const char*& name, float& phase);
+
+#include <string>
+bool pc_p2_hanachirashi_original_resources(unsigned,std::string&);
+bool pc_p2_hanachirashi_original_birth(BTeki*,unsigned,unsigned,unsigned,std::string&);
+bool pc_p2_hanachirashi_original_registry(BTeki*,unsigned,std::string&);
+bool pc_p2_hanachirashi_suppress_ai(const BTeki*);

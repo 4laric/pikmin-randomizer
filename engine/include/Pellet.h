@@ -290,6 +290,7 @@ public:
  */
 class Pellet : public DualCreature, public PaniAnimKeyListener {
 	friend class PelletMgr;
+	friend struct P2RetailTreasureNativeBody;
 
 public:
 	Pellet();
