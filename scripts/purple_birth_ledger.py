@@ -146,7 +146,7 @@ def validate_birth_receipts(log):
                 raise ValueError('Unaccounted population/color at actual census boundary')
             if stage=='saved' and any(field or heads for field,stock,heads in rows):
                 raise ValueError('Saved duplicate field/sprout')
-    return {'initial':20,'successful_earned_births':delta,'replacement_count':1,'saved_total':20+sum(delta),'physical_pellet_binding':False}
+    return {'initial':20,'successful_earned_births':delta,'replacement_count':1,'saved_total':20+sum(delta),'physical_pellet_binding':False, 'acquired_compartments': {name:sum(row[index] for row in census['acquired'].values()) for index,name in enumerate(('field','stock','heads'))}, 'acquired_red':sum(census['acquired'][1,m][0] for m in range(3)), 'acquired_purple':sum(census['acquired'][3,m][0] for m in range(3))}
 
 
 STOCK = re.compile(r'P2_PURPLE_RESUME_STOCK kind=(rgb|p2) color=([0-4]) maturity=([0-2]) count=(0|[1-9][0-9]*) read_only=1')
@@ -182,3 +182,18 @@ def compare_stock_observation(log, stock):
         raise ValueError('Missing stock observation boundary')
     return {'qualification': 'new genuine card fresh resume stock consistency only', 'rgb': expected_rgb,
             'p2': expected_p2, 'field': 0, 'heads': 0, 'starting_population_validated': False}
+
+
+def validate_acquisition_report(log, marker):
+    """Bind actual field reporting to complete earned receipts and all compartments."""
+    proof=validate_birth_receipts(log)
+    rows=[line for line in log.splitlines() if line.startswith('P2_PURPLE_ACQUISITION_CENSUS')]
+    if len(rows)!=1:raise ValueError('Missing/duplicate actual acquisition census report')
+    m=re.fullmatch(r'P2_PURPLE_ACQUISITION_CENSUS field=(0|[1-9][0-9]*) red=(0|[1-9][0-9]*) purple=(0|[1-9][0-9]*) stock=(0|[1-9][0-9]*) heads=(0|[1-9][0-9]*) whole=(0|[1-9][0-9]*) baseline=20 successful_births_only=1 read_only=1',rows[0])
+    if not m:raise ValueError('Malformed actual acquisition census report')
+    actual=dict(zip(('field','red','purple','stock','heads','whole'),map(int,m.groups())))
+    expected=dict(proof['acquired_compartments'],red=proof['acquired_red'],purple=proof['acquired_purple'])
+    expected['whole']=sum(proof['acquired_compartments'].values())
+    if actual!=expected or any(marker.get(k)!=str(actual[k]) for k in ('field','red','purple')):
+        raise ValueError('Acquisition marker differs from actual earned census compartments')
+    return actual

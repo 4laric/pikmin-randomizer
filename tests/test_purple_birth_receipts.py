@@ -1,6 +1,6 @@
 import unittest
 from scripts.purple_birth_ledger import validate_birth_receipts
-from scripts.purple_birth_ledger import SAVE
+from scripts.purple_birth_ledger import SAVE,validate_acquisition_report
 
 def rows(stage,field_red=0,stock_red=0,purple=0):
  return [f'P2_PURPLE_BIRTH_CENSUS stage={stage} species={s} maturity={m} field={field_red if (s,m)==(1,0) else purple if stage=="acquired" and (s,m)==(3,0) else 0} stock={stock_red if (s,m)==(1,0) else purple if stage=="saved" and (s,m)==(3,0) else 0} heads=0 read_only=1' for s in range(6) for m in range(3)]
@@ -11,6 +11,18 @@ CONVERT='P2_PURPLE_CONVERSION_RECEIPT frame=4 bud=4 generator=5 input=6 head=7 i
 def fixture():
  return rows('initial',20)+[REQUEST,EMIT,STORED,CONVERT]+rows('acquired',19,2,1)+rows('saved',0,21,1)+[SAVE]
 class ReceiptControls(unittest.TestCase):
+ def test_actual_field20_stock2_whole22_compartments(self):
+  marker={'field':'20','red':'19','purple':'1'}
+  report='P2_PURPLE_ACQUISITION_CENSUS field=20 red=19 purple=1 stock=2 heads=0 whole=22 baseline=20 successful_births_only=1 read_only=1'
+  log='\n'.join(fixture()+[report])
+  observed=validate_acquisition_report(log,marker)
+  self.assertEqual(observed,{'field':20,'red':19,'purple':1,'stock':2,'heads':0,'whole':22})
+  for old,new in [('field=20','field=22'),('stock=2','stock=0'),('heads=0','heads=2'),('whole=22','whole=20')]:
+   with self.subTest(old=old),self.assertRaises(ValueError):validate_acquisition_report(log.replace(report,report.replace(old,new)),marker)
+  for bad in [dict(marker,field='22'),dict(marker,red='21')]:
+   with self.assertRaises(ValueError):validate_acquisition_report(log,bad)
+  with self.assertRaises(ValueError):validate_acquisition_report(log+'\n'+report,marker)
+
  def test_successful_earned2_control_not_gameplay(self):
   p=validate_birth_receipts('\n'.join(fixture()));self.assertEqual(p['saved_total'],22);self.assertEqual(p['successful_earned_births'],[0,2,0])
  def test_request_not_birth(self):
