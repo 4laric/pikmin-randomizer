@@ -68,7 +68,8 @@ def main():
     surface_inputs={}
     if args.surface_assets:
         bank=args.surface_assets.resolve(strict=True)
-        pins={'dataDir/courses/p2tutorial/full.mod':'796610f833759960feb0a812decd156a3fd2dbfa4f388813c7c3923440128066',
+        pins={'dataDir/stages/stages.ini':'f41c204e472150bac34b3172064ee6cbb33629471ca1ee23c7b658d8b07c581d',
+              'dataDir/courses/p2tutorial/full.mod':'796610f833759960feb0a812decd156a3fd2dbfa4f388813c7c3923440128066',
               'dataDir/courses/p2tutorial/full.ini':'e2cca41e69d60214af9aea082239b7f9ad891adc8592ab830c6a57d54cd48d84',
               'dataDir/courses/p2tutorial/full.water':'5e6cb421ba343f328f166a83d6779ee6a42622af21ae88336797f0e9dcfe4a73'}
         paths=[*pins,'dataDir/stages/p2_tutorial.ini',
