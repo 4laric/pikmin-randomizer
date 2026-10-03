@@ -94,3 +94,24 @@ direct standalone policy builds must also compile that source. Private context
 and registry CTests pass, as do the native orchestrator and group-engine object
 compiles. The actual selected `SceneOps`, full linked build, ordinary Emergence
 mechanics and fresh SAVE restore remain unqualified.
+
+
+Private physical composition now also provides `bindFoliage` and `bindBlackPom`.
+Foliage47/91/92 shares one whole-roster reservation. BlackPom uses the source6
+leaf and existing Purple core; its helper refuses missing population or donor
+consumer callbacks. `FamilyOps::birth` receives the prepared floor snapshot so
+population queries can authenticate the actual selected scene. Cached bud
+suppression requires independent selected cache/current-population proof.
+
+Once the actual selected scene and SAVE adapters are installed, a short ordinary
+acceptance script is: start with20 Pikmin in the centered960x540 window; enter the
+actual authored Emergence entrance; fight the four source Snow Bulborbs and carry
+the two loose treasures into the original Pod; descend through the original hole;
+fight the seven source Snow Bulborbs and walk past the6/4/2 authored foliage;
+convert and pluck ten Purple Pikmin from the two Violet buds; carry source Atlas
+with ten Purple and at least one ordinary Pikmin into the Pod; use the final-floor
+geyser; reenter and verify defeated/consumed state; write SAVE and verify the same
+state after a fresh process. This is a pending human script, not recorded evidence.
+Do not substitute engineering Atlas relocation, reduced weight, synthetic intake,
+receipt injection or a mocked restored roster for these mechanics. Partial exits
+with uncollected cargo additionally require actual settled-body graph retention.
