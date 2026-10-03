@@ -3,15 +3,17 @@
 Owner decision (2026-09-28): when the P2 pool holds more species than there
 are eligible placement targets, each seed samples the pool. Every target gets
 a distinct species and the rest are recorded as ``unplaced`` (sampled-v1). A
-pool that fits keeps the legacy fill byte-for-byte, and an explicitly requested
-density still fails closed.
+pool that fits keeps the legacy fill byte-for-byte. Explicit sampled density
+uses the same sampler; explicit complete-coverage policies still fail closed.
 
 The committed accepted-placement document is trimmed to fewer slots so the
-real admitted pool (35 species) becomes oversubscribed without changing the
+real admitted pool becomes oversubscribed without changing the
 roster.
 """
 import copy
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -131,6 +133,50 @@ def test_sampling_is_deterministic_and_varies_by_seed():
                             resolve_placement_layout(f"seed-{i}", "Player1", document, roster)["bindings"]))
                for i in range(8)}
     assert len(subsets) > 1, "different seeds sample different subsets"
+
+
+def test_explicit_sampling_matches_automatic_oversubscribed_selection():
+    roster = load_and_validate()
+    document = trimmed_document(20)
+    automatic = resolve_placement_layout("over", "Player1", document, roster)
+    explicit = resolve_placement_layout("over", "Player1", document, roster, density=DENSITY_SAMPLED)
+    assert explicit == automatic
+    validate_layout(explicit, roster, admitted=admitted_ids(roster))
+
+
+def test_explicit_sampling_fills_fitting_pool_without_changing_legacy_default():
+    roster = load_and_validate()
+    document = committed_document()
+    legacy = resolve_placement_layout("committed", "Player1", document, roster)
+    sampled = resolve_placement_layout("committed", "Player1", document, roster, density=DENSITY_SAMPLED)
+    assert sampled["density"] == DENSITY_SAMPLED
+    assert sampled["bindings"] == legacy["bindings"]
+    assert "unplaced" not in sampled
+    # Stored earlier sampled layouts used bounded coverage. Validation must keep
+    # their exact choices instead of rolling again under the repaired policy.
+    historical = resolve_placement_layout("committed", "Player1", document, roster, density=DENSITY_BOUNDED)
+    historical["density"] = DENSITY_SAMPLED
+    before = copy.deepcopy(historical)
+    validate_layout(historical, roster, admitted=admitted_ids(roster))
+    assert historical == before
+
+
+def test_cli_explicit_sampling_matches_shared_generator(tmp_path):
+    from randomizer.seed import generate, validate
+    output = tmp_path / "sampled.json"
+    result = subprocess.run([sys.executable, "-m", "randomizer", "generate",
+                             "--seed", "cli-sampled", "--campaign-enemies", "--expanded",
+                             "--all-areas", "--p2-enemies", "--p2-density", DENSITY_SAMPLED,
+                             "--output", str(output)], cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    actual = json.loads(output.read_text(encoding="utf-8"))
+    expected = generate("cli-sampled", expanded=True, all_areas=True,
+                        campaign_enemies=True, p2_enemies=True, p2_checks=True,
+                        p2_density=DENSITY_SAMPLED, bomb_rock_weight=1,
+                        combined_captain=True, progressive_maturity=True,
+                        goal_mode="emperor_bulblax", starting_flarlic=1)
+    assert actual == expected
+    validate(actual)
 
 
 @pytest.mark.parametrize("density", [DENSITY_LEGACY, DENSITY_BOUNDED])

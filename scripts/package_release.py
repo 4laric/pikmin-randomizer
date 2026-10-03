@@ -148,7 +148,7 @@ def stage_core(repo, stage, exe, dlls, seed, extractor=None):
     copy_tree_files(repo, stage, production_dependencies(repo))
     copy_tree_files(repo, stage, [Path("launcher") / name for name in ("launcher.py", "gui.py", "discimage.py", "rvz.py")])
     shutil.copy2(repo / "launcher" / "Play.cmd", stage / "Play.cmd")
-    copy_tree_files(repo, stage, [Path("examples/Player1.yaml"), Path("README.md")])
+    copy_tree_files(repo, stage, [Path("examples/Player1.yaml"), Path("examples/ExperimentalP2Enemies.yaml"), Path("README.md")])
     copy_tree_files(repo, stage, [Path("docs/EXPERIMENTAL_MIXED_ENEMY_PACKAGE.md")])
     if (repo / "CHANGELOG.md").is_file():
         shutil.copy2(repo / "CHANGELOG.md", stage / "CHANGELOG.md")
