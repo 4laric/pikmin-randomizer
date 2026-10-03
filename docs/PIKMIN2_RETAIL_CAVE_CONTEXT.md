@@ -138,3 +138,22 @@ context must survive through actual cargo and Pod cleanup; it cannot depend on
 the already revoked committed getter. These changes are published at native
 `4c588145065ade2ceb46b0e09578f50b38a6fe12`, with focused context tests
 and private native object compilation passing.
+
+
+Authored plans also emit an independently selected `p2-retail-start.json`
+companion, the actual raw unit pool and the selected room's raw `layout.txt`.
+The companion binds the existing whole-plan SHA, full pool/layout/archive source
+SHAs, selected CGT_Start unit/slot, unit/door definition and authored transform.
+Unit candidates and door records from the imported manifest must equal the
+independently authenticated original pool before floor preparation proceeds.
+
+Original story-mode `RandMapMgr::getStartPosition` uses the selected Pod fixed
+node for both captains and adds50 to its global Y. For ordinary zero-Navi
+initialization with no demo matrix, `BaseGameSection::initGenerators` queries
+actual map ground at that start point, adds8.5, then applies Olimar's
+(-4.526,+7.453) or Louie's(+18.082,-11.482) X/Z offset. Facing comes from
+`roundAng(actual MapMgr::getMapRotation())`, never the Pod slot's yaw. The
+companion pins the nine original source files documenting this rule; it does
+not grant World activity, perform native grounding or reproduce the entrance
+movie. Actual source map, captain bootstrap and collision checks still own
+these steps. This preserves both existing plan hashes.
