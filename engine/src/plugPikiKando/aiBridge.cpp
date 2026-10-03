@@ -9,6 +9,9 @@
 #include "gameflow.h"
 #include "zen/Math.h"
 #include "pc_randomizer.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_original_bridge_native.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -324,7 +327,11 @@ int ActBridge::exeWork()
 void ActBridge::doWork(int mins)
 {
 	// Consume one animation-loop work event, independent of the game clock.
-	const f32 work = pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : mins / 60.0f;
+	const f32 work =
+#if defined(PIKI_PC_PORT)
+	    pc_p2_original_bridge_owned(mBridge) ? pc_p2_original_bridge_work_damage(mPiki) :
+#endif
+	    pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : mins / 60.0f;
 	InteractBuild build(mPiki, mStageID, work);
 	mBridge->stimulate(build);
 	mStartWorkTime = gameflow.mWorldClock.mCurrentGameMinute;
@@ -584,7 +591,11 @@ int ActBridge::newExeWork()
 	}
 
 	int timeSinceLastWork = (gameflow.mWorldClock.mCurrentGameMinute - mStartWorkTime + 60) % 60;
-	if (mIsAttackReady && (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastWork > 0)) {
+	if (mIsAttackReady && (
+#if defined(PIKI_PC_PORT)
+	    pc_p2_original_bridge_owned(mBridge) ||
+#endif
+	    (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastWork > 0))) {
 		doWork(timeSinceLastWork);
 	}
 

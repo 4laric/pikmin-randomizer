@@ -262,6 +262,7 @@ public:
 	// (no parent Shape); the caller must keep every part's update disabled
 	// or give it an updater, since there is no shape to sample joints from.
 	void initInfoTree(ObjCollInfo* root);
+	void initInfoTree(ObjCollInfo* root, CollPart* parts, u32* ids);
 #endif
 	void makeTubesChild(u32, int);
 	void setUpdater(u32, CollPartUpdater*);
