@@ -1,0 +1,81 @@
+# Original campaign equipment runtime (#141)
+
+Implementation owner: Codex through shared GitHub account `4laric`.
+Native slice: `e7379fefa5109b347fb630261168ae4b4e4928d5`, based on the
+coordinator-approved `6d7943ed56807e59147b4c03f11004008adc6b1a`.
+See [the source audit](PIKMIN2_EQUIPMENT_AUDIT.md) for all 13 source identities.
+
+`pc_p2_equipment` derives equipment from the selected original campaign's
+authenticated treasury receipt query. It grants nothing when the original-session
+or treasury provider is absent. Assets, catalogs and loose P1 test fixtures cannot
+enable it. There is no additional equipment save ledger: authenticated P2TR1 card
+restore supplies the receipts, and queries immediately reflect the restored set.
+The Key is deliberately excluded from OlimarData bits; Challenge, story Challenge
+unlock and Versus Key behavior remain separate work.
+
+`pc_p2_equipment_reconcile_courses()` applies the source `openCourse(1)` and
+`openCourse(2)` effects for `map01` (item index 10, dictionary 184) and `map02`
+(index 11, dictionary 185). It never opens Wistful Wild or credits Pokos. The
+treasure provider calls it after successful setup and newly accepted completed
+native suction. Restore reconciliation needs to occur after the selected card's
+validation and the original campaign's course-0-only GameSetup baseline.
+
+| Item | Implemented native path | Remaining acceptance |
+|---|---|---|
+| Dream Material | InteractDenki refuses electric damage/flick | Ordinary electric contact before/after acquisition |
+| Amplified Amplifier | 200-unit maximum for whistle recruitment and rendered circle, before existing Mods radius scale | Ordinary outside-base-radius recruitment |
+| Professional Noisemaker | Existing native sprout self-unbury path enabled by ownership | Ordinary whistle pluck after collection, with Mods disabled |
+| Justice Alloy | Source 0.5 shield reduction on captain damage | Ordinary damaging contact comparison |
+| Forged Courage | InteractFire refuses fire damage/flick | Ordinary fire contact comparison |
+| Repugnant Appendage | Source 240-unit movement speed and wind refusal | Ordinary movement/wind; steep-slope slip remains unsupported |
+| Spherical Atlas / Geographic Projection | Source course 1 / 2 projection | Actual source collection, travel, day-end, fresh process |
+| Brute Knuckles | Receipt ownership only | Source three-animation combo unsupported |
+| Stellar Orb | Receipt ownership only | Source cave light ramp unsupported |
+| Prototype Detector | Receipt ownership only | Source radar/map UI unsupported |
+| Five-Man Napsack | Receipt ownership only | Source hold-X and carried captain unsupported |
+| The Key | No equipment bit | Separate mode effects unsupported here |
+
+Numbers come from GPVE01 `include/Game/NaviParms.h` defaults. Existing AP benefits,
+Mods and captain health settings keep their existing composition; original gear
+is applied only when its authenticated selected-session query succeeds.
+
+## Verification and gameplay script
+
+Two focused compiled tests exercise the exact source mapping, duplicate receipt
+projection, omitted providers, original-session exclusion, restored receipt
+rollback, The Key exclusion and idempotent course reconciliation. The projection
+test binds engine doubles to the actual `pc_p2_equipment.cpp`; it is engineering
+evidence, not gameplay or card I/O acceptance. The five source-audit Python tests
+also pass with `PIKMIN2_SOURCE` pointing at the private local research tree.
+Full native build evidence is tracked in issue #141; build success does not prove
+the behavior above.
+
+The treasure and SAVE owners retain physical receipt and card authority. Both
+maps have retail min/max weight 101. The source lowers minimum carriers only for
+a story boss drop on a cave's last floor, to the actual live squad count (positive
+only); it leaves maximum slots unchanged. An unadjusted surface copy cannot be
+used to claim ordinary collection with the 20-Pikmin baseline.
+
+When the actual source provider and selected-card restore are composed:
+
+1. Launch a fresh private original campaign with 20 starting Pikmin and a centered
+   960x540 window. Keep legal assets, saves and logs under ignored output. Stage
+   the actual tested item at the start in its valid source context and verify its
+   source binding. Disable optional whistle-pluck/radius/health/speed Mods for the
+   respective observations.
+2. For a map, defeat its actual source boss on the last cave floor and carry the
+   dropped map to the treasure receiver using ordinary controls. Confirm the real
+   suction receipt, correct unique source ID and 200-Poko value. Do not edit the
+   receipt bitmap or lower an unrelated surface item's weight.
+3. Return to travel. Atlas must enable Awakening Wood; Projection must enable
+   Perplexing Pool. The other unearned course and Wistful Wild remain locked.
+4. Complete and save the day normally, quit, then start a fresh process with the
+   same selected card. The map remains available and its source cargo stays
+   consumed. Revisit without another acquisition grant or 200-Poko credit.
+5. For captain items, collect the actual source item and exercise the native path
+   in the table. Record the before/after observation and a day-end/fresh-process
+   repetition. Each supported path needs its own ordinary acceptance.
+
+Until those steps pass, map collection, card persistence and captain effect
+gameplay gates remain open. Asset presence and synthetic receipts satisfy none
+of them.
