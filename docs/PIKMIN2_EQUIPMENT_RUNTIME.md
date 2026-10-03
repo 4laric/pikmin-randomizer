@@ -66,6 +66,12 @@ SHA-256 `7d633981b5110377daeb04c9d9fc9d98419f81923f46366d7bcbf2f1998d1dbc`
 same private build graph after preserving the initial executable and result.
 Final build evidence is tracked in issue #141; build success does not prove the
 gameplay behavior above.
+The [immutable terminal receipt](https://github.com/4laric/pikmin-randomizer/issues/141#issuecomment-5967987553)
+has SHA-256 `35b0b354184ca285df6ac32ebd5f8a4f207118addebe0d4305ebf16778034204`;
+its archive has SHA-256
+`f602f8de0bec00f0803c92c299c2cd0bf0c57f1f86ae0de83688c1b95f66b39b`.
+The receipt, archive, production ELF and both test ELF hashes were checked locally.
+The profile is Release, NETPLAY/JAUDIO/OPTIMIZE/IPO OFF, j4.
 
 The treasure and SAVE owners retain physical receipt and card authority. Both
 maps have retail min/max weight 101. Literal source placements are loose treasures:
