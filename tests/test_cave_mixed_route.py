@@ -22,7 +22,7 @@ class BoundaryTests(unittest.TestCase):
 
     def fixture(self):
         manifest=create('930','Player1')
-        placement={'seed':7989240218121528064,'items':[{'slot_id':'forest_1:f1:leaf:0','host':'forest_1:f1:leaf:0','item':'treasure_water'}]}
+        placement={'seed':int(manifest['table']['seed']),'items':[{'slot_id':'forest_1:f1:leaf:0','host':'forest_1:f1:leaf:0','item':'treasure_water'}]}
         water=next(x for x in placement['items'] if x['item']=='treasure_water')
         ledger=f"P2_RECEIPTS_1\n{placement['seed']} treasure:forest_1:f1:{water['slot_id']} {water['host']} cave_treasure\n"
         budgets='P2_CAVE_BUD_STATE_1 '+str(placement['seed'])+' forest_1 1 2\n'+''.join(b['slot_id']+' '+str(2 if b['species']=='blue' else 1)+'\n' for b in manifest['table']['buds'])
