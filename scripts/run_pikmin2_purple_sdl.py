@@ -55,6 +55,7 @@ def parser():
     p.add_argument('--mode', choices=('sdl_acquire', 'sdl_save_resume', *GUARDS), required=True)
     p.add_argument('--profile', choices=('ordinary-off',), required=True)
     p.add_argument('--preflight-only', action='store_true')
+    p.add_argument('--birth-ledger', action='store_true', help='Validate fresh initial census, successful ordinary births, native card and fresh stock resume')
     p.add_argument('--development-launch', action='store_true',
                    help='Use the owned private development launcher without controller admission')
     return p
@@ -83,6 +84,9 @@ def portable_overlay_ready(source):
 
 
 def preflight(a):
+    ledger = getattr(a, 'birth_ledger', False)
+    require(type(ledger) is bool, 'Birth-ledger opt-in must be boolean')
+    require(not ledger or (a.mode == 'sdl_save_resume' and a.profile == 'ordinary-off'), 'Birth ledger requires fresh ordinary save/resume')
     for name in ('root', 'assets', 'bank', 'motion', 'content'):
         value = getattr(a, name).resolve(strict=True)
         require(value.is_dir(), name + ' must be a directory')
@@ -109,10 +113,11 @@ def preflight(a):
     # Never silently replace the shared overlay or synthesize a platform shim.
     if os.name != 'nt':
         portable_overlay_ready(overlay.read_text(encoding='utf-8'))
-    for module in ROOT_MODULES:
+    root_modules = ROOT_MODULES + (('scripts.purple_birth_ledger',) if ledger else ())
+    for module in root_modules:
         require(module not in sys.modules, 'Root module already imported before pin validation: ' + module)
     sys.path[:0] = [str(a.root), str(a.root / 'scripts')]
-    modules = {name: importlib.import_module(name) for name in ROOT_MODULES}
+    modules = {name: importlib.import_module(name) for name in root_modules}
     verify_imports(a.root)
     launch = modules['run_pikmin2_fixture'].launch
     require({'canonical_root', 'session_root'} <= set(inspect.signature(launch).parameters), 'Portable launcher API absent')
@@ -474,6 +479,8 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
     for key in saved_env:
         os.environ.pop(key, None)
     os.environ.update(PIKMIN_RANDOMIZER_TEST_BACKGROUND='1', PIKMIN_P2_ROOM_WINDOW='960x540', P2_PURPLE_COMBAT_MODE=mode)
+    if getattr(a, 'birth_ledger', False) and mode == 'sdl_dayend':
+        os.environ['P2_PURPLE_BIRTH_LEDGER'] = '1'
     if expected:
         os.environ.update(P2_PURPLE_EXPECT_DAY=str(expected['day']), P2_PURPLE_EXPECT_MATURITY=str(expected['maturity']))
     def pulse():
@@ -487,7 +494,7 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
     thread = threading.Thread(target=pulse, daemon=True)
     try:
         thread.start()
-        markers = ['P2_PURPLE_SDL_ACQUISITION_PASS', 'P2_PURPLE_ORDINARY_SAVE_PASS'] if mode == 'sdl_dayend' else ['P2_PURPLE_ORDINARY_RESUME_PASS']
+        markers = ['P2_PURPLE_SDL_ACQUISITION_PASS', 'P2_PURPLE_ORDINARY_SAVE_PASS'] if mode == 'sdl_dayend' else ['P2_PURPLE_RESUME_STOCK_OBSERVED'] if mode == 'natural_resume_consistency' else ['P2_PURPLE_ORDINARY_RESUME_PASS']
         try:
             result = m['run_pikmin2_fixture'].launch(a.exe, run.directory, ['--randomizer-seed', str(run.bootstrap)],
                 markers, timeout, toolchain=a.exe.parent if os.name == 'nt' else None, canonical_root=a.root, session_root=a.session,
@@ -508,8 +515,19 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
         log_path = run.directory / 'native.log'
         log = log_path.read_text(errors='replace')
         report['native_log_sha256'] = digest(log_path)
-        report['observations'] = (save_observations(result, log, run.handshaken, errors) if mode == 'sdl_dayend'
-            else resume_observations(result, log, run.handshaken, errors, expected))
+        if mode == 'natural_resume_consistency':
+            native_success(result, log, run.handshaken, errors)
+            require(not any(x in log for x in ('CAMPAIGN_SAVED', 'P2_PURPLE_SDL_ACQUISITION_PASS', 'P2_VIOLET_WITNESS', 'P2_VIOLET_CONVERT')), 'Resume wrote or reacquired')
+            reject_legacy_routes(log)
+            report['observations'] = m['scripts.purple_birth_ledger'].compare_stock_observation(log, expected['card_stock'])
+        else:
+            report['observations'] = (save_observations(result, log, run.handshaken, errors) if mode == 'sdl_dayend'
+                else resume_observations(result, log, run.handshaken, errors, expected))
+        if getattr(a, 'birth_ledger', False):
+            cleanup = result.get('cleanup', {})
+            require(cleanup.get('child_reaped') is True and cleanup.get('group_absent') is True, 'Actual owned child cleanup missing')
+            if mode == 'sdl_dayend':
+                report['observations']['birth_receipts'] = m['scripts.purple_birth_ledger'].validate_birth_receipts(log)
         require(inventory(run.directory / 'assets') == frozen['assets'], 'Staged assets changed')
         require(all(digest(run.directory / p) == sha for p, sha in frozen['immutable_files'].items()), 'Staged source input changed')
         require(digest(a.exe) == a.exe_sha256, 'Executable changed')
@@ -545,7 +563,7 @@ def record_checkpoint_boundary(a, report, session, run, boundary, schema, card):
             'Checkpoint boundary lacks expected card state')
     receipt = {
         'schema_version': 1, 'sequence': sequence, 'boundary': boundary,
-        'mode': 'sdl_dayend' if sequence <= 2 else 'natural_resume',
+        'mode': 'sdl_dayend' if sequence <= 2 else ('natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume'),
         'observed_monotonic_ns': time.monotonic_ns(), 'observed_unix_ns': time.time_ns(), 'driver_pid': os.getpid(),
         'session': str(a.session.resolve()), 'fingerprint': session.fingerprint,
         'manifest_sha256': digest(a.session / 'fixture-seed.json'),
@@ -563,7 +581,7 @@ def record_checkpoint_boundary(a, report, session, run, boundary, schema, card):
 def execute_save_resume(a, m):
     a.session.mkdir(parents=True, exist_ok=False)
     report = {'passed': False, 'mode': a.mode, 'profile': a.profile,
-        'timeout_seconds_per_native_child': {'sdl_dayend': 120, 'natural_resume': 60},
+        'timeout_seconds_per_native_child': {'sdl_dayend': 120, ('natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume'): 60},
         'save_phase_limits_seconds': {'verified_acquisition': 60, 'ordinary_save': 60},
         'root_pin': a.root_pin, 'native_pin': a.native_pin, 'native_source_sha256': a.native_source_sha256,
         'exe_sha256': a.exe_sha256, 'phases': [], 'checkpoint_boundaries': [], 'live_AP_server': False, 'saved_bytes_injected': False,
@@ -597,6 +615,15 @@ def execute_save_resume(a, m):
         expected = saved['observations']
         card_args = dict(fingerprint=session.fingerprint, maturity=expected['maturity'], benefit_count=schema, check_count=len(session.names))
         card = genuine_card(a.session, **card_args)
+        if getattr(a, 'birth_ledger', False):
+            helper = m['scripts.purple_birth_ledger']
+            stock = helper.decode_stock(Path(card['path']).read_bytes(), sha256=card['sha256'], fingerprint=session.fingerprint,
+                benefit_count=schema, check_count=len(session.names), day=expected['day'])
+            log = (first.directory / 'native.log').read_text(errors='replace')
+            comparison = helper.saved_census(log, stock)
+            require(sum(stock['rgb'] + stock['p2']) == expected['birth_receipts']['saved_total'], 'Actual card/earned population total mismatch')
+            expected['card_stock'] = stock
+            report['birth_ledger'] = {'receipts': expected['birth_receipts'], 'card_match': comparison, 'starting_population_validated': True}
         report['checkpoint'] = card
         record_checkpoint_boundary(a, report, session, first, 'after_save', schema, card)
         require(digest(a.session / 'fixture-seed.json') == manifest_sha, 'Manifest changed during save')
@@ -611,7 +638,7 @@ def execute_save_resume(a, m):
         record_checkpoint_boundary(a, report, restored, second, 'before_resume', schema, before_resume)
         require(before_resume == card, 'Card changed before resume launch')
         verify_save_inputs(a, inputs, code)
-        resumed = launch_save_phase(a, m, second, frozen2, 'natural_resume', expected)
+        resumed = launch_save_phase(a, m, second, frozen2, 'natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume', expected)
         report['phases'].append(resumed)
         require(resumed['passed'], 'Fresh resume child failed')
         require(resumed['raw_run']['pid'] != saved['raw_run']['pid'], 'Distinct native process evidence required')
