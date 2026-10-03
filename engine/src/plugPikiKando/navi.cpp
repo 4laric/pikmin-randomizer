@@ -20,6 +20,7 @@
 #include "pc_p2_original_piki_origin.h"
 #include "pc_p2_source_body.h"
 #include "pc_p2_original_piki_recruit.h"
+#include "pc_p2_original_throw.h"
 #endif
 #if defined(PIKI_PC_PORT)
 #include "audio/pc_audio_source.h"
@@ -4006,10 +4007,17 @@ void Navi::dump()
  */
 void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 {
+#if defined(PIKI_PC_PORT)
+	const int originalSpecies=pc_p2_original_rgb_throw_species(piki);
+	const bool originalRgb=originalSpecies>=0;
+#endif
 	f32 unused = mFaceDirection + PI;
 	piki->mActiveAction->abandon(nullptr);
 	rumbleMgr->start(RUMBLE_Unk2, mNaviID, nullptr);
 	piki->mSRT.t         = mSRT.t + Vector3f(0.0f, 10.0f, 0.0f);
+#if defined(PIKI_PC_PORT)
+	if(originalRgb) piki->mSRT.t=piki->mSRT.t-Vector3f(15.0f*sinf(mFaceDirection),0.0f,15.0f*cosf(mFaceDirection));
+#endif
 	Vector3f throwDir    = pos - piki->mSRT.t;
 	f32 throwDist        = speedy_sqrtf(SQUARE(throwDir.x) + SQUARE(throwDir.z));
 	f32 throwAngle       = atan2f(throwDir.x, throwDir.z);
@@ -4027,6 +4035,14 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
     if(pc_p2_is_purple(piki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
+#if defined(PIKI_PC_PORT)
+	if(originalRgb) {
+		p2throw::Velocity velocity;
+		if(p2throw::rgbVelocity(originalSpecies,throwDist,AICONST.mGravity(),velocity)) {
+			vSpeed=velocity.vertical;hSpeed=velocity.horizontal;
+		}
+	}
+#endif
 
 	piki->mVelocity.set(hSpeed * sinf(throwAngle), vSpeed, hSpeed * cosf(throwAngle));
 
@@ -4035,7 +4051,7 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 	// contradice el sentido del Lock-On: el tiro va al enemigo y punto.
 #if defined(PIKI_PC_PORT)
 	if (!mPcLockTarget) {
-		piki->mVelocity = piki->mVelocity + mVelocity;
+		piki->mVelocity = piki->mVelocity + (originalRgb?Vector3f(mVelocity.x,0.0f,mVelocity.z):mVelocity);
 	}
 #else
 	piki->mVelocity = piki->mVelocity + mVelocity;
@@ -4052,6 +4068,10 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
  */
 void Navi::throwLocus(immut Vector3f& pos)
 {
+#if defined(PIKI_PC_PORT)
+	const int originalSpecies=pc_p2_original_rgb_throw_species(mNextThrowPiki);
+	const bool originalRgb=originalSpecies>=0;
+#endif
 	Locus* locus = nullptr;
 	for (int i = 0; i < mLociCount; ++i) {
 		if (mLoci[i].mCanBeThrown == TRUE) {
@@ -4065,6 +4085,9 @@ void Navi::throwLocus(immut Vector3f& pos)
 
 	f32 unused        = mFaceDirection + PI;
 	locus->mPosition  = mSRT.t + Vector3f(0.0f, 10.0f, 0.0f);
+#if defined(PIKI_PC_PORT)
+	if(originalRgb) locus->mPosition=locus->mPosition-Vector3f(15.0f*sinf(mFaceDirection),0.0f,15.0f*cosf(mFaceDirection));
+#endif
 	Vector3f throwDir = pos - locus->mPosition;
 	f32 throwDist     = speedy_sqrtf(SQUARE(throwDir.x) + SQUARE(throwDir.z));
 	f32 throwAngle    = atan2f(throwDir.x, throwDir.z);
@@ -4081,6 +4104,14 @@ void Navi::throwLocus(immut Vector3f& pos)
     if(pc_p2_is_purple(mNextThrowPiki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
+#if defined(PIKI_PC_PORT)
+	if(originalRgb) {
+		p2throw::Velocity velocity;
+		if(p2throw::rgbVelocity(originalSpecies,throwDist,AICONST.mGravity(),velocity)) {
+			vSpeed=velocity.vertical;hSpeed=velocity.horizontal;
+		}
+	}
+#endif
 
 	locus->mVelocity.set(hSpeed * sinf(throwAngle), vSpeed, hSpeed * cosf(throwAngle));
 	locus->mEffect.changeEffect(EffectMgr::EFF_Navi_LightGlow);

@@ -90,5 +90,13 @@ held, thrown and electrocuted pointer; it cannot claim an original Red birth.
 Neither run establishes original acquisition, source campaign placement, or
 save/resume. The Linux staged Yellow run passed the exact receiver and grounded
 survival witness in 36.092 seconds at native `e0a1fabe1`, with 20 living Pikmin.
-The separate Red contact control remains unqualified; its failed runs are
-preserved. The latest Windows build and original-scene gameplay remain pending.
+The final Yellow run at native `05610959c` passed in 29.735 seconds. Two fresh
+Red controls using the final `00bad5f44` fixture passed in 29.391 and 26.525
+seconds, with distinct staged actor pointers and actual DenkiDying reactions.
+The captain-down negative exited 86 without a success marker. Each owned
+process was reaped; previous failed Red attempts remain preserved. ROOT reran
+the strict witnesses against all three final raw logs before merging the
+reviewed changes. This qualifies the disclosed staged contact checks only.
+Windows qualification, original-scene acquisition, elevated interaction, and
+SAVE/fresh-process gameplay remain pending. The maintained combined source
+requires its own gameplay run; compiling these fixtures cannot supply it.

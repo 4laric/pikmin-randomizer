@@ -2,6 +2,7 @@
 class BTeki;
 class Teki;
 class Creature;
+class Piki;
 
 // Family-owned ground-invertebrate source behavior: Anode Beetle (ElecBug,
 // EnemyID 28) on the batch-2 Chappy placement vehicle (#165/#407).
@@ -32,6 +33,12 @@ bool pc_p2_elecbug_attacked(Teki*);
 // P2_ELECBUG_PRESS_IMMUNE for an electric-immune Yellow/Bulbmin, decided by the
 // lane-11 capability matrix.
 bool pc_p2_elecbug_pressed(BTeki*, Creature*);
+// Called only by the actual descending PikiFlying collision callback, before
+// the host changes the presser to Normal. False outside source press states.
+bool pc_p2_elecbug_flying_press(BTeki*, Piki*);
+// Ground movement precedes creature collisions in P1. Before Flying grounds,
+// dispatch only an actual collision-part intersection with a live ElecBug.
+bool pc_p2_elecbug_ground_press(Piki*);
 // Read-only registration observability (mirrors pc_p2_sokkuri/armor) so the
 // lifecycle fixture can prove forget clears stale state. Additive.
 unsigned long pc_p2_elecbug_count();
@@ -43,8 +50,8 @@ bool pc_p2_elecbug_registered(BTeki*);
 bool pc_p2_elecbug_suppress_ai(const BTeki*);
 // Natural press adaptation (#165, inst-bugs #871): the source
 // ElecBug::pressCallBack is triggered by a thrown-Pikmin landing of ANY color
-// (PikiFlyingState/PikiHipDropState collision, velocity.y<0). The P1 host
-// routes no Pikmin->enemy InteractPress, so this family-local probe detects a
+// (PikiFlyingState/PikiHipDropState collision, velocity.y<0). In addition to
+// the early Flying hooks, this inherited family-local fallback detects a
 // descending Pikmin overlapping a registered ElecBug once per flip
 // (REVERSE/DEAD short-circuit) and delegates to pc_p2_elecbug_pressed.
 // P1-derived adaptation; logged P2_ELECBUG_NATURAL_PRESS. No-op for other actors.
