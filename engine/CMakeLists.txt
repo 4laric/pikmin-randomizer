@@ -1985,7 +1985,9 @@ add_test(NAME p2_demon_profile_test COMMAND p2_demon_profile_test)
 # p2_purple_flight_actual_test). The Sarai dynamic binder is doubled with its
 # real claim contract; the real binder ships in pc_p2_sarai_manager.cpp.
 add_executable(p2_sarai_seed_bridge_test tools/test_p2_sarai_campaign.cpp
-    pc_port/pc_p2_generated_placement.cpp)
+    pc_port/pc_p2_generated_placement.cpp
+    pc_port/pc_p2_original_actor.cpp pc_port/pc_p2_original_catalog.cpp
+    pc_port/pc_p2_original_spawn_plan.cpp)
 target_include_directories(p2_sarai_seed_bridge_test BEFORE PRIVATE tools/p2_sarai_campaign_stubs pc_port)
 target_compile_options(p2_sarai_seed_bridge_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_sarai_seed_bridge_test COMMAND p2_sarai_seed_bridge_test)

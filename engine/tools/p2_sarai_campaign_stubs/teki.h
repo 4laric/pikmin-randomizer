@@ -4,10 +4,11 @@
 #include <cstddef>
 #include <vector>
 
-class BTeki {
+class Creature {
 public:
     Generator* mGenerator = nullptr;
 };
+class BTeki : public Creature {};
 
 struct TekiMgr {
     std::vector<BTeki*> actors;
