@@ -4,7 +4,7 @@
 //
 // Two independent streams sharing one MSL-compatible generator:
 //   state = state * 1103515245 + 12345; return (state >> 16) & 0x7fff;
-// Range is 0..RAND_MAX (0x7fff on MinGW). Both streams use this formula with
+// LCG range is always0..32767; libc retains its platform range. Both streams use this formula with
 // separate state.
 //
 // When deterministic mode is OFF, pc_sim_rand()/pc_cosmetic_rand() return
@@ -39,5 +39,20 @@ void     pc_cosmetic_rng_set_state(unsigned state);
 void pc_sim_rng_note_main_thread(void);
 
 // One-draw float shapers mirroring System::getRand: max * (draw / RAND_MAX).
-inline float pc_sim_randf(float max) { return max * (pc_sim_rand() / float(RAND_MAX)); }
-inline float pc_cosmetic_randf(float max) { return max * (pc_cosmetic_rand() / float(RAND_MAX)); }
+float pc_sim_rng_denominator(); // portable offline32767; legacy/netplay unchanged RAND_MAX
+inline float pc_sim_randf(float max) { return max * (pc_sim_rand() / pc_sim_rng_denominator()); }
+inline float pc_cosmetic_randf(float max) { return max * (pc_cosmetic_rand() / pc_sim_rng_denominator()); }
+
+// Explicit bootstrap-only portable profile for resumable offline sessions.
+// Default libc/netplay behavior stays selected until the scene owner opts in.
+#include <cstdint>
+#include <string>
+struct PcSimRngCheckpoint {
+    uint32_t version=1,profile=0,simState=0,cosmeticState=0;
+    uint64_t simDraws=0,cosmeticDraws=0;
+};
+bool pc_sim_rng_begin_offline(unsigned simSeed,unsigned cosmeticSeed,std::string&);
+bool pc_sim_rng_capture(PcSimRngCheckpoint&,std::string&);
+// Only the owner may establish/remove constructor suppression; apply requires it.
+bool pc_sim_rng_constructor_suppression(bool enabled,std::string&);
+bool pc_sim_rng_apply(const PcSimRngCheckpoint&,std::string&);

@@ -1,3 +1,4 @@
+#include "pc_midday_constructor_rewards.h"
 #include "pc_p2_ship_store.h"
 #include "pc_p2_white_campaign_policy.h"
 #include "pc_p2_white_treasure_policy.h"
@@ -2122,6 +2123,7 @@ void pc_randomizer_generated_cave_delivery(std::uint64_t seed, const char* cave,
     pc_randomizer_check(checkName(check->index));
 }
 void pc_randomizer_check(const char* name) {
+    if (pc_midday_construction_rewards_suppressed()) return;
     if (!enabled || !ready) return;
     const int slot = index(name);
     if (thelynk && slot >= 0 && !thelynkEnabled.count(unsigned(slot))) return;

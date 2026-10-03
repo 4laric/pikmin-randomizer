@@ -481,6 +481,18 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bigtreasure_receiver.cpp
     pc_port/pc_p2_bigtreasure_own.cpp
     pc_port/pc_p2_bigtreasure_teki.cpp
+    pc_port/pc_midday_actor_archive.cpp
+    pc_port/pc_midday_resolved_fields.cpp
+    pc_port/pc_midday_world_resources.cpp
+    pc_port/pc_midday_world_resources_schema.cpp
+    pc_port/pc_midday_render_graph.cpp
+    pc_port/pc_midday_render_graph_engine.cpp
+    pc_port/pc_midday_render_descriptors_engine.cpp
+    pc_port/pc_midday_render_prototypes_engine.cpp
+    pc_port/pc_midday_render_mutable.cpp
+    pc_port/pc_midday_render_mutable_engine.cpp
+    pc_port/pc_midday_constructor.cpp
+    pc_port/pc_midday_audio_fence.cpp
     pc_port/pc_randomizer.cpp
     # Netplay M4 lane A snapshot codec (issue #885): engine-free, linked in
     # every build next to pc_randomizer.cpp (which calls it). New behaviour
@@ -2308,6 +2320,7 @@ if(PIKMIN_BUILD_TESTS)
     add_executable(pc_audio_mixer_test
         pc_port/audio/pc_audio_mixer_test.cpp
         pc_port/audio/pc_audio.cpp
+        pc_port/pc_midday_audio_fence.cpp
         pc_port/audio/pc_envelope.cpp
         pc_port/audio/pc_jam.cpp
         pc_port/audio/pc_instrument_bank.cpp
@@ -3143,4 +3156,72 @@ endif()
 pikmin_add_ci_fixture(ivory_budget tools/preview_p2_ivory_budget.cpp)
 if(TARGET pikmin_ci_fixture_ivory_budget)
     target_include_directories(pikmin_ci_fixture_ivory_budget PRIVATE ${P2_CHALLENGE_GUARD_INCLUDE_DIR})
+endif()
+
+# #68 bounded renderer subset; no SaveQuit/world provider is registered.
+if(NOT PIKMIN_NATIVE_JAUDIO)
+    pikmin_add_ci_fixture(midday_render tools/p2_midday_render_engine_test.cpp)
+endif()
+
+if(PIKMIN_BUILD_TESTS AND NOT ANDROID)
+add_executable(pc_midday_audio_fence_test tools/pc_midday_audio_fence_test.cpp pc_port/pc_midday_audio_fence.cpp)
+target_include_directories(pc_midday_audio_fence_test PRIVATE pc_port)
+target_link_libraries(pc_midday_audio_fence_test PRIVATE ${SDL2_LIBRARIES})
+add_test(NAME pc_midday_audio_fence COMMAND pc_midday_audio_fence_test)
+
+
+add_executable(pc_midday_constructor_test tools/pc_midday_constructor_test.cpp
+    pc_port/pc_midday_constructor.cpp pc_port/pc_midday_audio_fence.cpp
+    pc_port/netplay/pc_sim_rng.cpp pc_port/netplay/pc_netplay_det.cpp
+    pc_port/pc_randomizer.cpp pc_port/netplay/pc_netplay_randstate.cpp
+    pc_port/pc_randomizer_outbox.cpp pc_port/pc_p2_delivery_host.cpp pc_port/pc_p2_proxy.cpp)
+target_include_directories(pc_midday_constructor_test PRIVATE pc_port)
+target_compile_options(pc_midday_constructor_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_link_libraries(pc_midday_constructor_test PRIVATE ${SDL2_LIBRARIES})
+add_test(NAME pc_midday_constructor COMMAND pc_midday_constructor_test "${CMAKE_CURRENT_BINARY_DIR}/midday-fixtures")
+
+
+add_executable(pc_midday_resolved_fields_test tools/pc_midday_resolved_fields_test.cpp pc_port/pc_midday_resolved_fields.cpp pc_port/pc_midday_actor_archive.cpp)
+target_include_directories(pc_midday_resolved_fields_test PRIVATE pc_port include)
+target_compile_definitions(pc_midday_resolved_fields_test PRIVATE PIKI_PC_PORT)
+target_compile_options(pc_midday_resolved_fields_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_midday_resolved_fields COMMAND pc_midday_resolved_fields_test)
+
+
+add_executable(pc_midday_render_graph_test tools/pc_midday_render_graph_test.cpp pc_port/pc_midday_render_graph.cpp)
+target_include_directories(pc_midday_render_graph_test PRIVATE pc_port include)
+target_compile_definitions(pc_midday_render_graph_test PRIVATE PIKI_PC_PORT)
+target_compile_options(pc_midday_render_graph_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME pc_midday_render_graph COMMAND pc_midday_render_graph_test)
+
+
+    add_executable(pc_midday_rng_test tools/pc_midday_rng_test.cpp
+        pc_port/netplay/pc_sim_rng.cpp pc_port/netplay/pc_netplay_det.cpp)
+    target_compile_options(pc_midday_rng_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME pc_midday_rng_legacy COMMAND pc_midday_rng_test legacy)
+    add_test(NAME pc_midday_rng_portable COMMAND pc_midday_rng_test)
+    add_test(NAME pc_midday_rng_netplay COMMAND pc_midday_rng_test netplay)
+
+
+# Linux headless source census controls use explicit loader/physical-fence stubs.
+# Actual factory/renderer acceptance remains the real-engine fixture.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(pc_midday_render_prototypes_test
+        tools/pc_midday_render_prototypes_test.cpp
+        pc_port/pc_midday_render_prototypes_engine.cpp
+        pc_port/pc_midday_render_graph.cpp
+        pc_port/pc_midday_render_descriptors_engine.cpp
+        pc_port/pc_midday_actor_archive.cpp
+        src/sysCommon/id32.cpp)
+    target_include_directories(pc_midday_render_prototypes_test PRIVATE
+        pc_port include include/Dolphin include/Dolphin/OS include/Dolphin/GX)
+    target_compile_definitions(pc_midday_render_prototypes_test PRIVATE
+        PIKI_PC_PORT=1 PIKI_USE_JAUDIO=0 VERSION_GPIE01_01=1 DTK_CONFIG_NONMATCHING=1)
+    target_compile_options(pc_midday_render_prototypes_test PRIVATE
+        ${NATIVE_COMPILE_OPTIONS} -ffunction-sections -fdata-sections
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/pc_port/pc_types.h")
+    target_link_options(pc_midday_render_prototypes_test PRIVATE -Wl,--gc-sections)
+    add_test(NAME pc_midday_render_prototypes COMMAND pc_midday_render_prototypes_test)
+endif()
+
 endif()

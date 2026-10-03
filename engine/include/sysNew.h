@@ -8,6 +8,9 @@
 void* piki_pc_alloc(size_t size);
 void piki_pc_free(void* ptr);
 void piki_pc_dump_alloc_stats(void);
+struct PikiPcAllocationStats { size_t liveBlocks, liveBytes, unknownFrees; };
+// Read-only checkpoint for bounded stopped-engine ownership tests.
+PikiPcAllocationStats piki_pc_allocation_stats();
 
 // These must be strong, program-wide replacements. Inline definitions only
 // affected translation units that happened to include this header, while the

@@ -126,6 +126,12 @@ void piki_pc_dump_alloc_stats(void)
 	        sTotalAllocations, sTotalFrees, sUnknownFrees);
 }
 
+PikiPcAllocationStats piki_pc_allocation_stats()
+{
+    std::lock_guard<std::mutex> lock(sAllocMutex);
+    return {sLiveAllocations, sLiveBytes, sUnknownFrees};
+}
+
 void* piki_pc_alloc(size_t size)
 {
 	if (size == 0) {

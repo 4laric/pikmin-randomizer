@@ -215,7 +215,7 @@ public:
 	f32 getRand(f32 max)
 	{
 #if defined(PIKI_PC_PORT)
-		return max * (pc_sim_rand() / f32(RAND_MAX));
+		return pc_sim_randf(max);
 #else
 		return max * (rand() / f32(RAND_MAX));
 #endif
@@ -223,7 +223,7 @@ public:
 	f32 getHalfRand(f32 max)
 	{
 #if defined(PIKI_PC_PORT)
-		return max * (pc_sim_rand() / f32(RAND_MAX) - 0.5f);
+		return max * (pc_sim_randf(1.0f) - 0.5f);
 #else
 		return max * (rand() / f32(RAND_MAX) - 0.5f);
 #endif
