@@ -71,9 +71,24 @@ pause freeze, refresh, zero-stock refusal and full 40-second recovery. The
 captain remains unprotected. `--guard-negative` must exit 86 before window boot;
 runtime must preserve logs and use a bounded wall limit (90 seconds normally;
 up to 180 on the software renderer). This allowance does not change the 40-active-second
-effect or accelerate its clock. The first 90-second run reached source callbacks
-but timed out at approximately 11 FPS before recovery, and remains preserved.
+effect or accelerate its clock. Earlier timeouts and setup failures remain preserved;
+the final fixture observes recovery independently of the captain's idle state.
 Injected stock/input cannot qualify the following ordinary gameplay script.
+
+Supported production and focused policy checks pass at native
+`53491014472f839dadc382b0fa8d7ccd88578f36` (executable SHA-256
+`0e426411496eec36123d2c852835e0952bc467ce7ab60d05a065a094b36b1b1b`).
+That pin corrects Honey pose hash verification to use the same canonical disk
+path as the actual geometry loader; closure checks remain enforced.
+The fixture from `3af767d7aee8bb85e2c4bb358e56560e8ba5861b`, linked against
+that production object's verified unchanged inputs, passes with all 20 live
+formation Pikmin. It observes source activation, 10 damage/190 speed,
+unchanged maturity, pause freeze, refresh, zero-stock refusal and recovery at
+40.025 active seconds. Wall time is 67.129 seconds. Fixture SHA-256 is
+`53077984b9ce6424981fed87f20448fd85d7f357483194e981966cefea5f13e7`.
+Negative captain guard exits 86; the successful run confirms centered 960×540,
+returns zero, and leaves no live owned process/cgroup or dirty production graph.
+This is explicitly an injected-stock/input/whistle engine regression.
 
 Once the Honey provider and original campaign binding are composed, run this
 60–90 second smoke in a fresh private 20-Pikmin/960×540 room:
