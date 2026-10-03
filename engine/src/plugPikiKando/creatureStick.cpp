@@ -290,7 +290,7 @@ void Creature::startStickObject(Creature* obj, CollPart* stickPart, int slot, f3
 	if (startStick(obj, stickPart)) {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
         if (obj->isTeki() && stickPart)
-            pc_p2_original_pelplant_stick(static_cast<BTeki*>(obj), stickPart->getCode().mStringID);
+            pc_p2_original_pelplant_stick(static_cast<BTeki*>(obj), stickPart->getCode().mId);
 #endif
 		if (!stickPart || stickPart->isBouncySphereType()) {
 			if (isTeki()) {

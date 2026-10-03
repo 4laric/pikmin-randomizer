@@ -1,5 +1,6 @@
 #include "pc_p2_original_pelplant.h"
 #include "pc_p2_original_pelplant_blend.h"
+#include "pc_p2_original_pelplant_code.h"
 #include <cassert>
 #include <iostream>
 // Deliberately labelled bridge controls. These prove ownership/FSM contracts,
@@ -36,6 +37,8 @@ struct ControlledEngine final:Engine {
 CatalogRow row(unsigned uid,unsigned amount,unsigned stage,unsigned count=1){CatalogRow r;r.course="tutorial";r.member="nonloop/3-9.txt";r.sourceKey="original:"+std::to_string(uid);r.enemy.uid=uid;r.enemy.count=count;r.enemy.generatorVersion="0001";r.enemy.generatorTail={"3",std::to_string(amount),std::to_string(stage)};return r;}
 int main(){
  std::string error;Initial initial;auto one=row(1,1,2);
+ const auto headCode=sourceCode(0x735f5f30u);assert(std::string(headCode.data())=="s__0");
+ assert(sourceCode(0x735f5f5fu)[3]=='_'&&sourceCode(0)[3]==0);
  assert(witherWeight(0)==0&&witherWeight(1)==1&&witherWeight(2)==1&&witherWeight(-1)==0);
  assert(witherWeight(.125f)==0&&witherWeight(.25f)>.62f&&witherWeight(.25f)<.63f);
  std::array<float,12> jointA{},jointB{},jointOut{};jointA[7]=90;jointB[7]=0;
@@ -62,7 +65,8 @@ int main(){
  assert(provider.bind(rows[0],actor,0x53000001,error));Host* host=provider.lookup(actor);Pellet* captured=host->captured;
  assert(captured&&captured->captured&&captured->color==1);
  assert(host->cullable&&host->lodRadius==45);
- assert(provider.damage(actor,0,"s__0",error));assert(provider.tick(actor,0,Event::Other,error)&&host->state==State::Full);
+ assert(provider.damage(actor,0,"0__s",error)&&host->damage==0); // Former host-string path loses the retail head suffix.
+ assert(provider.damage(actor,0,headCode.data(),error)&&host->damage==host->parameters.maxHealth);assert(provider.tick(actor,0,Event::Other,error)&&host->state==State::Full);
  assert(provider.tick(actor,0,Event::None,error)&&host->state==State::Dead&&engine.releases==0);
  assert(provider.tick(actor,0,Event::LoopEnd,error)&&engine.releases==0);
  assert(provider.tick(actor,0,Event::End,error)&&engine.releases==1&&engine.kills==1&&!captured->captured);
