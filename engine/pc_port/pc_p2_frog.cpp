@@ -1,4 +1,5 @@
 #include "pc_p2_frog.h"
+#include "pc_p2_original_frog_native.h"
 #include "pc_p2_frog_policy.h"
 #include "pc_p2_frog_flight.h"
 #include "pc_p2_campaign_actor.h"
@@ -241,7 +242,7 @@ void advanceHop(BTeki* actor,FrogFsm& s,float dt){
 }
 }
 void pc_p2_frog_reset(){for(auto& b:poseBank)b.reset();poseVis.clear();actors.clear();fsms.clear();pressing.clear();bitteredFrogs.clear();drawn.clear();drawnCorpse.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();ready=false;}
-void pc_p2_frog_forget(BTeki* actor){poseVis.forget(actor);auto* v=static_cast<PelletView*>(actor);pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);pressing.erase(v);bitteredFrogs.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
+void pc_p2_frog_forget(BTeki* actor){pc_p2_original_frog_forget(actor);poseVis.forget(actor);auto* v=static_cast<PelletView*>(actor);pc_randomizer_p2_forget_source(v);actors.erase(v);fsms.erase(v);pressing.erase(v);bitteredFrogs.erase(v);drawn.erase(v);drawnCorpse.erase(v);}
 void pc_p2_frog_set_bittered(BTeki* actor,bool bittered){auto* view=static_cast<PelletView*>(actor);if(!actors.count(view))return;if(bittered)bitteredFrogs.insert(view);else bitteredFrogs.erase(view);}
 const char* pc_p2_frog_name(PelletView* view){auto i=actors.find(view);return i==actors.end()?nullptr:ids[i->second];}
 float pc_p2_frog_param_f(const BTeki* actor,int idx,float fallback){
@@ -257,6 +258,8 @@ float pc_p2_frog_param_f(const BTeki* actor,int idx,float fallback){
 }
 bool pc_p2_frog_suppress_ai(const BTeki* actor){return ready&&actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))!=0;}
 void pc_p2_frog_setup(){
+    // Original catalog owns preparation/birth. Its typed GenObject has no P1 roster.
+    for(const auto& row:p2original::originalActors().rows())if(row.second.enemy.source==17||row.second.enemy.source==18)return;
     pc_p2_frog_reset();
     std::printf("P2_FROG_SETUP\n");std::fflush(stdout);
     const bool bridge = pc_randomizer_p2_bridge() && !pc_pikipelago_room_preview();
@@ -309,6 +312,28 @@ void pc_p2_frog_setup(){
         if(!bridge)std::abort();
     }
     loadAnimation(banks);ready=true;
+}
+bool pc_p2_frog_prepare_original(std::string& error){
+    if(ready){error.clear();return true;}
+    std::ifstream input("p2-frog.txt");std::map<unsigned,int> unused;std::vector<p2animation::Clip> banks[2];
+    if(!input||!p2frog::parse(input,unused,banks)){error="original frog physical bank missing or invalid";return false;}
+    loadAnimation(banks);ready=true;error.clear();return true;
+}
+bool pc_p2_frog_bind_original(BTeki* actor,unsigned source,unsigned token,std::string& error){
+    if(!ready||!actor||!actor->mGenerator||!token||(source!=17&&source!=18)){
+        error="original frog bind before resources or native generator";return false;}
+    unsigned registeredSource=0,registeredToken=0;
+    if(!p2original::originalActors().query(actor,registeredSource,registeredToken)||registeredSource!=source||registeredToken!=token){
+        error="original frog registry identity mismatch";return false;}
+    const int kind=source==18;auto* view=static_cast<PelletView*>(actor);
+    if(actor->mTekiType!=(kind?TEKI_Frow:TEKI_Frog)||actors.count(view)){
+        error="original frog chassis mismatch or duplicate actor";return false;}
+    actors[view]=kind;actor->mHealth=actor->mMaxHealth=p2frog::params(kind).health;
+    FrogFsm f;f.kind=kind;f.home=actor->getPosition();f.heading=actor->getDirection();
+    f.groundY=probeFloorY(f.home,f.home.y);f.targetPos=f.home;f.targetValid=true;
+    f.rng=(token*2654435761u)|1u;f.token=token;f.lastHealth=actor->mHealth;fsms[view]=f;
+    std::printf("P2_ORIGINAL_FROG_BIND source=%u token=%u behavior=source_fsm\n",source,token);std::fflush(stdout);
+    error.clear();return true;
 }
 void pc_p2_frog_update(BTeki* actor){
     if(!ready)return;

@@ -1,6 +1,7 @@
 #pragma once
 class BTeki;
 class Teki;
+#include <string>
 
 // Family-owned sheargrub source behavior for the campaign-identity Uji family:
 // Female Sheargrub (UjiA, EnemyID 12), Male Sheargrub (UjiB, 13) and Shearwig
@@ -29,3 +30,5 @@ bool pc_p2_uji_suppress_ai(const BTeki*);
 // lifecycle fixture can prove forget clears a stale binding. Additive.
 unsigned long pc_p2_uji_count();
 bool pc_p2_uji_registered(BTeki*);
+bool pc_p2_uji_original_resources(unsigned source,std::string& error);
+bool pc_p2_uji_original_birth(BTeki*,unsigned source,std::string& error);

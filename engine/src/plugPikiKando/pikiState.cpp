@@ -1,6 +1,7 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_captive_navi_policy.h"
 #include "pc_blue_rescue.h"
+#include "pc_p2_original_red_native.h"
 #endif
 #include "pc_p2_gas_cloud.h"
 #include "pc_p2_astonish.h"
@@ -2261,6 +2262,12 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 		return;
 	}
 
+	#if defined(PIKI_PC_PORT)
+    // Retail PikiFlyingState sends press on an actual descending contact.
+    // Only an admitted original Red and its accepted callback consume it.
+    if(colliderType==OBJTYPE_Teki&&piki->mVelocity.y<0&&pc_p2_original_red_owned(static_cast<BTeki*>(static_cast<Teki*>(collider)))
+       &&collider->stimulate(InteractPress(piki,0))){piki->restartAI();transit(piki,PIKISTATE_Normal);return;}
+#endif
 	if (colliderType == OBJTYPE_Teki
 	    && pc_p2_fuefuki_teki_flying_press(static_cast<BTeki*>(static_cast<Teki*>(collider)), piki,
 	                                       piki->mVelocity.y < 0.0f)) {

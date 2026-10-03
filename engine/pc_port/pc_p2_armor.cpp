@@ -46,6 +46,9 @@
 //     the flick radius is a documented port adaptation.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_armor.h"
+#include "pc_p2_batch2.h"
+#include "pc_p2_original_armor_native.h"
+#include "pc_p2_original_drop_engine.h"
 #include "pc_p2_armor_events.h"
 #include "pc_p2_armor_receiver_policy.h"
 #include "pc_p2_armor_policy.h"
@@ -197,6 +200,7 @@ std::map<PelletView*, Armor> actors;
 std::map<std::string, Clip> clips;
 std::set<PelletView*> drawn, drawnCorpse;
 bool ready = false;
+bool originalBank = false;
 
 float wrapPi(float a) {
     while (a > 3.14159265f) a -= 6.28318531f;
@@ -969,6 +973,7 @@ void pc_p2_armor_reset() {
     drawn.clear();
     drawnCorpse.clear();
     ready = false;
+    originalBank = false;
 }
 void pc_p2_armor_forget_piki(Piki* piki) {
     for (auto& entry : actors) entry.second.held.forget(piki);
@@ -983,6 +988,7 @@ void pc_p2_armor_forget(BTeki* actor) {
         restoreColl(actor, it->second, false);
     }
     actors.erase(v);
+    pc_p2_original_armor_retired(actor);
     drawn.erase(v);
     drawnCorpse.erase(v);
 }
@@ -1148,6 +1154,9 @@ bool pc_p2_armor_clip(const BTeki* actor, const char*& name, float& phase) {
 }
 
 void pc_p2_armor_setup() {
+    // Genuine original startup prepares/binds before ordinary family setup.
+    if(originalBank||pc_p2_original_armor_admitted())return;
+    for(const auto& row:p2original::originalActors().rows())if(row.second.enemy.source==15)return;
     pc_p2_armor_reset();
     if (!tekiMgr) return;
 
@@ -1265,6 +1274,49 @@ void pc_p2_armor_setup() {
     ready = true;
 }
 
+bool pc_p2_armor_prepare_original(const std::set<unsigned>& sources,std::string& error) {
+    if(sources!=std::set<unsigned>{15}){error="original Armor requires literal source 15";return false;}
+    if(!actors.empty()){error="original Armor resources require no live family actors";return false;}
+    if(ready&&!originalBank){error="original Armor cannot adopt AP/arena family state";return false;}
+    if(!ownCollEnabled()){error="original Armor requires its real source collision tree";return false;}
+    std::vector<p2batch2clock::Row> rows;
+    if(!pc_p2_batch2_original_ground_resources(15,rows,error))return false;
+    std::map<std::string,Clip> admitted;
+    for(const auto& row:rows){
+        Clip clip;clip.name=row.name;clip.duration=float(row.sourceFrames)/30.0f;clip.loop=row.name=="move";
+        clip.sampled=p2batch2clock::makeClip(row);
+        for(const auto& event:row.events)clip.events.emplace_back(event.frame,std::atoi(event.key.c_str()));
+        if(!clip.sampled.valid()||!admitted.emplace(row.name,clip).second){error="original Armor sampled clock is invalid or duplicated";return false;}
+    }
+    for(const char* name:{"appear","move","dive","attack2","eat","flick","attack_fail","dead"})
+        if(!admitted.count(name)){error="original Armor required FSM clip is absent";return false;}
+    for(const auto& event:std::vector<std::pair<const char*,int>>{{"attack2",18},{"eat",60},{"flick",39}}){
+        const auto& clip=admitted.at(event.first);unsigned count=0;
+        for(const auto& key:clip.sampled.events)if(key.key=="2"&&key.frame==event.second)++count;
+        if(count!=1){error="original Armor authoritative combat event absent or duplicated";return false;}
+    }
+    // Every type-2 event dispatches a family combat action. Refuse additional
+    // authored action keys rather than introducing extra kills/flicks.
+    for(const auto& entry:admitted)for(const auto& key:entry.second.sampled.events)if(key.key=="2"){
+        const int expected=entry.first=="attack2"?18:entry.first=="eat"?60:entry.first=="flick"?39:-1;
+        if(expected>=0&&key.frame!=expected){error="original Armor unexpected combat event";return false;}
+    }
+    clips=std::move(admitted);originalBank=ready=true;error.clear();return true;
+}
+bool pc_p2_armor_bind_original(BTeki* actor,unsigned token,std::string& error) {
+    unsigned source=0,registeredToken=0;
+    if(!actor||actor->mTekiType!=TEKI_Chappy||!originalBank||!ready||actors.count(static_cast<PelletView*>(actor))
+     ||!p2original::originalActors().query(static_cast<Creature*>(actor),source,registeredToken)||source!=15||registeredToken!=token){error="original Armor physical/registry binding invalid";return false;}
+    if(!pc_p2_batch2_original_ground_bind(actor,15,error))return false;
+    Armor s;s.home=actor->getPosition();s.heading=actor->getDirection();s.token=token;
+    actor->mHealth=actor->mMaxHealth=LIFE;s.lastHealth=LIFE;
+    resolveReceiverPart(actor,s);enter(s,ARMOR_STAY,"appear");
+    auto inserted=actors.emplace(static_cast<PelletView*>(actor),std::move(s));
+    buildColl(actor,inserted.first->second,token);
+    if(!inserted.first->second.coll.own){error="original Armor physical collision tree unavailable";return false;}
+    updateColl(actor,inserted.first->second);error.clear();return true;
+}
+
 void pc_p2_armor_update(BTeki* actor) {
     if (!ready) return;
     auto it = actors.find(static_cast<PelletView*>(actor));
@@ -1290,7 +1342,7 @@ void pc_p2_armor_update(BTeki* actor) {
         pc_p2_armor_finish_stone(actor);
     }
     const Vector3f pos = actor->getPosition();
-    const unsigned live = actor->mGenerator ? pc_p2_campaign_token(actor) : 0u;
+    const unsigned live = originalBank ? pc_p2_original_actor_token(static_cast<Creature*>(actor)) : (actor->mGenerator ? pc_p2_campaign_token(actor) : 0u);
     if (live) s.token = live;
     const unsigned generator = s.token ? s.token : live;
     // Collision may not exist at setup time; retry weakpoint resolve until it
@@ -1312,6 +1364,11 @@ void pc_p2_armor_update(BTeki* actor) {
     s.lastHealth = actor->mHealth;
 
     if (actor->mHealth <= 0.0f && s.state != ARMOR_DEAD) {
+        // Retail Armor StateDead::init calls deathProcedure before motion.
+        // Suppressed host AI cannot provide the original common-item timing.
+        if(originalBank&&!pc_p2_original_spawn_items(actor)){
+            std::fprintf(stderr,"P2_ORIGINAL_ARMOR death lost original registry ownership\n");std::abort();
+        }
         if (!s.deadLogged) {
             std::printf("P2_ARMOR_DEAD generator=%u source_id=15 health=0 prior_health=%.1f\n",
                         generator, previousHealth);

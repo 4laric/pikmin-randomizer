@@ -14,6 +14,8 @@
 #include "pc_p2_dweevil_clip.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_uji.h"
+#include "pc_p2_original_uji_native.h"
+#include "pc_p2_original_armor_native.h"
 #include "pc_p2_armor.h"
 #include "pc_p2_batch2_clock.h"
 #include "pc_p2_elecbug.h"
@@ -80,6 +82,7 @@ constexpr size_t ClipBytes = p2poseload::ClipBytes;          // resident per cli
 constexpr size_t TotalBytes = p2poseload::TotalBytes;        // resident per setup (48 MiB)
 
 struct Bank {
+    std::vector<p2batch2clock::Row> admittedRows;
     std::map<std::string, std::vector<Shape*>> clips;
     std::map<std::string, p2sampled::Clip> clock;
     std::map<std::string, std::vector<p2pose::Baked>> baked;
@@ -181,7 +184,8 @@ bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) 
 
 bool parseBank(const std::string& path,
                std::map<std::string, std::vector<p2batch2clock::Row>>& out,
-               std::string* softError = nullptr) {
+               std::string* softError = nullptr,
+               std::map<std::string,unsigned>* identities = nullptr) {
     std::ifstream in(path);
     if (!in) return false;
     const auto softFail = [&softError](const char* what) -> bool {
@@ -213,7 +217,8 @@ bool parseBank(const std::string& path,
             std::string species;
             unsigned long long id = 0;
             if (!(in >> species >> id)) return softFail("invalid bank species row");
-            out.emplace(species, std::vector<p2batch2clock::Row>());
+            if(!out.emplace(species, std::vector<p2batch2clock::Row>()).second)return softFail("duplicate bank species row");
+            if(identities){if(id>65535)return softFail("bank source ID exceeds original source width");identities->emplace(species,unsigned(id));}
         } else if (word == "clip") {
             std::string species, name, events, status, marker;
             int frames = 0, poses = 0;
@@ -289,6 +294,7 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
         fail(what.c_str());
     };
     Bank bank;
+    bank.admittedRows=rows;
     bank.prefix = family.prefix;
     bank.fileSpecies = species;
     p2poseload::Shared shared;
@@ -441,6 +447,102 @@ void pc_p2_batch2_forget(BTeki* actor) {
     clocks.erase(actor);
     blends.erase(actor);
     gates.erase(actor);
+}
+
+bool pc_p2_batch2_original_uji_resources(unsigned source,std::vector<p2batch2clock::Row>& out,std::string& error) {
+    error.clear();
+    const char* species=source==12?"UjiA":source==13?"UjiB":source==14?"Tobi":nullptr;
+    if(!species||!gsys){error="invalid original Uji bank request";return false;}
+    std::ifstream header("p2-uji-bank.txt");std::string signature;
+    if(!(header>>signature)||signature!="P2_UJI_BANK_1"){error="original Uji bank missing or wrong header";return false;}
+    std::map<std::string,std::vector<p2batch2clock::Row>> rows;
+    std::map<std::string,unsigned> identities;
+    if(!parseBank("p2-uji-bank.txt",rows,&error,&identities))return false;
+    if(identities[species]!=source){error="original Uji bank literal species source mismatch";return false;}
+    auto found=rows.find(species);
+    if(found==rows.end()||found->second.empty()){error="original Uji species bank absent";return false;}
+    std::set<std::string> clips;
+    for(const auto& row:found->second)if(row.poseCount<2||row.sourceFrames<2||row.framesMalformed||!clips.insert(row.name).second){error="original Uji requires unique complete sampled clips";return false;}
+    const std::string key="uji|"+std::string(species);
+    if(!banks.count(key)){
+        const size_t previous=bytesTotal;
+        Bank bank=loadBank(FAMILIES[3],species,found->second,&error);
+        if(!error.empty()){bytesTotal=previous;return false;}
+        for(const auto& row:found->second){auto baked=bank.baked.find(row.name);auto shapes=bank.clips.find(row.name);
+            if(baked==bank.baked.end()||baked->second.size()!=size_t(row.poseCount)||shapes==bank.clips.end()||shapes->second.size()!=size_t(row.poseCount)){bytesTotal=previous;error="original Uji physical pose vectors or meshes incomplete";return false;}
+        }
+        banks.emplace(key,std::move(bank));
+    }
+    // A prior AP/arena load may exist. It is reusable only when it resolves
+    // every requested physical clip with the same source timing and events.
+    const auto& bank=banks.at(key);
+    if(bank.admittedRows.size()!=found->second.size()){error="cached original Uji resource rows changed";return false;}
+    for(size_t i=0;i<found->second.size();++i){const auto& a=bank.admittedRows[i];const auto& b=found->second[i];
+        if(a.name!=b.name||a.sourceFrames!=b.sourceFrames||a.poseCount!=b.poseCount||a.poseFrames!=b.poseFrames||a.framesMalformed!=b.framesMalformed||a.events.size()!=b.events.size()){error="cached original Uji sampled resource rows changed";return false;}
+        for(size_t j=0;j<a.events.size();++j)if(a.events[j].frame!=b.events[j].frame||a.events[j].key!=b.events[j].key){error="cached original Uji resource event rows changed";return false;}
+    }
+    if(bank.clock.size()!=found->second.size()){error="cached original Uji bank clip inventory changed";return false;}
+    for(const auto& row:found->second){auto baked=bank.baked.find(row.name);auto shapes=bank.clips.find(row.name);auto clock=bank.clock.find(row.name);
+        if(baked==bank.baked.end()||baked->second.size()!=size_t(row.poseCount)||shapes==bank.clips.end()||shapes->second.size()!=size_t(row.poseCount)||clock==bank.clock.end()||clock->second.poses.duration!=row.sourceFrames||clock->second.events.size()!=row.events.size()){error="cached original Uji physical clips differ from requested bank";return false;}
+        for(size_t i=0;i<row.events.size();++i)if(clock->second.events[i].frame!=row.events[i].frame||clock->second.events[i].key!=row.events[i].key){error="cached original Uji authored events changed";return false;}
+    }
+    out=found->second;error.clear();return true;
+}
+bool pc_p2_batch2_original_uji_bind(BTeki* actor,unsigned source,std::string& error) {
+    const char* species=source==12?"UjiA":source==13?"UjiB":source==14?"Tobi":nullptr;
+    if(!actor||!species||actor->mTekiType!=int(source)+6||actors.count(actor)){error="original Uji visual actor/type already bound or invalid";return false;}
+    const std::string key="uji|"+std::string(species);
+    if(!banks.count(key)){error="original Uji visual bank not preflighted";return false;}
+    if(!ensureBlendState(actor,key)){error="original Uji private physical geometry allocation failed";return false;}
+    actors.emplace(actor,key);pc_p2_body_coll_assign(actor,key);error.clear();return true;
+}
+
+bool pc_p2_batch2_original_ground_resources(unsigned source,std::vector<p2batch2clock::Row>& out,std::string& error) {
+    error.clear();
+    const char* species=source==15?"Armor":nullptr;
+    if(!species||!gsys){error="invalid original Armor bank request";return false;}
+    std::ifstream header("p2-ground-bank.txt");std::string signature;
+    if(!(header>>signature)||signature!="P2_GROUND_BANK_1"){error="original Armor bank missing or wrong header";return false;}
+    std::map<std::string,std::vector<p2batch2clock::Row>> rows;
+    std::map<std::string,unsigned> identities;
+    if(!parseBank("p2-ground-bank.txt",rows,&error,&identities))return false;
+    if(identities[species]!=source){error="original Armor bank literal species source mismatch";return false;}
+    auto found=rows.find(species);
+    if(found==rows.end()||found->second.empty()){error="original Armor species bank absent";return false;}
+    std::set<std::string> clips;
+    for(const auto& row:found->second)if(row.poseCount<2||row.sourceFrames<2||row.framesMalformed||!clips.insert(row.name).second){error="original Armor requires unique complete sampled clips";return false;}
+    const std::string key="ground|"+std::string(species);
+    if(!banks.count(key)){
+        const size_t previous=bytesTotal;
+        Bank bank=loadBank(FAMILIES[2],species,found->second,&error);
+        if(!error.empty()){bytesTotal=previous;return false;}
+        for(const auto& row:found->second){auto baked=bank.baked.find(row.name);auto shapes=bank.clips.find(row.name);
+            if(baked==bank.baked.end()||baked->second.size()!=size_t(row.poseCount)||shapes==bank.clips.end()||shapes->second.size()!=size_t(row.poseCount)){bytesTotal=previous;error="original Armor physical pose vectors or meshes incomplete";return false;}
+        }
+        banks.emplace(key,std::move(bank));
+    }
+    // A prior AP/arena load may exist. It is reusable only when it resolves
+    // every requested physical clip with the same source timing and events.
+    const auto& bank=banks.at(key);
+    if(bank.admittedRows.size()!=found->second.size()){error="cached original Armor resource rows changed";return false;}
+    for(size_t i=0;i<found->second.size();++i){const auto& a=bank.admittedRows[i];const auto& b=found->second[i];
+        if(a.name!=b.name||a.sourceFrames!=b.sourceFrames||a.poseCount!=b.poseCount||a.poseFrames!=b.poseFrames||a.framesMalformed!=b.framesMalformed||a.events.size()!=b.events.size()){error="cached original Armor sampled resource rows changed";return false;}
+        for(size_t j=0;j<a.events.size();++j)if(a.events[j].frame!=b.events[j].frame||a.events[j].key!=b.events[j].key){error="cached original Armor resource event rows changed";return false;}
+    }
+    if(bank.clock.size()!=found->second.size()){error="cached original Armor bank clip inventory changed";return false;}
+    for(const auto& row:found->second){auto baked=bank.baked.find(row.name);auto shapes=bank.clips.find(row.name);auto clock=bank.clock.find(row.name);
+        if(baked==bank.baked.end()||baked->second.size()!=size_t(row.poseCount)||shapes==bank.clips.end()||shapes->second.size()!=size_t(row.poseCount)||clock==bank.clock.end()||clock->second.poses.duration!=row.sourceFrames||clock->second.events.size()!=row.events.size()){error="cached original Armor physical clips differ from requested bank";return false;}
+        for(size_t i=0;i<row.events.size();++i)if(clock->second.events[i].frame!=row.events[i].frame||clock->second.events[i].key!=row.events[i].key){error="cached original Armor authored events changed";return false;}
+    }
+    out=found->second;error.clear();return true;
+}
+bool pc_p2_batch2_original_ground_bind(BTeki* actor,unsigned source,std::string& error) {
+    const char* species=source==15?"Armor":nullptr;
+    if(!actor||!species||actor->mTekiType!=TEKI_Chappy||actors.count(actor)){error="original Armor visual actor/type already bound or invalid";return false;}
+    const std::string key="ground|"+std::string(species);
+    if(!banks.count(key)){error="original Armor visual bank not preflighted";return false;}
+    if(!ensureBlendState(actor,key)){error="original Armor private physical geometry allocation failed";return false;}
+    actors.emplace(actor,key);pc_p2_body_coll_assign(actor,key);error.clear();return true;
 }
 
 // Scan the scene and bind present arena actors. ``strict`` is the startup
@@ -738,6 +840,7 @@ static void logBindings() {
 }
 
 void pc_p2_batch2_setup() {
+    if(pc_p2_original_uji_admitted()||pc_p2_original_armor_admitted())return;
     pc_p2_batch2_reset();
     interpolation = readBatch2InterpolationFlag();
     if (interpolation) std::printf("P2_BATCH2_INTERPOLATION_READY interpolation=1 gameplay_clock=P1\n");
@@ -753,6 +856,7 @@ void pc_p2_batch2_setup() {
 }
 
 void pc_p2_batch2_rebind() {
+    if(pc_p2_original_uji_admitted()||pc_p2_original_armor_admitted())return;
     // Rebind within this scene without reallocating the immutable model banks.
     actors.clear();
     if (!(pc_pikipelago_room_preview() || pc_randomizer_p2_bridge()) || !tekiMgr) {

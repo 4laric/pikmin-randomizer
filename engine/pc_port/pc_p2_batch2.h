@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "pc_p2_batch2_clock.h"
 class BTeki; class Graphics; struct Matrix4f;
 // Family-owned batch-2 P2 visual registration (#346, #349, #350, #352, #353).
 // Optional, additive, opt-in via the Pikipelago room preview. Ordinary P1
@@ -51,6 +52,14 @@ void pc_p2_batch2_adopt(BTeki* child, BTeki* host);
 // BigFoot's child dependency: preload a bank without a staged Mitite actor.
 bool pc_p2_batch2_prepare_tamago();
 bool pc_p2_batch2_bind_tamago(BTeki* child);
+// Explicit original-course Uji admission and per-actor presentation. These
+// calls read actual banks/meshes and never scan an AP or surrogate roster.
+bool pc_p2_batch2_original_uji_resources(unsigned source,std::vector<p2batch2clock::Row>&,std::string& error);
+bool pc_p2_batch2_original_uji_bind(BTeki*,unsigned source,std::string& error);
 // Runtime evidence helper: count of authored clock events delivered exactly once
 // by the sampled clock (#431). Does not execute damage/capture/drops.
 unsigned long long pc_p2_batch2_event_count();
+
+// Literal source-15 Armor ground bank admission, independent of AP rosters.
+bool pc_p2_batch2_original_ground_resources(unsigned source,std::vector<p2batch2clock::Row>&,std::string& error);
+bool pc_p2_batch2_original_ground_bind(BTeki*,unsigned source,std::string& error);

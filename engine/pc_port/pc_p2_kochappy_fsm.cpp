@@ -38,7 +38,9 @@
 //   * Press is implemented as a state and a `pc_p2_kochappy_fsm_press` trigger
 //     (source Press: health 0, type1 anim, then Dead). The P1 Chappy vehicle
 //     exposes no press callback for this P2 actor, so no in-engine trigger is
-//     wired; it is UNTESTED at runtime.
+//     wired for legacy Orange/preview. Original Red source1 receives the actual
+//     descending PikiFlying InteractPress and completes source Press->Demo at END;
+//     its natural gameplay acceptance remains open.
 //   * The Wait notice cry (PSSE_EN_KOCHAPPY_NOTICE, wait1 frame 61) and the
 //     wait1 frame-60 random-frame latch have no host sound/anim equivalent.
 // Movement uses the source fp06 = 60 speed; turn rate 2.0 rad/s is a recorded
@@ -51,6 +53,7 @@
 #include "pc_p2_campaign_actor.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_kochappy_policy.h"
 #include "pc_p2_kochappy_stun.h"
 #include "Pellet.h"
 #include "pc_p2_white.h"
@@ -95,6 +98,7 @@ constexpr float SHAKE_KNOCKBACK    = 50.0f;   // general fp17
 
 struct FsmActor {
 	int sourceId = 44;
+    bool original=false,bittered=false;
 	p2kochappyfsm::Params params;
 	State state           = p2kochappyfsm::STATE_WAIT;
 	State returnState     = p2kochappyfsm::STATE_WAIT;
@@ -464,7 +468,7 @@ void enter(BTeki* actor, FsmActor& state, State next)
  // death motion. The suppressed P1 strategy cannot emit generator pellets;
  // Red1's mapped personality owns this exactly-once ordinary drop boundary.
  // Orange44 remains unchanged until its separately-owned payload audit.
- if (next == p2kochappyfsm::STATE_DEAD && state.sourceId == 1 && !state.itemsSpawned) {
+ if ((next == p2kochappyfsm::STATE_DEAD || (next == p2kochappyfsm::STATE_PRESS && state.original)) && state.sourceId == 1 && !state.itemsSpawned) {
   state.itemsSpawned = true;
   actor->spawnItems();
  }
@@ -523,6 +527,7 @@ void pc_p2_kochappy_fsm_begin_stun(BTeki* actor)
 
 void pc_p2_kochappy_fsm_setup()
 {
+    for(const auto& row:p2original::originalActors().rows())if(row.second.enemy.source==1)return;
 	pc_p2_kochappy_fsm_reset();
 	if (!tekiMgr) return;
  // Orange44 retains its existing bridge/default and explicit-preview rules.
@@ -581,6 +586,19 @@ void pc_p2_kochappy_fsm_setup()
 	ready = true;
 }
 
+bool pc_p2_kochappy_fsm_bind_original(BTeki* actor,unsigned token,std::string& error){
+ unsigned source=0,actual=0;
+ if(!actor||!actor->mGenerator||!token||!pc_p2_kochappy_registered(actor)
+ ||!p2original::originalActors().query(actor,source,actual)||source!=1||actual!=token
+ ||actors.count(static_cast<PelletView*>(actor))){error="original Red FSM registry/visual ownership mismatch";return false;}
+ FsmActor state;state.sourceId=1;state.original=true;state.params=p2kochappyfsm::redDefaults();
+ state.home=actor->getPosition();state.heading=actor->getDirection();state.healthAsserted=true;
+ actor->mSRT.s.set(1,1,1);actor->mHealth=actor->mMaxHealth=state.params.health;
+ auto i=actors.emplace(static_cast<PelletView*>(actor),std::move(state)).first;
+ enter(actor,i->second,p2kochappyfsm::STATE_WAIT);ready=true;
+ std::printf("P2_ORIGINAL_RED_FSM_BIND source=1 token=%u health=200 move_speed=50 behavior=KochappyBase\n",token);std::fflush(stdout);
+ error.clear();return true;
+}
 bool pc_p2_kochappy_fsm_suppress_ai(const BTeki* actor)
 {
 	return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
@@ -600,9 +618,9 @@ PcKochappyFsmSnapshot pc_p2_kochappy_fsm_observe(const BTeki* actor)
  return value;
 }
 
-// Source Obj::pressCallBack transitions to Press (health 0, type1 anim, then
-// the terminal Demo kill). No in-engine P1 Chappy press callback is wired to
-// this P2 actor, so callers that own a bounded squash event may invoke this.
+// Source pressCallBack enters Press. Original Red receives actual descending
+// native contact through InteractPress and ends directly at Demo/kill.
+// Legacy preview actors retain this explicit trigger.
 void pc_p2_kochappy_fsm_press(BTeki* actor)
 {
 	if (!ready || !actor) return;
@@ -613,6 +631,15 @@ void pc_p2_kochappy_fsm_press(BTeki* actor)
 	enter(actor, found->second, p2kochappyfsm::STATE_PRESS);
 }
 
+bool pc_p2_kochappy_fsm_original_pressed(BTeki* actor,Creature* owner){
+ unsigned source=0,token=0;auto i=actors.find(static_cast<PelletView*>(actor));
+ if(!actor||!owner||!p2original::originalActors().query(actor,source,token)||i==actors.end()||!i->second.original
+ ||!p2kochappy::originalPressAccepted(source,ready&&actor->isAlive(),actor->mHealth,owner->isPiki(),owner->isAlive(),i->second.bittered))return false;
+ pc_p2_kochappy_fsm_press(actor);return true;
+}
+void pc_p2_kochappy_fsm_original_bittered(BTeki* actor,bool value){
+ auto i=actors.find(static_cast<PelletView*>(actor));if(i!=actors.end()&&i->second.original)i->second.bittered=value;
+}
 void pc_p2_kochappy_fsm_update(BTeki* actor)
 {
 	if (!ready) return;
@@ -843,6 +870,8 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 	case p2kochappyfsm::STATE_PRESS: {
 		stop(actor);
 		if (state.stateTime >= PRESS_DURATION) {
+            // Original StatePress goes straight to source Demo/kill at END.
+            if(state.original){if(!state.died){state.died=true;actor->pcEscapeNow();adoptRedCorpse(actor);}return;}
 			enter(actor, state, p2kochappyfsm::STATE_DEAD);
 		}
 		break;

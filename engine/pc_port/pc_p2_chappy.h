@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <set>
 class BTeki;
 class Creature;
 class CollPart;
@@ -25,6 +26,10 @@ struct Matrix4f;
 // `p2-chappy-actors.txt` are registered. Every hook is a no-op for
 // unregistered actors.
 void pc_p2_chappy_setup();
+// Original course prebirth physical resource phase; no actor roster/binding.
+// Strict parser/physical resource failures remain fail-closed. Constructor
+// callers must own course staging/cleanup; this does not publish a provider.
+bool pc_p2_chappy_prepare_original(const std::set<unsigned>& sources, std::string& error);
 void pc_p2_chappy_reset();
 void pc_p2_chappy_forget(BTeki*);
 void pc_p2_chappy_update(BTeki*);
@@ -62,3 +67,6 @@ bool pc_p2_chappy_receipt(PelletView*, unsigned& generator);
 // Generated-placement bridge: claim the spawned actor for its seeded
 // Chappy-family source id and bind the P2 identity.
 bool pc_p2_chappy_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned sourceId);
+// Concrete family registration only; requires an already bound original
+// ActorRegistry identity and never publishes AP source/delivery metadata.
+bool pc_p2_chappy_bind_original(BTeki*,unsigned token,unsigned source);
