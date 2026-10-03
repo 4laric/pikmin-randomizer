@@ -29,6 +29,7 @@ void restore(std::string bytes) {
 }
 }
 void pc_p2_cave_campaign_cache_enter(int surfaceStage) {
+    if(!pc_randomizer_ready())invalid("unready entry");
     if(surfaceStage!=STAGE_Forest)invalid("foreign entry surface");
     auto banks=pc_randomizer_generated_cave_cache();
     if(!banks.enter(capture()))invalid("duplicate or invalid entry");
@@ -37,6 +38,7 @@ void pc_p2_cave_campaign_cache_enter(int surfaceStage) {
     if(!banks.floor.empty())restore(banks.floor);
 }
 void pc_p2_cave_campaign_cache_return() {
+    if(!pc_randomizer_ready())invalid("unready return");
     auto banks=pc_randomizer_generated_cave_cache();
     const auto surface=banks.surface;
     if(!banks.leave(capture()))invalid("return outside cave");
@@ -51,6 +53,7 @@ void pc_p2_cave_campaign_cache_capture() {
     pc_randomizer_generated_cave_cache_set(banks);
 }
 void pc_p2_cave_campaign_cache_restore_floor() {
+    if(!pc_randomizer_ready())invalid("unready floor restore");
     const auto& banks=pc_randomizer_generated_cave_cache();
     if(!banks.inside)invalid("floor restore outside cave");
     if(!generatorCache)invalid("missing native cache");

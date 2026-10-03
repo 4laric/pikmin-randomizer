@@ -2141,12 +2141,15 @@ int pc_randomizer_generated_cave_bud_used(std::uint64_t seed, const char* cave, 
     return int(generatedCaveBudget.used[index]);
 }
 const P2CaveCacheBanks& pc_randomizer_generated_cave_cache() {
-    if (!pc_randomizer_generated_cave() || !ready) fail("unready generated cave cache");
+    // Owned card state can be inspected/captured during a temporary host pause,
+    // just like the existing campaign SAVE. Entry/return require readiness in
+    // the engine provider; this accessor neither spawns actors nor credits checks.
+    if (!pc_randomizer_generated_cave()) fail("inactive generated cave cache");
     return generatedCaveCache;
 }
 void pc_randomizer_generated_cave_cache_set(const P2CaveCacheBanks& banks) {
-    if (!pc_randomizer_generated_cave() || !ready || !banks.valid())
-        fail("unready or invalid generated cave cache image");
+    if (!pc_randomizer_generated_cave() || !banks.valid())
+        fail("inactive or invalid generated cave cache image");
     generatedCaveCache = banks;
 }
 void pc_randomizer_generated_cave_bud_input(std::uint64_t seed, const char* cave, int floor,

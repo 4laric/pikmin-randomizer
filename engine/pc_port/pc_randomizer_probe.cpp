@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
             if (!std::strcmp(argv[i], "--cave-cache-enter") || !std::strcmp(argv[i], "--cave-cache-floor")
                 || !std::strcmp(argv[i], "--cave-cache-return")) {
                 const std::string action=argv[i];
+                if(action!="--cave-cache-floor" && !pc_randomizer_ready()) return 2;
                 assert(i+1<argc);
                 std::ifstream image(argv[++i],std::ios::binary);
                 assert(image);
