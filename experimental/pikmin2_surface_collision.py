@@ -23,8 +23,8 @@ def source_neighbors(triangles):
     return neighbors,incidents
 
 
-def attach_surface_collision(mod,room):
-    vertices,triangles,codes=collision_geometry(room,mapcode_translator=surface_mapcode)
+def attach_surface_collision(mod,room,*,mapcode_translator=surface_mapcode):
+    vertices,triangles,codes=collision_geometry(room,mapcode_translator=mapcode_translator)
     if len(triangles)>32767:raise ValueError('Native triangle count exceeds signed adjacency range')
     neighbors,incidents=source_neighbors(triangles)
     cursor=0;parts=[];offset=None;ended=False

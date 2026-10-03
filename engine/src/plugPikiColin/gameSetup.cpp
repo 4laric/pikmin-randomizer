@@ -276,12 +276,37 @@ void GameSetupSection::update()
             StageInfo* selected = nullptr;
             for (StageInfo* candidate = stage; candidate; candidate = static_cast<StageInfo*>(candidate->mNext)) {
                 if (std::strcmp(candidate->mFileName, pc_pikipelago_surface_stage())) continue;
-                if (selected || candidate->mStageID != STAGE_Practice) {
+                if (selected || candidate->mStageID != pc_pikipelago_surface_index()) {
                     std::fprintf(stderr, "P2 surface registration is ambiguous or has an invalid stage ID\n"); std::exit(2);
                 }
                 selected = candidate;
             }
             stage = selected;
+            if (pc_pikipelago_surface_campaign()) {
+                int counts[4]={0,0,0,0};
+                int reserved=0;
+                for(StageInfo* candidate=static_cast<StageInfo*>(flowCont.mStageList.mChild); candidate;
+                    candidate=static_cast<StageInfo*>(candidate->mNext)) {
+                    if(candidate->mStageID==4) {
+                        if(candidate->mStageIndex!=4 || candidate->mIsVisible ||
+                           candidate->mChalStageID!=CHALSTAGE_NOT || candidate->mGenFileList.getChildCount()!=0 ||
+                           std::strcmp(candidate->mFileName,"stages/p2_unused.ini") || ++reserved!=1) {
+                            std::fprintf(stderr,"Invalid P2 campaign reserved native save slot\n");std::exit(2);
+                        }
+                        continue;
+                    }
+                    const char* path=pc_pikipelago_surface_stage_for(candidate->mStageID);
+                    if(!path || !candidate->mIsVisible || candidate->mStageIndex!=candidate->mStageID ||
+                       candidate->mChalStageID!=CHALSTAGE_NOT || std::strcmp(path,candidate->mFileName) || ++counts[candidate->mStageID]!=1) {
+                        std::fprintf(stderr,"P2 campaign requires exactly four unique surface stages\n");std::exit(2);
+                    }
+                }
+                if(reserved!=1) {std::fprintf(stderr,"Missing P2 campaign reserved native save slot\n");std::exit(2);}
+                for(int id=0;id<4;++id) {
+                    if(counts[id]!=1) {std::fprintf(stderr,"Missing P2 campaign surface stage\n");std::exit(2);}
+                    gameflow.mPlayState.openStage(id);
+                }
+            }
         } else if (pc_pikipelago_challenge_level() >= 0) {
             char target[64]; std::snprintf(target,sizeof(target),"stages/chal%d.ini",pc_pikipelago_challenge_level());
             while(stage && std::strcmp(stage->mFileName,target)) stage=static_cast<StageInfo*>(stage->mNext);
@@ -346,8 +371,8 @@ void GameSetupSection::update()
             for (int color=0;color<3;++color)
                 for (int stage=0;stage<3;++stage) pikiInfMgr.mPikiCounts[color][stage]=0;
             if (pc_pikipelago_surface_course()) {
-                std::printf("[Pikipelago] P2_SURFACE_BOOT course=%s stage_index=%d file=%s field_overlay_required=20 isolated=1 full_course=0\n",
-                    pc_pikipelago_surface_course(), stage->mStageIndex, stage->mFileName);
+                std::printf("[Pikipelago] P2_SURFACE_BOOT course=%s stage_index=%d file=%s field_overlay_required=20 isolated=%d four_course_travel=%d story_progression=0\n",
+                    pc_pikipelago_surface_course(), stage->mStageIndex, stage->mFileName, pc_pikipelago_surface_campaign()?0:1, pc_pikipelago_surface_campaign()?1:0);
             } else {
                 std::printf("[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1\n");
             }

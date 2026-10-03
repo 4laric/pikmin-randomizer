@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "MapSelect.h"
 #include "MoviePlayer.h"
 #include <cstdint>
@@ -133,13 +134,13 @@ public:
 				bool valid = gameflow.mGamePrefs.isStageOpen(inf->mChalStageID);
 				// must be both open and marked visible in its .ini
 				if (inf->mIsVisible && valid) {
-					mMapListMenu->addOption((int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
+					mMapListMenu->addOption(pc_pikipelago_surface_campaign() ? inf->mStageID : (int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
 				}
 			} else {
 				bool valid = gameflow.mPlayState.isStageOpen(inf->mStageID);
 				// must be open, marked visible in its .ini, and also *not* a challenge mode stage (to avoid dupes)
 				if (inf->mIsVisible && valid && inf->mChalStageID == CHALSTAGE_NOT) {
-					mMapListMenu->addOption((int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
+					mMapListMenu->addOption(pc_pikipelago_surface_campaign() ? inf->mStageID : (int)(intptr_t)inf, StdSystem::stringDup(inf->mStageName), nullptr);
 				}
 			}
 		}
@@ -155,7 +156,18 @@ public:
 	void menuSelectOption(Menu& parent)
 	{
 		// for this menu, the payload data is a pointer to the map's StageInfo
-		StageInfo* info = reinterpret_cast<StageInfo*>(parent.mCurrentItem->mData);
+		StageInfo* info = nullptr;
+        if (pc_pikipelago_surface_campaign()) {
+            FOREACH_NODE(StageInfo, flowCont.mStageList.mChild, candidate) {
+                if(candidate->mStageID==parent.mCurrentItem->mData) {
+                    if(info) {std::fprintf(stderr,"Ambiguous P2 travel stage\n");std::abort();}
+                    info=candidate;
+                }
+            }
+            if(!info || !pc_pikipelago_surface_select(info->mStageID,info->mFileName)) {
+                std::fprintf(stderr,"Invalid P2 travel destination\n");std::abort();
+            }
+        } else info = reinterpret_cast<StageInfo*>(parent.mCurrentItem->mData);
 
 		// prepare to enter gameplay for the selected course
 		enterCourse(info);
@@ -186,8 +198,20 @@ public:
 		mBigFont = new Font;
 		mBigFont->setTexture(gsys->loadTexture("bigFont.bti", true), 21, 42);
 
-		// make debug menu
-		makeMapsMenu();
+		// The candidate uses native course selection and landing without P1 map labels.
+        if(pc_pikipelago_surface_campaign()) {
+            makeMapsMenu();
+            mMapListMenu->mCenterPoint.mMinX=glnWidth/4;
+            mMapListMenu->mCenterPoint.mMinY=glnHeight/4;
+            mActiveOverlayMenu=mMapListMenu;
+            mMapListMenu->open(false);
+            mapWindow=nullptr; selectWindow=nullptr;
+            gsys->setFade(1.0f);
+            mNextSectionsFlag=PACK_NEXT_ONEPLAYER(ONEPLAYER_GameExit);
+            return;
+        }
+        // make debug menu
+        makeMapsMenu();
 		mMapListMenu->addOption(MENU_FAKE_OPTION_FOR_GAP);
 		mMapListMenu->addOption(0, "Open All Maps",
 		                        !gameflow.mIsChallengeMode
@@ -262,6 +286,9 @@ public:
 		// update debug menu if we have it
 		if (mActiveOverlayMenu) {
 			mActiveOverlayMenu = mActiveOverlayMenu->doUpdate(false);
+            if(pc_pikipelago_surface_campaign() && !mActiveOverlayMenu && mSectionState==Active) {
+                mSectionState=Exit; gsys->setFade(0.0f);
+            }
 
 		} else if (mSectionState == Active) {
 
@@ -389,7 +416,14 @@ public:
 
 		// draw debug menu over the top
 		Matrix4f orthoMtxDebug;
-		gfx.setOrthogonal(orthoMtxDebug.mMtx, AREA_FULL_SCREEN(gfx));
+		if(pc_pikipelago_surface_campaign()) {
+            // Twice-size campaign text, preserving the ordinary Menu lifecycle.
+            gfx.setOrthogonal(orthoMtxDebug.mMtx, RectArea(0,0,gfx.mScreenWidth/2,gfx.mScreenHeight/2));
+            gfx.setViewport(AREA_FULL_SCREEN(gfx));
+            gfx.setScissor(AREA_FULL_SCREEN(gfx));
+        } else {
+            gfx.setOrthogonal(orthoMtxDebug.mMtx, AREA_FULL_SCREEN(gfx));
+        }
 
 		if (mActiveOverlayMenu) {
 			mActiveOverlayMenu->draw(gfx, 1.0f);

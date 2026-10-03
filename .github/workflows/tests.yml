@@ -78,6 +78,9 @@ jobs:
           tests/test_pikmin2_bulblax_arena.py
           tests/test_pikmin2_bulbmin_bridge.py
           tests/test_pikmin2_surface_import.py
+          tests/test_pikmin2_campaign_surfaces.py
+          tests/test_pikmin2_surface_collision.py
+          tests/test_pikmin2_surface_water_runtime.py
           tests/test_pikmin2_surface_pocket.py
           tests/test_pikmin2_generator_calendar.py
           tests/test_pikmin2_generator_objects.py

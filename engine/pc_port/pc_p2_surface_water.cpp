@@ -14,7 +14,7 @@ BaseShape* owner=nullptr;
 std::vector<p2water::Box> boxes;
 bool tutorial() {
     const char* course=pc_pikipelago_surface_course();
-    return course && !std::strcmp(course,"tutorial");
+    return course != nullptr;
 }
 }
 void pc_p2_surface_water_reset() {owner=nullptr;boxes.clear();}
@@ -23,14 +23,21 @@ void pc_p2_surface_water_init(BaseShape* model) {
     if (!tutorial()) return;
     // Only the new water stager installs this optional sidecar. Old dry1089 and
     // ordinary P1 course loading remain unchanged when it is absent.
-    const char* path="assets/dataDir/courses/p2tutorial/full.water";
+    const char* course=pc_pikipelago_surface_course();
+    char path[128];
+    std::snprintf(path,sizeof(path),"assets/dataDir/courses/p2%s/full.water",course);
     std::error_code error;
     const bool exists=std::filesystem::exists(path,error);
     if (!exists && !error) {std::puts("P2_SURFACE_WATER_ABSENT consumer=0 legacy_dry_stage=1");return;}
     std::ifstream input(path);
-    if (error || !input || !model || !model->mTriList || model->mTriCount<=0 || !p2water::readTutorial(input,boxes)) {
+    if (error || !input || !model || !model->mTriList || model->mTriCount<=0 || !p2water::read(input,boxes,course)) {
         std::puts("P2_SURFACE_WATER_REFUSED malformed_static_sidecar=1");std::fflush(nullptr);std::abort();
     }
+    const char* ids[]={"tutorial","forest","yakushima","last"};
+    const int counts[]={3,5,8,2};
+    bool countValid=false;
+    for(int i=0;i<4;++i) if(!std::strcmp(course,ids[i]) && int(boxes.size())==counts[i]) countValid=true;
+    if(!countValid) {std::puts("P2_SURFACE_WATER_REFUSED course_count=1");std::abort();}
     owner=model;
     std::printf("P2_SURFACE_WATER_READY boxes=%d source_sphere_overlap=1 surface_minus3=1 no_bottom=1 dynamic_lowering=0\n",int(boxes.size()));
 }
