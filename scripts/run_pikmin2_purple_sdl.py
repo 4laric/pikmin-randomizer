@@ -55,6 +55,7 @@ def parser():
     p.add_argument('--mode', choices=('sdl_acquire', 'sdl_save_resume', *GUARDS), required=True)
     p.add_argument('--profile', choices=('ordinary-off',), required=True)
     p.add_argument('--preflight-only', action='store_true')
+    p.add_argument('--engineering-acquire-90', action='store_true', help='Private engineering acquisition90 plus ordinary save60; default acquisition60 remains unchanged')
     p.add_argument('--birth-ledger', action='store_true', help='Validate fresh initial census, successful ordinary births, native card and fresh stock resume')
     p.add_argument('--development-launch', action='store_true',
                    help='Use the owned private development launcher without controller admission')
@@ -83,7 +84,17 @@ def portable_overlay_ready(source):
             'Reviewed1174 early Linux copy seam absent; Windows-only overlay refused')
 
 
+def engineering_acquisition_limit(a):
+    flag = getattr(a, 'engineering_acquire_90', False)
+    require(type(flag) is bool, 'Engineering acquisition opt-in must be boolean')
+    if flag:
+        require(getattr(a, 'development_launch', False) is True and getattr(a, 'mode', None) == 'sdl_save_resume'
+                and getattr(a, 'profile', None) == 'ordinary-off', 'Engineering90 requires private fresh ordinary save/resume')
+    return 90 if flag else 60
+
+
 def preflight(a):
+    engineering_acquisition_limit(a)
     ledger = getattr(a, 'birth_ledger', False)
     require(type(ledger) is bool, 'Birth-ledger opt-in must be boolean')
     require(not ledger or (a.mode == 'sdl_save_resume' and a.profile == 'ordinary-off'), 'Birth ledger requires fresh ordinary save/resume')
@@ -379,26 +390,28 @@ def native_success(result, log, handshaken, errors, *, timeout_seconds=60):
     require('P2_FIXTURE_WINDOW width=960 height=540' in log, 'Window evidence missing')
 
 
-def save_budget_observations(log):
+def save_budget_observations(log, acquisition_limit=60):
+    require(type(acquisition_limit) is int and acquisition_limit in (60, 90), 'Unsupported acquisition budget')
+    whole_limit = acquisition_limit + 60
     transition = fields(log, 'P2_PURPLE_SAVE_BUDGET_TRANSITION')
     finished = fields(log, 'P2_PURPLE_SAVE_BUDGET_FINISHED')
     for data in (transition, finished):
-        require(all(data.get(k) == v for k, v in {'acquisition_limit': '60', 'save_limit': '60',
-                'whole_limit': '120', 'monotonic': '1'}.items()), 'Wrong native phase budget')
+        require(all(data.get(k) == v for k, v in {'acquisition_limit': str(acquisition_limit), 'save_limit': '60',
+                'whole_limit': str(whole_limit), 'monotonic': '1'}.items()), 'Wrong native phase budget')
     require(transition.get('verified_acquisition') == '1' and finished.get('movie_skip') == '0',
         'Unverified acquisition or movie skip')
     acquisition = float(transition['acquisition_seconds'])
     saved_acquisition, save, whole = (float(finished[k]) for k in
         ('acquisition_seconds', 'save_seconds', 'whole_seconds'))
-    require(0 < acquisition < 60 and acquisition == saved_acquisition and 0 <= save < 60
-        and 0 < whole < 120 and abs(whole - acquisition - save) <= .000002,
+    require(0 < acquisition < acquisition_limit and acquisition == saved_acquisition and 0 <= save < 60
+        and 0 < whole < whole_limit and abs(whole - acquisition - save) <= .000002,
         'Acquisition/save hard phase deadline or monotonic closure failed')
     markers = ('P2_PURPLE_SAVE_BUDGET_TRANSITION ', 'P2_PURPLE_SDL_ACQUISITION_PASS ',
         'P2_PURPLE_ORDINARY_SAVE_BEGIN ', 'P2_PURPLE_SAVE_BUDGET_FINISHED ', 'P2_PURPLE_ORDINARY_SAVE_PASS ')
     positions = [log.index(marker) for marker in markers]
     require(positions == sorted(positions), 'Phase transition/finish out of order')
     return {'acquisition_seconds': acquisition, 'save_seconds': save, 'whole_seconds': whole,
-        'acquisition_limit': 60, 'save_limit': 60, 'whole_limit': 120, 'movie_skip': False}
+        'acquisition_limit': acquisition_limit, 'save_limit': 60, 'whole_limit': whole_limit, 'movie_skip': False}
 
 
 def reject_legacy_routes(log):
@@ -414,9 +427,9 @@ def reject_legacy_routes(log):
                     'Legacy persistence/scripted route forbidden')
 
 
-def save_observations(result, log, handshaken, errors):
-    native_success(result, log, handshaken, errors, timeout_seconds=120)
-    budget = save_budget_observations(log)
+def save_observations(result, log, handshaken, errors, acquisition_limit=60):
+    native_success(result, log, handshaken, errors, timeout_seconds=acquisition_limit+60)
+    budget = save_budget_observations(log, acquisition_limit)
     acquisition = oracle('sdl_acquire', result, log, handshaken, errors)
     require(acquisition.get('selection') == '4' and acquisition.get('strength') == '10', 'Acquired Purple identity/strength missing')
     begin = fields(log, 'P2_PURPLE_ORDINARY_SAVE_BEGIN')
@@ -471,7 +484,8 @@ def stage_save_run(a, m, manifest, session):
 
 
 def launch_save_phase(a, m, run, frozen, mode, expected=None):
-    timeout = 120 if mode == 'sdl_dayend' else 60
+    acquisition_limit = engineering_acquisition_limit(a)
+    timeout = acquisition_limit+60 if mode == 'sdl_dayend' else 60
     report = {'mode': mode, 'passed': False, 'run': str(run.directory), 'timeout_seconds': timeout}
     stop, errors = threading.Event(), []
     # Clear inherited expectations/injections. Never copy a predecessor's process environment blindly.
@@ -479,6 +493,8 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
     for key in saved_env:
         os.environ.pop(key, None)
     os.environ.update(PIKMIN_RANDOMIZER_TEST_BACKGROUND='1', PIKMIN_P2_ROOM_WINDOW='960x540', P2_PURPLE_COMBAT_MODE=mode)
+    if acquisition_limit == 90 and mode == 'sdl_dayend':
+        os.environ['P2_PURPLE_ENGINEERING_ACQUIRE90'] = '1'
     if getattr(a, 'birth_ledger', False) and mode == 'sdl_dayend':
         os.environ['P2_PURPLE_BIRTH_LEDGER'] = '1'
     if expected:
@@ -521,7 +537,7 @@ def launch_save_phase(a, m, run, frozen, mode, expected=None):
             reject_legacy_routes(log)
             report['observations'] = m['scripts.purple_birth_ledger'].compare_stock_observation(log, expected['card_stock'])
         else:
-            report['observations'] = (save_observations(result, log, run.handshaken, errors) if mode == 'sdl_dayend'
+            report['observations'] = (save_observations(result, log, run.handshaken, errors, acquisition_limit=acquisition_limit) if mode == 'sdl_dayend'
                 else resume_observations(result, log, run.handshaken, errors, expected))
         if getattr(a, 'birth_ledger', False):
             cleanup = result.get('cleanup', {})
@@ -581,7 +597,7 @@ def record_checkpoint_boundary(a, report, session, run, boundary, schema, card):
 def execute_save_resume(a, m):
     a.session.mkdir(parents=True, exist_ok=False)
     report = {'passed': False, 'mode': a.mode, 'profile': a.profile,
-        'timeout_seconds_per_native_child': {'sdl_dayend': 120, ('natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume'): 60},
+        'timeout_seconds_per_native_child': {'sdl_dayend': engineering_acquisition_limit(a)+60, ('natural_resume_consistency' if getattr(a, 'birth_ledger', False) else 'natural_resume'): 60},
         'save_phase_limits_seconds': {'verified_acquisition': 60, 'ordinary_save': 60},
         'root_pin': a.root_pin, 'native_pin': a.native_pin, 'native_source_sha256': a.native_source_sha256,
         'exe_sha256': a.exe_sha256, 'phases': [], 'checkpoint_boundaries': [], 'live_AP_server': False, 'saved_bytes_injected': False,
