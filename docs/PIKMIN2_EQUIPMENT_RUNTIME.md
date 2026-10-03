@@ -51,8 +51,18 @@ It authors q006=205, q007=130 and q008=0.5. Source `naviWhistle.cpp` reads q007
 for the Amplifier. Earlier qualified 2019/composed 3f72 builds used constructor
 values 240/200 for Boots/Amplifier and remain historical evidence; they do not
 prove these corrected retail values. The correction passes both focused CTests
-and a focused no-work dry run; corrected production/gameplay qualification is
-pending with the integration owner. The legal resource stays private.
+and a focused no-work dry run. Corrected composed native
+`dc89ca98788209f9fda28be5b93a8ecf2457de97`, clean tree
+`a363f3f881a3d2cf93d48498e9ec7ac9a6b67a70`, passes the actual private Linux
+production build, all nine focused CTests, Ninja no-work and dependency checks.
+Production ELF SHA-256 is
+`f28e6064d23f2b6fa0ac6cda14d8022eb8eb3f3cff826d26049b187da366902b`.
+The profile is Release NETPLAY/JAUDIO/IPO ON, OPTIMIZE OFF, j2.
+The 27-file byte-identical maintained export merged in
+[PR #1293](https://github.com/4laric/pikmin-randomizer/pull/1293) at
+`08c9da35dc5ab35ef211f94d91362fd840854ad8`. The integration owner independently
+checked the authored resource values. Ordinary equipment acquisition, map hauling
+and campaign save/resume remain open. The legal resource stays private.
 Existing AP benefits,
 Mods and captain health settings keep their existing composition; original gear
 is applied only when its authenticated selected-session query succeeds.
